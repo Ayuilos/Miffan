@@ -226,6 +226,20 @@ private fun AssistantLocalToolContent(
                     )
                 }
             )
+            item(
+                headlineContent = {
+                    Text("AI 扩展管理")
+                },
+                supportingContent = {
+                    Text("允许 AI 查看扩展配置，并在每次修改前征得你的确认后修改扩展配置。")
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.localTools.contains(LocalToolOption.ExtensionManagement),
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.ExtensionManagement, it) }
+                    )
+                }
+            )
         }
     }
 }

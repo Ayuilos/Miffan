@@ -83,6 +83,7 @@ val appModule = module {
             mcpManager = get(),
             filesManager = get(),
             skillManager = get(),
+            extensionManagementService = get(),
             workspaceRepository = get(),
             folderRepository = get()
         )
