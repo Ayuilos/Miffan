@@ -8,10 +8,14 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import me.rerere.common.http.await
 import me.rerere.rikkahub.data.files.SkillFrontmatterParser
 import me.rerere.rikkahub.data.skills.install.RemoteSkillEntryKind
 import me.rerere.rikkahub.data.skills.install.RemoteSkillFile
@@ -42,9 +46,24 @@ class GitHubRemoteSkillSourceClient(
         .followRedirects(false)
         .followSslRedirects(false)
         .retryOnConnectionFailure(false)
+        .connectTimeout(GITHUB_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(GITHUB_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(GITHUB_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(GITHUB_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
-    override suspend fun fetch(sourceUrl: String): RemoteSkillPackage = withContext(Dispatchers.IO) {
+    override suspend fun fetch(sourceUrl: String): RemoteSkillPackage {
+        return withTimeoutOrNull(PREVIEW_TOTAL_TIMEOUT_MILLIS) {
+            withContext(Dispatchers.IO) {
+                fetchPinnedPackage(sourceUrl)
+            }
+        } ?: throw SkillInstallException(
+            SkillInstallErrorCode.DOWNLOAD_FAILED,
+            "GitHub Skill preview timed out",
+        )
+    }
+
+    private suspend fun fetchPinnedPackage(sourceUrl: String): RemoteSkillPackage {
         val source = parseCanonicalSkillShUrl(sourceUrl)
         val repository = getJson<GitHubRepository>(
             githubApiUrl("repos", source.owner, source.repo),
@@ -112,7 +131,7 @@ class GitHubRemoteSkillSourceClient(
         }
 
         val canonicalUrl = buildGitHubRevisionUrl(source, revision, skillRoot)
-        RemoteSkillPackage(
+        return RemoteSkillPackage(
             source = VerifiedSkillSource(
                 requestedUrl = sourceUrl,
                 canonicalUrl = canonicalUrl,
@@ -123,7 +142,7 @@ class GitHubRemoteSkillSourceClient(
         )
     }
 
-    private fun selectUniqueSkillEntry(
+    private suspend fun selectUniqueSkillEntry(
         source: SkillShSource,
         revision: String,
         entries: List<GitHubTreeEntry>,
@@ -179,7 +198,7 @@ class GitHubRemoteSkillSourceClient(
 
         if (matches.isEmpty() && preferred.isNotEmpty() && candidates.size <= MAX_SKILL_CANDIDATES) {
             val preferredPaths = preferred.mapTo(HashSet()) { it.path }
-            matches = candidates.asSequence()
+            matches = candidates
                 .filterNot { it.path in preferredPaths }
                 .mapNotNull { entry ->
                     validateRepositoryPath(entry.path)
@@ -277,7 +296,7 @@ class GitHubRemoteSkillSourceClient(
         return files
     }
 
-    private fun downloadRawFile(
+    private suspend fun downloadRawFile(
         source: SkillShSource,
         revision: String,
         repositoryPath: String,
@@ -293,7 +312,7 @@ class GitHubRemoteSkillSourceClient(
         return execute(url, RAW_GITHUB_HOST, maxBytes)
     }
 
-    private inline fun <reified T> getJson(url: HttpUrl, maxBytes: Int): T {
+    private suspend inline fun <reified T> getJson(url: HttpUrl, maxBytes: Int): T {
         val bytes = execute(url, GITHUB_API_HOST, maxBytes)
         val text = try {
             requireStrictUtf8(bytes, "GitHub API response")
@@ -315,7 +334,7 @@ class GitHubRemoteSkillSourceClient(
         }
     }
 
-    private fun execute(url: HttpUrl, expectedHost: String, maxBytes: Int): ByteArray {
+    private suspend fun execute(url: HttpUrl, expectedHost: String, maxBytes: Int): ByteArray {
         if (url.scheme != "https" || url.port != 443 ||
             !url.host.equals(expectedHost, ignoreCase = true) ||
             url.username.isNotEmpty() || url.password.isNotEmpty()
@@ -328,7 +347,7 @@ class GitHubRemoteSkillSourceClient(
             .header("Accept", if (expectedHost == GITHUB_API_HOST) GITHUB_ACCEPT else "text/plain")
             .build()
         try {
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).await().use { response ->
                 val finalUrl = response.request.url
                 if (finalUrl.scheme != "https" || finalUrl.port != 443 ||
                     !finalUrl.host.equals(expectedHost, ignoreCase = true) ||
@@ -354,6 +373,8 @@ class GitHubRemoteSkillSourceClient(
                 }
                 return response.body.byteStream().readBoundedSource(maxBytes)
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: SkillInstallException) {
             throw error
         } catch (error: Exception) {
@@ -520,6 +541,9 @@ class GitHubRemoteSkillSourceClient(
         private const val MAX_REPOSITORY_PATH_LENGTH = 4096
         private const val MAX_REPOSITORY_PATH_DEPTH = 64
         private const val MAX_SKILL_CANDIDATES = 64
+        private const val GITHUB_CONNECT_TIMEOUT_SECONDS = 10L
+        private const val GITHUB_REQUEST_TIMEOUT_SECONDS = 30L
+        private const val PREVIEW_TOTAL_TIMEOUT_MILLIS = 90_000L
         private val REGULAR_FILE_MODES = setOf("100644", "100755")
         private val GIT_SHA = Regex("[0-9a-f]{40}")
         private val GITHUB_OWNER = Regex("[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")

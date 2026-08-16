@@ -1,7 +1,14 @@
 package me.rerere.rikkahub.data.skills.source
 
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import okhttp3.Call
+import okhttp3.EventListener
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -60,6 +67,35 @@ class SkillShCatalogClientTest {
         assertTrue(transportFailure.entries.isEmpty())
         assertFalse(invalidQuery.available)
         assertTrue(invalidQuery.entries.isEmpty())
+    }
+
+    @Test
+    fun `cancelling search cancels the active okhttp call`() = runBlocking {
+        val activeCall = AtomicReference<Call?>()
+        val client = OkHttpClient.Builder()
+            .eventListener(object : EventListener() {
+                override fun callStart(call: Call) {
+                    activeCall.set(call)
+                }
+            })
+            .addInterceptor(Interceptor { chain ->
+                while (!chain.call().isCanceled()) {
+                    Thread.sleep(5)
+                }
+                throw IOException("cancelled")
+            })
+            .build()
+        val job = async(Dispatchers.IO) {
+            SkillShCatalogClient(client).search("reader")
+        }
+
+        val call = withTimeout(1_000) {
+            while (activeCall.get() == null) kotlinx.coroutines.yield()
+            activeCall.get()!!
+        }
+        job.cancelAndJoin()
+
+        assertTrue(call.isCanceled())
     }
 
     private fun fakeClient(handler: (Request) -> Response): OkHttpClient = OkHttpClient.Builder()

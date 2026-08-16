@@ -5,10 +5,13 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import me.rerere.common.http.await
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,6 +30,10 @@ class SkillShCatalogClient(
         .followRedirects(false)
         .followSslRedirects(false)
         .retryOnConnectionFailure(false)
+        .connectTimeout(SEARCH_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(SEARCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(SEARCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(SEARCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     suspend fun search(query: String): SkillShCatalogSearchResult = withContext(Dispatchers.IO) {
@@ -39,7 +46,7 @@ class SkillShCatalogClient(
             )
         }
 
-        runCatching {
+        try {
             val url = CATALOG_BASE_URL.toHttpUrl().newBuilder()
                 .addPathSegments("api/search")
                 .addQueryParameter("q", normalizedQuery)
@@ -51,7 +58,7 @@ class SkillShCatalogClient(
                 .header("Accept", "application/json")
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).await().use { response ->
                 requireVerifiedResponse(response.request.url.host, CATALOG_HOST, response.code)
                 if (!response.isSuccessful) {
                     throw IOException("skills.sh search returned HTTP ${response.code}")
@@ -67,7 +74,9 @@ class SkillShCatalogClient(
                     .toList()
                 SkillShCatalogSearchResult(entries = entries)
             }
-        }.getOrElse {
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
             SkillShCatalogSearchResult.unavailable(
                 reason = "skills.sh search is temporarily unavailable",
             )
@@ -127,6 +136,8 @@ class SkillShCatalogClient(
         private const val CATALOG_BASE_URL = "https://skills.sh/"
         private const val CATALOG_HOST = "skills.sh"
         private const val MAX_RESPONSE_BYTES = 256 * 1024
+        private const val SEARCH_CONNECT_TIMEOUT_SECONDS = 8L
+        private const val SEARCH_TIMEOUT_SECONDS = 15L
         private val GITHUB_SOURCE = Regex(
             "([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)/([A-Za-z0-9._-]{1,100})",
         )
