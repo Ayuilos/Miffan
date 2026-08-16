@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.skills.install
 
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.UUID
 import me.rerere.rikkahub.data.files.SkillManager
@@ -32,7 +33,7 @@ class SkillManagerInstallTarget(
         skillName: String,
         files: Map<String, ByteArray>,
     ): Boolean {
-        val root = skillManager.getSkillsDir().toPath().toAbsolutePath().normalize()
+        val root = canonicalPath(skillManager.getSkillsDir().toPath()) ?: return false
         if (Files.isSymbolicLink(root)) return false
         val target = resolveTarget(skillName) ?: return false
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) return false
@@ -83,11 +84,23 @@ class SkillManagerInstallTarget(
     }
 
     private fun resolveTarget(skillName: String): java.nio.file.Path? {
-        return runCatching {
-            val root = skillManager.getSkillsDir().toPath().toAbsolutePath().normalize()
-            val targetFile = skillManager.getSkillDir(skillName) ?: return null
-            val target = targetFile.toPath().toAbsolutePath().normalize()
-            target.takeIf { it.parent == root && it.startsWith(root) }
-        }.getOrNull()
+        val root = canonicalPath(skillManager.getSkillsDir().toPath()) ?: return null
+        val targetFile = skillManager.getSkillDir(skillName) ?: return null
+        return resolveSkillInstallTarget(root, targetFile.toPath())
     }
 }
+
+/**
+ * Compare canonical paths on both sides. Android may expose the same app-private directory through
+ * aliases such as `/data/user/0/...` and `/data/data/...`; mixing an absolute root with a canonical
+ * child makes every valid new Skill look like an unsafe target.
+ */
+internal fun resolveSkillInstallTarget(canonicalRoot: Path, targetPath: Path): Path? {
+    val root = canonicalPath(canonicalRoot) ?: return null
+    val target = canonicalPath(targetPath) ?: return null
+    return target.takeIf { it.parent == root && it.startsWith(root) }
+}
+
+private fun canonicalPath(path: Path): Path? = runCatching {
+    path.toFile().canonicalFile.toPath().normalize()
+}.getOrNull()
