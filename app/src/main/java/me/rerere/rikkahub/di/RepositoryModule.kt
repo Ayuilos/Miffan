@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.di
 
 import android.content.Context
+import kotlinx.serialization.json.Json
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.SkillManager
@@ -12,10 +13,17 @@ import me.rerere.rikkahub.data.repository.FilesRepository
 import me.rerere.rikkahub.data.repository.GenMediaRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.data.skills.install.RemoteSkillSourceClient
+import me.rerere.rikkahub.data.skills.install.SkillInstallService
+import me.rerere.rikkahub.data.skills.install.SkillInstallTarget
+import me.rerere.rikkahub.data.skills.install.SkillManagerInstallTarget
+import me.rerere.rikkahub.data.skills.source.GitHubRemoteSkillSourceClient
+import me.rerere.rikkahub.data.skills.source.SkillShCatalogClient
 import me.rerere.workspace.ProotShellRunner
 import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceBindMount
 import me.rerere.workspace.WorkspaceManager
+import okhttp3.OkHttpClient
 import org.koin.dsl.module
 import java.io.File
 
@@ -83,6 +91,25 @@ val repositoryModule = module {
 
     single {
         SkillManager(get(), get())
+    }
+
+    single {
+        SkillShCatalogClient(get<OkHttpClient>(), get<Json>())
+    }
+
+    single<RemoteSkillSourceClient> {
+        GitHubRemoteSkillSourceClient(get<OkHttpClient>(), get<Json>())
+    }
+
+    single<SkillInstallTarget> {
+        SkillManagerInstallTarget(get())
+    }
+
+    single {
+        SkillInstallService(
+            sourceClient = get(),
+            target = get(),
+        )
     }
 
     single {

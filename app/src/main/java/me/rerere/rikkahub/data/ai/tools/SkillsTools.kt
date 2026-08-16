@@ -42,14 +42,14 @@ fun createSkillTools(
                     appendLine("<available_skills>")
                     builtInSkills.forEach { skill ->
                         appendLine("  <skill>")
-                        appendLine("    <name>${skill.name}</name>")
-                        appendLine("    <description>${skill.description}</description>")
+                        appendLine("    <name>${skill.name.escapeXmlText()}</name>")
+                        appendLine("    <description>${skill.description.escapeXmlText()}</description>")
                         appendLine("  </skill>")
                     }
                     availableUserSkills.forEach { skill ->
                         appendLine("  <skill>")
-                        appendLine("    <name>${skill.name}</name>")
-                        appendLine("    <description>${skill.description}</description>")
+                        appendLine("    <name>${skill.name.escapeXmlText()}</name>")
+                        appendLine("    <description>${skill.description.escapeXmlText()}</description>")
                         appendLine("  </skill>")
                     }
                     append("</available_skills>")
@@ -131,4 +131,18 @@ class BuiltInSkillDefinition(
 private fun isSafeBundledSkillPath(path: String): Boolean {
     if (path.isBlank() || path.startsWith('/') || '\\' in path) return false
     return path.split('/').none { it.isBlank() || it == "." || it == ".." }
+}
+
+/** Encode untrusted metadata before embedding it in the XML-like system-prompt catalog. */
+private fun String.escapeXmlText(): String = buildString(length) {
+    this@escapeXmlText.forEach { character ->
+        when (character) {
+            '&' -> append("&amp;")
+            '<' -> append("&lt;")
+            '>' -> append("&gt;")
+            '\"' -> append("&quot;")
+            '\'' -> append("&apos;")
+            else -> append(character)
+        }
+    }
 }

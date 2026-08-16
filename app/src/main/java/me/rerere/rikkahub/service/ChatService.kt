@@ -50,6 +50,7 @@ import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.createConversationTools
 import me.rerere.rikkahub.data.ai.tools.createExtensionManagementTools
+import me.rerere.rikkahub.data.ai.tools.createSkillInstallTools
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.createSearchTools
@@ -58,6 +59,8 @@ import me.rerere.rikkahub.data.ai.tools.createWorkspaceTools
 import me.rerere.rikkahub.data.ai.tools.extensionManagementBuiltInSkill
 import me.rerere.rikkahub.data.extensions.ExtensionManagementService
 import me.rerere.rikkahub.data.files.SkillManager
+import me.rerere.rikkahub.data.skills.install.SkillInstallService
+import me.rerere.rikkahub.data.skills.source.SkillShCatalogClient
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
@@ -162,6 +165,8 @@ class ChatService(
     private val filesManager: FilesManager,
     private val skillManager: SkillManager,
     private val extensionManagementService: ExtensionManagementService,
+    private val skillShCatalogClient: SkillShCatalogClient,
+    private val skillInstallService: SkillInstallService,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
 ) {
@@ -558,6 +563,7 @@ class ChatService(
                     addAll(localTools.getTools(assistant.localTools))
                     if (extensionManagementEnabled) {
                         addAll(createExtensionManagementTools(extensionManagementService))
+                        addAll(createSkillInstallTools(skillShCatalogClient, skillInstallService))
                     }
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
