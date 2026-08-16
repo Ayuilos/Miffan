@@ -4,9 +4,13 @@ import java.io.File
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.nio.ByteBuffer
 import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.OpenOption
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.io.path.name
 
 class WorkspaceFileSystem(
@@ -50,6 +54,44 @@ class WorkspaceFileSystem(
         require(!file.exists() || file.isFile) { "Path is not a file: $path" }
         file.parentFile?.mkdirs()
         file.writeBytes(bytes)
+        return file.toEntry(root)
+    }
+
+    /**
+     * Writes without following any symbolic link in the target path.
+     *
+     * This is used for model-controlled Rootfs writes. PRoot bind mounts are userspace path
+     * translations, so checking the host path here also prevents a guest path from being silently
+     * redirected through a symlink before the write is opened.
+     */
+    fun writeTextNoFollow(
+        root: File,
+        path: String,
+        text: String,
+        overwrite: Boolean = true,
+        charset: Charset = StandardCharsets.UTF_8,
+    ): WorkspaceFileEntry {
+        val bytes = text.toByteArray(charset)
+        require(bytes.size <= config.maxWriteBytes) {
+            "Content is too large to write: ${bytes.size} bytes"
+        }
+        val file = resolveWritePathNoFollow(root, path)
+        require(!file.exists() || overwrite) { "File already exists: $path" }
+        require(!file.exists() || file.isFile) { "Path is not a file: $path" }
+        val options = mutableSetOf<OpenOption>(
+            StandardOpenOption.WRITE,
+            LinkOption.NOFOLLOW_LINKS,
+        )
+        if (overwrite) {
+            options += StandardOpenOption.CREATE
+            options += StandardOpenOption.TRUNCATE_EXISTING
+        } else {
+            options += StandardOpenOption.CREATE_NEW
+        }
+        Files.newByteChannel(file.toPath(), options).use { channel ->
+            val buffer = ByteBuffer.wrap(bytes)
+            while (buffer.hasRemaining()) channel.write(buffer)
+        }
         return file.toEntry(root)
     }
 
@@ -187,6 +229,45 @@ class WorkspaceFileSystem(
         require(targetPath == rootPath || targetPath.startsWith(rootPath + File.separator)) {
             "Path escapes workspace root: $path"
         }
+        return target
+    }
+
+    private fun resolveWritePathNoFollow(root: File, path: String): File {
+        require(path.isNotBlank() && path != ".") { "Path must identify a file" }
+        require(!path.startsWith('/') && !path.contains('\\') && !path.contains('\u0000')) {
+            "Path must be an unambiguous relative path"
+        }
+        val segments = path.split('/')
+        require(segments.none { it.isBlank() || it == "." || it == ".." }) {
+            "Path must not contain empty, . or .. segments"
+        }
+
+        root.mkdirs()
+        require(!Files.isSymbolicLink(root.toPath())) { "Workspace root must not be a symbolic link" }
+        val rootFile = root.canonicalFile
+        var current = rootFile
+        segments.dropLast(1).forEach { segment ->
+            val next = File(current, segment)
+            require(!Files.isSymbolicLink(next.toPath())) {
+                "Refusing to write through symbolic link: ${next.relativeTo(rootFile).path}"
+            }
+            if (next.exists()) {
+                require(next.isDirectory) { "Path component is not a directory: $segment" }
+            } else {
+                require(next.mkdir()) { "Failed to create directory: $segment" }
+            }
+            current = next
+        }
+
+        val target = File(current, segments.last())
+        require(!Files.isSymbolicLink(target.toPath())) {
+            "Refusing to write through symbolic link: $path"
+        }
+        val targetCanonical = target.canonicalFile
+        require(
+            targetCanonical.path == rootFile.path ||
+                targetCanonical.path.startsWith(rootFile.path + File.separator)
+        ) { "Path escapes workspace root: $path" }
         return target
     }
 

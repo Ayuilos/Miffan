@@ -5,6 +5,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
 
 class WorkspaceManager(
     private val baseDir: File,
@@ -15,7 +17,8 @@ class WorkspaceManager(
     private val fileSystem = WorkspaceFileSystem(config)
 
     // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
-    private val sortedBindMounts = bindMounts.sortedByDescending { it.target.trimEnd('/').length }
+    private val sortedBindMounts = bindMounts.sortedByDescending { it.guestTarget.value.length }
+    private val executionLocks = ConcurrentHashMap<String, ReentrantLock>()
 
     init {
         baseDir.mkdirs()
@@ -42,7 +45,11 @@ class WorkspaceManager(
 
     fun hasRootfs(root: String): Boolean = File(linuxDir(root), "bin/sh").isFile
 
-    fun deleteWorkspace(root: String): Boolean = workspaceDir(root).deleteRecursively()
+    fun deleteWorkspace(root: String): Boolean {
+        return withExclusiveAccess(root) {
+            workspaceDir(root).deleteRecursively()
+        }
+    }
 
     fun listFiles(
         root: String,
@@ -103,35 +110,42 @@ class WorkspaceManager(
     /**
      * 把 Rootfs 内的绝对路径映射到宿主机上的真实文件。
      *
-     * bind mount 的 source 本身就是 Android 侧的普通目录, 因此 /skills 这类挂载路径
+     * 映射目录的 source 本身就是 Android 侧的普通目录, 因此 /skills 这类工具专用路径
      * 可以直接用文件 IO 访问, 无需经过 PRoot; 只是 Rootfs 目录里对应位置是个空挂载点,
      * 按 [WorkspaceStorageArea.LINUX] 解析必然落空。
      */
     fun resolveRootfsPath(root: String, path: String): RootfsLocation {
-        val trimmed = path.trim().trimEnd('/').ifBlank { "/" }
-        require(trimmed.startsWith("/")) { "Rootfs path must be absolute: $path" }
+        val guestPath = GuestPath.parse(path)
 
         sortedBindMounts.forEach { mount ->
-            val target = mount.target.trimEnd('/')
-            if (trimmed == target) return RootfsLocation(mount.source, "")
-            if (trimmed.startsWith("$target/")) {
-                return RootfsLocation(mount.source, trimmed.removePrefix("$target/"))
+            if (guestPath.isWithin(mount.guestTarget)) {
+                return RootfsLocation(
+                    rootDir = mount.source,
+                    relativePath = guestPath.relativeTo(mount.guestTarget),
+                    guestPath = guestPath,
+                    writable = mount.writableByTools,
+                )
             }
         }
 
-        if (trimmed == ROOTFS_WORKSPACE_DIR || trimmed.startsWith("$ROOTFS_WORKSPACE_DIR/")) {
+        if (guestPath.isWithin(ROOTFS_WORKSPACE_PATH)) {
             return RootfsLocation(
                 rootDir = filesDir(root),
-                relativePath = trimmed.removePrefix(ROOTFS_WORKSPACE_DIR).trimStart('/'),
+                relativePath = guestPath.relativeTo(ROOTFS_WORKSPACE_PATH),
+                guestPath = guestPath,
             )
         }
 
         // 内核伪文件系统: 显式拒绝, 而不是回落到一个必然读不到的物理路径
-        KERNEL_FS_MOUNTS.firstOrNull { trimmed == it || trimmed.startsWith("$it/") }?.let {
-            error("$it is a kernel filesystem and cannot be read as a file, use workspace_shell instead")
+        KERNEL_FS_PATHS.firstOrNull { guestPath.isWithin(it) }?.let {
+            error("${it.value} is a kernel filesystem and cannot be read as a file, use workspace_shell instead")
         }
 
-        return RootfsLocation(linuxDir(root), trimmed.trimStart('/'))
+        return RootfsLocation(
+            rootDir = linuxDir(root),
+            relativePath = guestPath.relativeTo(GuestPath.ROOT),
+            guestPath = guestPath,
+        )
     }
 
     fun rootfsFileSize(root: String, path: String): Long =
@@ -141,6 +155,27 @@ class WorkspaceManager(
         val file = resolveRootfsFile(root, path)
         file.requireReadableFile(path)
         outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
+    }
+
+    fun writeRootfsText(
+        root: String,
+        path: String,
+        text: String,
+        overwrite: Boolean = true,
+        charset: Charset = StandardCharsets.UTF_8,
+    ): WorkspaceFileEntry = withExclusiveAccess(root) {
+        val location = resolveRootfsPath(root, path)
+        require(location.writable) { "Path is read-only: ${location.guestPath.value}" }
+        fileSystem.writeTextNoFollow(
+            root = location.rootDir,
+            path = location.relativePath,
+            text = text,
+            overwrite = overwrite,
+            charset = charset,
+        ).copy(
+            path = location.guestPath.value,
+            name = location.guestPath.name,
+        )
     }
 
     private fun resolveRootfsFile(root: String, path: String): File {
@@ -188,21 +223,41 @@ class WorkspaceManager(
         val workingDir = fileSystem.resolve(filesDir(root), cwd)
         require(workingDir.exists()) { "Working directory does not exist: $cwd" }
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
+        // Never pass the caller's possibly aliased spelling into PRoot. The host-side validation
+        // above and the guest process must use the same canonical workspace-relative directory.
+        val canonicalCwd = workingDir.relativeTo(filesDir(root).canonicalFile).invariantSeparatorsPath
 
-        return shellRunner.execute(
-            WorkspaceShellContext(
-                root = root,
-                command = command,
-                cwd = cwd,
-                filesDir = filesDir(root),
-                linuxDir = linuxDir(root),
-                tempDir = tempDir(root),
-                workingDir = workingDir,
-                timeoutMillis = timeoutMillis,
-                stdin = stdin,
-                bindMounts = bindMounts,
+        return withExclusiveAccess(root, interruptible = true) {
+            shellRunner.execute(
+                WorkspaceShellContext(
+                    root = root,
+                    command = command,
+                    cwd = canonicalCwd,
+                    filesDir = filesDir(root),
+                    linuxDir = linuxDir(root),
+                    tempDir = tempDir(root),
+                    workingDir = workingDir,
+                    timeoutMillis = timeoutMillis,
+                    stdin = stdin,
+                    bindMounts = bindMounts,
+                )
             )
-        )
+        }
+    }
+
+    internal fun <T> withExclusiveAccess(
+        root: String,
+        interruptible: Boolean = false,
+        block: () -> T,
+    ): T {
+        requireValidRoot(root)
+        val lock = executionLocks.computeIfAbsent(root) { ReentrantLock() }
+        if (interruptible) lock.lockInterruptibly() else lock.lock()
+        return try {
+            block()
+        } finally {
+            lock.unlock()
+        }
     }
 
     private fun requireValidRoot(root: String) {
@@ -221,11 +276,13 @@ class WorkspaceManager(
         for (dir in roots) {
             val root = dir.name
             if (!root.matches(ROOT_NAME_REGEX)) continue
-            // PRoot temp files
-            tempDir(root).let { if (it.exists()) it.deleteRecursively() }
-            // Rootfs /tmp and /var/tmp
-            File(linuxDir(root), "tmp").let { if (it.exists()) it.deleteRecursively() }
-            File(linuxDir(root), "var/tmp").let { if (it.exists()) it.deleteRecursively() }
+            withExclusiveAccess(root) {
+                // PRoot temp files
+                tempDir(root).let { if (it.exists()) it.deleteRecursively() }
+                // Rootfs /tmp and /var/tmp
+                File(linuxDir(root), "tmp").let { if (it.exists()) it.deleteRecursively() }
+                File(linuxDir(root), "var/tmp").let { if (it.exists()) it.deleteRecursively() }
+            }
         }
     }
 
@@ -237,9 +294,11 @@ class WorkspaceManager(
 
         /** Rootfs 内工作区文件区的挂载点 */
         const val ROOTFS_WORKSPACE_DIR = "/workspace"
+        val ROOTFS_WORKSPACE_PATH: GuestPath = GuestPath.parse(ROOTFS_WORKSPACE_DIR)
 
         /** 由宿主机透传的内核伪文件系统, 只能通过 shell 访问 */
         val KERNEL_FS_MOUNTS = listOf("/dev", "/proc", "/sys")
+        private val KERNEL_FS_PATHS = KERNEL_FS_MOUNTS.map { GuestPath.parse(it) }
 
         private val ROOT_NAME_REGEX = Regex("[A-Za-z0-9._-]+")
     }
@@ -249,4 +308,6 @@ class WorkspaceManager(
 data class RootfsLocation(
     val rootDir: File,
     val relativePath: String,
+    val guestPath: GuestPath,
+    val writable: Boolean = true,
 )

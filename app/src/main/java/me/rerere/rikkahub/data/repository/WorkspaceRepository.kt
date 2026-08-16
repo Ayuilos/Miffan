@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.repository
 
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.dao.WorkspaceDAO
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.utils.JsonInstant
+import me.rerere.workspace.RootfsCatalog
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceCommandResult
@@ -111,7 +113,6 @@ class WorkspaceRepository(
 
     suspend fun installRootfs(
         id: String,
-        url: String,
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ): Boolean {
         val workspace = dao.getById(id) ?: return false
@@ -119,7 +120,8 @@ class WorkspaceRepository(
         try {
             // runInterruptible 让协程取消转成线程中断, 打断 install 内阻塞的下载/解压循环
             runInterruptible(Dispatchers.IO) {
-                rootfsInstaller.install(workspace.root, url, onProgress)
+                val source = RootfsCatalog.forAndroidAbis(Build.SUPPORTED_ABIS.toList())
+                rootfsInstaller.install(workspace.root, source, onProgress)
             }
             updateShellState(workspace, WorkspaceShellStatus.READY.name)
             return true
@@ -134,8 +136,14 @@ class WorkspaceRepository(
             }
             throw CancellationException("Rootfs install cancelled").also { it.initCause(e) }
         } catch (e: Throwable) {
-            Log.e(TAG, "installRootfs failed: workspace=${workspace.id}, root=${workspace.root}, url=$url", e)
-            updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
+            Log.e(TAG, "installRootfs failed: workspace=${workspace.id}, root=${workspace.root}", e)
+            // Installer swaps atomically and restores the previous Rootfs on failure. Preserve the
+            // prior state when that rollback left a usable installation in place.
+            if (manager.hasRootfs(workspace.root)) {
+                restoreShellState(workspace)
+            } else {
+                updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
+            }
             throw e
         }
     }
@@ -247,6 +255,18 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
         manager.exportRootfsFile(workspace.root, path, outputStream)
+    }
+
+    /** Writes a Rootfs guest path without invoking a shell or following symbolic links. */
+    suspend fun writeRootfsText(
+        id: String,
+        path: String,
+        text: String,
+        overwrite: Boolean,
+    ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.writeRootfsText(workspace.root, path, text, overwrite)
     }
 
     suspend fun deleteFile(

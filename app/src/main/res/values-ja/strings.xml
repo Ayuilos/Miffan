@@ -1149,7 +1149,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_shell_status">Shell ステータス</string>
   <string name="workspace_detail_loading">読み込み中</string>
   <string name="workspace_detail_enable_shell">シェルを有効にする</string>
-  <string name="workspace_detail_enable_shell_desc">このワークスペースでローカルのRootfsを使用したターミナル環境の実行を許可します</string>
+  <string name="workspace_detail_enable_shell_desc">コマンドは Android アプリの権限で実行されます。PRoot は互換レイヤーであり、Docker/VM レベルのサンドボックスではありません。</string>
   <string name="workspace_detail_tool_approval">ツール承認</string>
   <string name="workspace_detail_tool_approval_desc">有効にすると、AIがこのツールを呼び出す前にユーザーの確認が必要です</string>
   <string name="workspace_detail_tool_list_files">ファイル一覧</string>
@@ -1294,4 +1294,3 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_update_reminder_resume_now">今すぐ再開</string>
   <string name="reasoning_max">最大</string>
 </resources>
-

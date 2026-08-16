@@ -1191,7 +1191,7 @@
   <string name="workspace_detail_shell_status">Shell Status</string>
   <string name="workspace_detail_loading">Loading</string>
   <string name="workspace_detail_enable_shell">Enable Shell</string>
-  <string name="workspace_detail_enable_shell_desc">Allow this workspace to run a terminal environment using local Rootfs</string>
+  <string name="workspace_detail_enable_shell_desc">Commands run with the Android app\'s permissions. PRoot is a compatibility layer, not Docker/VM-grade isolation.</string>
   <string name="workspace_detail_tool_approval">Tool Approval</string>
   <string name="workspace_detail_tool_approval_desc">When enabled, user confirmation is required before AI calls this tool</string>
   <string name="workspace_detail_tool_list_files">List Files</string>

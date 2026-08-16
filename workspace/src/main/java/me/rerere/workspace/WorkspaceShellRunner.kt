@@ -45,7 +45,7 @@ fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): Workspace
     try {
         val finished = waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
         if (!finished) {
-            destroyForcibly()
+            terminateProcessTree(graceful = true)
         }
         stdinWriter?.join(1_000)
         stdout.join(1_000)
@@ -59,7 +59,7 @@ fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): Workspace
         )
     } catch (e: InterruptedException) {
         // 调用方线程被中断（如协程取消时的 runInterruptible），杀掉进程避免命令继续执行
-        destroyForcibly()
+        terminateProcessTree(graceful = false)
         // 进程被杀后 stdout/stderr 会关闭, 这里 join 回收两个采集线程, 避免每次取消泄漏一对线程
         stdinWriter?.join(1_000)
         stdout.join(1_000)
@@ -67,6 +67,38 @@ fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): Workspace
         throw e
     }
 }
+
+/** Best-effort descendant cleanup in addition to PRoot's --kill-on-exit behavior. */
+private fun Process.terminateProcessTree(graceful: Boolean) {
+    // ProcessHandle is absent from some Android API stubs/runtimes. Reflection keeps this
+    // best-effort cleanup available on runtimes that provide it without raising minSdk.
+    val processHandleClass = runCatching { Class.forName("java.lang.ProcessHandle") }.getOrNull()
+    val descendants: List<Any> = runCatching {
+        val handleClass = requireNotNull(processHandleClass)
+        val handle = Process::class.java.getMethod("toHandle").invoke(this)
+        val stream = handleClass.getMethod("descendants").invoke(handle) as java.util.stream.Stream<*>
+        stream.use { handles ->
+            handles.iterator().asSequence().filterNotNull().toList().asReversed()
+        }
+    }.getOrDefault(emptyList())
+
+    fun invoke(handle: Any, method: String): Any? = runCatching {
+        requireNotNull(processHandleClass).getMethod(method).invoke(handle)
+    }.getOrNull()
+
+    if (graceful) {
+        descendants.forEach { handle -> invoke(handle, "destroy") }
+        runCatching { destroy() }
+        runCatching { waitFor(PROCESS_TERMINATION_GRACE_MS, TimeUnit.MILLISECONDS) }
+    }
+
+    descendants.forEach { handle ->
+        if (invoke(handle, "isAlive") == true) invoke(handle, "destroyForcibly")
+    }
+    if (isAlive) runCatching { destroyForcibly() }
+}
+
+private const val PROCESS_TERMINATION_GRACE_MS = 250L
 
 private class StreamWriter(
     private val stream: java.io.OutputStream,

@@ -59,8 +59,8 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
         return EpubParser.parse(file)
     }
 
-    // 上传文件保存在 filesDir/upload 下, 该目录通过 proot 挂载到 workspace 的 /upload
-    // 返回文件在 workspace 内的绝对路径, 便于 AI 用 workspace 工具直接读取原始文件
+    // 上传文件保存在 filesDir/upload 下。该全局目录不会挂载进 PRoot，仅通过只读的
+    // workspace_read_file 路径映射暴露，避免任一 workspace shell 篡改所有上传文件。
     private fun resolveWorkspacePath(document: UIMessagePart.Document): String? {
         val file = runCatching { document.url.toUri().toFile() }.getOrNull() ?: return null
         if (file.parentFile?.name != "upload") return null

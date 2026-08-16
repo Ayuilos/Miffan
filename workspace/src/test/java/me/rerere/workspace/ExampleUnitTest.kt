@@ -1,12 +1,14 @@
 package me.rerere.workspace
 
-import com.sun.net.httpserver.HttpServer
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.io.File
-import java.net.InetSocketAddress
+import java.net.HttpURLConnection
+import java.net.URL
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.util.zip.GZIPOutputStream
 
 class ExampleUnitTest {
@@ -61,29 +63,29 @@ class ExampleUnitTest {
     fun rootfsInstallerDownloadsAndExtractsTarGz() {
         val baseDir = Files.createTempDirectory("workspace-manager-test").toFile()
         val manager = WorkspaceManager(baseDir)
-        val installer = RootfsInstaller(manager)
         val archive = tarGz(
             TarTestEntry("bin/", type = '5'),
+            TarTestEntry("bin/sh", content = "#!/bin/sh\n".toByteArray(), mode = 493),
+            TarTestEntry("bin/bash", content = "#!/bin/sh\n".toByteArray(), mode = 493),
             TarTestEntry("bin/hello", content = "echo hello\n".toByteArray(), mode = 493),
+            TarTestEntry("usr/", type = '5'),
+            TarTestEntry("usr/bin/", type = '5'),
+            TarTestEntry("usr/bin/env", content = "env\n".toByteArray(), mode = 493),
             TarTestEntry("usr/bin/hello-link", type = '2', linkName = "../../bin/hello"),
         )
-        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/rootfs.tar.gz") { exchange ->
-            exchange.sendResponseHeaders(200, archive.size.toLong())
-            exchange.responseBody.use { it.write(archive) }
-        }
-        server.start()
-        try {
-            val root = "test-workspace"
-            installer.install(root, "http://127.0.0.1:${server.address.port}/rootfs.tar.gz")
+        val source = testRootfsSource(archive)
+        val installer = RootfsInstaller(
+            manager = manager,
+            connectionFactory = { ByteArrayHttpURLConnection(it, archive) },
+        )
 
-            val linuxDir = manager.linuxDir(root)
-            assertEquals("echo hello\n", File(linuxDir, "bin/hello").readText())
-            assertTrue(File(linuxDir, "bin/hello").canExecute())
-            assertTrue(Files.isSymbolicLink(File(linuxDir, "usr/bin/hello-link").toPath()))
-        } finally {
-            server.stop(0)
-        }
+        val root = "test-workspace"
+        installer.install(root, source)
+
+        val linuxDir = manager.linuxDir(root)
+        assertEquals("echo hello\n", File(linuxDir, "bin/hello").readText())
+        assertTrue(File(linuxDir, "bin/hello").canExecute())
+        assertTrue(Files.isSymbolicLink(File(linuxDir, "usr/bin/hello-link").toPath()))
     }
 
     @Test
@@ -219,6 +221,15 @@ class ExampleUnitTest {
         return header
     }
 
+    private fun testRootfsSource(archive: ByteArray) = RootfsArchiveSource(
+        version = "test",
+        androidAbi = "arm64-v8a",
+        url = "https://example.test/rootfs.tar.gz",
+        sha256 = MessageDigest.getInstance("SHA-256")
+            .digest(archive)
+            .joinToString("") { "%02x".format(it) },
+    )
+
     private fun ByteArray.writeString(offset: Int, length: Int, value: String) {
         val bytes = value.toByteArray()
         bytes.copyInto(this, offset, 0, minOf(bytes.size, length))
@@ -241,4 +252,16 @@ class ExampleUnitTest {
         val type: Char = '0',
         val linkName: String = "",
     )
+}
+
+private class ByteArrayHttpURLConnection(
+    url: URL,
+    private val bytes: ByteArray,
+) : HttpURLConnection(url) {
+    override fun connect() = Unit
+    override fun disconnect() = Unit
+    override fun usingProxy(): Boolean = false
+    override fun getResponseCode(): Int = HTTP_OK
+    override fun getContentLengthLong(): Long = bytes.size.toLong()
+    override fun getInputStream() = ByteArrayInputStream(bytes)
 }

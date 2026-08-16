@@ -176,13 +176,13 @@ class WorkspaceDetailVM(
         }
     }
 
-    fun installRootfs(url: String) {
+    fun installRootfs() {
         viewModelScope.launch {
             _installError.value = null
             val workspace = state.value.workspace ?: return@launch
             _installProgress.value = RootfsInstallProgress(stage = RootfsInstallStage.DOWNLOADING)
             try {
-                repository.installRootfs(workspace.id, url) { progress ->
+                repository.installRootfs(workspace.id) { progress ->
                     _installProgress.value = progress
                 }
                 loadWorkspace()

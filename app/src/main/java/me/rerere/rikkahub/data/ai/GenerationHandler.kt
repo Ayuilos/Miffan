@@ -461,8 +461,8 @@ class GenerationHandler(
                 buildString {
                     appendLine("[Tool output truncated: $totalChars characters total]")
                     appendLine("Full output saved to: /tool_outputs/$fileName")
-                    appendLine("Use shell to read: `cat /tool_outputs/$fileName`")
-                    appendLine("Use shell to search: `grep \"pattern\" /tool_outputs/$fileName`")
+                    appendLine("Use `workspace_read_file` to read `/tool_outputs/$fileName`.")
+                    appendLine("`/tool_outputs` is intentionally not mounted into `workspace_shell`.")
                     appendLine()
                     append(preview)
                 }
