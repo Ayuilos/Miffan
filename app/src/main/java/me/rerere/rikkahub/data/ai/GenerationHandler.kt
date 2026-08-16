@@ -34,8 +34,6 @@ import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.data.ai.transformers.InputMessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.MessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.OutputMessageTransformer
-import me.rerere.rikkahub.data.files.FileFolders
-import java.io.File
 import me.rerere.rikkahub.data.ai.transformers.onGenerationFinish
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
@@ -47,6 +45,7 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
+import me.rerere.workspace.WorkspaceManager
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -67,6 +66,7 @@ class GenerationHandler(
     private val providerManager: ProviderManager,
     private val json: Json,
     private val memoryRepo: MemoryRepository,
+    private val workspaceManager: WorkspaceManager,
 ) {
     fun generateText(
         settings: Settings,
@@ -287,7 +287,11 @@ class GenerationHandler(
                             val result = toolDef.execute(args)
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
                             executedTools += tool.copy(
-                                output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
+                                output = maybeTruncateToolOutput(
+                                    output = result,
+                                    hasShellAccess = hasShellAccess,
+                                    workspaceRoot = assistant.workspaceId?.toString(),
+                                )
                             )
                         }.onFailure {
                             // 取消必须向上传播，否则停止生成会被误报为工具执行错误
@@ -437,9 +441,9 @@ class GenerationHandler(
     }
 
     private fun maybeTruncateToolOutput(
-        toolCallId: String,
         output: List<UIMessagePart>,
         hasShellAccess: Boolean,
+        workspaceRoot: String?,
     ): List<UIMessagePart> {
         val textParts = output.filterIsInstance<UIMessagePart.Text>()
         val nonTextParts = output.filter { it !is UIMessagePart.Text }
@@ -447,22 +451,30 @@ class GenerationHandler(
 
         if (totalChars <= MAX_TOOL_OUTPUT_CHARS || !hasShellAccess) return output
 
-        Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars)")
+        Log.i(TAG, "maybeTruncateToolOutput: truncating tool output ($totalChars chars)")
 
         val fullText = textParts.joinToString("\n") { it.text }
         val preview = fullText.take(TOOL_OUTPUT_PREVIEW_CHARS)
 
-        val fileName = "${toolCallId}.txt"
-        val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
-        File(outputDir, fileName).writeText(fullText)
+        val fileName = "${Uuid.random()}.txt"
+        val saved = workspaceRoot?.let { root ->
+            runCatching { workspaceManager.writeToolOutput(root, fileName, fullText) }
+        }
 
         return listOf(
             UIMessagePart.Text(
                 buildString {
                     appendLine("[Tool output truncated: $totalChars characters total]")
-                    appendLine("Full output saved to: /tool_outputs/$fileName")
-                    appendLine("Use `workspace_read_file` to read `/tool_outputs/$fileName`.")
-                    appendLine("`/tool_outputs` is intentionally not mounted into `workspace_shell`.")
+                    if (saved?.isSuccess == true) {
+                        appendLine("Full output saved to: /tool_outputs/$fileName")
+                        appendLine("Use `workspace_read_file` to read `/tool_outputs/$fileName`.")
+                        appendLine("`/tool_outputs` is intentionally not mounted into `workspace_shell`.")
+                    } else {
+                        appendLine(
+                            "Full output was not persisted because the workspace resource policy rejected it: " +
+                                (saved?.exceptionOrNull()?.message ?: "workspace unavailable")
+                        )
+                    }
                     appendLine()
                     append(preview)
                 }

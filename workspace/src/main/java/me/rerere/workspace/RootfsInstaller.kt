@@ -37,12 +37,33 @@ class RootfsInstaller(
         recoverInterruptedSwap(linuxDir, backupDir)
 
         try {
+            archive.delete()
             stagingDir.deleteRecursively()
             stagingDir.mkdirs()
+            // Reserve against both the per-workspace temp quota and the device free-space floor
+            // before accepting attacker-amplifiable archive data.
+            manager.requireAdditionalCapacity(
+                root,
+                WorkspaceDiskArea.TEMP,
+                limits.maxDownloadBytes,
+            )
             download(source, archive, onProgress)
+            manager.requireAdditionalCapacity(
+                root,
+                WorkspaceDiskArea.TEMP,
+                limits.maxExtractedBytes,
+            )
             extractTar(archive, stagingDir, source.format, onProgress)
             patcher.patch(stagingDir)
             validateRootfs(stagingDir)
+            val stagedRootfsBytes = stagingDir.logicalTreeSize()
+            if (stagedRootfsBytes > manager.resourceLimits.maxRootfsBytes) {
+                throw WorkspaceResourceLimitException(
+                    "Installed Rootfs exceeds limit: $stagedRootfsBytes bytes used, " +
+                        "${manager.resourceLimits.maxRootfsBytes} bytes allowed"
+                )
+            }
+            manager.checkResourceLimits(root)
             swapRootfs(stagingDir, linuxDir, backupDir)
             onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
         } finally {

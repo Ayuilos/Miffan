@@ -100,6 +100,86 @@ class RootfsInstallerTest {
     }
 
     @Test
+    fun `install reserves workspace temp capacity before download`() {
+        val manager = WorkspaceManager(
+            baseDir = tmp.newFolder("reserved-install-workspaces"),
+            config = WorkspaceConfig(
+                resourceLimits = WorkspaceResourceLimits(
+                    maxFilesBytes = 100,
+                    maxRootfsBytes = 100,
+                    maxTempBytes = 4,
+                    maxWorkspaceBytes = 100,
+                    minFreeSpaceBytes = 0,
+                    maxToolOutputBytes = 10,
+                    maxToolOutputFileBytes = 5,
+                    maxShellFileBytes = 10,
+                )
+            ),
+        )
+        val archive = ByteArray(5) { 1 }
+        val source = RootfsArchiveSource(
+            version = "test",
+            androidAbi = "arm64-v8a",
+            url = "https://example.test/rootfs.tar.gz",
+            sha256 = archive.sha256(),
+        )
+        val installer = RootfsInstaller(
+            manager = manager,
+            limits = RootfsInstallLimits(
+                maxDownloadBytes = 5,
+                maxExtractedBytes = 4,
+                maxSingleEntryBytes = 4,
+            ),
+            connectionFactory = { TestHttpURLConnection(it, archive) },
+        )
+
+        val error = assertThrows(WorkspaceResourceLimitException::class.java) {
+            installer.install("root", source)
+        }
+
+        assertTrue(error.message!!.contains("TEMP write requires"))
+        assertFalse(manager.hasRootfs("root"))
+    }
+
+    @Test
+    fun `install rejects staged rootfs that exceeds final rootfs quota`() {
+        val archiveFile = tmp.newFile("healthy-rootfs.tar.gz")
+        GZIPOutputStream(archiveFile.outputStream()).use { out ->
+            out.writeTarEntry("bin/sh", '0', byteArrayOf(1))
+            out.writeTarEntry("bin/bash", '0', byteArrayOf(2))
+            out.writeTarEntry("usr/bin/env", '0', byteArrayOf(3))
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+        val archive = archiveFile.readBytes()
+        val manager = WorkspaceManager(
+            baseDir = tmp.newFolder("rootfs-final-quota-workspaces"),
+            config = WorkspaceConfig(
+                resourceLimits = WorkspaceResourceLimits(
+                    maxRootfsBytes = 1,
+                    minFreeSpaceBytes = 0,
+                )
+            ),
+        )
+        val source = RootfsArchiveSource(
+            version = "test",
+            androidAbi = "arm64-v8a",
+            url = "https://example.test/rootfs.tar.gz",
+            sha256 = archive.sha256(),
+        )
+        val installer = RootfsInstaller(
+            manager = manager,
+            connectionFactory = { TestHttpURLConnection(it, archive) },
+        )
+
+        val error = assertThrows(WorkspaceResourceLimitException::class.java) {
+            installer.install("root", source)
+        }
+
+        assertTrue(error.message!!.contains("Installed Rootfs exceeds limit"))
+        assertFalse(manager.hasRootfs("root"))
+    }
+
+    @Test
     fun `interrupted swap is recovered and failed install preserves previous Rootfs`() {
         val manager = WorkspaceManager(tmp.newFolder("rollback-workspaces"))
         val root = "root"

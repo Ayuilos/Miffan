@@ -51,6 +51,7 @@ private fun buildWorkspacePrompt(workspace: WorkspaceEntity, cwd: String? = null
     appendLine("  - `workspace_shell`: run shell commands (the files area is mounted at /workspace).")
     appendLine("- Prefer `workspace_shell` for tasks that standard Unix tools handle well, and prefer `workspace_edit_file` for targeted edits over rewriting whole files.")
     appendLine("- `/skills`, `/upload`, and `/tool_outputs` are read-only application data exposed only through `workspace_read_file`; they are intentionally not mounted into `workspace_shell`.")
+    appendLine("- `/tool_outputs` is scoped to this workspace and subject to per-file and aggregate storage limits.")
     appendLine("- Each skill is under `/skills/<skill-name>/`; read its `SKILL.md` with `workspace_read_file` before use. Read uploaded files from `/upload/<file-name>`. To modify any such content, create a separate copy under `/workspace`.")
     if (!cwd.isNullOrBlank()) {
         appendLine("- Current working directory: `$cwd`. Use this as the default context for file operations and shell commands.")

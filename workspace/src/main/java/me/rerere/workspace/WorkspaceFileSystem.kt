@@ -95,12 +95,39 @@ class WorkspaceFileSystem(
         return file.toEntry(root)
     }
 
-    fun importBytes(root: File, path: String, inputStream: InputStream): WorkspaceFileEntry {
+    fun importBytes(
+        root: File,
+        path: String,
+        inputStream: InputStream,
+        maxBytes: Long = Long.MAX_VALUE,
+    ): WorkspaceFileEntry {
+        require(maxBytes >= 0) { "Import capacity must not be negative" }
         val file = resolvePath(root, path)
         file.parentFile?.mkdirs()
         val target = if (!file.exists()) file else resolveConflict(file)
-        inputStream.use { input -> target.outputStream().use { input.copyTo(it) } }
-        return target.toEntry(root)
+        return try {
+            inputStream.use { input ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var written = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        written = Math.addExact(written, read.toLong())
+                        if (written > maxBytes) {
+                            throw WorkspaceResourceLimitException(
+                                "Import exceeds remaining workspace capacity: $maxBytes bytes"
+                            )
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            target.toEntry(root)
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
+        }
     }
 
     private fun resolveConflict(file: File): File {

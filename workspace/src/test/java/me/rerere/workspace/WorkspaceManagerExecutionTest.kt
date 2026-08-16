@@ -84,4 +84,37 @@ class WorkspaceManagerExecutionTest {
         assertEquals(2, calls.get())
         assertEquals(1, maxActive.get())
     }
+
+    @Test
+    fun `postflight marks a fast command that exceeds disk quota`() {
+        val runner = object : WorkspaceShellRunner {
+            override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
+                File(context.filesDir, "too-large.bin").writeBytes(ByteArray(5))
+                return WorkspaceCommandResult(exitCode = 0, stdout = "done", stderr = "")
+            }
+        }
+        val manager = WorkspaceManager(
+            baseDir = tmp.newFolder("postflight-workspaces"),
+            config = WorkspaceConfig(
+                resourceLimits = WorkspaceResourceLimits(
+                    maxFilesBytes = 4,
+                    maxRootfsBytes = 100,
+                    maxTempBytes = 100,
+                    maxWorkspaceBytes = 100,
+                    minFreeSpaceBytes = 0,
+                    maxToolOutputBytes = 10,
+                    maxToolOutputFileBytes = 5,
+                    maxShellFileBytes = 10,
+                )
+            ),
+            shellRunner = runner,
+        )
+        manager.ensureWorkspace("root")
+
+        val result = manager.executeCommand("root", "write quickly")
+
+        assertTrue(result.resourceLimitExceeded)
+        assertEquals(-1, result.exitCode)
+        assertTrue(result.stderr.contains("Workspace files exceeds limit"))
+    }
 }

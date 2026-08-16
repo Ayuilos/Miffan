@@ -270,6 +270,7 @@ private fun createShellTool(
                     put("stderr", result.stderr)
                     put("timedOut", result.timedOut)
                     if (result.truncated) put("truncated", true)
+                    if (result.resourceLimitExceeded) put("resourceLimitExceeded", true)
                 }.toString()
             )
         )

@@ -17,6 +17,7 @@ class ProotExecutionSpecTest {
         val files = tmp.newFolder("files")
         val upload = tmp.newFolder("upload")
         val args = ProotExecutionSpec.baseArguments(
+            root = "root",
             linuxDir = linux,
             filesDir = files,
             cwd = "/workspace",
@@ -53,5 +54,36 @@ class ProotExecutionSpecTest {
             }
         }
         assertEquals("/workspace/a/b", ProotExecutionSpec.guestCwd("a/b"))
+    }
+
+    @Test
+    fun `shell launch applies inherited file size limit`() {
+        val linux = tmp.newFolder("limited-linux")
+        val files = tmp.newFolder("limited-files")
+        val temp = tmp.newFolder("limited-temp")
+        val context = WorkspaceShellContext(
+            root = "root",
+            command = "true",
+            cwd = "",
+            filesDir = files,
+            linuxDir = linux,
+            tempDir = temp,
+            workingDir = files,
+            timeoutMillis = 1_000,
+            maxFileSizeBytes = 2_048,
+        )
+
+        val nonInteractive = ProotExecutionSpec.nonInteractiveCommand(context, tmp.newFile("proot"))
+        val interactive = ProotExecutionSpec.interactiveArguments(
+            root = "root",
+            linuxDir = linux,
+            filesDir = files,
+            maxFileSizeBytes = 2_048,
+        )
+
+        assertTrue(nonInteractive.any { it.contains("ulimit -f") })
+        assertEquals("2", nonInteractive.last())
+        assertTrue(interactive.any { it.contains("ulimit -f") })
+        assertEquals("2", interactive.last())
     }
 }

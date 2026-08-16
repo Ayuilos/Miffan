@@ -23,10 +23,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,14 +49,20 @@ import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.theme.ColorMode
 import me.rerere.rikkahub.ui.theme.RikkahubTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceSessionLease
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 @Composable
 fun WorkspaceTerminalPage(id: String) {
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
+    val workspaceManager = koinInject<WorkspaceManager>()
     val state by vm.state.collectAsStateWithLifecycle()
 
     RikkahubTheme(colorMode = ColorMode.DARK) {
@@ -75,6 +83,7 @@ fun WorkspaceTerminalPage(id: String) {
             WorkspaceTerminalContent(
                 root = state.workspace?.root,
                 contentPadding = innerPadding,
+                workspaceManager = workspaceManager,
             )
         }
     }
@@ -84,18 +93,35 @@ fun WorkspaceTerminalPage(id: String) {
 private fun WorkspaceTerminalContent(
     root: String?,
     contentPadding: PaddingValues,
+    workspaceManager: WorkspaceManager,
 ) {
     val context = LocalContext.current
     val terminalTextSizePx = with(LocalDensity.current) { 12.sp.roundToPx() }
+    val scope = rememberCoroutineScope()
     val terminalTypeface = remember(context) {
         ResourcesCompat.getFont(context, R.font.jetbrains_mono) ?: Typeface.MONOSPACE
     }
     var finished by remember(root) { mutableStateOf(false) }
+    var resourceError by remember(root) { mutableStateOf<String?>(null) }
+    var activeLease by remember(root) { mutableStateOf<WorkspaceSessionLease?>(null) }
     var controlDown by remember(root) { mutableStateOf(false) }
     var altDown by remember(root) { mutableStateOf(false) }
-    val sessionClient = remember(root) {
+    val sessionClient = remember(root, workspaceManager) {
         WorkspaceTerminalSessionClient(context.applicationContext) {
-            finished = true
+            scope.launch {
+                val finishedLease = activeLease
+                val error = root?.let { current ->
+                    withContext(Dispatchers.IO) {
+                        runCatching { workspaceManager.checkResourceLimits(current) }.exceptionOrNull()
+                    }
+                }
+                if (error != null) {
+                    resourceError = error.message ?: "Workspace resource limit exceeded"
+                }
+                finishedLease?.close()
+                if (activeLease === finishedLease) activeLease = null
+                finished = true
+            }
         }
     }
     val viewClient = remember(root) {
@@ -108,33 +134,66 @@ private fun WorkspaceTerminalContent(
         initialValue = TerminalSessionUiState.Loading,
         root,
         sessionClient,
+        workspaceManager,
     ) {
         val current = root
-        value = if (current == null) {
-            TerminalSessionUiState.Loading
-        } else {
-            // rootfs stat 与 RootfsPatcher().patch()/DNS 查询都是阻塞 I/O, 放到 IO 线程执行;
-            // TerminalSession 构造内部会创建 Handler, 必须回到主线程执行
-            val prepared = withContext(Dispatchers.IO) {
-                if (!workspaceRootfsReady(context, current)) {
-                    false
-                } else {
-                    prepareWorkspaceTerminalSession(context, current)
-                    true
-                }
+        if (current == null) {
+            value = TerminalSessionUiState.Loading
+            return@produceState
+        }
+        if (!withContext(Dispatchers.IO) { workspaceRootfsReady(context, current) }) {
+            value = TerminalSessionUiState.NotInstalled
+            return@produceState
+        }
+        val lease = try {
+            withContext(Dispatchers.IO) {
+                workspaceManager.tryAcquireInteractiveSession(current)
             }
-            if (!prepared) {
-                TerminalSessionUiState.NotInstalled
-            } else {
-                if (!isActive) return@produceState
-                val created = createWorkspaceTerminalSession(context, current, sessionClient)
-                // 创建后若组合已离开, 主动回收以免泄漏 proot 进程, 且不再把已 finish 的 session 暴露为 Ready
-                if (!isActive) {
-                    created.finishIfRunning()
-                    return@produceState
-                }
-                TerminalSessionUiState.Ready(created)
+        } catch (error: Throwable) {
+            value = TerminalSessionUiState.Failed(error.message ?: "Workspace resource check failed")
+            return@produceState
+        }
+        if (lease == null) {
+            value = TerminalSessionUiState.Busy
+            return@produceState
+        }
+        activeLease = lease
+        try {
+            // Rootfs patching and DNS lookup are blocking I/O. Admission is acquired first so an
+            // install or AI command cannot race terminal preparation.
+            withContext(Dispatchers.IO) {
+                prepareWorkspaceTerminalSession(context, current)
+                workspaceManager.checkResourceLimits(current)
             }
+            if (!isActive) {
+                lease.close()
+                activeLease = null
+                return@produceState
+            }
+            val created = createWorkspaceTerminalSession(
+                context = context,
+                root = current,
+                client = sessionClient,
+                resourceLimits = workspaceManager.resourceLimits,
+            )
+            if (!isActive) {
+                created.finishIfRunning()
+                lease.close()
+                activeLease = null
+                return@produceState
+            }
+            value = TerminalSessionUiState.Ready(created)
+        } catch (error: Throwable) {
+            lease.close()
+            activeLease = null
+            value = TerminalSessionUiState.Failed(error.message ?: "Failed to start terminal")
+        }
+    }
+
+    DisposableEffect(root) {
+        onDispose {
+            activeLease?.close()
+            activeLease = null
         }
     }
 
@@ -148,10 +207,13 @@ private fun WorkspaceTerminalContent(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (currentState is TerminalSessionUiState.NotInstalled) {
-                    stringResource(R.string.workspace_terminal_not_installed)
-                } else {
-                    stringResource(R.string.workspace_terminal_loading)
+                text = when (currentState) {
+                    TerminalSessionUiState.NotInstalled ->
+                        stringResource(R.string.workspace_terminal_not_installed)
+                    TerminalSessionUiState.Busy ->
+                        stringResource(R.string.workspace_terminal_busy)
+                    is TerminalSessionUiState.Failed -> currentState.message
+                    else -> stringResource(R.string.workspace_terminal_loading)
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
@@ -160,6 +222,23 @@ private fun WorkspaceTerminalContent(
         return
     }
     val session = currentState.session
+    val resourceGuard = remember(session, root) {
+        workspaceManager.createResourceGuard(requireNotNull(root))
+    }
+
+    LaunchedEffect(session, resourceGuard) {
+        while (isActive && !finished) {
+            delay(RESOURCE_MONITOR_INTERVAL_MS)
+            val error = withContext(Dispatchers.IO) {
+                runCatching { resourceGuard.check() }.exceptionOrNull()
+            }
+            if (error != null) {
+                resourceError = error.message ?: "Workspace resource limit exceeded"
+                session.finishIfRunning()
+                break
+            }
+        }
+    }
 
     DisposableEffect(session) {
         onDispose {
@@ -225,10 +304,12 @@ private fun WorkspaceTerminalContent(
                 )
                 if (finished) {
                     Text(
-                        text = stringResource(R.string.workspace_terminal_exited),
+                        text = resourceError
+                            ?.let { "${stringResource(R.string.workspace_terminal_resource_limit)}: $it" }
+                            ?: stringResource(R.string.workspace_terminal_exited),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                        .padding(12.dp),
+                            .padding(12.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
@@ -314,5 +395,9 @@ private fun TerminalSession.writeText(text: String) {
 private sealed interface TerminalSessionUiState {
     data object Loading : TerminalSessionUiState
     data object NotInstalled : TerminalSessionUiState
+    data object Busy : TerminalSessionUiState
+    data class Failed(val message: String) : TerminalSessionUiState
     data class Ready(val session: TerminalSession) : TerminalSessionUiState
 }
+
+private const val RESOURCE_MONITOR_INTERVAL_MS = 250L

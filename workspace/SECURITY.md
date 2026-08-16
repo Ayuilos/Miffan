@@ -17,15 +17,25 @@ network access, and app-private storage that the Android process makes available
      redirects, a compiled-in SHA-256, download/extraction quotas, health checks, and rollback.
    - Share PRoot arguments and environment construction between AI commands and the terminal;
      serialize installs, AI commands, direct writes, cleanup, and deletion per workspace.
-2. **Resource governance (next)**
-   - Add per-workspace disk accounting and free-space reservations for `/workspace`, Rootfs, temp,
-     terminal output, and tool outputs.
-   - Add explicit concurrent-session limits and durable process-group/cgroup-style cleanup where
-     supported. `--kill-on-exit` plus best-effort descendant cleanup is not a kernel boundary.
+2. **Process-local resource governance (implemented)**
+   - Account logical bytes without following symlinks. Defaults cap `/workspace` at 512 MiB,
+     Rootfs at 1.5 GiB, installation/runtime temp at 1.25 GiB, and the workspace tree at 3 GiB,
+     while reserving 256 MiB of device free space. Rootfs installation reserves its maximum
+     download and expansion budget before accepting data.
+   - Scope `/tool_outputs` by workspace and cap it at 32 MiB total and 2 MiB per file. Rejected
+     output is explicitly reported instead of silently filling global application storage.
+   - Admit at most three active PRoot/maintenance sessions globally and one per workspace. AI
+     commands, installation, writes, cleanup, deletion, and the interactive terminal share this
+     process-local registry.
+   - Apply an inherited 256 MiB `RLIMIT_FSIZE`, poll free space during commands, scan aggregate
+     usage periodically, run a full postflight scan, and wait after forced process termination.
+     The terminal uses the same admission/file limit and a lifecycle resource monitor.
 3. **Isolation alternatives (future)**
-   - Evaluate a dedicated Android process/UID and brokered network/filesystem access. Treat a real
-     VM or kernel-enforced container as a separate execution backend rather than describing PRoot
-     as equivalent.
+   - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
+     it, and brokered network/filesystem access. The polling safeguards above can detect and stop
+     overuse but are not atomic kernel-enforced disk, process, CPU, or memory quotas.
+   - Treat a real VM or kernel-enforced container as a separate execution backend rather than
+     describing PRoot as equivalent.
 
 ## Android device / emulator verification checklist
 
@@ -55,3 +65,13 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
 9. Attempt oversized and highly expanded test archives in a debug build. Verify the 128 MiB
    download, 1 GiB expanded, 256 MiB entry, and 100,000-entry limits fail without replacing the
    previous installation.
+10. Open a terminal, then attempt `workspace_shell`, Rootfs reinstall, and a second terminal for the
+    same workspace. Confirm no second session starts. Open terminals for distinct workspaces and
+    confirm the fourth global session is refused until one lease is released.
+11. In a debug build with reduced resource limits, exceed each of the files, Rootfs, temp, total,
+    tool-output, and free-space thresholds. Verify direct writes/imports fail without partial files;
+    long-running shell/terminal processes are stopped; a fast command that exits after writing too
+    much is reported as `resourceLimitExceeded` by the postflight scan.
+12. Generate truncated tool results in two workspaces. Confirm each can read only its own
+    `/tool_outputs/<id>.txt`, per-file/aggregate rejection is visible in the tool result, deleting a
+    workspace removes its scoped outputs, and `/tool_outputs` remains absent from both shells.

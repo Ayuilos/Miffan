@@ -9,12 +9,16 @@ data class WorkspaceBindMount(
     val exposeToShell: Boolean = true,
     /** Whether dedicated workspace file tools may write through this mapping. */
     val writableByTools: Boolean = true,
+    /** Resolve the host source under a workspace-specific child directory. */
+    val workspaceScoped: Boolean = false,
 ) {
     internal val guestTarget = GuestPath.parse(target, "Bind mount target")
 
     init {
         require(guestTarget != GuestPath.ROOT) { "Bind mount target must not replace the Rootfs root" }
     }
+
+    internal fun sourceFor(root: String): File = if (workspaceScoped) File(source, root) else source
 }
 
 class ProotShellRunner(
@@ -57,7 +61,7 @@ class ProotShellRunner(
             }
             .start()
 
-        return process.readResult(context.timeoutMillis, context.stdin)
+        return process.readResult(context.timeoutMillis, context.stdin, context.resourceGuard)
     }
 
     private fun File.hasUsableRootfs(): Boolean =

@@ -41,6 +41,7 @@ data class WorkspaceConfig(
     val maxWriteBytes: Long = 2 * 1024 * 1024,
     val maxListEntries: Int = 500,
     val maxSearchResults: Int = 100,
+    val resourceLimits: WorkspaceResourceLimits = WorkspaceResourceLimits(),
 )
 
 data class WorkspaceFileEntry(
@@ -63,4 +64,5 @@ data class WorkspaceCommandResult(
     val stderr: String,
     val timedOut: Boolean = false,
     val truncated: Boolean = false,
+    val resourceLimitExceeded: Boolean = false,
 )

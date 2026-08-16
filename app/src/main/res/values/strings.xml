@@ -1218,6 +1218,8 @@
   <string name="workspace_terminal_not_installed">Please install Rootfs first</string>
   <string name="workspace_terminal_loading">Loading workspace…</string>
   <string name="workspace_terminal_exited">Terminal exited</string>
+  <string name="workspace_terminal_busy">This workspace already has an active execution session</string>
+  <string name="workspace_terminal_resource_limit">Terminal stopped by resource policy</string>
   <string name="extensions_page_workspace">Workspace</string>
   <string name="extensions_page_workspace_desc">Manage local working directories accessible by Agent</string>
   <string name="workspace_select">Select Workspace</string>

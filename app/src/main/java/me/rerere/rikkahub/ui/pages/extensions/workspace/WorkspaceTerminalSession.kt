@@ -18,12 +18,14 @@ import com.termux.view.TerminalViewClient
 import me.rerere.workspace.ProotExecutionSpec
 import me.rerere.workspace.RootfsPatchOptions
 import me.rerere.workspace.RootfsPatcher
+import me.rerere.workspace.WorkspaceResourceLimits
 import java.io.File
 
 internal fun createWorkspaceTerminalSession(
     context: Context,
     root: String,
     client: TerminalSessionClient,
+    resourceLimits: WorkspaceResourceLimits,
 ): TerminalSession {
     val appContext = context.applicationContext
     val workspaceDir = File(File(appContext.filesDir, "workspaces"), root)
@@ -34,7 +36,12 @@ internal fun createWorkspaceTerminalSession(
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
 
-    val args = ProotExecutionSpec.interactiveArguments(linuxDir, filesDir)
+    val args = ProotExecutionSpec.interactiveArguments(
+        root = root,
+        linuxDir = linuxDir,
+        filesDir = filesDir,
+        maxFileSizeBytes = resourceLimits.maxShellFileBytes,
+    )
     val env = ProotExecutionSpec.hostEnvironment(loader, tempDir)
         .map { (name, value) -> "$name=$value" }
         .toTypedArray()

@@ -20,6 +20,8 @@ data class WorkspaceShellContext(
     val timeoutMillis: Long,
     val stdin: ByteArray? = null,
     val bindMounts: List<WorkspaceBindMount> = emptyList(),
+    val maxFileSizeBytes: Long? = null,
+    val resourceGuard: WorkspaceResourceGuard? = null,
 )
 
 class HostShellRunner : WorkspaceShellRunner {
@@ -28,7 +30,7 @@ class HostShellRunner : WorkspaceShellRunner {
             .directory(context.workingDir)
             .redirectErrorStream(false)
             .start()
-        return process.readResult(context.timeoutMillis, context.stdin)
+        return process.readResult(context.timeoutMillis, context.stdin, context.resourceGuard)
     }
 
     private fun defaultShell(): String =
@@ -38,24 +40,63 @@ class HostShellRunner : WorkspaceShellRunner {
 // 单个流保留的最大字符数, 防止命令疯狂输出导致 OOM 或撑爆 LLM 上下文
 const val MAX_OUTPUT_CHARS = 128 * 1024
 
-fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): WorkspaceCommandResult {
+fun Process.readResult(
+    timeoutMillis: Long,
+    stdin: ByteArray? = null,
+    resourceGuard: WorkspaceResourceGuard? = null,
+): WorkspaceCommandResult {
     val stdout = StreamCollector(inputStream)
     val stderr = StreamCollector(errorStream)
     val stdinWriter = stdin?.let { bytes -> StreamWriter(outputStream, bytes) }
     try {
-        val finished = waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
-        if (!finished) {
+        val timeoutNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        val startedAt = System.nanoTime()
+        var finished = false
+        var timedOut = false
+        var resourceError: WorkspaceResourceLimitException? = null
+        while (!finished) {
+            val elapsed = System.nanoTime() - startedAt
+            val remaining = timeoutNanos - elapsed
+            if (remaining <= 0) {
+                timedOut = true
+                break
+            }
+            val pollMillis = minOf(
+                RESOURCE_POLL_INTERVAL_MS,
+                TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1),
+            )
+            finished = waitFor(pollMillis, TimeUnit.MILLISECONDS)
+            if (!finished && resourceGuard != null) {
+                try {
+                    resourceGuard.check()
+                } catch (error: WorkspaceResourceLimitException) {
+                    resourceError = error
+                    break
+                }
+            }
+        }
+        if (timedOut) {
             terminateProcessTree(graceful = true)
+        } else if (resourceError != null) {
+            terminateProcessTree(graceful = false)
         }
         stdinWriter?.join(1_000)
         stdout.join(1_000)
         stderr.join(1_000)
+        val stderrText = buildString {
+            append(stderr.text())
+            resourceError?.let { error ->
+                if (isNotEmpty() && !endsWith('\n')) appendLine()
+                append("Resource limit exceeded: ${error.message}")
+            }
+        }
         return WorkspaceCommandResult(
             exitCode = if (finished) exitValue() else -1,
             stdout = stdout.text(),
-            stderr = stderr.text(),
-            timedOut = !finished,
+            stderr = stderrText,
+            timedOut = timedOut,
             truncated = stdout.truncated || stderr.truncated,
+            resourceLimitExceeded = resourceError != null,
         )
     } catch (e: InterruptedException) {
         // 调用方线程被中断（如协程取消时的 runInterruptible），杀掉进程避免命令继续执行
@@ -96,9 +137,14 @@ private fun Process.terminateProcessTree(graceful: Boolean) {
         if (invoke(handle, "isAlive") == true) invoke(handle, "destroyForcibly")
     }
     if (isAlive) runCatching { destroyForcibly() }
+    // destroyForcibly is asynchronous on the JVM and some Android runtimes. Do not report the
+    // session as released while the main PRoot process is still in the process table.
+    runCatching { waitFor(PROCESS_FORCE_WAIT_MS, TimeUnit.MILLISECONDS) }
 }
 
 private const val PROCESS_TERMINATION_GRACE_MS = 250L
+private const val PROCESS_FORCE_WAIT_MS = 1_000L
+private const val RESOURCE_POLL_INTERVAL_MS = 250L
 
 private class StreamWriter(
     private val stream: java.io.OutputStream,

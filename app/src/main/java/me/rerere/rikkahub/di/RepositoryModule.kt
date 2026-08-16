@@ -50,8 +50,8 @@ val repositoryModule = module {
             shellRunner = ProotShellRunner(
                 nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
             ),
-            // 这些是跨 workspace 的应用全局目录。仅允许专用文件工具读取，绝不作为可写
-            // PRoot bind mount 暴露给 shell；否则任一 workspace 都能篡改技能或上传文件。
+            // 这些应用目录仅允许专用文件工具读取，绝不作为可写 PRoot bind mount 暴露。
+            // tool_outputs 进一步按 workspace root 分区，避免工作区之间读取彼此的结果。
             bindMounts = listOf(
                 WorkspaceBindMount(
                     source = File(context.filesDir, FileFolders.SKILLS).apply { mkdirs() },
@@ -64,6 +64,7 @@ val repositoryModule = module {
                     target = "/tool_outputs",
                     exposeToShell = false,
                     writableByTools = false,
+                    workspaceScoped = true,
                 ),
                 WorkspaceBindMount(
                     source = File(context.filesDir, FileFolders.UPLOAD).apply { mkdirs() },

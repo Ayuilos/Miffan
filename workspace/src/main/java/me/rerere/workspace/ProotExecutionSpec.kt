@@ -23,6 +23,7 @@ object ProotExecutionSpec {
     }
 
     fun baseArguments(
+        root: String,
         linuxDir: File,
         filesDir: File,
         cwd: String,
@@ -39,10 +40,11 @@ object ProotExecutionSpec {
         add("${filesDir.absolutePath}:${WorkspaceManager.ROOTFS_WORKSPACE_DIR}")
 
         bindMounts.asSequence()
-            .filter { it.exposeToShell && it.source.exists() }
-            .forEach { mount ->
+            .map { mount -> mount to mount.sourceFor(root) }
+            .filter { (mount, source) -> mount.exposeToShell && source.exists() }
+            .forEach { (mount, source) ->
                 add("-b")
-                add("${mount.source.absolutePath}:${mount.guestTarget.value}")
+                add("${source.absolutePath}:${mount.guestTarget.value}")
             }
 
         WorkspaceManager.KERNEL_FS_MOUNTS.forEach { path ->
@@ -77,28 +79,34 @@ object ProotExecutionSpec {
         val cwd = guestCwd(context.cwd)
         return buildList {
             add(proot.absolutePath)
-            addAll(baseArguments(context.linuxDir, context.filesDir, cwd, context.bindMounts))
+            addAll(baseArguments(context.root, context.linuxDir, context.filesDir, cwd, context.bindMounts))
             addAll(guestEnvironment(interactive = false))
             addAll(
                 listOf(
                     "-c",
                     // Command and cwd are positional args so the command text is evaluated exactly once.
-                    "cd -- \"\$1\" && eval \"\$2\"",
+                    // RLIMIT_FSIZE is inherited by descendants and bounds any one output file even
+                    // between periodic aggregate disk checks.
+                    "ulimit -f \"\$3\" 2>/dev/null || true; cd -- \"\$1\" && eval \"\$2\"",
                     "rikkahub",
                     cwd,
                     context.command,
+                    shellFileBlocks(context.maxFileSizeBytes),
                 )
             )
         }
     }
 
     fun interactiveArguments(
+        root: String,
         linuxDir: File,
         filesDir: File,
         bindMounts: List<WorkspaceBindMount> = emptyList(),
+        maxFileSizeBytes: Long? = null,
     ): List<String> = buildList {
         addAll(
             baseArguments(
+                root = root,
                 linuxDir = linuxDir,
                 filesDir = filesDir,
                 cwd = WorkspaceManager.ROOTFS_WORKSPACE_DIR,
@@ -106,5 +114,21 @@ object ProotExecutionSpec {
             )
         )
         addAll(guestEnvironment(interactive = true))
+        addAll(
+            listOf(
+                "-c",
+                "ulimit -f \"\$1\" 2>/dev/null || true; exec /bin/bash -l",
+                "rikkahub",
+                shellFileBlocks(maxFileSizeBytes),
+            )
+        )
     }
+
+    private fun shellFileBlocks(maxFileSizeBytes: Long?): String =
+        maxFileSizeBytes
+            ?.let { bytes -> ((bytes + SHELL_FILE_BLOCK_BYTES - 1) / SHELL_FILE_BLOCK_BYTES).toString() }
+            ?: "unlimited"
+
+    // Bash reports RLIMIT_FSIZE in 1024-byte blocks.
+    private const val SHELL_FILE_BLOCK_BYTES = 1024L
 }
