@@ -49,11 +49,13 @@ import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.theme.ColorMode
 import me.rerere.rikkahub.ui.theme.RikkahubTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceProcessRegistration
 import me.rerere.workspace.WorkspaceSessionLease
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -104,12 +106,16 @@ private fun WorkspaceTerminalContent(
     var finished by remember(root) { mutableStateOf(false) }
     var resourceError by remember(root) { mutableStateOf<String?>(null) }
     var activeLease by remember(root) { mutableStateOf<WorkspaceSessionLease?>(null) }
+    var activeProcessRegistration by remember(root) {
+        mutableStateOf<WorkspaceProcessRegistration?>(null)
+    }
     var controlDown by remember(root) { mutableStateOf(false) }
     var altDown by remember(root) { mutableStateOf(false) }
     val sessionClient = remember(root, workspaceManager) {
         WorkspaceTerminalSessionClient(context.applicationContext) {
             scope.launch {
                 val finishedLease = activeLease
+                val finishedRegistration = activeProcessRegistration
                 val error = root?.let { current ->
                     withContext(Dispatchers.IO) {
                         runCatching { workspaceManager.checkResourceLimits(current) }.exceptionOrNull()
@@ -117,6 +123,10 @@ private fun WorkspaceTerminalContent(
                 }
                 if (error != null) {
                     resourceError = error.message ?: "Workspace resource limit exceeded"
+                }
+                finishedRegistration?.close()
+                if (activeProcessRegistration === finishedRegistration) {
+                    activeProcessRegistration = null
                 }
                 finishedLease?.close()
                 if (activeLease === finishedLease) activeLease = null
@@ -176,14 +186,35 @@ private fun WorkspaceTerminalContent(
                 client = sessionClient,
                 resourceLimits = workspaceManager.resourceLimits,
             )
+            val registration = try {
+                // Once the native process exists, registration must either publish its durable
+                // ownership record or kill it. Do not let Compose cancellation drop the result in
+                // the narrow interval between those two states.
+                withContext(NonCancellable + Dispatchers.IO) {
+                    workspaceManager.registerInteractiveProcess(
+                        root = current,
+                        pid = created.pid.toLong(),
+                        commandIdentity = workspaceTerminalCommandIdentity(context),
+                    )
+                }
+            } catch (error: Throwable) {
+                created.finishWorkspaceProcessGroup(registration = null)
+                throw error
+            }
+            activeProcessRegistration = registration
             if (!isActive) {
-                created.finishIfRunning()
+                created.finishWorkspaceProcessGroup(registration)
+                registration.close()
+                activeProcessRegistration = null
                 lease.close()
                 activeLease = null
                 return@produceState
             }
             value = TerminalSessionUiState.Ready(created)
         } catch (error: Throwable) {
+            activeProcessRegistration?.terminate(graceful = false)
+            activeProcessRegistration?.close()
+            activeProcessRegistration = null
             lease.close()
             activeLease = null
             value = TerminalSessionUiState.Failed(error.message ?: "Failed to start terminal")
@@ -234,7 +265,7 @@ private fun WorkspaceTerminalContent(
             }
             if (error != null) {
                 resourceError = error.message ?: "Workspace resource limit exceeded"
-                session.finishIfRunning()
+                session.finishWorkspaceProcessGroup(activeProcessRegistration)
                 break
             }
         }
@@ -244,7 +275,12 @@ private fun WorkspaceTerminalContent(
         onDispose {
             sessionClient.terminalView = null
             viewClient.terminalView = null
-            session.finishIfRunning()
+            val registration = activeProcessRegistration
+            session.finishWorkspaceProcessGroup(registration)
+            registration?.close()
+            if (activeProcessRegistration === registration) {
+                activeProcessRegistration = null
+            }
         }
     }
 

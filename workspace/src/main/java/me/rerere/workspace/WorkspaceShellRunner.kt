@@ -21,15 +21,22 @@ data class WorkspaceShellContext(
     val stdin: ByteArray? = null,
     val bindMounts: List<WorkspaceBindMount> = emptyList(),
     val maxFileSizeBytes: Long? = null,
+    val maxCpuTimeSeconds: Long? = null,
+    val maxVirtualMemoryBytes: Long? = null,
+    val maxProcesses: Int? = null,
     val resourceGuard: WorkspaceResourceGuard? = null,
+    val processSupervisor: WorkspaceProcessSupervisor? = null,
 )
 
 class HostShellRunner : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
-        val process = ProcessBuilder(defaultShell(), "-c", context.command)
+        val shell = defaultShell()
+        val process = ProcessBuilder(shell, "-c", context.command)
             .directory(context.workingDir)
             .redirectErrorStream(false)
             .start()
+        // HostShellRunner is the JVM/test fallback and has no trusted setsid boundary. Android
+        // production execution uses ProotShellRunner, which is durably tracked below.
         return process.readResult(context.timeoutMillis, context.stdin, context.resourceGuard)
     }
 
@@ -44,6 +51,7 @@ fun Process.readResult(
     timeoutMillis: Long,
     stdin: ByteArray? = null,
     resourceGuard: WorkspaceResourceGuard? = null,
+    processRegistration: WorkspaceProcessRegistration? = null,
 ): WorkspaceCommandResult {
     val stdout = StreamCollector(inputStream)
     val stderr = StreamCollector(errorStream)
@@ -76,9 +84,9 @@ fun Process.readResult(
             }
         }
         if (timedOut) {
-            terminateProcessTree(graceful = true)
+            terminateProcessTree(graceful = true, processRegistration)
         } else if (resourceError != null) {
-            terminateProcessTree(graceful = false)
+            terminateProcessTree(graceful = false, processRegistration)
         }
         stdinWriter?.join(1_000)
         stdout.join(1_000)
@@ -100,7 +108,7 @@ fun Process.readResult(
         )
     } catch (e: InterruptedException) {
         // 调用方线程被中断（如协程取消时的 runInterruptible），杀掉进程避免命令继续执行
-        terminateProcessTree(graceful = false)
+        terminateProcessTree(graceful = false, processRegistration)
         // 进程被杀后 stdout/stderr 会关闭, 这里 join 回收两个采集线程, 避免每次取消泄漏一对线程
         stdinWriter?.join(1_000)
         stdout.join(1_000)
@@ -109,8 +117,49 @@ fun Process.readResult(
     }
 }
 
+internal fun Process.readTrackedResult(
+    context: WorkspaceShellContext,
+    isolatedProcessGroup: Boolean,
+    commandIdentity: String,
+): WorkspaceCommandResult {
+    val supervisor = context.processSupervisor
+        ?: return readResult(context.timeoutMillis, context.stdin, context.resourceGuard)
+    val registration = try {
+        supervisor.register(
+            root = context.root,
+            pid = reflectedPid(),
+            isolatedProcessGroup = isolatedProcessGroup,
+            commandIdentity = commandIdentity,
+        )
+    } catch (error: Throwable) {
+        terminateProcessTree(graceful = false, processRegistration = null)
+        throw error
+    }
+    if (registration == null) {
+        return readResult(context.timeoutMillis, context.stdin, context.resourceGuard)
+    }
+    return registration.use {
+        readResult(
+            timeoutMillis = context.timeoutMillis,
+            stdin = context.stdin,
+            resourceGuard = context.resourceGuard,
+            processRegistration = registration,
+        )
+    }
+}
+
+private fun Process.reflectedPid(): Long = runCatching {
+    Process::class.java.getMethod("pid").invoke(this) as Long
+}.getOrElse { error("Unable to inspect workspace process id") }
+
 /** Best-effort descendant cleanup in addition to PRoot's --kill-on-exit behavior. */
-private fun Process.terminateProcessTree(graceful: Boolean) {
+private fun Process.terminateProcessTree(
+    graceful: Boolean,
+    processRegistration: WorkspaceProcessRegistration?,
+) {
+    // PRoot is launched as a process-group leader. Signal the verified group before the main PID,
+    // so grandchildren cannot outlive cancellation merely by holding inherited descriptors.
+    processRegistration?.terminate(graceful)
     // ProcessHandle is absent from some Android API stubs/runtimes. Reflection keeps this
     // best-effort cleanup available on runtimes that provide it without raising minSdk.
     val processHandleClass = runCatching { Class.forName("java.lang.ProcessHandle") }.getOrNull()

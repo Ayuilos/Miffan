@@ -71,6 +71,9 @@ class ProotExecutionSpecTest {
             workingDir = files,
             timeoutMillis = 1_000,
             maxFileSizeBytes = 2_048,
+            maxCpuTimeSeconds = 60,
+            maxVirtualMemoryBytes = 4_096,
+            maxProcesses = 8,
         )
 
         val nonInteractive = ProotExecutionSpec.nonInteractiveCommand(context, tmp.newFile("proot"))
@@ -79,11 +82,35 @@ class ProotExecutionSpecTest {
             linuxDir = linux,
             filesDir = files,
             maxFileSizeBytes = 2_048,
+            maxCpuTimeSeconds = 60,
+            maxVirtualMemoryBytes = 4_096,
+            maxProcesses = 8,
         )
 
-        assertTrue(nonInteractive.any { it.contains("ulimit -f") })
-        assertEquals("2", nonInteractive.last())
-        assertTrue(interactive.any { it.contains("ulimit -f") })
-        assertEquals("2", interactive.last())
+        listOf(nonInteractive, interactive).forEach { arguments ->
+            val script = arguments.first { it.contains("cap_limit()") }
+            assertTrue(script.contains("cap_limit -f 2"))
+            assertTrue(script.contains("cap_limit -t 60"))
+            assertTrue(script.contains("cap_limit -v 4"))
+            assertTrue(script.contains("cap_limit -u 8"))
+            assertTrue(script.contains("exit 125"))
+        }
+    }
+
+    @Test
+    fun `host launch requires a trusted setsid executable`() {
+        val command = listOf("/data/app/libproot_exec.so", "--root-id")
+        val toybox = tmp.newFile("toybox").apply { assertTrue(setExecutable(true)) }
+        val missingSetsid = tmp.root.resolve("missing-setsid")
+
+        val launch = ProotExecutionSpec.isolatedHostLaunch(command, toybox, missingSetsid)
+
+        requireNotNull(launch)
+        assertTrue(launch.isolatedProcessGroup)
+        assertEquals(listOf(toybox.absolutePath, "setsid") + command, launch.command)
+        assertEquals(
+            null,
+            ProotExecutionSpec.isolatedHostLaunch(command, missingSetsid, missingSetsid),
+        )
     }
 }

@@ -30,10 +30,23 @@ network access, and app-private storage that the Android process makes available
    - Apply an inherited 256 MiB `RLIMIT_FSIZE`, poll free space during commands, scan aggregate
      usage periodically, run a full postflight scan, and wait after forced process termination.
      The terminal uses the same admission/file limit and a lifecycle resource monitor.
-3. **Isolation alternatives (future)**
+3. **Process lifecycle governance (implemented)**
+   - Start AI PRoot commands through the trusted Android `toybox setsid` (or system `setsid`)
+     launcher and require the resulting PID to be its process-group leader. Interactive PTYs use
+     the same process-group rule and arm `PR_SET_PDEATHSIG` in the native child.
+   - Persist a record for each native PRoot process before exposing it to the caller. Records bind
+     the PID to its kernel start time, UID, process group, command identity, owner process, and boot
+     id when readable. App startup kills only records whose owner is gone and whose complete target
+     identity still matches; PID reuse or corrupt records are discarded without signaling.
+   - Termination and terminal disposal signal the verified process group before the main PID. Guest
+     processes inherit caps of 300 CPU seconds, 1.5 GiB virtual memory per process, 256
+     processes/threads counted across the app UID, and the existing 256 MiB output-file limit. A
+     stricter inherited limit is kept.
+4. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
-     overuse but are not atomic kernel-enforced disk, process, CPU, or memory quotas.
+     overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
+     the shared Android app UID, not to an individual workspace.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
 
@@ -75,3 +88,15 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
 12. Generate truncated tool results in two workspaces. Confirm each can read only its own
     `/tool_outputs/<id>.txt`, per-file/aggregate rejection is visible in the tool result, deleting a
     workspace removes its scoped outputs, and `/tool_outputs` remains absent from both shells.
+13. Start `sleep 600 & wait` in both AI Shell and the terminal. Cancel/close each surface and use
+    `adb shell ps -A -o PID,PGID,NAME | grep -E 'proot|sleep'` to confirm the full process group is
+    gone. Repeat while rapidly navigating away during terminal startup.
+14. While a shell and terminal are running, force-stop or kill the RikkaHub Java process without a
+    normal lifecycle callback. Relaunch the app and confirm `Workspace orphan recovery completed`
+    is logged, `run-as <package> ls files/workspaces/.runtime/processes` has no surviving record,
+    and no matching PRoot group remains. Create a synthetic stale record with a reused PID but a
+    different start time in a debug fixture and confirm that unrelated process is not signaled.
+15. In a debug build with reduced limits, run a CPU loop, a virtual-memory allocator, a fork loop,
+    and a large single-file write from both shell surfaces. Confirm Bash reports the configured
+    soft limits, violations stop the process, and a stricter pre-existing hard/soft limit is never
+    raised by the workspace launcher.

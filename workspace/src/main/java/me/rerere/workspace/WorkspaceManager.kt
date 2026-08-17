@@ -15,6 +15,8 @@ class WorkspaceManager(
     private val bindMounts: List<WorkspaceBindMount> = emptyList(),
     private val sessionRegistry: WorkspaceSessionRegistry =
         WorkspaceSessionRegistry(config.resourceLimits),
+    private val processSupervisor: WorkspaceProcessSupervisor =
+        WorkspaceProcessSupervisor(File(baseDir, "$RUNTIME_DIR/processes")),
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
 
@@ -25,8 +27,11 @@ class WorkspaceManager(
     val resourceLimits: WorkspaceResourceLimits
         get() = config.resourceLimits
 
+    val processRecoveryReport: WorkspaceProcessRecoveryReport
+
     init {
         baseDir.mkdirs()
+        processRecoveryReport = processSupervisor.recoverStaleProcesses()
     }
 
     fun ensureWorkspace(root: String): File {
@@ -278,7 +283,11 @@ class WorkspaceManager(
                     stdin = stdin,
                     bindMounts = bindMounts,
                     maxFileSizeBytes = config.resourceLimits.maxShellFileBytes,
+                    maxCpuTimeSeconds = config.resourceLimits.maxShellCpuTimeSeconds,
+                    maxVirtualMemoryBytes = config.resourceLimits.maxShellVirtualMemoryBytes,
+                    maxProcesses = config.resourceLimits.maxShellProcesses,
                     resourceGuard = commandResourceGuard(root),
+                    processSupervisor = processSupervisor,
                 )
             )
             val postflightError = runCatching { requireWithinResourceLimits(root) }.exceptionOrNull()
@@ -311,6 +320,22 @@ class WorkspaceManager(
     }
 
     fun activeSessions(root: String? = null): Int = sessionRegistry.activeSessions(root)
+
+    fun registerInteractiveProcess(
+        root: String,
+        pid: Long,
+        commandIdentity: String,
+    ): WorkspaceProcessRegistration {
+        requireValidRoot(root)
+        return requireNotNull(
+            processSupervisor.register(
+                root = root,
+                pid = pid,
+                isolatedProcessGroup = true,
+                commandIdentity = commandIdentity,
+            )
+        ) { "Workspace terminal process exited before it could be registered" }
+    }
 
     fun diskUsage(root: String): WorkspaceDiskUsage {
         requireValidRoot(root)
@@ -501,7 +526,9 @@ class WorkspaceManager(
         ?.sourceFor(root)
 
     private fun requireValidRoot(root: String) {
-        require(root != "." && root != ".." && root.matches(ROOT_NAME_REGEX)) {
+        require(
+            root != "." && root != ".." && root != RUNTIME_DIR && root.matches(ROOT_NAME_REGEX)
+        ) {
             "Invalid workspace root name: $root"
         }
     }
@@ -515,7 +542,7 @@ class WorkspaceManager(
         val roots = baseDir.listFiles()?.filter { it.isDirectory } ?: return
         for (dir in roots) {
             val root = dir.name
-            if (!root.matches(ROOT_NAME_REGEX)) continue
+            if (root == RUNTIME_DIR || !root.matches(ROOT_NAME_REGEX)) continue
             withExclusiveAccess(root) {
                 // PRoot temp files
                 tempDir(root).let { if (it.exists()) it.deleteRecursively() }
@@ -530,6 +557,7 @@ class WorkspaceManager(
         private const val FILES_DIR = "files"
         private const val LINUX_DIR = "linux"
         private const val TEMP_DIR = "tmp"
+        private const val RUNTIME_DIR = ".runtime"
         const val DEFAULT_COMMAND_TIMEOUT_MS = 30_000L
 
         /** Rootfs 内工作区文件区的挂载点 */

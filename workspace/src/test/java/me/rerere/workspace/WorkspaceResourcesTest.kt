@@ -18,7 +18,7 @@ class WorkspaceResourcesTest {
     fun `workspace root rejects current and parent directory aliases`() {
         val manager = WorkspaceManager(tmp.newFolder("root-validation"))
 
-        listOf(".", "..").forEach { root ->
+        listOf(".", "..", ".runtime").forEach { root ->
             assertThrows(IllegalArgumentException::class.java) {
                 manager.workspaceDir(root)
             }

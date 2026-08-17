@@ -2,9 +2,11 @@
 #include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -85,6 +87,7 @@ Java_com_termux_terminal_JNI_createSubprocess(
 
     java_env.push_back(nullptr);
 
+    const pid_t expected_parent = getpid();
     const pid_t pid = fork();
     if (pid < 0) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "fork failed: %s", strerror(errno));
@@ -97,7 +100,13 @@ Java_com_termux_terminal_JNI_createSubprocess(
     }
 
     if (pid == 0) {
-        setsid();
+        // A PTY child is otherwise re-parented and may survive an abrupt Android app-process
+        // death. Arm the kernel death signal first, then close the race where the parent died
+        // between fork() and prctl().
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != expected_parent) _exit(127);
+        // The Java terminal library only kills the shell PID. A dedicated session/process group
+        // lets the workspace supervisor reliably signal the complete terminal job tree.
+        if (setsid() < 0) _exit(127);
         const int slave = open(slave_name, O_RDWR);
         if (slave < 0) _exit(127);
         ioctl(slave, TIOCSCTTY, 0);

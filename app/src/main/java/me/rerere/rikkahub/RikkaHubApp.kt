@@ -107,7 +107,14 @@ class RikkaHubApp : Application() {
     private fun cleanupWorkspaceTempDirs() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
-                get<WorkspaceManager>().cleanupAllTempDirs()
+                val manager = get<WorkspaceManager>()
+                val recovery = manager.processRecoveryReport
+                if (recovery.remainingProcesses > 0) {
+                    Log.e(TAG, "Workspace orphan recovery incomplete: $recovery")
+                } else if (recovery.terminatedProcesses > 0 || recovery.discardedRecords > 0) {
+                    Log.i(TAG, "Workspace orphan recovery completed: $recovery")
+                }
+                manager.cleanupAllTempDirs()
             }.onFailure {
                 Log.e(TAG, "cleanupWorkspaceTempDirs failed", it)
             }

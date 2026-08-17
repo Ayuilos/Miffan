@@ -85,13 +85,15 @@ object ProotExecutionSpec {
                 listOf(
                     "-c",
                     // Command and cwd are positional args so the command text is evaluated exactly once.
-                    // RLIMIT_FSIZE is inherited by descendants and bounds any one output file even
-                    // between periodic aggregate disk checks.
-                    "ulimit -f \"\$3\" 2>/dev/null || true; cd -- \"\$1\" && eval \"\$2\"",
+                    resourceLimitScript(
+                        maxFileSizeBytes = context.maxFileSizeBytes,
+                        maxCpuTimeSeconds = context.maxCpuTimeSeconds,
+                        maxVirtualMemoryBytes = context.maxVirtualMemoryBytes,
+                        maxProcesses = context.maxProcesses,
+                    ) + "cd -- \"\$1\" && eval \"\$2\"",
                     "rikkahub",
                     cwd,
                     context.command,
-                    shellFileBlocks(context.maxFileSizeBytes),
                 )
             )
         }
@@ -103,6 +105,9 @@ object ProotExecutionSpec {
         filesDir: File,
         bindMounts: List<WorkspaceBindMount> = emptyList(),
         maxFileSizeBytes: Long? = null,
+        maxCpuTimeSeconds: Long? = null,
+        maxVirtualMemoryBytes: Long? = null,
+        maxProcesses: Int? = null,
     ): List<String> = buildList {
         addAll(
             baseArguments(
@@ -117,18 +122,70 @@ object ProotExecutionSpec {
         addAll(
             listOf(
                 "-c",
-                "ulimit -f \"\$1\" 2>/dev/null || true; exec /bin/bash -l",
+                resourceLimitScript(
+                    maxFileSizeBytes = maxFileSizeBytes,
+                    maxCpuTimeSeconds = maxCpuTimeSeconds,
+                    maxVirtualMemoryBytes = maxVirtualMemoryBytes,
+                    maxProcesses = maxProcesses,
+                ) + "exec /bin/bash -l",
                 "rikkahub",
-                shellFileBlocks(maxFileSizeBytes),
             )
         )
     }
 
-    private fun shellFileBlocks(maxFileSizeBytes: Long?): String =
-        maxFileSizeBytes
-            ?.let { bytes -> ((bytes + SHELL_FILE_BLOCK_BYTES - 1) / SHELL_FILE_BLOCK_BYTES).toString() }
-            ?: "unlimited"
+    fun isolatedHostLaunch(
+        command: List<String>,
+        toybox: File = File("/system/bin/toybox"),
+        setsid: File = File("/system/bin/setsid"),
+    ): WorkspaceProcessLaunch? = when {
+        toybox.isFile && toybox.canExecute() -> WorkspaceProcessLaunch(
+            command = listOf(toybox.absolutePath, "setsid") + command,
+            isolatedProcessGroup = true,
+        )
+        setsid.isFile && setsid.canExecute() -> WorkspaceProcessLaunch(
+            command = listOf(setsid.absolutePath) + command,
+            isolatedProcessGroup = true,
+        )
+        else -> null
+    }
+
+    private fun resourceLimitScript(
+        maxFileSizeBytes: Long?,
+        maxCpuTimeSeconds: Long?,
+        maxVirtualMemoryBytes: Long?,
+        maxProcesses: Int?,
+    ): String {
+        val limits = buildList {
+            maxFileSizeBytes?.let { add("-f" to shellBlocks(it)) }
+            maxCpuTimeSeconds?.let { add("-t" to it.toString()) }
+            maxVirtualMemoryBytes?.let { add("-v" to shellBlocks(it)) }
+            maxProcesses?.let { add("-u" to it.toString()) }
+        }
+        if (limits.isEmpty()) return ""
+        val commands = limits.joinToString(" && ") { (option, value) ->
+            "cap_limit $option $value"
+        }
+        return """
+            cap_limit() {
+              current="${'$'}(ulimit -S "${'$'}1")" || return 1
+              case "${'$'}current" in
+                unlimited) ulimit -S "${'$'}1" "${'$'}2" ;;
+                ''|*[!0-9]*) return 1 ;;
+                *) [ "${'$'}current" -le "${'$'}2" ] || ulimit -S "${'$'}1" "${'$'}2" ;;
+              esac
+            }
+            $commands || { echo 'Unable to apply workspace process limits' >&2; exit 125; }
+        """.trimIndent() + "\n"
+    }
+
+    private fun shellBlocks(bytes: Long): String =
+        (((bytes - 1) / SHELL_FILE_BLOCK_BYTES) + 1).toString()
 
     // Bash reports RLIMIT_FSIZE in 1024-byte blocks.
     private const val SHELL_FILE_BLOCK_BYTES = 1024L
 }
+
+data class WorkspaceProcessLaunch(
+    val command: List<String>,
+    val isolatedProcessGroup: Boolean,
+)

@@ -17,6 +17,12 @@ data class WorkspaceResourceLimits(
     val maxToolOutputBytes: Long = 32L * 1024 * 1024,
     val maxToolOutputFileBytes: Long = 2L * 1024 * 1024,
     val maxShellFileBytes: Long = 256L * 1024 * 1024,
+    /** Per guest process; aggregate enforcement still requires a kernel-backed execution backend. */
+    val maxShellVirtualMemoryBytes: Long = 1536L * 1024 * 1024,
+    /** CPU time per guest process, distinct from the command wall-clock timeout. */
+    val maxShellCpuTimeSeconds: Long = 300,
+    /** Maximum processes/threads sharing the Android app UID while a guest creates children. */
+    val maxShellProcesses: Int = 256,
     val maxActiveSessions: Int = 3,
     val maxSessionsPerWorkspace: Int = 1,
     val sessionAcquireTimeoutMillis: Long = 5_000,
@@ -26,7 +32,8 @@ data class WorkspaceResourceLimits(
         require(maxFilesBytes > 0 && maxRootfsBytes > 0 && maxTempBytes > 0)
         require(maxWorkspaceBytes > 0 && minFreeSpaceBytes >= 0)
         require(maxToolOutputFileBytes > 0 && maxToolOutputBytes >= maxToolOutputFileBytes)
-        require(maxShellFileBytes > 0)
+        require(maxShellFileBytes > 0 && maxShellVirtualMemoryBytes > 0)
+        require(maxShellCpuTimeSeconds > 0 && maxShellProcesses > 0)
         require(maxActiveSessions > 0 && maxSessionsPerWorkspace in 1..maxActiveSessions)
         require(sessionAcquireTimeoutMillis >= 0 && fullDiskCheckIntervalMillis > 0)
     }

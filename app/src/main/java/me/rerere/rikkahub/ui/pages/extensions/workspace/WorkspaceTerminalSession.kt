@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -18,6 +20,7 @@ import com.termux.view.TerminalViewClient
 import me.rerere.workspace.ProotExecutionSpec
 import me.rerere.workspace.RootfsPatchOptions
 import me.rerere.workspace.RootfsPatcher
+import me.rerere.workspace.WorkspaceProcessRegistration
 import me.rerere.workspace.WorkspaceResourceLimits
 import java.io.File
 
@@ -41,6 +44,9 @@ internal fun createWorkspaceTerminalSession(
         linuxDir = linuxDir,
         filesDir = filesDir,
         maxFileSizeBytes = resourceLimits.maxShellFileBytes,
+        maxCpuTimeSeconds = resourceLimits.maxShellCpuTimeSeconds,
+        maxVirtualMemoryBytes = resourceLimits.maxShellVirtualMemoryBytes,
+        maxProcesses = resourceLimits.maxShellProcesses,
     )
     val env = ProotExecutionSpec.hostEnvironment(loader, tempDir)
         .map { (name, value) -> "$name=$value" }
@@ -55,6 +61,28 @@ internal fun createWorkspaceTerminalSession(
         client,
     ).apply {
         mSessionName = root
+        // Start the PTY before returning, so the native PID can be durably registered before the
+        // interactive shell is exposed. TerminalView resizes it again as soon as it attaches.
+        updateSize(INITIAL_COLUMNS, INITIAL_ROWS)
+    }
+}
+
+internal fun workspaceTerminalCommandIdentity(context: Context): String =
+    File(context.applicationContext.applicationInfo.nativeLibraryDir, "libproot_exec.so").absolutePath
+
+internal fun TerminalSession.finishWorkspaceProcessGroup(
+    registration: WorkspaceProcessRegistration?,
+) {
+    val verifiedGone = registration?.terminate(graceful = false) == true
+    if (!verifiedGone) {
+        val shellPid = pid
+        if (shellPid > 1) {
+            // This fallback is limited to a freshly created, not-yet-registered PTY or an exact
+            // registered target which resisted the supervisor signal. Never signal a stale PID
+            // after the durable identity check says that its original process is already gone.
+            runCatching { Os.kill(-shellPid, OsConstants.SIGKILL) }
+        }
+        finishIfRunning()
     }
 }
 
@@ -303,3 +331,6 @@ private fun Context.activeDnsServers(): List<String> {
         ?.mapNotNull { it.hostAddress }
         .orEmpty()
 }
+
+private const val INITIAL_COLUMNS = 80
+private const val INITIAL_ROWS = 24
