@@ -68,6 +68,7 @@ class RootfsInstallerTest {
         val target = tmp.newFolder("quota-out")
         val installer = RootfsInstaller(
             manager = WorkspaceManager(tmp.newFolder("quota-workspaces")),
+            patcher = testPatcher(),
             limits = RootfsInstallLimits(maxExtractedBytes = 4),
         )
 
@@ -84,6 +85,7 @@ class RootfsInstallerTest {
         val manager = WorkspaceManager(tmp.newFolder("download-quota-workspaces"))
         val installer = RootfsInstaller(
             manager = manager,
+            patcher = testPatcher(),
             limits = RootfsInstallLimits(maxDownloadBytes = 4),
             connectionFactory = { TestHttpURLConnection(it, archive) },
         )
@@ -117,6 +119,7 @@ class RootfsInstallerTest {
         )
         val installer = RootfsInstaller(
             manager = manager,
+            patcher = testPatcher(),
             connectionFactory = {
                 TestHttpURLConnection(it, archive) {
                     Files.createSymbolicLink(archiveTarget.toPath(), outside.toPath())
@@ -158,6 +161,7 @@ class RootfsInstallerTest {
         )
         val installer = RootfsInstaller(
             manager = manager,
+            patcher = testPatcher(),
             limits = RootfsInstallLimits(
                 maxDownloadBytes = 5,
                 maxExtractedBytes = 4,
@@ -202,6 +206,7 @@ class RootfsInstallerTest {
         )
         val installer = RootfsInstaller(
             manager = manager,
+            patcher = testPatcher(),
             connectionFactory = { TestHttpURLConnection(it, archive) },
         )
 
@@ -244,6 +249,7 @@ class RootfsInstallerTest {
         )
         val installer = RootfsInstaller(
             manager = manager,
+            patcher = testPatcher(),
             connectionFactory = { TestHttpURLConnection(it, archive) },
         )
 
@@ -288,6 +294,7 @@ class RootfsInstallerTest {
 
         RootfsInstaller(
             manager = manager,
+            patcher = testPatcher(),
             connectionFactory = { TestHttpURLConnection(it, archive) },
         ).install(root, source)
 
@@ -296,7 +303,12 @@ class RootfsInstallerTest {
         assertEquals("keep", sentinel.readText())
     }
 
-    private fun createInstaller() = RootfsInstaller(WorkspaceManager(tmp.newFolder()))
+    private fun createInstaller() = RootfsInstaller(
+        manager = WorkspaceManager(tmp.newFolder()),
+        patcher = testPatcher(),
+    )
+
+    private fun testPatcher() = RootfsPatcher(NioRootfsPatchFilesFactory)
 
     private fun OutputStream.writeTarEntry(name: String, type: Char, data: ByteArray) {
         val header = ByteArray(TAR_BLOCK)

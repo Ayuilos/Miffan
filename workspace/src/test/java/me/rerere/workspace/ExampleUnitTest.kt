@@ -80,6 +80,7 @@ class ExampleUnitTest {
         val source = testRootfsSource(archive)
         val installer = RootfsInstaller(
             manager = manager,
+            patcher = RootfsPatcher(NioRootfsPatchFilesFactory),
             connectionFactory = { ByteArrayHttpURLConnection(it, archive) },
         )
 
@@ -163,7 +164,7 @@ class ExampleUnitTest {
         File(linuxDir, "etc/resolv.conf").writeText("nameserver 127.0.0.53\n")
         File(linuxDir, "etc/group").writeText("root:x:0:\n")
 
-        RootfsPatcher().patch(
+        RootfsPatcher(NioRootfsPatchFilesFactory).patch(
             linuxDir,
             RootfsPatchOptions(
                 nameservers = listOf("9.9.9.9", "8.8.8.8"),

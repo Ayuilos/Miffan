@@ -29,7 +29,7 @@ class RootfsHostBoundaryTest {
 
         try {
             assertThrows(IllegalArgumentException::class.java) {
-                RootfsPatcher().patch(rootfs)
+                RootfsPatcher(NioRootfsPatchFilesFactory).patch(rootfs)
             }
             assertEquals("outside\n", outsideHosts.readText())
             assertFalse(File(outside, "hostname").exists())
@@ -47,11 +47,32 @@ class RootfsHostBoundaryTest {
 
         try {
             assertThrows(IllegalArgumentException::class.java) {
-                RootfsPatcher().patch(rootfs)
+                RootfsPatcher(NioRootfsPatchFilesFactory).patch(rootfs)
             }
             assertEquals("do-not-change\n", outside.readText())
         } finally {
             Files.deleteIfExists(hostsLink.toPath())
+        }
+    }
+
+    @Test
+    fun `patcher rejects a hard-linked maintenance file without modifying its peer`() {
+        assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("unix"))
+        val rootfs = rootfsWithEtc("hard-linked-hosts-rootfs")
+        val outside = tmp.newFile("outside-hard-linked-hosts").apply {
+            writeText("do-not-change\n")
+        }
+        val hosts = File(rootfs, "etc/hosts")
+        Files.createLink(hosts.toPath(), outside.toPath())
+
+        try {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                RootfsPatcher(NioRootfsPatchFilesFactory).patch(rootfs)
+            }
+            assertTrue(error.message.orEmpty().contains("hard-linked"))
+            assertEquals("do-not-change\n", outside.readText())
+        } finally {
+            Files.deleteIfExists(hosts.toPath())
         }
     }
 
@@ -62,7 +83,7 @@ class RootfsHostBoundaryTest {
         val resolvConf = File(rootfs, "etc/resolv.conf")
         Files.createSymbolicLink(resolvConf.toPath(), outside.toPath())
 
-        RootfsPatcher().patch(
+        RootfsPatcher(NioRootfsPatchFilesFactory).patch(
             rootfs,
             RootfsPatchOptions(nameservers = listOf("9.9.9.9"), groupIds = emptyList()),
         )
@@ -88,7 +109,7 @@ class RootfsHostBoundaryTest {
 
         try {
             assertThrows(IllegalArgumentException::class.java) {
-                RootfsPatcher().patch(rootfs)
+                RootfsPatcher(NioRootfsPatchFilesFactory).patch(rootfs)
             }
             assertEquals(ownerOnly, Files.getPosixFilePermissions(outside.toPath()))
         } finally {
@@ -110,12 +131,12 @@ class RootfsHostBoundaryTest {
         File(rootfs, "etc/hosts").writeBytes(ByteArray(1024 * 1024 + 1) { 'a'.code.toByte() })
 
         val fileError = assertThrows(IllegalArgumentException::class.java) {
-            RootfsPatcher().patch(rootfs)
+            RootfsPatcher(NioRootfsPatchFilesFactory).patch(rootfs)
         }
         assertTrue(fileError.message.orEmpty().contains("too large"))
 
         val optionError = assertThrows(IllegalArgumentException::class.java) {
-            RootfsPatcher().patch(
+            RootfsPatcher(NioRootfsPatchFilesFactory).patch(
                 rootfs,
                 RootfsPatchOptions(hostname = "safe\ninjected"),
             )

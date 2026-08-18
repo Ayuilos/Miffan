@@ -27,7 +27,8 @@ project("workspace")
 # used in the AndroidManifest.xml file.
 add_library(${CMAKE_PROJECT_NAME} SHARED
         # List C/C++ source files with relative paths to this CMakeLists.txt.
-        workspace.cpp)
+        workspace.cpp
+        rootfs_host_files.cpp)
 
 add_library(termux SHARED
         termux_pty.cpp)

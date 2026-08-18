@@ -1,24 +1,25 @@
 package me.rerere.workspace
 
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.charset.StandardCharsets
-import java.nio.file.FileAlreadyExistsException
-import java.nio.file.Files
-import java.nio.file.LinkOption
-import java.nio.file.OpenOption
-import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 
 class RootfsPatcher {
+    private val filesFactory: RootfsPatchFilesFactory
+
+    constructor() {
+        filesFactory = NativeRootfsPatchFilesFactory
+    }
+
+    internal constructor(filesFactory: RootfsPatchFilesFactory) {
+        this.filesFactory = filesFactory
+    }
+
     fun patch(
         linuxDir: File,
         options: RootfsPatchOptions = RootfsPatchOptions(),
     ) {
         requireValidOptions(options)
-        val files = RootfsPatchFiles.open(linuxDir) ?: return
-        if (files.directory("etc", create = false) == null) return
+        val files = filesFactory.open(linuxDir) ?: return
+        if (!files.directory("etc", create = false)) return
 
         ensureRootfsDns(files, options.nameservers)
         ensureHosts(files, options.hostname)
@@ -32,11 +33,10 @@ class RootfsPatcher {
         files: RootfsPatchFiles,
         nameservers: List<String>,
     ) {
-        val resolvConf = files.inspectFile("etc/resolv.conf", allowLeafSymlink = true)
-        val shouldWrite = when {
-            resolvConf == null -> true
-            Files.isSymbolicLink(resolvConf) -> true
-            else -> files.readText(resolvConf)
+        val resolvConf = files.fileKind("etc/resolv.conf", allowLeafSymlink = true)
+        val shouldWrite = when (resolvConf) {
+            null, RootfsPatchFileKind.SYMLINK -> true
+            RootfsPatchFileKind.REGULAR -> files.readText("etc/resolv.conf")
                 .lineSequence()
                 .filter { it.trimStart().startsWith("nameserver ") }
                 .none { line ->
@@ -117,8 +117,8 @@ class RootfsPatcher {
     }
 
     private fun ensureGroupNames(files: RootfsPatchFiles, groupIds: List<Long>) {
-        val existingGroup = files.inspectFile("etc/group")
-        val original = existingGroup?.let(files::readText) ?: "root:x:0:\n"
+        val existingGroup = files.fileKind("etc/group")
+        val original = existingGroup?.let { files.readText("etc/group") } ?: "root:x:0:\n"
         val lines = original.lineSequence().toList()
         val existingIds = lines.mapNotNull { line ->
             line.split(':').getOrNull(2)?.toLongOrNull()
@@ -146,23 +146,15 @@ class RootfsPatcher {
         )
     }
 
-    @Suppress("SetWorldReadable", "SetWorldWritable")
     private fun ensureTempDirs(files: RootfsPatchFiles) {
-        val tempDirs = listOf("tmp", "var/tmp").map { path ->
-            path to requireNotNull(files.directory(path, create = true))
+        listOf("tmp", "var/tmp").forEach { guestPath ->
+            check(files.directory(guestPath, create = true)) {
+                "Unable to create /$guestPath"
+            }
+            files.chmodDirectory(guestPath, GUEST_TEMP_DIRECTORY_MODE)
         }
-        val rootDir = requireNotNull(files.directory("root", create = true))
-        tempDirs.forEach { (guestPath, path) ->
-            val dir = path.toFile()
-            require(dir.setReadable(true, false)) { "Unable to make /$guestPath readable" }
-            require(dir.setWritable(true, false)) { "Unable to make /$guestPath writable" }
-            require(dir.setExecutable(true, false)) { "Unable to make /$guestPath executable" }
-        }
-        rootDir.toFile().apply {
-            require(setReadable(true, true)) { "Unable to make /root readable" }
-            require(setWritable(true, true)) { "Unable to make /root writable" }
-            require(setExecutable(true, true)) { "Unable to make /root executable" }
-        }
+        check(files.directory("root", create = true)) { "Unable to create /root" }
+        files.chmodDirectory("root", GUEST_ROOT_DIRECTORY_MODE)
     }
 
     private fun requireValidOptions(options: RootfsPatchOptions) {
@@ -196,6 +188,8 @@ class RootfsPatcher {
     private companion object {
         private const val MAX_DNS_SERVERS = 3
         private const val MAX_OPTION_VALUES = 1024
+        private const val GUEST_TEMP_DIRECTORY_MODE = 0b1_111_111_111
+        private const val GUEST_ROOT_DIRECTORY_MODE = 0b111_000_000
         private const val DEFAULT_HOSTNAME = "localhost"
         private val WHITESPACE_REGEX = Regex("\\s+")
         private val LOCAL_RESOLVERS = setOf(
@@ -208,138 +202,6 @@ class RootfsPatcher {
             "8.8.8.8",
             "223.5.5.5",
         )
-    }
-}
-
-private class RootfsPatchFiles private constructor(
-    private val root: Path,
-) {
-    fun directory(relativePath: String, create: Boolean): Path? {
-        var current = root
-        for (segment in segments(relativePath)) {
-            current = current.resolve(segment)
-            if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
-                if (!create) return null
-                try {
-                    Files.createDirectory(current)
-                } catch (_: FileAlreadyExistsException) {
-                    // Re-check below: a concurrent symlink replacement must not be accepted.
-                }
-            }
-            require(Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
-                "Refusing Rootfs host access through symbolic link or non-directory: /$relativePath"
-            }
-        }
-        return current
-    }
-
-    fun inspectFile(relativePath: String, allowLeafSymlink: Boolean = false): Path? {
-        val segments = segments(relativePath)
-        require(segments.isNotEmpty()) { "Rootfs maintenance path must identify a file" }
-        val parent = directory(segments.dropLast(1).joinToString("/"), create = false) ?: return null
-        val target = parent.resolve(segments.last())
-        if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) return null
-        if (Files.isSymbolicLink(target)) {
-            require(allowLeafSymlink) {
-                "Refusing Rootfs host access through symbolic link: /$relativePath"
-            }
-        } else {
-            require(Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
-                "Rootfs maintenance path is not a regular file: /$relativePath"
-            }
-        }
-        return target
-    }
-
-    fun readTextIfExists(relativePath: String): String? =
-        inspectFile(relativePath)?.let(::readText)
-
-    fun readText(path: Path): String {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteBuffer.allocate(DEFAULT_BUFFER_SIZE)
-        Files.newByteChannel(
-            path,
-            setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS),
-        ).use { channel ->
-            while (true) {
-                val read = channel.read(buffer)
-                if (read < 0) break
-                if (read == 0) continue
-                require(output.size().toLong() + read <= MAX_MAINTENANCE_FILE_BYTES) {
-                    "Rootfs maintenance file is too large: $path"
-                }
-                output.write(buffer.array(), 0, read)
-                buffer.clear()
-            }
-        }
-        return output.toString(StandardCharsets.UTF_8.name())
-    }
-
-    fun writeText(
-        relativePath: String,
-        text: String,
-        replaceLeafSymlink: Boolean = false,
-    ) {
-        val bytes = text.toByteArray(StandardCharsets.UTF_8)
-        require(bytes.size <= MAX_MAINTENANCE_FILE_BYTES) {
-            "Rootfs maintenance file is too large: /$relativePath"
-        }
-        val segments = segments(relativePath)
-        require(segments.isNotEmpty()) { "Rootfs maintenance path must identify a file" }
-        val parent = requireNotNull(
-            directory(segments.dropLast(1).joinToString("/"), create = true)
-        )
-        val target = parent.resolve(segments.last())
-        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(target)) {
-                require(replaceLeafSymlink) {
-                    "Refusing Rootfs host access through symbolic link: /$relativePath"
-                }
-                Files.delete(target)
-            } else {
-                require(Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
-                    "Rootfs maintenance path is not a regular file: /$relativePath"
-                }
-            }
-        }
-
-        Files.newByteChannel(
-            target,
-            setOf<OpenOption>(
-                StandardOpenOption.WRITE,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                LinkOption.NOFOLLOW_LINKS,
-            ),
-        ).use { channel ->
-            val buffer = ByteBuffer.wrap(bytes)
-            while (buffer.hasRemaining()) channel.write(buffer)
-        }
-    }
-
-    private fun segments(relativePath: String): List<String> {
-        if (relativePath.isBlank()) return emptyList()
-        require(!relativePath.startsWith('/') && !relativePath.contains('\\')) {
-            "Rootfs maintenance path must be relative"
-        }
-        return relativePath.split('/').also { segments ->
-            require(segments.none { it.isBlank() || it == "." || it == ".." }) {
-                "Rootfs maintenance path is ambiguous"
-            }
-        }
-    }
-
-    companion object {
-        private const val MAX_MAINTENANCE_FILE_BYTES = 256 * 1024
-
-        fun open(root: File): RootfsPatchFiles? {
-            val path = root.toPath().toAbsolutePath().normalize()
-            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return null
-            require(Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-                "Rootfs directory must not be a symbolic link"
-            }
-            return RootfsPatchFiles(path)
-        }
     }
 }
 

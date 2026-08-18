@@ -59,9 +59,9 @@ network access, and app-private storage that the Android process makes available
      guest environment remains explicitly clean.
 5. **Host-side RootFS maintenance boundary (implemented)**
    - Treat the mutable RootFS tree as guest-controlled input whenever Android-side maintenance
-     runs. DNS, hosts, hostname, locale, group, and temp-directory patching reject symbolic-link
-     components; all file opens use `NOFOLLOW_LINKS`, and maintenance-file reads/writes are capped.
-     The known `/etc/resolv.conf` leaf symlink is replaced without following its target.
+     runs. DNS, hosts, hostname, locale, group, and temp-directory patching reject unsafe path
+     shapes and cap maintenance-file reads/writes. The known `/etc/resolv.conf` leaf symlink is
+     replaced without following its target.
    - Workspace deletion, temp cleanup, install staging, rollback, and replacement use recursive
      deletion that never traverses symbolic links. RootFS health checks reject a symbolic RootFS or
      `/etc` directory and reject required entrypoints whose resolved files leave the RootFS tree.
@@ -76,11 +76,27 @@ network access, and app-private storage that the Android process makes available
      Android parent death long enough to complete descendant cleanup. PTY waiters resolve the
      published PRoot PID to its private monitor instead of assuming PRoot remains a direct child of
      the Android process.
-7. **Isolation alternatives (future)**
+7. **Descriptor-relative RootFS patching (implemented)**
+   - Android-side RootFS patching opens the RootFS with `O_NOFOLLOW`, traverses every guest-controlled
+     component with directory FDs plus `openat`/`mkdirat`, and validates the opened object with
+     `fstat` before reading, truncating, writing, or changing permissions. No security decision is
+     carried forward as a reusable host pathname.
+   - Reject maintenance files with multiple hard links or an unexpected owner, as well as symbolic
+     links and non-regular files. Create files with `O_CREAT|O_EXCL|O_NOFOLLOW`; only the expected
+     `/etc/resolv.conf` leaf link may be removed and recreated. Apply exact `01777` modes to `/tmp`
+     and `/var/tmp` and `0700` to `/root` through already-validated directory FDs.
+   - This descriptor boundary covers the patcher's targeted maintenance operations. Recursive
+     cleanup and deletion still use non-following Java walks and are not claimed to resist a
+     concurrent hostile same-UID process swapping path components.
+8. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
      the shared Android app UID, not to an individual workspace.
+   - Anchor the app-managed workspace root from a trusted parent FD for every host maintenance
+     operation. The current patch bridge rejects a symbolic-link RootFS leaf, but its initial
+     absolute host-parent lookup is not a kernel-enforced boundary against an already-escaped,
+     concurrently hostile process running with the same Android UID.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
 
@@ -153,3 +169,9 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     `WorkspacePtyInstrumentedTest`. Confirm the child has a PGID different from PRoot before
     cancellation/normal exit, then disappears before the monitor reports completion. During the
     same cases, confirm no `rk-ws-launcher` or `rk-ws-pty` monitor remains afterward.
+20. Run `RootfsHostBoundaryInstrumentedTest` on arm64 and x86_64. Confirm the native patch bridge
+    rejects hard-linked maintenance files without changing their peers, replaces but never follows
+    the expected `/etc/resolv.conf` symlink, and applies `01777` to `/tmp` and `/var/tmp` and `0700`
+    to `/root`. In a debug stress fixture, repeatedly exchange nested directories with symlinks
+    during patching; every run must either finish inside the RootFS or fail without changing a
+    sentinel outside it.

@@ -1,5 +1,6 @@
 package me.rerere.workspace
 
+import android.system.Os
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -33,6 +34,70 @@ class RootfsHostBoundaryInstrumentedTest {
         } finally {
             rootfs.deleteRecursivelyNoFollow()
             outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun rootfsPatcherRejectsHardLinkedMaintenanceFile() {
+        val rootfs = rootfsWithEtc("rootfs-hardlink-root")
+        val outside = freshDirectory("rootfs-hardlink-outside")
+        val sentinel = File(outside, "hosts").apply { writeText("keep\n") }
+        val hosts = File(rootfs, "etc/hosts")
+        Files.createLink(hosts.toPath(), sentinel.toPath())
+
+        try {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                RootfsPatcher().patch(rootfs)
+            }
+            assertTrue(error.message.orEmpty().contains("hard-linked"))
+            assertEquals("keep\n", sentinel.readText())
+        } finally {
+            rootfs.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun rootfsPatcherReplacesOnlyTheExpectedResolvSymlink() {
+        val rootfs = rootfsWithEtc("rootfs-resolv-root")
+        val outside = freshDirectory("rootfs-resolv-outside")
+        val sentinel = File(outside, "resolv.conf").apply { writeText("keep\n") }
+        val resolvConf = File(rootfs, "etc/resolv.conf")
+        Files.createSymbolicLink(resolvConf.toPath(), sentinel.toPath())
+
+        try {
+            RootfsPatcher().patch(
+                rootfs,
+                RootfsPatchOptions(
+                    nameservers = listOf("9.9.9.9"),
+                    groupIds = emptyList(),
+                ),
+            )
+
+            assertFalse(Files.isSymbolicLink(resolvConf.toPath()))
+            assertTrue(resolvConf.readText().contains("nameserver 9.9.9.9"))
+            assertEquals("keep\n", sentinel.readText())
+        } finally {
+            rootfs.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun rootfsPatcherAppliesExactPrivateAndStickyDirectoryModes() {
+        val rootfs = rootfsWithEtc("rootfs-modes-root")
+
+        try {
+            RootfsPatcher().patch(
+                rootfs,
+                RootfsPatchOptions(groupIds = emptyList()),
+            )
+
+            assertEquals(0b1_111_111_111, permissionBits(File(rootfs, "tmp")))
+            assertEquals(0b1_111_111_111, permissionBits(File(rootfs, "var/tmp")))
+            assertEquals(0b111_000_000, permissionBits(File(rootfs, "root")))
+        } finally {
+            rootfs.deleteRecursivelyNoFollow()
         }
     }
 
@@ -86,4 +151,10 @@ class RootfsHostBoundaryInstrumentedTest {
             directory.deleteRecursivelyNoFollow()
             require(directory.mkdirs()) { "Unable to create test directory: $directory" }
         }
+
+    private fun rootfsWithEtc(name: String): File = freshDirectory(name).also { rootfs ->
+        require(File(rootfs, "etc").mkdirs()) { "Unable to create Rootfs /etc" }
+    }
+
+    private fun permissionBits(file: File): Int = Os.stat(file.absolutePath).st_mode and 0xFFF
 }
