@@ -154,6 +154,48 @@ class WorkspaceFileSystem(
         return Files.size(file.toPath())
     }
 
+    fun existingFileSizeNoFollow(
+        root: File,
+        path: String,
+        displayPath: String = path,
+    ): Long? {
+        val segments = path.strictRelativeFileSegments()
+        if (usesNativeHostFileOperations()) {
+            return when (
+                val size = RootfsHostFileBridge.fileSize(
+                    root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                    path.toByteArray(StandardCharsets.UTF_8),
+                    false,
+                )
+            ) {
+                -1L -> null
+                -2L -> throw IllegalArgumentException("Path is not a file: $displayPath")
+                else -> size
+            }
+        }
+        val rootPath = root.toPath().toAbsolutePath().normalize()
+        require(Files.isDirectory(rootPath, LinkOption.NOFOLLOW_LINKS)) {
+            "Workspace root must be a real directory"
+        }
+        var parent = rootPath
+        segments.dropLast(1).forEach { segment ->
+            parent = parent.resolve(segment)
+            if (!Files.exists(parent, LinkOption.NOFOLLOW_LINKS)) return null
+            require(Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
+                "Refusing to inspect through symbolic link or non-directory: $displayPath"
+            }
+        }
+        val target = parent.resolve(segments.last())
+        if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) return null
+        require(Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+            "Path is not a file: $displayPath"
+        }
+        Files.newByteChannel(
+            target,
+            setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS),
+        ).use { return it.size() }
+    }
+
     fun exportNoFollow(
         root: File,
         path: String,

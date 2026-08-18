@@ -98,11 +98,14 @@ class WorkspaceManager(
         overwrite: Boolean = true,
         charset: Charset = StandardCharsets.UTF_8,
     ): WorkspaceFileEntry = withExclusiveAccess(root) {
-        val target = fileSystem.resolve(filesDir(root), path)
         requireGrowth(
             root = root,
             area = WorkspaceDiskArea.FILES,
-            additionalBytes = positiveGrowth(target, text.toByteArray(charset).size.toLong()),
+            additionalBytes = positiveGrowth(
+                rootDir = filesDir(root),
+                path = path,
+                newSize = text.toByteArray(charset).size.toLong(),
+            ),
         )
         fileSystem.writeText(filesDir(root), path, text, overwrite, charset)
     }
@@ -221,11 +224,15 @@ class WorkspaceManager(
     ): WorkspaceFileEntry = withExclusiveAccess(root) {
         val location = resolveRootfsPath(root, path)
         require(location.writable) { "Path is read-only: ${location.guestPath.value}" }
-        val target = File(location.rootDir, location.relativePath)
         requireGrowth(
             root = root,
             area = location.diskArea(root),
-            additionalBytes = positiveGrowth(target, text.toByteArray(charset).size.toLong()),
+            additionalBytes = positiveGrowth(
+                rootDir = location.rootDir,
+                path = location.relativePath,
+                newSize = text.toByteArray(charset).size.toLong(),
+                displayPath = location.guestPath.value,
+            ),
         )
         fileSystem.writeTextNoFollow(
             root = location.rootDir,
@@ -521,8 +528,13 @@ class WorkspaceManager(
         return minOf(areaRemaining, totalRemaining, freeRemaining).coerceAtLeast(0)
     }
 
-    private fun positiveGrowth(target: File, newSize: Long): Long =
-        (newSize - target.takeIf { it.isFile }?.length().orZero()).coerceAtLeast(0)
+    private fun positiveGrowth(
+        rootDir: File,
+        path: String,
+        newSize: Long,
+        displayPath: String = path,
+    ): Long = (newSize - fileSystem.existingFileSizeNoFollow(rootDir, path, displayPath).orZero())
+        .coerceAtLeast(0)
 
     private fun Long?.orZero(): Long = this ?: 0
 

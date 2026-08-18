@@ -101,6 +101,9 @@ network access, and app-private storage that the Android process makes available
      opened with `O_NOFOLLOW`, inspected after open, and hard-linked or non-regular targets are
      rejected before truncation. `overwrite=false` is enforced by the same native decision that
      opens the leaf rather than by an earlier Java existence check.
+   - Write-growth quota preflight queries the existing leaf through the same descriptor-relative
+     no-follow bridge. A link or non-regular replacement cannot inflate the apparent old size and
+     reduce the capacity reserved for the subsequent safe write.
    - `workspace_read_file` size checks and exports use descriptor-relative, bounded regular-file
      reads for `/workspace`, RootFS paths, `/skills`, `/upload`, and scoped `/tool_outputs`.
      Symbolic-link components and leaves are rejected, while ordinary uploaded files and legitimate
