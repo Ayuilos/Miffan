@@ -14,8 +14,9 @@ import java.util.concurrent.TimeUnit
  * A native process-group launcher whose monitor remains a direct child of the Android app.
  *
  * The monitor arms a parent-death signal before it publishes its PID, owns a dedicated session,
- * and kills the complete group if the app disappears. This closes the ProcessBuilder-to-record
- * crash window for AI shell commands while preserving the standard [Process] stream contract.
+ * and acts as a child subreaper so even descendants that leave the command group are removed. This
+ * closes the ProcessBuilder-to-record crash window for AI shell commands while preserving the
+ * standard [Process] stream contract.
  */
 internal class WorkspaceNativeProcess private constructor(
     private val monitorProcessId: Int,

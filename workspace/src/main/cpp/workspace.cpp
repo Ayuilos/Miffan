@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "process_reaper.h"
+
 namespace {
 
 constexpr const char *kLauncherProcessName = "rk-ws-launcher";
@@ -22,6 +24,7 @@ constexpr size_t kMaxEntryBytes = 1024 * 1024;
 constexpr size_t kMaxTotalBytes = 4 * 1024 * 1024;
 constexpr jint kStillRunning = INT32_MIN;
 volatile sig_atomic_t g_command_process_group = -1;
+volatile sig_atomic_t g_parent_died = 0;
 
 void close_quietly(int fd) {
     if (fd >= 0) close(fd);
@@ -172,9 +175,10 @@ bool read_start_token(int fd) {
 }
 
 void parent_death_handler(int signal_number) {
+    (void) signal_number;
+    g_parent_died = 1;
     const pid_t command_process_group = g_command_process_group;
     if (command_process_group > 1) kill(-command_process_group, SIGKILL);
-    _exit(128 + signal_number);
 }
 
 bool reset_signal_state() {
@@ -195,10 +199,15 @@ bool reset_signal_state() {
 bool install_parent_death_handler() {
     if (!reset_signal_state()) return false;
 
+    struct sigaction ignored = {};
+    ignored.sa_handler = SIG_IGN;
+    sigemptyset(&ignored.sa_mask);
+    if (sigaction(SIGPIPE, &ignored, nullptr) != 0) return false;
+
     struct sigaction action = {};
     action.sa_handler = parent_death_handler;
     sigemptyset(&action.sa_mask);
-    action.sa_flags = SA_RESTART;
+    action.sa_flags = 0;
     return sigaction(SIGUSR1, &action, nullptr) == 0;
 }
 
@@ -226,6 +235,9 @@ int normalized_exit_status(int status) {
     if (prctl(PR_SET_PDEATHSIG, SIGUSR1) != 0) fail_launcher(launch_status_pipe[1], errno);
     if (getppid() != expected_parent) fail_launcher(launch_status_pipe[1], ECHILD);
     if (setsid() < 0) fail_launcher(launch_status_pipe[1], errno);
+    if (!workspace_process::become_child_subreaper()) {
+        fail_launcher(launch_status_pipe[1], errno);
+    }
     if (prctl(PR_SET_NAME, kLauncherProcessName, 0, 0, 0) != 0) {
         fail_launcher(launch_status_pipe[1], errno);
     }
@@ -282,6 +294,7 @@ int normalized_exit_status(int status) {
         _exit(127);
     }
     g_command_process_group = command_pid;
+    if (g_parent_died != 0) kill(-command_pid, SIGKILL);
     close_quietly(start_gate_pipe[0]);
     if (!write_start_token(start_gate_pipe[1])) fail_launcher(launch_status_pipe[1], errno);
     close_quietly(start_gate_pipe[1]);
@@ -300,11 +313,14 @@ int normalized_exit_status(int status) {
                 launch_status_pipe[1],
                 exec_result > 0 ? command_error : exec_read_error);
         kill(command_pid, SIGKILL);
+        g_command_process_group = -1;
         int ignored_status = 0;
         while (waitpid(command_pid, &ignored_status, 0) < 0 && errno == EINTR) {}
+        workspace_process::kill_and_reap_descendants();
         _exit(127);
     }
 
+    if (g_parent_died != 0) kill(-command_pid, SIGKILL);
     // A negative value distinguishes the successfully exec'd command PID from a positive errno.
     write_error_number(launch_status_pipe[1], -command_pid);
     close_quietly(launch_status_pipe[1]);
@@ -317,12 +333,17 @@ int normalized_exit_status(int status) {
     // Keep its zombie as the group leader until the complete job is killed, so the group id cannot
     // be recycled between observing the main exit and signaling residual descendants.
     kill(-command_pid, SIGKILL);
+    g_command_process_group = -1;
     int command_status = 0;
     pid_t reaped = -1;
     do {
         reaped = waitpid(command_pid, &command_status, 0);
     } while (reaped < 0 && errno == EINTR);
-    _exit(observed == 0 && reaped == command_pid ? normalized_exit_status(command_status) : 127);
+    const bool descendants_reaped = workspace_process::kill_and_reap_descendants();
+    _exit(
+            observed == 0 && reaped == command_pid && descendants_reaped
+            ? normalized_exit_status(command_status)
+            : 127);
 }
 
 void close_parent_pipes(int stdin_pipe[2], int stdout_pipe[2], int stderr_pipe[2]) {
@@ -333,7 +354,6 @@ void close_parent_pipes(int stdin_pipe[2], int stdout_pipe[2], int stderr_pipe[2
 
 void kill_and_reap_launcher(pid_t launcher_pid, pid_t command_process_group = -1) {
     if (command_process_group > 1) kill(-command_process_group, SIGKILL);
-    kill(launcher_pid, SIGKILL);
     int ignored_status = 0;
     while (waitpid(launcher_pid, &ignored_status, 0) < 0 && errno == EINTR) {}
 }

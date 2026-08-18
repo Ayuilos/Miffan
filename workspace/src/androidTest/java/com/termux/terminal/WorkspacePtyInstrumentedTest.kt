@@ -152,6 +152,67 @@ class WorkspacePtyInstrumentedTest {
         }
     }
 
+    @Test
+    fun normalExitReapsAChildThatCreatedANewSession() {
+        val toybox = File("/system/bin/toybox")
+        val sleep = File("/system/bin/sleep")
+        org.junit.Assume.assumeTrue(toybox.canExecute() && sleep.canExecute())
+        val childPidFile = File(context.cacheDir, "pty-setsid-child-${System.nanoTime()}")
+        val exitGate = File(context.cacheDir, "pty-setsid-gate-${System.nanoTime()}")
+        val processId = intArrayOf(-1)
+        val environment = hostEnvironment() + arrayOf(
+            "PTY_CHILD_PID_FILE=${childPidFile.absolutePath}",
+            "PTY_EXIT_GATE=${exitGate.absolutePath}",
+        )
+        val masterFd = onMainThread {
+            JNI.createSubprocess(
+                "/system/bin/sh",
+                context.cacheDir.absolutePath,
+                arrayOf(
+                    "-c",
+                    "${toybox.absolutePath} setsid ${sleep.absolutePath} 60 " +
+                        ">/dev/null 2>&1 & echo \$! > \"\$PTY_CHILD_PID_FILE\"; " +
+                        "while [ ! -e \"\$PTY_EXIT_GATE\" ]; do sleep 1; done; exit 9",
+                ),
+                environment,
+                processId,
+                24,
+                80,
+            )
+        }
+        val shellPid = processId[0].toLong()
+        var reaped = false
+        var waiter: FutureTask<Int>? = null
+        try {
+            eventuallyFileExists(childPidFile)
+            val childPid = childPidFile.readText().trim().toLong()
+            val processSystem = ProcfsWorkspaceProcessSystem()
+            val child = eventuallySnapshot(processSystem, childPid)
+            assertEquals(childPid, child.processGroupId)
+            assertTrue(child.processGroupId != shellPid)
+
+            waiter = FutureTask { JNI.waitFor(shellPid.toInt()) }
+            Thread(waiter, "WorkspacePtySetsidWaiter").start()
+            exitGate.writeText("exit")
+            assertEquals(9, waiter.get(5, TimeUnit.SECONDS))
+            reaped = true
+            eventuallyProcessIsGone(processSystem, childPid)
+        } finally {
+            exitGate.writeText("exit")
+            if (!reaped && shellPid > 1) {
+                runCatching { Os.kill(-shellPid.toInt(), OsConstants.SIGKILL) }
+                if (waiter == null) {
+                    runCatching { JNI.waitFor(shellPid.toInt()) }
+                } else {
+                    runCatching { waiter.get(5, TimeUnit.SECONDS) }
+                }
+            }
+            JNI.close(masterFd)
+            childPidFile.delete()
+            exitGate.delete()
+        }
+    }
+
     private fun hostEnvironment(): Array<String> = System.getenv()
         .map { (name, value) -> "$name=$value" }
         .toTypedArray()

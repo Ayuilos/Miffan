@@ -2,6 +2,7 @@ package me.rerere.workspace
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
@@ -9,6 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -91,6 +93,36 @@ class WorkspaceNativeProcessInstrumentedTest {
         assertTrue(process.waitFor(5, TimeUnit.SECONDS))
         assertEquals(3, process.exitValue())
         eventuallyProcessIsGone(childPid)
+    }
+
+    @Test
+    fun forceTerminationReapsDescendantThatEscapedTheCommandGroup() {
+        val toybox = File("/system/bin/toybox")
+        val sleep = File("/system/bin/sleep")
+        assumeTrue(toybox.canExecute() && sleep.canExecute())
+        val process = WorkspaceNativeProcess.start(
+            command = listOf(
+                "/system/bin/sh",
+                "-c",
+                "${toybox.absolutePath} setsid ${sleep.absolutePath} 60 " +
+                    ">/dev/null 2>&1 & echo \$!; wait",
+            ),
+            environment = System.getenv(),
+            workingDirectory = context.cacheDir,
+        )
+        process.outputStream.close()
+        try {
+            val escapedPid = process.inputStream.bufferedReader().readLine().trim().toLong()
+            val escaped = requireNotNull(ProcfsWorkspaceProcessSystem().snapshot(escapedPid))
+            assertEquals(escapedPid, escaped.processGroupId)
+            assertTrue(escaped.processGroupId != process.nativePid())
+
+            process.destroyForcibly()
+            assertTrue(process.waitFor(5, TimeUnit.SECONDS))
+            eventuallyProcessIsGone(escapedPid)
+        } finally {
+            forceStop(process)
+        }
     }
 
     @Test

@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -16,11 +17,25 @@
 #include <string>
 #include <vector>
 
+#include "process_reaper.h"
+
 namespace {
 
 constexpr size_t kMaxEntries = 4096;
 constexpr size_t kMaxEntryBytes = 1024 * 1024;
 constexpr size_t kMaxTotalBytes = 4 * 1024 * 1024;
+constexpr size_t kMaxTerminalMonitors = 64;
+constexpr const char *kTerminalMonitorName = "rk-ws-pty";
+volatile sig_atomic_t g_terminal_process_group = -1;
+volatile sig_atomic_t g_terminal_parent_died = 0;
+
+struct TerminalMonitorRecord {
+    pid_t command_pid = -1;
+    pid_t monitor_pid = -1;
+};
+
+pthread_mutex_t g_terminal_monitors_mutex = PTHREAD_MUTEX_INITIALIZER;
+TerminalMonitorRecord g_terminal_monitors[kMaxTerminalMonitors];
 
 void close_quietly(int fd) {
     if (fd >= 0) close(fd);
@@ -196,16 +211,184 @@ bool reset_signal_state() {
     return true;
 }
 
+void terminal_parent_death_handler(int signal_number) {
+    (void) signal_number;
+    g_terminal_parent_died = 1;
+    const pid_t command_process_group = g_terminal_process_group;
+    if (command_process_group > 1) kill(-command_process_group, SIGKILL);
+}
+
+bool install_terminal_parent_death_handler() {
+    if (!reset_signal_state()) return false;
+    struct sigaction ignored = {};
+    ignored.sa_handler = SIG_IGN;
+    sigemptyset(&ignored.sa_mask);
+    if (sigaction(SIGPIPE, &ignored, nullptr) != 0) return false;
+
+    struct sigaction action = {};
+    action.sa_handler = terminal_parent_death_handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    return sigaction(SIGUSR1, &action, nullptr) == 0;
+}
+
 [[noreturn]] void fail_child(int status_fd, int error_number) {
     write_error_number(status_fd, error_number);
     _exit(127);
 }
 
-void kill_and_reap_child(pid_t pid, bool isolated_process_group) {
-    if (isolated_process_group && pid > 1) kill(-pid, SIGKILL);
-    if (pid > 1) kill(pid, SIGKILL);
+bool remember_terminal_monitor(pid_t command_pid, pid_t monitor_pid) {
+    pthread_mutex_lock(&g_terminal_monitors_mutex);
+    for (const TerminalMonitorRecord &record: g_terminal_monitors) {
+        if (record.command_pid == command_pid) {
+            pthread_mutex_unlock(&g_terminal_monitors_mutex);
+            errno = EBUSY;
+            return false;
+        }
+    }
+    for (TerminalMonitorRecord &record: g_terminal_monitors) {
+        if (record.command_pid <= 1) {
+            record.command_pid = command_pid;
+            record.monitor_pid = monitor_pid;
+            pthread_mutex_unlock(&g_terminal_monitors_mutex);
+            return true;
+        }
+    }
+    pthread_mutex_unlock(&g_terminal_monitors_mutex);
+    errno = EAGAIN;
+    return false;
+}
+
+pid_t find_terminal_monitor(pid_t command_pid) {
+    pthread_mutex_lock(&g_terminal_monitors_mutex);
+    for (const TerminalMonitorRecord &record: g_terminal_monitors) {
+        if (record.command_pid == command_pid) {
+            const pid_t monitor_pid = record.monitor_pid;
+            pthread_mutex_unlock(&g_terminal_monitors_mutex);
+            return monitor_pid;
+        }
+    }
+    pthread_mutex_unlock(&g_terminal_monitors_mutex);
+    return -1;
+}
+
+void forget_terminal_monitor(pid_t command_pid, pid_t monitor_pid) {
+    pthread_mutex_lock(&g_terminal_monitors_mutex);
+    for (TerminalMonitorRecord &record: g_terminal_monitors) {
+        if (record.command_pid == command_pid && record.monitor_pid == monitor_pid) {
+            record = {};
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_terminal_monitors_mutex);
+}
+
+void kill_and_reap_monitor(pid_t monitor_pid, pid_t command_process_group = -1) {
+    if (command_process_group > 1) kill(-command_process_group, SIGKILL);
     int ignored_status = 0;
-    while (waitpid(pid, &ignored_status, 0) < 0 && errno == EINTR) {}
+    while (waitpid(monitor_pid, &ignored_status, 0) < 0 && errno == EINTR) {}
+}
+
+int normalized_exit_status(int status);
+
+[[noreturn]] void run_terminal_monitor(
+        pid_t expected_parent,
+        int master,
+        const char *slave_name,
+        int launch_status_pipe[2],
+        std::vector<char *> *argv,
+        std::vector<char *> *environment,
+        const char *working_directory,
+        int rows,
+        int columns) {
+    close_quietly(launch_status_pipe[0]);
+    if (!install_terminal_parent_death_handler()) {
+        fail_child(launch_status_pipe[1], errno);
+    }
+    if (prctl(PR_SET_PDEATHSIG, SIGUSR1) != 0) fail_child(launch_status_pipe[1], errno);
+    if (getppid() != expected_parent) fail_child(launch_status_pipe[1], ECHILD);
+    if (setsid() < 0) fail_child(launch_status_pipe[1], errno);
+    if (!workspace_process::become_child_subreaper()) {
+        fail_child(launch_status_pipe[1], errno);
+    }
+    if (prctl(PR_SET_NAME, kTerminalMonitorName, 0, 0, 0) != 0) {
+        fail_child(launch_status_pipe[1], errno);
+    }
+
+    int exec_status_pipe[2] = {-1, -1};
+    if (!create_pipe(exec_status_pipe)) fail_child(launch_status_pipe[1], errno);
+    const pid_t monitor_pid = getpid();
+    const pid_t command_pid = fork();
+    if (command_pid < 0) fail_child(launch_status_pipe[1], errno);
+
+    if (command_pid == 0) {
+        close_quietly(exec_status_pipe[0]);
+        close_quietly(launch_status_pipe[1]);
+        if (!reset_signal_state()) fail_child(exec_status_pipe[1], errno);
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0) fail_child(exec_status_pipe[1], errno);
+        if (getppid() != monitor_pid) fail_child(exec_status_pipe[1], ECHILD);
+        if (setsid() < 0) fail_child(exec_status_pipe[1], errno);
+
+        const int slave = open(slave_name, O_RDWR);
+        if (slave < 0) fail_child(exec_status_pipe[1], errno);
+        if (ioctl(slave, TIOCSCTTY, 0) != 0) fail_child(exec_status_pipe[1], errno);
+        winsize size = {};
+        size.ws_row = static_cast<unsigned short>(rows);
+        size.ws_col = static_cast<unsigned short>(columns);
+        if (ioctl(slave, TIOCSWINSZ, &size) != 0) fail_child(exec_status_pipe[1], errno);
+        if (dup2(slave, STDIN_FILENO) < 0 ||
+            dup2(slave, STDOUT_FILENO) < 0 ||
+            dup2(slave, STDERR_FILENO) < 0) {
+            fail_child(exec_status_pipe[1], errno);
+        }
+        if (slave > STDERR_FILENO) close(slave);
+        close(master);
+        if (chdir(working_directory) != 0) fail_child(exec_status_pipe[1], errno);
+        execve((*argv)[0], argv->data(), environment->data());
+        fail_child(exec_status_pipe[1], errno);
+    }
+
+    g_terminal_process_group = command_pid;
+    if (g_terminal_parent_died != 0) kill(-command_pid, SIGKILL);
+    close_quietly(exec_status_pipe[1]);
+    close(master);
+
+    int command_error = 0;
+    const int exec_result = read_error_number(exec_status_pipe[0], &command_error);
+    const int exec_read_error = errno;
+    close_quietly(exec_status_pipe[0]);
+    if (exec_result != 0) {
+        write_error_number(
+                launch_status_pipe[1],
+                exec_result > 0 ? command_error : exec_read_error);
+        kill(command_pid, SIGKILL);
+        g_terminal_process_group = -1;
+        int ignored_status = 0;
+        while (waitpid(command_pid, &ignored_status, 0) < 0 && errno == EINTR) {}
+        workspace_process::kill_and_reap_descendants();
+        _exit(127);
+    }
+
+    if (g_terminal_parent_died != 0) kill(-command_pid, SIGKILL);
+    write_error_number(launch_status_pipe[1], -command_pid);
+    close_quietly(launch_status_pipe[1]);
+    siginfo_t command_info = {};
+    int observed = -1;
+    do {
+        observed = waitid(P_PID, command_pid, &command_info, WEXITED | WNOWAIT);
+    } while (observed < 0 && errno == EINTR);
+    kill(-command_pid, SIGKILL);
+    g_terminal_process_group = -1;
+    int command_status = 0;
+    pid_t reaped = -1;
+    do {
+        reaped = waitpid(command_pid, &command_status, 0);
+    } while (reaped < 0 && errno == EINTR);
+    const bool descendants_reaped = workspace_process::kill_and_reap_descendants();
+    _exit(
+            observed == 0 && reaped == command_pid && descendants_reaped
+            ? normalized_exit_status(command_status)
+            : 127);
 }
 
 int normalized_exit_status(int status) {
@@ -295,8 +478,8 @@ Java_com_termux_terminal_JNI_createSubprocess(
     }
 
     const pid_t expected_parent = getpid();
-    const pid_t pid = fork();
-    if (pid < 0) {
+    const pid_t monitor_pid = fork();
+    if (monitor_pid < 0) {
         const int fork_error = errno;
         close(master);
         close_quietly(launch_status_pipe[0]);
@@ -305,46 +488,34 @@ Java_com_termux_terminal_JNI_createSubprocess(
         free(working_dir);
         free_string_vector(&java_args);
         free_string_vector(&java_env);
-        throw_io_exception(env, "Unable to fork terminal process", fork_error);
+        throw_io_exception(env, "Unable to fork terminal monitor", fork_error);
         return -1;
     }
 
-    if (pid == 0) {
-        close_quietly(launch_status_pipe[0]);
-        if (!reset_signal_state()) fail_child(launch_status_pipe[1], errno);
-        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0) fail_child(launch_status_pipe[1], errno);
-        if (getppid() != expected_parent) fail_child(launch_status_pipe[1], ECHILD);
-        if (setsid() < 0) fail_child(launch_status_pipe[1], errno);
-
-        const int slave = open(slave_name, O_RDWR);
-        if (slave < 0) fail_child(launch_status_pipe[1], errno);
-        if (ioctl(slave, TIOCSCTTY, 0) != 0) fail_child(launch_status_pipe[1], errno);
-
-        winsize size = {};
-        size.ws_row = static_cast<unsigned short>(rows);
-        size.ws_col = static_cast<unsigned short>(columns);
-        if (ioctl(slave, TIOCSWINSZ, &size) != 0) fail_child(launch_status_pipe[1], errno);
-        if (dup2(slave, STDIN_FILENO) < 0 ||
-            dup2(slave, STDOUT_FILENO) < 0 ||
-            dup2(slave, STDERR_FILENO) < 0) {
-            fail_child(launch_status_pipe[1], errno);
-        }
-        if (slave > STDERR_FILENO) close(slave);
-        close(master);
-        if (chdir(working_dir) != 0) fail_child(launch_status_pipe[1], errno);
-
-        execve(command, argv.data(), java_env.data());
-        fail_child(launch_status_pipe[1], errno);
+    if (monitor_pid == 0) {
+        run_terminal_monitor(
+                expected_parent,
+                master,
+                slave_name,
+                launch_status_pipe,
+                &argv,
+                &java_env,
+                working_dir,
+                rows,
+                columns);
     }
 
     close_quietly(launch_status_pipe[1]);
-    int command_error = 0;
-    const int launch_result = read_error_number(launch_status_pipe[0], &command_error);
+    int launch_value = 0;
+    const int launch_result = read_error_number(launch_status_pipe[0], &launch_value);
     const int launch_read_error = errno;
     close_quietly(launch_status_pipe[0]);
-    if (launch_result != 0) {
-        const int reported_error = launch_result > 0 ? command_error : launch_read_error;
-        kill_and_reap_child(pid, true);
+    if (launch_result != 1 || launch_value >= -1) {
+        const int reported_error =
+                launch_result == 1 && launch_value > 0
+                ? launch_value
+                : (launch_result < 0 ? launch_read_error : EPROTO);
+        kill_and_reap_monitor(monitor_pid);
         close(master);
         free(command);
         free(working_dir);
@@ -353,11 +524,25 @@ Java_com_termux_terminal_JNI_createSubprocess(
         throw_io_exception(env, "Unable to launch terminal process", reported_error);
         return -1;
     }
+    const pid_t command_pid = -launch_value;
 
-    const jint published_pid = static_cast<jint>(pid);
+    if (!remember_terminal_monitor(command_pid, monitor_pid)) {
+        const int record_error = errno;
+        kill_and_reap_monitor(monitor_pid, command_pid);
+        close(master);
+        free(command);
+        free(working_dir);
+        free_string_vector(&java_args);
+        free_string_vector(&java_env);
+        throw_io_exception(env, "Unable to register terminal monitor", record_error);
+        return -1;
+    }
+
+    const jint published_pid = static_cast<jint>(command_pid);
     env->SetIntArrayRegion(process_id, 0, 1, &published_pid);
     if (env->ExceptionCheck()) {
-        kill_and_reap_child(pid, true);
+        forget_terminal_monitor(command_pid, monitor_pid);
+        kill_and_reap_monitor(monitor_pid, command_pid);
         close(master);
         free(command);
         free(working_dir);
@@ -385,22 +570,16 @@ Java_com_termux_terminal_JNI_setPtyWindowSize(JNIEnv *, jclass, jint fd, jint ro
 extern "C" JNIEXPORT jint JNICALL
 Java_com_termux_terminal_JNI_waitFor(JNIEnv *, jclass, jint pid) {
     if (pid <= 1) return 127;
-    siginfo_t child_info = {};
-    int observed = -1;
-    do {
-        observed = waitid(P_PID, static_cast<id_t>(pid), &child_info, WEXITED | WNOWAIT);
-    } while (observed < 0 && errno == EINTR);
-    if (observed != 0) return 127;
-
-    // Keep the exited process as the group leader until every residual terminal job is killed.
-    // This prevents process-group id reuse between observing the shell exit and cleanup.
-    kill(-static_cast<pid_t>(pid), SIGKILL);
+    const pid_t command_pid = static_cast<pid_t>(pid);
+    const pid_t monitor_pid = find_terminal_monitor(command_pid);
+    if (monitor_pid <= 1) return 127;
     int status = 0;
     pid_t reaped = -1;
     do {
-        reaped = waitpid(static_cast<pid_t>(pid), &status, 0);
+        reaped = waitpid(monitor_pid, &status, 0);
     } while (reaped < 0 && errno == EINTR);
-    return reaped == pid ? normalized_exit_status(status) : 127;
+    if (reaped == monitor_pid) forget_terminal_monitor(command_pid, monitor_pid);
+    return reaped == monitor_pid ? normalized_exit_status(status) : 127;
 }
 
 extern "C" JNIEXPORT void JNICALL

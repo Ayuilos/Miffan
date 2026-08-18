@@ -52,11 +52,11 @@ network access, and app-private storage that the Android process makes available
    - Arguments, environment, and the working directory cross JNI as length-bounded UTF-8 byte
      arrays with NUL rejection. Durable registration continues to match the actual PRoot executable
      together with its PID start time, UID, and process group.
-   - Interactive PTYs fork only from the Android main thread, clear inherited ART signal handlers
-     and masks, and publish their PID only after PRoot crosses `execve()`. The native waiter observes
-     the main process exit without first reaping its group leader, kills every residual PTY group
-     member, and then preserves the main exit status. AI and PTY launchers now inherit the same host
-     environment plus trusted PRoot overrides; the guest environment remains explicitly clean.
+   - Interactive PTY monitors fork only from the Android main thread, clear inherited ART signal
+     handlers and masks, and publish the PRoot PID only after it crosses `execve()`. The native
+     waiter waits for the monitor, which preserves the main exit status after descendant cleanup.
+     AI and PTY launchers now inherit the same host environment plus trusted PRoot overrides; the
+     guest environment remains explicitly clean.
 5. **Host-side RootFS maintenance boundary (implemented)**
    - Treat the mutable RootFS tree as guest-controlled input whenever Android-side maintenance
      runs. DNS, hosts, hostname, locale, group, and temp-directory patching reject symbolic-link
@@ -67,7 +67,16 @@ network access, and app-private storage that the Android process makes available
      `/etc` directory and reject required entrypoints whose resolved files leave the RootFS tree.
      Workspace creation and both AI/terminal launch paths also require real, non-symlink managed
      `files`, `linux`, and `tmp` directories before any bind mount or host working directory is used.
-6. **Isolation alternatives (future)**
+6. **Session-escape descendant reaping (implemented)**
+   - Run both AI commands and interactive PTYs below a dedicated native child-subreaper monitor.
+     When the main PRoot process exits or its original process group is terminated, the monitor
+     adopts, kills, and reaps every remaining descendant, including a guest process that used
+     `setsid()` or `setpgid()` to escape the original group.
+   - Require the Linux procfs direct-child interface before launch, and keep the monitor alive on
+     Android parent death long enough to complete descendant cleanup. PTY waiters resolve the
+     published PRoot PID to its private monitor instead of assuming PRoot remains a direct child of
+     the Android process.
+7. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
@@ -131,11 +140,16 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     ownership record appears under `.runtime/processes`.
 17. Run `WorkspacePtyInstrumentedTest` on both target architectures. Confirm a worker-thread launch
     is rejected before fork, an invalid executable publishes no PID, and normal shell exit preserves
-    its status while removing a background child. Force-stop the app during PTY startup and after an
-    interactive background job begins; neither PRoot nor a process-group descendant may remain.
+    its status while removing both a same-group background child and a child that called `setsid()`.
+    Force-stop the app during PTY startup and after an interactive background job begins; neither
+    PRoot nor a process-group/session escapee may remain.
 18. Run `RootfsHostBoundaryInstrumentedTest` on both target architectures. Replace RootFS `/etc`,
     `/tmp`, `/var/tmp`, and maintenance files with links to sentinel files under a separate app
     directory. Patching, cleanup, reinstall/rollback, and workspace deletion must either reject the
     tree or unlink only the guest link; sentinel contents and permissions must remain unchanged.
     Repeat with managed `files`, `linux`, and host `tmp` directories and confirm both shell launch
     surfaces reject them before PRoot starts.
+19. Run the explicit `setsid()` cases in `WorkspaceNativeProcessInstrumentedTest` and
+    `WorkspacePtyInstrumentedTest`. Confirm the child has a PGID different from PRoot before
+    cancellation/normal exit, then disappears before the monitor reports completion. During the
+    same cases, confirm no `rk-ws-launcher` or `rk-ws-pty` monitor remains afterward.
