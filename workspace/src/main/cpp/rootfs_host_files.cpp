@@ -1,10 +1,12 @@
 #include <jni.h>
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -18,6 +20,8 @@ constexpr size_t kMaxRootPathBytes = 1024 * 1024;
 constexpr size_t kMaxRelativePathBytes = 4096;
 constexpr size_t kMaxSegmentBytes = 255;
 constexpr size_t kMaxMaintenanceFileBytes = 256 * 1024;
+constexpr size_t kMaxDeletionDepth = 256;
+constexpr size_t kMaxDeletionOperations = 1000 * 1000;
 constexpr jint kFileMissing = 0;
 constexpr jint kFileRegular = 1;
 constexpr jint kFileSymlink = 2;
@@ -128,6 +132,27 @@ bool parse_relative_path(
     return true;
 }
 
+bool parse_absolute_path(
+        JNIEnv *env,
+        const std::string &path,
+        bool allow_root,
+        std::vector<std::string> *segments) {
+    if (path.empty() || path.front() != '/' || path.find('\\') != std::string::npos) {
+        throw_unsafe_path(env, "Rootfs host path must be an unambiguous absolute path");
+        return false;
+    }
+    if (path == "/") {
+        if (allow_root) return true;
+        throw_unsafe_path(env, "Refusing host maintenance on the filesystem root");
+        return false;
+    }
+    if (path.back() == '/') {
+        throw_unsafe_path(env, "Rootfs host path must not have a trailing separator");
+        return false;
+    }
+    return parse_relative_path(env, path.substr(1), false, segments);
+}
+
 bool validate_owned_directory(JNIEnv *env, int fd, const std::string &label) {
     struct stat status = {};
     if (fstat(fd, &status) != 0) {
@@ -141,30 +166,55 @@ bool validate_owned_directory(JNIEnv *env, int fd, const std::string &label) {
     return true;
 }
 
-int open_root(JNIEnv *env, const std::string &root, bool *missing) {
+int open_absolute_directory_segments(
+        JNIEnv *env,
+        const std::vector<std::string> &segments,
+        size_t segment_count,
+        const std::string &label,
+        bool require_owned,
+        bool *missing) {
     *missing = false;
-    if (root.empty() || root.front() != '/') {
-        throw_unsafe_path(env, "Rootfs host root must be absolute");
+    ScopedFd current(open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+    if (current.get() < 0) {
+        throw_io_exception(env, "Unable to anchor host filesystem root", errno);
         return -1;
     }
-    const int fd = open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    if (fd < 0) {
-        if (errno == ENOENT) {
-            *missing = true;
+    for (size_t index = 0; index < segment_count; ++index) {
+        const std::string &segment = segments[index];
+        const int next = openat(
+                current.get(),
+                segment.c_str(),
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        if (next < 0) {
+            if (errno == ENOENT) {
+                *missing = true;
+            } else if (errno == ELOOP || errno == ENOTDIR) {
+                throw_unsafe_path(
+                        env,
+                        "Refusing host access through symbolic link or non-directory: " + label);
+            } else {
+                throw_io_exception(env, "Unable to open host directory " + label, errno);
+            }
             return -1;
         }
-        if (errno == ELOOP || errno == ENOTDIR) {
-            throw_unsafe_path(env, "Rootfs host root must be a real directory");
-        } else {
-            throw_io_exception(env, "Unable to open Rootfs host root", errno);
-        }
+        current.reset(next);
+    }
+    if (require_owned && !validate_owned_directory(env, current.get(), label)) {
         return -1;
     }
-    if (!validate_owned_directory(env, fd, "Rootfs root")) {
-        close(fd);
-        return -1;
-    }
-    return fd;
+    return current.release();
+}
+
+int open_root(JNIEnv *env, const std::string &root, bool *missing) {
+    std::vector<std::string> segments;
+    if (!parse_absolute_path(env, root, true, &segments)) return -1;
+    return open_absolute_directory_segments(
+            env,
+            segments,
+            segments.size(),
+            "Rootfs root",
+            true,
+            missing);
 }
 
 int open_directory_chain(
@@ -253,6 +303,131 @@ int inspect_leaf(
     if (S_ISLNK(status->st_mode)) return kFileSymlink;
     if (!validate_regular_file(env, *status, relative_path)) return -1;
     return kFileRegular;
+}
+
+bool prepare_absolute_leaf(
+        JNIEnv *env,
+        jbyteArray path_bytes,
+        std::string *path,
+        std::vector<std::string> *segments) {
+    return copy_bytes(env, path_bytes, path, kMaxRootPathBytes, true) &&
+        parse_absolute_path(env, *path, false, segments);
+}
+
+bool delete_entry_at(
+        JNIEnv *env,
+        int parent_fd,
+        const std::string &name,
+        size_t depth,
+        size_t *operations) {
+    if (depth > kMaxDeletionDepth) {
+        throw_unsafe_path(env, "Host maintenance tree exceeds maximum directory depth");
+        return false;
+    }
+    *operations += 1;
+    if (*operations > kMaxDeletionOperations) {
+        throw_unsafe_path(env, "Host maintenance tree exceeds maximum deletion operations");
+        return false;
+    }
+
+    struct stat status = {};
+    if (fstatat(parent_fd, name.c_str(), &status, AT_SYMLINK_NOFOLLOW) != 0) {
+        if (errno == ENOENT) return true;
+        throw_io_exception(env, "Unable to inspect host maintenance entry", errno);
+        return false;
+    }
+    if (!S_ISDIR(status.st_mode)) {
+        if (unlinkat(parent_fd, name.c_str(), 0) == 0 || errno == ENOENT) return true;
+        if (errno == EISDIR || errno == EPERM) {
+            throw_unsafe_path(env, "Host maintenance entry changed during deletion");
+            return false;
+        }
+        throw_io_exception(env, "Unable to unlink host maintenance entry", errno);
+        return false;
+    }
+
+    ScopedFd directory(openat(
+            parent_fd,
+            name.c_str(),
+            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+    if (directory.get() < 0) {
+        if (errno == ENOENT) return true;
+        if (errno == ELOOP || errno == ENOTDIR) {
+            throw_unsafe_path(env, "Host maintenance entry changed during deletion");
+            return false;
+        }
+        throw_io_exception(env, "Unable to open host maintenance directory", errno);
+        return false;
+    }
+    if (!validate_owned_directory(env, directory.get(), "host maintenance tree")) return false;
+
+    const int stream_fd = fcntl(directory.get(), F_DUPFD_CLOEXEC, 0);
+    if (stream_fd < 0) {
+        throw_io_exception(env, "Unable to duplicate host maintenance directory", errno);
+        return false;
+    }
+    DIR *stream = fdopendir(stream_fd);
+    if (stream == nullptr) {
+        const int saved_errno = errno;
+        close(stream_fd);
+        throw_io_exception(env, "Unable to enumerate host maintenance directory", saved_errno);
+        return false;
+    }
+    while (true) {
+        errno = 0;
+        dirent *entry = readdir(stream);
+        if (entry == nullptr) {
+            const int saved_errno = errno;
+            closedir(stream);
+            if (saved_errno != 0) {
+                throw_io_exception(env, "Unable to enumerate host maintenance directory", saved_errno);
+                return false;
+            }
+            break;
+        }
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        if (!delete_entry_at(env, directory.get(), entry->d_name, depth + 1, operations)) {
+            closedir(stream);
+            return false;
+        }
+    }
+
+    struct stat current = {};
+    if (fstatat(parent_fd, name.c_str(), &current, AT_SYMLINK_NOFOLLOW) != 0) {
+        if (errno == ENOENT) return true;
+        throw_io_exception(env, "Unable to re-inspect host maintenance directory", errno);
+        return false;
+    }
+    if (!S_ISDIR(current.st_mode) || current.st_dev != status.st_dev || current.st_ino != status.st_ino) {
+        throw_unsafe_path(env, "Host maintenance directory changed during deletion");
+        return false;
+    }
+    if (unlinkat(parent_fd, name.c_str(), AT_REMOVEDIR) == 0 || errno == ENOENT) return true;
+    if (errno == ENOTEMPTY || errno == EEXIST) {
+        throw_unsafe_path(env, "Host maintenance directory changed during deletion");
+    } else {
+        throw_io_exception(env, "Unable to remove host maintenance directory", errno);
+    }
+    return false;
+}
+
+int renameat_no_replace(
+        int source_parent,
+        const char *source,
+        int target_parent,
+        const char *target) {
+#if defined(SYS_renameat2)
+    return static_cast<int>(syscall(
+            SYS_renameat2,
+            source_parent,
+            source,
+            target_parent,
+            target,
+            1 /* RENAME_NOREPLACE */));
+#else
+    errno = ENOSYS;
+    return -1;
+#endif
 }
 
 bool prepare_paths(
@@ -565,4 +740,143 @@ Java_me_rerere_workspace_RootfsHostFileBridge_chmodDirectory(
     if (fchmod(directory.get(), static_cast<mode_t>(mode)) != 0) {
         throw_io_exception(env, "Unable to chmod Rootfs directory /" + relative, errno);
     }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_deleteTree(
+        JNIEnv *env,
+        jclass,
+        jbyteArray absolute_path_bytes) {
+    std::string absolute_path;
+    std::vector<std::string> segments;
+    if (!prepare_absolute_leaf(env, absolute_path_bytes, &absolute_path, &segments)) {
+        return JNI_FALSE;
+    }
+
+    bool missing = false;
+    ScopedFd parent(open_absolute_directory_segments(
+            env,
+            segments,
+            segments.size() - 1,
+            "host maintenance parent",
+            true,
+            &missing));
+    if (parent.get() < 0) {
+        return missing && !env->ExceptionCheck() ? JNI_TRUE : JNI_FALSE;
+    }
+    size_t operations = 0;
+    return delete_entry_at(
+            env,
+            parent.get(),
+            segments.back(),
+            0,
+            &operations) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_renameDirectoryNoReplace(
+        JNIEnv *env,
+        jclass,
+        jbyteArray source_path_bytes,
+        jbyteArray target_path_bytes) {
+    std::string source_path;
+    std::vector<std::string> source_segments;
+    if (!prepare_absolute_leaf(
+            env,
+            source_path_bytes,
+            &source_path,
+            &source_segments)) {
+        return JNI_FALSE;
+    }
+    std::string target_path;
+    std::vector<std::string> target_segments;
+    if (!prepare_absolute_leaf(
+            env,
+            target_path_bytes,
+            &target_path,
+            &target_segments)) {
+        return JNI_FALSE;
+    }
+
+    bool source_parent_missing = false;
+    ScopedFd source_parent(open_absolute_directory_segments(
+            env,
+            source_segments,
+            source_segments.size() - 1,
+            "host maintenance source parent",
+            true,
+            &source_parent_missing));
+    if (source_parent.get() < 0) return JNI_FALSE;
+    bool target_parent_missing = false;
+    ScopedFd target_parent(open_absolute_directory_segments(
+            env,
+            target_segments,
+            target_segments.size() - 1,
+            "host maintenance destination parent",
+            true,
+            &target_parent_missing));
+    if (target_parent.get() < 0) return JNI_FALSE;
+
+    const std::string &source_name = source_segments.back();
+    const std::string &target_name = target_segments.back();
+    struct stat source_status = {};
+    if (fstatat(
+            source_parent.get(),
+            source_name.c_str(),
+            &source_status,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        if (errno == ENOENT) return JNI_FALSE;
+        throw_io_exception(env, "Unable to inspect host maintenance source", errno);
+        return JNI_FALSE;
+    }
+    if (!S_ISDIR(source_status.st_mode) || source_status.st_uid != getuid()) {
+        throw_unsafe_path(env, "Host maintenance source must be an owned real directory");
+        return JNI_FALSE;
+    }
+    struct stat target_status = {};
+    if (fstatat(
+            target_parent.get(),
+            target_name.c_str(),
+            &target_status,
+            AT_SYMLINK_NOFOLLOW) == 0) {
+        throw_unsafe_path(env, "Host maintenance destination already exists");
+        return JNI_FALSE;
+    }
+    if (errno != ENOENT) {
+        throw_io_exception(env, "Unable to inspect host maintenance destination", errno);
+        return JNI_FALSE;
+    }
+
+    if (renameat_no_replace(
+            source_parent.get(),
+            source_name.c_str(),
+            target_parent.get(),
+            target_name.c_str()) != 0) {
+        if (errno == EEXIST) {
+            throw_unsafe_path(env, "Host maintenance destination appeared during rename");
+        } else if (errno == ENOENT) {
+            throw_unsafe_path(env, "Host maintenance source changed during rename");
+        } else {
+            throw_io_exception(env, "Unable to atomically rename host maintenance directory", errno);
+        }
+        return JNI_FALSE;
+    }
+
+    struct stat moved_status = {};
+    if (fstatat(
+            target_parent.get(),
+            target_name.c_str(),
+            &moved_status,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        throw_io_exception(env, "Unable to verify renamed host maintenance directory", errno);
+        return JNI_FALSE;
+    }
+    if (!S_ISDIR(moved_status.st_mode) ||
+        moved_status.st_uid != getuid() ||
+        moved_status.st_dev != source_status.st_dev ||
+        moved_status.st_ino != source_status.st_ino) {
+        throw_unsafe_path(env, "Host maintenance source changed during rename");
+        return JNI_FALSE;
+    }
+    return JNI_TRUE;
 }

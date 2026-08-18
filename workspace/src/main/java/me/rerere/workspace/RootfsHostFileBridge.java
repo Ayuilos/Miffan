@@ -24,4 +24,8 @@ final class RootfsHostFileBridge {
             boolean replaceLeafSymlink);
 
     static native void chmodDirectory(byte[] root, byte[] relativePath, int mode);
+
+    static native boolean deleteTree(byte[] absolutePath);
+
+    static native boolean renameDirectoryNoReplace(byte[] source, byte[] target);
 }

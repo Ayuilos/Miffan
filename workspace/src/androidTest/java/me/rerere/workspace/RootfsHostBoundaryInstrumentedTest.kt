@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -16,6 +17,11 @@ import org.junit.runner.RunWith
 class RootfsHostBoundaryInstrumentedTest {
     private val context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test
+    fun androidHostMaintenanceUsesNativeDescriptorBackend() {
+        assertTrue(usesNativeHostFileOperations())
+    }
 
     @Test
     fun rootfsPatcherRejectsSymlinkedMaintenanceDirectory() {
@@ -142,6 +148,56 @@ class RootfsHostBoundaryInstrumentedTest {
             assertFalse(File(outside, "linux").exists())
         } finally {
             baseDir.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun hostDeletionRejectsASymlinkInTheAbsoluteParentChain() {
+        val container = freshDirectory("delete-parent-boundary")
+        val outside = freshDirectory("delete-parent-outside")
+        val victim = File(outside, "victim").apply {
+            require(mkdirs())
+        }
+        val sentinel = File(victim, "keep.txt").apply { writeText("keep") }
+        val parentLink = File(container, "parent")
+        Files.createSymbolicLink(parentLink.toPath(), outside.toPath())
+
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                File(parentLink, "victim").deleteRecursivelyNoFollow()
+            }
+            assertEquals("keep", sentinel.readText())
+        } finally {
+            container.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun hostRenameNeverReplacesAnExistingSymlink() {
+        val container = freshDirectory("rename-boundary")
+        val source = File(container, "source").apply { require(mkdirs()) }
+        val sourceSentinel = File(source, "source.txt").apply { writeText("source") }
+        val outside = freshDirectory("rename-boundary-outside")
+        val outsideSentinel = File(outside, "keep.txt").apply { writeText("keep") }
+        val target = File(container, "target")
+        Files.createSymbolicLink(target.toPath(), outside.toPath())
+
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                source.renameDirectoryNoFollow(target)
+            }
+            assertEquals("source", sourceSentinel.readText())
+            assertTrue(Files.isSymbolicLink(target.toPath()))
+            assertEquals("keep", outsideSentinel.readText())
+
+            Files.delete(target.toPath())
+            assertTrue(source.renameDirectoryNoFollow(target))
+            assertFalse(Files.exists(source.toPath(), LinkOption.NOFOLLOW_LINKS))
+            assertEquals("source", File(target, "source.txt").readText())
+        } finally {
+            container.deleteRecursivelyNoFollow()
             outside.deleteRecursivelyNoFollow()
         }
     }

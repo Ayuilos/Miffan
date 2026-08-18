@@ -294,7 +294,9 @@ class RootfsInstaller(
         } else {
             // ensureWorkspace may have recreated an empty linux directory after a process death.
             linuxDir.deleteAsChildNoFollow()
-            require(backupDir.renameTo(linuxDir)) { "Failed to restore previous Rootfs installation" }
+            require(backupDir.renameDirectoryNoFollow(linuxDir)) {
+                "Failed to restore previous Rootfs installation"
+            }
         }
     }
 
@@ -302,16 +304,22 @@ class RootfsInstaller(
         backupDir.deleteAsChildNoFollow()
         val movedPrevious = Files.exists(linuxDir.toPath(), LinkOption.NOFOLLOW_LINKS)
         if (movedPrevious) {
-            require(linuxDir.renameTo(backupDir)) { "Failed to stage previous Rootfs for rollback" }
+            require(linuxDir.renameDirectoryNoFollow(backupDir)) {
+                "Failed to stage previous Rootfs for rollback"
+            }
         }
         try {
-            require(stagingDir.renameTo(linuxDir)) { "Failed to move Rootfs into workspace" }
+            require(stagingDir.renameDirectoryNoFollow(linuxDir)) {
+                "Failed to move Rootfs into workspace"
+            }
             validateRootfs(linuxDir)
             if (movedPrevious) backupDir.deleteAsChildNoFollow()
         } catch (error: Throwable) {
             linuxDir.deleteAsChildNoFollow()
             if (movedPrevious && Files.exists(backupDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                check(backupDir.renameTo(linuxDir)) { "Failed to roll back previous Rootfs" }
+                check(backupDir.renameDirectoryNoFollow(linuxDir)) {
+                    "Failed to roll back previous Rootfs"
+                }
             }
             throw error
         }

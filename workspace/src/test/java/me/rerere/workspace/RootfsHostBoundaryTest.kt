@@ -215,6 +215,28 @@ class RootfsHostBoundaryTest {
     }
 
     @Test
+    fun `host rename never replaces an existing symlink`() {
+        val container = tmp.newFolder("nofollow-rename")
+        val source = File(container, "source").apply { mkdirs() }
+        val sourceSentinel = File(source, "source.txt").apply { writeText("source") }
+        val outside = tmp.newFolder("nofollow-rename-outside")
+        val outsideSentinel = File(outside, "keep.txt").apply { writeText("keep") }
+        val target = File(container, "target")
+        Files.createSymbolicLink(target.toPath(), outside.toPath())
+
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                source.renameDirectoryNoFollow(target)
+            }
+            assertEquals("source", sourceSentinel.readText())
+            assertTrue(Files.isSymbolicLink(target.toPath()))
+            assertEquals("keep", outsideSentinel.readText())
+        } finally {
+            Files.deleteIfExists(target.toPath())
+        }
+    }
+
+    @Test
     fun `rootfs health rejects entrypoints resolving outside the root`() {
         val rootfs = rootfsWithEtc("health-rootfs")
         File(rootfs, "bin").mkdirs()

@@ -77,26 +77,33 @@ network access, and app-private storage that the Android process makes available
      published PRoot PID to its private monitor instead of assuming PRoot remains a direct child of
      the Android process.
 7. **Descriptor-relative RootFS patching (implemented)**
-   - Android-side RootFS patching opens the RootFS with `O_NOFOLLOW`, traverses every guest-controlled
-     component with directory FDs plus `openat`/`mkdirat`, and validates the opened object with
-     `fstat` before reading, truncating, writing, or changing permissions. No security decision is
-     carried forward as a reusable host pathname.
+   - Android-side RootFS patching anchors lookup at `/`, opens every absolute and guest-controlled
+     component with directory FDs plus `openat`/`mkdirat` and `O_NOFOLLOW`, and validates the opened
+     object with `fstat` before reading, truncating, writing, or changing permissions. No security
+     decision is carried forward as a reusable host pathname.
    - Reject maintenance files with multiple hard links or an unexpected owner, as well as symbolic
      links and non-regular files. Create files with `O_CREAT|O_EXCL|O_NOFOLLOW`; only the expected
      `/etc/resolv.conf` leaf link may be removed and recreated. Apply exact `01777` modes to `/tmp`
      and `/var/tmp` and `0700` to `/root` through already-validated directory FDs.
-   - This descriptor boundary covers the patcher's targeted maintenance operations. Recursive
-     cleanup and deletion still use non-following Java walks and are not claimed to resist a
-     concurrent hostile same-UID process swapping path components.
-8. **Isolation alternatives (future)**
+8. **Descriptor-relative lifecycle maintenance (implemented)**
+   - Android workspace deletion, temp cleanup, install staging cleanup, rollback cleanup, and old
+     RootFS removal now recurse from validated directory FDs. Each child is inspected with
+     `fstatat(AT_SYMLINK_NOFOLLOW)`, directories are opened with `openat(O_NOFOLLOW)`, and leaf names
+     are removed with `unlinkat`; links are unlinked rather than traversed. Directory identity is
+     checked again before removal, with bounded depth and operation counts that fail closed.
+   - RootFS staging, backup, recovery, and rollback use `renameat2(RENAME_NOREPLACE)` between
+     descriptor-anchored parents. The moved directory must be app-owned and its device/inode
+     identity is verified at the destination. A concurrently-created destination is never
+     overwritten.
+9. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
      the shared Android app UID, not to an individual workspace.
-   - Anchor the app-managed workspace root from a trusted parent FD for every host maintenance
-     operation. The current patch bridge rejects a symbolic-link RootFS leaf, but its initial
-     absolute host-parent lookup is not a kernel-enforced boundary against an already-escaped,
-     concurrently hostile process running with the same Android UID.
+   - Move the remaining model-facing workspace file read/write/move operations from Java pathname
+     validation to the descriptor-relative bridge. Per-workspace session exclusion prevents normal
+     shell concurrency, but pathname checks alone are not a kernel-enforced boundary against an
+     already-escaped, concurrently hostile process running with the same Android UID.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
 
@@ -175,3 +182,9 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     to `/root`. In a debug stress fixture, repeatedly exchange nested directories with symlinks
     during patching; every run must either finish inside the RootFS or fail without changing a
     sentinel outside it.
+21. In `RootfsHostBoundaryInstrumentedTest`, confirm Android selected the native host-maintenance
+    backend. Delete a tree through an absolute parent symlink and confirm the operation is rejected
+    without touching its target. Attempt a RootFS-style rename onto an existing symlink and confirm
+    it is rejected; remove that link and confirm the same source is atomically moved to the empty
+    destination. Repeat install interruption at each swap point and verify the previous healthy
+    RootFS is either active or recoverable from `.linux-backup`.
