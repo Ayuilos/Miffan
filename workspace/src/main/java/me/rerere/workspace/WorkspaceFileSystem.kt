@@ -8,6 +8,8 @@ import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.charset.CodingErrorAction
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -27,9 +29,23 @@ class WorkspaceFileSystem(
         require(config.maxWriteBytes in 0..MAX_DESCRIPTOR_FILE_BYTES) {
             "Workspace write limit exceeds descriptor bridge capacity"
         }
+        require(config.maxListEntries in 1..MAX_DISCOVERY_SCAN_ENTRIES) {
+            "Workspace list limit is outside the discovery capacity"
+        }
+        require(config.maxSearchResults in 1..MAX_DISCOVERY_SCAN_ENTRIES) {
+            "Workspace search limit is outside the discovery capacity"
+        }
     }
 
     fun list(root: File, path: String = ""): List<WorkspaceFileEntry> {
+        if (usesNativeHostFileOperations()) {
+            return discoverNative(root, path, recursive = false)
+                .sortedWith(
+                    compareBy<WorkspaceFileEntry> { !it.isDirectory }
+                        .thenBy { it.name.lowercase() }
+                )
+                .take(config.maxListEntries)
+        }
         val dir = resolveExistingPathNoFollow(root, path)
         require(dir.exists()) { "Path does not exist: $path" }
         require(dir.isDirectory) { "Path is not a directory: $path" }
@@ -421,9 +437,20 @@ class WorkspaceFileSystem(
 
     fun glob(root: File, pattern: String, path: String = ""): List<WorkspaceFileEntry> {
         require(pattern.isNotBlank()) { "Glob pattern is required" }
+        val matcher = FileSystems.getDefault().getPathMatcher("glob:$pattern")
+        if (usesNativeHostFileOperations()) {
+            return discoverNative(root, path, recursive = true)
+                .asSequence()
+                .filter {
+                    matcher.matches(
+                        FileSystems.getDefault().getPath(it.path).normalizeForMatch()
+                    )
+                }
+                .take(config.maxListEntries)
+                .toList()
+        }
         val start = resolveExistingPathNoFollow(root, path)
         require(start.exists()) { "Path does not exist: $path" }
-        val matcher = FileSystems.getDefault().getPathMatcher("glob:$pattern")
         return walk(start) { paths ->
             paths
                 .filter {
@@ -447,57 +474,135 @@ class WorkspaceFileSystem(
         includeGlob: String? = null,
     ): List<WorkspaceSearchMatch> {
         require(query.isNotBlank()) { "Search query is required" }
-        val start = resolveExistingPathNoFollow(root, path)
-        require(start.exists()) { "Path does not exist: $path" }
         val options = if (ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet()
         val matcher = if (regex) Regex(query, options) else Regex(Regex.escape(query), options)
         val includeMatcher = includeGlob
             ?.takeIf { it.isNotBlank() }
             ?.let { FileSystems.getDefault().getPathMatcher("glob:$it") }
 
-        val results = mutableListOf<WorkspaceSearchMatch>()
-        walk(start) { paths ->
-            paths
+        if (usesNativeHostFileOperations()) {
+            return grepCandidates(
+                root = root,
+                candidates = discoverNative(root, path, recursive = true)
+                    .asSequence()
+                    .filterNot { it.isDirectory },
+                matcher = matcher,
+                includeMatcher = includeMatcher,
+            )
+        }
+
+        val start = resolveExistingPathNoFollow(root, path)
+        require(start.exists()) { "Path does not exist: $path" }
+        return walk(start) { paths ->
+            val candidates = paths
                 .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
                 .filter { !it.toFile().name.startsWith(".l2s.") }
-                .forEach { path ->
-                    if (results.size >= config.maxSearchResults) return@forEach
-                    if (includeMatcher != null &&
-                        !includeMatcher.matches(root.toPath().relativize(path).normalizeForMatch())
-                    ) {
-                        return@forEach
-                    }
+                .mapNotNull { candidate ->
                     val attributes = Files.readAttributes(
-                        path,
+                        candidate,
                         BasicFileAttributes::class.java,
                         LinkOption.NOFOLLOW_LINKS,
                     )
-                    if (!attributes.isRegularFile || attributes.size() > config.maxReadBytes) {
-                        return@forEach
-                    }
-                    val relativePath = path.toFile().relativePath(root)
-                    val content = ByteArrayOutputStream(attributes.size().toInt())
-                    exportNoFollow(
-                        root = root,
+                    if (!attributes.isRegularFile) return@mapNotNull null
+                    val relativePath = candidate.toFile().relativePath(root)
+                    WorkspaceFileEntry(
                         path = relativePath,
-                        outputStream = content,
-                        maxBytes = config.maxReadBytes,
+                        name = candidate.fileName.toString(),
+                        isDirectory = false,
+                        sizeBytes = attributes.size(),
+                        updatedAt = attributes.lastModifiedTime().toMillis(),
                     )
-                    content.toString(StandardCharsets.UTF_8.name())
-                        .lineSequence()
-                        .forEachIndexed { index, line ->
-                            if (results.size >= config.maxSearchResults) return@forEachIndexed
-                            if (matcher.containsMatchIn(line)) {
-                                results += WorkspaceSearchMatch(
-                                    path = relativePath,
-                                    line = index + 1,
-                                    text = line,
-                                )
-                            }
-                        }
+                }
+            grepCandidates(root, candidates, matcher, includeMatcher)
+        }
+    }
+
+    private fun grepCandidates(
+        root: File,
+        candidates: Sequence<WorkspaceFileEntry>,
+        matcher: Regex,
+        includeMatcher: java.nio.file.PathMatcher?,
+    ): List<WorkspaceSearchMatch> {
+        val results = mutableListOf<WorkspaceSearchMatch>()
+        for (candidate in candidates) {
+            if (results.size >= config.maxSearchResults) break
+            if (includeMatcher != null &&
+                !includeMatcher.matches(
+                    FileSystems.getDefault().getPath(candidate.path).normalizeForMatch()
+                )
+            ) {
+                continue
+            }
+            if (candidate.sizeBytes > config.maxReadBytes) continue
+            val content = ByteArrayOutputStream(candidate.sizeBytes.toInt())
+            exportNoFollow(
+                root = root,
+                path = candidate.path,
+                outputStream = content,
+                maxBytes = config.maxReadBytes,
+            )
+            content.toString(StandardCharsets.UTF_8.name())
+                .lineSequence()
+                .forEachIndexed { index, line ->
+                    if (results.size >= config.maxSearchResults) return@forEachIndexed
+                    if (matcher.containsMatchIn(line)) {
+                        results += WorkspaceSearchMatch(
+                            path = candidate.path,
+                            line = index + 1,
+                            text = line,
+                        )
+                    }
                 }
         }
         return results
+    }
+
+    private fun discoverNative(
+        root: File,
+        path: String,
+        recursive: Boolean,
+    ): List<WorkspaceFileEntry> {
+        val relativePath = if (path.isBlank() || path == ".") {
+            ""
+        } else {
+            path.strictRelativeFileSegments().joinToString("/")
+        }
+        val records = requireNotNull(
+            RootfsHostFileBridge.discoverEntries(
+                root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                relativePath.toByteArray(StandardCharsets.UTF_8),
+                recursive,
+                MAX_DISCOVERY_SCAN_ENTRIES,
+            )
+        ) { "Path does not exist: $path" }
+        return records.mapNotNull(::decodeNativeEntry)
+    }
+
+    private fun decodeNativeEntry(record: ByteArray): WorkspaceFileEntry? {
+        if (record.size <= NATIVE_ENTRY_HEADER_BYTES) return null
+        val buffer = ByteBuffer.wrap(record).order(ByteOrder.LITTLE_ENDIAN)
+        val type = buffer.get().toInt()
+        if (type != NATIVE_ENTRY_FILE && type != NATIVE_ENTRY_DIRECTORY) return null
+        val size = buffer.long
+        val updatedAt = buffer.long
+        if (size < 0 || updatedAt < 0) return null
+        val pathBytes = ByteArray(buffer.remaining())
+        buffer.get(pathBytes)
+        val path = runCatching {
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(pathBytes))
+                .toString()
+        }.getOrNull() ?: return null
+        if (runCatching { path.strictRelativeFileSegments() }.isFailure) return null
+        return WorkspaceFileEntry(
+            path = path,
+            name = path.substringAfterLast('/'),
+            isDirectory = type == NATIVE_ENTRY_DIRECTORY,
+            sizeBytes = if (type == NATIVE_ENTRY_FILE) size else 0,
+            updatedAt = updatedAt,
+        )
     }
 
     private fun <T> walk(start: File, block: (Sequence<Path>) -> T): T =
@@ -656,6 +761,10 @@ class WorkspaceFileSystem(
 
     private companion object {
         const val MAX_DESCRIPTOR_FILE_BYTES = 8L * 1024 * 1024
+        const val MAX_DISCOVERY_SCAN_ENTRIES = 100_000
         const val MAX_IMPORT_CONFLICTS = 10_000
+        const val NATIVE_ENTRY_HEADER_BYTES = 17
+        const val NATIVE_ENTRY_FILE = 1
+        const val NATIVE_ENTRY_DIRECTORY = 2
     }
 }

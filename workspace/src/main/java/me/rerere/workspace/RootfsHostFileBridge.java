@@ -48,6 +48,12 @@ final class RootfsHostFileBridge {
             byte[] relativePath,
             boolean rejectHardLinks);
 
+    static native byte[][] discoverEntries(
+            byte[] root,
+            byte[] relativePath,
+            boolean recursive,
+            int maxScannedEntries);
+
     static native boolean deleteRelative(byte[] root, byte[] relativePath, boolean recursive);
 
     static native int entryKind(byte[] root, byte[] relativePath);

@@ -22,6 +22,7 @@ constexpr size_t kMaxSegmentBytes = 255;
 constexpr size_t kMaxHostFileBytes = 8 * 1024 * 1024;
 constexpr size_t kMaxDeletionDepth = 256;
 constexpr size_t kMaxDeletionOperations = 1000 * 1000;
+constexpr size_t kMaxDiscoveryEntries = 100 * 1000;
 constexpr jint kFileMissing = 0;
 constexpr jint kFileRegular = 1;
 constexpr jint kFileSymlink = 2;
@@ -458,6 +459,184 @@ bool prepare_paths(
     return copy_bytes(env, root_bytes, root, kMaxRootPathBytes, true) &&
         copy_bytes(env, relative_bytes, relative, kMaxRelativePathBytes, true) &&
         parse_relative_path(env, *relative, allow_empty, segments);
+}
+
+struct DirectoryRecord {
+    std::string relative_path;
+    bool is_directory;
+    int64_t size;
+    int64_t updated_at_ms;
+};
+
+int64_t modified_time_millis(const struct stat &status) {
+    return static_cast<int64_t>(status.st_mtim.tv_sec) * 1000 +
+        static_cast<int64_t>(status.st_mtim.tv_nsec) / 1000 / 1000;
+}
+
+bool append_directory_records(
+        JNIEnv *env,
+        int directory_fd,
+        const std::string &prefix,
+        bool recursive,
+        size_t depth,
+        size_t max_scanned_entries,
+        size_t *scanned_entries,
+        std::vector<DirectoryRecord> *records) {
+    if (depth > kMaxDeletionDepth) {
+        throw_unsafe_path(env, "Workspace discovery exceeds maximum directory depth");
+        return false;
+    }
+    const int duplicate = dup(directory_fd);
+    if (duplicate < 0) {
+        throw_io_exception(env, "Unable to duplicate workspace discovery directory", errno);
+        return false;
+    }
+    DIR *directory = fdopendir(duplicate);
+    if (directory == nullptr) {
+        const int saved_errno = errno;
+        close(duplicate);
+        throw_io_exception(env, "Unable to enumerate workspace directory", saved_errno);
+        return false;
+    }
+
+    while (true) {
+        errno = 0;
+        dirent *entry = readdir(directory);
+        if (entry == nullptr) {
+            const int saved_errno = errno;
+            closedir(directory);
+            if (saved_errno != 0) {
+                throw_io_exception(env, "Unable to enumerate workspace directory", saved_errno);
+                return false;
+            }
+            return true;
+        }
+        const std::string name(entry->d_name);
+        if (name == "." || name == "..") continue;
+        ++(*scanned_entries);
+        if (*scanned_entries > max_scanned_entries) {
+            closedir(directory);
+            throw_unsafe_path(env, "Workspace discovery exceeds maximum scanned entries");
+            return false;
+        }
+        if (name.rfind(".l2s.", 0) == 0 || name.find('\\') != std::string::npos) continue;
+
+        struct stat status = {};
+        if (fstatat(directory_fd, name.c_str(), &status, AT_SYMLINK_NOFOLLOW) != 0) {
+            if (errno == ENOENT) {
+                errno = 0;
+                continue;
+            }
+            const int saved_errno = errno;
+            closedir(directory);
+            throw_io_exception(env, "Unable to inspect workspace entry", saved_errno);
+            return false;
+        }
+        if (S_ISLNK(status.st_mode)) continue;
+        if (!S_ISREG(status.st_mode) && !S_ISDIR(status.st_mode)) continue;
+        if (status.st_uid != getuid()) {
+            closedir(directory);
+            throw_unsafe_path(env, "Workspace discovery entry has an unexpected owner");
+            return false;
+        }
+
+        std::string relative_path = prefix.empty() ? name : prefix + "/" + name;
+        if (relative_path.size() > kMaxRelativePathBytes) {
+            closedir(directory);
+            throw_unsafe_path(env, "Workspace discovery path is too long");
+            return false;
+        }
+        records->push_back(DirectoryRecord{
+            relative_path,
+            S_ISDIR(status.st_mode),
+            S_ISREG(status.st_mode) ? static_cast<int64_t>(status.st_size) : 0,
+            modified_time_millis(status),
+        });
+
+        if (!recursive || !S_ISDIR(status.st_mode)) continue;
+        ScopedFd child(openat(
+                directory_fd,
+                name.c_str(),
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+        if (child.get() < 0) {
+            if (errno == ENOENT || errno == ELOOP || errno == ENOTDIR) {
+                errno = 0;
+                continue;
+            }
+            const int saved_errno = errno;
+            closedir(directory);
+            throw_io_exception(env, "Unable to open workspace discovery directory", saved_errno);
+            return false;
+        }
+        struct stat opened_status = {};
+        if (fstat(child.get(), &opened_status) != 0) {
+            const int saved_errno = errno;
+            closedir(directory);
+            throw_io_exception(env, "Unable to verify workspace discovery directory", saved_errno);
+            return false;
+        }
+        if (!S_ISDIR(opened_status.st_mode) ||
+            opened_status.st_uid != getuid() ||
+            opened_status.st_dev != status.st_dev ||
+            opened_status.st_ino != status.st_ino) {
+            continue;
+        }
+        if (!append_directory_records(
+                env,
+                child.get(),
+                relative_path,
+                true,
+                depth + 1,
+                max_scanned_entries,
+                scanned_entries,
+                records)) {
+            closedir(directory);
+            return false;
+        }
+    }
+}
+
+void append_int64_le(std::vector<jbyte> *encoded, int64_t value) {
+    const uint64_t bits = static_cast<uint64_t>(value);
+    for (size_t index = 0; index < sizeof(bits); ++index) {
+        encoded->push_back(static_cast<jbyte>((bits >> (index * 8)) & 0xff));
+    }
+}
+
+jobjectArray encode_directory_records(
+        JNIEnv *env,
+        const std::vector<DirectoryRecord> &records) {
+    jclass byte_array_class = env->FindClass("[B");
+    if (byte_array_class == nullptr) return nullptr;
+    jobjectArray result = env->NewObjectArray(
+            static_cast<jsize>(records.size()),
+            byte_array_class,
+            nullptr);
+    env->DeleteLocalRef(byte_array_class);
+    if (result == nullptr) return nullptr;
+
+    for (size_t index = 0; index < records.size(); ++index) {
+        const DirectoryRecord &record = records[index];
+        std::vector<jbyte> encoded;
+        encoded.reserve(17 + record.relative_path.size());
+        encoded.push_back(record.is_directory ? 2 : 1);
+        append_int64_le(&encoded, record.size);
+        append_int64_le(&encoded, record.updated_at_ms);
+        encoded.insert(
+                encoded.end(),
+                reinterpret_cast<const jbyte *>(record.relative_path.data()),
+                reinterpret_cast<const jbyte *>(record.relative_path.data()) +
+                    record.relative_path.size());
+        jbyteArray item = env->NewByteArray(static_cast<jsize>(encoded.size()));
+        if (item == nullptr) return nullptr;
+        env->SetByteArrayRegion(item, 0, static_cast<jsize>(encoded.size()), encoded.data());
+        if (!env->ExceptionCheck()) {
+            env->SetObjectArrayElement(result, static_cast<jsize>(index), item);
+        }
+        env->DeleteLocalRef(item);
+        if (env->ExceptionCheck()) return nullptr;
+    }
+    return result;
 }
 
 } // namespace
@@ -1070,6 +1249,58 @@ Java_me_rerere_workspace_RootfsHostFileBridge_openFileRead(
     if (!S_ISREG(status.st_mode)) return -2;
     if (!validate_regular_file(env, status, relative, reject_hardlinks == JNI_TRUE)) return -3;
     return file.release();
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_discoverEntries(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes,
+        jboolean recursive,
+        jint max_scanned_entries) {
+    if (max_scanned_entries <= 0 ||
+        static_cast<size_t>(max_scanned_entries) > kMaxDiscoveryEntries) {
+        throw_unsafe_path(env, "Invalid workspace discovery entry limit");
+        return nullptr;
+    }
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            true,
+            &root,
+            &relative,
+            &segments)) {
+        return nullptr;
+    }
+    bool missing = false;
+    ScopedFd directory(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size(),
+            false,
+            &missing));
+    if (directory.get() < 0) return nullptr;
+
+    std::vector<DirectoryRecord> records;
+    size_t scanned_entries = 0;
+    if (!append_directory_records(
+            env,
+            directory.get(),
+            relative,
+            recursive == JNI_TRUE,
+            0,
+            static_cast<size_t>(max_scanned_entries),
+            &scanned_entries,
+            &records)) {
+        return nullptr;
+    }
+    return encode_directory_records(env, records);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

@@ -114,9 +114,11 @@ network access, and app-private storage that the Android process makes available
      rejects symbolic/special sources and ancestor/descendant targets, removes an overwrite target
      without following it, then uses `renameat2(RENAME_NOREPLACE)` and verifies source identity at
      the destination.
-   - Regular UI text reads/writes use the same descriptor file boundary. Directory listings hide
-     symbolic links, and glob/grep require no-follow attributes; grep opens every selected file with
-     `NOFOLLOW_LINKS`, closing the previous direct symlink-leaf disclosure path.
+   - Regular UI text reads/writes use the same descriptor file boundary. On Android, directory
+     listing, glob, and grep candidates are enumerated from directory FDs with
+     `fstatat(AT_SYMLINK_NOFOLLOW)` and verified child-directory identities. Links and special files
+     are skipped, traversal depth and scanned entries are bounded, and grep reopens every selected
+     file through the no-follow read bridge.
 11. **Descriptor-relative streaming export (implemented)**
    - Android UI exports and their size queries now open regular files below the selected workspace
      area with the same `openat(O_NOFOLLOW)` directory-FD chain as model reads. The exported stream
@@ -130,10 +132,6 @@ network access, and app-private storage that the Android process makes available
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
      the shared Android app UID, not to an individual workspace.
-   - Move remaining directory enumeration metadata operations from Java pathname validation to
-     descriptor-relative primitives. Per-workspace session exclusion prevents normal shell
-     concurrency, but Java directory traversal alone is not a kernel-enforced boundary against an
-     already-escaped, concurrently hostile process running with the same Android UID.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
 
@@ -233,3 +231,8 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     symlinks to outside sentinels and confirm both size and export operations reject the path without
     disclosing sentinel bytes. Concurrently exchange the pathname while exporting and confirm the
     output stays attached to the inode opened before the exchange.
+25. List, glob, and grep a tree containing Unicode names plus symlink leaves and symlinked
+    directories aimed at outside sentinels. Confirm only regular files and real directories below
+    the workspace are returned, grep never reads the sentinels, and listing a symlink path is
+    rejected. Repeat while exchanging a nested directory with a symlink; traversal must either stay
+    on the verified opened directory inode or skip the changed entry.

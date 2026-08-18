@@ -374,6 +374,47 @@ class RootfsHostBoundaryInstrumentedTest {
         }
     }
 
+    @Test
+    fun workspaceDiscoveryUsesNativeDirectoryDescriptors() {
+        val baseDir = freshDirectory("discovery-boundary")
+        val outside = freshDirectory("discovery-boundary-outside")
+        val manager = WorkspaceManager(baseDir)
+        val root = "root"
+        manager.ensureWorkspace(root)
+        File(manager.filesDir(root), "目录/笔记.txt").apply {
+            parentFile?.mkdirs()
+            writeText("safe needle")
+        }
+        val sentinel = File(outside, "secret.txt").apply { writeText("outside needle") }
+        Files.createSymbolicLink(
+            File(manager.filesDir(root), "leak.txt").toPath(),
+            sentinel.toPath(),
+        )
+        Files.createSymbolicLink(
+            File(manager.filesDir(root), "escape").toPath(),
+            outside.toPath(),
+        )
+
+        try {
+            assertEquals(listOf("目录"), manager.listFiles(root).map { it.path })
+            assertEquals(
+                listOf("目录/笔记.txt"),
+                manager.glob(root, "**/*.txt").map { it.path },
+            )
+            assertEquals(
+                listOf(WorkspaceSearchMatch("目录/笔记.txt", 1, "safe needle")),
+                manager.grep(root, "needle"),
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.listFiles(root, "escape")
+            }
+            assertEquals("outside needle", sentinel.readText())
+        } finally {
+            baseDir.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
     private fun freshDirectory(name: String): File =
         File(context.cacheDir, "$name-${System.nanoTime()}").also { directory ->
             directory.deleteRecursivelyNoFollow()
