@@ -24,7 +24,6 @@ import me.rerere.workspace.WorkspaceStorageArea
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import kotlin.uuid.Uuid
 
 class WorkspaceRepository(
     private val dao: WorkspaceDAO,
@@ -34,6 +33,8 @@ class WorkspaceRepository(
     private val networkBroker: WorkspaceNetworkBroker,
     private val settingsStore: SettingsStore,
 ) {
+    private val localWorkspaceCreator = LocalWorkspaceCreator(dao, manager)
+
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
     suspend fun checkIntegrity() = withContext(Dispatchers.IO) {
@@ -61,28 +62,7 @@ class WorkspaceRepository(
 
     suspend fun getById(id: String): WorkspaceEntity? = dao.getById(id)
 
-    suspend fun create(name: String): WorkspaceEntity {
-        val id = Uuid.random().toString()
-        val now = System.currentTimeMillis()
-        val finalName = name.trim().ifBlank { "Workspace" }
-        require(!isNameTaken(finalName, excludeId = null)) {
-            "Workspace name already exists: $finalName"
-        }
-        val workspace = WorkspaceEntity(
-            id = id,
-            name = finalName,
-            root = id,
-            createdAt = now,
-            updatedAt = now,
-            lastAccessAt = null,
-        )
-        withContext(Dispatchers.IO) {
-            manager.ensureWorkspace(workspace.root)
-            executor.ensureWorkspace(workspace.root)
-        }
-        dao.upsert(workspace)
-        return workspace
-    }
+    suspend fun create(name: String): WorkspaceEntity = localWorkspaceCreator.create(name)
 
     suspend fun rename(id: String, name: String): Boolean {
         val workspace = dao.getById(id) ?: return false

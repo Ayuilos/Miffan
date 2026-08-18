@@ -61,8 +61,11 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var createInProgress by remember { mutableStateOf(false) }
+    var createError by remember { mutableStateOf<String?>(null) }
     var editTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
+    val operationFailed = stringResource(R.string.error_title_operation)
 
     Scaffold(
         topBar = {
@@ -74,7 +77,10 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
+            FloatingActionButton(onClick = {
+                createError = null
+                showAddDialog = true
+            }) {
                 Icon(HugeIcons.Add01, contentDescription = null)
             }
         },
@@ -108,10 +114,31 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             title = stringResource(R.string.workspace_page_create),
             initialName = "",
             existingNames = workspaces.map { it.name.trim() }.toSet(),
-            onDismiss = { showAddDialog = false },
+            errorMessage = createError,
+            submitting = createInProgress,
+            onInputChange = { createError = null },
+            onDismiss = {
+                if (!createInProgress) {
+                    createError = null
+                    showAddDialog = false
+                }
+            },
             onConfirm = { name ->
-                vm.create(name)
-                showAddDialog = false
+                createInProgress = true
+                createError = null
+                vm.create(name) { result ->
+                    createInProgress = false
+                    result.fold(
+                        onSuccess = {
+                            createError = null
+                            showAddDialog = false
+                        },
+                        onFailure = { error ->
+                            createError = error.localizedMessage?.takeIf(String::isNotBlank)
+                                ?: operationFailed
+                        },
+                    )
+                }
             },
         )
     }
@@ -264,6 +291,9 @@ private fun EditWorkspaceDialog(
     title: String,
     initialName: String,
     existingNames: Set<String>,
+    errorMessage: String? = null,
+    submitting: Boolean = false,
+    onInputChange: () -> Unit = {},
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
@@ -277,20 +307,31 @@ private fun EditWorkspaceDialog(
         text = {
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
+                onValueChange = {
+                    name = it
+                    onInputChange()
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.workspace_page_name)) },
                 singleLine = true,
-                isError = isDuplicate,
-                supportingText = if (isDuplicate) {
-                    { Text(stringResource(R.string.workspace_page_name_duplicate)) }
-                } else null,
+                isError = isDuplicate || errorMessage != null,
+                supportingText = when {
+                    isDuplicate -> {
+                        { Text(stringResource(R.string.workspace_page_name_duplicate)) }
+                    }
+
+                    errorMessage != null -> {
+                        { Text(errorMessage) }
+                    }
+
+                    else -> null
+                },
             )
         },
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(trimmedName) },
-                enabled = name.isNotBlank() && !isDuplicate,
+                enabled = name.isNotBlank() && !isDuplicate && !submitting,
             ) {
                 Text(stringResource(R.string.common_save))
             }

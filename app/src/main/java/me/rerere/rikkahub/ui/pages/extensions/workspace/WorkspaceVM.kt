@@ -19,9 +19,16 @@ class WorkspaceVM(
     val workspaces = repository.listFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun create(name: String) {
+    fun create(name: String, onResult: (Result<WorkspaceEntity>) -> Unit) {
         viewModelScope.launch {
-            runCatching { repository.create(name) }
+            val result = try {
+                Result.success(repository.create(name))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
+            onResult(result)
         }
     }
 
