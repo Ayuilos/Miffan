@@ -151,7 +151,7 @@ private fun WorkspaceTerminalContent(
             value = TerminalSessionUiState.Loading
             return@produceState
         }
-        if (!withContext(Dispatchers.IO) { workspaceRootfsReady(context, current) }) {
+        if (!withContext(Dispatchers.IO) { workspaceManager.hasRootfs(current) }) {
             value = TerminalSessionUiState.NotInstalled
             return@produceState
         }

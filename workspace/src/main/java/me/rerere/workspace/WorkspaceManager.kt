@@ -5,6 +5,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 
@@ -31,14 +33,18 @@ class WorkspaceManager(
 
     init {
         baseDir.mkdirs()
+        require(Files.isDirectory(baseDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Workspace base directory must not be a symbolic link"
+        }
         processRecoveryReport = processSupervisor.recoverStaleProcesses()
     }
 
     fun ensureWorkspace(root: String): File {
-        val dir = workspaceDir(root)
-        filesDir(root).mkdirs()
-        linuxDir(root).mkdirs()
-        tempDir(root).mkdirs()
+        requireValidRoot(root)
+        val dir = baseDir.ensureDirectoryNoFollow(root)
+        dir.ensureDirectoryNoFollow(FILES_DIR)
+        dir.ensureDirectoryNoFollow(LINUX_DIR)
+        dir.ensureDirectoryNoFollow(TEMP_DIR)
         return dir
     }
 
@@ -53,14 +59,21 @@ class WorkspaceManager(
 
     fun tempDir(root: String): File = File(workspaceDir(root), TEMP_DIR)
 
-    fun hasRootfs(root: String): Boolean = File(linuxDir(root), "bin/sh").isFile
+    fun hasRootfs(root: String): Boolean =
+        Files.isDirectory(workspaceDir(root).toPath(), LinkOption.NOFOLLOW_LINKS) &&
+            RootfsHealth.isHealthy(linuxDir(root))
 
     fun deleteWorkspace(root: String): Boolean {
         return withExclusiveAccess(root) {
-            val deleted = workspaceDir(root).deleteRecursively()
+            val deleted = baseDir.deleteRelativeTreeNoFollow(root)
             sortedBindMounts.asSequence()
                 .filter { it.workspaceScoped }
-                .forEach { it.sourceFor(root).deleteRecursively() }
+                .forEach { mount ->
+                    val directory = mount.sourceFor(root)
+                    if (Files.exists(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                        requireNotNull(directory.parentFile).deleteRelativeTreeNoFollow(directory.name)
+                    }
+                }
             deleted
         }
     }
@@ -261,6 +274,7 @@ class WorkspaceManager(
         require(command.isNotBlank()) { "Command is required" }
         require(timeoutMillis > 0) { "Command timeout must be positive" }
         return withExclusiveAccess(root, interruptible = true) {
+            ensureWorkspace(root)
             requireWithinResourceLimits(root)
             val workingDir = fileSystem.resolve(filesDir(root), cwd)
             require(workingDir.exists()) { "Working directory does not exist: $cwd" }
@@ -311,6 +325,7 @@ class WorkspaceManager(
         requireValidRoot(root)
         val lease = sessionRegistry.tryAcquire(root) ?: return null
         return try {
+            ensureWorkspace(root)
             requireWithinResourceLimits(root)
             lease
         } catch (error: Throwable) {
@@ -539,16 +554,18 @@ class WorkspaceManager(
     }
 
     fun cleanupAllTempDirs() {
-        val roots = baseDir.listFiles()?.filter { it.isDirectory } ?: return
+        val roots = baseDir.listFiles()
+            ?.filter { Files.isDirectory(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+            ?: return
         for (dir in roots) {
             val root = dir.name
             if (root == RUNTIME_DIR || !root.matches(ROOT_NAME_REGEX)) continue
             withExclusiveAccess(root) {
                 // PRoot temp files
-                tempDir(root).let { if (it.exists()) it.deleteRecursively() }
+                dir.deleteRelativeTreeNoFollow(TEMP_DIR)
                 // Rootfs /tmp and /var/tmp
-                File(linuxDir(root), "tmp").let { if (it.exists()) it.deleteRecursively() }
-                File(linuxDir(root), "var/tmp").let { if (it.exists()) it.deleteRecursively() }
+                dir.deleteRelativeTreeNoFollow("$LINUX_DIR/tmp")
+                dir.deleteRelativeTreeNoFollow("$LINUX_DIR/var/tmp")
             }
         }
     }

@@ -145,7 +145,7 @@ class WorkspaceFileSystem(
         if (!file.exists()) return false
         return if (file.isDirectory) {
             require(recursive) { "Directory delete requires recursive = true" }
-            file.deleteRecursively()
+            file.deleteRecursivelyNoFollow()
         } else {
             file.delete()
         }
@@ -159,7 +159,7 @@ class WorkspaceFileSystem(
         if (targetFile.exists()) {
             require(overwrite) { "Target already exists: $target" }
             if (targetFile.isDirectory) {
-                targetFile.deleteRecursively()
+                targetFile.deleteRecursivelyNoFollow()
             } else {
                 targetFile.delete()
             }

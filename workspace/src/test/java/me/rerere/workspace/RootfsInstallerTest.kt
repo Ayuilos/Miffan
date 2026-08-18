@@ -9,9 +9,12 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.security.MessageDigest
 import java.util.zip.GZIPOutputStream
 
@@ -100,6 +103,36 @@ class RootfsInstallerTest {
     }
 
     @Test
+    fun `download never follows a replaced archive symlink`() {
+        val archive = ByteArray(8) { 1 }
+        val manager = WorkspaceManager(tmp.newFolder("download-symlink-workspaces"))
+        val root = "root"
+        val outside = tmp.newFile("download-symlink-outside").apply { writeText("keep") }
+        val archiveTarget = File(manager.tempDir(root), "rootfs.tar.gz")
+        val source = RootfsArchiveSource(
+            version = "test",
+            androidAbi = "arm64-v8a",
+            url = "https://example.test/rootfs.tar.gz",
+            sha256 = archive.sha256(),
+        )
+        val installer = RootfsInstaller(
+            manager = manager,
+            connectionFactory = {
+                TestHttpURLConnection(it, archive) {
+                    Files.createSymbolicLink(archiveTarget.toPath(), outside.toPath())
+                }
+            },
+        )
+
+        assertThrows(IOException::class.java) {
+            installer.install(root, source)
+        }
+
+        assertEquals("keep", outside.readText())
+        assertFalse(Files.exists(archiveTarget.toPath(), LinkOption.NOFOLLOW_LINKS))
+    }
+
+    @Test
     fun `install reserves workspace temp capacity before download`() {
         val manager = WorkspaceManager(
             baseDir = tmp.newFolder("reserved-install-workspaces"),
@@ -145,6 +178,7 @@ class RootfsInstallerTest {
     fun `install rejects staged rootfs that exceeds final rootfs quota`() {
         val archiveFile = tmp.newFile("healthy-rootfs.tar.gz")
         GZIPOutputStream(archiveFile.outputStream()).use { out ->
+            out.writeTarEntry("etc/", '5', byteArrayOf())
             out.writeTarEntry("bin/sh", '0', byteArrayOf(1))
             out.writeTarEntry("bin/bash", '0', byteArrayOf(2))
             out.writeTarEntry("usr/bin/env", '0', byteArrayOf(3))
@@ -185,6 +219,7 @@ class RootfsInstallerTest {
         val root = "root"
         manager.ensureWorkspace(root)
         val linuxDir = manager.linuxDir(root)
+        File(linuxDir, "etc").mkdirs()
         File(linuxDir, "bin").mkdirs()
         File(linuxDir, "usr/bin").mkdirs()
         File(linuxDir, "bin/sh").writeText("old sh")
@@ -219,6 +254,48 @@ class RootfsInstallerTest {
         assertEquals("old sh", File(linuxDir, "bin/sh").readText())
     }
 
+    @Test
+    fun `successful replacement does not traverse symlinks in the previous rootfs`() {
+        val manager = WorkspaceManager(tmp.newFolder("nofollow-replacement-workspaces"))
+        val root = "root"
+        manager.ensureWorkspace(root)
+        val linuxDir = manager.linuxDir(root)
+        File(linuxDir, "etc").mkdirs()
+        File(linuxDir, "bin").mkdirs()
+        File(linuxDir, "usr/bin").mkdirs()
+        File(linuxDir, "bin/sh").writeText("old sh")
+        File(linuxDir, "bin/bash").writeText("old bash")
+        File(linuxDir, "usr/bin/env").writeText("old env")
+        val outside = tmp.newFolder("nofollow-replacement-outside")
+        val sentinel = File(outside, "keep.txt").apply { writeText("keep") }
+        Files.createSymbolicLink(File(linuxDir, "escape").toPath(), outside.toPath())
+
+        val archiveFile = tmp.newFile("replacement-rootfs.tar.gz")
+        GZIPOutputStream(archiveFile.outputStream()).use { out ->
+            out.writeTarEntry("etc/", '5', byteArrayOf())
+            out.writeTarEntry("bin/sh", '0', "new sh".toByteArray())
+            out.writeTarEntry("bin/bash", '0', "new bash".toByteArray())
+            out.writeTarEntry("usr/bin/env", '0', "new env".toByteArray())
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+        val archive = archiveFile.readBytes()
+        val source = RootfsArchiveSource(
+            version = "test",
+            androidAbi = "arm64-v8a",
+            url = "https://example.test/rootfs.tar.gz",
+            sha256 = archive.sha256(),
+        )
+
+        RootfsInstaller(
+            manager = manager,
+            connectionFactory = { TestHttpURLConnection(it, archive) },
+        ).install(root, source)
+
+        assertTrue(manager.hasRootfs(root))
+        assertEquals("new sh", File(linuxDir, "bin/sh").readText())
+        assertEquals("keep", sentinel.readText())
+    }
+
     private fun createInstaller() = RootfsInstaller(WorkspaceManager(tmp.newFolder()))
 
     private fun OutputStream.writeTarEntry(name: String, type: Char, data: ByteArray) {
@@ -248,11 +325,15 @@ class RootfsInstallerTest {
 private class TestHttpURLConnection(
     url: URL,
     private val bytes: ByteArray,
+    private val beforeInput: () -> Unit = {},
 ) : HttpURLConnection(url) {
     override fun connect() = Unit
     override fun disconnect() = Unit
     override fun usingProxy(): Boolean = false
     override fun getResponseCode(): Int = HTTP_OK
     override fun getContentLengthLong(): Long = bytes.size.toLong()
-    override fun getInputStream() = ByteArrayInputStream(bytes)
+    override fun getInputStream(): ByteArrayInputStream {
+        beforeInput()
+        return ByteArrayInputStream(bytes)
+    }
 }

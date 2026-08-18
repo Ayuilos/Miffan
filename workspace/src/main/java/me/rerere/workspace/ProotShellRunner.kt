@@ -1,6 +1,8 @@
 package me.rerere.workspace
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 data class WorkspaceBindMount(
     val source: File,
@@ -26,7 +28,7 @@ class ProotShellRunner(
     private val patcher: RootfsPatcher = RootfsPatcher(),
 ) : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
-        if (!context.linuxDir.hasUsableRootfs()) {
+        if (!RootfsHealth.isHealthy(context.linuxDir)) {
             return WorkspaceCommandResult(
                 exitCode = 127,
                 stdout = "",
@@ -51,7 +53,12 @@ class ProotShellRunner(
             )
         }
 
-        context.tempDir.mkdirs()
+        require(Files.isDirectory(context.filesDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Workspace files directory must not be a symbolic link"
+        }
+        require(Files.isDirectory(context.tempDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Workspace temp directory must not be a symbolic link"
+        }
         patcher.patch(context.linuxDir)
         val process = WorkspaceNativeProcess.start(
             command = ProotExecutionSpec.nonInteractiveCommand(context, proot),
@@ -65,9 +72,6 @@ class ProotShellRunner(
             commandIdentity = proot.absolutePath,
         )
     }
-
-    private fun File.hasUsableRootfs(): Boolean =
-        isDirectory && File(this, "bin/sh").isFile
 
     private companion object {
         private const val PROOT_EXEC = "libproot_exec.so"

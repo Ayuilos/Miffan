@@ -18,11 +18,14 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import me.rerere.workspace.ProotExecutionSpec
+import me.rerere.workspace.RootfsHealth
 import me.rerere.workspace.RootfsPatchOptions
 import me.rerere.workspace.RootfsPatcher
 import me.rerere.workspace.WorkspaceProcessRegistration
 import me.rerere.workspace.WorkspaceResourceLimits
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 internal fun createWorkspaceTerminalSession(
     context: Context,
@@ -38,6 +41,11 @@ internal fun createWorkspaceTerminalSession(
     val nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir)
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
+    require(
+        listOf(workspaceDir, filesDir, tempDir).all { directory ->
+            Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)
+        } && RootfsHealth.isHealthy(linuxDir)
+    ) { "Workspace terminal directories are unavailable or unsafe" }
     require(proot.isFile && proot.canExecute() && loader.isFile) {
         "Workspace terminal runtime is unavailable"
     }
@@ -94,17 +102,10 @@ internal fun prepareWorkspaceTerminalSession(context: Context, root: String) {
     val appContext = context.applicationContext
     val workspaceDir = File(File(appContext.filesDir, "workspaces"), root)
     val linuxDir = File(workspaceDir, "linux")
-    File(workspaceDir, "files").mkdirs()
-    File(workspaceDir, "tmp").mkdirs()
     RootfsPatcher().patch(
         linuxDir,
         RootfsPatchOptions(nameservers = appContext.activeDnsServers())
     )
-}
-
-internal fun workspaceRootfsReady(context: Context, root: String): Boolean {
-    val linuxDir = File(File(File(context.applicationContext.filesDir, "workspaces"), root), "linux")
-    return linuxDir.isDirectory && File(linuxDir, "bin/sh").isFile
 }
 
 internal class WorkspaceTerminalSessionClient(

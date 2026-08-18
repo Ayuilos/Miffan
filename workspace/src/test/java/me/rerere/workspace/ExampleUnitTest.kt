@@ -55,7 +55,10 @@ class ExampleUnitTest {
         assertFalse(manager.hasRootfs(root))
 
         File(manager.linuxDir(root), "bin").mkdirs()
+        File(manager.linuxDir(root), "usr/bin").mkdirs()
         File(manager.linuxDir(root), "bin/sh").writeText("#!/bin/sh\n")
+        File(manager.linuxDir(root), "bin/bash").writeText("#!/bin/sh\n")
+        File(manager.linuxDir(root), "usr/bin/env").writeText("env\n")
         assertTrue(manager.hasRootfs(root))
     }
 
@@ -64,6 +67,7 @@ class ExampleUnitTest {
         val baseDir = Files.createTempDirectory("workspace-manager-test").toFile()
         val manager = WorkspaceManager(baseDir)
         val archive = tarGz(
+            TarTestEntry("etc/", type = '5'),
             TarTestEntry("bin/", type = '5'),
             TarTestEntry("bin/sh", content = "#!/bin/sh\n".toByteArray(), mode = 493),
             TarTestEntry("bin/bash", content = "#!/bin/sh\n".toByteArray(), mode = 493),

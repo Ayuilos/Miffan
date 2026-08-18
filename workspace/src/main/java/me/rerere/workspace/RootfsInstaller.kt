@@ -7,7 +7,11 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.channels.Channels
 import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.OpenOption
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.zip.GZIPInputStream
@@ -38,8 +42,8 @@ class RootfsInstaller(
 
         try {
             archive.delete()
-            stagingDir.deleteRecursively()
-            stagingDir.mkdirs()
+            stagingDir.deleteAsChildNoFollow()
+            tempDir.ensureDirectoryNoFollow(stagingDir.name)
             // Reserve against both the per-workspace temp quota and the device free-space floor
             // before accepting attacker-amplifiable archive data.
             manager.requireAdditionalCapacity(
@@ -68,7 +72,7 @@ class RootfsInstaller(
             onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
         } finally {
             archive.delete()
-            stagingDir.deleteRecursively()
+            stagingDir.deleteAsChildNoFollow()
         }
     }
 
@@ -119,9 +123,20 @@ class RootfsInstaller(
             "Rootfs archive exceeds download limit: $totalBytes bytes"
         }
         val digest = MessageDigest.getInstance("SHA-256")
-        target.parentFile?.mkdirs()
+        require(Files.isDirectory(requireNotNull(target.parentFile).toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Rootfs download directory must not be a symbolic link"
+        }
         connection.inputStream.use { input ->
-            target.outputStream().use { output ->
+            Channels.newOutputStream(
+                Files.newByteChannel(
+                    target.toPath(),
+                    setOf<OpenOption>(
+                        StandardOpenOption.WRITE,
+                        StandardOpenOption.CREATE_NEW,
+                        LinkOption.NOFOLLOW_LINKS,
+                    ),
+                )
+            ).use { output ->
                 val buffer = ByteArray(BUFFER_SIZE)
                 var bytesRead = 0L
                 var lastReportBytes = 0L
@@ -169,7 +184,13 @@ class RootfsInstaller(
         format: ArchiveFormat = ArchiveFormat.fromFile(archive),
         onProgress: (RootfsInstallProgress) -> Unit,
     ) {
-        format.wrapStream(BufferedInputStream(archive.inputStream())).use { input ->
+        val archiveInput = Channels.newInputStream(
+            Files.newByteChannel(
+                archive.toPath(),
+                setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS),
+            )
+        )
+        format.wrapStream(BufferedInputStream(archiveInput)).use { input ->
             var entries = 0
             var extractedBytes = 0L
             var pendingName: String? = null
@@ -263,37 +284,33 @@ class RootfsInstaller(
     }
 
     private fun validateRootfs(rootfs: File) {
-        listOf("bin/sh", "bin/bash", "usr/bin/env").forEach { relativePath ->
-            require(File(rootfs, relativePath).isFile) {
-                "Rootfs health check failed: missing /$relativePath"
-            }
-        }
+        RootfsHealth.requireHealthy(rootfs)
     }
 
     private fun recoverInterruptedSwap(linuxDir: File, backupDir: File) {
-        if (!backupDir.exists()) return
-        if (File(linuxDir, "bin/sh").isFile) {
-            backupDir.deleteRecursively()
+        if (!Files.exists(backupDir.toPath(), LinkOption.NOFOLLOW_LINKS)) return
+        if (RootfsHealth.isHealthy(linuxDir)) {
+            backupDir.deleteAsChildNoFollow()
         } else {
             // ensureWorkspace may have recreated an empty linux directory after a process death.
-            linuxDir.deleteRecursively()
+            linuxDir.deleteAsChildNoFollow()
             require(backupDir.renameTo(linuxDir)) { "Failed to restore previous Rootfs installation" }
         }
     }
 
     private fun swapRootfs(stagingDir: File, linuxDir: File, backupDir: File) {
-        backupDir.deleteRecursively()
-        val movedPrevious = linuxDir.exists()
+        backupDir.deleteAsChildNoFollow()
+        val movedPrevious = Files.exists(linuxDir.toPath(), LinkOption.NOFOLLOW_LINKS)
         if (movedPrevious) {
             require(linuxDir.renameTo(backupDir)) { "Failed to stage previous Rootfs for rollback" }
         }
         try {
             require(stagingDir.renameTo(linuxDir)) { "Failed to move Rootfs into workspace" }
             validateRootfs(linuxDir)
-            if (movedPrevious) backupDir.deleteRecursively()
+            if (movedPrevious) backupDir.deleteAsChildNoFollow()
         } catch (error: Throwable) {
-            linuxDir.deleteRecursively()
-            if (movedPrevious && backupDir.exists()) {
+            linuxDir.deleteAsChildNoFollow()
+            if (movedPrevious && Files.exists(backupDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 check(backupDir.renameTo(linuxDir)) { "Failed to roll back previous Rootfs" }
             }
             throw error
@@ -305,6 +322,9 @@ class RootfsInstaller(
             "Rootfs source must use HTTPS: $url"
         }
     }
+
+    private fun File.deleteAsChildNoFollow(): Boolean =
+        requireNotNull(parentFile).deleteRelativeTreeNoFollow(name)
 
     private fun createSymlink(root: File, target: File, linkName: String) {
         if (linkName.isBlank()) return
