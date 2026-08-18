@@ -27,6 +27,7 @@ class RootfsPatcher {
         ensureLocale(files, options.locale)
         ensureGroupNames(files, options.groupIds.ifEmpty { currentSupplementaryGroupIds() })
         ensureTempDirs(files)
+        ensureExecutionMountPoints(files)
     }
 
     private fun ensureRootfsDns(
@@ -157,6 +158,20 @@ class RootfsPatcher {
         files.chmodDirectory("root", GUEST_ROOT_DIRECTORY_MODE)
     }
 
+    fun repairExecutionMountPoints(linuxDir: File) {
+        val files = filesFactory.open(linuxDir) ?: return
+        ensureExecutionMountPoints(files)
+    }
+
+    private fun ensureExecutionMountPoints(files: RootfsPatchFiles) {
+        EXECUTION_MOUNT_POINTS.forEach { (guestPath, mode) ->
+            check(files.directory(guestPath, create = true)) {
+                "Unable to create /$guestPath"
+            }
+            files.chmodDirectory(guestPath, mode)
+        }
+    }
+
     private fun requireValidOptions(options: RootfsPatchOptions) {
         require(
             options.hostname.isBlank() ||
@@ -190,6 +205,14 @@ class RootfsPatcher {
         private const val MAX_OPTION_VALUES = 1024
         private const val GUEST_TEMP_DIRECTORY_MODE = 0b1_111_111_111
         private const val GUEST_ROOT_DIRECTORY_MODE = 0b111_000_000
+        private const val GUEST_MOUNT_DIRECTORY_MODE = 0b111_101_101
+        private const val GUEST_WORKSPACE_DIRECTORY_MODE = 0b111_000_000
+        private val EXECUTION_MOUNT_POINTS = listOf(
+            "workspace" to GUEST_WORKSPACE_DIRECTORY_MODE,
+            "dev" to GUEST_MOUNT_DIRECTORY_MODE,
+            "proc" to GUEST_MOUNT_DIRECTORY_MODE,
+            "sys" to GUEST_MOUNT_DIRECTORY_MODE,
+        )
         private const val DEFAULT_HOSTNAME = "localhost"
         private val WHITESPACE_REGEX = Regex("\\s+")
         private val LOCAL_RESOLVERS = setOf(

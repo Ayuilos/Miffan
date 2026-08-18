@@ -132,6 +132,20 @@ trap 'rm -f "$raw_report"; cleanup' EXIT
 
 "${adb[@]}" install -r "$executor_apk"
 "${adb[@]}" install -r "$apk"
+rootfs_archive="${WORKSPACE_VERIFY_ROOTFS_ARCHIVE:-}"
+rootfs_provisioned=0
+if [[ -n "$rootfs_archive" ]]; then
+  if [[ ! -f "$rootfs_archive" ]]; then
+    echo "Provisioned Rootfs archive is missing: $rootfs_archive" >&2
+    exit 2
+  fi
+  device_archive="/data/local/tmp/rikkahub-workspace-rootfs-${serial//[^A-Za-z0-9_.-]/_}.tar.gz"
+  "${adb[@]}" push "$rootfs_archive" "$device_archive"
+  "${adb[@]}" shell run-as me.rerere.workspace.test \
+    cp "$device_archive" cache/provisioned-rootfs.tar.gz
+  "${adb[@]}" shell rm -f "$device_archive"
+  rootfs_provisioned=1
+fi
 set +e
 "${adb[@]}" shell am instrument -w -r \
   me.rerere.workspace.test/androidx.test.runner.AndroidJUnitRunner > "$raw_report" 2>&1
@@ -144,6 +158,7 @@ set -e
   echo "abi=$abi"
   echo "api=$api"
   echo "fingerprint=$fingerprint"
+  echo "rootfs_provisioned=$rootfs_provisioned"
   "${adb[@]}" shell cmd package list packages -U \
     me.rerere.rikkahub.workspace.executor | tr -d '\r'
   echo "utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"

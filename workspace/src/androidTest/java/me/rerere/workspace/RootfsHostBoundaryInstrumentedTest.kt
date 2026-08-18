@@ -121,6 +121,14 @@ class RootfsHostBoundaryInstrumentedTest {
             assertEquals(0b1_111_111_111, permissionBits(File(rootfs, "tmp")))
             assertEquals(0b1_111_111_111, permissionBits(File(rootfs, "var/tmp")))
             assertEquals(0b111_000_000, permissionBits(File(rootfs, "root")))
+            assertEquals(0b111_000_000, permissionBits(File(rootfs, "workspace")))
+            assertEquals(0b111_101_101, permissionBits(File(rootfs, "dev")))
+            assertEquals(0b111_101_101, permissionBits(File(rootfs, "proc")))
+            assertEquals(0b111_101_101, permissionBits(File(rootfs, "sys")))
+
+            Os.chmod(File(rootfs, "workspace").absolutePath, 0)
+            RootfsPatcher().repairExecutionMountPoints(rootfs)
+            assertEquals(0b111_000_000, permissionBits(File(rootfs, "workspace")))
         } finally {
             rootfs.deleteRecursivelyNoFollow()
         }

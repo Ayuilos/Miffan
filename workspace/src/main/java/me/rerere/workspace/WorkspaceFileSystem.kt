@@ -2,6 +2,7 @@ package me.rerere.workspace
 
 import android.os.ParcelFileDescriptor
 import java.io.ByteArrayOutputStream
+import java.io.EOFException
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -305,6 +306,72 @@ class WorkspaceFileSystem(
         } catch (error: Throwable) {
             target.delete()
             throw error
+        }
+    }
+
+    /** Writes one snapshot entry at its exact path without following links or resolving conflicts. */
+    internal fun importExact(
+        root: File,
+        path: String,
+        size: Long,
+        inputStream: InputStream,
+    ) {
+        require(size in 0..config.resourceLimits.maxShellFileBytes) {
+            "Workspace snapshot file exceeds per-file limit: $path ($size bytes)"
+        }
+        path.strictRelativeFileSegments()
+        if (usesNativeHostFileOperations()) {
+            importExactNative(root, path, size, inputStream)
+            return
+        }
+        val target = resolveWritePathNoFollow(root, path)
+        require(!Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Duplicate workspace snapshot entry: $path"
+        }
+        val options = setOf<OpenOption>(
+            StandardOpenOption.WRITE,
+            StandardOpenOption.CREATE_NEW,
+            LinkOption.NOFOLLOW_LINKS,
+        )
+        try {
+            Files.newOutputStream(target.toPath(), *options.toTypedArray()).use { output ->
+                inputStream.copyExactly(output, size, path)
+            }
+        } catch (error: Throwable) {
+            Files.deleteIfExists(target.toPath())
+            throw error
+        }
+    }
+
+    private fun importExactNative(root: File, path: String, size: Long, inputStream: InputStream) {
+        val rootBytes = root.absolutePath.toByteArray(StandardCharsets.UTF_8)
+        val pathBytes = path.toByteArray(StandardCharsets.UTF_8)
+        val descriptor = RootfsHostFileBridge.openFileCreate(rootBytes, pathBytes)
+        require(descriptor >= 0) { "Duplicate or unsafe workspace snapshot entry: $path" }
+        try {
+            ParcelFileDescriptor.AutoCloseOutputStream(
+                ParcelFileDescriptor.adoptFd(descriptor)
+            ).use { output ->
+                inputStream.copyExactly(output, size, path)
+            }
+        } catch (error: Throwable) {
+            runCatching { RootfsHostFileBridge.deleteRelative(rootBytes, pathBytes, false) }
+            throw error
+        }
+    }
+
+    private fun InputStream.copyExactly(output: OutputStream, size: Long, path: String) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var remaining = size
+        while (remaining > 0) {
+            if (Thread.currentThread().isInterrupted) {
+                throw InterruptedException("Workspace snapshot transfer cancelled")
+            }
+            val read = read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read < 0) throw EOFException("Workspace snapshot ended inside file: $path")
+            if (read == 0) continue
+            output.write(buffer, 0, read)
+            remaining -= read
         }
     }
 
@@ -618,6 +685,52 @@ class WorkspaceFileSystem(
             )
         ) { "Path does not exist: $path" }
         return records.mapNotNull(::decodeNativeEntry)
+    }
+
+    internal fun discoverForSnapshot(root: File): List<WorkspaceFileEntry> {
+        val entries = if (usesNativeHostFileOperations()) {
+            val records = requireNotNull(
+                RootfsHostFileBridge.discoverEntries(
+                    root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                    byteArrayOf(),
+                    true,
+                    MAX_DISCOVERY_SCAN_ENTRIES,
+                )
+            ) { "Workspace files root does not exist" }
+            records.map { record ->
+                requireNotNull(decodeNativeEntry(record)) {
+                    "Workspace snapshot contains a symbolic link or special file"
+                }
+            }
+        } else {
+            require(Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                "Workspace files root must be a real directory"
+            }
+            walk(root) { paths ->
+                paths.drop(1)
+                    .map { path ->
+                        val attributes = Files.readAttributes(
+                            path,
+                            BasicFileAttributes::class.java,
+                            LinkOption.NOFOLLOW_LINKS,
+                        )
+                        require(attributes.isDirectory || attributes.isRegularFile) {
+                            "Workspace snapshot contains a link or special file: $path"
+                        }
+                        path.toFile().toEntry(root)
+                    }
+                    .take(MAX_DISCOVERY_SCAN_ENTRIES + 1)
+                    .toList()
+            }
+        }
+        require(entries.size <= MAX_DISCOVERY_SCAN_ENTRIES) {
+            "Workspace snapshot contains too many entries"
+        }
+        return entries.sortedWith(
+            compareBy<WorkspaceFileEntry> { it.path.count { char -> char == '/' } }
+                .thenBy { !it.isDirectory }
+                .thenBy { it.path },
+        )
     }
 
     private fun decodeNativeEntry(record: ByteArray): WorkspaceFileEntry? {

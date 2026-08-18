@@ -1,9 +1,11 @@
 # Workspace / PRoot security boundary
 
 PRoot is used as a local Linux compatibility environment. It translates paths and traces guest
-processes while all code still runs with RikkaHub's Android application identity. It is not a
-Docker-, namespace-, or VM-grade security boundary. Guest commands can consume the CPU, memory,
-network access, and app-private storage that the Android process makes available.
+processes, but it is not a Docker-, namespace-, or VM-grade security boundary. Product shell
+commands run in a separately installed, signature-authenticated companion package with a stable
+Android UID, private RootFS, and no `INTERNET` permission. They can consume the CPU, memory, disk,
+and kernel interfaces available to that executor UID, but cannot directly traverse the primary
+app's private storage.
 
 ## Hardening phases
 
@@ -168,11 +170,36 @@ network access, and app-private storage that the Android process makes available
      permission is absent, and runs a real command through the hardened native process monitor.
      A same-APK `isolatedProcess` was rejected as the PRoot backend after Android 35 testing showed
      SELinux MCS denies traversal of the owner's `app_data_file` even when a directory FD is passed.
-15. **Isolation completion (in progress)**
-   - Move RootFS ownership and PRoot launch into the companion UID, then broker workspace file
-     snapshots and explicitly approved network requests over bounded IPC. Until that migration is
-     complete, the primary app's existing PRoot path remains a compatibility backend and must not
-     be described as UID-isolated.
+15. **Dedicated-UID execution and broker completion (implemented)**
+   - RootFS ownership, extraction, patching, health checks, PRoot launch, process monitoring, and
+     command resource accounting now run in the companion UID. The primary app manager uses a
+     rejecting shell runner, so AI commands cannot silently fall back to its UID.
+   - Before a command, `/workspace` is serialized to a versioned snapshot while the workspace lock
+     is held. Export rejects links and special files, enforces entry/path/file/aggregate limits,
+     checks exact temporary-storage capacity, and passes only one read/write descriptor over
+     Binder. The executor atomically imports the snapshot, mounts only its private copy, runs the
+     command, truncates that same descriptor, and exports the result for an atomic primary-UID
+     replacement. Import failure preserves the previous tree. Staged/backup directory states have
+     an explicit commit point and are recovered on manager startup after a process death.
+   - `/skills`, `/upload`, and workspace-scoped `/tool_outputs` remain accessible only to the
+     descriptor-relative application file tools. They are not copied or mounted into the executor.
+     RootFS UI/file operations use bounded descriptor transactions instead of shared paths.
+   - The primary UID downloads only the compiled-in, architecture-matched HTTPS RootFS artifact;
+     the executor accepts that exact catalog record and rechecks the byte quota and SHA-256 while
+     copying the passed descriptor before extraction.
+   - The executor has no `INTERNET` permission. The only model-facing network path is
+     `workspace_fetch_url`, which always requires approval and downloads into `/workspace` from a
+     public DNS hostname over HTTPS port 443. DNS answers are pinned for the connection and reject
+     local, private, link-local, multicast, carrier-grade NAT, and other special-use addresses;
+     redirects stay on the original host and responses are capped at 8 MiB.
+   - Every command has an unambiguous cancellation id. Cancellation is delivered to the remote
+     Binder worker, interrupts `waitFor`, kills the verified PRoot process group and descendants,
+     waits for cleanup, and repairs fixed RootFS mount-point modes that PRoot could not restore
+     after forced termination. Startup cleanup also runs in the executor UID.
+   - Protocol v2 does not yet transport a PTY. The product interactive terminal is therefore
+     fail-closed instead of launching under the primary UID; `workspace_shell` is the supported
+     hardened execution surface. The native PTY code and instrumentation remain as regression
+     coverage for a future descriptor-based PTY transport.
    - Evaluate cgroup/job-control integration where Android permits it. The polling safeguards above
      can detect and stop overuse but are not atomic aggregate disk, CPU, or memory quotas.
      `RLIMIT_NPROC` is scoped to an Android UID, not to an individual workspace.
@@ -183,8 +210,12 @@ network access, and app-private storage that the Android process makes available
 
 Run this checklist on both an arm64 device and an x86_64 emulator after the JVM suite:
 
-1. Install Rootfs from the Workspace screen. Confirm the matching architecture is selected, a
-   shell starts, and `uname -m`, `/bin/bash -lc 'echo ok'`, and `/usr/bin/env` succeed.
+To exercise the real pinned RootFS path instead of assuming that optional test, pass a matching
+archive with `WORKSPACE_VERIFY_ROOTFS_ARCHIVE=/absolute/path/to/archive` to
+`workspace/scripts/verify-android-device.sh`. The executor revalidates the compiled-in SHA-256.
+
+1. Install Rootfs from the Workspace screen. Confirm the matching architecture is selected and
+   `workspace_shell` can run `uname -m`, `/bin/bash -lc 'echo ok'`, and `/usr/bin/env`.
 2. Upload a text and binary file. Confirm `workspace_read_file` can read `/upload/<name>` while
    `workspace_shell` cannot see or modify that file at `/upload/<name>`.
 3. Confirm `workspace_read_file` can read a known `/skills/<name>/SKILL.md` and a surfaced
@@ -197,8 +228,9 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
      is rejected and creates no file.
 5. Run `ln -s /etc /workspace/escape` in the terminal, then request a write to
    `/workspace/escape/no.txt`. Confirm the write is rejected and `/etc/no.txt` is absent.
-6. Compare `env`, `pwd`, and visible bind paths in an interactive terminal and `workspace_shell`.
-   The common clean environment and `/workspace` mapping must match.
+6. Open the interactive terminal and confirm it fails closed with the dedicated-UID PTY message;
+   it must not launch a primary-UID PRoot process. Compare `env`, `pwd`, and visible bind paths in
+   repeated `workspace_shell` calls instead.
 7. Start `sh -c 'sleep 600 & wait'` through `workspace_shell`, then cancel and repeat with a timeout.
    Use `adb shell ps -A | grep -E 'proot|sleep'` to confirm no child remains. Repeat rapid command
    submissions and verify they serialize per workspace.

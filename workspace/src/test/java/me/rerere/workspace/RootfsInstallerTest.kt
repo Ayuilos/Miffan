@@ -365,6 +365,36 @@ class RootfsInstallerTest {
         assertEquals("keep", sentinel.readText())
     }
 
+    @Test
+    fun `brokered archive is reverified before install`() {
+        val manager = WorkspaceManager(tmp.newFolder("brokered-install-workspaces"))
+        val archiveFile = tmp.newFile("brokered-rootfs.tar.gz")
+        GZIPOutputStream(archiveFile.outputStream()).use { out ->
+            out.writeTarEntry("etc/", '5', byteArrayOf())
+            out.writeTarEntry("bin/sh", '0', "new sh".toByteArray())
+            out.writeTarEntry("bin/bash", '0', "new bash".toByteArray())
+            out.writeTarEntry("usr/bin/env", '0', "new env".toByteArray())
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+        val archive = archiveFile.readBytes()
+        val source = RootfsArchiveSource(
+            version = "test",
+            androidAbi = "arm64-v8a",
+            url = "https://example.test/rootfs.tar.gz",
+            sha256 = archive.sha256(),
+        )
+        val installer = RootfsInstaller(manager, patcher = testPatcher())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            installer.installFromArchive("bad", source, (archive + 1).inputStream())
+        }
+        assertFalse(manager.hasRootfs("bad"))
+
+        installer.installFromArchive("good", source, archive.inputStream())
+        assertTrue(manager.hasRootfs("good"))
+        assertEquals("new bash", File(manager.linuxDir("good"), "bin/bash").readText())
+    }
+
     private fun createInstaller() = RootfsInstaller(
         manager = WorkspaceManager(tmp.newFolder()),
         patcher = testPatcher(),

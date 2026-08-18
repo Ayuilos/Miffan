@@ -1149,7 +1149,7 @@
   <string name="workspace_detail_shell_status">Статус оболочки</string>
   <string name="workspace_detail_loading">Загрузка</string>
   <string name="workspace_detail_enable_shell">Включить оболочку</string>
-  <string name="workspace_detail_enable_shell_desc">Команды выполняются с разрешениями Android-приложения. PRoot — слой совместимости, а не изоляция уровня Docker/VM.</string>
+  <string name="workspace_detail_enable_shell_desc">Команды выполняются под отдельным UID Android-исполнителя без разрешения на доступ к сети. PRoot — слой совместимости, а не изоляция уровня Docker/VM.</string>
   <string name="workspace_detail_tool_approval">Подтверждение инструментов</string>
   <string name="workspace_detail_tool_approval_desc">Если включено, перед вызовом этого инструмента ИИ требуется подтверждение пользователя.</string>
   <string name="workspace_detail_tool_list_files">Список файлов</string>

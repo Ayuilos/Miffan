@@ -34,6 +34,7 @@ import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.workspace.WorkspaceExecutorClient
 import me.rerere.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -115,6 +116,7 @@ class RikkaHubApp : Application() {
                     Log.i(TAG, "Workspace orphan recovery completed: $recovery")
                 }
                 manager.cleanupAllTempDirs()
+                get<WorkspaceExecutorClient>().cleanupTempDirs()
             }.onFailure {
                 Log.e(TAG, "cleanupWorkspaceTempDirs failed", it)
             }

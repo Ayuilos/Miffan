@@ -48,12 +48,47 @@ suspend fun createWorkspaceTools(
         createReadFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
+        createFetchUrlTool(workspaceId, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
     )
 }
 
 private val IMAGE_EXTENSIONS = setOf(
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "heic", "heif", "avif", "ico",
+)
+
+private fun createFetchUrlTool(
+    workspaceId: String,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_fetch_url",
+    description = "Download one public HTTPS URL through the approved host broker into /workspace. " +
+        "The executor itself has no network permission. Private/local addresses, cross-host redirects, " +
+        "non-standard ports, and responses larger than 8 MiB are rejected.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("url", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Public HTTPS URL to download")
+                })
+                put("destination_path", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Absolute destination file path below /workspace")
+                })
+            },
+            required = listOf("url", "destination_path"),
+        )
+    },
+    // Network access never inherits a workspace override; every request remains user-approved.
+    needsApproval = { true },
+    execute = {
+        val params = it.jsonObject
+        val url = params.string("url") ?: error("url is required")
+        val destination = params.guestPath("destination_path")
+        val entry = workspaceRepository.fetchUrl(workspaceId, url, destination.value)
+        listOf(UIMessagePart.Text(entry.toJson().toString()))
+    },
 )
 
 private fun String.isImagePath(): Boolean =

@@ -60,17 +60,23 @@ class ProotShellRunner(
             "Workspace temp directory must not be a symbolic link"
         }
         patcher.patch(context.linuxDir)
-        val process = WorkspaceNativeProcess.start(
-            command = ProotExecutionSpec.nonInteractiveCommand(context, proot),
-            environment = ProotExecutionSpec.hostEnvironment(loader, context.tempDir),
-            workingDirectory = context.filesDir,
-        )
+        return try {
+            val process = WorkspaceNativeProcess.start(
+                command = ProotExecutionSpec.nonInteractiveCommand(context, proot),
+                environment = ProotExecutionSpec.hostEnvironment(loader, context.tempDir),
+                workingDirectory = context.filesDir,
+            )
 
-        return process.readTrackedResult(
-            context = context,
-            isolatedProcessGroup = true,
-            commandIdentity = proot.absolutePath,
-        )
+            process.readTrackedResult(
+                context = context,
+                isolatedProcessGroup = true,
+                commandIdentity = proot.absolutePath,
+            )
+        } finally {
+            // Forced cancellation can prevent PRoot from restoring modes on temporary bind
+            // targets. Repair only the fixed, descriptor-validated mount-point directories.
+            patcher.repairExecutionMountPoints(context.linuxDir)
+        }
     }
 
     private companion object {

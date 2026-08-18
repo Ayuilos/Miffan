@@ -1183,7 +1183,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_shell_status">Shell 状态</string>
   <string name="workspace_detail_loading">加载中</string>
   <string name="workspace_detail_enable_shell">启用 Shell</string>
-  <string name="workspace_detail_enable_shell_desc">命令以 Android 应用自身权限运行。PRoot 是兼容层，不是 Docker/VM 级安全沙箱。</string>
+  <string name="workspace_detail_enable_shell_desc">命令在无网络权限的独立 Android 执行 UID 中运行。PRoot 是兼容层，不是 Docker/VM 级安全沙箱。</string>
   <string name="workspace_detail_tool_approval">工具审批</string>
   <string name="workspace_detail_tool_approval_desc">启用后，AI 调用此工具前需要用户确认</string>
   <string name="workspace_detail_tool_list_files">列出文件</string>

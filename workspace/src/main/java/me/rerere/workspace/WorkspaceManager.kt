@@ -21,6 +21,7 @@ class WorkspaceManager(
         WorkspaceProcessSupervisor(File(baseDir, "$RUNTIME_DIR/processes")),
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
+    private val workspaceSnapshot = WorkspaceSnapshot(fileSystem, config.resourceLimits)
     private val bindMounts = bindMounts.toList()
 
     // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
@@ -42,6 +43,7 @@ class WorkspaceManager(
             "Workspace base directory must not be a symbolic link"
         }
         processRecoveryReport = processSupervisor.recoverStaleProcesses()
+        recoverInterruptedFileSnapshots()
     }
 
     fun ensureWorkspace(root: String): File {
@@ -145,13 +147,14 @@ class WorkspaceManager(
         path: String,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
         outputStream: OutputStream,
+        maxBytes: Long = Long.MAX_VALUE,
     ) {
         outputStream.use { out ->
             fileSystem.exportNoFollow(
                 root = areaDir(root, area),
                 path = path,
                 outputStream = out,
-                maxBytes = Long.MAX_VALUE,
+                maxBytes = maxBytes,
             )
         }
     }
@@ -334,6 +337,125 @@ class WorkspaceManager(
             }
         }
     }
+
+    fun exportFilesSnapshot(root: String, outputStream: OutputStream) = withExclusiveAccess(root) {
+        ensureWorkspace(root)
+        recoverFilesSnapshot(workspaceDir(root))
+        requireWithinResourceLimits(root)
+        workspaceSnapshot.export(filesDir(root), outputStream)
+    }
+
+    fun replaceFilesSnapshot(root: String, inputStream: InputStream) = withExclusiveAccess(root) {
+        ensureWorkspace(root)
+        val workspace = workspaceDir(root)
+        recoverFilesSnapshot(workspace)
+        val staging = File(workspace, FILES_STAGING_DIR)
+        val backup = File(workspace, FILES_BACKUP_DIR)
+        staging.deleteAsWorkspaceChild()
+        workspace.ensureDirectoryNoFollow(FILES_STAGING_DIR)
+        try {
+            workspaceSnapshot.import(staging, inputStream)
+            swapFilesSnapshot(workspace, staging, backup) { requireWithinResourceLimits(root) }
+        } finally {
+            staging.deleteAsWorkspaceChild()
+        }
+    }
+
+    /** Holds the workspace admission/serialization lock across a brokered snapshot round trip. */
+    fun <T> withFilesSnapshotExchange(
+        root: String,
+        block: (
+            encodedSize: Long,
+            export: (OutputStream) -> Unit,
+            replace: (InputStream) -> Unit,
+        ) -> T,
+    ): T = withExclusiveAccess(root, interruptible = true) {
+        ensureWorkspace(root)
+        recoverFilesSnapshot(workspaceDir(root))
+        requireWithinResourceLimits(root)
+        block(
+            workspaceSnapshot.encodedSize(filesDir(root)),
+            { output -> workspaceSnapshot.export(filesDir(root), output) },
+            { input ->
+                val workspace = workspaceDir(root)
+                val staging = File(workspace, FILES_STAGING_DIR)
+                val backup = File(workspace, FILES_BACKUP_DIR)
+                staging.deleteAsWorkspaceChild()
+                workspace.ensureDirectoryNoFollow(FILES_STAGING_DIR)
+                try {
+                    workspaceSnapshot.import(staging, input)
+                    swapFilesSnapshot(workspace, staging, backup) { requireWithinResourceLimits(root) }
+                } finally {
+                    staging.deleteAsWorkspaceChild()
+                }
+            },
+        )
+    }
+
+    private fun swapFilesSnapshot(
+        workspace: File,
+        staging: File,
+        backup: File,
+        validate: () -> Unit,
+    ) {
+        val files = File(workspace, FILES_DIR)
+        val committedBackup = File(workspace, FILES_COMMITTED_BACKUP_DIR)
+        committedBackup.deleteAsWorkspaceChild()
+        require(files.renameDirectoryNoFollow(backup)) { "Failed to stage workspace files for rollback" }
+        try {
+            require(staging.renameDirectoryNoFollow(files)) { "Failed to activate workspace files snapshot" }
+            validate()
+            require(backup.renameDirectoryNoFollow(committedBackup)) {
+                "Failed to commit workspace files snapshot"
+            }
+            // The rename above is the commit point. A failed cleanup is recovered on next access.
+            runCatching { committedBackup.deleteAsWorkspaceChild() }
+        } catch (error: Throwable) {
+            runCatching { files.deleteAsWorkspaceChild() }
+            if (!backup.renameDirectoryNoFollow(files)) {
+                throw IllegalStateException(
+                    "Failed to roll back workspace files snapshot; backup was preserved",
+                    error,
+                )
+            }
+            throw error
+        }
+    }
+
+    private fun recoverInterruptedFileSnapshots() {
+        baseDir.listFiles()
+            .orEmpty()
+            .filter { directory ->
+                directory.name != RUNTIME_DIR &&
+                    directory.name.matches(ROOT_NAME_REGEX) &&
+                    Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)
+            }
+            .forEach(::recoverFilesSnapshot)
+    }
+
+    private fun recoverFilesSnapshot(workspace: File) {
+        val files = File(workspace, FILES_DIR)
+        val staging = File(workspace, FILES_STAGING_DIR)
+        val backup = File(workspace, FILES_BACKUP_DIR)
+        val committedBackup = File(workspace, FILES_COMMITTED_BACKUP_DIR)
+        require(!(Files.exists(backup.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+            Files.exists(committedBackup.toPath(), LinkOption.NOFOLLOW_LINKS))) {
+            "Workspace contains conflicting snapshot recovery states"
+        }
+        if (Files.exists(committedBackup.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            committedBackup.deleteAsWorkspaceChild()
+        }
+        if (Files.exists(backup.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            files.deleteAsWorkspaceChild()
+            require(backup.renameDirectoryNoFollow(files)) {
+                "Failed to restore interrupted workspace files snapshot"
+            }
+        }
+        staging.deleteAsWorkspaceChild()
+    }
+
+    private fun File.deleteAsWorkspaceChild(): Boolean =
+        requireNotNull(parentFile).deleteRelativeTreeNoFollow(name)
 
     fun tryAcquireInteractiveSession(root: String): WorkspaceSessionLease? {
         requireValidRoot(root)
@@ -593,6 +715,9 @@ class WorkspaceManager(
         private const val FILES_DIR = "files"
         private const val LINUX_DIR = "linux"
         private const val TEMP_DIR = "tmp"
+        private const val FILES_STAGING_DIR = "files-staging"
+        private const val FILES_BACKUP_DIR = "files-backup"
+        private const val FILES_COMMITTED_BACKUP_DIR = "files-backup-committed"
         private const val RUNTIME_DIR = ".runtime"
         private const val MAX_ROOTFS_TOOL_READ_BYTES = 8L * 1024 * 1024
         const val DEFAULT_COMMAND_TIMEOUT_MS = 30_000L

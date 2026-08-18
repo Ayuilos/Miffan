@@ -38,6 +38,7 @@ class RootfsInstaller(
         val backupDir = File(manager.workspaceDir(root), ROOTFS_BACKUP_DIR)
         val linuxDir = manager.linuxDir(root)
         recoverInterruptedSwap(linuxDir, backupDir)
+        repairInstalledRootfsMountPoints(linuxDir)
 
         try {
             archive.delete()
@@ -72,6 +73,111 @@ class RootfsInstaller(
         } finally {
             archive.delete()
             stagingDir.deleteAsChildNoFollow()
+        }
+    }
+
+    /**
+     * Downloads the pinned archive in the caller process. The dedicated executor deliberately has
+     * no INTERNET permission, so this is the network side of the Rootfs broker boundary.
+     */
+    fun downloadVerifiedArchive(
+        source: RootfsArchiveSource,
+        target: File,
+        onProgress: (RootfsInstallProgress) -> Unit = {},
+    ) {
+        require(!Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Rootfs download target already exists"
+        }
+        download(source, target, onProgress)
+    }
+
+    /** Installs an archive received through a brokered descriptor and verifies it again. */
+    fun installFromArchive(
+        root: String,
+        source: RootfsArchiveSource,
+        inputStream: InputStream,
+        onProgress: (RootfsInstallProgress) -> Unit = {},
+    ) = manager.withExclusiveAccess(root, interruptible = true) {
+        manager.ensureWorkspace(root)
+        val tempDir = manager.tempDir(root)
+        val archive = File(tempDir, "rootfs.${source.format.extension}")
+        val stagingDir = File(tempDir, "rootfs-staging")
+        val backupDir = File(manager.workspaceDir(root), ROOTFS_BACKUP_DIR)
+        val linuxDir = manager.linuxDir(root)
+        recoverInterruptedSwap(linuxDir, backupDir)
+        repairInstalledRootfsMountPoints(linuxDir)
+
+        try {
+            archive.delete()
+            stagingDir.deleteAsChildNoFollow()
+            tempDir.ensureDirectoryNoFollow(stagingDir.name)
+            manager.requireAdditionalCapacity(root, WorkspaceDiskArea.TEMP, limits.maxDownloadBytes)
+            copyAndVerifyArchive(source, inputStream, archive)
+            manager.requireAdditionalCapacity(root, WorkspaceDiskArea.TEMP, limits.maxExtractedBytes)
+            extractTar(archive, stagingDir, source.format, onProgress)
+            patcher.patch(stagingDir)
+            validateRootfs(stagingDir)
+            val stagedRootfsBytes = stagingDir.logicalTreeSize()
+            if (stagedRootfsBytes > manager.resourceLimits.maxRootfsBytes) {
+                throw WorkspaceResourceLimitException(
+                    "Installed Rootfs exceeds limit: $stagedRootfsBytes bytes used, " +
+                        "${manager.resourceLimits.maxRootfsBytes} bytes allowed"
+                )
+            }
+            manager.checkResourceLimits(root)
+            swapRootfs(stagingDir, linuxDir, backupDir)
+            onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
+        } finally {
+            archive.delete()
+            stagingDir.deleteAsChildNoFollow()
+        }
+    }
+
+    private fun copyAndVerifyArchive(
+        source: RootfsArchiveSource,
+        inputStream: InputStream,
+        target: File,
+    ) {
+        val digest = MessageDigest.getInstance("SHA-256")
+        require(Files.isDirectory(requireNotNull(target.parentFile).toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Rootfs archive directory must not be a symbolic link"
+        }
+        var bytesRead = 0L
+        try {
+            inputStream.use { input ->
+                Channels.newOutputStream(
+                    Files.newByteChannel(
+                        target.toPath(),
+                        setOf<OpenOption>(
+                            StandardOpenOption.WRITE,
+                            StandardOpenOption.CREATE_NEW,
+                            LinkOption.NOFOLLOW_LINKS,
+                        ),
+                    )
+                ).use { output ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    while (true) {
+                        checkInterrupted()
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        bytesRead = Math.addExact(bytesRead, read.toLong())
+                        require(bytesRead <= limits.maxDownloadBytes) {
+                            "Rootfs archive exceeds download limit: ${limits.maxDownloadBytes} bytes"
+                        }
+                        digest.update(buffer, 0, read)
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            require(bytesRead > 0) { "Rootfs archive is empty" }
+            val actualDigest = digest.digest().joinToString("") { "%02x".format(it) }
+            require(actualDigest == source.sha256) {
+                "Rootfs SHA-256 mismatch (expected ${source.sha256}, got $actualDigest)"
+            }
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
         }
     }
 
@@ -302,6 +408,12 @@ class RootfsInstaller(
 
     private fun validateRootfs(rootfs: File) {
         RootfsHealth.requireHealthy(rootfs)
+    }
+
+    private fun repairInstalledRootfsMountPoints(linuxDir: File) {
+        if (RootfsHealth.isHealthy(linuxDir)) {
+            patcher.repairExecutionMountPoints(linuxDir)
+        }
     }
 
     private fun recoverInterruptedSwap(linuxDir: File, backupDir: File) {

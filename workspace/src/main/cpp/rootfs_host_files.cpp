@@ -172,6 +172,32 @@ bool validate_owned_directory(JNIEnv *env, int fd, const std::string &label) {
     return true;
 }
 
+std::string proc_fd_path(int fd) {
+    return "/proc/self/fd/" + std::to_string(fd);
+}
+
+bool chmod_open_directory(
+        JNIEnv *env,
+        int fd,
+        mode_t mode,
+        const std::string &label) {
+    if (chmod(proc_fd_path(fd).c_str(), mode) != 0) {
+        throw_io_exception(env, "Unable to chmod " + label, errno);
+        return false;
+    }
+    struct stat status = {};
+    if (fstat(fd, &status) != 0) {
+        throw_io_exception(env, "Unable to verify chmod for " + label, errno);
+        return false;
+    }
+    if (!S_ISDIR(status.st_mode) || status.st_uid != getuid() ||
+        (status.st_mode & 07777) != mode) {
+        throw_unsafe_path(env, "Rootfs directory changed during chmod: " + label);
+        return false;
+    }
+    return true;
+}
+
 bool is_decimal_segment(const std::string &segment) {
     if (segment.empty()) return false;
     for (const char value: segment) {
@@ -419,6 +445,45 @@ bool delete_entry_at(
             parent_fd,
             name.c_str(),
             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+    if (directory.get() < 0 && errno == EACCES) {
+        ScopedFd path_directory(openat(
+                parent_fd,
+                name.c_str(),
+                O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+        if (path_directory.get() < 0) {
+            throw_io_exception(env, "Unable to pin host maintenance directory", errno);
+            return false;
+        }
+        if (!validate_owned_directory(env, path_directory.get(), "host maintenance tree")) {
+            return false;
+        }
+        struct stat pinned = {};
+        if (fstat(path_directory.get(), &pinned) != 0) {
+            throw_io_exception(env, "Unable to inspect pinned host maintenance directory", errno);
+            return false;
+        }
+        const mode_t repaired_mode = static_cast<mode_t>((pinned.st_mode & 07777) | 0700);
+        if (!chmod_open_directory(
+                env,
+                path_directory.get(),
+                repaired_mode,
+                "host maintenance directory")) {
+            return false;
+        }
+        directory.reset(open(
+                proc_fd_path(path_directory.get()).c_str(),
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+        if (directory.get() < 0) {
+            throw_io_exception(env, "Unable to reopen host maintenance directory", errno);
+            return false;
+        }
+        struct stat reopened = {};
+        if (fstat(directory.get(), &reopened) != 0 || reopened.st_dev != pinned.st_dev ||
+            reopened.st_ino != pinned.st_ino) {
+            throw_unsafe_path(env, "Host maintenance directory changed while reopening");
+            return false;
+        }
+    }
     if (directory.get() < 0) {
         if (errno == ENOENT) return true;
         if (errno == ELOOP || errno == ENOTDIR) {
@@ -429,6 +494,19 @@ bool delete_entry_at(
         return false;
     }
     if (!validate_owned_directory(env, directory.get(), "host maintenance tree")) return false;
+    struct stat opened = {};
+    if (fstat(directory.get(), &opened) != 0) {
+        throw_io_exception(env, "Unable to inspect host maintenance directory mode", errno);
+        return false;
+    }
+    if ((opened.st_mode & 0700) != 0700 &&
+        !chmod_open_directory(
+            env,
+            directory.get(),
+            static_cast<mode_t>((opened.st_mode & 07777) | 0700),
+            "host maintenance directory")) {
+        return false;
+    }
 
     const int stream_fd = fcntl(directory.get(), F_DUPFD_CLOEXEC, 0);
     if (stream_fd < 0) {
@@ -719,13 +797,49 @@ Java_me_rerere_workspace_RootfsHostFileBridge_directory(
         return JNI_FALSE;
     }
     bool missing = false;
-    ScopedFd directory(open_directory_chain(
-            env,
-            root,
-            segments,
-            segments.size(),
-            create == JNI_TRUE,
-            &missing));
+    ScopedFd directory;
+    if (segments.empty()) {
+        directory.reset(open_directory_chain(env, root, segments, 0, false, &missing));
+    } else {
+        ScopedFd parent(open_directory_chain(
+                env,
+                root,
+                segments,
+                segments.size() - 1,
+                create == JNI_TRUE,
+                &missing));
+        if (parent.get() < 0) return JNI_FALSE;
+        const std::string &leaf = segments.back();
+        int leaf_fd = openat(
+                parent.get(),
+                leaf.c_str(),
+                O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        if (leaf_fd < 0 && errno == ENOENT && create == JNI_TRUE) {
+            if (mkdirat(parent.get(), leaf.c_str(), 0755) != 0 && errno != EEXIST) {
+                throw_io_exception(env, "Unable to create Rootfs directory /" + relative, errno);
+                return JNI_FALSE;
+            }
+            leaf_fd = openat(
+                    parent.get(),
+                    leaf.c_str(),
+                    O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        }
+        if (leaf_fd < 0) {
+            if (errno == ENOENT) {
+                missing = true;
+            } else if (errno == ELOOP || errno == ENOTDIR) {
+                throw_unsafe_path(
+                        env,
+                        "Refusing Rootfs host access through symbolic link or non-directory: /" +
+                            relative);
+            } else {
+                throw_io_exception(env, "Unable to open Rootfs directory /" + relative, errno);
+            }
+            return JNI_FALSE;
+        }
+        directory.reset(leaf_fd);
+        if (!validate_owned_directory(env, directory.get(), "/" + relative)) return JNI_FALSE;
+    }
     if (env->ExceptionCheck()) return JNI_FALSE;
     return directory.get() >= 0 && !missing ? JNI_TRUE : JNI_FALSE;
 }
@@ -1038,22 +1152,39 @@ Java_me_rerere_workspace_RootfsHostFileBridge_chmodDirectory(
         return;
     }
     bool missing = false;
-    ScopedFd directory(open_directory_chain(
-            env,
-            root,
-            segments,
-            segments.size(),
-            false,
-            &missing));
+    ScopedFd directory;
+    if (segments.empty()) {
+        directory.reset(open_directory_chain(env, root, segments, 0, false, &missing));
+    } else {
+        ScopedFd parent(open_directory_chain(
+                env,
+                root,
+                segments,
+                segments.size() - 1,
+                false,
+                &missing));
+        if (parent.get() >= 0) {
+            directory.reset(openat(
+                    parent.get(),
+                    segments.back().c_str(),
+                    O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+            if (directory.get() < 0 && errno == ENOENT) missing = true;
+        }
+    }
     if (directory.get() < 0) {
         if (missing && !env->ExceptionCheck()) {
             throw_unsafe_path(env, "Rootfs directory is missing: /" + relative);
+        } else if (!env->ExceptionCheck()) {
+            if (errno == ELOOP || errno == ENOTDIR) {
+                throw_unsafe_path(env, "Refusing Rootfs chmod through unsafe directory: /" + relative);
+            } else {
+                throw_io_exception(env, "Unable to open Rootfs chmod directory /" + relative, errno);
+            }
         }
         return;
     }
-    if (fchmod(directory.get(), static_cast<mode_t>(mode)) != 0) {
-        throw_io_exception(env, "Unable to chmod Rootfs directory /" + relative, errno);
-    }
+    if (!validate_owned_directory(env, directory.get(), "/" + relative)) return;
+    chmod_open_directory(env, directory.get(), static_cast<mode_t>(mode), "/" + relative);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

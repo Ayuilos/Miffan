@@ -236,6 +236,10 @@ class ExampleUnitTest {
         assertTrue(File(linuxDir, "tmp").canWrite())
         assertTrue(File(linuxDir, "var/tmp").canWrite())
         assertTrue(File(linuxDir, "root").isDirectory)
+        assertTrue(File(linuxDir, "workspace").isDirectory)
+        assertTrue(File(linuxDir, "dev").isDirectory)
+        assertTrue(File(linuxDir, "proc").isDirectory)
+        assertTrue(File(linuxDir, "sys").isDirectory)
     }
 
     private fun tarGz(vararg entries: TarTestEntry): ByteArray {
