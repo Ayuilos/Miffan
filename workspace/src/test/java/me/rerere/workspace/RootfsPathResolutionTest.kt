@@ -16,13 +16,14 @@ class RootfsPathResolutionTest {
     val tempFolder = TemporaryFolder()
 
     private lateinit var skillsDir: File
+    private lateinit var uploadDir: File
     private lateinit var manager: WorkspaceManager
 
     private val root = "test-workspace"
 
     private fun createManager(): WorkspaceManager {
         skillsDir = tempFolder.newFolder("skills")
-        val uploadDir = tempFolder.newFolder("upload")
+        uploadDir = tempFolder.newFolder("upload")
         return WorkspaceManager(
             baseDir = tempFolder.newFolder("workspaces"),
             bindMounts = listOf(
@@ -144,6 +145,26 @@ class RootfsPathResolutionTest {
 
         assertTrue(error.message!!.contains("symbolic link"))
         assertFalse(File(outside, "evil.txt").exists())
+    }
+
+    @Test
+    fun `read preserves regular uploads but refuses symbolic link escapes`() {
+        manager = createManager()
+        val upload = File(uploadDir, "note.txt").apply { writeText("uploaded") }
+        val hardLink = File(uploadDir, "note-hardlink.txt")
+        Files.createLink(hardLink.toPath(), upload.toPath())
+        val buffer = ByteArrayOutputStream()
+
+        assertEquals(8L, manager.rootfsFileSize(root, "/upload/note-hardlink.txt"))
+        manager.exportRootfsFile(root, "/upload/note-hardlink.txt", buffer)
+        assertEquals("uploaded", buffer.toString(Charsets.UTF_8.name()))
+
+        val outside = tempFolder.newFile("outside-upload.txt").apply { writeText("secret") }
+        val link = File(uploadDir, "escape.txt")
+        Files.createSymbolicLink(link.toPath(), outside.toPath())
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.rootfsFileSize(root, "/upload/escape.txt")
+        }
     }
 
     @Test

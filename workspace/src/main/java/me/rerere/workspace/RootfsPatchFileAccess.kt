@@ -71,6 +71,7 @@ private class NativeRootfsPatchFiles(
             root,
             relativePath.encodedPath(),
             MAX_MAINTENANCE_FILE_BYTES,
+            true,
         )?.toString(StandardCharsets.UTF_8)
 
     override fun readText(relativePath: String): String =
@@ -88,6 +89,7 @@ private class NativeRootfsPatchFiles(
             relativePath.encodedPath(),
             bytes,
             replaceLeafSymlink,
+            true,
         )
     }
 

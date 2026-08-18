@@ -19,7 +19,7 @@ namespace {
 constexpr size_t kMaxRootPathBytes = 1024 * 1024;
 constexpr size_t kMaxRelativePathBytes = 4096;
 constexpr size_t kMaxSegmentBytes = 255;
-constexpr size_t kMaxMaintenanceFileBytes = 256 * 1024;
+constexpr size_t kMaxHostFileBytes = 8 * 1024 * 1024;
 constexpr size_t kMaxDeletionDepth = 256;
 constexpr size_t kMaxDeletionOperations = 1000 * 1000;
 constexpr jint kFileMissing = 0;
@@ -267,7 +267,8 @@ int open_directory_chain(
 bool validate_regular_file(
         JNIEnv *env,
         const struct stat &status,
-        const std::string &relative_path) {
+        const std::string &relative_path,
+        bool reject_hardlinks = true) {
     if (!S_ISREG(status.st_mode)) {
         throw_unsafe_path(
                 env,
@@ -280,7 +281,7 @@ bool validate_regular_file(
                 "Rootfs maintenance file has an unexpected owner: /" + relative_path);
         return false;
     }
-    if (status.st_nlink != 1) {
+    if (reject_hardlinks && status.st_nlink != 1) {
         throw_unsafe_path(
                 env,
                 "Refusing Rootfs host access through hard-linked file: /" + relative_path);
@@ -515,8 +516,9 @@ Java_me_rerere_workspace_RootfsHostFileBridge_readFile(
         jclass,
         jbyteArray root_bytes,
         jbyteArray relative_bytes,
-        jint max_bytes) {
-    if (max_bytes < 0 || static_cast<size_t>(max_bytes) > kMaxMaintenanceFileBytes) {
+        jint max_bytes,
+        jboolean reject_hardlinks) {
+    if (max_bytes < 0 || static_cast<size_t>(max_bytes) > kMaxHostFileBytes) {
         throw_exception(env, "java/lang/IllegalArgumentException", "Invalid Rootfs read limit");
         return nullptr;
     }
@@ -563,7 +565,7 @@ Java_me_rerere_workspace_RootfsHostFileBridge_readFile(
         throw_io_exception(env, "Unable to inspect Rootfs file /" + relative, errno);
         return nullptr;
     }
-    if (!validate_regular_file(env, status, relative)) return nullptr;
+    if (!validate_regular_file(env, status, relative, reject_hardlinks == JNI_TRUE)) return nullptr;
     if (status.st_size < 0 || status.st_size > max_bytes) {
         throw_unsafe_path(env, "Rootfs maintenance file is too large: /" + relative);
         return nullptr;
@@ -597,6 +599,61 @@ Java_me_rerere_workspace_RootfsHostFileBridge_readFile(
     return env->ExceptionCheck() ? nullptr : result;
 }
 
+extern "C" JNIEXPORT jlong JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_fileSize(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes,
+        jboolean reject_hardlinks) {
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments)) {
+        return -1;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            false,
+            &missing));
+    if (parent.get() < 0) return -1;
+
+    ScopedFd file(openat(
+            parent.get(),
+            segments.back().c_str(),
+            O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+    if (file.get() < 0) {
+        if (errno == ENOENT) return -1;
+        if (errno == ELOOP) {
+            throw_unsafe_path(
+                    env,
+                    "Refusing Rootfs host access through symbolic link: /" + relative);
+        } else {
+            throw_io_exception(env, "Unable to open Rootfs file /" + relative, errno);
+        }
+        return -1;
+    }
+    struct stat status = {};
+    if (fstat(file.get(), &status) != 0) {
+        throw_io_exception(env, "Unable to inspect Rootfs file /" + relative, errno);
+        return -1;
+    }
+    if (!S_ISREG(status.st_mode)) return -2;
+    if (!validate_regular_file(env, status, relative, reject_hardlinks == JNI_TRUE)) return -1;
+    return static_cast<jlong>(status.st_size);
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_me_rerere_workspace_RootfsHostFileBridge_writeFile(
         JNIEnv *env,
@@ -604,7 +661,8 @@ Java_me_rerere_workspace_RootfsHostFileBridge_writeFile(
         jbyteArray root_bytes,
         jbyteArray relative_bytes,
         jbyteArray content_bytes,
-        jboolean replace_leaf_symlink) {
+        jboolean replace_leaf_symlink,
+        jboolean overwrite) {
     std::string root;
     std::string relative;
     std::vector<std::string> segments;
@@ -623,7 +681,7 @@ Java_me_rerere_workspace_RootfsHostFileBridge_writeFile(
             env,
             content_bytes,
             &content,
-            kMaxMaintenanceFileBytes,
+            kMaxHostFileBytes,
             false)) {
         return;
     }
@@ -653,6 +711,10 @@ Java_me_rerere_workspace_RootfsHostFileBridge_writeFile(
             return;
         }
         kind = kFileMissing;
+    }
+    if (kind == kFileRegular && overwrite != JNI_TRUE) {
+        throw_unsafe_path(env, "Rootfs maintenance file already exists: /" + relative);
+        return;
     }
 
     int flags = O_WRONLY | O_CLOEXEC | O_NOFOLLOW;

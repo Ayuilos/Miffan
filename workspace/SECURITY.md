@@ -95,14 +95,25 @@ network access, and app-private storage that the Android process makes available
      descriptor-anchored parents. The moved directory must be app-owned and its device/inode
      identity is verified at the destination. A concurrently-created destination is never
      overwritten.
-9. **Isolation alternatives (future)**
+9. **Descriptor-relative model file I/O (implemented)**
+   - `workspace_write_file` and `workspace_edit_file` now create or overwrite files through the
+     native RootFS bridge. Parent components are opened from `/` with `O_NOFOLLOW`; the leaf is
+     opened with `O_NOFOLLOW`, inspected after open, and hard-linked or non-regular targets are
+     rejected before truncation. `overwrite=false` is enforced by the same native decision that
+     opens the leaf rather than by an earlier Java existence check.
+   - `workspace_read_file` size checks and exports use descriptor-relative, bounded regular-file
+     reads for `/workspace`, RootFS paths, `/skills`, `/upload`, and scoped `/tool_outputs`.
+     Symbolic-link components and leaves are rejected, while ordinary uploaded files and legitimate
+     read-only hard links remain readable. The export repeats the 8 MiB cap while reading, so growth
+     after the preliminary size query cannot produce an unbounded allocation.
+10. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
      the shared Android app UID, not to an individual workspace.
-   - Move the remaining model-facing workspace file read/write/move operations from Java pathname
-     validation to the descriptor-relative bridge. Per-workspace session exclusion prevents normal
-     shell concurrency, but pathname checks alone are not a kernel-enforced boundary against an
+   - Move remaining UI/import/delete/move/list/search file operations from Java pathname validation
+     to descriptor-relative primitives. Per-workspace session exclusion prevents normal shell
+     concurrency, but those pathname checks alone are not a kernel-enforced boundary against an
      already-escaped, concurrently hostile process running with the same Android UID.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
@@ -188,3 +199,8 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     it is rejected; remove that link and confirm the same source is atomically moved to the empty
     destination. Repeat install interruption at each swap point and verify the previous healthy
     RootFS is either active or recoverable from `.linux-backup`.
+22. Read a normal upload through `workspace_read_file`, then replace both an `/upload` leaf and a
+    `/workspace` parent with links to sentinel data outside their mapped roots. Confirm reads and
+    writes reject both links without disclosing or modifying the sentinels. Repeat a write with
+    `overwrite=false` against an existing regular file and confirm its content is unchanged. Grow a
+    file beyond 8 MiB between the size query and export and confirm the FD read stops at the cap.

@@ -1,7 +1,9 @@
 package me.rerere.workspace
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
@@ -75,6 +77,23 @@ class WorkspaceFileSystem(
         require(bytes.size <= config.maxWriteBytes) {
             "Content is too large to write: ${bytes.size} bytes"
         }
+        val segments = path.strictRelativeFileSegments()
+        if (usesNativeHostFileOperations()) {
+            RootfsHostFileBridge.writeFile(
+                root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                path.toByteArray(StandardCharsets.UTF_8),
+                bytes,
+                false,
+                overwrite,
+            )
+            return WorkspaceFileEntry(
+                path = path,
+                name = segments.last(),
+                isDirectory = false,
+                sizeBytes = bytes.size.toLong(),
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
         val file = resolveWritePathNoFollow(root, path)
         require(!file.exists() || overwrite) { "File already exists: $path" }
         require(!file.exists() || file.isFile) { "Path is not a file: $path" }
@@ -93,6 +112,70 @@ class WorkspaceFileSystem(
             while (buffer.hasRemaining()) channel.write(buffer)
         }
         return file.toEntry(root)
+    }
+
+    fun fileSizeNoFollow(root: File, path: String, displayPath: String = path): Long {
+        path.strictRelativeFileSegments()
+        if (usesNativeHostFileOperations()) {
+            return when (
+                val size = RootfsHostFileBridge.fileSize(
+                    root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                    path.toByteArray(StandardCharsets.UTF_8),
+                    false,
+                )
+            ) {
+                -1L -> throw IllegalArgumentException("File does not exist: $displayPath")
+                -2L -> throw IllegalArgumentException("Path is not a file: $displayPath")
+                else -> size
+            }
+        }
+        val file = resolveReadPathNoFollow(root, path, displayPath)
+        return Files.size(file.toPath())
+    }
+
+    fun exportNoFollow(
+        root: File,
+        path: String,
+        outputStream: OutputStream,
+        maxBytes: Long,
+        displayPath: String = path,
+    ) {
+        require(maxBytes in 0..MAX_DESCRIPTOR_FILE_BYTES) {
+            "Invalid descriptor-relative read limit: $maxBytes"
+        }
+        path.strictRelativeFileSegments()
+        if (usesNativeHostFileOperations()) {
+            val bytes = requireNotNull(
+                RootfsHostFileBridge.readFile(
+                    root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                    path.toByteArray(StandardCharsets.UTF_8),
+                    maxBytes.toInt(),
+                    false,
+                )
+            ) { "File does not exist: $displayPath" }
+            outputStream.write(bytes)
+            return
+        }
+
+        val file = resolveReadPathNoFollow(root, path, displayPath)
+        val output = ByteArrayOutputStream()
+        val buffer = ByteBuffer.allocate(DEFAULT_BUFFER_SIZE)
+        Files.newByteChannel(
+            file.toPath(),
+            setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS),
+        ).use { channel ->
+            while (true) {
+                val read = channel.read(buffer)
+                if (read < 0) break
+                if (read == 0) continue
+                require(output.size().toLong() + read <= maxBytes) {
+                    "File is too large to read: $displayPath"
+                }
+                output.write(buffer.array(), 0, read)
+                buffer.clear()
+            }
+        }
+        output.writeTo(outputStream)
     }
 
     fun importBytes(
@@ -260,14 +343,7 @@ class WorkspaceFileSystem(
     }
 
     private fun resolveWritePathNoFollow(root: File, path: String): File {
-        require(path.isNotBlank() && path != ".") { "Path must identify a file" }
-        require(!path.startsWith('/') && !path.contains('\\') && !path.contains('\u0000')) {
-            "Path must be an unambiguous relative path"
-        }
-        val segments = path.split('/')
-        require(segments.none { it.isBlank() || it == "." || it == ".." }) {
-            "Path must not contain empty, . or .. segments"
-        }
+        val segments = path.strictRelativeFileSegments()
 
         root.mkdirs()
         require(!Files.isSymbolicLink(root.toPath())) { "Workspace root must not be a symbolic link" }
@@ -298,6 +374,31 @@ class WorkspaceFileSystem(
         return target
     }
 
+    private fun resolveReadPathNoFollow(root: File, path: String, displayPath: String): File {
+        val segments = path.strictRelativeFileSegments()
+        require(Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Workspace root must be a real directory"
+        }
+        var current = root.toPath().toAbsolutePath().normalize()
+        segments.dropLast(1).forEach { segment ->
+            current = current.resolve(segment)
+            require(Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                "File does not exist: $displayPath"
+            }
+            require(Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                "Refusing to read through symbolic link or non-directory: $displayPath"
+            }
+        }
+        val target = current.resolve(segments.last())
+        require(Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            "File does not exist: $displayPath"
+        }
+        require(Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+            "Path is not a file: $displayPath"
+        }
+        return target.toFile()
+    }
+
     fun resolve(root: File, path: String): File = resolvePath(root, path)
 
     private fun File.toEntry(root: File): WorkspaceFileEntry = WorkspaceFileEntry(
@@ -319,4 +420,23 @@ class WorkspaceFileSystem(
 
     private fun Path.relativeToString(): String =
         joinToString("/") { it.name }
+
+    private fun String.strictRelativeFileSegments(): List<String> {
+        require(isNotBlank() && this != ".") { "Path must identify a file" }
+        require(!startsWith('/') && !contains('\\') && !contains('\u0000')) {
+            "Path must be an unambiguous relative path"
+        }
+        return split('/').also { segments ->
+            require(segments.none { it.isBlank() || it == "." || it == ".." }) {
+                "Path must not contain empty, . or .. segments"
+            }
+            require(segments.all { it.toByteArray(StandardCharsets.UTF_8).size <= 255 }) {
+                "Path segment is too long"
+            }
+        }
+    }
+
+    private companion object {
+        const val MAX_DESCRIPTOR_FILE_BYTES = 8L * 1024 * 1024
+    }
 }

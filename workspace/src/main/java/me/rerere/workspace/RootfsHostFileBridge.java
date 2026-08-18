@@ -15,13 +15,20 @@ final class RootfsHostFileBridge {
 
     static native int fileKind(byte[] root, byte[] relativePath);
 
-    static native byte[] readFile(byte[] root, byte[] relativePath, int maxBytes);
+    static native byte[] readFile(
+            byte[] root,
+            byte[] relativePath,
+            int maxBytes,
+            boolean rejectHardLinks);
+
+    static native long fileSize(byte[] root, byte[] relativePath, boolean rejectHardLinks);
 
     static native void writeFile(
             byte[] root,
             byte[] relativePath,
             byte[] content,
-            boolean replaceLeafSymlink);
+            boolean replaceLeafSymlink,
+            boolean overwrite);
 
     static native void chmodDirectory(byte[] root, byte[] relativePath, int mode);
 

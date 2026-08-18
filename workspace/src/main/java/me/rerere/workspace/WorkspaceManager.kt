@@ -191,13 +191,26 @@ class WorkspaceManager(
         )
     }
 
-    fun rootfsFileSize(root: String, path: String): Long =
-        resolveRootfsFile(root, path).also { it.requireReadableFile(path) }.length()
+    fun rootfsFileSize(root: String, path: String): Long {
+        val location = resolveRootfsPath(root, path)
+        return fileSystem.fileSizeNoFollow(
+            root = location.rootDir,
+            path = location.relativePath,
+            displayPath = location.guestPath.value,
+        )
+    }
 
     fun exportRootfsFile(root: String, path: String, outputStream: OutputStream) {
-        val file = resolveRootfsFile(root, path)
-        file.requireReadableFile(path)
-        outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
+        val location = resolveRootfsPath(root, path)
+        outputStream.use { out ->
+            fileSystem.exportNoFollow(
+                root = location.rootDir,
+                path = location.relativePath,
+                outputStream = out,
+                maxBytes = MAX_ROOTFS_TOOL_READ_BYTES,
+                displayPath = location.guestPath.value,
+            )
+        }
     }
 
     fun writeRootfsText(
@@ -225,16 +238,6 @@ class WorkspaceManager(
             path = location.guestPath.value,
             name = location.guestPath.name,
         )
-    }
-
-    private fun resolveRootfsFile(root: String, path: String): File {
-        val location = resolveRootfsPath(root, path)
-        return fileSystem.resolve(location.rootDir, location.relativePath)
-    }
-
-    private fun File.requireReadableFile(path: String) {
-        require(exists()) { "File does not exist: $path" }
-        require(isFile) { "Path is not a file: $path" }
     }
 
     fun deleteFile(
@@ -575,6 +578,7 @@ class WorkspaceManager(
         private const val LINUX_DIR = "linux"
         private const val TEMP_DIR = "tmp"
         private const val RUNTIME_DIR = ".runtime"
+        private const val MAX_ROOTFS_TOOL_READ_BYTES = 8L * 1024 * 1024
         const val DEFAULT_COMMAND_TIMEOUT_MS = 30_000L
 
         /** Rootfs 内工作区文件区的挂载点 */

@@ -3,6 +3,7 @@ package me.rerere.workspace
 import android.system.Os
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -198,6 +199,78 @@ class RootfsHostBoundaryInstrumentedTest {
             assertEquals("source", File(target, "source.txt").readText())
         } finally {
             container.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun directFileToolsPreserveUploadsAndRejectLinkEscapes() {
+        val baseDir = freshDirectory("file-tools-boundary")
+        val upload = freshDirectory("file-tools-upload")
+        val outside = freshDirectory("file-tools-outside")
+        val manager = WorkspaceManager(
+            baseDir = baseDir,
+            bindMounts = listOf(
+                WorkspaceBindMount(
+                    source = upload,
+                    target = "/upload",
+                    exposeToShell = false,
+                    writableByTools = false,
+                )
+            ),
+        )
+        val root = "root"
+        manager.ensureWorkspace(root)
+        File(upload, "note.txt").writeText("uploaded")
+        val output = ByteArrayOutputStream()
+
+        try {
+            assertEquals(8L, manager.rootfsFileSize(root, "/upload/note.txt"))
+            manager.exportRootfsFile(root, "/upload/note.txt", output)
+            assertEquals("uploaded", output.toString(Charsets.UTF_8.name()))
+
+            File(upload, "bounded.txt").writeText("12345")
+            assertThrows(IllegalArgumentException::class.java) {
+                WorkspaceFileSystem().exportNoFollow(
+                    root = upload,
+                    path = "bounded.txt",
+                    outputStream = ByteArrayOutputStream(),
+                    maxBytes = 4,
+                )
+            }
+
+            manager.writeRootfsText(root, "/workspace/existing.txt", "original")
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.writeRootfsText(
+                    root,
+                    "/workspace/existing.txt",
+                    "replacement",
+                    overwrite = false,
+                )
+            }
+            assertEquals("original", File(manager.filesDir(root), "existing.txt").readText())
+
+            val outsideSentinel = File(outside, "keep.txt").apply { writeText("keep") }
+            Files.createSymbolicLink(
+                File(manager.filesDir(root), "escape").toPath(),
+                outside.toPath(),
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.writeRootfsText(root, "/workspace/escape/evil.txt", "evil")
+            }
+            assertFalse(File(outside, "evil.txt").exists())
+
+            Files.createSymbolicLink(
+                File(upload, "escape.txt").toPath(),
+                outsideSentinel.toPath(),
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.rootfsFileSize(root, "/upload/escape.txt")
+            }
+            assertEquals("keep", outsideSentinel.readText())
+        } finally {
+            baseDir.deleteRecursivelyNoFollow()
+            upload.deleteRecursivelyNoFollow()
             outside.deleteRecursivelyNoFollow()
         }
     }
