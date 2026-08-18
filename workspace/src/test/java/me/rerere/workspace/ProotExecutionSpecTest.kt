@@ -67,6 +67,41 @@ class ProotExecutionSpecTest {
     }
 
     @Test
+    fun `interactive and AI shells share the same mount table`() {
+        val linux = tmp.newFolder("shared-mount-linux")
+        val files = tmp.newFolder("shared-mount-files")
+        val exposed = tmp.newFolder("shared-mount-exposed")
+        val hidden = tmp.newFolder("shared-mount-hidden")
+        val mounts = listOf(
+            WorkspaceBindMount(exposed, "/shared", exposeToShell = true),
+            WorkspaceBindMount(hidden, "/hidden", exposeToShell = false),
+        )
+        val context = WorkspaceShellContext(
+            root = "root",
+            command = "true",
+            cwd = "",
+            filesDir = files,
+            linuxDir = linux,
+            tempDir = tmp.newFolder("shared-mount-temp"),
+            workingDir = files,
+            timeoutMillis = 1_000,
+            bindMounts = mounts,
+        )
+
+        val ai = ProotExecutionSpec.nonInteractiveCommand(context, tmp.newFile("shared-mount-proot"))
+        val interactive = ProotExecutionSpec.interactiveArguments(
+            root = "root",
+            linuxDir = linux,
+            filesDir = files,
+            bindMounts = mounts,
+        )
+
+        assertEquals(bindArguments(ai), bindArguments(interactive))
+        assertTrue(bindArguments(ai).contains("${exposed.absolutePath}:/shared"))
+        assertFalse(bindArguments(ai).any { it.endsWith(":/hidden") })
+    }
+
+    @Test
     fun `guest cwd rejects aliases and absolute paths`() {
         listOf("/workspace", "a/../b", "a//b", "a/").forEach { cwd ->
             org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
@@ -116,4 +151,9 @@ class ProotExecutionSpecTest {
             assertTrue(script.contains("exit 125"))
         }
     }
+
+    private fun bindArguments(arguments: List<String>): List<String> =
+        arguments.zipWithNext()
+            .filter { (option, _) -> option == "-b" }
+            .map { (_, value) -> value }
 }

@@ -21,6 +21,7 @@ import me.rerere.workspace.ProotExecutionSpec
 import me.rerere.workspace.RootfsHealth
 import me.rerere.workspace.RootfsPatchOptions
 import me.rerere.workspace.RootfsPatcher
+import me.rerere.workspace.WorkspaceBindMount
 import me.rerere.workspace.WorkspaceProcessRegistration
 import me.rerere.workspace.WorkspaceResourceLimits
 import java.io.File
@@ -32,6 +33,7 @@ internal fun createWorkspaceTerminalSession(
     root: String,
     client: TerminalSessionClient,
     resourceLimits: WorkspaceResourceLimits,
+    bindMounts: List<WorkspaceBindMount>,
 ): TerminalSession {
     val appContext = context.applicationContext
     val workspaceDir = File(File(appContext.filesDir, "workspaces"), root)
@@ -54,6 +56,7 @@ internal fun createWorkspaceTerminalSession(
         root = root,
         linuxDir = linuxDir,
         filesDir = filesDir,
+        bindMounts = bindMounts,
         maxFileSizeBytes = resourceLimits.maxShellFileBytes,
         maxCpuTimeSeconds = resourceLimits.maxShellCpuTimeSeconds,
         maxVirtualMemoryBytes = resourceLimits.maxShellVirtualMemoryBytes,

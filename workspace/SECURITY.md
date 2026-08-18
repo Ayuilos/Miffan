@@ -16,7 +16,8 @@ network access, and app-private storage that the Android process makes available
    - Select a pinned Ubuntu Base archive for `arm64-v8a` or `x86_64`; require HTTPS, same-host HTTPS
      redirects, a compiled-in SHA-256, download/extraction quotas, health checks, and rollback.
    - Share PRoot arguments and environment construction between AI commands and the terminal;
-     serialize installs, AI commands, direct writes, cleanup, and deletion per workspace.
+     both surfaces consume the same manager-owned bind definition. Serialize installs, AI commands,
+     direct writes, cleanup, and deletion per workspace.
 2. **Process-local resource governance (implemented)**
    - Account logical bytes without following symlinks. Defaults cap `/workspace` at 512 MiB,
      Rootfs at 1.5 GiB, installation/runtime temp at 1.25 GiB, and the workspace tree at 3 GiB,

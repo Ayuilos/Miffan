@@ -185,6 +185,7 @@ private fun WorkspaceTerminalContent(
                 root = current,
                 client = sessionClient,
                 resourceLimits = workspaceManager.resourceLimits,
+                bindMounts = workspaceManager.executionBindMounts,
             )
             val registration = try {
                 // Once the native process exists, registration must either publish its durable

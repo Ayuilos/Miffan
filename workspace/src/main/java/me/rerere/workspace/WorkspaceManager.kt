@@ -14,13 +14,14 @@ class WorkspaceManager(
     private val baseDir: File,
     private val config: WorkspaceConfig = WorkspaceConfig(),
     private val shellRunner: WorkspaceShellRunner = HostShellRunner(),
-    private val bindMounts: List<WorkspaceBindMount> = emptyList(),
+    bindMounts: List<WorkspaceBindMount> = emptyList(),
     private val sessionRegistry: WorkspaceSessionRegistry =
         WorkspaceSessionRegistry(config.resourceLimits),
     private val processSupervisor: WorkspaceProcessSupervisor =
         WorkspaceProcessSupervisor(File(baseDir, "$RUNTIME_DIR/processes")),
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
+    private val bindMounts = bindMounts.toList()
 
     // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
     private val sortedBindMounts = bindMounts.sortedByDescending { it.guestTarget.value.length }
@@ -28,6 +29,10 @@ class WorkspaceManager(
 
     val resourceLimits: WorkspaceResourceLimits
         get() = config.resourceLimits
+
+    /** The single mount definition consumed by both AI and interactive PRoot specifications. */
+    val executionBindMounts: List<WorkspaceBindMount>
+        get() = bindMounts.toList()
 
     val processRecoveryReport: WorkspaceProcessRecoveryReport
 
