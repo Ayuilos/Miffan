@@ -130,12 +130,7 @@ class WorkspaceManager(
         root: String,
         path: String,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
-    ): Long {
-        val file = fileSystem.resolve(areaDir(root, area), path)
-        require(file.exists()) { "File does not exist: $path" }
-        require(file.isFile) { "Path is not a file: $path" }
-        return file.length()
-    }
+    ): Long = fileSystem.fileSizeNoFollow(areaDir(root, area), path)
 
     fun exportFile(
         root: String,
@@ -143,10 +138,14 @@ class WorkspaceManager(
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
         outputStream: OutputStream,
     ) {
-        val file = fileSystem.resolve(areaDir(root, area), path)
-        require(file.exists()) { "File does not exist: $path" }
-        require(file.isFile) { "Path is not a file: $path" }
-        outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
+        outputStream.use { out ->
+            fileSystem.exportNoFollow(
+                root = areaDir(root, area),
+                path = path,
+                outputStream = out,
+                maxBytes = Long.MAX_VALUE,
+            )
+        }
     }
 
     /**

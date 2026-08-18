@@ -117,16 +117,23 @@ network access, and app-private storage that the Android process makes available
    - Regular UI text reads/writes use the same descriptor file boundary. Directory listings hide
      symbolic links, and glob/grep require no-follow attributes; grep opens every selected file with
      `NOFOLLOW_LINKS`, closing the previous direct symlink-leaf disclosure path.
-11. **Isolation alternatives (future)**
+11. **Descriptor-relative streaming export (implemented)**
+   - Android UI exports and their size queries now open regular files below the selected workspace
+     area with the same `openat(O_NOFOLLOW)` directory-FD chain as model reads. The exported stream
+     stays attached to that opened inode, so a concurrent same-UID pathname replacement cannot
+     redirect it after validation.
+   - UI exports remain streaming and may exceed the model tool's 8 MiB read limit. Bounded model
+     reads inspect the opened descriptor size before producing output and continue counting bytes
+     while copying, so concurrent file growth still fails at the configured cap.
+12. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
      the shared Android app UID, not to an individual workspace.
-   - Move remaining large binary export and directory enumeration metadata operations from Java
-     pathname validation to descriptor-relative primitives. Per-workspace session exclusion
-     prevents normal shell concurrency, but Java directory traversal alone is not a kernel-enforced
-     boundary against an already-escaped, concurrently hostile process running with the same
-     Android UID.
+   - Move remaining directory enumeration metadata operations from Java pathname validation to
+     descriptor-relative primitives. Per-workspace session exclusion prevents normal shell
+     concurrency, but Java directory traversal alone is not a kernel-enforced boundary against an
+     already-escaped, concurrently hostile process running with the same Android UID.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
 
@@ -221,3 +228,8 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     overwrite enabled and confirm the link is removed without changing its target. Verify
     non-recursive directory deletion is rejected natively, recursive deletion succeeds, and
     list/glob/grep neither returns nor reads a symlink leaf pointing at an outside sentinel.
+24. Export a binary file larger than 8 MiB from the Workspace UI and confirm it is byte-identical;
+    the UI export must not inherit the model read cap. Replace its leaf and a parent directory with
+    symlinks to outside sentinels and confirm both size and export operations reject the path without
+    disclosing sentinel bytes. Concurrently exchange the pathname while exporting and confirm the
+    output stays attached to the inode opened before the exchange.

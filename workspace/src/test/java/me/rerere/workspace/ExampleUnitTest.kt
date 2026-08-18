@@ -56,6 +56,38 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun managerStreamsLargeExportsAndRejectsSymbolicLinks() {
+        val baseDir = Files.createTempDirectory("workspace-export-test").toFile()
+        val outside = Files.createTempDirectory("workspace-export-outside").toFile()
+        val manager = WorkspaceManager(baseDir)
+        val root = "test-workspace"
+        manager.ensureWorkspace(root)
+        val content = ByteArray(8 * 1024 * 1024 + 1) { (it % 251).toByte() }
+        val largeFile = File(manager.filesDir(root), "large.bin").apply { writeBytes(content) }
+        val exported = ByteArrayOutputStream(content.size)
+        val outsideFile = File(outside, "secret.bin").apply { writeText("secret") }
+        Files.createSymbolicLink(
+            File(manager.filesDir(root), "escape.bin").toPath(),
+            outsideFile.toPath(),
+        )
+
+        try {
+            assertEquals(largeFile.length(), manager.fileSize(root, "large.bin"))
+            manager.exportFile(root, "large.bin", outputStream = exported)
+            assertArrayEquals(content, exported.toByteArray())
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.fileSize(root, "escape.bin")
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.exportFile(root, "escape.bin", outputStream = ByteArrayOutputStream())
+            }
+        } finally {
+            baseDir.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
     fun rootfsRequiresShellEntryPoint() {
         val baseDir = Files.createTempDirectory("workspace-manager-test").toFile()
         val manager = WorkspaceManager(baseDir)

@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -334,6 +335,39 @@ class RootfsHostBoundaryInstrumentedTest {
                 manager.deleteFile(root, "directory", recursive = false)
             }
             assertTrue(manager.deleteFile(root, "directory", recursive = true))
+        } finally {
+            baseDir.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun workspaceExportsUseNativeStreamingDescriptors() {
+        val baseDir = freshDirectory("export-boundary")
+        val outside = freshDirectory("export-boundary-outside")
+        val manager = WorkspaceManager(baseDir)
+        val root = "root"
+        manager.ensureWorkspace(root)
+        val content = ByteArray(8 * 1024 * 1024 + 1) { (it % 251).toByte() }
+        File(manager.filesDir(root), "large.bin").writeBytes(content)
+        val exported = ByteArrayOutputStream(content.size)
+        val sentinel = File(outside, "secret.bin").apply { writeText("secret") }
+        Files.createSymbolicLink(
+            File(manager.filesDir(root), "escape.bin").toPath(),
+            sentinel.toPath(),
+        )
+
+        try {
+            assertEquals(content.size.toLong(), manager.fileSize(root, "large.bin"))
+            manager.exportFile(root, "large.bin", outputStream = exported)
+            assertArrayEquals(content, exported.toByteArray())
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.fileSize(root, "escape.bin")
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.exportFile(root, "escape.bin", outputStream = ByteArrayOutputStream())
+            }
+            assertEquals("secret", sentinel.readText())
         } finally {
             baseDir.deleteRecursivelyNoFollow()
             outside.deleteRecursivelyNoFollow()

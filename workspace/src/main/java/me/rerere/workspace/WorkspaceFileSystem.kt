@@ -145,42 +145,70 @@ class WorkspaceFileSystem(
         maxBytes: Long,
         displayPath: String = path,
     ) {
-        require(maxBytes in 0..MAX_DESCRIPTOR_FILE_BYTES) {
-            "Invalid descriptor-relative read limit: $maxBytes"
-        }
+        require(maxBytes >= 0) { "Invalid descriptor-relative read limit: $maxBytes" }
         path.strictRelativeFileSegments()
         if (usesNativeHostFileOperations()) {
-            val bytes = requireNotNull(
-                RootfsHostFileBridge.readFile(
-                    root.absolutePath.toByteArray(StandardCharsets.UTF_8),
-                    path.toByteArray(StandardCharsets.UTF_8),
-                    maxBytes.toInt(),
-                    false,
-                )
-            ) { "File does not exist: $displayPath" }
-            outputStream.write(bytes)
+            val descriptor = RootfsHostFileBridge.openFileRead(
+                root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                path.toByteArray(StandardCharsets.UTF_8),
+                false,
+            )
+            require(descriptor != -1) { "File does not exist: $displayPath" }
+            require(descriptor != -2) { "Path is not a file: $displayPath" }
+            check(descriptor >= 0) { "Unable to open file: $displayPath" }
+            val parcelDescriptor = ParcelFileDescriptor.adoptFd(descriptor)
+            try {
+                val initialSize = parcelDescriptor.statSize
+                require(initialSize < 0 || initialSize <= maxBytes) {
+                    "File is too large to read: $displayPath"
+                }
+                ParcelFileDescriptor.AutoCloseInputStream(parcelDescriptor).use { input ->
+                    input.copyBoundedTo(outputStream, maxBytes, displayPath)
+                }
+            } catch (error: Throwable) {
+                runCatching { parcelDescriptor.close() }
+                throw error
+            }
             return
         }
 
         val file = resolveReadPathNoFollow(root, path, displayPath)
-        val output = ByteArrayOutputStream()
         val buffer = ByteBuffer.allocate(DEFAULT_BUFFER_SIZE)
         Files.newByteChannel(
             file.toPath(),
             setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS),
         ).use { channel ->
+            require(channel.size() <= maxBytes) { "File is too large to read: $displayPath" }
+            var copied = 0L
             while (true) {
                 val read = channel.read(buffer)
                 if (read < 0) break
                 if (read == 0) continue
-                require(output.size().toLong() + read <= maxBytes) {
+                copied = Math.addExact(copied, read.toLong())
+                require(copied <= maxBytes) {
                     "File is too large to read: $displayPath"
                 }
-                output.write(buffer.array(), 0, read)
+                outputStream.write(buffer.array(), 0, read)
                 buffer.clear()
             }
         }
-        output.writeTo(outputStream)
+    }
+
+    private fun InputStream.copyBoundedTo(
+        outputStream: OutputStream,
+        maxBytes: Long,
+        displayPath: String,
+    ) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var copied = 0L
+        while (true) {
+            val count = read(buffer)
+            if (count < 0) return
+            if (count == 0) continue
+            copied = Math.addExact(copied, count.toLong())
+            require(copied <= maxBytes) { "File is too large to read: $displayPath" }
+            outputStream.write(buffer, 0, count)
+        }
     }
 
     fun importBytes(

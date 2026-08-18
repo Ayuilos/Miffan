@@ -1017,6 +1017,61 @@ Java_me_rerere_workspace_RootfsHostFileBridge_openFileCreate(
     return file.release();
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_openFileRead(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes,
+        jboolean reject_hardlinks) {
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments)) {
+        return -1;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            false,
+            &missing));
+    if (parent.get() < 0) return missing && !env->ExceptionCheck() ? -1 : -3;
+
+    ScopedFd file(openat(
+            parent.get(),
+            segments.back().c_str(),
+            O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+    if (file.get() < 0) {
+        if (errno == ENOENT) return -1;
+        if (errno == ELOOP) {
+            throw_unsafe_path(
+                    env,
+                    "Refusing Rootfs host access through symbolic link: /" + relative);
+        } else {
+            throw_io_exception(env, "Unable to open Rootfs file /" + relative, errno);
+        }
+        return -3;
+    }
+    struct stat status = {};
+    if (fstat(file.get(), &status) != 0) {
+        throw_io_exception(env, "Unable to inspect Rootfs file /" + relative, errno);
+        return -3;
+    }
+    if (!S_ISREG(status.st_mode)) return -2;
+    if (!validate_regular_file(env, status, relative, reject_hardlinks == JNI_TRUE)) return -3;
+    return file.release();
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_me_rerere_workspace_RootfsHostFileBridge_deleteRelative(
         JNIEnv *env,

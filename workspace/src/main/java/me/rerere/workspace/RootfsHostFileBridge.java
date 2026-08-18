@@ -43,6 +43,11 @@ final class RootfsHostFileBridge {
 
     static native int openFileCreate(byte[] root, byte[] relativePath);
 
+    static native int openFileRead(
+            byte[] root,
+            byte[] relativePath,
+            boolean rejectHardLinks);
+
     static native boolean deleteRelative(byte[] root, byte[] relativePath, boolean recursive);
 
     static native int entryKind(byte[] root, byte[] relativePath);
