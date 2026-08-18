@@ -1165,7 +1165,7 @@
   <string name="assistant_page_gradient_background">Gradient Background</string>
   <string name="assistant_page_gradient_background_desc">Use a dynamic gradient background on the chat page</string>
   <string name="assistant_page_workspace">Workspace</string>
-  <string name="assistant_page_workspace_desc">After binding, the Agent can use this workspace\'s files and sandbox capabilities</string>
+  <string name="assistant_page_workspace_desc">After binding, the Agent can use this workspace\'s files and optional local PRoot tools</string>
   <string name="assistant_page_workspace_unbound">Not bound</string>
   <string name="workspace_page_title">Workspace</string>
   <string name="workspace_page_create">Create Workspace</string>
@@ -1173,7 +1173,7 @@
   <string name="workspace_page_delete">Delete Workspace</string>
   <string name="workspace_page_delete_confirm">This will delete workspace metadata and local files, and clear all Assistant bindings referencing it.</string>
   <string name="workspace_page_empty">No workspaces yet</string>
-  <string name="workspace_page_empty_desc">Create one to use file tools and sandbox environments</string>
+  <string name="workspace_page_empty_desc">Create one to use file tools and an optional local PRoot environment</string>
   <string name="workspace_page_name">Name</string>
   <string name="workspace_detail_title">Workspace Details</string>
   <string name="workspace_detail_tab_basic">Basic</string>

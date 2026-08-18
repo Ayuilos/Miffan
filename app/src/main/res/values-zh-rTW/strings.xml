@@ -1121,7 +1121,7 @@
   <string name="assistant_page_gradient_background">漸層背景</string>
   <string name="assistant_page_gradient_background_desc">在聊天頁面上使用動態漸變背景</string>
   <string name="assistant_page_workspace">工作區</string>
-  <string name="assistant_page_workspace_desc">綁定後，Agent可以使用此工作區的檔案和沙箱功能</string>
+  <string name="assistant_page_workspace_desc">綁定後，Agent 可以使用此工作區的檔案和選用的本機 PRoot 工具</string>
   <string name="assistant_page_workspace_unbound">未綁定</string>
   <string name="workspace_page_title">工作區</string>
   <string name="workspace_page_create">創建工作區</string>
@@ -1129,7 +1129,7 @@
   <string name="workspace_page_delete">刪除工作區</string>
   <string name="workspace_page_delete_confirm">這將會刪除工作區元數據和本地文件，並清除所有引用它的助理綁定。</string>
   <string name="workspace_page_empty">尚無工作區</string>
-  <string name="workspace_page_empty_desc">建立一個以使用檔案工具和沙盒環境</string>
+  <string name="workspace_page_empty_desc">建立工作區以使用檔案工具和選用的本機 PRoot 環境</string>
   <string name="workspace_page_name">名稱</string>
   <string name="workspace_detail_title">工作區詳情</string>
   <string name="workspace_detail_tab_basic">基本</string>

@@ -1123,7 +1123,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="assistant_page_gradient_background">グラデーション背景</string>
   <string name="assistant_page_gradient_background_desc">チャットページで動的なグラデーション背景を使用します</string>
   <string name="assistant_page_workspace">ワークスペース</string>
-  <string name="assistant_page_workspace_desc">バインド後、エージェントはこのワークスペースのファイルとサンドボックス機能を使用できます</string>
+  <string name="assistant_page_workspace_desc">バインド後、エージェントはこのワークスペースのファイルと任意のローカル PRoot ツールを使用できます</string>
   <string name="assistant_page_workspace_unbound">未バインド</string>
   <string name="workspace_page_title">ワークスペース</string>
   <string name="workspace_page_create">ワークスペースを作成</string>
@@ -1131,7 +1131,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_page_delete">ワークスペースを削除</string>
   <string name="workspace_page_delete_confirm">これにより、ワークスペースのメタデータとローカルファイルが削除され、それを参照するすべてのアシスタントバインディングがクリアされます。</string>
   <string name="workspace_page_empty">ワークスペースはまだありません</string>
-  <string name="workspace_page_empty_desc">ファイルツールとサンドボックス環境を利用するには、ワークスペースを作成してください</string>
+  <string name="workspace_page_empty_desc">ファイルツールと任意のローカル PRoot 環境を利用するには、ワークスペースを作成してください</string>
   <string name="workspace_page_name">名前</string>
   <string name="workspace_detail_title">ワークスペース詳細</string>
   <string name="workspace_detail_tab_basic">基本</string>

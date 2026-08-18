@@ -1157,7 +1157,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_page_gradient_background">渐变背景</string>
   <string name="assistant_page_gradient_background_desc">在聊天页面使用动态渐变背景</string>
   <string name="assistant_page_workspace">工作区</string>
-  <string name="assistant_page_workspace_desc">绑定后，Agent 可以使用此工作区的文件和沙盒功能</string>
+  <string name="assistant_page_workspace_desc">绑定后，Agent 可以使用此工作区的文件和可选的本地 PRoot 工具</string>
   <string name="assistant_page_workspace_unbound">未绑定</string>
   <string name="workspace_page_title">工作区</string>
   <string name="workspace_page_create">创建工作区</string>
@@ -1165,7 +1165,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_page_delete">删除工作区</string>
   <string name="workspace_page_delete_confirm">这将删除工作区元数据和本地文件，并清除所有引用它的助手绑定。</string>
   <string name="workspace_page_empty">暂无工作区</string>
-  <string name="workspace_page_empty_desc">创建一个以使用文件工具和沙箱环境</string>
+  <string name="workspace_page_empty_desc">创建一个工作区以使用文件工具和可选的本地 PRoot 环境</string>
   <string name="workspace_page_name">名称</string>
   <string name="workspace_detail_title">工作区详情</string>
   <string name="workspace_detail_tab_basic">基本</string>

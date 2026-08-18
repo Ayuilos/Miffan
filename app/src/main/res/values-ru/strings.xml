@@ -1123,7 +1123,7 @@
   <string name="assistant_page_gradient_background">Градиентный фон</string>
   <string name="assistant_page_gradient_background_desc">Использовать динамический градиентный фон на странице чата</string>
   <string name="assistant_page_workspace">Рабочая область</string>
-  <string name="assistant_page_workspace_desc">После привязки Agent может использовать файлы и возможности sandbox этого рабочего пространства.</string>
+  <string name="assistant_page_workspace_desc">После привязки Agent сможет использовать файлы рабочего пространства и дополнительные локальные инструменты PRoot.</string>
   <string name="assistant_page_workspace_unbound">Не привязано</string>
   <string name="workspace_page_title">Рабочее пространство</string>
   <string name="workspace_page_create">Создать рабочее пространство</string>
@@ -1131,7 +1131,7 @@
   <string name="workspace_page_delete">Удалить рабочее пространство</string>
   <string name="workspace_page_delete_confirm">Это удалит метаданные рабочего пространства и локальные файлы, а также очистит все привязки Assistant, ссылающиеся на него.</string>
   <string name="workspace_page_empty">Пока нет рабочих пространств</string>
-  <string name="workspace_page_empty_desc">Создайте рабочее пространство для использования файловых инструментов и сред песочницы.</string>
+  <string name="workspace_page_empty_desc">Создайте рабочее пространство, чтобы использовать файловые инструменты и дополнительную локальную среду PRoot.</string>
   <string name="workspace_page_name">Имя</string>
   <string name="workspace_detail_title">Детали рабочего пространства</string>
   <string name="workspace_detail_tab_basic">Основные</string>
