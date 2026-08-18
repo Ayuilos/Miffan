@@ -10,6 +10,7 @@ import kotlin.coroutines.resumeWithException
 
 suspend fun Call.await(): Response {
     return suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel() }
         enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (continuation.isActive) {
@@ -18,7 +19,9 @@ suspend fun Call.await(): Response {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                continuation.resume(response) { cause, _, _ ->
+                if (continuation.isActive) {
+                    continuation.resume(response) { _, _, _ -> response.closeQuietly() }
+                } else {
                     response.closeQuietly()
                 }
             }

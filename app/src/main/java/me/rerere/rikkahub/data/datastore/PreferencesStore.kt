@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -154,6 +156,7 @@ class SettingsStore(
     }
 
     private val dataStore = context.settingsStore
+    private val updateMutex = Mutex()
 
     val settingsFlowRaw = dataStore.data
         .catch { exception ->
@@ -346,11 +349,16 @@ class SettingsStore(
         .toMutableStateFlow(scope, Settings.dummy())
 
     suspend fun update(settings: Settings) {
-        if(settings.init) {
-            Log.w(TAG, "Cannot update dummy settings")
-            return
+        updateMutex.withLock {
+            updateUnlocked(settings)
         }
-        settingsFlow.value = settings
+    }
+
+    private suspend fun updateUnlocked(settings: Settings): Boolean {
+        if (settings.init) {
+            Log.w(TAG, "Cannot update dummy settings")
+            return false
+        }
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
@@ -413,15 +421,29 @@ class SettingsStore(
             preferences[LAUNCH_COUNT] = settings.launchCount
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
         }
+        // Publish only after DataStore has committed successfully. This prevents observers from
+        // seeing a configuration that is later rolled back because persistence failed.
+        settingsFlow.value = settings
+        return true
     }
 
     suspend fun update(fn: (Settings) -> Settings) {
-        update(fn(settingsFlow.value))
+        updateMutex.withLock {
+            updateUnlocked(fn(settingsFlow.value))
+        }
+    }
+
+    suspend fun updateIfCurrent(expected: Settings, fn: (Settings) -> Settings): Boolean {
+        return updateMutex.withLock {
+            val current = settingsFlow.value
+            if (current != expected) return@withLock false
+            updateUnlocked(fn(current))
+        }
     }
 
     suspend fun updateAssistant(assistantId: Uuid) {
-        dataStore.edit { preferences ->
-            preferences[SELECT_ASSISTANT] = assistantId.toString()
+        update { settings ->
+            settings.copy(assistantId = assistantId)
         }
     }
 

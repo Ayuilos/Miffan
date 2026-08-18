@@ -49,11 +49,18 @@ import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.createConversationTools
+import me.rerere.rikkahub.data.ai.tools.createExtensionManagementTools
+import me.rerere.rikkahub.data.ai.tools.createSkillInstallTools
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.createSearchTools
 import me.rerere.rikkahub.data.ai.tools.createSkillTools
 import me.rerere.rikkahub.data.ai.tools.createWorkspaceTools
+import me.rerere.rikkahub.data.ai.tools.extensionManagementBuiltInSkill
+import me.rerere.rikkahub.data.extensions.ExtensionManagementService
 import me.rerere.rikkahub.data.files.SkillManager
+import me.rerere.rikkahub.data.skills.install.SkillInstallService
+import me.rerere.rikkahub.data.skills.source.SkillShCatalogClient
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
@@ -107,6 +114,11 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
     return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
 }
 
+internal fun shouldEnableExtensionManagement(assistant: Assistant, model: Model): Boolean {
+    return LocalToolOption.ExtensionManagement in assistant.localTools &&
+        ModelAbility.TOOL in model.abilities
+}
+
 data class ChatError(
     val id: Uuid = Uuid.random(),
     val title: String? = null,
@@ -152,6 +164,9 @@ class ChatService(
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
     private val skillManager: SkillManager,
+    private val extensionManagementService: ExtensionManagementService,
+    private val skillShCatalogClient: SkillShCatalogClient,
+    private val skillInstallService: SkillInstallService,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
 ) {
@@ -486,6 +501,7 @@ class ChatService(
             model.displayName
         }
         val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
+        val extensionManagementEnabled = shouldEnableExtensionManagement(assistant, model)
 
         runCatching {
 
@@ -494,7 +510,11 @@ class ChatService(
 
             // memory tool
             if (!model.abilities.contains(ModelAbility.TOOL)) {
-                if (useExternalWebSearch || mcpManager.getAllAvailableTools().isNotEmpty()) {
+                if (
+                    useExternalWebSearch ||
+                    mcpManager.getAllAvailableTools().isNotEmpty() ||
+                    LocalToolOption.ExtensionManagement in assistant.localTools
+                ) {
                     addError(
                         IllegalStateException(context.getString(R.string.tools_warning)),
                         conversationId,
@@ -541,15 +561,24 @@ class ChatService(
                         addAll(createSearchTools(settings))
                     }
                     addAll(localTools.getTools(assistant.localTools))
+                    if (extensionManagementEnabled) {
+                        addAll(createExtensionManagementTools(extensionManagementService))
+                        addAll(createSkillInstallTools(skillShCatalogClient, skillInstallService))
+                    }
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    if (assistant.enabledSkills.isNotEmpty()) {
+                    if (assistant.enabledSkills.isNotEmpty() || extensionManagementEnabled) {
                         addAll(
                             createSkillTools(
                                 enabledSkills = assistant.enabledSkills,
                                 allSkills = skillManager.listSkills(),
+                                builtInSkills = if (extensionManagementEnabled) {
+                                    listOf(extensionManagementBuiltInSkill)
+                                } else {
+                                    emptyList()
+                                },
                             )
                         )
                     }

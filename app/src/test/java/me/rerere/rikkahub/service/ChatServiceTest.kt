@@ -6,6 +6,8 @@ import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.model.Assistant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -69,5 +71,27 @@ class ChatServiceTest {
         val model = Model(tools = setOf(BuiltInTools.UrlContext))
 
         assertTrue(shouldUseExternalWebSearch(assistant, model))
+    }
+
+    @Test
+    fun `extension management is disabled unless assistant opts in`() {
+        val model = Model(abilities = listOf(ModelAbility.TOOL))
+
+        assertFalse(shouldEnableExtensionManagement(Assistant(), model))
+    }
+
+    @Test
+    fun `extension management requires model tool ability`() {
+        val assistant = Assistant(
+            localTools = listOf(LocalToolOption.ExtensionManagement),
+        )
+
+        assertFalse(shouldEnableExtensionManagement(assistant, Model()))
+        assertTrue(
+            shouldEnableExtensionManagement(
+                assistant,
+                Model(abilities = listOf(ModelAbility.TOOL)),
+            )
+        )
     }
 }
