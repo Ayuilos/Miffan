@@ -96,21 +96,4 @@ class ProotExecutionSpecTest {
             assertTrue(script.contains("exit 125"))
         }
     }
-
-    @Test
-    fun `host launch requires a trusted setsid executable`() {
-        val command = listOf("/data/app/libproot_exec.so", "--root-id")
-        val toybox = tmp.newFile("toybox").apply { assertTrue(setExecutable(true)) }
-        val missingSetsid = tmp.root.resolve("missing-setsid")
-
-        val launch = ProotExecutionSpec.isolatedHostLaunch(command, toybox, missingSetsid)
-
-        requireNotNull(launch)
-        assertTrue(launch.isolatedProcessGroup)
-        assertEquals(listOf(toybox.absolutePath, "setsid") + command, launch.command)
-        assertEquals(
-            null,
-            ProotExecutionSpec.isolatedHostLaunch(command, missingSetsid, missingSetsid),
-        )
-    }
 }

@@ -53,24 +53,18 @@ class ProotShellRunner(
 
         context.tempDir.mkdirs()
         patcher.patch(context.linuxDir)
-        val launch = ProotExecutionSpec.isolatedHostLaunch(
-            ProotExecutionSpec.nonInteractiveCommand(context, proot)
-        ) ?: return WorkspaceCommandResult(
-            exitCode = 127,
-            stdout = "",
-            stderr = "A trusted setsid launcher is unavailable",
+        val environment = System.getenv().toMutableMap().apply {
+            putAll(ProotExecutionSpec.hostEnvironment(loader, context.tempDir))
+        }
+        val process = WorkspaceNativeProcess.start(
+            command = ProotExecutionSpec.nonInteractiveCommand(context, proot),
+            environment = environment,
+            workingDirectory = context.filesDir,
         )
-        val process = ProcessBuilder(launch.command)
-            .directory(context.filesDir)
-            .redirectErrorStream(false)
-            .apply {
-                environment().putAll(ProotExecutionSpec.hostEnvironment(loader, context.tempDir))
-            }
-            .start()
 
         return process.readTrackedResult(
             context = context,
-            isolatedProcessGroup = launch.isolatedProcessGroup,
+            isolatedProcessGroup = true,
             commandIdentity = proot.absolutePath,
         )
     }

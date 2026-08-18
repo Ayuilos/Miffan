@@ -148,9 +148,12 @@ internal fun Process.readTrackedResult(
     }
 }
 
-private fun Process.reflectedPid(): Long = runCatching {
-    Process::class.java.getMethod("pid").invoke(this) as Long
-}.getOrElse { error("Unable to inspect workspace process id") }
+private fun Process.reflectedPid(): Long {
+    if (this is WorkspaceNativeProcess) return nativePid()
+    return runCatching {
+        Process::class.java.getMethod("pid").invoke(this) as Long
+    }.getOrElse { error("Unable to inspect workspace process id") }
+}
 
 /** Best-effort descendant cleanup in addition to PRoot's --kill-on-exit behavior. */
 private fun Process.terminateProcessTree(

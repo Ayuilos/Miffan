@@ -31,9 +31,9 @@ network access, and app-private storage that the Android process makes available
      usage periodically, run a full postflight scan, and wait after forced process termination.
      The terminal uses the same admission/file limit and a lifecycle resource monitor.
 3. **Process lifecycle governance (implemented)**
-   - Start AI PRoot commands through the trusted Android `toybox setsid` (or system `setsid`)
-     launcher and require the resulting PID to be its process-group leader. Interactive PTYs use
-     the same process-group rule and arm `PR_SET_PDEATHSIG` in the native child.
+   - Start AI PRoot commands through the Workspace JNI monitor and require the PRoot command PID
+     to lead a dedicated process group. Interactive PTYs use the same process-group rule and arm
+     `PR_SET_PDEATHSIG` in the native child.
    - Persist a record for each native PRoot process before exposing it to the caller. Records bind
      the PID to its kernel start time, UID, process group, command identity, owner process, and boot
      id when readable. App startup kills only records whose owner is gone and whose complete target
@@ -42,7 +42,17 @@ network access, and app-private storage that the Android process makes available
      processes inherit caps of 300 CPU seconds, 1.5 GiB virtual memory per process, 256
      processes/threads counted across the app UID, and the existing 256 MiB output-file limit. A
      stricter inherited limit is kept.
-4. **Isolation alternatives (future)**
+4. **Crash-safe native launch (implemented)**
+   - The JNI monitor arms `PR_SET_PDEATHSIG`, creates a new session, places PRoot in its own process
+     group, and installs a parent-death handler that kills that complete group. It verifies PRoot
+     crossed `execve()` before its PID or streams are returned to Kotlin. PRoot also dies if its
+     monitor disappears, and the monitor removes residual group members after PRoot exits.
+     JNI forks are serialized on a process-lifetime launcher thread because Linux binds the death
+     signal to the parent thread, and coroutine pool workers may retire while the app stays alive.
+   - Arguments, environment, and the working directory cross JNI as length-bounded UTF-8 byte
+     arrays with NUL rejection. Durable registration continues to match the actual PRoot executable
+     together with its PID start time, UID, and process group.
+5. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
@@ -100,3 +110,7 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     and a large single-file write from both shell surfaces. Confirm Bash reports the configured
     soft limits, violations stop the process, and a stricter pre-existing hard/soft limit is never
     raised by the workspace launcher.
+16. Run `WorkspaceNativeProcessInstrumentedTest` on both target architectures. Then repeatedly kill
+    the app process immediately after submitting an AI shell command and confirm no
+    `rk-ws-launcher`, PRoot, shell, or grandchild process remains, including attempts before a JSON
+    ownership record appears under `.runtime/processes`.

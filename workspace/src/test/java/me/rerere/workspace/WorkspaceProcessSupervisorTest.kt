@@ -181,6 +181,7 @@ class WorkspaceProcessSupervisorTest {
         )
 
         requireNotNull(parsed)
+        assertEquals("worker (one)", parsed.processName)
         assertEquals(TARGET_PID, parsed.processGroupId)
         assertEquals(TARGET_START, parsed.startTimeTicks)
     }

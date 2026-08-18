@@ -133,22 +133,6 @@ object ProotExecutionSpec {
         )
     }
 
-    fun isolatedHostLaunch(
-        command: List<String>,
-        toybox: File = File("/system/bin/toybox"),
-        setsid: File = File("/system/bin/setsid"),
-    ): WorkspaceProcessLaunch? = when {
-        toybox.isFile && toybox.canExecute() -> WorkspaceProcessLaunch(
-            command = listOf(toybox.absolutePath, "setsid") + command,
-            isolatedProcessGroup = true,
-        )
-        setsid.isFile && setsid.canExecute() -> WorkspaceProcessLaunch(
-            command = listOf(setsid.absolutePath) + command,
-            isolatedProcessGroup = true,
-        )
-        else -> null
-    }
-
     private fun resourceLimitScript(
         maxFileSizeBytes: Long?,
         maxCpuTimeSeconds: Long?,
@@ -184,8 +168,3 @@ object ProotExecutionSpec {
     // Bash reports RLIMIT_FSIZE in 1024-byte blocks.
     private const val SHELL_FILE_BLOCK_BYTES = 1024L
 }
-
-data class WorkspaceProcessLaunch(
-    val command: List<String>,
-    val isolatedProcessGroup: Boolean,
-)

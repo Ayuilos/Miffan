@@ -299,6 +299,7 @@ internal data class WorkspaceProcessSnapshot(
     val processGroupId: Long,
     val uid: Long,
     val commandLine: String,
+    val processName: String = "",
 )
 
 internal interface WorkspaceProcessSystem {
@@ -361,6 +362,7 @@ internal class ProcfsWorkspaceProcessSystem(
             processGroupId = parsed.processGroupId,
             uid = uid,
             commandLine = commandLine,
+            processName = parsed.processName,
         )
     }
 
@@ -392,12 +394,14 @@ internal class ProcfsWorkspaceProcessSystem(
 
     internal fun parseStat(stat: String): ProcStat? {
         // comm (field 2) may contain spaces and parentheses; every numeric field follows the last ')'.
+        val commandStart = stat.indexOf('(')
         val commandEnd = stat.lastIndexOf(')')
-        if (commandEnd < 0 || commandEnd + 2 >= stat.length) return null
+        if (commandStart < 0 || commandEnd <= commandStart || commandEnd + 2 >= stat.length) return null
         val fields = stat.substring(commandEnd + 2).trim().split(WHITESPACE_REGEX)
         if (fields.size < START_TIME_INDEX + 1) return null
         return runCatching {
             ProcStat(
+                processName = stat.substring(commandStart + 1, commandEnd),
                 processGroupId = fields[PROCESS_GROUP_INDEX].toLong(),
                 startTimeTicks = fields[START_TIME_INDEX].toLong(),
             )
@@ -405,6 +409,7 @@ internal class ProcfsWorkspaceProcessSystem(
     }
 
     internal data class ProcStat(
+        val processName: String,
         val processGroupId: Long,
         val startTimeTicks: Long,
     )
