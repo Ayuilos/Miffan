@@ -106,15 +106,27 @@ network access, and app-private storage that the Android process makes available
      Symbolic-link components and leaves are rejected, while ordinary uploaded files and legitimate
      read-only hard links remain readable. The export repeats the 8 MiB cap while reading, so growth
      after the preliminary size query cannot produce an unbounded allocation.
-10. **Isolation alternatives (future)**
+10. **Workspace mutation and discovery boundary (implemented)**
+   - Android streaming imports obtain an `O_CREAT|O_EXCL|O_NOFOLLOW` file descriptor from the native
+     bridge and write only through that descriptor. Conflict-name selection is bounded; quota or I/O
+     failure removes the created leaf through the descriptor-relative deletion path.
+   - Workspace delete enforces the recursive-directory decision inside the native operation. Move
+     rejects symbolic/special sources and ancestor/descendant targets, removes an overwrite target
+     without following it, then uses `renameat2(RENAME_NOREPLACE)` and verifies source identity at
+     the destination.
+   - Regular UI text reads/writes use the same descriptor file boundary. Directory listings hide
+     symbolic links, and glob/grep require no-follow attributes; grep opens every selected file with
+     `NOFOLLOW_LINKS`, closing the previous direct symlink-leaf disclosure path.
+11. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
      the shared Android app UID, not to an individual workspace.
-   - Move remaining UI/import/delete/move/list/search file operations from Java pathname validation
-     to descriptor-relative primitives. Per-workspace session exclusion prevents normal shell
-     concurrency, but those pathname checks alone are not a kernel-enforced boundary against an
-     already-escaped, concurrently hostile process running with the same Android UID.
+   - Move remaining large binary export and directory enumeration metadata operations from Java
+     pathname validation to descriptor-relative primitives. Per-workspace session exclusion
+     prevents normal shell concurrency, but Java directory traversal alone is not a kernel-enforced
+     boundary against an already-escaped, concurrently hostile process running with the same
+     Android UID.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
 
@@ -204,3 +216,8 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     writes reject both links without disclosing or modifying the sentinels. Repeat a write with
     `overwrite=false` against an existing regular file and confirm its content is unchanged. Grow a
     file beyond 8 MiB between the size query and export and confirm the FD read stops at the cap.
+23. Import the same file name twice and confirm conflict naming is deterministic, then interrupt an
+    over-quota import and confirm no partial file remains. Move a regular file over a symlink with
+    overwrite enabled and confirm the link is removed without changing its target. Verify
+    non-recursive directory deletion is rejected natively, recursive deletion succeeds, and
+    list/glob/grep neither returns nor reads a symlink leaf pointing at an outside sentinel.

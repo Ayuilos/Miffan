@@ -3,6 +3,7 @@ package me.rerere.workspace
 import android.system.Os
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -271,6 +272,70 @@ class RootfsHostBoundaryInstrumentedTest {
         } finally {
             baseDir.deleteRecursivelyNoFollow()
             upload.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
+    @Test
+    fun workspaceMutationsUseNativeDescriptors() {
+        val baseDir = freshDirectory("mutation-boundary")
+        val outside = freshDirectory("mutation-outside")
+        val manager = WorkspaceManager(baseDir)
+        val root = "root"
+        manager.ensureWorkspace(root)
+        val sentinel = File(outside, "keep.txt").apply { writeText("keep") }
+
+        try {
+            val imported = manager.importFile(
+                root = root,
+                destinationPath = "imports",
+                fileName = "note.txt",
+                inputStream = ByteArrayInputStream("imported".toByteArray()),
+            )
+            assertEquals("imports/note.txt", imported.path)
+            val conflict = manager.importFile(
+                root = root,
+                destinationPath = "imports",
+                fileName = "note.txt",
+                inputStream = ByteArrayInputStream("second".toByteArray()),
+            )
+            assertEquals("imports/note (1).txt", conflict.path)
+
+            val moved = manager.moveFile(root, imported.path, "moved/note.txt")
+            assertEquals("moved/note.txt", moved.path)
+            assertEquals("imported", File(manager.filesDir(root), moved.path).readText())
+
+            val overwriteTarget = File(manager.filesDir(root), "replace.txt")
+            Files.createSymbolicLink(overwriteTarget.toPath(), sentinel.toPath())
+            manager.moveFile(root, conflict.path, "replace.txt", overwrite = true)
+            assertFalse(Files.isSymbolicLink(overwriteTarget.toPath()))
+            assertEquals("second", overwriteTarget.readText())
+            assertEquals("keep", sentinel.readText())
+
+            val importEscape = File(manager.filesDir(root), "escape")
+            Files.createSymbolicLink(importEscape.toPath(), outside.toPath())
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.importFile(
+                    root = root,
+                    destinationPath = "escape",
+                    fileName = "evil.txt",
+                    inputStream = ByteArrayInputStream("evil".toByteArray()),
+                )
+            }
+            assertFalse(File(outside, "evil.txt").exists())
+
+            assertTrue(manager.deleteFile(root, "escape", recursive = true))
+            assertEquals("keep", sentinel.readText())
+            File(manager.filesDir(root), "directory/child").apply {
+                parentFile?.mkdirs()
+                writeText("child")
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.deleteFile(root, "directory", recursive = false)
+            }
+            assertTrue(manager.deleteFile(root, "directory", recursive = true))
+        } finally {
+            baseDir.deleteRecursivelyNoFollow()
             outside.deleteRecursivelyNoFollow()
         }
     }

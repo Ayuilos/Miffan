@@ -1,5 +1,6 @@
 package me.rerere.workspace
 
+import android.os.ParcelFileDescriptor
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -13,31 +14,44 @@ import java.nio.file.LinkOption
 import java.nio.file.OpenOption
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.name
 
 class WorkspaceFileSystem(
     private val config: WorkspaceConfig = WorkspaceConfig(),
 ) {
+    init {
+        require(config.maxReadBytes in 0..MAX_DESCRIPTOR_FILE_BYTES) {
+            "Workspace read limit exceeds descriptor bridge capacity"
+        }
+        require(config.maxWriteBytes in 0..MAX_DESCRIPTOR_FILE_BYTES) {
+            "Workspace write limit exceeds descriptor bridge capacity"
+        }
+    }
+
     fun list(root: File, path: String = ""): List<WorkspaceFileEntry> {
-        val dir = resolvePath(root, path)
+        val dir = resolveExistingPathNoFollow(root, path)
         require(dir.exists()) { "Path does not exist: $path" }
         require(dir.isDirectory) { "Path is not a directory: $path" }
         return dir.listFiles()
             .orEmpty()
             .filter { !it.name.startsWith(".l2s.") }
-            .sortedWith(compareBy<File> { !it.isDirectory }.thenBy { it.name.lowercase() })
+            .filterNot { Files.isSymbolicLink(it.toPath()) }
+            .sortedWith(
+                compareBy<File> {
+                    !Files.isDirectory(it.toPath(), LinkOption.NOFOLLOW_LINKS)
+                }.thenBy { it.name.lowercase() }
+            )
             .take(config.maxListEntries)
             .map { it.toEntry(root) }
     }
 
     fun readText(root: File, path: String, charset: Charset = StandardCharsets.UTF_8): String {
-        val file = resolvePath(root, path)
-        require(file.exists()) { "File does not exist: $path" }
-        require(file.isFile) { "Path is not a file: $path" }
-        require(file.length() <= config.maxReadBytes) {
-            "File is too large to read: ${file.length()} bytes"
-        }
-        return file.readText(charset)
+        val size = fileSizeNoFollow(root, path)
+        require(size <= config.maxReadBytes) { "File is too large to read: $size bytes" }
+        val output = ByteArrayOutputStream(size.toInt())
+        exportNoFollow(root, path, output, config.maxReadBytes)
+        return output.toString(charset.name())
     }
 
     fun writeText(
@@ -47,16 +61,7 @@ class WorkspaceFileSystem(
         overwrite: Boolean = true,
         charset: Charset = StandardCharsets.UTF_8,
     ): WorkspaceFileEntry {
-        val bytes = text.toByteArray(charset)
-        require(bytes.size <= config.maxWriteBytes) {
-            "Content is too large to write: ${bytes.size} bytes"
-        }
-        val file = resolvePath(root, path)
-        require(!file.exists() || overwrite) { "File already exists: $path" }
-        require(!file.exists() || file.isFile) { "Path is not a file: $path" }
-        file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
-        return file.toEntry(root)
+        return writeTextNoFollow(root, path, text, overwrite, charset)
     }
 
     /**
@@ -185,6 +190,10 @@ class WorkspaceFileSystem(
         maxBytes: Long = Long.MAX_VALUE,
     ): WorkspaceFileEntry {
         require(maxBytes >= 0) { "Import capacity must not be negative" }
+        val segments = path.strictRelativeFileSegments()
+        if (usesNativeHostFileOperations()) {
+            return importBytesNative(root, path, segments, inputStream, maxBytes)
+        }
         val file = resolvePath(root, path)
         file.parentFile?.mkdirs()
         val target = if (!file.exists()) file else resolveConflict(file)
@@ -213,6 +222,77 @@ class WorkspaceFileSystem(
         }
     }
 
+    private fun importBytesNative(
+        root: File,
+        path: String,
+        segments: List<String>,
+        inputStream: InputStream,
+        maxBytes: Long,
+    ): WorkspaceFileEntry {
+        val rootBytes = root.absolutePath.toByteArray(StandardCharsets.UTF_8)
+        var attempt = 0
+        var targetPath: String
+        var descriptor: Int
+        while (true) {
+            targetPath = conflictPath(path, segments, attempt)
+            descriptor = RootfsHostFileBridge.openFileCreate(
+                rootBytes,
+                targetPath.toByteArray(StandardCharsets.UTF_8),
+            )
+            if (descriptor >= 0) break
+            check(descriptor == -2) { "Unable to create imported workspace file" }
+            attempt++
+            require(attempt <= MAX_IMPORT_CONFLICTS) { "Too many conflicting import file names" }
+        }
+
+        var written = 0L
+        try {
+            val output = ParcelFileDescriptor.AutoCloseOutputStream(
+                ParcelFileDescriptor.adoptFd(descriptor)
+            )
+            inputStream.use { input ->
+                output.use { target ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        written = Math.addExact(written, read.toLong())
+                        if (written > maxBytes) {
+                            throw WorkspaceResourceLimitException(
+                                "Import exceeds remaining workspace capacity: $maxBytes bytes"
+                            )
+                        }
+                        target.write(buffer, 0, read)
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            runCatching {
+                RootfsHostFileBridge.deleteRelative(
+                    rootBytes,
+                    targetPath.toByteArray(StandardCharsets.UTF_8),
+                    true,
+                )
+            }
+            throw error
+        }
+        return WorkspaceFileEntry(
+            path = targetPath,
+            name = targetPath.substringAfterLast('/'),
+            isDirectory = false,
+            sizeBytes = written,
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
+    private fun conflictPath(path: String, segments: List<String>, attempt: Int): String {
+        if (attempt == 0) return path
+        val name = File(segments.last())
+        val extension = name.extension.let { if (it.isEmpty()) "" else ".$it" }
+        val candidateName = "${name.nameWithoutExtension} ($attempt)$extension"
+        return (segments.dropLast(1) + candidateName).joinToString("/")
+    }
+
     private fun resolveConflict(file: File): File {
         val stem = file.nameWithoutExtension
         val ext = file.extension.let { if (it.isNotEmpty()) ".$it" else "" }
@@ -224,6 +304,14 @@ class WorkspaceFileSystem(
 
     fun delete(root: File, path: String, recursive: Boolean = false): Boolean {
         require(path.isNotBlank() && path != ".") { "Refusing to delete workspace root" }
+        path.strictRelativeFileSegments()
+        if (usesNativeHostFileOperations()) {
+            return RootfsHostFileBridge.deleteRelative(
+                root.absolutePath.toByteArray(StandardCharsets.UTF_8),
+                path.toByteArray(StandardCharsets.UTF_8),
+                recursive,
+            )
+        }
         val file = resolvePath(root, path)
         if (!file.exists()) return false
         return if (file.isDirectory) {
@@ -236,6 +324,15 @@ class WorkspaceFileSystem(
 
     fun move(root: File, source: String, target: String, overwrite: Boolean = false): WorkspaceFileEntry {
         require(source.isNotBlank() && source != ".") { "Refusing to move workspace root" }
+        val sourceSegments = source.strictRelativeFileSegments()
+        val targetSegments = target.strictRelativeFileSegments()
+        require(sourceSegments != targetSegments) { "Source and target must differ" }
+        require(
+            !sourceSegments.isPrefixOf(targetSegments) && !targetSegments.isPrefixOf(sourceSegments)
+        ) { "Source and target must not contain one another" }
+        if (usesNativeHostFileOperations()) {
+            return moveNative(root, source, target, targetSegments, overwrite)
+        }
         val sourceFile = resolvePath(root, source)
         val targetFile = resolvePath(root, target)
         require(sourceFile.exists()) { "Source does not exist: $source" }
@@ -254,14 +351,57 @@ class WorkspaceFileSystem(
         return targetFile.toEntry(root)
     }
 
+    private fun moveNative(
+        root: File,
+        source: String,
+        target: String,
+        targetSegments: List<String>,
+        overwrite: Boolean,
+    ): WorkspaceFileEntry {
+        val rootBytes = root.absolutePath.toByteArray(StandardCharsets.UTF_8)
+        val sourceBytes = source.toByteArray(StandardCharsets.UTF_8)
+        val targetBytes = target.toByteArray(StandardCharsets.UTF_8)
+        val kind = RootfsHostFileBridge.entryKind(rootBytes, sourceBytes)
+        require(kind != RootfsHostFileBridge.ENTRY_MISSING) { "Source does not exist: $source" }
+        require(
+            kind == RootfsHostFileBridge.ENTRY_REGULAR ||
+                kind == RootfsHostFileBridge.ENTRY_DIRECTORY
+        ) { "Source must be a real regular file or directory: $source" }
+
+        val targetParent = targetSegments.dropLast(1).joinToString("/")
+        if (targetParent.isNotEmpty()) root.ensureDirectoryNoFollow(targetParent)
+        if (overwrite) {
+            RootfsHostFileBridge.deleteRelative(rootBytes, targetBytes, true)
+        }
+        check(RootfsHostFileBridge.renameEntryNoReplace(rootBytes, sourceBytes, targetBytes)) {
+            "Failed to move $source to $target"
+        }
+        val isDirectory = kind == RootfsHostFileBridge.ENTRY_DIRECTORY
+        val size = if (isDirectory) {
+            0L
+        } else {
+            RootfsHostFileBridge.fileSize(rootBytes, targetBytes, false)
+        }
+        return WorkspaceFileEntry(
+            path = target,
+            name = targetSegments.last(),
+            isDirectory = isDirectory,
+            sizeBytes = size,
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
     fun glob(root: File, pattern: String, path: String = ""): List<WorkspaceFileEntry> {
         require(pattern.isNotBlank()) { "Glob pattern is required" }
-        val start = resolvePath(root, path)
+        val start = resolveExistingPathNoFollow(root, path)
         require(start.exists()) { "Path does not exist: $path" }
         val matcher = FileSystems.getDefault().getPathMatcher("glob:$pattern")
         return walk(start) { paths ->
             paths
-                .filter { Files.isRegularFile(it) || Files.isDirectory(it) }
+                .filter {
+                    Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) ||
+                        Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS)
+                }
                 .filter { !it.toFile().name.startsWith(".l2s.") }
                 .filter { matcher.matches(root.toPath().relativize(it).normalizeForMatch()) }
                 .take(config.maxListEntries)
@@ -279,7 +419,7 @@ class WorkspaceFileSystem(
         includeGlob: String? = null,
     ): List<WorkspaceSearchMatch> {
         require(query.isNotBlank()) { "Search query is required" }
-        val start = resolvePath(root, path)
+        val start = resolveExistingPathNoFollow(root, path)
         require(start.exists()) { "Path does not exist: $path" }
         val options = if (ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet()
         val matcher = if (regex) Regex(query, options) else Regex(Regex.escape(query), options)
@@ -290,7 +430,7 @@ class WorkspaceFileSystem(
         val results = mutableListOf<WorkspaceSearchMatch>()
         walk(start) { paths ->
             paths
-                .filter { Files.isRegularFile(it) }
+                .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
                 .filter { !it.toFile().name.startsWith(".l2s.") }
                 .forEach { path ->
                     if (results.size >= config.maxSearchResults) return@forEach
@@ -299,20 +439,34 @@ class WorkspaceFileSystem(
                     ) {
                         return@forEach
                     }
-                    val file = path.toFile()
-                    if (file.length() > config.maxReadBytes) return@forEach
-                    file.useLines(StandardCharsets.UTF_8) { lines ->
-                        lines.forEachIndexed { index, line ->
-                            if (results.size >= config.maxSearchResults) return@useLines
+                    val attributes = Files.readAttributes(
+                        path,
+                        BasicFileAttributes::class.java,
+                        LinkOption.NOFOLLOW_LINKS,
+                    )
+                    if (!attributes.isRegularFile || attributes.size() > config.maxReadBytes) {
+                        return@forEach
+                    }
+                    val relativePath = path.toFile().relativePath(root)
+                    val content = ByteArrayOutputStream(attributes.size().toInt())
+                    exportNoFollow(
+                        root = root,
+                        path = relativePath,
+                        outputStream = content,
+                        maxBytes = config.maxReadBytes,
+                    )
+                    content.toString(StandardCharsets.UTF_8.name())
+                        .lineSequence()
+                        .forEachIndexed { index, line ->
+                            if (results.size >= config.maxSearchResults) return@forEachIndexed
                             if (matcher.containsMatchIn(line)) {
                                 results += WorkspaceSearchMatch(
-                                    path = file.relativePath(root),
+                                    path = relativePath,
                                     line = index + 1,
                                     text = line,
                                 )
                             }
                         }
-                    }
                 }
         }
         return results
@@ -399,20 +553,53 @@ class WorkspaceFileSystem(
         return target.toFile()
     }
 
+    private fun resolveExistingPathNoFollow(root: File, path: String): File {
+        require(Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Workspace root must be a real directory"
+        }
+        if (path.isBlank() || path == ".") return root.toPath().toAbsolutePath().normalize().toFile()
+        val segments = path.strictRelativeFileSegments()
+        var current = root.toPath().toAbsolutePath().normalize()
+        segments.forEachIndexed { index, segment ->
+            current = current.resolve(segment)
+            require(Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                "Path does not exist: $path"
+            }
+            require(!Files.isSymbolicLink(current)) {
+                "Refusing workspace access through symbolic link: $path"
+            }
+            if (index != segments.lastIndex) {
+                require(Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                    "Path component is not a directory: $segment"
+                }
+            }
+        }
+        return current.toFile()
+    }
+
     fun resolve(root: File, path: String): File = resolvePath(root, path)
 
-    private fun File.toEntry(root: File): WorkspaceFileEntry = WorkspaceFileEntry(
-        path = relativePath(root),
-        name = name,
-        isDirectory = isDirectory,
-        sizeBytes = if (isFile) length() else 0L,
-        updatedAt = lastModified(),
-    )
+    private fun File.toEntry(root: File): WorkspaceFileEntry {
+        val attributes = Files.readAttributes(
+            toPath(),
+            BasicFileAttributes::class.java,
+            LinkOption.NOFOLLOW_LINKS,
+        )
+        require(!attributes.isSymbolicLink) { "Refusing workspace entry through symbolic link" }
+        return WorkspaceFileEntry(
+            path = relativePath(root),
+            name = name,
+            isDirectory = attributes.isDirectory,
+            sizeBytes = if (attributes.isRegularFile) attributes.size() else 0L,
+            updatedAt = attributes.lastModifiedTime().toMillis(),
+        )
+    }
 
     private fun File.relativePath(root: File): String {
-        val rootCanonical = root.canonicalFile
-        val parentCanonical = (parentFile ?: rootCanonical).canonicalFile
-        return File(parentCanonical, name).relativeTo(rootCanonical).path.replace(File.separatorChar, '/')
+        val rootPath = root.canonicalFile.toPath()
+        val targetPath = (parentFile ?: root).canonicalFile.toPath().resolve(name).normalize()
+        require(targetPath.startsWith(rootPath)) { "Path escapes workspace root" }
+        return rootPath.relativize(targetPath).toString().replace(File.separatorChar, '/')
     }
 
     private fun Path.normalizeForMatch(): Path =
@@ -436,7 +623,11 @@ class WorkspaceFileSystem(
         }
     }
 
+    private fun List<String>.isPrefixOf(other: List<String>): Boolean =
+        size < other.size && indices.all { this[it] == other[it] }
+
     private companion object {
         const val MAX_DESCRIPTOR_FILE_BYTES = 8L * 1024 * 1024
+        const val MAX_IMPORT_CONFLICTS = 10_000
     }
 }

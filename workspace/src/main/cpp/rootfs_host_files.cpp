@@ -25,6 +25,11 @@ constexpr size_t kMaxDeletionOperations = 1000 * 1000;
 constexpr jint kFileMissing = 0;
 constexpr jint kFileRegular = 1;
 constexpr jint kFileSymlink = 2;
+constexpr jint kEntryMissing = 0;
+constexpr jint kEntryRegular = 1;
+constexpr jint kEntryDirectory = 2;
+constexpr jint kEntrySymlink = 3;
+constexpr jint kEntryOther = 4;
 
 class ScopedFd {
 public:
@@ -320,7 +325,8 @@ bool delete_entry_at(
         int parent_fd,
         const std::string &name,
         size_t depth,
-        size_t *operations) {
+        size_t *operations,
+        bool allow_directory) {
     if (depth > kMaxDeletionDepth) {
         throw_unsafe_path(env, "Host maintenance tree exceeds maximum directory depth");
         return false;
@@ -335,6 +341,10 @@ bool delete_entry_at(
     if (fstatat(parent_fd, name.c_str(), &status, AT_SYMLINK_NOFOLLOW) != 0) {
         if (errno == ENOENT) return true;
         throw_io_exception(env, "Unable to inspect host maintenance entry", errno);
+        return false;
+    }
+    if (S_ISDIR(status.st_mode) && !allow_directory) {
+        throw_unsafe_path(env, "Directory delete requires recursive = true");
         return false;
     }
     if (!S_ISDIR(status.st_mode)) {
@@ -387,7 +397,13 @@ bool delete_entry_at(
             break;
         }
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        if (!delete_entry_at(env, directory.get(), entry->d_name, depth + 1, operations)) {
+        if (!delete_entry_at(
+                env,
+                directory.get(),
+                entry->d_name,
+                depth + 1,
+                operations,
+                true)) {
             closedir(stream);
             return false;
         }
@@ -832,7 +848,8 @@ Java_me_rerere_workspace_RootfsHostFileBridge_deleteTree(
             parent.get(),
             segments.back(),
             0,
-            &operations) ? JNI_TRUE : JNI_FALSE;
+            &operations,
+            true) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -938,6 +955,276 @@ Java_me_rerere_workspace_RootfsHostFileBridge_renameDirectoryNoReplace(
         moved_status.st_dev != source_status.st_dev ||
         moved_status.st_ino != source_status.st_ino) {
         throw_unsafe_path(env, "Host maintenance source changed during rename");
+        return JNI_FALSE;
+    }
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_openFileCreate(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes) {
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments)) {
+        return -1;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            true,
+            &missing));
+    if (parent.get() < 0) return -1;
+
+    const std::string &leaf = segments.back();
+    ScopedFd file(openat(
+            parent.get(),
+            leaf.c_str(),
+            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+            0644));
+    if (file.get() < 0) {
+        if (errno == EEXIST) return -2;
+        if (errno == ELOOP) {
+            throw_unsafe_path(env, "Refusing host file creation through symbolic link");
+        } else {
+            throw_io_exception(env, "Unable to create host file", errno);
+        }
+        return -1;
+    }
+    struct stat status = {};
+    if (fstat(file.get(), &status) != 0) {
+        throw_io_exception(env, "Unable to inspect created host file", errno);
+        return -1;
+    }
+    if (!validate_regular_file(env, status, relative)) return -1;
+    if (fchmod(file.get(), 0644) != 0) {
+        throw_io_exception(env, "Unable to set created host file mode", errno);
+        return -1;
+    }
+    return file.release();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_deleteRelative(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes,
+        jboolean recursive) {
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments)) {
+        return JNI_FALSE;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            false,
+            &missing));
+    if (parent.get() < 0) return JNI_FALSE;
+    struct stat status = {};
+    if (fstatat(
+            parent.get(),
+            segments.back().c_str(),
+            &status,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        if (errno == ENOENT) return JNI_FALSE;
+        throw_io_exception(env, "Unable to inspect host delete target", errno);
+        return JNI_FALSE;
+    }
+    size_t operations = 0;
+    return delete_entry_at(
+            env,
+            parent.get(),
+            segments.back(),
+            0,
+            &operations,
+            recursive == JNI_TRUE) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_entryKind(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes) {
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments)) {
+        return -1;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            false,
+            &missing));
+    if (parent.get() < 0) {
+        return missing && !env->ExceptionCheck() ? kEntryMissing : -1;
+    }
+    struct stat status = {};
+    if (fstatat(
+            parent.get(),
+            segments.back().c_str(),
+            &status,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        if (errno == ENOENT) return kEntryMissing;
+        throw_io_exception(env, "Unable to inspect host entry", errno);
+        return -1;
+    }
+    if (S_ISLNK(status.st_mode)) return kEntrySymlink;
+    if (status.st_uid != getuid()) {
+        throw_unsafe_path(env, "Host entry has an unexpected owner");
+        return -1;
+    }
+    if (S_ISREG(status.st_mode)) return kEntryRegular;
+    if (S_ISDIR(status.st_mode)) return kEntryDirectory;
+    return kEntryOther;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_renameEntryNoReplace(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray source_relative_bytes,
+        jbyteArray target_relative_bytes) {
+    std::string root;
+    std::string source_relative;
+    std::vector<std::string> source_segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            source_relative_bytes,
+            false,
+            &root,
+            &source_relative,
+            &source_segments)) {
+        return JNI_FALSE;
+    }
+    std::string target_relative;
+    std::vector<std::string> target_segments;
+    if (!copy_bytes(
+            env,
+            target_relative_bytes,
+            &target_relative,
+            kMaxRelativePathBytes,
+            true) ||
+        !parse_relative_path(env, target_relative, false, &target_segments)) {
+        return JNI_FALSE;
+    }
+
+    bool source_parent_missing = false;
+    ScopedFd source_parent(open_directory_chain(
+            env,
+            root,
+            source_segments,
+            source_segments.size() - 1,
+            false,
+            &source_parent_missing));
+    if (source_parent.get() < 0) return JNI_FALSE;
+    bool target_parent_missing = false;
+    ScopedFd target_parent(open_directory_chain(
+            env,
+            root,
+            target_segments,
+            target_segments.size() - 1,
+            false,
+            &target_parent_missing));
+    if (target_parent.get() < 0) return JNI_FALSE;
+
+    const std::string &source_name = source_segments.back();
+    const std::string &target_name = target_segments.back();
+    struct stat source_status = {};
+    if (fstatat(
+            source_parent.get(),
+            source_name.c_str(),
+            &source_status,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        if (errno == ENOENT) return JNI_FALSE;
+        throw_io_exception(env, "Unable to inspect host move source", errno);
+        return JNI_FALSE;
+    }
+    if ((!S_ISREG(source_status.st_mode) && !S_ISDIR(source_status.st_mode)) ||
+        source_status.st_uid != getuid()) {
+        throw_unsafe_path(env, "Host move source must be an owned regular file or directory");
+        return JNI_FALSE;
+    }
+    struct stat target_status = {};
+    if (fstatat(
+            target_parent.get(),
+            target_name.c_str(),
+            &target_status,
+            AT_SYMLINK_NOFOLLOW) == 0) {
+        throw_unsafe_path(env, "Host move destination already exists");
+        return JNI_FALSE;
+    }
+    if (errno != ENOENT) {
+        throw_io_exception(env, "Unable to inspect host move destination", errno);
+        return JNI_FALSE;
+    }
+    if (renameat_no_replace(
+            source_parent.get(),
+            source_name.c_str(),
+            target_parent.get(),
+            target_name.c_str()) != 0) {
+        if (errno == EEXIST) {
+            throw_unsafe_path(env, "Host move destination appeared during rename");
+        } else if (errno == ENOENT) {
+            throw_unsafe_path(env, "Host move source changed during rename");
+        } else {
+            throw_io_exception(env, "Unable to atomically move host entry", errno);
+        }
+        return JNI_FALSE;
+    }
+    struct stat moved_status = {};
+    if (fstatat(
+            target_parent.get(),
+            target_name.c_str(),
+            &moved_status,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        throw_io_exception(env, "Unable to verify moved host entry", errno);
+        return JNI_FALSE;
+    }
+    if (moved_status.st_uid != getuid() ||
+        moved_status.st_dev != source_status.st_dev ||
+        moved_status.st_ino != source_status.st_ino ||
+        (moved_status.st_mode & S_IFMT) != (source_status.st_mode & S_IFMT)) {
+        throw_unsafe_path(env, "Host move source changed during rename");
         return JNI_FALSE;
     }
     return JNI_TRUE;

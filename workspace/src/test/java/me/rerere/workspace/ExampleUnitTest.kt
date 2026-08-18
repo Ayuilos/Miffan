@@ -43,6 +43,19 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun searchAndListingIgnoreSymbolicLinkLeaves() {
+        val root = Files.createTempDirectory("workspace-search-root").toFile()
+        val outside = Files.createTempDirectory("workspace-search-outside").toFile()
+        val secret = File(outside, "secret.txt").apply { writeText("needle") }
+        Files.createSymbolicLink(File(root, "leak.txt").toPath(), secret.toPath())
+        val fileSystem = WorkspaceFileSystem()
+
+        assertTrue(fileSystem.list(root).isEmpty())
+        assertTrue(fileSystem.glob(root, "**").none { it.path == "leak.txt" })
+        assertTrue(fileSystem.grep(root, "needle").isEmpty())
+    }
+
+    @Test
     fun rootfsRequiresShellEntryPoint() {
         val baseDir = Files.createTempDirectory("workspace-manager-test").toFile()
         val manager = WorkspaceManager(baseDir)
