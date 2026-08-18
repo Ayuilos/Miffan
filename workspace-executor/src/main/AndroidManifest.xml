@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <permission
+        android:name="me.rerere.rikkahub.permission.BIND_WORKSPACE_EXECUTOR"
+        android:protectionLevel="signature" />
+
+    <application
+        android:allowBackup="false"
+        android:hasFragileUserData="false"
+        android:label="RikkaHub Workspace Executor"
+        android:usesCleartextTraffic="false">
+        <service
+            android:name=".WorkspaceExecutorService"
+            android:exported="true"
+            android:permission="me.rerere.rikkahub.permission.BIND_WORKSPACE_EXECUTOR"
+            android:stopWithTask="false" />
+    </application>
+
+</manifest>

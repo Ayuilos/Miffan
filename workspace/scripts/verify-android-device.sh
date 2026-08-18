@@ -101,14 +101,25 @@ if [[ "$skip_build" -eq 0 ]]; then
     "  plugins.withId('com.android.application') { android.ndkVersion = '$ndk_version' }" \
     "  plugins.withId('com.android.library') { android.ndkVersion = '$ndk_version' }" \
     "}" > "$init_script"
-  gradle_args=(-I "$init_script" :workspace:assembleDebugAndroidTest --no-configuration-cache --console=plain)
+  gradle_args=(
+    -I "$init_script"
+    :workspace-executor:assembleDebug
+    :workspace:assembleDebugAndroidTest
+    --no-configuration-cache
+    --console=plain
+  )
   if [[ "${WORKSPACE_VERIFY_OFFLINE:-0}" == "1" ]]; then gradle_args+=(--offline); fi
   (cd "$repo_dir" && ./gradlew "${gradle_args[@]}")
 fi
 
 apk="$repo_dir/workspace/build/outputs/apk/androidTest/debug/workspace-debug-androidTest.apk"
+executor_apk="$repo_dir/workspace-executor/build/outputs/apk/debug/workspace-executor-debug.apk"
 if [[ ! -f "$apk" ]]; then
   echo "Workspace instrumentation APK is missing: $apk" >&2
+  exit 2
+fi
+if [[ ! -f "$executor_apk" ]]; then
+  echo "Workspace executor APK is missing: $executor_apk" >&2
   exit 2
 fi
 
@@ -119,6 +130,7 @@ report="$report_dir/${safe_serial}-${abi}.txt"
 raw_report="$(mktemp "${TMPDIR:-/tmp}/rikkahub-workspace-instrumentation.XXXXXX")"
 trap 'rm -f "$raw_report"; cleanup' EXIT
 
+"${adb[@]}" install -r "$executor_apk"
 "${adb[@]}" install -r "$apk"
 set +e
 "${adb[@]}" shell am instrument -w -r \
@@ -132,6 +144,8 @@ set -e
   echo "abi=$abi"
   echo "api=$api"
   echo "fingerprint=$fingerprint"
+  "${adb[@]}" shell cmd package list packages -U \
+    me.rerere.rikkahub.workspace.executor | tr -d '\r'
   echo "utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo
   cat "$raw_report"

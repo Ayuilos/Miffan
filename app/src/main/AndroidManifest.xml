@@ -20,6 +20,7 @@
     tools:ignore="ProtectedPermissions" />
   <uses-permission android:name="android.permission.READ_CALENDAR" />
   <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+  <uses-permission android:name="me.rerere.rikkahub.permission.BIND_WORKSPACE_EXECUTOR" />
 
   <uses-feature
     android:name="android.hardware.camera"
@@ -29,6 +30,7 @@
     android:required="false" />
 
   <queries>
+    <package android:name="me.rerere.rikkahub.workspace.executor" />
     <intent>
       <action android:name="android.intent.action.TTS_SERVICE" />
     </intent>

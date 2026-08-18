@@ -158,11 +158,24 @@ network access, and app-private storage that the Android process makes available
      default NDK is reported as an environment problem rather than a code failure. Pass
      `--expected-abi arm64-v8a` on a physical device and `--expected-abi x86_64` on an emulator/CI
      host to complete the release matrix.
-14. **Isolation alternatives (future)**
-   - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
-     it, and brokered network/filesystem access. The polling safeguards above can detect and stop
-     overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
-     the shared Android app UID, not to an individual workspace.
+14. **Dedicated execution UID foundation (implemented)**
+   - Ship a companion `workspace-executor` APK with its own stable Android package UID. Its exported
+     Binder service is protected by a signature-level permission and also verifies the caller's
+     signing identity at every transaction. The executor manifest deliberately requests no
+     `INTERNET` permission.
+   - A device test installs the executor and an independently packaged caller, confirms their UIDs
+     differ, matches the service UID to PackageManager's stable executor UID, verifies that network
+     permission is absent, and runs a real command through the hardened native process monitor.
+     A same-APK `isolatedProcess` was rejected as the PRoot backend after Android 35 testing showed
+     SELinux MCS denies traversal of the owner's `app_data_file` even when a directory FD is passed.
+15. **Isolation completion (in progress)**
+   - Move RootFS ownership and PRoot launch into the companion UID, then broker workspace file
+     snapshots and explicitly approved network requests over bounded IPC. Until that migration is
+     complete, the primary app's existing PRoot path remains a compatibility backend and must not
+     be described as UID-isolated.
+   - Evaluate cgroup/job-control integration where Android permits it. The polling safeguards above
+     can detect and stop overuse but are not atomic aggregate disk, CPU, or memory quotas.
+     `RLIMIT_NPROC` is scoped to an Android UID, not to an individual workspace.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
 

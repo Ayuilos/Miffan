@@ -4,6 +4,7 @@
 /.idea
 .DS_Store
 /build
+/workspace-executor/build/
 /captures
 .externalNativeBuild
 .cxx

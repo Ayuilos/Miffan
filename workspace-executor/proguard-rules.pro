@@ -1,0 +1,1 @@
+-keep class me.rerere.rikkahub.workspace.executor.WorkspaceExecutorService { *; }
