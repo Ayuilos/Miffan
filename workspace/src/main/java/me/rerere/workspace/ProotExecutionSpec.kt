@@ -69,11 +69,15 @@ object ProotExecutionSpec {
         if (!interactive) add("-l")
     }
 
-    fun hostEnvironment(loader: File, tempDir: File): Map<String, String> = mapOf(
-        "PROOT_LOADER" to loader.absolutePath,
-        "PROOT_TMP_DIR" to tempDir.absolutePath,
-        "TMPDIR" to tempDir.absolutePath,
-    )
+    fun hostEnvironment(
+        loader: File,
+        tempDir: File,
+        inheritedEnvironment: Map<String, String> = System.getenv(),
+    ): Map<String, String> = inheritedEnvironment.toMutableMap().apply {
+        this["PROOT_LOADER"] = loader.absolutePath
+        this["PROOT_TMP_DIR"] = tempDir.absolutePath
+        this["TMPDIR"] = tempDir.absolutePath
+    }
 
     fun nonInteractiveCommand(context: WorkspaceShellContext, proot: File): List<String> {
         val cwd = guestCwd(context.cwd)

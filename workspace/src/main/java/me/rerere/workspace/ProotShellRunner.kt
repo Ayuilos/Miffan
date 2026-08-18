@@ -53,12 +53,9 @@ class ProotShellRunner(
 
         context.tempDir.mkdirs()
         patcher.patch(context.linuxDir)
-        val environment = System.getenv().toMutableMap().apply {
-            putAll(ProotExecutionSpec.hostEnvironment(loader, context.tempDir))
-        }
         val process = WorkspaceNativeProcess.start(
             command = ProotExecutionSpec.nonInteractiveCommand(context, proot),
-            environment = environment,
+            environment = ProotExecutionSpec.hostEnvironment(loader, context.tempDir),
             workingDirectory = context.filesDir,
         )
 

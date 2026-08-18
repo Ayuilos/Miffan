@@ -52,6 +52,11 @@ network access, and app-private storage that the Android process makes available
    - Arguments, environment, and the working directory cross JNI as length-bounded UTF-8 byte
      arrays with NUL rejection. Durable registration continues to match the actual PRoot executable
      together with its PID start time, UID, and process group.
+   - Interactive PTYs fork only from the Android main thread, clear inherited ART signal handlers
+     and masks, and publish their PID only after PRoot crosses `execve()`. The native waiter observes
+     the main process exit without first reaping its group leader, kills every residual PTY group
+     member, and then preserves the main exit status. AI and PTY launchers now inherit the same host
+     environment plus trusted PRoot overrides; the guest environment remains explicitly clean.
 5. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
@@ -114,3 +119,7 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     the app process immediately after submitting an AI shell command and confirm no
     `rk-ws-launcher`, PRoot, shell, or grandchild process remains, including attempts before a JSON
     ownership record appears under `.runtime/processes`.
+17. Run `WorkspacePtyInstrumentedTest` on both target architectures. Confirm a worker-thread launch
+    is rejected before fork, an invalid executable publishes no PID, and normal shell exit preserves
+    its status while removing a background child. Force-stop the app during PTY startup and after an
+    interactive background job begins; neither PRoot nor a process-group descendant may remain.

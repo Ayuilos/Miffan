@@ -47,6 +47,26 @@ class ProotExecutionSpecTest {
     }
 
     @Test
+    fun `interactive and AI shells share complete host environment`() {
+        val loader = tmp.newFile("loader")
+        val temp = tmp.newFolder("host-temp")
+        val environment = ProotExecutionSpec.hostEnvironment(
+            loader = loader,
+            tempDir = temp,
+            inheritedEnvironment = mapOf(
+                "PATH" to "/system/bin",
+                "PROOT_LOADER" to "/untrusted/loader",
+                "TMPDIR" to "/untrusted/tmp",
+            ),
+        )
+
+        assertEquals("/system/bin", environment["PATH"])
+        assertEquals(loader.absolutePath, environment["PROOT_LOADER"])
+        assertEquals(temp.absolutePath, environment["PROOT_TMP_DIR"])
+        assertEquals(temp.absolutePath, environment["TMPDIR"])
+    }
+
+    @Test
     fun `guest cwd rejects aliases and absolute paths`() {
         listOf("/workspace", "a/../b", "a//b", "a/").forEach { cwd ->
             org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {

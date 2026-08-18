@@ -38,6 +38,9 @@ internal fun createWorkspaceTerminalSession(
     val nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir)
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
+    require(proot.isFile && proot.canExecute() && loader.isFile) {
+        "Workspace terminal runtime is unavailable"
+    }
 
     val args = ProotExecutionSpec.interactiveArguments(
         root = root,
@@ -64,6 +67,7 @@ internal fun createWorkspaceTerminalSession(
         // Start the PTY before returning, so the native PID can be durably registered before the
         // interactive shell is exposed. TerminalView resizes it again as soon as it attaches.
         updateSize(INITIAL_COLUMNS, INITIAL_ROWS)
+        check(pid > 1) { "Workspace terminal process exited during startup" }
     }
 }
 
