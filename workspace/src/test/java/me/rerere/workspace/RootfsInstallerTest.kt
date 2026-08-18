@@ -59,6 +59,68 @@ class RootfsInstallerTest {
     }
 
     @Test
+    fun `extract replaces archive symlink leaf without following it`() {
+        val outside = tmp.newFile("outside-sentinel").apply { writeText("keep") }
+        val archive = tmp.newFile("symlink-replacement.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { out ->
+            out.writeTarEntry("etc/", '5', byteArrayOf())
+            out.writeTarEntry("etc/config", '2', byteArrayOf(), outside.absolutePath)
+            out.writeTarEntry("etc/config", '0', "replacement".toByteArray())
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+
+        val target = tmp.newFolder("symlink-replacement-out")
+        createInstaller().extractTar(archive, target) {}
+
+        val extracted = File(target, "etc/config")
+        assertFalse(Files.isSymbolicLink(extracted.toPath()))
+        assertEquals("replacement", extracted.readText())
+        assertEquals("keep", outside.readText())
+    }
+
+    @Test
+    fun `extract rejects writes below an archive symlink directory`() {
+        val outside = tmp.newFolder("outside-directory")
+        val sentinel = File(outside, "keep.txt").apply { writeText("keep") }
+        val archive = tmp.newFile("symlink-parent.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { out ->
+            out.writeTarEntry("escape", '2', byteArrayOf(), outside.absolutePath)
+            out.writeTarEntry("escape/evil.txt", '0', "evil".toByteArray())
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+
+        val target = tmp.newFolder("symlink-parent-out")
+        assertThrows(IllegalArgumentException::class.java) {
+            createInstaller().extractTar(archive, target) {}
+        }
+
+        assertEquals("keep", sentinel.readText())
+        assertFalse(File(outside, "evil.txt").exists())
+    }
+
+    @Test
+    fun `hard links count their logical size against extraction quota`() {
+        val archive = tmp.newFile("hard-link-quota.tar.gz")
+        GZIPOutputStream(archive.outputStream()).use { out ->
+            out.writeTarEntry("source", '0', "1234".toByteArray())
+            out.writeTarEntry("linked", '1', byteArrayOf(), "source")
+            out.write(ByteArray(TAR_BLOCK * 2))
+        }
+        val target = tmp.newFolder("hard-link-quota-out")
+        val installer = RootfsInstaller(
+            manager = WorkspaceManager(tmp.newFolder("hard-link-workspaces")),
+            patcher = testPatcher(),
+            limits = RootfsInstallLimits(maxExtractedBytes = 7),
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            installer.extractTar(archive, target) {}
+        }
+
+        assertTrue(error.message!!.contains("extracted size exceeds limit"))
+    }
+
+    @Test
     fun `extract enforces expanded byte quota`() {
         val archive = tmp.newFile("quota.tar.gz")
         GZIPOutputStream(archive.outputStream()).use { out ->
@@ -310,12 +372,23 @@ class RootfsInstallerTest {
 
     private fun testPatcher() = RootfsPatcher(NioRootfsPatchFilesFactory)
 
-    private fun OutputStream.writeTarEntry(name: String, type: Char, data: ByteArray) {
+    private fun OutputStream.writeTarEntry(
+        name: String,
+        type: Char,
+        data: ByteArray,
+        linkName: String = "",
+    ) {
         val header = ByteArray(TAR_BLOCK)
         name.toByteArray(Charsets.UTF_8).copyInto(header, 0)
         "0000755".toByteArray().copyInto(header, 100)
         data.size.toLong().toOctalField().copyInto(header, 124)
         header[156] = type.code.toByte()
+        val linkNameBytes = linkName.toByteArray(Charsets.UTF_8)
+        linkNameBytes.copyInto(
+            destination = header,
+            destinationOffset = 157,
+            endIndex = minOf(linkNameBytes.size, 100),
+        )
         write(header)
         write(data)
         val padding = (TAR_BLOCK - data.size % TAR_BLOCK) % TAR_BLOCK

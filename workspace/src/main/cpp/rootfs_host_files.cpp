@@ -1303,6 +1303,319 @@ Java_me_rerere_workspace_RootfsHostFileBridge_discoverEntries(
     return encode_directory_records(env, records);
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_openArchiveFile(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes,
+        jint mode) {
+    if (mode < 0 || mode > 07777) {
+        throw_unsafe_path(env, "Invalid Rootfs archive file mode");
+        return -1;
+    }
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments)) {
+        return -1;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            true,
+            &missing));
+    if (parent.get() < 0) return -1;
+    const std::string &leaf = segments.back();
+
+    struct stat previous = {};
+    if (fstatat(parent.get(), leaf.c_str(), &previous, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (S_ISDIR(previous.st_mode)) {
+            throw_unsafe_path(env, "Rootfs archive file would replace a directory: /" + relative);
+            return -1;
+        }
+        if (previous.st_uid != getuid()) {
+            throw_unsafe_path(env, "Rootfs archive file has an unexpected owner: /" + relative);
+            return -1;
+        }
+        if (unlinkat(parent.get(), leaf.c_str(), 0) != 0) {
+            throw_io_exception(env, "Unable to replace Rootfs archive entry /" + relative, errno);
+            return -1;
+        }
+    } else if (errno != ENOENT) {
+        throw_io_exception(env, "Unable to inspect Rootfs archive entry /" + relative, errno);
+        return -1;
+    }
+
+    ScopedFd file(openat(
+            parent.get(),
+            leaf.c_str(),
+            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+            static_cast<mode_t>(mode & 0777)));
+    if (file.get() < 0) {
+        if (errno == EEXIST || errno == ELOOP) {
+            throw_unsafe_path(env, "Rootfs archive entry changed during creation: /" + relative);
+        } else {
+            throw_io_exception(env, "Unable to create Rootfs archive file /" + relative, errno);
+        }
+        return -1;
+    }
+    struct stat status = {};
+    if (fstat(file.get(), &status) != 0) {
+        throw_io_exception(env, "Unable to inspect Rootfs archive file /" + relative, errno);
+        return -1;
+    }
+    if (!validate_regular_file(env, status, relative)) return -1;
+    if (fchmod(file.get(), static_cast<mode_t>(mode & 0777)) != 0) {
+        throw_io_exception(env, "Unable to set Rootfs archive file mode /" + relative, errno);
+        return -1;
+    }
+    return file.release();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_createArchiveSymlink(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes,
+        jbyteArray target_bytes) {
+    std::string root;
+    std::string relative;
+    std::string target;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments) ||
+        !copy_bytes(env, target_bytes, &target, kMaxRelativePathBytes, true)) {
+        return;
+    }
+    if (target.empty()) {
+        throw_unsafe_path(env, "Rootfs archive symlink target is empty");
+        return;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            true,
+            &missing));
+    if (parent.get() < 0) return;
+    const std::string &leaf = segments.back();
+
+    struct stat previous = {};
+    if (fstatat(parent.get(), leaf.c_str(), &previous, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (S_ISDIR(previous.st_mode)) {
+            throw_unsafe_path(env, "Rootfs archive symlink would replace a directory: /" + relative);
+            return;
+        }
+        if (previous.st_uid != getuid()) {
+            throw_unsafe_path(env, "Rootfs archive symlink has an unexpected owner: /" + relative);
+            return;
+        }
+        if (unlinkat(parent.get(), leaf.c_str(), 0) != 0) {
+            throw_io_exception(env, "Unable to replace Rootfs archive entry /" + relative, errno);
+            return;
+        }
+    } else if (errno != ENOENT) {
+        throw_io_exception(env, "Unable to inspect Rootfs archive entry /" + relative, errno);
+        return;
+    }
+    if (symlinkat(target.c_str(), parent.get(), leaf.c_str()) != 0) {
+        if (errno == EEXIST) {
+            throw_unsafe_path(env, "Rootfs archive entry changed during symlink creation: /" + relative);
+        } else {
+            throw_io_exception(env, "Unable to create Rootfs archive symlink /" + relative, errno);
+        }
+        return;
+    }
+    struct stat created = {};
+    if (fstatat(parent.get(), leaf.c_str(), &created, AT_SYMLINK_NOFOLLOW) != 0) {
+        throw_io_exception(env, "Unable to verify Rootfs archive symlink /" + relative, errno);
+        return;
+    }
+    if (!S_ISLNK(created.st_mode) || created.st_uid != getuid()) {
+        throw_unsafe_path(env, "Rootfs archive symlink changed during creation: /" + relative);
+    }
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_createArchiveHardLink(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray source_relative_bytes,
+        jbyteArray target_relative_bytes) {
+    std::string root;
+    std::string source_relative;
+    std::string target_relative;
+    std::vector<std::string> source_segments;
+    std::vector<std::string> target_segments;
+    if (!copy_bytes(env, root_bytes, &root, kMaxRootPathBytes, true) ||
+        !copy_bytes(
+                env,
+                source_relative_bytes,
+                &source_relative,
+                kMaxRelativePathBytes,
+                true) ||
+        !copy_bytes(
+                env,
+                target_relative_bytes,
+                &target_relative,
+                kMaxRelativePathBytes,
+                true) ||
+        !parse_relative_path(env, source_relative, false, &source_segments) ||
+        !parse_relative_path(env, target_relative, false, &target_segments)) {
+        return -1;
+    }
+    bool missing = false;
+    ScopedFd source_parent(open_directory_chain(
+            env,
+            root,
+            source_segments,
+            source_segments.size() - 1,
+            false,
+            &missing));
+    if (source_parent.get() < 0) return -1;
+    struct stat source_status = {};
+    if (fstatat(
+            source_parent.get(),
+            source_segments.back().c_str(),
+            &source_status,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        throw_io_exception(env, "Unable to inspect Rootfs archive hard-link source", errno);
+        return -1;
+    }
+    if (!validate_regular_file(env, source_status, source_relative, false)) return -1;
+
+    ScopedFd target_parent(open_directory_chain(
+            env,
+            root,
+            target_segments,
+            target_segments.size() - 1,
+            true,
+            &missing));
+    if (target_parent.get() < 0) return -1;
+    const std::string &target_leaf = target_segments.back();
+    struct stat previous = {};
+    if (fstatat(target_parent.get(), target_leaf.c_str(), &previous, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (S_ISDIR(previous.st_mode)) {
+            throw_unsafe_path(env, "Rootfs archive hard link would replace a directory");
+            return -1;
+        }
+        if (previous.st_uid != getuid()) {
+            throw_unsafe_path(env, "Rootfs archive hard-link target has an unexpected owner");
+            return -1;
+        }
+        if (unlinkat(target_parent.get(), target_leaf.c_str(), 0) != 0) {
+            throw_io_exception(env, "Unable to replace Rootfs archive hard-link target", errno);
+            return -1;
+        }
+    } else if (errno != ENOENT) {
+        throw_io_exception(env, "Unable to inspect Rootfs archive hard-link target", errno);
+        return -1;
+    }
+    if (linkat(
+            source_parent.get(),
+            source_segments.back().c_str(),
+            target_parent.get(),
+            target_leaf.c_str(),
+            0) != 0) {
+        if (errno == EEXIST) {
+            throw_unsafe_path(env, "Rootfs archive hard-link target changed during creation");
+        } else {
+            throw_io_exception(env, "Unable to create Rootfs archive hard link", errno);
+        }
+        return -1;
+    }
+    struct stat linked_status = {};
+    if (fstatat(target_parent.get(), target_leaf.c_str(), &linked_status, AT_SYMLINK_NOFOLLOW) != 0) {
+        throw_io_exception(env, "Unable to verify Rootfs archive hard link", errno);
+        return -1;
+    }
+    if (!S_ISREG(linked_status.st_mode) ||
+        linked_status.st_uid != getuid() ||
+        linked_status.st_dev != source_status.st_dev ||
+        linked_status.st_ino != source_status.st_ino) {
+        unlinkat(target_parent.get(), target_leaf.c_str(), 0);
+        throw_unsafe_path(env, "Rootfs archive hard-link source changed during creation");
+        return -1;
+    }
+    return static_cast<jlong>(source_status.st_size);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_me_rerere_workspace_RootfsHostFileBridge_setEntryMtime(
+        JNIEnv *env,
+        jclass,
+        jbyteArray root_bytes,
+        jbyteArray relative_bytes,
+        jlong modified_at_millis) {
+    if (modified_at_millis < 0) {
+        throw_unsafe_path(env, "Invalid Rootfs archive modification time");
+        return;
+    }
+    std::string root;
+    std::string relative;
+    std::vector<std::string> segments;
+    if (!prepare_paths(
+            env,
+            root_bytes,
+            relative_bytes,
+            false,
+            &root,
+            &relative,
+            &segments)) {
+        return;
+    }
+    bool missing = false;
+    ScopedFd parent(open_directory_chain(
+            env,
+            root,
+            segments,
+            segments.size() - 1,
+            false,
+            &missing));
+    if (parent.get() < 0) return;
+    struct stat status = {};
+    if (fstatat(parent.get(), segments.back().c_str(), &status, AT_SYMLINK_NOFOLLOW) != 0) {
+        throw_io_exception(env, "Unable to inspect Rootfs archive mtime target /" + relative, errno);
+        return;
+    }
+    if ((!S_ISREG(status.st_mode) && !S_ISDIR(status.st_mode)) || status.st_uid != getuid()) {
+        throw_unsafe_path(env, "Unsafe Rootfs archive mtime target: /" + relative);
+        return;
+    }
+    struct timespec times[2] = {};
+    times[0].tv_nsec = UTIME_OMIT;
+    times[1].tv_sec = static_cast<time_t>(modified_at_millis / 1000);
+    times[1].tv_nsec = static_cast<long>((modified_at_millis % 1000) * 1000 * 1000);
+    if (utimensat(
+            parent.get(),
+            segments.back().c_str(),
+            times,
+            AT_SYMLINK_NOFOLLOW) != 0) {
+        throw_io_exception(env, "Unable to set Rootfs archive mtime /" + relative, errno);
+    }
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_me_rerere_workspace_RootfsHostFileBridge_deleteRelative(
         JNIEnv *env,

@@ -130,7 +130,18 @@ network access, and app-private storage that the Android process makes available
    - UI exports remain streaming and may exceed the model tool's 8 MiB read limit. Bounded model
      reads inspect the opened descriptor size before producing output and continue counting bytes
      while copying, so concurrent file growth still fails at the configured cap.
-12. **Isolation alternatives (future)**
+12. **Descriptor-relative RootFS extraction (implemented)**
+   - Android archive extraction writes through a dedicated directory-FD sink. Parent directories
+     are opened or created with `openat`/`mkdirat` plus `O_NOFOLLOW`; regular files remove only a
+     validated non-directory leaf and are recreated with `O_EXCL|O_NOFOLLOW` before bytes are
+     streamed to the returned descriptor. Archive modes are applied with `fchmod` and special mode
+     bits are stripped.
+   - Archive symlinks use `symlinkat` without host-side traversal. A later regular-file entry safely
+     unlinks that symlink instead of following it. Hard links use `linkat`, verify the destination
+     device/inode still matches the inspected source, and charge the source's logical size to the
+     extraction quota. Modification times are applied below an opened parent FD without following
+     links. JVM tests use a no-follow NIO sink with matching failure rules.
+13. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
@@ -239,3 +250,8 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
     the workspace are returned, grep never reads the sentinels, and listing a symlink path is
     rejected. Repeat while exchanging a nested directory with a symlink; traversal must either stay
     on the verified opened directory inode or skip the changed entry.
+26. Build a test tar that creates a symlink to an outside sentinel and then places a regular file at
+    the same archive path. Extraction must replace the link locally and leave the sentinel unchanged.
+    Repeat with a symlink used as a later entry's parent and confirm extraction fails closed. Create
+    native hard links and verify their destination inode matches the inspected source and their
+    logical sizes count toward the expanded-byte quota.

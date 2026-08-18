@@ -54,6 +54,20 @@ final class RootfsHostFileBridge {
             boolean recursive,
             int maxScannedEntries);
 
+    static native int openArchiveFile(byte[] root, byte[] relativePath, int mode);
+
+    static native void createArchiveSymlink(
+            byte[] root,
+            byte[] relativePath,
+            byte[] linkTarget);
+
+    static native long createArchiveHardLink(
+            byte[] root,
+            byte[] sourceRelativePath,
+            byte[] targetRelativePath);
+
+    static native void setEntryMtime(byte[] root, byte[] relativePath, long modifiedAtMillis);
+
     static native boolean deleteRelative(byte[] root, byte[] relativePath, boolean recursive);
 
     static native int entryKind(byte[] root, byte[] relativePath);

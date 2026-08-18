@@ -415,6 +415,45 @@ class RootfsHostBoundaryInstrumentedTest {
         }
     }
 
+    @Test
+    fun rootfsExtractionUsesNativeDescriptorSink() {
+        val rootfs = freshDirectory("extraction-boundary")
+        val outside = freshDirectory("extraction-boundary-outside")
+        val sentinel = File(outside, "keep.txt").apply { writeText("keep") }
+        val files = rootfsExtractionFiles(rootfs)
+
+        try {
+            files.directory("etc")
+            files.symlink("etc/config", sentinel.absolutePath)
+            files.openFile("etc/config", 0b110_100_100).use { output ->
+                output.write("replacement".toByteArray())
+            }
+            assertFalse(Files.isSymbolicLink(File(rootfs, "etc/config").toPath()))
+            assertEquals("replacement", File(rootfs, "etc/config").readText())
+            assertEquals("keep", sentinel.readText())
+
+            files.symlink("escape", outside.absolutePath)
+            assertThrows(IllegalArgumentException::class.java) {
+                files.openFile("escape/evil.txt", 0b110_100_100).use { output ->
+                    output.write("evil".toByteArray())
+                }
+            }
+            assertFalse(File(outside, "evil.txt").exists())
+
+            files.openFile("source", 0b110_100_100).use { output ->
+                output.write("data".toByteArray())
+            }
+            assertEquals(4L, files.hardLink("linked", "source"))
+            assertEquals(
+                Os.stat(File(rootfs, "source").path).st_ino,
+                Os.stat(File(rootfs, "linked").path).st_ino,
+            )
+        } finally {
+            rootfs.deleteRecursivelyNoFollow()
+            outside.deleteRecursivelyNoFollow()
+        }
+    }
+
     private fun freshDirectory(name: String): File =
         File(context.cacheDir, "$name-${System.nanoTime()}").also { directory ->
             directory.deleteRecursivelyNoFollow()

@@ -3,7 +3,6 @@ package me.rerere.workspace
 import java.io.BufferedInputStream
 import java.io.EOFException
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -190,6 +189,7 @@ class RootfsInstaller(
                 setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS),
             )
         )
+        val extractionFiles = rootfsExtractionFiles(targetDir)
         format.wrapStream(BufferedInputStream(archiveInput)).use { input ->
             var entries = 0
             var extractedBytes = 0L
@@ -228,7 +228,7 @@ class RootfsInstaller(
                     input.skipFully(header.size.paddingSize())
                     continue
                 }
-                val target = targetDir.safeResolve(header.name)
+                val relativePath = normalizeTarPath(header.name)
                 entries++
                 require(entries <= limits.maxEntries) {
                     "Rootfs archive contains too many entries: ${limits.maxEntries}"
@@ -240,22 +240,32 @@ class RootfsInstaller(
                 require(extractedBytes <= limits.maxExtractedBytes) {
                     "Rootfs extracted size exceeds limit: ${limits.maxExtractedBytes} bytes"
                 }
-                target.parentFile?.mkdirs()
                 when (header.type) {
-                    TarEntryType.DIRECTORY -> target.mkdirs()
-                    TarEntryType.SYMLINK -> createSymlink(targetDir, target, header.linkName)
+                    TarEntryType.DIRECTORY -> extractionFiles.directory(relativePath)
+                    TarEntryType.SYMLINK -> {
+                        require(header.linkName.isNotBlank()) {
+                            "Rootfs archive symlink target is blank: ${header.name}"
+                        }
+                        validateSymlinkTarget(relativePath, header.linkName)
+                        extractionFiles.symlink(relativePath, header.linkName)
+                    }
                     TarEntryType.HARDLINK -> {
-                        val copiedBytes = createHardLink(targetDir, target, header.linkName)
-                        extractedBytes = Math.addExact(extractedBytes, copiedBytes)
+                        require(header.linkName.isNotBlank()) {
+                            "Rootfs archive hard-link target is blank: ${header.name}"
+                        }
+                        val linkedBytes = extractionFiles.hardLink(
+                            relativePath,
+                            normalizeTarPath(header.linkName),
+                        )
+                        extractedBytes = Math.addExact(extractedBytes, linkedBytes)
                         require(extractedBytes <= limits.maxExtractedBytes) {
                             "Rootfs extracted size exceeds limit: ${limits.maxExtractedBytes} bytes"
                         }
                     }
                     TarEntryType.FILE -> {
-                        target.outputStream().use { output ->
+                        extractionFiles.openFile(relativePath, header.mode).use { output ->
                             input.copyExactly(output, header.size)
                         }
-                        target.applyMode(header.mode)
                     }
 
                     // LONG_NAME/LONG_LINK/PAX 已在上方 continue, 这里只有 OTHER 可达;
@@ -269,8 +279,15 @@ class RootfsInstaller(
                     input.skipFully(header.size)
                 }
                 input.skipFully(header.size.paddingSize())
-                if (header.modTime > 0 && header.type != TarEntryType.SYMLINK) {
-                    target.setLastModified(header.modTime * 1000)
+                if (header.modTime > 0 &&
+                    (header.type == TarEntryType.FILE ||
+                        header.type == TarEntryType.DIRECTORY ||
+                        header.type == TarEntryType.HARDLINK)
+                ) {
+                    extractionFiles.setModifiedAt(
+                        relativePath,
+                        Math.multiplyExact(header.modTime, 1000),
+                    )
                 }
                 onProgress(
                     RootfsInstallProgress(
@@ -333,47 +350,6 @@ class RootfsInstaller(
 
     private fun File.deleteAsChildNoFollow(): Boolean =
         requireNotNull(parentFile).deleteRelativeTreeNoFollow(name)
-
-    private fun createSymlink(root: File, target: File, linkName: String) {
-        if (linkName.isBlank()) return
-        val linkTarget = if (File(linkName).isAbsolute) {
-            File(linkName)
-        } else {
-            val resolved = File(target.parentFile ?: root, linkName).canonicalFile
-            val rootFile = root.canonicalFile
-            require(resolved.path == rootFile.path || resolved.path.startsWith(rootFile.path + File.separator)) {
-                "Symlink escapes rootfs: ${target.name}"
-            }
-            (target.parentFile ?: root).toPath().relativize(resolved.toPath()).toFile()
-        }
-        target.delete()
-        Files.createSymbolicLink(target.toPath(), linkTarget.toPath())
-    }
-
-    /** Returns bytes physically copied when native hard links are unavailable. */
-    private fun createHardLink(root: File, target: File, linkName: String): Long {
-        if (linkName.isBlank()) return 0
-        val source = root.safeResolve(linkName)
-        if (!source.exists()) return 0
-        target.delete()
-        var copiedBytes = 0L
-        runCatching {
-            Files.createLink(target.toPath(), source.toPath())
-        }.recoverCatching { error ->
-            if (error !is IOException &&
-                error !is UnsupportedOperationException &&
-                error !is SecurityException
-            ) {
-                throw error
-            }
-            copiedBytes = source.length()
-            source.copyTo(target, overwrite = true)
-            target.setReadable(source.canRead(), false)
-            target.setWritable(source.canWrite(), true)
-            target.setExecutable(source.canExecute(), false)
-        }.getOrThrow()
-        return copiedBytes
-    }
 
     private fun InputStream.readTarHeader(): TarHeader? {
         val header = ByteArray(TAR_BLOCK_SIZE)
@@ -477,32 +453,48 @@ class RootfsInstaller(
         return offset
     }
 
-    private fun File.safeResolve(path: String): File {
-        val normalized = normalizeTarPath(path)
-        val root = canonicalFile
-        val target = File(root, normalized).canonicalFile
-        require(target.path == root.path || target.path.startsWith(root.path + File.separator)) {
-            "Rootfs entry escapes target directory: $path"
-        }
-        return target
-    }
-
-    private fun File.applyMode(mode: Int) {
-        setReadable(mode and 0b100_000_000 != 0, false)
-        setWritable(mode and 0b010_000_000 != 0, true)
-        setExecutable(mode and 0b001_000_000 != 0, false)
-    }
-
     private fun normalizeTarPath(path: String): String {
-        val normalized = path
+        val input = path
             .replace('\\', '/')
             .trim()
             .trimStart('/')
-            .removePrefix("./")
+        require(input.isNotBlank()) { "Rootfs entry path is blank" }
+        require(!input.contains('\u0000')) { "Rootfs entry path contains invalid character" }
+        val segments = input.split('/').filter { it.isNotBlank() && it != "." }
+        require(segments.none { it == ".." }) { "Rootfs entry escapes target directory: $path" }
+        require(segments.all { it.toByteArray(Charsets.UTF_8).size <= 255 }) {
+            "Rootfs entry path segment is too long"
+        }
+        val normalized = segments.joinToString("/")
         require(normalized.isNotBlank()) { "Rootfs entry path is blank" }
-        require(!normalized.contains('\u0000')) { "Rootfs entry path contains invalid character" }
-        require(normalized.split('/').none { it == ".." }) { "Rootfs entry escapes target directory: $path" }
+        require(normalized.toByteArray(Charsets.UTF_8).size <= 4096) {
+            "Rootfs entry path is too long"
+        }
         return normalized
+    }
+
+    private fun validateSymlinkTarget(entryPath: String, linkName: String) {
+        require(!linkName.contains('\u0000')) { "Rootfs symlink target contains invalid character" }
+        require(linkName.toByteArray(Charsets.UTF_8).size <= 4096) {
+            "Rootfs symlink target is too long"
+        }
+        if (linkName.startsWith('/')) return
+        val resolved = entryPath.split('/').dropLast(1).toMutableList()
+        linkName.replace('\\', '/').split('/').forEach { segment ->
+            when (segment) {
+                "", "." -> Unit
+                ".." -> {
+                    require(resolved.isNotEmpty()) { "Symlink escapes rootfs: $entryPath" }
+                    resolved.removeAt(resolved.lastIndex)
+                }
+                else -> {
+                    require(segment.toByteArray(Charsets.UTF_8).size <= 255) {
+                        "Rootfs symlink target segment is too long"
+                    }
+                    resolved += segment
+                }
+            }
+        }
     }
 
     private fun ByteArray.string(offset: Int, length: Int): String {
