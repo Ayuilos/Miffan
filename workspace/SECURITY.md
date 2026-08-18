@@ -68,20 +68,25 @@ network access, and app-private storage that the Android process makes available
      `/etc` directory and reject required entrypoints whose resolved files leave the RootFS tree.
      Workspace creation and both AI/terminal launch paths also require real, non-symlink managed
      `files`, `linux`, and `tmp` directories before any bind mount or host working directory is used.
-6. **Session-escape descendant reaping (implemented)**
+6. **Session-escape descendant reaping (implemented with kernel-dependent defense in depth)**
    - Run both AI commands and interactive PTYs below a dedicated native child-subreaper monitor.
-     When the main PRoot process exits or its original process group is terminated, the monitor
-     adopts, kills, and reaps every remaining descendant, including a guest process that used
-     `setsid()` or `setpgid()` to escape the original group.
-   - Require the Linux procfs direct-child interface before launch, and keep the monitor alive on
-     Android parent death long enough to complete descendant cleanup. PTY waiters resolve the
-     published PRoot PID to its private monitor instead of assuming PRoot remains a direct child of
-     the Android process.
+     When procfs child enumeration is available, the monitor adopts, kills, and reaps every
+     remaining descendant. Independently, PRoot's `--kill-on-exit` traces guest processes that use
+     `setsid()` or `setpgid()` to escape the original host process group.
+   - Use the Linux procfs direct-child interface when the device exposes it. Android kernels that
+     omit that optional file still launch correctly, reap the killed command group with bounded
+     waits, and rely on PRoot's `--kill-on-exit` tracing for guest descendants. A raw host process
+     that escapes its group cannot be identified safely under the shared app UID on such kernels;
+     moving execution to a dedicated UID remains the architectural closure for that case. PTY
+     waiters resolve the published PRoot PID to its private monitor instead of assuming PRoot
+     remains a direct child of the Android process.
 7. **Descriptor-relative RootFS patching (implemented)**
-   - Android-side RootFS patching anchors lookup at `/`, opens every absolute and guest-controlled
-     component with directory FDs plus `openat`/`mkdirat` and `O_NOFOLLOW`, and validates the opened
-     object with `fstat` before reading, truncating, writing, or changing permissions. No security
-     decision is carried forward as a reusable host pathname.
+   - Android-side RootFS patching anchors lookup at the UID-owned package data directory below an
+     Android-managed private-data mount, opens every app-controlled component with directory FDs
+     plus `openat`/`mkdirat` and `O_NOFOLLOW`, and validates the opened object with `fstat` before
+     reading, truncating, writing, or changing permissions. This avoids SELinux-denied reads of
+     host `/` and Android's seccomp-denied `openat2` while carrying no guest-controlled security
+     decision forward as a reusable pathname.
    - Reject maintenance files with multiple hard links or an unexpected owner, as well as symbolic
      links and non-regular files. Create files with `O_CREAT|O_EXCL|O_NOFOLLOW`; only the expected
      `/etc/resolv.conf` leaf link may be removed and recreated. Apply exact `01777` modes to `/tmp`
@@ -98,10 +103,11 @@ network access, and app-private storage that the Android process makes available
      overwritten.
 9. **Descriptor-relative model file I/O (implemented)**
    - `workspace_write_file` and `workspace_edit_file` now create or overwrite files through the
-     native RootFS bridge. Parent components are opened from `/` with `O_NOFOLLOW`; the leaf is
-     opened with `O_NOFOLLOW`, inspected after open, and hard-linked or non-regular targets are
-     rejected before truncation. `overwrite=false` is enforced by the same native decision that
-     opens the leaf rather than by an earlier Java existence check.
+     native RootFS bridge. Parent components below the verified package-data capability root are
+     opened with `O_NOFOLLOW`; the leaf is opened with `O_NOFOLLOW`, inspected after open, and
+     hard-linked or non-regular targets are rejected before truncation. `overwrite=false` is
+     enforced by the same native decision that opens the leaf rather than by an earlier Java
+     existence check.
    - Write-growth quota preflight queries the existing leaf through the same descriptor-relative
      no-follow bridge. A link or non-regular replacement cannot inflate the apparent old size and
      reduce the capacity reserved for the subsequent safe write.
@@ -138,11 +144,21 @@ network access, and app-private storage that the Android process makes available
      streamed to the returned descriptor. Archive modes are applied with `fchmod` and special mode
      bits are stripped.
    - Archive symlinks use `symlinkat` without host-side traversal. A later regular-file entry safely
-     unlinks that symlink instead of following it. Hard links use `linkat`, verify the destination
-     device/inode still matches the inspected source, and charge the source's logical size to the
-     extraction quota. Modification times are applied below an opened parent FD without following
-     links. JVM tests use a no-follow NIO sink with matching failure rules.
-13. **Isolation alternatives (future)**
+     unlinks that symlink instead of following it. Hard links use `linkat` where Android policy
+     permits it; when app-private hard links are denied, extraction materializes an exact regular
+     file copy through verified source/target descriptors. Both paths charge the source's logical
+     size to the extraction quota. Modification times are applied below an opened parent FD without
+     following links. JVM tests use a no-follow NIO sink with matching failure rules.
+13. **Executable Android device gate (implemented)**
+   - `workspace/scripts/verify-android-device.sh` builds the instrumentation APK without Gradle UTP,
+     verifies the selected serial/ABI/API, installs it directly with ADB, runs the native process,
+     PTY, RootFS host-boundary, extraction, and mutation suite, and rejects crashes or test failures.
+     It writes a device-fingerprinted report below `workspace/build/reports/android-device`.
+   - The gate discovers only complete NDK installs containing `source.properties`, so a broken
+     default NDK is reported as an environment problem rather than a code failure. Pass
+     `--expected-abi arm64-v8a` on a physical device and `--expected-abi x86_64` on an emulator/CI
+     host to complete the release matrix.
+14. **Isolation alternatives (future)**
    - Evaluate a dedicated Android process/UID, cgroup/job-control integration where Android permits
      it, and brokered network/filesystem access. The polling safeguards above can detect and stop
      overuse but are not atomic aggregate disk, CPU, or memory quotas. `RLIMIT_NPROC` is scoped to
@@ -254,5 +270,6 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
 26. Build a test tar that creates a symlink to an outside sentinel and then places a regular file at
     the same archive path. Extraction must replace the link locally and leave the sentinel unchanged.
     Repeat with a symlink used as a later entry's parent and confirm extraction fails closed. Create
-    native hard links and verify their destination inode matches the inspected source and their
-    logical sizes count toward the expanded-byte quota.
+    native hard links and verify either the destination inode matches the inspected source or,
+    where Android policy denies `linkat`, the materialized file is byte-identical with the expected
+    mode; in both cases its logical size must count toward the expanded-byte quota.

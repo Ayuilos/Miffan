@@ -33,6 +33,9 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
 add_library(termux SHARED
         termux_pty.cpp)
 
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall -Wextra -Werror)
+target_compile_options(termux PRIVATE -Wall -Wextra -Werror)
+
 # Specifies libraries CMake should link to your target library. You
 # can link libraries from various origins, such as libraries defined in this
 # build script, prebuilt third-party libraries, or Android system libraries.

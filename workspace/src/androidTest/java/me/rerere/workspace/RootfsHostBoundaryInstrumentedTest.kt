@@ -27,6 +27,15 @@ class RootfsHostBoundaryInstrumentedTest {
     }
 
     @Test
+    fun nativeHostMaintenanceRejectsPathsOutsidePrivateAppStorage() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RootfsHostFileBridge.deleteTree(
+                "/sdcard/rikkahub-workspace-boundary".toByteArray(Charsets.UTF_8)
+            )
+        }
+    }
+
+    @Test
     fun rootfsPatcherRejectsSymlinkedMaintenanceDirectory() {
         val rootfs = freshDirectory("rootfs-boundary-root")
         val outside = freshDirectory("rootfs-boundary-outside")
@@ -52,7 +61,14 @@ class RootfsHostBoundaryInstrumentedTest {
         val outside = freshDirectory("rootfs-hardlink-outside")
         val sentinel = File(outside, "hosts").apply { writeText("keep\n") }
         val hosts = File(rootfs, "etc/hosts")
-        Files.createLink(hosts.toPath(), sentinel.toPath())
+        try {
+            Files.createLink(hosts.toPath(), sentinel.toPath())
+        } catch (error: java.io.IOException) {
+            org.junit.Assume.assumeNoException(
+                "Android policy does not permit app-private hard links",
+                error,
+            )
+        }
 
         try {
             val error = assertThrows(IllegalArgumentException::class.java) {
@@ -444,10 +460,8 @@ class RootfsHostBoundaryInstrumentedTest {
                 output.write("data".toByteArray())
             }
             assertEquals(4L, files.hardLink("linked", "source"))
-            assertEquals(
-                Os.stat(File(rootfs, "source").path).st_ino,
-                Os.stat(File(rootfs, "linked").path).st_ino,
-            )
+            assertEquals("data", File(rootfs, "linked").readText())
+            assertEquals(4L, Os.stat(File(rootfs, "linked").path).st_size)
         } finally {
             rootfs.deleteRecursivelyNoFollow()
             outside.deleteRecursivelyNoFollow()

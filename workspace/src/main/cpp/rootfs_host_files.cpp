@@ -172,6 +172,37 @@ bool validate_owned_directory(JNIEnv *env, int fd, const std::string &label) {
     return true;
 }
 
+bool is_decimal_segment(const std::string &segment) {
+    if (segment.empty()) return false;
+    for (const char value: segment) {
+        if (value < '0' || value > '9') return false;
+    }
+    return true;
+}
+
+size_t android_private_data_anchor(const std::vector<std::string> &segments) {
+    // Android owns the parent of each returned per-package directory, so an untrusted app cannot
+    // replace that package directory. Every descendant below it is opened individually with
+    // O_NOFOLLOW. Starting here also avoids requesting read access to the SELinux-protected
+    // filesystem root and crossing /data/user/<id> through a directory descriptor, which some
+    // Android kernels report as ENOTDIR at the encrypted mount boundary.
+    if (segments.size() >= 3 && segments[0] == "data" &&
+        (segments[1] == "user" || segments[1] == "user_de") &&
+        is_decimal_segment(segments[2])) {
+        return segments.size() >= 4 ? 4 : 0;
+    }
+    if (segments.size() >= 2 && segments[0] == "data" && segments[1] == "data") {
+        return segments.size() >= 3 ? 3 : 0;
+    }
+    if (segments.size() >= 5 && segments[0] == "mnt" && segments[1] == "expand" &&
+        !segments[2].empty() &&
+        (segments[3] == "user" || segments[3] == "user_de") &&
+        is_decimal_segment(segments[4])) {
+        return segments.size() >= 6 ? 6 : 0;
+    }
+    return 0;
+}
+
 int open_absolute_directory_segments(
         JNIEnv *env,
         const std::vector<std::string> &segments,
@@ -180,24 +211,50 @@ int open_absolute_directory_segments(
         bool require_owned,
         bool *missing) {
     *missing = false;
-    ScopedFd current(open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
-    if (current.get() < 0) {
-        throw_io_exception(env, "Unable to anchor host filesystem root", errno);
+    const size_t anchor_count = android_private_data_anchor(segments);
+    if (anchor_count == 0 || segment_count < anchor_count) {
+        throw_unsafe_path(env, "Host maintenance path is outside Android private app storage");
         return -1;
     }
-    for (size_t index = 0; index < segment_count; ++index) {
+    std::string anchor_path;
+    for (size_t index = 0; index < anchor_count; ++index) {
+        anchor_path.push_back('/');
+        anchor_path.append(segments[index]);
+    }
+    // The per-package directory itself is created in a system-owned parent that the app cannot
+    // rename. Open it directly because /data/user/<id> can be presented as a kernel-managed magic
+    // link inside an app mount namespace. Validate the opened inode belongs to this UID before it
+    // becomes the capability root; every app-controlled descendant is still resolved with openat.
+    ScopedFd current(open(
+            anchor_path.c_str(),
+            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+    if (current.get() < 0) {
+        if (errno == ENOENT) {
+            *missing = true;
+        } else if (errno == ELOOP || errno == ENOTDIR) {
+            throw_unsafe_path(env, "Refusing unsafe Android private-data mount anchor");
+        } else {
+            throw_io_exception(env, "Unable to anchor Android private app storage", errno);
+        }
+        return -1;
+    }
+    if (!validate_owned_directory(env, current.get(), "Android package data root")) return -1;
+    for (size_t index = anchor_count; index < segment_count; ++index) {
         const std::string &segment = segments[index];
+        const bool final_segment = index + 1 == segment_count;
         const int next = openat(
                 current.get(),
                 segment.c_str(),
-                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+                (final_segment ? O_RDONLY : O_PATH) |
+                    O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
         if (next < 0) {
             if (errno == ENOENT) {
                 *missing = true;
             } else if (errno == ELOOP || errno == ENOTDIR) {
                 throw_unsafe_path(
                         env,
-                        "Refusing host access through symbolic link or non-directory: " + label);
+                        "Refusing host access through symbolic link or non-directory component '" +
+                            segment + "': " + label);
             } else {
                 throw_io_exception(env, "Unable to open host directory " + label, errno);
             }
@@ -1504,6 +1561,27 @@ Java_me_rerere_workspace_RootfsHostFileBridge_createArchiveHardLink(
         return -1;
     }
     if (!validate_regular_file(env, source_status, source_relative, false)) return -1;
+    ScopedFd source_file(openat(
+            source_parent.get(),
+            source_segments.back().c_str(),
+            O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+    if (source_file.get() < 0) {
+        throw_io_exception(env, "Unable to open Rootfs archive hard-link source", errno);
+        return -1;
+    }
+    struct stat opened_source = {};
+    if (fstat(source_file.get(), &opened_source) != 0) {
+        throw_io_exception(env, "Unable to verify Rootfs archive hard-link source", errno);
+        return -1;
+    }
+    if (!S_ISREG(opened_source.st_mode) ||
+        opened_source.st_uid != getuid() ||
+        opened_source.st_dev != source_status.st_dev ||
+        opened_source.st_ino != source_status.st_ino ||
+        opened_source.st_size != source_status.st_size) {
+        throw_unsafe_path(env, "Rootfs archive hard-link source changed during open");
+        return -1;
+    }
 
     ScopedFd target_parent(open_directory_chain(
             env,
@@ -1538,12 +1616,79 @@ Java_me_rerere_workspace_RootfsHostFileBridge_createArchiveHardLink(
             target_parent.get(),
             target_leaf.c_str(),
             0) != 0) {
-        if (errno == EEXIST) {
+        const int link_error = errno;
+        if (link_error == EEXIST) {
             throw_unsafe_path(env, "Rootfs archive hard-link target changed during creation");
-        } else {
-            throw_io_exception(env, "Unable to create Rootfs archive hard link", errno);
+            return -1;
         }
-        return -1;
+        if (link_error != EACCES && link_error != EPERM && link_error != EXDEV &&
+            link_error != EOPNOTSUPP) {
+            throw_io_exception(env, "Unable to create Rootfs archive hard link", link_error);
+            return -1;
+        }
+
+        // Android SELinux commonly denies hard-link creation in app-private storage. Materialize
+        // the archive entry through already-verified descriptors so installation remains portable
+        // without weakening path confinement. Quota accounting still charges the logical size.
+        ScopedFd target_file(openat(
+                target_parent.get(),
+                target_leaf.c_str(),
+                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+                static_cast<mode_t>(opened_source.st_mode & 0777)));
+        if (target_file.get() < 0) {
+            if (errno == EEXIST || errno == ELOOP) {
+                throw_unsafe_path(env, "Rootfs archive hard-link target changed during copy");
+            } else {
+                throw_io_exception(env, "Unable to materialize Rootfs archive hard link", errno);
+            }
+            return -1;
+        }
+        int64_t remaining = static_cast<int64_t>(opened_source.st_size);
+        char buffer[16 * 1024];
+        while (remaining > 0) {
+            const size_t requested = static_cast<size_t>(
+                    remaining < static_cast<int64_t>(sizeof(buffer))
+                    ? remaining
+                    : static_cast<int64_t>(sizeof(buffer)));
+            ssize_t read_count = -1;
+            do {
+                read_count = read(source_file.get(), buffer, requested);
+            } while (read_count < 0 && errno == EINTR);
+            if (read_count <= 0) {
+                const int copy_error = read_count == 0 ? EIO : errno;
+                target_file.reset();
+                unlinkat(target_parent.get(), target_leaf.c_str(), 0);
+                throw_io_exception(env, "Unable to read Rootfs archive hard-link source", copy_error);
+                return -1;
+            }
+            size_t written = 0;
+            while (written < static_cast<size_t>(read_count)) {
+                ssize_t write_count = write(
+                        target_file.get(),
+                        buffer + written,
+                        static_cast<size_t>(read_count) - written);
+                if (write_count > 0) {
+                    written += static_cast<size_t>(write_count);
+                } else if (write_count < 0 && errno == EINTR) {
+                    continue;
+                } else {
+                    const int copy_error = write_count == 0 ? EIO : errno;
+                    target_file.reset();
+                    unlinkat(target_parent.get(), target_leaf.c_str(), 0);
+                    throw_io_exception(env, "Unable to write Rootfs archive hard-link copy", copy_error);
+                    return -1;
+                }
+            }
+            remaining -= read_count;
+        }
+        if (fchmod(target_file.get(), static_cast<mode_t>(opened_source.st_mode & 0777)) != 0) {
+            const int chmod_error = errno;
+            target_file.reset();
+            unlinkat(target_parent.get(), target_leaf.c_str(), 0);
+            throw_io_exception(env, "Unable to set Rootfs archive hard-link copy mode", chmod_error);
+            return -1;
+        }
+        return static_cast<jlong>(opened_source.st_size);
     }
     struct stat linked_status = {};
     if (fstatat(target_parent.get(), target_leaf.c_str(), &linked_status, AT_SYMLINK_NOFOLLOW) != 0) {

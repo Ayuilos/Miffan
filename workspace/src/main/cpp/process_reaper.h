@@ -14,6 +14,7 @@ namespace workspace_process {
 
 constexpr size_t kMaxChildrenFileBytes = 64 * 1024;
 constexpr size_t kMaxDirectChildren = 4096;
+constexpr size_t kFallbackReapPolls = 1000;
 
 inline bool child_list_path(char *path, size_t capacity) {
     constexpr char prefix[] = "/proc/self/task/";
@@ -102,10 +103,33 @@ inline bool read_direct_children(
 }
 
 inline bool become_child_subreaper() {
-    if (prctl(PR_SET_CHILD_SUBREAPER, 1) != 0) return false;
-    pid_t children[kMaxDirectChildren] = {};
-    size_t child_count = 0;
-    return read_direct_children(children, kMaxDirectChildren, &child_count);
+    // Some production Android kernels omit /proc/<pid>/task/<tid>/children. Subreaper setup is
+    // still useful there: PRoot's --kill-on-exit owns guest descendants, while this monitor
+    // continues to reap ordinary members of the command process group. Do not make all local
+    // execution fail merely because the optional procfs enumeration interface is unavailable.
+    return prctl(PR_SET_CHILD_SUBREAPER, 1) == 0;
+}
+
+inline bool reap_group_descendants_without_procfs() {
+    for (size_t poll = 0; poll < kFallbackReapPolls; ++poll) {
+        bool reaped_any = false;
+        while (true) {
+            int ignored_status = 0;
+            const pid_t reaped = waitpid(-1, &ignored_status, WNOHANG);
+            if (reaped > 0) {
+                reaped_any = true;
+                continue;
+            }
+            if (reaped < 0 && errno == ECHILD) return true;
+            if (reaped < 0 && errno == EINTR) continue;
+            if (reaped < 0) return false;
+            break;
+        }
+        if (!reaped_any) usleep(1000);
+    }
+    // A still-live child has escaped the killed process group. Without the procfs children list
+    // the shared app UID cannot identify it safely, so fail the monitor result instead of hanging.
+    return false;
 }
 
 // The caller must be a dedicated child subreaper. Once the main command has been reaped, every
@@ -114,7 +138,12 @@ inline bool kill_and_reap_descendants() {
     pid_t children[kMaxDirectChildren] = {};
     while (true) {
         size_t child_count = 0;
-        if (!read_direct_children(children, kMaxDirectChildren, &child_count)) return false;
+        if (!read_direct_children(children, kMaxDirectChildren, &child_count)) {
+            if (errno == ENOENT || errno == EACCES || errno == EPERM) {
+                return reap_group_descendants_without_procfs();
+            }
+            return false;
+        }
         if (child_count == 0) {
             int ignored_status = 0;
             const pid_t reaped = waitpid(-1, &ignored_status, WNOHANG);

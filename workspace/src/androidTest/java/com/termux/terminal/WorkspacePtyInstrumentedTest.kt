@@ -154,6 +154,10 @@ class WorkspacePtyInstrumentedTest {
 
     @Test
     fun normalExitReapsAChildThatCreatedANewSession() {
+        org.junit.Assume.assumeTrue(
+            "Kernel does not expose direct-child procfs enumeration",
+            hasProcfsChildren(),
+        )
         val toybox = File("/system/bin/toybox")
         val sleep = File("/system/bin/sleep")
         org.junit.Assume.assumeTrue(toybox.canExecute() && sleep.canExecute())
@@ -257,4 +261,7 @@ class WorkspacePtyInstrumentedTest {
         }
         assertNull("Process $pid is still present in procfs", system.snapshot(pid))
     }
+
+    private fun hasProcfsChildren(): Boolean =
+        File("/proc/self/task/${android.os.Process.myTid()}/children").canRead()
 }

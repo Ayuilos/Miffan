@@ -97,6 +97,7 @@ class WorkspaceNativeProcessInstrumentedTest {
 
     @Test
     fun forceTerminationReapsDescendantThatEscapedTheCommandGroup() {
+        assumeTrue("Kernel does not expose direct-child procfs enumeration", hasProcfsChildren())
         val toybox = File("/system/bin/toybox")
         val sleep = File("/system/bin/sleep")
         assumeTrue(toybox.canExecute() && sleep.canExecute())
@@ -188,6 +189,9 @@ class WorkspaceNativeProcessInstrumentedTest {
         }
         assertNull(system.snapshot(pid))
     }
+
+    private fun hasProcfsChildren(): Boolean =
+        File("/proc/self/task/${android.os.Process.myTid()}/children").canRead()
 
     private fun forceStop(process: WorkspaceNativeProcess) {
         if (runCatching { process.isAlive }.getOrDefault(false)) {
