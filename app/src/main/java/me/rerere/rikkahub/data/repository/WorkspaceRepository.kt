@@ -127,10 +127,15 @@ class WorkspaceRepository(
             }
             throw CancellationException("Rootfs install cancelled").also { it.initCause(e) }
         } catch (e: Throwable) {
-            Log.e(TAG, "installRootfs failed: workspace=${workspace.id}, root=${workspace.root}", e)
             // Installer swaps atomically and restores the previous Rootfs on failure. Preserve the
-            // prior state when that rollback left a usable installation in place.
-            if (executor.hasRootfs(workspace.root)) {
+            // prior state when that rollback left a usable installation in place. This probe is a
+            // blocking Binder call, so it must remain off the main thread. Never let a secondary
+            // recovery failure hide the original installation error shown to the user.
+            val rootfsHealthy = probeExecutorRootfsAfterFailure(e) {
+                executor.hasRootfs(workspace.root)
+            }
+            Log.e(TAG, "installRootfs failed: workspace=${workspace.id}, root=${workspace.root}", e)
+            if (rootfsHealthy) {
                 restoreShellState(workspace)
             } else {
                 updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
