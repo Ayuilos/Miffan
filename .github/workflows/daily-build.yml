@@ -92,6 +92,21 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
+      - name: Verify signed arm64 APK
+        run: |
+          apk="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "Signed arm64 release APK is missing: $apk" >&2
+            exit 1
+          fi
+
+          apksigner="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$apksigner" ]; then
+            echo "apksigner was not found in the Android SDK" >&2
+            exit 1
+          fi
+          "$apksigner" verify --verbose "$apk"
+
       # 把 APK 直接发布为 Prerelease，用户点链接即可下载单个 apk，无需登录、无需解压
       - name: Publish nightly prerelease
         uses: softprops/action-gh-release@v2
@@ -104,4 +119,4 @@ jobs:
             自动每日构建（commit `${{ github.sha }}`）
 
             > ⚠️ 开发版本，可能不稳定，仅供测试。
-          files: app/build/outputs/apk/release/*.apk
+          files: app/build/outputs/apk/release/app-arm64-v8a-release.apk
