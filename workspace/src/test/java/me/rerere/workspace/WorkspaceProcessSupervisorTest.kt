@@ -191,7 +191,7 @@ class WorkspaceProcessSupervisorTest {
         startTimeTicks = OWNER_START,
         processGroupId = OWNER_PID,
         uid = UID,
-        commandLine = "me.rerere.rikkahub",
+        commandLine = "me.ayuilos.miffan.app",
     )
 
     private fun targetSnapshot() = WorkspaceProcessSnapshot(

@@ -7,7 +7,7 @@
   <string name="about_page_version">Version</string>
   <string name="about_page_website">Website</string>
   <string name="add">Add</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Miffan</string>
   <string name="asr_button_content_description">Speech Recognition</string>
   <string name="asr_button_stop">Stop</string>
   <string name="assistant_detail_basic_desc">Configure name, avatar, model, and parameters</string>
@@ -653,7 +653,7 @@
   <string name="setting_asr_configure_step_itn">Enable ITN</string>
   <string name="setting_asr_configure_step_itn_desc">Inverse Text Normalization: convert spoken numbers to digits (e.g. 三百 → 300)</string>
   <string name="setting_asr_configure_step_timestamp">Enable Timestamps</string>
-  <string name="setting_asr_configure_step_timestamp_desc">Return word-level timestamps in delta events. Disabled by default to save tokens (rikkahub does not consume them yet)</string>
+  <string name="setting_asr_configure_step_timestamp_desc">Return word-level timestamps in delta events. Disabled by default to save tokens (Miffan does not consume them yet)</string>
   <string name="setting_asr_configure_step_hotwords">Hotwords</string>
   <string name="setting_asr_configure_step_hotwords_desc">Comma-separated list of hotwords to boost recognition accuracy for proper nouns / domain terms</string>
   <string name="setting_asr_page_add_provider">Add ASR Provider</string>
@@ -877,7 +877,7 @@
   <string name="setting_page_search_title">Search Service</string>
   <string name="setting_page_share">Share</string>
   <string name="setting_page_share_desc">Share this app with friends</string>
-  <string name="setting_page_share_text">RikkaHub - Open Source Android AI Assistant\n\nWebsite: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - Open Source Android AI Assistant\n\nWebsite: https://rikka-ai.com/</string>
   <string name="setting_page_sponsor_alert_confirm">Donate</string>
   <string name="setting_page_sponsor_alert_desc">You have launched the app over 100 times! If you enjoy using it, please consider supporting the developer.</string>
   <string name="setting_page_sponsor_alert_dismiss">Not Now</string>
@@ -906,7 +906,7 @@
   <string name="setting_page_web_server">Web Server</string>
   <string name="setting_page_web_server_address_note">Address Notes</string>
   <string name="setting_page_web_server_address_note_desc">LAN Address: Uses device WiFi IP, accessible to other devices on the same network. Unavailable on mobile data.\nLocal Address: Uses localhost, accessible on this device only.\nmDNS Address: Uses .local hostname, accessible by name from other devices on the same network without knowing the IP.</string>
-  <string name="setting_page_web_server_desc">Allow you access RikkaHub via Web</string>
+  <string name="setting_page_web_server_desc">Allow you access Miffan via Web</string>
   <string name="setting_page_web_server_error">Error</string>
   <string name="setting_page_web_server_jwt_enable">Enable authentication</string>
   <string name="setting_page_web_server_jwt_enable_desc">Require password verification when accessing the web interface</string>
@@ -1201,7 +1201,7 @@
   <string name="workspace_detail_shell_status">Shell Status</string>
   <string name="workspace_detail_loading">Loading</string>
   <string name="workspace_detail_enable_shell">Enable Shell</string>
-  <string name="workspace_detail_enable_shell_desc">Commands run inside the RikkaHub app UID and share its private-data and network permissions. PRoot is not a security sandbox; run only commands you trust.</string>
+  <string name="workspace_detail_enable_shell_desc">Commands run inside the Miffan app UID and share its private-data and network permissions. PRoot is not a security sandbox; run only commands you trust.</string>
   <string name="workspace_detail_tool_approval">Tool Approval</string>
   <string name="workspace_detail_tool_approval_desc">When enabled, user confirmation is required before AI calls this tool</string>
   <string name="workspace_detail_tool_list_files">List Files</string>

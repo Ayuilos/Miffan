@@ -25,8 +25,8 @@ export class ApiError extends Error {
   }
 }
 
-const WEB_AUTH_STORAGE_KEY = "rikkahub:web-auth";
-const WEB_AUTH_REQUIRED_EVENT = "rikkahub:web-auth-required";
+const WEB_AUTH_STORAGE_KEY = "miffan:web-auth";
+const WEB_AUTH_REQUIRED_EVENT = "miffan:web-auth-required";
 const WEB_AUTH_EXPIRY_SKEW_MILLIS = 10_000;
 const WEB_AUTH_QUERY_KEY = "access_token";
 

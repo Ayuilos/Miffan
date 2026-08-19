@@ -20,7 +20,7 @@ export interface UseFoldersResult {
  * Folder management for the current assistant. Folders are an assistant-scoped
  * grouping; switching assistant resets both the list and the selected folder.
  *
- * @see app/src/main/java/me/rerere/rikkahub/ui/pages/chat/ChatDrawerVM.kt
+ * @see app/src/main/java/me/ayuilos/miffan/ui/pages/chat/ChatDrawerVM.kt
  */
 export function useFolders(currentAssistantId: string | null): UseFoldersResult {
   const [folders, setFolders] = React.useState<FolderDto[]>([]);

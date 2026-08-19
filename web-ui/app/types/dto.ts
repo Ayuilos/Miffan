@@ -15,7 +15,7 @@ export interface ConversationListDto {
 
 /**
  * Folder (conversation grouping within an assistant)
- * @see app/src/main/java/me/rerere/rikkahub/web/dto/WebDto.kt - FolderDto
+ * @see app/src/main/java/me/ayuilos/miffan/web/dto/WebDto.kt - FolderDto
  */
 export interface FolderDto {
   id: string;
@@ -27,7 +27,7 @@ export interface FolderDto {
 
 /**
  * Folder list change event (pushed on the shared `/api/events` stream)
- * @see app/src/main/java/me/rerere/rikkahub/web/dto/WebDto.kt - FolderListEvent
+ * @see app/src/main/java/me/ayuilos/miffan/web/dto/WebDto.kt - FolderListEvent
  */
 export interface FolderListEventDto {
   assistantId: string;
@@ -60,7 +60,7 @@ export interface ConversationListInvalidateEventDto {
 
 /**
  * Message DTO (for API response)
- * @see app/src/main/java/me/rerere/rikkahub/web/dto/WebDto.kt - MessageDto
+ * @see app/src/main/java/me/ayuilos/miffan/web/dto/WebDto.kt - MessageDto
  */
 export interface MessageDto {
   id: string;

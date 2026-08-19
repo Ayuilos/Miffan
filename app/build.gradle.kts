@@ -38,15 +38,15 @@ if (hasGoogleServicesConfig) {
 }
 
 android {
-    namespace = "me.rerere.rikkahub"
+    namespace = "me.ayuilos.miffan"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "me.rerere.rikkahub"
+        applicationId = "me.ayuilos.miffan.app"
         minSdk = 26
         targetSdk = 37
         versionCode = 177001
-        versionName = "2.4.10-ayuilos.1"
+        versionName = "2.4.10-miffan.1"
 
         buildConfigField("boolean", "FIREBASE_ENABLED", hasGoogleServicesConfig.toString())
         buildConfigField("boolean", "UPSTREAM_UPDATE_CHECK_ENABLED", "false")

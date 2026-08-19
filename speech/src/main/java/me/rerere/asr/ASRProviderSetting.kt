@@ -153,7 +153,7 @@ sealed class ASRProviderSetting {
         val segmentDurationSec: Int = 30,
         // 逆文本归一化 (Inverse Text Normalization): 把 "三百" -> "300" 等
         val enableItn: Boolean = true,
-        // 是否返回词级时间戳 (rikkahub 当前不消费时间戳, 默认关闭节省 token)
+        // 是否返回词级时间戳 (Miffan 当前不消费时间戳, 默认关闭节省 token)
         val enableTimestamp: Boolean = false,
         // 热词列表, 提升专有名词/术语识别准确率
         val hotwords: List<String> = emptyList(),

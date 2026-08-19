@@ -7,7 +7,7 @@
   <string name="about_page_version">版本</string>
   <string name="about_page_website">官網</string>
   <string name="add">添加</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Miffan</string>
   <string name="asr_button_content_description">語音辨識</string>
   <string name="asr_button_stop">停止</string>
   <string name="assistant_detail_basic_desc">設定名稱、頭像、模型與參數</string>
@@ -819,7 +819,7 @@
   <string name="setting_page_search_title">搜尋服務</string>
   <string name="setting_page_share">分享</string>
   <string name="setting_page_share_desc">分享本APP給朋友</string>
-  <string name="setting_page_share_text">RikkaHub - 開源安卓AI助手\n\n官網: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - 開源安卓AI助手\n\n官網: https://rikka-ai.com/</string>
   <string name="setting_page_sponsor_alert_confirm">捐款</string>
   <string name="setting_page_sponsor_alert_desc">您已啟動應用程式超過 100 次！如果您喜歡使用它，請考慮支持開發者。</string>
   <string name="setting_page_sponsor_alert_dismiss">稍後再說</string>
@@ -845,7 +845,7 @@
   <string name="setting_page_web_server">Web伺服器</string>
   <string name="setting_page_web_server_address_note">位址備註</string>
   <string name="setting_page_web_server_address_note_desc">LAN 位址：使用裝置 WiFi IP，可供同一網路上的其他裝置存取。行動數據無法使用。\n本機位址：使用 localhost，僅供本裝置存取。\nmDNS 位址：使用 .local 主機名稱，可供同一網路上的其他裝置透過名稱存取，無需知道 IP。</string>
-  <string name="setting_page_web_server_desc">允許您透過網頁存取 RikkaHub</string>
+  <string name="setting_page_web_server_desc">允許您透過網頁存取 Miffan</string>
   <string name="setting_page_web_server_error">錯誤</string>
   <string name="setting_page_web_server_jwt_enable">啟用身分驗證</string>
   <string name="setting_page_web_server_jwt_enable_desc">存取網頁介面時需要密碼驗證</string>
@@ -1147,7 +1147,7 @@
   <string name="workspace_detail_shell_status">Shell 狀態</string>
   <string name="workspace_detail_loading">載入中</string>
   <string name="workspace_detail_enable_shell">啟用 Shell</string>
-  <string name="workspace_detail_enable_shell_desc">命令在 RikkaHub 應用 UID 內執行，並共用其私人資料與網路權限。PRoot 不是安全沙箱；請只執行你信任的命令。</string>
+  <string name="workspace_detail_enable_shell_desc">命令在 Miffan 應用 UID 內執行，並共用其私人資料與網路權限。PRoot 不是安全沙箱；請只執行你信任的命令。</string>
   <string name="workspace_detail_tool_approval">工具核准</string>
   <string name="workspace_detail_tool_approval_desc">啟用後，AI 調用此工具前需要用戶確認。</string>
   <string name="workspace_detail_tool_list_files">列出檔案</string>
@@ -1240,7 +1240,7 @@
   <string name="setting_asr_configure_step_itn">啟用 ITN</string>
   <string name="setting_asr_configure_step_itn_desc">逆文字正規化：將口語數字轉換為數字（例如「三百」→「300」）</string>
   <string name="setting_asr_configure_step_timestamp">啟用時間戳</string>
-  <string name="setting_asr_configure_step_timestamp_desc">回傳詞級時間戳。rikkahub 目前尚未使用，預設關閉以節省 token</string>
+  <string name="setting_asr_configure_step_timestamp_desc">回傳詞級時間戳。Miffan 目前尚未使用，預設關閉以節省 token</string>
   <string name="setting_asr_configure_step_hotwords">熱詞</string>
   <string name="setting_asr_configure_step_hotwords_desc">以逗號分隔的熱詞清單，用於提升專有名詞／領域術語的辨識準確率</string>
   <string name="log_page_record_requests">記錄請求</string>

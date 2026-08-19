@@ -46,7 +46,7 @@ class SystemTTSProvider : TTSProvider<TTSProviderSetting.SystemTTS> {
                 ttsInstance.setSpeechRate(providerSetting.speechRate)
                 ttsInstance.setPitch(providerSetting.pitch)
 
-                // Create temporary file for audio output using temp directory like RikkaHubApp
+                // Create temporary file for audio output using temp directory like MiffanApp
                 val tempDir = context.appTempFolder
                 val audioFile = File(tempDir, "tts_${System.currentTimeMillis()}.wav")
 

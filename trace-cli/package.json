@@ -1,5 +1,5 @@
 {
-  "name": "@rikkahub/trace-cli",
+  "name": "@miffan/trace-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",

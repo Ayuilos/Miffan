@@ -45,7 +45,7 @@
   </queries>
 
   <application
-    android:name=".RikkaHubApp"
+    android:name=".MiffanApp"
     android:largeHeap="true"
     android:allowBackup="true"
     android:appCategory="productivity"
@@ -55,20 +55,20 @@
     android:icon="@mipmap/ic_launcher"
     android:label="@string/app_name"
     android:supportsRtl="true"
-    android:theme="@style/Theme.Rikkahub"
+    android:theme="@style/Theme.Miffan"
     android:usesCleartextTraffic="true"
     tools:targetApi="33">
     <activity
       android:name=".ui.activity.SafeModeActivity"
       android:exported="false"
       android:label="@string/title_activity_safe_mode"
-      android:theme="@style/Theme.Rikkahub" />
+      android:theme="@style/Theme.Miffan" />
     <activity
       android:name=".RouteActivity"
       android:configChanges="keyboardHidden|orientation|screenSize"
       android:exported="true"
       android:importantForAutofill="noExcludeDescendants"
-      android:theme="@style/Theme.Rikkahub"
+      android:theme="@style/Theme.Miffan"
       android:windowSoftInputMode="adjustResize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
@@ -105,7 +105,7 @@
 
         <data
           android:host="shortcut"
-          android:scheme="rikkahub" />
+          android:scheme="miffan" />
       </intent-filter>
     </activity>
     <activity
@@ -121,7 +121,7 @@
 
         <data
           android:host="mcp-oauth-callback"
-          android:scheme="rikkahub" />
+          android:scheme="miffan" />
       </intent-filter>
     </activity>
     <activity

@@ -7,7 +7,7 @@
   <string name="about_page_version">版本</string>
   <string name="about_page_website">官网</string>
   <string name="add">添加</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Miffan</string>
   <string name="asr_button_content_description">语音识别</string>
   <string name="asr_button_stop">停止</string>
   <string name="assistant_detail_basic_desc">配置名称、头像、模型和参数</string>
@@ -646,7 +646,7 @@
   <string name="setting_asr_configure_step_itn">逆文本归一化</string>
   <string name="setting_asr_configure_step_itn_desc">把口语数字转成阿拉伯数字（如「三百」→「300」），方便后续处理</string>
   <string name="setting_asr_configure_step_timestamp">返回时间戳</string>
-  <string name="setting_asr_configure_step_timestamp_desc">在 delta 事件里返回词级时间戳。rikkahub 当前不消费时间戳，默认关闭节省 token</string>
+  <string name="setting_asr_configure_step_timestamp_desc">在 delta 事件里返回词级时间戳。Miffan 当前不消费时间戳，默认关闭节省 token</string>
   <string name="setting_asr_configure_step_hotwords">热词</string>
   <string name="setting_asr_configure_step_hotwords_desc">逗号分隔的热词列表，提升专有名词、术语的识别准确率</string>
   <string name="setting_asr_page_add_provider">添加ASR提供商</string>
@@ -857,7 +857,7 @@
   <string name="setting_page_search_title">搜索服务</string>
   <string name="setting_page_share">分享</string>
   <string name="setting_page_share_desc">分享本APP给朋友</string>
-  <string name="setting_page_share_text">RikkaHub - 开源安卓AI助手\n\n官网: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - 开源安卓AI助手\n\n官网: https://rikka-ai.com/</string>
   <string name="setting_page_sponsor_alert_confirm">捐赠</string>
   <string name="setting_page_sponsor_alert_desc">您已启动应用超过100次！如果您喜欢使用它，请考虑支持开发者。</string>
   <string name="setting_page_sponsor_alert_dismiss">暂不</string>
@@ -885,7 +885,7 @@
   <string name="setting_page_web_server_address_note_desc">局域网地址：使用设备 WiFi IP，同一网络中的其他设备可访问。移动数据网络下不可用。
 本地地址：使用 localhost，仅限本设备访问。
 mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过名称访问，无需知道 IP。</string>
-  <string name="setting_page_web_server_desc">允许你通过网页访问 RikkaHub</string>
+  <string name="setting_page_web_server_desc">允许你通过网页访问 Miffan</string>
   <string name="setting_page_web_server_error">错误</string>
   <string name="setting_page_web_server_jwt_enable">启用身份验证</string>
   <string name="setting_page_web_server_jwt_enable_desc">访问网页界面时需要密码验证</string>
@@ -1193,7 +1193,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_shell_status">Shell 状态</string>
   <string name="workspace_detail_loading">加载中</string>
   <string name="workspace_detail_enable_shell">启用 Shell</string>
-  <string name="workspace_detail_enable_shell_desc">命令在 RikkaHub 应用 UID 内运行，并共享其私有数据与网络权限。PRoot 不是安全沙箱；请只运行你信任的命令。</string>
+  <string name="workspace_detail_enable_shell_desc">命令在 Miffan 应用 UID 内运行，并共享其私有数据与网络权限。PRoot 不是安全沙箱；请只运行你信任的命令。</string>
   <string name="workspace_detail_tool_approval">工具审批</string>
   <string name="workspace_detail_tool_approval_desc">启用后，AI 调用此工具前需要用户确认</string>
   <string name="workspace_detail_tool_list_files">列出文件</string>

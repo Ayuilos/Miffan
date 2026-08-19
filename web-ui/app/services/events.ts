@@ -7,7 +7,7 @@ import { sse } from "~/services/api";
  * invalidation, ...). Consumers subscribe by event name; the connection is opened on the
  * first subscriber, reused by all, reconnected on drop, and closed when nobody listens.
  *
- * @see app/src/main/java/me/rerere/rikkahub/web/routes/EventsRoutes.kt
+ * @see app/src/main/java/me/ayuilos/miffan/web/routes/EventsRoutes.kt
  */
 
 export const EVENT_SETTINGS = "settings";

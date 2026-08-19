@@ -16,7 +16,7 @@ export const COLOR_THEMES: ColorTheme[] = [
 const COLOR_THEME_STORAGE_SUFFIX = "-color";
 const CUSTOM_THEME_LIGHT_STORAGE_SUFFIX = "-custom-light";
 const CUSTOM_THEME_DARK_STORAGE_SUFFIX = "-custom-dark";
-const CUSTOM_THEME_STYLE_ID = "rikkahub-custom-theme";
+const CUSTOM_THEME_STYLE_ID = "miffan-custom-theme";
 
 type ThemeProviderProps = {
   children: React.ReactNode;

@@ -76,16 +76,13 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: Prepare build files
+      - name: Prepare signing files
         run: |
           # 解码base64编码的keystore文件
           echo "${{ secrets.KEY_BASE64 }}" | base64 -d > app/app.key
 
           # 写入签名配置到local.properties
           echo "${{ secrets.SIGNING_CONFIG }}" > local.properties
-
-          # 写入Google Services配置
-          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > app/google-services.json
 
       - name: Gradle Build
         run: |
@@ -113,10 +110,12 @@ jobs:
         if: success()
         with:
           tag_name: nightly            # 固定 tag，每晚覆盖同一个「最新每日构建」
-          name: Nightly Build
+          name: Miffan Nightly Build
           prerelease: true
           body: |
-            自动每日构建（commit `${{ github.sha }}`）
+            Miffan 自动每日构建（commit `${{ github.sha }}`）
 
             > ⚠️ 开发版本，可能不稳定，仅供测试。
+            >
+            > Miffan 的应用 ID 为 `me.ayuilos.miffan.app`，可与上游 RikkaHub 同时安装。两者的数据、设置和权限相互独立。
           files: app/build/outputs/apk/release/app-arm64-v8a-release.apk

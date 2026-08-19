@@ -1,6 +1,6 @@
 /**
  * Display settings
- * @see app/src/main/java/me/rerere/rikkahub/data/datastore/PreferencesStore.kt - DisplaySetting
+ * @see app/src/main/java/me/ayuilos/miffan/data/datastore/PreferencesStore.kt - DisplaySetting
  */
 export interface DisplaySetting {
   userNickname: string;
@@ -137,7 +137,7 @@ export interface SearchServiceOption {
 
 /**
  * App settings (streamed via SSE)
- * @see app/src/main/java/me/rerere/rikkahub/data/datastore/PreferencesStore.kt - Settings
+ * @see app/src/main/java/me/ayuilos/miffan/data/datastore/PreferencesStore.kt - Settings
  */
 export interface Settings {
   dynamicColor: boolean;

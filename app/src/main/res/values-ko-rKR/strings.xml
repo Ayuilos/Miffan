@@ -7,7 +7,7 @@
   <string name="about_page_version">버전</string>
   <string name="about_page_website">웹사이트</string>
   <string name="add">추가</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Miffan</string>
   <string name="asr_button_content_description">음성 인식</string>
   <string name="asr_button_stop">중지</string>
   <string name="assistant_detail_basic_desc">이름, 아바타, 모델 및 매개변수 구성</string>
@@ -819,7 +819,7 @@
   <string name="setting_page_search_title">검색 서비스</string>
   <string name="setting_page_share">공유</string>
   <string name="setting_page_share_desc">앱을 친구들과 공유하기</string>
-  <string name="setting_page_share_text">RikkaHub - 오픈소스 Android AI 어시스턴트\n\n웹사이트: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - 오픈소스 Android AI 어시스턴트\n\n웹사이트: https://rikka-ai.com/</string>
   <string name="setting_page_sponsor_alert_confirm">기부하기</string>
   <string name="setting_page_sponsor_alert_desc">앱을 100번 이상 실행하셨네요! 만족스럽게 사용하고 계시다면 개발자를 후원해 주세요.</string>
   <string name="setting_page_sponsor_alert_dismiss">나중에</string>
@@ -847,7 +847,7 @@
   <string name="setting_page_web_server_address_note_desc">LAN 주소: 기기의 WiFi IP를 사용하며, 같은 네트워크에 연결된 다른 기기에서 접근할 수 있습니다. 모바일 데이터에서는 사용할 수 없습니다.
 로컬 주소: localhost를 사용하며, 이 기기에서만 접근할 수 있습니다.
 mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네트워크의 다른 기기에서 이름으로 접근할 수 있습니다.</string>
-  <string name="setting_page_web_server_desc">웹을 통해 RikkaHub에 접근할 수 있도록 허용</string>
+  <string name="setting_page_web_server_desc">웹을 통해 Miffan에 접근할 수 있도록 허용</string>
   <string name="setting_page_web_server_error">오류</string>
   <string name="setting_page_web_server_jwt_enable">인증 활성화</string>
   <string name="setting_page_web_server_jwt_enable_desc">웹 인터페이스에 접근할 때 비밀번호 인증이 필요합니다</string>
@@ -1149,7 +1149,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_shell_status">셸 상태</string>
   <string name="workspace_detail_loading">로딩 중</string>
   <string name="workspace_detail_enable_shell">셸 활성화</string>
-  <string name="workspace_detail_enable_shell_desc">명령은 RikkaHub 앱 UID에서 실행되며 앱의 비공개 데이터 및 네트워크 권한을 공유합니다. PRoot는 보안 샌드박스가 아니므로 신뢰하는 명령만 실행하세요.</string>
+  <string name="workspace_detail_enable_shell_desc">명령은 Miffan 앱 UID에서 실행되며 앱의 비공개 데이터 및 네트워크 권한을 공유합니다. PRoot는 보안 샌드박스가 아니므로 신뢰하는 명령만 실행하세요.</string>
   <string name="workspace_detail_tool_approval">도구 승인</string>
   <string name="workspace_detail_tool_approval_desc">활성화되면 AI가 이 도구를 호출하기 전에 사용자 확인이 필요합니다.</string>
   <string name="workspace_detail_tool_list_files">파일 목록</string>
@@ -1242,7 +1242,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_asr_configure_step_itn">ITN 활성화</string>
   <string name="setting_asr_configure_step_itn_desc">역 텍스트 정규화: 말로 한 숫자를 숫자로 변환합니다(예: 三百 → 300)</string>
   <string name="setting_asr_configure_step_timestamp">타임스탬프 활성화</string>
-  <string name="setting_asr_configure_step_timestamp_desc">단어 단위 타임스탬프를 반환합니다. rikkahub은 현재 이를 사용하지 않으므로 token 절약을 위해 기본적으로 꺼져 있습니다</string>
+  <string name="setting_asr_configure_step_timestamp_desc">단어 단위 타임스탬프를 반환합니다. Miffan은 현재 이를 사용하지 않으므로 token 절약을 위해 기본적으로 꺼져 있습니다</string>
   <string name="setting_asr_configure_step_hotwords">핫워드</string>
   <string name="setting_asr_configure_step_hotwords_desc">고유명사/도메인 용어 인식 정확도를 높이기 위한 쉼표로 구분된 핫워드 목록</string>
   <string name="log_page_record_requests">요청 기록</string>

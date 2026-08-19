@@ -34,7 +34,7 @@ describe("recordTrace", () => {
     });
 
     try {
-      const directory = await mkdtemp(join(tmpdir(), "rikkahub-trace-cli-"));
+      const directory = await mkdtemp(join(tmpdir(), "miffan-trace-cli-"));
       temporaryDirectories.push(directory);
       const outputPath = join(directory, "events.jsonl");
       process.env.TRACE_TEST_API_KEY = "test-secret";

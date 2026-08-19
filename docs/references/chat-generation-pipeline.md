@@ -205,7 +205,7 @@ Live Update 通知内容根据当前生成状态动态更新：
 ## 关键文件路径
 
 ```
-app/src/main/java/me/rerere/rikkahub/
+app/src/main/java/me/ayuilos/miffan/
 ├── service/
 │   ├── ChatService.kt              # 编排入口
 │   └── ConversationSession.kt      # 会话状态容器

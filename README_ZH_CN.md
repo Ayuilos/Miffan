@@ -1,98 +1,48 @@
 <div align="center">
-  <img src="docs/icon.png" alt="App 图标" width="100" />
-  <h1>RikkaHub</h1>
+  <img src="docs/assets/branding/miffan-icon-color.png" alt="Miffan 应用图标" width="120" />
+  <h1>Miffan</h1>
 
-一个原生Android LLM 聊天客户端，支持切换不同的供应商进行聊天 🤖💬
+由爱好者维护的独立开源 Android AI 聊天客户端。
 
 [English](README.md) | [繁體中文](README_ZH_TW.md) | 简体中文
-
-点击链接加入群聊 👉 [【RikkaHub】](https://qm.qq.com/q/I8MSU0FkOu)
-
 </div>
 
-<div align="center">
-  <img src="docs/img/chat.png" alt="Chat Interface" width="150" />
-  <img src="docs/img/desktop.png" alt="Models Picker" width="450" />
-</div>
+Miffan 是基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 的社区 fork，在保留多供应商聊天体验的同时，使用独立的应用身份、发布版本线、签名证书和视觉品牌。
 
+Miffan 是非官方、非商业的开源粉丝项目。Miffan 名称及圆碗形象是本项目自行设计的标识。本项目与 RikkaHub 维护者、Mercis bv 及其他相关权利方不存在隶属、授权或背书关系。
 
-## 🚀 下载
+## 下载
 
-🔗 [前往官网下载](https://rikka-ai.com/download)（推荐）
-🔗 [前往 Google Play 下载](https://play.google.com/store/apps/details?id=me.rerere.rikkahub)
+请从 [GitHub Releases](https://github.com/Ayuilos/rikkahub/releases) 下载。
 
-> [!WARNING]
-> RikkaHub 存在许多 fork 版本，fork 版本出现问题与 RikkaHub 无关，请谨慎使用 fork 版本，避免隐私泄露或者过度索要权限问题。
+- 应用 ID：`me.ayuilos.miffan.app`
+- 深链协议：`miffan://`
+- Miffan 可以与上游 RikkaHub 同时安装。
+- 两个应用的数据与设置相互独立；如需迁移，请使用导出与导入功能。
 
-## 💖 赞助商
+## 功能
 
-|                                         赞助商                                         | 介绍                                                                                                                                              |
-|:-----------------------------------------------------------------------------------:|:------------------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="docs/sponsors/aihubmix.png" alt="Aihubmix" width="50" /><br /><b>Aihubmix</b> | 感谢 <a href="https://aihubmix.com?aff=pG7r">aihubmix.com</a> 的资金支持。我们推荐使用 aihubmix 作为全球主流模型的一站式服务平台。（OpenAI、Claude、Google Gemini、DeepSeek、Qwen 以及数百种其他模型）。 |
-| <img src="docs/sponsors/suixiang.jpg" alt="随想AI中转" width="50" /><br /><b><a href="https://sui-xiang.com">随想AI中转</a></b> | 感谢<a href="https://sui-xiang.com">随想AI中转</a>对本项目的赞助！随想AI中转 是一家可靠高效的 API 中继服务提供商，提供 Claude、Codex、Gemini 等的中继服务。注重隐私的中转站·无数据倒卖·无模型掺水，隐私，透明，极速售后。新账户注册每日签到就送 0.5 元测试额度，充值额度 1:1，无需订阅，按量付费。多线路冗余、跨区域容灾、自动故障切换，长链路 SSE 不中断。99.9% 可用性，关键调用从不掉队。 |
-| <img src="docs/sponsors/ztest.png" alt="真测 ztest.ai" width="50" /><br /><b><a href="https://ztest.ai">真测 ztest.ai</a></b> | 感谢<a href="https://ztest.ai">真测 ztest.ai</a>对本项目的赞助！真测 ztest.ai 是一个 AI 中转站模型检测平台，检测结果数据全公开，23 项探针覆盖协议、身份、能力、内容完整性、安全性、性能六大维度，交叉印证识别伪造与降级。作为独立第三方验证平台，实时监测 AI 中转站的模型真实性、响应质量与服务可用性。 |
+- Material 3 界面与深色模式
+- 支持多种 OpenAI、Gemini 和 Claude 兼容供应商
+- 支持 OpenAI Codex 订阅账号登录
+- 支持图片、文档、PDF、DOCX 等多模态输入
+- 本地工作区与终端工具
+- MCP、搜索、记忆、翻译和提示词扩展
+- 内置 Web 客户端
+- 消息分支、Markdown、代码高亮、公式、表格与 Mermaid
 
-## ✨ 功能特色
+## 构建
 
-- 🎨 现代化安卓APP设计（Material You / 预测性返回）和 🌙 暗色模式
-- 📦 工作区：基于 proot 的 Linux 智能体环境
-- 🖥️ Web多端访问支持
-- 🛠️ MCP 支持
-- 🔄 多种类型的供应商支持，自定义 API / URL / 模型（目前支持 OpenAI、Google、Anthropic）
-- 🖼️ 多模态输入支持
-- 📝 Markdown 渲染（支持代码高亮、数学公式、表格、Mermaid）
-- 🔍 搜索功能（Exa、Tavily、Zhipu、LinkUp、Brave、Perplexity、..）
-- 🧩 Prompt 变量（模型名称、时间等）
-- 🤳 二维码导出和导入提供商
-- 🤖 智能体自定义
-- 🧠 类ChatGPT记忆功能
-- 📝 AI翻译
-- 🌐 自定义HTTP请求头和请求体
+```bash
+./gradlew assembleDebug
+./gradlew test
+./gradlew lint
+```
 
-## ✨ 贡献
+`app/google-services.json` 是可选配置。没有经过授权的配置时，使用情况分析和崩溃上报会保持关闭。
 
-本项目使用[Android Studio](https://developer.android.com/studio)开发，欢迎提交PR
+生产发布流程见 [docs/releasing.md](docs/releasing.md)。
 
-技术栈文档:
+## 许可证与归属
 
-- [Kotlin](https://kotlinlang.org/) (开发语言)
-- [Koin](https://insert-koin.io/) (依赖注入)
-- [Jetpack Compose](https://developer.android.com/jetpack/compose) (UI 框架)
-- [DataStore](https://developer.android.com/topic/libraries/architecture/datastore?hl=zh-cn#preferences-datastore) (
-  偏好数据存储)
-- [Room](https://developer.android.com/training/data-storage/room) (数据库)
-- [Coil](https://coil-kt.github.io/coil/) (图片加载)
-- [Material You](https://m3.material.io/) (UI 设计)
-- [Navigation 3](https://developer.android.com/guide/navigation/navigation-3) (导航)
-- [Okhttp](https://square.github.io/okhttp/) (HTTP 客户端)
-- [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (Json序列化)
-
-> [!TIP]
-> 你需要在 `app` 文件夹下添加 `google-services.json` 文件才能构建应用。
-
-> [!IMPORTANT]  
-> 以下PR将被拒绝：
-> 1. 添加新语言，因为添加新语言会增加后续本地化的工作量
-> 2. 添加新功能，这个项目是有态度的
-> 3. AI生成的大规模重构和更改
-
-## 💰 捐赠
-
-* [Patreon](https://patreon.com/rikkahub)
-* [爱发电](https://afdian.com/a/reovo)
-
-## ⭐ Star History
-
-如果喜欢这个项目，请给个Star ⭐
-
-<a href="https://www.star-history.com/?type=date&repos=re-ovo%2Frikkahub">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&theme=dark&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
- </picture>
-</a>
-
-## 📄 许可证
-
-本项目基于 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0) 开源。
+Miffan 继续使用 [GNU Affero General Public License v3.0](LICENSE)。项目会依照许可证保留版权声明与上游归属信息。

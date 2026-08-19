@@ -2,7 +2,7 @@ import type { UIMessage } from "./message";
 
 /**
  * Message node - container for message branching
- * @see app/src/main/java/me/rerere/rikkahub/data/model/Conversation.kt - MessageNode
+ * @see app/src/main/java/me/ayuilos/miffan/data/model/Conversation.kt - MessageNode
  */
 export interface MessageNode {
   id: string;
@@ -12,7 +12,7 @@ export interface MessageNode {
 
 /**
  * Conversation
- * @see app/src/main/java/me/rerere/rikkahub/data/model/Conversation.kt - Conversation
+ * @see app/src/main/java/me/ayuilos/miffan/data/model/Conversation.kt - Conversation
  */
 export interface Conversation {
   id: string;

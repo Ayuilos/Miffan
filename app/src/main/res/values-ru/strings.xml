@@ -7,7 +7,7 @@
   <string name="about_page_version">Версия</string>
   <string name="about_page_website">Веб-сайт</string>
   <string name="add">Добавить</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Miffan</string>
   <string name="asr_button_content_description">Распознавание речи</string>
   <string name="asr_button_stop">Стоп</string>
   <string name="assistant_detail_basic_desc">Настройте имя, аватар, модель и параметры</string>
@@ -819,7 +819,7 @@
   <string name="setting_page_search_title">Служба поиска</string>
   <string name="setting_page_share">Поделиться</string>
   <string name="setting_page_share_desc">Поделиться этим приложением с друзьями</string>
-  <string name="setting_page_share_text">RikkaHub — открытый Android-ассистент с ИИ\n\nСайт: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan — открытый Android-ассистент с ИИ\n\nСайт: https://rikka-ai.com/</string>
   <string name="setting_page_sponsor_alert_confirm">Пожертвовать</string>
   <string name="setting_page_sponsor_alert_desc">Вы запустили приложение более 100 раз! Если вам нравится им пользоваться, пожалуйста, поддержите разработчика.</string>
   <string name="setting_page_sponsor_alert_dismiss">Не сейчас</string>
@@ -847,7 +847,7 @@
   <string name="setting_page_web_server_address_note_desc">LAN-адрес: использует IP-адрес устройства в Wi-Fi, доступен другим устройствам в той же сети. Недоступен при использовании мобильных данных.
 Локальный адрес: использует localhost, доступен только на этом устройстве.
 Адрес mDNS: использует имя хоста .local, доступен по имени с других устройств в той же сети без знания IP-адреса.</string>
-  <string name="setting_page_web_server_desc">Разрешить доступ к RikkaHub через веб</string>
+  <string name="setting_page_web_server_desc">Разрешить доступ к Miffan через веб</string>
   <string name="setting_page_web_server_error">Ошибка</string>
   <string name="setting_page_web_server_jwt_enable">Включить аутентификацию</string>
   <string name="setting_page_web_server_jwt_enable_desc">Требовать проверку пароля при доступе к веб-интерфейсу</string>
@@ -1149,7 +1149,7 @@
   <string name="workspace_detail_shell_status">Статус оболочки</string>
   <string name="workspace_detail_loading">Загрузка</string>
   <string name="workspace_detail_enable_shell">Включить оболочку</string>
-  <string name="workspace_detail_enable_shell_desc">Команды выполняются с UID приложения RikkaHub и имеют те же права доступа к приватным данным и сети. PRoot не является защищённой песочницей; запускайте только доверенные команды.</string>
+  <string name="workspace_detail_enable_shell_desc">Команды выполняются с UID приложения Miffan и имеют те же права доступа к приватным данным и сети. PRoot не является защищённой песочницей; запускайте только доверенные команды.</string>
   <string name="workspace_detail_tool_approval">Подтверждение инструментов</string>
   <string name="workspace_detail_tool_approval_desc">Если включено, перед вызовом этого инструмента ИИ требуется подтверждение пользователя.</string>
   <string name="workspace_detail_tool_list_files">Список файлов</string>
@@ -1242,7 +1242,7 @@
   <string name="setting_asr_configure_step_itn">Включить ITN</string>
   <string name="setting_asr_configure_step_itn_desc">Обратная нормализация текста: преобразует произнесённые числа в цифры (например, 三百 → 300)</string>
   <string name="setting_asr_configure_step_timestamp">Включить временные метки</string>
-  <string name="setting_asr_configure_step_timestamp_desc">Возвращать временные метки на уровне слов. Сейчас rikkahub их не использует, поэтому по умолчанию отключено для экономии token</string>
+  <string name="setting_asr_configure_step_timestamp_desc">Возвращать временные метки на уровне слов. Сейчас Miffan их не использует, поэтому по умолчанию отключено для экономии token</string>
   <string name="setting_asr_configure_step_hotwords">Горячие слова</string>
   <string name="setting_asr_configure_step_hotwords_desc">Список горячих слов через запятую для повышения точности распознавания имён собственных и терминов предметной области</string>
   <string name="log_page_record_requests">Записывать запросы</string>
