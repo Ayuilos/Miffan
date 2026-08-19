@@ -55,7 +55,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.workspace.WorkspaceManager
-import me.rerere.workspace.WorkspaceExecutorClient
 import me.rerere.workspace.WorkspaceProcessRegistration
 import me.rerere.workspace.WorkspaceSessionLease
 import org.koin.androidx.compose.koinViewModel
@@ -66,7 +65,6 @@ import org.koin.core.parameter.parametersOf
 fun WorkspaceTerminalPage(id: String) {
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val workspaceManager = koinInject<WorkspaceManager>()
-    val workspaceExecutor = koinInject<WorkspaceExecutorClient>()
     val state by vm.state.collectAsStateWithLifecycle()
 
     RikkahubTheme(colorMode = ColorMode.DARK) {
@@ -88,7 +86,6 @@ fun WorkspaceTerminalPage(id: String) {
                 root = state.workspace?.root,
                 contentPadding = innerPadding,
                 workspaceManager = workspaceManager,
-                workspaceExecutor = workspaceExecutor,
             )
         }
     }
@@ -99,7 +96,6 @@ private fun WorkspaceTerminalContent(
     root: String?,
     contentPadding: PaddingValues,
     workspaceManager: WorkspaceManager,
-    workspaceExecutor: WorkspaceExecutorClient,
 ) {
     val context = LocalContext.current
     val terminalTextSizePx = with(LocalDensity.current) { 12.sp.roundToPx() }
@@ -149,21 +145,10 @@ private fun WorkspaceTerminalContent(
         root,
         sessionClient,
         workspaceManager,
-        workspaceExecutor,
     ) {
         val current = root
         if (current == null) {
             value = TerminalSessionUiState.Loading
-            return@produceState
-        }
-        if (!workspaceExecutor.supportsInteractivePty) {
-            val executorError = withContext(Dispatchers.IO) {
-                runCatching { workspaceExecutor.identity() }.exceptionOrNull()
-            }
-            value = TerminalSessionUiState.Failed(
-                executorError?.message
-                    ?: "Interactive PTY is disabled until it can be transported through the dedicated executor UID. Use workspace_shell for hardened command execution."
-            )
             return@produceState
         }
         if (!withContext(Dispatchers.IO) { workspaceManager.hasRootfs(current) }) {

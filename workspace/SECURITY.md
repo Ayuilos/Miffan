@@ -2,10 +2,10 @@
 
 PRoot is used as a local Linux compatibility environment. It translates paths and traces guest
 processes, but it is not a Docker-, namespace-, or VM-grade security boundary. Product shell
-commands run in a separately installed, signature-authenticated companion package with a stable
-Android UID, private RootFS, and no `INTERNET` permission. They can consume the CPU, memory, disk,
-and kernel interfaces available to that executor UID, but cannot directly traverse the primary
-app's private storage.
+commands run inside the primary RikkaHub application UID and inherit that app's private-data access
+and Android permissions, including `INTERNET`. A malicious command or a PRoot escape can therefore
+read or modify RikkaHub private data. The single-APK product deliberately accepts this boundary and
+must present it to users accurately; only trusted commands should be executed.
 
 ## Hardening phases
 
@@ -78,10 +78,9 @@ app's private storage.
    - Use the Linux procfs direct-child interface when the device exposes it. Android kernels that
      omit that optional file still launch correctly, reap the killed command group with bounded
      waits, and rely on PRoot's `--kill-on-exit` tracing for guest descendants. A raw host process
-     that escapes its group cannot be identified safely under the shared app UID on such kernels;
-     moving execution to a dedicated UID remains the architectural closure for that case. PTY
-     waiters resolve the published PRoot PID to its private monitor instead of assuming PRoot
-     remains a direct child of the Android process.
+     that escapes its group cannot be identified safely under the shared app UID on such kernels.
+     This remains an accepted single-APK residual risk. PTY waiters resolve the published PRoot PID
+     to its private monitor instead of assuming PRoot remains a direct child of the Android process.
 7. **Descriptor-relative RootFS patching (implemented)**
    - Android-side RootFS patching anchors lookup at the UID-owned package data directory below an
      Android-managed private-data mount, opens every app-controlled component with directory FDs
@@ -160,46 +159,33 @@ app's private storage.
      default NDK is reported as an environment problem rather than a code failure. Pass
      `--expected-abi arm64-v8a` on a physical device and `--expected-abi x86_64` on an emulator/CI
      host to complete the release matrix.
-14. **Dedicated execution UID foundation (implemented)**
-   - Ship a companion `workspace-executor` APK with its own stable Android package UID. Its exported
-     Binder service is protected by a signature-level permission and also verifies the caller's
-     signing identity at every transaction. The executor manifest deliberately requests no
-     `INTERNET` permission.
-   - A device test installs the executor and an independently packaged caller, confirms their UIDs
-     differ, matches the service UID to PackageManager's stable executor UID, verifies that network
-     permission is absent, and runs a real command through the hardened native process monitor.
-     A same-APK `isolatedProcess` was rejected as the PRoot backend after Android 35 testing showed
-     SELinux MCS denies traversal of the owner's `app_data_file` even when a directory FD is passed.
-15. **Dedicated-UID execution and broker completion (implemented)**
-   - RootFS ownership, extraction, patching, health checks, PRoot launch, process monitoring, and
-     command resource accounting now run in the companion UID. The primary app manager uses a
-     rejecting shell runner, so AI commands cannot silently fall back to its UID.
-   - Before a command, `/workspace` is serialized to a versioned snapshot while the workspace lock
-     is held. Export rejects links and special files, enforces entry/path/file/aggregate limits,
-     checks exact temporary-storage capacity, and passes only one read/write descriptor over
-     Binder. The executor atomically imports the snapshot, mounts only its private copy, runs the
-     command, truncates that same descriptor, and exports the result for an atomic primary-UID
-     replacement. Import failure preserves the previous tree. Staged/backup directory states have
-     an explicit commit point and are recovered on manager startup after a process death.
+14. **Single-APK execution trust decision (implemented)**
+   - RootFS ownership, extraction, patching, health checks, PRoot launch, process monitoring, AI
+     commands, and the interactive PTY run inside the RikkaHub package and UID. No companion APK is
+     required. A separate Android process without an isolated UID would not strengthen this file
+     boundary, while a same-APK isolated service cannot persistently traverse the owner's private
+     RootFS under tested Android SELinux policy.
+   - This is a product usability decision, not a claim of containment. PRoot commands inherit the
+     primary app's permissions and may attack its databases, preferences, credentials, or other
+     private files if they escape the intended RootFS view. Shell execution requires approval by
+     default, and UI/system-prompt text tells users to run only trusted commands.
+15. **In-process execution and restricted application mounts (implemented)**
+   - `/workspace` is mounted directly from the workspace's managed files directory. Descriptor-
+     relative application tools continue to reject links and special files and enforce path, file,
+     aggregate, and free-space limits, but this file API hardening is not a sandbox against shell
+     code running under the same UID.
    - `/skills`, `/upload`, and workspace-scoped `/tool_outputs` remain accessible only to the
-     descriptor-relative application file tools. They are not copied or mounted into the executor.
-     RootFS UI/file operations use bounded descriptor transactions instead of shared paths.
-   - The primary UID downloads only the compiled-in, architecture-matched HTTPS RootFS artifact;
-     the executor accepts that exact catalog record and rechecks the byte quota and SHA-256 while
-     copying the passed descriptor before extraction.
-   - The executor has no `INTERNET` permission. The only model-facing network path is
-     `workspace_fetch_url`, which always requires approval and downloads into `/workspace` from a
-     public DNS hostname over HTTPS port 443. DNS answers are pinned for the connection and reject
-     local, private, link-local, multicast, carrier-grade NAT, and other special-use addresses;
-     redirects stay on the original host and responses are capped at 8 MiB.
-   - Every command has an unambiguous cancellation id. Cancellation is delivered to the remote
-     Binder worker, interrupts `waitFor`, kills the verified PRoot process group and descendants,
+     descriptor-relative application file tools. They are not mounted into PRoot.
+   - The app downloads only the compiled-in, architecture-matched HTTPS RootFS artifact and checks
+     byte quotas plus SHA-256 before extraction. Installation, rollback, and health checks retain
+     their descriptor-relative and crash-safe boundaries.
+   - `workspace_fetch_url` remains an always-approved, bounded HTTPS broker that pins public DNS
+     answers and rejects private/local addresses, cross-host redirects, non-standard ports, and
+     responses above 8 MiB. It is a safer convenience, not the only network path: an approved shell
+     command shares RikkaHub's `INTERNET` permission and can connect directly.
+   - Cancellation interrupts `waitFor`, kills the verified PRoot process group and descendants,
      waits for cleanup, and repairs fixed RootFS mount-point modes that PRoot could not restore
-     after forced termination. Startup cleanup also runs in the executor UID.
-   - Protocol v2 does not yet transport a PTY. The product interactive terminal is therefore
-     fail-closed instead of launching under the primary UID; `workspace_shell` is the supported
-     hardened execution surface. The native PTY code and instrumentation remain as regression
-     coverage for a future descriptor-based PTY transport.
+     after forced termination. AI shell and interactive PTY use the same execution specification.
    - Evaluate cgroup/job-control integration where Android permits it. The polling safeguards above
      can detect and stop overuse but are not atomic aggregate disk, CPU, or memory quotas.
      `RLIMIT_NPROC` is scoped to an Android UID, not to an individual workspace.
@@ -212,7 +198,7 @@ Run this checklist on both an arm64 device and an x86_64 emulator after the JVM 
 
 To exercise the real pinned RootFS path instead of assuming that optional test, pass a matching
 archive with `WORKSPACE_VERIFY_ROOTFS_ARCHIVE=/absolute/path/to/archive` to
-`workspace/scripts/verify-android-device.sh`. The executor revalidates the compiled-in SHA-256.
+`workspace/scripts/verify-android-device.sh`. The installer validates the compiled-in SHA-256.
 
 1. Install Rootfs from the Workspace screen. Confirm the matching architecture is selected and
    `workspace_shell` can run `uname -m`, `/bin/bash -lc 'echo ok'`, and `/usr/bin/env`.
@@ -228,9 +214,9 @@ archive with `WORKSPACE_VERIFY_ROOTFS_ARCHIVE=/absolute/path/to/archive` to
      is rejected and creates no file.
 5. Run `ln -s /etc /workspace/escape` in the terminal, then request a write to
    `/workspace/escape/no.txt`. Confirm the write is rejected and `/etc/no.txt` is absent.
-6. Open the interactive terminal and confirm it fails closed with the dedicated-UID PTY message;
-   it must not launch a primary-UID PRoot process. Compare `env`, `pwd`, and visible bind paths in
-   repeated `workspace_shell` calls instead.
+6. Open the interactive terminal and confirm it launches with the same environment, working
+   directory, limits, and visible bind paths as repeated `workspace_shell` calls. Confirm both run
+   under the RikkaHub application UID and neither exposes `/skills`, `/upload`, or `/tool_outputs`.
 7. Start `sh -c 'sleep 600 & wait'` through `workspace_shell`, then cancel and repeat with a timeout.
    Use `adb shell ps -A | grep -E 'proot|sleep'` to confirm no child remains. Repeat rapid command
    submissions and verify they serialize per workspace.

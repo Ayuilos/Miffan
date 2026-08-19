@@ -9,10 +9,10 @@ interface WorkspaceShellRunner {
     fun execute(context: WorkspaceShellContext): WorkspaceCommandResult
 }
 
-/** Main-app manager policy: executable code must cross the dedicated-UID broker. */
+/** Test and policy helper for callers that deliberately disable shell execution. */
 class RejectingWorkspaceShellRunner : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult =
-        throw SecurityException("Workspace commands must run through the dedicated executor UID")
+        throw SecurityException("Workspace shell execution is disabled")
 }
 
 data class WorkspaceShellContext(

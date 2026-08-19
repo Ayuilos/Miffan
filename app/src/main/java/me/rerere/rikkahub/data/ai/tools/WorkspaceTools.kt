@@ -63,8 +63,9 @@ private fun createFetchUrlTool(
 ) = Tool(
     name = "workspace_fetch_url",
     description = "Download one public HTTPS URL through the approved host broker into /workspace. " +
-        "The executor itself has no network permission. Private/local addresses, cross-host redirects, " +
-        "non-standard ports, and responses larger than 8 MiB are rejected.",
+        "Private/local addresses, cross-host redirects, non-standard ports, and responses larger than " +
+        "8 MiB are rejected. Shell commands share RikkaHub's network permission and can access the " +
+        "network directly after shell approval.",
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
@@ -255,7 +256,7 @@ private fun createShellTool(
         if (!defaultCwd.isNullOrBlank()) {
             append("Defaults to '$defaultCwd'. ")
         }
-        append("Requires Rootfs to be installed and ready.")
+        append("Requires Rootfs to be installed and ready. Commands share RikkaHub's app UID and permissions; PRoot is not a security sandbox.")
     },
     parameters = {
         InputSchema.Obj(

@@ -6,6 +6,12 @@ plugins {
 android {
     namespace = "me.rerere.workspace"
 
+    // PRoot is launched by filesystem path rather than System.loadLibrary(). This also makes
+    // the standalone instrumentation APK mirror the main app's extracted-JNI packaging.
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
+
     defaultConfig {
         externalNativeBuild {
             cmake {

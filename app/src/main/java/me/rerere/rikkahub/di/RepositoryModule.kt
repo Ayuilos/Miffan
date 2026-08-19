@@ -20,10 +20,9 @@ import me.rerere.rikkahub.data.skills.install.SkillInstallTarget
 import me.rerere.rikkahub.data.skills.install.SkillManagerInstallTarget
 import me.rerere.rikkahub.data.skills.source.GitHubRemoteSkillSourceClient
 import me.rerere.rikkahub.data.skills.source.SkillShCatalogClient
-import me.rerere.workspace.RejectingWorkspaceShellRunner
+import me.rerere.workspace.ProotShellRunner
 import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceBindMount
-import me.rerere.workspace.WorkspaceExecutorClient
 import me.rerere.workspace.WorkspaceManager
 import okhttp3.OkHttpClient
 import org.koin.dsl.module
@@ -58,7 +57,9 @@ val repositoryModule = module {
         val context: Context = get()
         WorkspaceManager(
             baseDir = File(context.filesDir, "workspaces"),
-            shellRunner = RejectingWorkspaceShellRunner(),
+            shellRunner = ProotShellRunner(
+                nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
+            ),
             // 这些应用目录仅允许专用文件工具读取，绝不作为可写 PRoot bind mount 暴露。
             // tool_outputs 进一步按 workspace root 分区，避免工作区之间读取彼此的结果。
             bindMounts = listOf(
@@ -89,14 +90,10 @@ val repositoryModule = module {
         RootfsInstaller(get())
     }
 
-    single {
-        WorkspaceExecutorClient(get(), get())
-    }
-
     single { WorkspaceNetworkBroker() }
 
     single {
-        WorkspaceRepository(get(), get(), get(), get(), get(), get())
+        WorkspaceRepository(get(), get(), get(), get(), get())
     }
 
     single {

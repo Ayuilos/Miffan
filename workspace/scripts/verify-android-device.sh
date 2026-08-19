@@ -103,7 +103,6 @@ if [[ "$skip_build" -eq 0 ]]; then
     "}" > "$init_script"
   gradle_args=(
     -I "$init_script"
-    :workspace-executor:assembleDebug
     :workspace:assembleDebugAndroidTest
     --no-configuration-cache
     --console=plain
@@ -113,13 +112,8 @@ if [[ "$skip_build" -eq 0 ]]; then
 fi
 
 apk="$repo_dir/workspace/build/outputs/apk/androidTest/debug/workspace-debug-androidTest.apk"
-executor_apk="$repo_dir/workspace-executor/build/outputs/apk/debug/workspace-executor-debug.apk"
 if [[ ! -f "$apk" ]]; then
   echo "Workspace instrumentation APK is missing: $apk" >&2
-  exit 2
-fi
-if [[ ! -f "$executor_apk" ]]; then
-  echo "Workspace executor APK is missing: $executor_apk" >&2
   exit 2
 fi
 
@@ -130,7 +124,6 @@ report="$report_dir/${safe_serial}-${abi}.txt"
 raw_report="$(mktemp "${TMPDIR:-/tmp}/rikkahub-workspace-instrumentation.XXXXXX")"
 trap 'rm -f "$raw_report"; cleanup' EXIT
 
-"${adb[@]}" install -r "$executor_apk"
 "${adb[@]}" install -r "$apk"
 rootfs_archive="${WORKSPACE_VERIFY_ROOTFS_ARCHIVE:-}"
 rootfs_provisioned=0
@@ -160,7 +153,7 @@ set -e
   echo "fingerprint=$fingerprint"
   echo "rootfs_provisioned=$rootfs_provisioned"
   "${adb[@]}" shell cmd package list packages -U \
-    me.rerere.rikkahub.workspace.executor | tr -d '\r'
+    me.rerere.workspace.test | tr -d '\r'
   echo "utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo
   cat "$raw_report"

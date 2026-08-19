@@ -76,10 +76,7 @@ class RootfsInstaller(
         }
     }
 
-    /**
-     * Downloads the pinned archive in the caller process. The dedicated executor deliberately has
-     * no INTERNET permission, so this is the network side of the Rootfs broker boundary.
-     */
+    /** Downloads a pinned archive for callers that broker installation across a file descriptor. */
     fun downloadVerifiedArchive(
         source: RootfsArchiveSource,
         target: File,

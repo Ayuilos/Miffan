@@ -1149,7 +1149,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_shell_status">Shell ステータス</string>
   <string name="workspace_detail_loading">読み込み中</string>
   <string name="workspace_detail_enable_shell">シェルを有効にする</string>
-  <string name="workspace_detail_enable_shell_desc">コマンドはネットワーク権限を持たない独立した Android 実行 UID で実行されます。PRoot は互換レイヤーであり、Docker/VM レベルのサンドボックスではありません。</string>
+  <string name="workspace_detail_enable_shell_desc">コマンドは RikkaHub アプリの UID で実行され、プライベートデータとネットワーク権限を共有します。PRoot はセキュリティサンドボックスではありません。信頼できるコマンドのみ実行してください。</string>
   <string name="workspace_detail_tool_approval">ツール承認</string>
   <string name="workspace_detail_tool_approval_desc">有効にすると、AIがこのツールを呼び出す前にユーザーの確認が必要です</string>
   <string name="workspace_detail_tool_list_files">ファイル一覧</string>
