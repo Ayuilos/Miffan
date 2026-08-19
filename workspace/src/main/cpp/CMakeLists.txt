@@ -36,6 +36,14 @@ add_library(termux SHARED
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall -Wextra -Werror)
 target_compile_options(termux PRIVATE -Wall -Wextra -Werror)
 
+# NDK r27 and lower otherwise emit 4 KiB-aligned LOAD segments. Both values are
+# required so these JNI libraries can be loaded on Android devices using 16 KiB pages.
+set(RIKKAHUB_PAGE_SIZE_LINK_OPTIONS
+        "-Wl,-z,max-page-size=16384"
+        "-Wl,-z,common-page-size=16384")
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE ${RIKKAHUB_PAGE_SIZE_LINK_OPTIONS})
+target_link_options(termux PRIVATE ${RIKKAHUB_PAGE_SIZE_LINK_OPTIONS})
+
 # Specifies libraries CMake should link to your target library. You
 # can link libraries from various origins, such as libraries defined in this
 # build script, prebuilt third-party libraries, or Android system libraries.
