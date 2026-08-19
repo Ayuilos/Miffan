@@ -13,7 +13,7 @@ Miffan 是非官方、非商業的開源粉絲專案。Miffan 名稱及圓碗形
 
 ## 下載
 
-請從 [GitHub Releases](https://github.com/Ayuilos/rikkahub/releases) 下載。
+請從 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 下載。
 
 - 應用程式 ID：`me.ayuilos.miffan.app`
 - Deep link 協定：`miffan://`

@@ -13,7 +13,7 @@ Miffan 是非官方、非商业的开源粉丝项目。Miffan 名称及圆碗形
 
 ## 下载
 
-请从 [GitHub Releases](https://github.com/Ayuilos/rikkahub/releases) 下载。
+请从 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 下载。
 
 - 应用 ID：`me.ayuilos.miffan.app`
 - 深链协议：`miffan://`

@@ -13,7 +13,7 @@ Miffan is an unofficial, non-commercial open-source fan project. The Miffan name
 
 ## Download
 
-Download releases from [GitHub Releases](https://github.com/Ayuilos/rikkahub/releases).
+Download releases from [GitHub Releases](https://github.com/Ayuilos/Miffan/releases).
 
 - Application ID: `me.ayuilos.miffan.app`
 - Deep-link scheme: `miffan://`

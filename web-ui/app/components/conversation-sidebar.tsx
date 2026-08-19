@@ -1227,7 +1227,7 @@ export const ConversationSidebar = React.memo(
             </DropdownMenu>
 
             <a
-              href="https://github.com/Ayuilos/rikkahub"
+              href="https://github.com/Ayuilos/Miffan"
               target="_blank"
               rel="noopener noreferrer"
               className="ml-auto text-xs font-normal text-foreground/80 hover:text-foreground transition-colors"

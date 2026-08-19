@@ -265,7 +265,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                             ) {
                                 IconButton(
                                     onClick = {
-                                        context.openUrl("https://github.com/Ayuilos/rikkahub")
+                                        context.openUrl("https://github.com/Ayuilos/Miffan")
                                     }
                                 ) {
                                     Icon(
@@ -281,9 +281,9 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     item(
                         onClick = {
                             val docUrl = if (java.util.Locale.getDefault().language == "zh") {
-                                "https://github.com/Ayuilos/rikkahub/blob/master/README_ZH_CN.md"
+                                "https://github.com/Ayuilos/Miffan/blob/master/README_ZH_CN.md"
                             } else {
-                                "https://github.com/Ayuilos/rikkahub#readme"
+                                "https://github.com/Ayuilos/Miffan#readme"
                             }
                             context.openUrl(docUrl)
                         },
