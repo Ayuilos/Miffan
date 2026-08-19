@@ -54,10 +54,13 @@ keytool -genkeypair -v \
 
 Record the certificate digest with `keytool -list -v`, back up the keystore and credentials separately, then configure the ignored `local.properties` entries above. Do not commit either file.
 
-An Ayuilos production certificate was prepared before the Miffan rebrand. If it is selected as the first published Miffan certificate, its SHA-256 digest must remain the trust anchor for every later Miffan update:
+The first Miffan production certificate was created on 2026-08-19. Its identity must remain the trust anchor for every later Miffan update:
 
-- SHA-256: `6F:AF:FB:7E:4C:68:78:E1:59:87:7F:5C:EA:7B:80:06:85:EE:91:1F:41:9D:29:FB:BA:8D:79:DD:D1:19:2E:BC`
+- Subject: `CN=Miffan Release, OU=Android, O=Ayuilos, C=CN`
+- SHA-256: `6C:4B:84:1A:D2:EF:14:8C:88:8D:38:41:1F:02:68:C6:C6:FA:90:8B:5E:0D:00:9E:A1:87:BF:AF:2F:1F:9D:31`
 - Validity: 2026-08-19 through 2126-07-26
+
+The authorized local keystore is stored at `~/Library/Application Support/Miffan/signing/miffan-release.jks`; its password is stored in the macOS login Keychain under the service `Miffan Release Keystore Password`. Back up the keystore and its credential separately in secure, recoverable locations. The GitHub Actions copies are configured as the `KEY_BASE64` and `SIGNING_CONFIG` repository secrets.
 
 `app/google-services.json` is optional. When an authorized configuration for `me.ayuilos.miffan.app` is present, analytics and crash reporting are enabled. When it is absent, those integrations are disabled. A configuration registered for the upstream application ID must not be reused.
 
