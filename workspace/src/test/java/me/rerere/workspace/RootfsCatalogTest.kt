@@ -35,4 +35,18 @@ class RootfsCatalogTest {
             assertEquals(RootfsCatalog.VERSION, source.version)
         }
     }
+
+    @Test
+    fun `arm64 archive supports 16 KB pages but x86 archive is rejected`() {
+        RootfsCatalog.forAndroidAbis(listOf("arm64-v8a"))
+            .requireCompatiblePageSize(16L * 1024)
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            RootfsCatalog.forAndroidAbis(listOf("x86_64"))
+                .requireCompatiblePageSize(16L * 1024)
+        }
+
+        assertTrue(error.message.orEmpty().contains("x86_64"))
+        assertTrue(error.message.orEmpty().contains("arm64-v8a 16 KB"))
+    }
 }

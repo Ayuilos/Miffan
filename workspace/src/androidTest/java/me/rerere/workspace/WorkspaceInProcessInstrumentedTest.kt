@@ -1,9 +1,14 @@
 package me.rerere.workspace
 
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.os.Process
+import android.system.Os
+import android.system.OsConstants
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.termux.terminal.JNI
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.util.concurrent.CountDownLatch
@@ -18,8 +23,11 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class WorkspaceInProcessInstrumentedTest {
+    private val instrumentation
+        get() = InstrumentationRegistry.getInstrumentation()
+
     private val context
-        get() = InstrumentationRegistry.getInstrumentation().targetContext
+        get() = instrumentation.targetContext
 
     @Test
     fun pinnedRootfsExecutesInTheApplicationUidWhenProvisioned() {
@@ -30,9 +38,15 @@ class WorkspaceInProcessInstrumentedTest {
         val baseDir = context.cacheDir.resolve("in-process-proot-${System.nanoTime()}")
         val manager = WorkspaceManager(
             baseDir = baseDir,
-            shellRunner = ProotShellRunner(File(context.applicationInfo.nativeLibraryDir)),
+            shellRunner = ProotShellRunner(
+                nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
+                hostPageSizeBytes = AndroidPageSize.currentBytes(),
+            ),
         )
-        val installer = RootfsInstaller(manager)
+        val installer = RootfsInstaller(
+            manager = manager,
+            hostPageSizeBytes = AndroidPageSize.currentBytes(),
+        )
         val root = "in-process"
         try {
             FileInputStream(archive).use {
@@ -81,5 +95,114 @@ class WorkspaceInProcessInstrumentedTest {
             manager.deleteWorkspace(root)
             baseDir.deleteRecursivelyNoFollow()
         }
+    }
+
+    @Test
+    fun pinnedRootfsStartsThroughTheInteractivePtyWhenProvisioned() {
+        val source = RootfsCatalog.forAndroidAbis(Build.SUPPORTED_ABIS.toList())
+        val archive = context.cacheDir.resolve("provisioned-rootfs.${source.format.extension}")
+        assumeTrue("Pinned Rootfs archive was not provisioned for the device test", archive.isFile)
+
+        val baseDir = context.cacheDir.resolve("interactive-proot-${System.nanoTime()}")
+        val manager = WorkspaceManager(baseDir)
+        val installer = RootfsInstaller(
+            manager = manager,
+            hostPageSizeBytes = AndroidPageSize.currentBytes(),
+        )
+        val nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir)
+        val proot = nativeLibraryDir.resolve("libproot_exec.so")
+        val loader = nativeLibraryDir.resolve("libproot_loader.so")
+        val root = "interactive"
+        var processId = -1
+        var terminalFd: ParcelFileDescriptor? = null
+        var reaped = false
+        try {
+            FileInputStream(archive).use {
+                installer.installFromArchive(root, source, it)
+            }
+            val args = ProotExecutionSpec.interactiveArguments(
+                root = root,
+                linuxDir = manager.linuxDir(root),
+                filesDir = manager.filesDir(root),
+            )
+            val environment = ProotExecutionSpec.hostEnvironment(loader, manager.tempDir(root))
+                .map { (name, value) -> "$name=$value" }
+                .toTypedArray()
+            val processIdOutput = intArrayOf(-1)
+            val masterFd = onMainThread {
+                JNI.createSubprocess(
+                    proot.absolutePath,
+                    manager.filesDir(root).absolutePath,
+                    args.toTypedArray(),
+                    environment,
+                    processIdOutput,
+                    24,
+                    80,
+                )
+            }
+            processId = processIdOutput[0]
+            assertTrue(masterFd >= 0 && processId > 1)
+
+            val descriptor = ParcelFileDescriptor.adoptFd(masterFd)
+            terminalFd = descriptor
+            val readDescriptor = ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+            val writeDescriptor = ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+            val output = ByteArrayOutputStream()
+            val outputFinished = CountDownLatch(1)
+            Thread({
+                try {
+                    ParcelFileDescriptor.AutoCloseInputStream(readDescriptor).use { input ->
+                        val buffer = ByteArray(4 * 1024)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            synchronized(output) { output.write(buffer, 0, count) }
+                        }
+                    }
+                } catch (_: Throwable) {
+                    // A PTY normally reports EIO after its slave closes.
+                } finally {
+                    outputFinished.countDown()
+                }
+            }, "WorkspaceInteractivePtyOutput").apply {
+                isDaemon = true
+                start()
+            }
+
+            ParcelFileDescriptor.AutoCloseOutputStream(writeDescriptor).use { outputStream ->
+                outputStream.write("printf 'terminal-16k-ok\\n'; exit 0\n".toByteArray())
+                outputStream.flush()
+            }
+            val exitCode = JNI.waitFor(processId)
+            reaped = true
+            descriptor.close()
+            terminalFd = null
+            assertTrue(outputFinished.await(5, TimeUnit.SECONDS))
+            val terminalOutput = synchronized(output) { output.toString(Charsets.UTF_8.name()) }
+            assertEquals("PTY output: $terminalOutput", 0, exitCode)
+            assertTrue("PTY output: $terminalOutput", terminalOutput.contains("terminal-16k-ok"))
+        } finally {
+            terminalFd?.close()
+            if (!reaped && processId > 1) {
+                runCatching { Os.kill(-processId, OsConstants.SIGKILL) }
+                runCatching { JNI.waitFor(processId) }
+            }
+            manager.deleteWorkspace(root)
+            baseDir.deleteRecursivelyNoFollow()
+        }
+    }
+
+    private fun <T : Any> onMainThread(block: () -> T): T {
+        val result = AtomicReference<T>()
+        val failure = AtomicReference<Throwable>()
+        instrumentation.runOnMainSync {
+            try {
+                result.set(block())
+            } catch (error: Throwable) {
+                failure.set(error)
+            }
+        }
+        failure.get()?.let { throw it }
+        return requireNotNull(result.get())
     }
 }

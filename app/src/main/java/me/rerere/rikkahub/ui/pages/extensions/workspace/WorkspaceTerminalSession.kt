@@ -17,8 +17,10 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import me.rerere.workspace.AndroidPageSize
 import me.rerere.workspace.ProotExecutionSpec
 import me.rerere.workspace.RootfsHealth
+import me.rerere.workspace.RootfsPageSizeCompatibility
 import me.rerere.workspace.RootfsPatchOptions
 import me.rerere.workspace.RootfsPatcher
 import me.rerere.workspace.WorkspaceBindMount
@@ -51,6 +53,10 @@ internal fun createWorkspaceTerminalSession(
     require(proot.isFile && proot.canExecute() && loader.isFile) {
         "Workspace terminal runtime is unavailable"
     }
+    RootfsPageSizeCompatibility.requireRuntimeCompatible(
+        linuxDir,
+        AndroidPageSize.currentBytes(),
+    )
 
     val args = ProotExecutionSpec.interactiveArguments(
         root = root,

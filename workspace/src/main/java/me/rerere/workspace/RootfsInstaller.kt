@@ -23,12 +23,15 @@ class RootfsInstaller(
     private val connectionFactory: (URL) -> HttpURLConnection = {
         it.openConnection() as HttpURLConnection
     },
+    // JVM tests use the 4 KB default; Android production injects the actual kernel page size.
+    private val hostPageSizeBytes: Long = 4L * 1024,
 ) {
     fun install(
         root: String,
         source: RootfsArchiveSource,
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ) = manager.withExclusiveAccess(root, interruptible = true) {
+        source.requireCompatiblePageSize(hostPageSizeBytes)
         manager.ensureWorkspace(root)
         val tempDir = manager.tempDir(root)
         val archive = File(tempDir, "rootfs.${source.format.extension}")
@@ -58,6 +61,7 @@ class RootfsInstaller(
                 limits.maxExtractedBytes,
             )
             extractTar(archive, stagingDir, source.format, onProgress)
+            RootfsPageSizeCompatibility.requireAllElfCompatible(stagingDir, hostPageSizeBytes)
             patcher.patch(stagingDir)
             validateRootfs(stagingDir)
             val stagedRootfsBytes = stagingDir.logicalTreeSize()
@@ -95,6 +99,7 @@ class RootfsInstaller(
         inputStream: InputStream,
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ) = manager.withExclusiveAccess(root, interruptible = true) {
+        source.requireCompatiblePageSize(hostPageSizeBytes)
         manager.ensureWorkspace(root)
         val tempDir = manager.tempDir(root)
         val archive = File(tempDir, "rootfs.${source.format.extension}")
@@ -112,6 +117,7 @@ class RootfsInstaller(
             copyAndVerifyArchive(source, inputStream, archive)
             manager.requireAdditionalCapacity(root, WorkspaceDiskArea.TEMP, limits.maxExtractedBytes)
             extractTar(archive, stagingDir, source.format, onProgress)
+            RootfsPageSizeCompatibility.requireAllElfCompatible(stagingDir, hostPageSizeBytes)
             patcher.patch(stagingDir)
             validateRootfs(stagingDir)
             val stagedRootfsBytes = stagingDir.logicalTreeSize()

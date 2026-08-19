@@ -20,6 +20,7 @@ import me.rerere.rikkahub.data.skills.install.SkillInstallTarget
 import me.rerere.rikkahub.data.skills.install.SkillManagerInstallTarget
 import me.rerere.rikkahub.data.skills.source.GitHubRemoteSkillSourceClient
 import me.rerere.rikkahub.data.skills.source.SkillShCatalogClient
+import me.rerere.workspace.AndroidPageSize
 import me.rerere.workspace.ProotShellRunner
 import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceBindMount
@@ -59,6 +60,7 @@ val repositoryModule = module {
             baseDir = File(context.filesDir, "workspaces"),
             shellRunner = ProotShellRunner(
                 nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
+                hostPageSizeBytes = AndroidPageSize.currentBytes(),
             ),
             // 这些应用目录仅允许专用文件工具读取，绝不作为可写 PRoot bind mount 暴露。
             // tool_outputs 进一步按 workspace root 分区，避免工作区之间读取彼此的结果。
@@ -87,7 +89,10 @@ val repositoryModule = module {
     }
 
     single {
-        RootfsInstaller(get())
+        RootfsInstaller(
+            manager = get(),
+            hostPageSizeBytes = AndroidPageSize.currentBytes(),
+        )
     }
 
     single { WorkspaceNetworkBroker() }

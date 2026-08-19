@@ -26,6 +26,8 @@ data class WorkspaceBindMount(
 class ProotShellRunner(
     private val nativeLibraryDir: File,
     private val patcher: RootfsPatcher = RootfsPatcher(),
+    // JVM tests use the 4 KB default; Android production injects the actual kernel page size.
+    private val hostPageSizeBytes: Long = 4L * 1024,
 ) : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
         if (!RootfsHealth.isHealthy(context.linuxDir)) {
@@ -33,6 +35,18 @@ class ProotShellRunner(
                 exitCode = 127,
                 stdout = "",
                 stderr = "Rootfs is not installed",
+            )
+        }
+        runCatching {
+            RootfsPageSizeCompatibility.requireRuntimeCompatible(
+                context.linuxDir,
+                hostPageSizeBytes,
+            )
+        }.exceptionOrNull()?.let { error ->
+            return WorkspaceCommandResult(
+                exitCode = 126,
+                stdout = "",
+                stderr = error.message ?: "Rootfs is incompatible with the device page size",
             )
         }
 
