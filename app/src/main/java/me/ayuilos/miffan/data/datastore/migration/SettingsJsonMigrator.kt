@@ -2,8 +2,12 @@ package me.ayuilos.miffan.data.datastore.migration
 
 import android.util.Log
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import me.ayuilos.miffan.utils.jsonPrimitiveOrNull
 import me.ayuilos.miffan.utils.JsonInstant
 
 private const val TAG = "SettingsJsonMigrator"
@@ -61,9 +65,32 @@ object SettingsJsonMigrator {
                 }
             }
 
-            JsonInstant.encodeToString(JsonObject(root))
+            // V4: namespace 独立化后，将旧备份中的全限定 Avatar 类型名改为稳定标识。
+            // 同时迁移首个 Miffan 版本写出的新 namespace 类名，避免以后再次改包名时失效。
+            JsonInstant.encodeToString(migratePersistedTypeNames(JsonObject(root)))
         }.onFailure {
             Log.e(TAG, "migrate: Failed to migrate settings JSON, using original", it)
         }.getOrDefault(settingsJson)
     }
+}
+
+private val persistedTypeNameMapping = mapOf(
+    "me.rerere.rikkahub.data.model.Avatar.Dummy" to "dummy",
+    "me.rerere.rikkahub.data.model.Avatar.Emoji" to "emoji",
+    "me.rerere.rikkahub.data.model.Avatar.Image" to "image",
+    "me.ayuilos.miffan.data.model.Avatar.Dummy" to "dummy",
+    "me.ayuilos.miffan.data.model.Avatar.Emoji" to "emoji",
+    "me.ayuilos.miffan.data.model.Avatar.Image" to "image",
+)
+
+private fun migratePersistedTypeNames(element: JsonElement): JsonElement = when (element) {
+    is JsonArray -> JsonArray(element.map(::migratePersistedTypeNames))
+    is JsonObject -> JsonObject(
+        element.mapValues { (key, value) ->
+            val typeName = if (key == "type") value.jsonPrimitiveOrNull?.contentOrNull else null
+            persistedTypeNameMapping[typeName]?.let(::JsonPrimitive)
+                ?: migratePersistedTypeNames(value)
+        }
+    )
+    else -> element
 }
