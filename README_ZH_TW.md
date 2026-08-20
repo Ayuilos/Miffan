@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/branding/miffan-icon-color.png" alt="Miffan 應用程式圖示" width="120" />
+  <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan 應用程式圖示" width="120" />
   <h1>Miffan</h1>
 
 由愛好者維護的獨立開源 Android AI 聊天用戶端。

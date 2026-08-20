@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/branding/miffan-icon-color.png" alt="Miffan app icon" width="120" />
+  <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan app icon" width="120" />
   <h1>Miffan</h1>
 
 An independent open-source Android AI chat client maintained by fans.
