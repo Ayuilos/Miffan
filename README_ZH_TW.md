@@ -2,14 +2,12 @@
   <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan 應用程式圖示" width="120" />
   <h1>Miffan</h1>
 
-由愛好者維護的獨立開源 Android AI 聊天用戶端。
+由社群維護的獨立開源 Android AI 聊天用戶端。
 
 [English](README.md) | 繁體中文 | [简体中文](README_ZH_CN.md)
 </div>
 
 Miffan 是基於 [RikkaHub](https://github.com/rikkahub/rikkahub) 的社群 fork，在保留多供應商聊天體驗的同時，使用獨立的應用程式身分、發布版本線、簽署憑證和視覺品牌。
-
-Miffan 是非官方、非商業的開源粉絲專案。Miffan 名稱及圓碗形象是本專案自行設計的識別。本專案與 RikkaHub 維護者、Mercis bv 及其他相關權利方不存在隸屬、授權或背書關係。
 
 ## 下載
 

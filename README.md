@@ -2,14 +2,12 @@
   <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan app icon" width="120" />
   <h1>Miffan</h1>
 
-An independent open-source Android AI chat client maintained by fans.
+An independent, community-maintained open-source Android AI chat client.
 
 [简体中文](README_ZH_CN.md) | [繁體中文](README_ZH_TW.md) | English
 </div>
 
 Miffan is a community fork based on [RikkaHub](https://github.com/rikkahub/rikkahub). It keeps the multi-provider chat experience while maintaining an independent application identity, release line, signing certificate, and visual brand.
-
-Miffan is an unofficial, non-commercial open-source fan project. The Miffan name and round-bowl mascot are fan-created identifiers. This project is not affiliated with or endorsed by the RikkaHub maintainers, Mercis bv, or other relevant rights holders.
 
 ## Download
 
