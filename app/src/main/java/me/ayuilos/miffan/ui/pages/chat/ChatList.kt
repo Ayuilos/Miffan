@@ -115,6 +115,7 @@ fun ChatList(
     conversation: Conversation,
     state: LazyListState,
     loading: Boolean,
+    modifier: Modifier = Modifier,
     processingStatus: String? = null,
     previewMode: Boolean,
     settings: Settings,
@@ -138,6 +139,7 @@ fun ChatList(
 ) {
     AnimatedContent(
         targetState = previewMode,
+        modifier = modifier,
         label = "ChatListMode",
         transitionSpec = {
             (fadeIn() + scaleIn(initialScale = 0.8f) togetherWith fadeOut() + scaleOut(targetScale = 0.8f))
