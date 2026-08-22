@@ -92,7 +92,8 @@
       android:excludeFromRecents="true"
       android:exported="true"
       android:label="@string/process_text_translate_label"
-      android:theme="@style/Theme.Miffan.ProcessText">
+      android:theme="@style/Theme.Miffan.ProcessText"
+      android:windowSoftInputMode="adjustResize">
       <intent-filter android:priority="100">
         <action android:name="android.intent.action.PROCESS_TEXT" />
 
