@@ -25,6 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -56,6 +57,7 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,7 +71,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalScrollCaptureInProgress
@@ -97,11 +102,15 @@ import me.ayuilos.miffan.service.ChatError
 import me.ayuilos.miffan.ui.components.message.ChatMessage
 import me.ayuilos.miffan.ui.components.ui.ErrorCardsDisplay
 import me.ayuilos.miffan.ui.components.ui.ListSelectableItem
-import me.ayuilos.miffan.ui.components.ui.RabbitLoadingIndicator
+import me.ayuilos.miffan.ui.components.ui.MiffanMascot
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotLoadingIndicator
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.Tooltip
+import me.ayuilos.miffan.ui.components.ui.rememberMiffanDayPhase
 import me.ayuilos.miffan.ui.hooks.ImeLazyListAutoScroller
 import me.ayuilos.miffan.ui.theme.ChatFontProvider
 import me.ayuilos.miffan.utils.plus
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
@@ -216,6 +225,7 @@ private fun ChatListNormal(
     val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
     val activity = LocalContext.current as? me.ayuilos.miffan.RouteActivity
+    val dayPhase = rememberMiffanDayPhase()
 
     DisposableEffect(Unit) {
         val listener: (Boolean) -> Boolean = { isVolumeUp ->
@@ -271,10 +281,63 @@ private fun ChatListNormal(
             .associateBy { it.id }
     }
     val lastMessageIndex = conversation.messageNodes.lastIndex
+    var mascotAttentionTarget by remember { mutableStateOf<Offset?>(null) }
+    var mascotAttentionId by remember { mutableIntStateOf(0) }
+    val contentTopPx = with(density) { innerPadding.calculateTopPadding().toPx() }
+    val contentBottomPx = with(density) { innerPadding.calculateBottomPadding().toPx() }
 
     Box(
         modifier = Modifier
-            .fillMaxSize(),
+            .fillMaxSize()
+            .pointerInput(
+                conversation.messageNodes.isEmpty(),
+                loading,
+                contentTopPx,
+                contentBottomPx,
+            ) {
+                if (conversation.messageNodes.isNotEmpty() || loading) return@pointerInput
+                awaitPointerEventScope {
+                    var downPosition: Offset? = null
+                    var gestureBlocked = false
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        val change = event.changes.firstOrNull() ?: continue
+                        when {
+                            change.pressed && !change.previousPressed -> {
+                                downPosition = change.position
+                                gestureBlocked = change.isConsumed
+                            }
+
+                            change.pressed -> {
+                                val down = downPosition ?: continue
+                                val delta = change.position - down
+                                gestureBlocked = gestureBlocked ||
+                                    change.isConsumed ||
+                                    abs(delta.x) > viewConfiguration.touchSlop ||
+                                    abs(delta.y) > viewConfiguration.touchSlop
+                            }
+
+                            !change.pressed && change.previousPressed -> {
+                                gestureBlocked = gestureBlocked || change.isConsumed
+                                val contentHeight = size.height - contentTopPx - contentBottomPx
+                                if (!gestureBlocked && contentHeight > 0f) {
+                                    val position = change.position
+                                    if (position.y in contentTopPx..(size.height - contentBottomPx)) {
+                                        mascotAttentionTarget = Offset(
+                                            x = ((position.x / size.width - 0.5f) * 2f).coerceIn(-1f, 1f),
+                                            y = (((position.y - contentTopPx) / contentHeight - 0.5f) * 2f)
+                                                .coerceIn(-1f, 1f),
+                                        )
+                                        mascotAttentionId++
+                                    }
+                                }
+                                downPosition = null
+                                gestureBlocked = false
+                            }
+                        }
+                    }
+                }
+            },
     ) {
         // 自动滚动到底部
         if (settings.displaySetting.enableAutoScroll) {
@@ -387,8 +450,8 @@ private fun ChatListNormal(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        RabbitLoadingIndicator(
-                            modifier = Modifier.size(28.dp)
+                        MiffanMascotLoadingIndicator(
+                            modifier = Modifier.size(40.dp)
                         )
                         AnimatedVisibility(
                             visible = processingStatus != null,
@@ -411,6 +474,33 @@ private fun ChatListNormal(
                         .height(5.dp)
                 )
             }
+            }
+        }
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            val mascotSize = minOf(
+                168.dp,
+                maxWidth * 0.52f,
+                maxHeight * 0.52f,
+            )
+            AnimatedVisibility(
+                visible = conversation.messageNodes.isEmpty() && !loading && mascotSize >= 48.dp,
+                enter = fadeIn() + scaleIn(initialScale = 0.78f),
+                exit = fadeOut() + scaleOut(targetScale = 0.88f),
+            ) {
+                MiffanMascot(
+                    state = if (errors.isEmpty()) MiffanMascotState.Idle else MiffanMascotState.Error,
+                    interactive = true,
+                    attentionTarget = mascotAttentionTarget,
+                    attentionId = mascotAttentionId,
+                    dayPhase = dayPhase,
+                    modifier = Modifier.size(mascotSize),
+                )
             }
         }
 

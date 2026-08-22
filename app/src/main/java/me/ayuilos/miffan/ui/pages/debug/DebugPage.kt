@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -25,10 +26,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +53,11 @@ import kotlinx.coroutines.launch
 import me.rerere.common.android.Logging
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
+import me.ayuilos.miffan.ui.components.ui.MiffanDayPhase
+import me.ayuilos.miffan.ui.components.ui.MiffanDayPhaseDebugOverride
+import me.ayuilos.miffan.ui.components.ui.MiffanMascot
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
+import me.ayuilos.miffan.ui.components.ui.rememberMiffanDayPhase
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
 import me.ayuilos.miffan.ui.components.richtext.MathBlock
@@ -146,6 +156,42 @@ private fun MainPage(vm: DebugVM) {
             .imePadding(),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        val phaseOverride by MiffanDayPhaseDebugOverride.phase.collectAsState()
+        val effectivePhase = rememberMiffanDayPhase()
+        val phaseOptions = listOf<MiffanDayPhase?>(
+            null,
+            MiffanDayPhase.Morning,
+            MiffanDayPhase.Noon,
+            MiffanDayPhase.Night,
+        )
+        Text("Mascot time: ${effectivePhase.name}", style = MaterialTheme.typography.labelMedium)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            phaseOptions.forEachIndexed { index, phase ->
+                SegmentedButton(
+                    selected = phaseOverride == phase,
+                    onClick = { MiffanDayPhaseDebugOverride.set(phase) },
+                    shape = SegmentedButtonDefaults.itemShape(index, phaseOptions.size),
+                ) {
+                    Text(phase?.name ?: "Auto")
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            MiffanMascot(
+                state = MiffanMascotState.Idle,
+                dayPhase = effectivePhase,
+                interactive = true,
+                previewIdleGestures = true,
+                modifier = Modifier.size(160.dp),
+            )
+        }
+        HorizontalDivider()
+
         var avatar: Avatar by remember { mutableStateOf(Avatar.Emoji("😎")) }
         UIAvatar(
             value = avatar,

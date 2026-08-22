@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.ui.OutlinedNumberInput
-import me.ayuilos.miffan.ui.components.ui.RabbitLoadingIndicator
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotLoadingIndicator
 
 @Composable
 fun CompressContextDialog(
@@ -72,7 +72,7 @@ fun CompressContextDialog(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RabbitLoadingIndicator(
+                        MiffanMascotLoadingIndicator(
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
