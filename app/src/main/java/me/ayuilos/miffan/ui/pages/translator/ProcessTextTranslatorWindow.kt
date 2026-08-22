@@ -71,6 +71,7 @@ fun ProcessTextTranslatorWindow(
     vm: TranslatorVM = koinViewModel(),
 ) {
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val inputText by vm.inputText.collectAsStateWithLifecycle()
     val translatedText by vm.translatedText.collectAsStateWithLifecycle()
     val targetLanguage by vm.targetLanguage.collectAsStateWithLifecycle()
     val translating by vm.translating.collectAsStateWithLifecycle()
@@ -80,9 +81,9 @@ fun ProcessTextTranslatorWindow(
     var translationStarted by rememberSaveable(selectedText) { mutableStateOf(false) }
 
     LaunchedEffect(selectedText, settings.init) {
+        vm.initializeInputText(selectedText)
         if (!settings.init && !translationStarted) {
             translationStarted = true
-            vm.updateInputText(selectedText)
             vm.translate()
         }
     }
@@ -111,7 +112,6 @@ fun ProcessTextTranslatorWindow(
             Column(
                 modifier = Modifier
                     .heightIn(max = 640.dp)
-                    .verticalScroll(rememberScrollState())
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -152,21 +152,16 @@ fun ProcessTextTranslatorWindow(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                ) {
-                    SelectionContainer {
-                        Text(
-                            text = selectedText,
-                            modifier = Modifier.padding(12.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = vm::updateInputText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 220.dp),
+                    minLines = 4,
+                    maxLines = 8,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                )
 
                 if (translating) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -180,44 +175,47 @@ fun ProcessTextTranslatorWindow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                when {
-                    errorMessage != null -> {
-                        Text(
-                            text = errorMessage.orEmpty(),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 88.dp, max = 180.dp)
-                                .verticalScroll(rememberScrollState()),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-
-                    translatedText.isBlank() -> {
-                        Text(
-                            text = if (translating) {
-                                stringResource(R.string.translating)
-                            } else {
-                                stringResource(R.string.translator_page_result_placeholder)
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 88.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    else -> {
-                        SelectionContainer {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .heightIn(min = 88.dp, max = 280.dp),
+                ) {
+                    when {
+                        errorMessage != null -> {
                             Text(
-                                text = translatedText,
+                                text = errorMessage.orEmpty(),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 88.dp, max = 280.dp)
                                     .verticalScroll(rememberScrollState()),
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
                             )
+                        }
+
+                        translatedText.isBlank() -> {
+                            Text(
+                                text = if (translating) {
+                                    stringResource(R.string.translating)
+                                } else {
+                                    stringResource(R.string.translator_page_result_placeholder)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        else -> {
+                            SelectionContainer {
+                                Text(
+                                    text = translatedText,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState()),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
                         }
                     }
                 }

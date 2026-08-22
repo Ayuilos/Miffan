@@ -46,6 +46,8 @@ class TranslatorVM(
     // 当前任务
     private var currentJob: Job? = null
 
+    private var inputInitialized = false
+
     fun updateSettings(settings: Settings) {
         viewModelScope.launch {
             settingsStore.update(settings)
@@ -53,6 +55,13 @@ class TranslatorVM(
     }
 
     fun updateInputText(text: String) {
+        _inputText.value = text
+    }
+
+    fun initializeInputText(text: String) {
+        if (inputInitialized) return
+
+        inputInitialized = true
         _inputText.value = text
     }
 
