@@ -1117,6 +1117,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="translation_clear">清空翻译</string>
   <string name="translation_language_selection_title">选择翻译语言</string>
   <string name="translation_text">译文</string>
+  <string name="process_text_selected_text">选中的文本</string>
+  <string name="process_text_translate_label">Miffan-翻译</string>
   <string name="translator_page_cancel">取消</string>
   <string name="translator_page_input_placeholder">请输入要翻译的文本...</string>
   <string name="translator_page_result_placeholder">翻译结果将显示在这里</string>

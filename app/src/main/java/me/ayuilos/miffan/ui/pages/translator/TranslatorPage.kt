@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -204,7 +205,7 @@ fun TranslatorPage(vm: TranslatorVM = koinViewModel()) {
     }
 }
 
-private val Locales by lazy {
+internal val TranslatorLocales by lazy {
     listOf(
         Locale.SIMPLIFIED_CHINESE,
         Locale.ENGLISH,
@@ -219,27 +220,28 @@ private val Locales by lazy {
 }
 
 @Composable
+internal fun getLanguageDisplayName(locale: Locale): String {
+    val displayLocale = LocalLocale.current.platformLocale
+    return when (locale) {
+        Locale.SIMPLIFIED_CHINESE -> stringResource(R.string.language_simplified_chinese)
+        Locale.ENGLISH -> stringResource(R.string.language_english)
+        Locale.TRADITIONAL_CHINESE -> stringResource(R.string.language_traditional_chinese)
+        Locale.JAPANESE -> stringResource(R.string.language_japanese)
+        Locale.KOREAN -> stringResource(R.string.language_korean)
+        Locale.FRENCH -> stringResource(R.string.language_french)
+        Locale.GERMAN -> stringResource(R.string.language_german)
+        Locale.ITALIAN -> stringResource(R.string.language_italian)
+        Locale("es", "ES") -> stringResource(R.string.language_spanish)
+        else -> locale.getDisplayLanguage(displayLocale)
+    }
+}
+
+@Composable
 private fun LanguageSelector(
     targetLanguage: Locale,
     onLanguageSelected: (Locale) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-
-    @Composable
-    fun getLanguageDisplayName(locale: Locale): String {
-        return when (locale) {
-            Locale.SIMPLIFIED_CHINESE -> stringResource(R.string.language_simplified_chinese)
-            Locale.ENGLISH -> stringResource(R.string.language_english)
-            Locale.TRADITIONAL_CHINESE -> stringResource(R.string.language_traditional_chinese)
-            Locale.JAPANESE -> stringResource(R.string.language_japanese)
-            Locale.KOREAN -> stringResource(R.string.language_korean)
-            Locale.FRENCH -> stringResource(R.string.language_french)
-            Locale.GERMAN -> stringResource(R.string.language_german)
-            Locale.ITALIAN -> stringResource(R.string.language_italian)
-            Locale("es", "ES") -> stringResource(R.string.language_spanish)
-            else -> locale.getDisplayLanguage(Locale.getDefault())
-        }
-    }
 
     Box(
         modifier = Modifier.padding(horizontal = 4.dp)
@@ -267,7 +269,7 @@ private fun LanguageSelector(
                 expanded = expanded,
                 onDismissRequest = { expanded = false }
             ) {
-                Locales.forEach { language ->
+                TranslatorLocales.forEach { language ->
                     DropdownMenuItem(
                         text = { Text(getLanguageDisplayName(language)) },
                         onClick = {

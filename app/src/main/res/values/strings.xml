@@ -1141,6 +1141,8 @@
   <string name="translation_clear">Clear Translation</string>
   <string name="translation_language_selection_title">Select Translation Language</string>
   <string name="translation_text">Translation</string>
+  <string name="process_text_selected_text">Selected text</string>
+  <string name="process_text_translate_label">Miffan-翻译</string>
   <string name="translator_page_cancel">Cancel</string>
   <string name="translator_page_input_placeholder">Enter text to translate...</string>
   <string name="translator_page_result_placeholder">Translation result will be shown here</string>

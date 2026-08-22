@@ -1066,6 +1066,8 @@
   <string name="translation_clear">Очистить перевод</string>
   <string name="translation_language_selection_title">Выберите язык перевода</string>
   <string name="translation_text">Перевод</string>
+  <string name="process_text_selected_text">Выделенный текст</string>
+  <string name="process_text_translate_label">Miffan-翻译</string>
   <string name="translator_page_cancel">Отмена</string>
   <string name="translator_page_input_placeholder">Введите текст для перевода...</string>
   <string name="translator_page_result_placeholder">Результат перевода будет показан здесь</string>

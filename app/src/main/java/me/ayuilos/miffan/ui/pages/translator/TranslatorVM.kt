@@ -13,6 +13,7 @@ import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import java.util.Locale
+import kotlin.uuid.Uuid
 
 private const val TAG = "TranslatorVM"
 
@@ -60,6 +61,30 @@ class TranslatorVM(
     }
 
     fun translate() {
+        translate(settings.value)
+    }
+
+    fun updateTranslationModel(modelId: Uuid, retranslate: Boolean = false) {
+        val updatedSettings = settings.value.copy(translateModeId = modelId)
+        if (updatedSettings.init) return
+
+        currentJob?.cancel()
+        _translating.value = false
+
+        viewModelScope.launch {
+            runCatching {
+                settingsStore.update(updatedSettings)
+            }.onSuccess {
+                if (retranslate) {
+                    translate(updatedSettings)
+                }
+            }.onFailure {
+                errorFlow.emit(it)
+            }
+        }
+    }
+
+    private fun translate(translationSettings: Settings) {
         val inputText = _inputText.value
         if (inputText.isBlank()) return
 
@@ -73,7 +98,7 @@ class TranslatorVM(
         currentJob = viewModelScope.launch {
             runCatching {
                 generationHandler.translateText(
-                    settings = settings.value,
+                    settings = translationSettings,
                     sourceText = inputText,
                     targetLanguage = targetLanguage.value
                 ) { translatedText ->

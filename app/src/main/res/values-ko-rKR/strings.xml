@@ -1066,6 +1066,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="translation_clear">번역 지우기</string>
   <string name="translation_language_selection_title">번역 언어 선택</string>
   <string name="translation_text">번역</string>
+  <string name="process_text_selected_text">선택한 텍스트</string>
+  <string name="process_text_translate_label">Miffan-翻译</string>
   <string name="translator_page_cancel">취소</string>
   <string name="translator_page_input_placeholder">번역할 텍스트를 입력하세요...</string>
   <string name="translator_page_result_placeholder">번역 결과가 여기에 표시됩니다</string>
