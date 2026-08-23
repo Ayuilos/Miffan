@@ -58,12 +58,12 @@ Curious is the compatibility default for existing Miffan and legacy `Dummy` assi
 
 ## Character Behavior V1
 
-Each inhabitant adds one restrained motion signature to the shared semantic animation system:
+Each inhabitant adds one readable motion signature to the shared semantic animation system. The bowl joins the gesture so the behavior remains recognizable outside large previews:
 
-- Rice uses a soft grain hop;
-- Sprout listens through a gentle leaf sway;
-- Dumpling answers with a staggered three-dumpling ripple;
-- Stargazer uses a slow star pulse and sparse twinkles.
+- Rice uses a soft whole-body hop with one following grain;
+- Sprout leans toward input while its leaves listen and sway;
+- Dumpling answers with a side-to-side bowl step and staggered three-dumpling ripple;
+- Stargazer slowly hovers while its stars pulse and twinkle.
 
 The signature becomes clearer while thinking, typing, submitting, or celebrating, but remains quiet during ordinary idle. Error states settle rather than adding celebratory motion. Stargazer may be slightly more visible at night, while time-of-day gestures remain shared across the world.
 

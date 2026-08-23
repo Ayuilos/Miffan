@@ -85,4 +85,51 @@ class MiffanKindBehaviorTest {
             }
         }
     }
+
+    @Test
+    fun signaturesUseDifferentWholeBodyGestures() {
+        val rice = MiffanKind.RICE.miffanKindBehavior().poseFor(
+            phaseDegrees = 90f,
+            strength = 1f,
+            state = MiffanMascotState.Happy,
+            inputState = MiffanMascotInputState.Inactive,
+        )
+        val sprout = MiffanKind.SPROUT.miffanKindBehavior().poseFor(
+            phaseDegrees = 90f,
+            strength = 1f,
+            state = MiffanMascotState.Idle,
+            inputState = MiffanMascotInputState.Focused,
+        )
+        val dumpling = MiffanKind.DUMPLING.miffanKindBehavior().poseFor(
+            phaseDegrees = 45f,
+            strength = 1f,
+            state = MiffanMascotState.Thinking,
+            inputState = MiffanMascotInputState.Inactive,
+        )
+        val stargazer = MiffanKind.STARGAZER.miffanKindBehavior().poseFor(
+            phaseDegrees = 0f,
+            strength = 1f,
+            state = MiffanMascotState.Thinking,
+            inputState = MiffanMascotInputState.Inactive,
+        )
+
+        assertTrue(rice.offsetY < 0f && rice.scaleX > 1f)
+        assertTrue(sprout.offsetX > 0f && sprout.rotationDegrees > 0f)
+        assertTrue(dumpling.offsetX > 0f && dumpling.rotationDegrees > 0f)
+        assertTrue(stargazer.offsetY < 0f && stargazer.scaleY > 1f)
+    }
+
+    @Test
+    fun errorStateSettlesWholeBodySignature() {
+        MiffanKind.entries.forEach { kind ->
+            val pose = kind.miffanKindBehavior().poseFor(
+                phaseDegrees = 90f,
+                strength = 1f,
+                state = MiffanMascotState.Error,
+                inputState = MiffanMascotInputState.Typing,
+            )
+
+            assertEquals(MiffanSignaturePose(), pose)
+        }
+    }
 }

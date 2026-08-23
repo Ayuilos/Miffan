@@ -212,10 +212,10 @@ val MiffanKind.displayName: String
 
 val MiffanKind.description: String
     get() = when (this) {
-        MiffanKind.RICE -> "软糯米丘\n光滑陶碗"
-        MiffanKind.SPROUT -> "一株新芽\n刻纹陶碗"
-        MiffanKind.DUMPLING -> "三颗糯丸\n随身小勺"
-        MiffanKind.STARGAZER -> "收藏星米\n星光挂饰"
+        MiffanKind.RICE -> "米粒轻跳\n光滑陶碗"
+        MiffanKind.SPROUT -> "摇叶倾听\n刻纹陶碗"
+        MiffanKind.DUMPLING -> "丸子轮跳\n随身小勺"
+        MiffanKind.STARGAZER -> "悬浮星闪\n星光挂饰"
     }
 
 val MiffanPalette.displayName: String

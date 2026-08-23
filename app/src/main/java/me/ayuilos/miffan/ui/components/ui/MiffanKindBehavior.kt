@@ -2,6 +2,8 @@ package me.ayuilos.miffan.ui.components.ui
 
 import androidx.compose.runtime.Immutable
 import me.ayuilos.miffan.data.model.MiffanKind
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
 
 enum class MiffanSignatureMotion {
@@ -32,51 +34,60 @@ data class MiffanKindBehavior(
     val nightIdleMultiplier: Float = 1f,
 )
 
+@Immutable
+data class MiffanSignaturePose(
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f,
+    val rotationDegrees: Float = 0f,
+    val scaleX: Float = 1f,
+    val scaleY: Float = 1f,
+)
+
 fun MiffanKind.miffanKindBehavior(): MiffanKindBehavior = when (this) {
     MiffanKind.RICE -> MiffanKindBehavior(
         signature = MiffanSignatureMotion.GrainHop,
         cycleMillis = 1_680,
-        idleStrength = 0.14f,
-        thinkingStrength = 0.78f,
-        focusedStrength = 0.24f,
-        typingStrength = 0.42f,
-        happyStrength = 0.72f,
-        errorStrength = 0.1f,
-        submitStrength = 0.9f,
+        idleStrength = 0.3f,
+        thinkingStrength = 1f,
+        focusedStrength = 0.5f,
+        typingStrength = 0.76f,
+        happyStrength = 1f,
+        errorStrength = 0.08f,
+        submitStrength = 1f,
     )
     MiffanKind.SPROUT -> MiffanKindBehavior(
         signature = MiffanSignatureMotion.LeafSway,
         cycleMillis = 2_100,
-        idleStrength = 0.3f,
-        thinkingStrength = 0.72f,
-        focusedStrength = 0.5f,
-        typingStrength = 0.68f,
-        happyStrength = 0.86f,
-        errorStrength = 0.3f,
-        submitStrength = 0.8f,
+        idleStrength = 0.42f,
+        thinkingStrength = 1f,
+        focusedStrength = 0.72f,
+        typingStrength = 0.9f,
+        happyStrength = 1f,
+        errorStrength = 0.32f,
+        submitStrength = 1f,
     )
     MiffanKind.DUMPLING -> MiffanKindBehavior(
         signature = MiffanSignatureMotion.DumplingRipple,
         cycleMillis = 1_320,
-        idleStrength = 0.12f,
-        thinkingStrength = 0.88f,
-        focusedStrength = 0.26f,
-        typingStrength = 0.74f,
-        happyStrength = 0.94f,
-        errorStrength = 0.18f,
+        idleStrength = 0.32f,
+        thinkingStrength = 1f,
+        focusedStrength = 0.56f,
+        typingStrength = 1f,
+        happyStrength = 1f,
+        errorStrength = 0.12f,
         submitStrength = 1f,
     )
     MiffanKind.STARGAZER -> MiffanKindBehavior(
         signature = MiffanSignatureMotion.StarTwinkle,
         cycleMillis = 2_400,
-        idleStrength = 0.2f,
-        thinkingStrength = 0.86f,
-        focusedStrength = 0.34f,
-        typingStrength = 0.6f,
-        happyStrength = 0.82f,
-        errorStrength = 0.16f,
-        submitStrength = 0.92f,
-        nightIdleMultiplier = 1.45f,
+        idleStrength = 0.34f,
+        thinkingStrength = 1f,
+        focusedStrength = 0.52f,
+        typingStrength = 0.82f,
+        happyStrength = 1f,
+        errorStrength = 0.1f,
+        submitStrength = 1f,
+        nightIdleMultiplier = 1.5f,
     )
 }
 
@@ -102,4 +113,57 @@ internal fun MiffanKindBehavior.strengthFor(
     }
     val submitEnvelope = sin(submitProgress.coerceIn(0f, 1f) * Math.PI).toFloat()
     return maxOf(semanticStrength, submitStrength * submitEnvelope).coerceIn(0f, 1f)
+}
+
+internal fun MiffanKindBehavior.poseFor(
+    phaseDegrees: Float,
+    strength: Float,
+    state: MiffanMascotState,
+    inputState: MiffanMascotInputState,
+): MiffanSignaturePose {
+    if (state == MiffanMascotState.Error) return MiffanSignaturePose()
+
+    val radians = Math.toRadians(phaseDegrees.toDouble())
+    val wave = sin(radians).toFloat()
+    return when (signature) {
+        MiffanSignatureMotion.GrainHop -> {
+            val hop = wave.coerceAtLeast(0f) * strength
+            MiffanSignaturePose(
+                offsetY = -5.2f * hop,
+                scaleX = 1f + 0.022f * hop,
+                scaleY = 1f - 0.016f * hop,
+            )
+        }
+        MiffanSignatureMotion.LeafSway -> {
+            val listening = if (
+                state == MiffanMascotState.Idle && inputState != MiffanMascotInputState.Inactive
+            ) {
+                1f
+            } else {
+                0f
+            }
+            MiffanSignaturePose(
+                offsetX = listening * 1.4f * strength,
+                rotationDegrees = (wave * 2.8f + listening * 2.2f) * strength,
+            )
+        }
+        MiffanSignatureMotion.DumplingRipple -> {
+            val step = sin(radians * 2.0).toFloat()
+            MiffanSignaturePose(
+                offsetX = step * 2.6f * strength,
+                offsetY = -abs(wave) * 1.6f * strength,
+                rotationDegrees = step * 1.5f * strength,
+                scaleY = 1f + abs(sin(radians * 3.0).toFloat()) * 0.014f * strength,
+            )
+        }
+        MiffanSignatureMotion.StarTwinkle -> {
+            val hover = (cos(radians).toFloat() + 1f) / 2f
+            MiffanSignaturePose(
+                offsetY = -3.8f * hover * strength,
+                rotationDegrees = wave * 1.3f * strength,
+                scaleX = 1f + hover * 0.018f * strength,
+                scaleY = 1f + hover * 0.018f * strength,
+            )
+        }
+    }
 }

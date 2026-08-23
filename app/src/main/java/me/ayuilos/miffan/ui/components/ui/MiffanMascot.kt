@@ -663,6 +663,12 @@ fun MiffanMascot(
                 submitProgress = submitAmount,
             ) * motion.stateAmplitude
             ).coerceIn(0f, 1f)
+        val signaturePose = kindBehavior.poseFor(
+            phaseDegrees = signaturePhase,
+            strength = signatureStrength,
+            state = state,
+            inputState = inputState,
+        )
         val gestureVisibility =
             (1f - pokeExpression.value) * (1f - inputFocusProgress) * (1f - submitAmount)
         val yawnAmount = if (idleGesture == MiffanIdleGesture.Yawn) {
@@ -737,15 +743,21 @@ fun MiffanMascot(
 
             withTransform({
                 translate(
-                    0f,
+                    signaturePose.offsetX,
                     bodyBob + stateOffsetY + pokeOffset.value +
-                        inputFocusProgress * motion.inputLift + submitNod,
+                        inputFocusProgress * motion.inputLift + submitNod +
+                        signaturePose.offsetY,
                 )
                 rotate(
-                    stateRotation + dozeAmount * 4f + attentionTilt.value,
+                    stateRotation + dozeAmount * 4f + attentionTilt.value +
+                        signaturePose.rotationDegrees,
                     pivot = Offset(100f, 112f),
                 )
-                scale(bodyScaleX, bodyScaleY, pivot = Offset(100f, 112f))
+                scale(
+                    bodyScaleX * signaturePose.scaleX,
+                    bodyScaleY * signaturePose.scaleY,
+                    pivot = Offset(100f, 112f),
+                )
             }) {
                 drawMascotBody(
                     colors = colors,
@@ -887,7 +899,7 @@ private fun DrawScope.drawBackAccessory(
     if (accessory != MiffanAccessoryStyle.Spoon) return
 
     val spoonSway = sin(Math.toRadians(signaturePhase.toDouble())).toFloat() *
-        2.2f * signatureStrength
+        4.2f * signatureStrength
     rotate(12f + spoonSway, pivot = Offset(164f, 69f)) {
         drawRoundRect(
             color = colors.cueInk.copy(alpha = 0.28f),
@@ -978,10 +990,10 @@ private fun DrawScope.drawMascotContent(
             val sway = if (state == MiffanMascotState.Error) {
                 8f * signatureStrength
             } else {
-                sin(radians).toFloat() * 7f * signatureStrength
+                sin(radians).toFloat() * 14f * signatureStrength
             }
             val leafPulse = 1f +
-                (cos(radians).toFloat() * 0.025f + 0.025f) * signatureStrength
+                (cos(radians).toFloat() * 0.045f + 0.045f) * signatureStrength
             withTransform({
                 rotate(sway, pivot = Offset(101f, 61f))
                 scale(1f, leafPulse, pivot = Offset(101f, 61f))
@@ -1021,7 +1033,7 @@ private fun DrawScope.drawMascotContent(
                     1.2f * signatureStrength
                 } else {
                     val wave = sin(radians + index * Math.PI * 2.0 / 3.0).toFloat()
-                    -wave.coerceAtLeast(0f) * 4.2f * signatureStrength
+                    -wave.coerceAtLeast(0f) * 8f * signatureStrength
                 }
                 withTransform({ translate(0f, ripple) }) {
                     drawCircle(
@@ -1048,8 +1060,8 @@ private fun DrawScope.drawMascotContent(
             val errorTilt = if (state == MiffanMascotState.Error) -5f * signatureStrength else 0f
             withTransform({
                 scale(
-                    scaleX = 1f + starWave * 0.045f * signatureStrength,
-                    scaleY = 1f + starWave * 0.045f * signatureStrength,
+                    scaleX = 1f + starWave * 0.08f * signatureStrength,
+                    scaleY = 1f + starWave * 0.08f * signatureStrength,
                     pivot = Offset(100f, 53f),
                 )
             }) {
@@ -1059,7 +1071,7 @@ private fun DrawScope.drawMascotContent(
                     innerRadius = 10f,
                     color = colors.rice,
                     rotationDegrees = -90f +
-                        sin(radians).toFloat() * 5f * signatureStrength + errorTilt,
+                        sin(radians).toFloat() * 10f * signatureStrength + errorTilt,
                 )
             }
             drawStar(
@@ -1067,14 +1079,14 @@ private fun DrawScope.drawMascotContent(
                 outerRadius = 13f,
                 innerRadius = 6f,
                 color = colors.rice.copy(alpha = 0.94f),
-                rotationDegrees = -72f - sin(radians).toFloat() * 2.5f * signatureStrength,
+                rotationDegrees = -72f - sin(radians).toFloat() * 5f * signatureStrength,
             )
             drawStar(
                 center = Offset(134f, 66f),
                 outerRadius = 12f,
                 innerRadius = 5.5f,
                 color = colors.rice.copy(alpha = 0.94f),
-                rotationDegrees = -108f + sin(radians).toFloat() * 2.5f * signatureStrength,
+                rotationDegrees = -108f + sin(radians).toFloat() * 5f * signatureStrength,
             )
         }
     }
@@ -1117,7 +1129,7 @@ private fun DrawScope.drawFrontAccessory(
     if (accessory != MiffanAccessoryStyle.StarCharm) return
 
     val radians = Math.toRadians(signaturePhase.toDouble())
-    val charmSway = sin(radians).toFloat() * 3.5f * signatureStrength
+    val charmSway = sin(radians).toFloat() * 6f * signatureStrength
     rotate(charmSway, pivot = Offset(155f, 74f)) {
         drawLine(
             color = colors.face.copy(alpha = 0.76f),
@@ -1155,12 +1167,35 @@ private fun DrawScope.drawKindSignatureCue(
             drawContentParticle(
                 content = MiffanContentStyle.Rice,
                 colors = colors,
-                center = Offset(119f + sin(radians * 0.5).toFloat() * 2f, 55f - hop * 9f),
+                center = Offset(119f + sin(radians * 0.5).toFloat() * 3f, 55f - hop * 14f),
                 rotation = -12f + wave * 24f,
-                alpha = (hop * 0.86f).coerceIn(0f, 0.86f),
+                alpha = (hop * 1.2f).coerceIn(0f, 0.95f),
             )
         }
-        MiffanSignatureMotion.LeafSway -> Unit
+        MiffanSignatureMotion.LeafSway -> {
+            if (
+                state != MiffanMascotState.Thinking &&
+                state != MiffanMascotState.Happy &&
+                inputState == MiffanMascotInputState.Inactive
+            ) {
+                return
+            }
+            val cueAlpha = (strength * (0.3f + wave * 0.55f)).coerceIn(0f, 0.72f)
+            drawLine(
+                color = colors.cueInk.copy(alpha = cueAlpha),
+                start = Offset(126f, 25f),
+                end = Offset(134f + wave * 2f, 20f),
+                strokeWidth = 2.4f,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = colors.cueInk.copy(alpha = cueAlpha * 0.72f),
+                start = Offset(129f, 34f),
+                end = Offset(138f + wave * 2f, 34f),
+                strokeWidth = 2.2f,
+                cap = StrokeCap.Round,
+            )
+        }
         MiffanSignatureMotion.DumplingRipple -> {
             if (state != MiffanMascotState.Thinking && inputState != MiffanMascotInputState.Typing) {
                 return
@@ -1171,17 +1206,17 @@ private fun DrawScope.drawKindSignatureCue(
                     moveTo(x, 40f)
                     cubicTo(
                         x - 5f,
-                        34f - steamWave * 2f,
+                        34f - steamWave * 3f * strength,
                         x + 5f,
-                        27f - steamWave * 3f,
+                        27f - steamWave * 5f * strength,
                         x,
-                        20f - steamWave * 4f,
+                        20f - steamWave * 6f * strength,
                     )
                 }
                 drawPath(
                     path = steam,
-                    color = colors.cueInk.copy(alpha = strength * (0.22f + steamWave * 0.38f)),
-                    style = Stroke(width = 2.4f, cap = StrokeCap.Round),
+                    color = colors.cueInk.copy(alpha = strength * (0.3f + steamWave * 0.46f)),
+                    style = Stroke(width = 3f, cap = StrokeCap.Round),
                 )
             }
         }
@@ -1189,13 +1224,13 @@ private fun DrawScope.drawKindSignatureCue(
             val visibility = strength * (0.25f + wave * 0.65f)
             drawSparkle(
                 center = Offset(58f, 30f),
-                radius = 5f + wave * 1.5f,
-                color = colors.rice.copy(alpha = visibility.coerceIn(0f, 0.82f)),
+                radius = 6f + wave * 2f,
+                color = colors.rice.copy(alpha = visibility.coerceIn(0f, 0.9f)),
             )
             drawSparkle(
                 center = Offset(143f, 38f),
-                radius = 3.5f + (1f - wave),
-                color = colors.face.copy(alpha = (visibility * 0.7f).coerceIn(0f, 0.64f)),
+                radius = 4.5f + (1f - wave) * 1.5f,
+                color = colors.face.copy(alpha = (visibility * 0.78f).coerceIn(0f, 0.72f)),
             )
         }
     }
