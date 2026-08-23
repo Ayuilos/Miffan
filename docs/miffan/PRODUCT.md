@@ -40,6 +40,12 @@ The first Miffan world collection contains four curated inhabitants:
 
 A character kind is a coherent shape preset, not a bag of independently swappable parts. It changes content, material treatment, and one restrained accessory together so every option reads as an intentional inhabitant. Palette and motion profile remain independent axes, allowing the same inhabitant to belong to different assistants without multiplying renderer implementations.
 
+## Theme-aware color
+
+Each assistant can choose between its saved Miffan palette and the active app theme. Theme-aware color follows the final Material color scheme, including system dynamic color, preset and custom themes, and light/dark mode. It changes color roles only: character kind, material treatment, contents, accessories, and motion profile remain independent.
+
+Turning theme sync off restores the assistant's previously selected Miffan palette. Existing and legacy assistants keep palette mode by default so an update never changes their appearance unexpectedly.
+
 ## Motion V1
 
 Each explicit Miffan can use one of three motion profiles:

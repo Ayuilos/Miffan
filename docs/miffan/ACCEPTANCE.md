@@ -9,6 +9,8 @@
 - Each of the three motion profiles persists after leaving and reopening assistant settings.
 - Changing palette does not reset motion profile, and changing motion profile does not reset palette.
 - Changing character kind preserves palette and motion profile.
+- Theme sync can be enabled per assistant and persists after reopening settings.
+- Disabling theme sync restores the assistant's previously selected Miffan palette.
 - Two assistants can use different palettes and remain visually distinguishable in the picker, drawer, message list, and settings.
 - Custom emoji and image avatars continue to render and edit normally.
 - Resetting an assistant custom avatar returns to Miffan Classic.
@@ -19,6 +21,8 @@
 - Rice, Sprout, Dumpling, and Stargazer remain distinguishable by silhouette or content at 40 dp and above.
 - Material details support recognition at large sizes without making the face noisy at avatar sizes.
 - Every palette has sufficient contrast in light and dark app themes.
+- Theme-synced colors update for dynamic, preset, and custom themes in both light and dark mode.
+- Theme sync changes colors without changing kind, material, contents, accessories, or motion profile.
 - Thinking, happy, error, idle, focused, and typing states work for every palette.
 - Decorative input cues use palette-derived colors rather than Classic-only hard-coded colors.
 - No palette changes geometry or interaction hit targets.
@@ -42,6 +46,7 @@
 - Avatar serialization round-trips for every palette and motion-profile combination.
 - Avatar serialization round-trips for every character-kind, palette, and motion-profile combination.
 - Miffan JSON without a character-kind field decodes as Rice.
+- Miffan JSON without a color-source field keeps using its saved palette.
 - Legacy `dummy`, emoji, and image avatar decoding tests pass.
 - Avatar-policy tests cover Miffan, legacy Dummy, and custom-avatar preference behavior.
 - `./gradlew :app:compileDebugKotlin` passes.

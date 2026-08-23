@@ -2,11 +2,11 @@
 
 ## Model boundary
 
-`Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance` and a separate `MiffanMotionProfile`. Appearance V1 stores a preset palette identifier; Character V1 adds a curated Miffan kind; Motion V1 stores Lively, Calm, or Curious.
+`Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance` and a separate `MiffanMotionProfile`. Appearance stores a preset palette plus a palette/theme color-source choice; Character V1 adds a curated Miffan kind; Motion V1 stores Lively, Calm, or Curious.
 
 `Avatar.Dummy` remains valid for backward compatibility and for the procedural user avatar. In assistant-only UI it is interpreted as legacy Miffan Classic. New assistants default to `Avatar.Miffan()`.
 
-The model layer contains no Compose colors or drawing primitives. UI code resolves palette identifiers into `MiffanColors` and character kinds into one content/material/accessory treatment, keeping serialized data stable if visual details are tuned later.
+The model layer contains no Compose colors or drawing primitives. UI code resolves palette identifiers or the active Material `ColorScheme` into `MiffanColors`, and character kinds into one content/material/accessory treatment, keeping serialized data stable if visual details are tuned later.
 
 ## Rendering boundary
 
@@ -34,11 +34,13 @@ Use monotonically increasing event identifiers for one-shot reactions such as at
 - Decoding legacy `dummy` avatars must continue to succeed.
 - A legacy assistant `Dummy` renders exactly like Miffan Classic.
 - A legacy assistant `Dummy`, or Miffan data without a kind field, resolves to Rice.
+- Miffan data without a color-source field uses its saved palette.
 - Legacy `Dummy` and Miffan data without a motion field use the Curious profile.
 - Selecting a Miffan palette writes an explicit `Avatar.Miffan` value.
 - Resetting an assistant avatar writes `Avatar.Miffan()`; resetting the user avatar continues to write `Avatar.Dummy`.
 - Copying an assistant preserves a Miffan appearance. Image avatars may still reset according to the existing file-ownership policy.
 - Changing kind or palette preserves motion profile, and changing motion profile preserves the complete appearance.
+- Enabling theme sync does not erase the saved palette; disabling it restores that palette.
 
 ## Evolution path
 
@@ -50,6 +52,8 @@ Character V1 stores one curated kind in `MiffanAppearance`. Each kind resolves i
 - optional custom color tokens.
 
 `MiffanMotionProfile` resolves to one immutable `MiffanMotionTuning` table. The renderer applies those parameters to shared breathing, gaze, attention, input, submit, and semantic-state animations. Page inputs should converge on a single `MiffanSceneState`; appearance and motion profile must not encode runtime animation state.
+
+Theme-aware color resolves from `MaterialTheme.colorScheme` inside the renderer. It must not read `SettingsStore`, theme IDs, dynamic-color flags, or custom-theme records. This keeps the mascot coupled only to Material semantic color roles and makes every upstream theme source update automatically.
 
 ## Validation
 

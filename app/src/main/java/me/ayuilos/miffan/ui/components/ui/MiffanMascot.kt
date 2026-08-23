@@ -13,7 +13,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanColorSource
 import me.ayuilos.miffan.data.model.MiffanKind
 import me.ayuilos.miffan.data.model.MiffanMotionProfile
 import me.ayuilos.miffan.data.model.MiffanPalette
@@ -182,6 +185,15 @@ fun MiffanPalette.miffanColors(): MiffanColors = when (this) {
         cueInk = Color(0xFF354947),
     )
 }
+
+fun ColorScheme.miffanColors(): MiffanColors = MiffanColors(
+    bowl = primary,
+    rim = secondary,
+    rice = primaryContainer,
+    face = onPrimary,
+    cueSurface = secondaryContainer,
+    cueInk = onSecondaryContainer,
+)
 
 @Immutable
 data class MiffanMotionTuning(
@@ -324,7 +336,13 @@ fun MiffanMascot(
     dayPhase: MiffanDayPhase = MiffanDayPhase.Noon,
     previewIdleGestures: Boolean = false,
 ) {
-    val colors = remember(appearance.palette) { appearance.palette.miffanColors() }
+    val appColorScheme = MaterialTheme.colorScheme
+    val colors = remember(appearance.palette, appearance.colorSource, appColorScheme) {
+        when (appearance.colorSource) {
+            MiffanColorSource.PALETTE -> appearance.palette.miffanColors()
+            MiffanColorSource.APP_THEME -> appColorScheme.miffanColors()
+        }
+    }
     val motion = remember(motionProfile, reducedMotion) {
         motionProfile.miffanMotionTuning().let { tuning ->
             if (reducedMotion) tuning.reduced() else tuning

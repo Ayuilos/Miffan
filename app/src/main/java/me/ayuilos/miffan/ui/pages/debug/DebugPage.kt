@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import me.rerere.common.android.Logging
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanColorSource
 import me.ayuilos.miffan.data.model.MiffanKind
 import me.ayuilos.miffan.data.model.MiffanMotionProfile
 import me.ayuilos.miffan.data.model.MiffanPalette
@@ -184,10 +185,26 @@ private fun MiffanLabPage() {
     var mode by remember { mutableStateOf(MiffanLabMode.Idle) }
     var phase by remember { mutableStateOf(MiffanDayPhase.Noon) }
     var kind by remember { mutableStateOf(MiffanKind.RICE) }
+    var colorSource by remember { mutableStateOf(MiffanColorSource.PALETTE) }
     var motionProfile by remember { mutableStateOf(MiffanMotionProfile.CURIOUS) }
     var reducedMotion by remember { mutableStateOf(false) }
     var submitId by remember { mutableIntStateOf(0) }
     val sizes = listOf(28.dp, 40.dp, 80.dp, 128.dp)
+    val previewAppearances = if (colorSource == MiffanColorSource.APP_THEME) {
+        listOf(
+            "App theme" to MiffanAppearance(
+                kind = kind,
+                colorSource = MiffanColorSource.APP_THEME,
+            ),
+        )
+    } else {
+        MiffanPalette.entries.map { palette ->
+            palette.displayName to MiffanAppearance(
+                palette = palette,
+                kind = kind,
+            )
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -220,6 +237,30 @@ private fun MiffanLabPage() {
                         checked = reducedMotion,
                         onCheckedChange = { reducedMotion = it },
                     )
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Color source", style = MaterialTheme.typography.titleSmall)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    MiffanColorSource.entries.forEachIndexed { index, source ->
+                        SegmentedButton(
+                            selected = colorSource == source,
+                            onClick = { colorSource = source },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index,
+                                MiffanColorSource.entries.size,
+                            ),
+                        ) {
+                            Text(
+                                when (source) {
+                                    MiffanColorSource.PALETTE -> "Miffan palette"
+                                    MiffanColorSource.APP_THEME -> "App theme"
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -283,9 +324,9 @@ private fun MiffanLabPage() {
                 }
             }
         }
-        items(MiffanPalette.entries, key = { it.name }) { palette ->
+        items(previewAppearances, key = { it.first }) { (label, appearance) ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(palette.displayName, style = MaterialTheme.typography.titleSmall)
+                Text(label, style = MaterialTheme.typography.titleSmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(sizes, key = { it.value }) { previewSize ->
                         Column(
@@ -302,10 +343,7 @@ private fun MiffanLabPage() {
                             ) {
                                 MiffanMascot(
                                     state = mode.mascotState,
-                                    appearance = MiffanAppearance(
-                                        palette = palette,
-                                        kind = kind,
-                                    ),
+                                    appearance = appearance,
                                     motionProfile = motionProfile,
                                     reducedMotion = reducedMotion,
                                     inputState = mode.inputState,

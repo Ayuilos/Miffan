@@ -8,23 +8,26 @@ import org.junit.Test
 
 class MiffanAvatarTest {
     @Test
-    fun everyPresetRoundTrips() {
+    fun everyAppearanceAndMotionCombinationRoundTrips() {
         MiffanKind.entries.forEach { kind ->
             MiffanPalette.entries.forEach { palette ->
-                MiffanMotionProfile.entries.forEach { motionProfile ->
-                    val original: Avatar = Avatar.Miffan(
-                        appearance = MiffanAppearance(
-                            palette = palette,
-                            kind = kind,
-                        ),
-                        motionProfile = motionProfile,
-                    )
+                MiffanColorSource.entries.forEach { colorSource ->
+                    MiffanMotionProfile.entries.forEach { motionProfile ->
+                        val original: Avatar = Avatar.Miffan(
+                            appearance = MiffanAppearance(
+                                palette = palette,
+                                kind = kind,
+                                colorSource = colorSource,
+                            ),
+                            motionProfile = motionProfile,
+                        )
 
-                    val encoded = JsonInstant.encodeToString(original)
-                    val decoded = JsonInstant.decodeFromString<Avatar>(encoded)
+                        val encoded = JsonInstant.encodeToString(original)
+                        val decoded = JsonInstant.decodeFromString<Avatar>(encoded)
 
-                    assertEquals(original, decoded)
-                    assertTrue(encoded.contains("\"type\":\"miffan\""))
+                        assertEquals(original, decoded)
+                        assertTrue(encoded.contains("\"type\":\"miffan\""))
+                    }
                 }
             }
         }
@@ -34,6 +37,7 @@ class MiffanAvatarTest {
     fun legacyDummyResolvesToClassicWithoutChangingStoredValue() {
         assertTrue(Avatar.Dummy.isMiffanAvatar())
         assertEquals(MiffanPalette.CLASSIC, Avatar.Dummy.miffanAppearanceOrDefault().palette)
+        assertEquals(MiffanColorSource.PALETTE, Avatar.Dummy.miffanAppearanceOrDefault().colorSource)
         assertEquals(MiffanMotionProfile.CURIOUS, Avatar.Dummy.miffanMotionProfileOrDefault())
     }
 
@@ -62,6 +66,18 @@ class MiffanAvatarTest {
     }
 
     @Test
+    fun miffanAppearanceWithoutColorSourceUsesPalette() {
+        val decoded = JsonInstant.decodeFromString<Avatar>(
+            """{"type":"miffan","appearance":{"palette":"moonlight","kind":"stargazer"}}""",
+        )
+
+        assertEquals(
+            MiffanColorSource.PALETTE,
+            (decoded as Avatar.Miffan).appearance.colorSource,
+        )
+    }
+
+    @Test
     fun newAssistantDefaultsToExplicitMiffan() {
         assertEquals(Avatar.Miffan(), Assistant().avatar)
     }
@@ -72,6 +88,7 @@ class MiffanAvatarTest {
             appearance = MiffanAppearance(
                 palette = MiffanPalette.MATCHA,
                 kind = MiffanKind.DUMPLING,
+                colorSource = MiffanColorSource.APP_THEME,
             ),
             motionProfile = MiffanMotionProfile.CALM,
         )
@@ -81,6 +98,7 @@ class MiffanAvatarTest {
                 appearance = MiffanAppearance(
                     palette = MiffanPalette.SAKURA,
                     kind = MiffanKind.STARGAZER,
+                    colorSource = MiffanColorSource.PALETTE,
                 ),
                 motionProfile = MiffanMotionProfile.CALM,
             ),
@@ -88,6 +106,7 @@ class MiffanAvatarTest {
                 MiffanAppearance(
                     palette = MiffanPalette.SAKURA,
                     kind = MiffanKind.STARGAZER,
+                    colorSource = MiffanColorSource.PALETTE,
                 ),
             ),
         )
@@ -96,10 +115,25 @@ class MiffanAvatarTest {
                 appearance = MiffanAppearance(
                     palette = MiffanPalette.MATCHA,
                     kind = MiffanKind.DUMPLING,
+                    colorSource = MiffanColorSource.APP_THEME,
                 ),
                 motionProfile = MiffanMotionProfile.LIVELY,
             ),
             original.withMiffanMotionProfile(MiffanMotionProfile.LIVELY),
         )
+    }
+
+    @Test
+    fun themeSyncToggleKeepsTheManualPaletteAndCharacterKind() {
+        val manual = MiffanAppearance(
+            palette = MiffanPalette.INK_JADE,
+            kind = MiffanKind.SPROUT,
+        )
+
+        val restored = manual
+            .copy(colorSource = MiffanColorSource.APP_THEME)
+            .copy(colorSource = MiffanColorSource.PALETTE)
+
+        assertEquals(manual, restored)
     }
 }
