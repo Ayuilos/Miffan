@@ -108,6 +108,7 @@ import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesPage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesThemePage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesNotificationPage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesGeneralPage
+import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesNetworkPage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesUIPage
 import me.ayuilos.miffan.ui.pages.setting.SettingThemePage
 import me.ayuilos.miffan.ui.pages.setting.SettingDonatePage
@@ -424,6 +425,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingPreferencesUIPage()
                             }
 
+                            entry<Screen.SettingPreferencesNetwork> {
+                                SettingPreferencesNetworkPage()
+                            }
+
                             entry<Screen.SettingProvider> {
                                 SettingProviderPage()
                             }
@@ -652,6 +657,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingPreferencesUI : Screen
+
+    @Serializable
+    data object SettingPreferencesNetwork : Screen
 
     @Serializable
     data object SettingProvider : Screen
