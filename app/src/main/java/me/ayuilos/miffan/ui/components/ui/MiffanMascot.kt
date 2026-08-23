@@ -1043,7 +1043,7 @@ private fun DrawScope.drawMascotContent(
                     1.2f * signatureStrength
                 } else {
                     val wave = sin(radians + index * Math.PI * 2.0 / 3.0).toFloat()
-                    -wave.coerceAtLeast(0f) * 12f * signatureStrength
+                    -wave.coerceAtLeast(0f) * 9f * signatureStrength
                 }
                 withTransform({ translate(0f, ripple) }) {
                     drawCircle(

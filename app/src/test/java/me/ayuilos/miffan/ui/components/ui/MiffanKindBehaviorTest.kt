@@ -4,6 +4,7 @@ import me.ayuilos.miffan.data.model.MiffanKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 
 class MiffanKindBehaviorTest {
     @Test
@@ -25,6 +26,21 @@ class MiffanKindBehaviorTest {
             assertTrue(behavior.submitStrength > behavior.idleStrength)
             assertTrue(behavior.errorStrength < behavior.happyStrength)
         }
+    }
+
+    @Test
+    fun dumplingSignatureUsesAGentleCycle() {
+        val behavior = MiffanKind.DUMPLING.miffanKindBehavior()
+
+        assertTrue(behavior.cycleMillis >= 2_000)
+        val pose = behavior.poseFor(
+            phaseDegrees = 90f,
+            strength = 1f,
+            state = MiffanMascotState.Thinking,
+            inputState = MiffanMascotInputState.Inactive,
+        )
+        assertTrue(abs(pose.offsetX) <= 3f)
+        assertTrue(abs(pose.rotationDegrees) <= 2f)
     }
 
     @Test

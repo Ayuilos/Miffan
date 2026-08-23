@@ -68,7 +68,7 @@ fun MiffanKind.miffanKindBehavior(): MiffanKindBehavior = when (this) {
     )
     MiffanKind.DUMPLING -> MiffanKindBehavior(
         signature = MiffanSignatureMotion.DumplingRipple,
-        cycleMillis = 1_320,
+        cycleMillis = 2_400,
         idleStrength = 0.32f,
         thinkingStrength = 1f,
         focusedStrength = 0.56f,
@@ -148,12 +148,12 @@ internal fun MiffanKindBehavior.poseFor(
             )
         }
         MiffanSignatureMotion.DumplingRipple -> {
-            val step = sin(radians * 2.0).toFloat()
+            val step = sin(radians).toFloat()
             MiffanSignaturePose(
-                offsetX = step * 5f * strength,
-                offsetY = -abs(wave) * 2.5f * strength,
-                rotationDegrees = step * 3f * strength,
-                scaleY = 1f + abs(sin(radians * 3.0).toFloat()) * 0.022f * strength,
+                offsetX = step * 3f * strength,
+                offsetY = -abs(wave) * 1.8f * strength,
+                rotationDegrees = step * 1.8f * strength,
+                scaleY = 1f + abs(sin(radians * 3.0).toFloat()) * 0.015f * strength,
             )
         }
         MiffanSignatureMotion.StarTwinkle -> {
