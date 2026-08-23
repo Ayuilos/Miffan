@@ -37,6 +37,14 @@ class ModelRegistryTest {
             listOf(Modality.TEXT),
             ModelRegistry.MODEL_OUTPUT_MODALITIES.getData("gemini-2.5-flash")
         )
+        assertEquals(
+            listOf(Modality.TEXT, Modality.IMAGE, Modality.AUDIO, Modality.VIDEO),
+            ModelRegistry.MODEL_INPUT_MODALITIES.getData("gemini-2.5-flash")
+        )
+        assertEquals(
+            listOf(Modality.TEXT, Modality.IMAGE, Modality.VIDEO),
+            ModelRegistry.MODEL_INPUT_MODALITIES.getData("gemini-3.1-flash-image")
+        )
     }
 
     @Test

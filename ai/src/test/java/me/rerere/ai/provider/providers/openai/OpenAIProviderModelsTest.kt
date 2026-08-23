@@ -1,8 +1,11 @@
 package me.rerere.ai.provider.providers.openai
 
 import me.rerere.ai.provider.OPENAI_CODEX_BASE_URL
+import me.rerere.ai.provider.Modality
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.registry.ModelRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -64,5 +67,97 @@ class OpenAIProviderModelsTest {
         assertEquals(1, models.size)
         assertEquals("gpt-5.6-sol", models.single().modelId)
         assertEquals("GPT-5.6 Sol", models.single().displayName)
+    }
+
+    @Test
+    fun `OpenRouter model response preserves discovered capabilities`() {
+        val model = parseOpenAIModels(
+            """
+            {
+              "data": [
+                {
+                  "id": "vendor/new-multimodal-model",
+                  "name": "Vendor: New Multimodal Model",
+                  "architecture": {
+                    "input_modalities": ["text", "image", "audio", "video", "file"],
+                    "output_modalities": ["text"]
+                  },
+                  "supported_parameters": ["temperature", "tools", "reasoning"]
+                }
+              ]
+            }
+            """.trimIndent()
+        ).single().let(ModelRegistry::resolveCapabilities)
+
+        assertEquals("Vendor: New Multimodal Model", model.displayName)
+        assertEquals(
+            listOf(Modality.TEXT, Modality.IMAGE, Modality.AUDIO, Modality.VIDEO, Modality.FILE),
+            model.inputModalities,
+        )
+        assertEquals(listOf(Modality.TEXT), model.outputModalities)
+        assertEquals(listOf(ModelAbility.TOOL, ModelAbility.REASONING), model.abilities)
+    }
+
+    @Test
+    fun `Provider capabilities take priority over registry inference`() {
+        val model = parseOpenAIModels(
+            """
+            {
+              "data": [
+                {
+                  "id": "gpt-4o",
+                  "architecture": {
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"]
+                  },
+                  "supported_parameters": []
+                }
+              ]
+            }
+            """.trimIndent()
+        ).single().let(ModelRegistry::resolveCapabilities)
+
+        assertEquals(listOf(Modality.TEXT), model.inputModalities)
+        assertEquals(listOf(Modality.TEXT), model.outputModalities)
+        assertEquals(emptyList<ModelAbility>(), model.abilities)
+    }
+
+    @Test
+    fun `Standard model response falls back to registry capabilities`() {
+        val model = parseOpenAIModels(
+            """
+            {
+              "data": [
+                {"id": "gpt-4o", "object": "model", "owned_by": "openai"}
+              ]
+            }
+            """.trimIndent()
+        ).single().let(ModelRegistry::resolveCapabilities)
+
+        assertEquals(listOf(Modality.TEXT, Modality.IMAGE), model.inputModalities)
+        assertEquals(listOf(ModelAbility.TOOL), model.abilities)
+    }
+
+    @Test
+    fun `Missing and unknown capability fields fall back independently`() {
+        val model = parseOpenAIModels(
+            """
+            {
+              "data": [
+                {
+                  "id": "gpt-4o",
+                  "architecture": {
+                    "input_modalities": ["text"],
+                    "output_modalities": ["future-modality"]
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+        ).single().let(ModelRegistry::resolveCapabilities)
+
+        assertEquals(listOf(Modality.TEXT), model.inputModalities)
+        assertEquals(listOf(Modality.TEXT), model.outputModalities)
+        assertEquals(listOf(ModelAbility.TOOL), model.abilities)
     }
 }

@@ -23,6 +23,11 @@ data class EncodedImage(
     val mimeType: String
 )
 
+data class EncodedMedia(
+    val data: String,
+    val mimeType: String,
+)
+
 internal enum class ExifTransformType {
     NONE,
     FLIP_HORIZONTAL,
@@ -80,7 +85,7 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
     }
 }
 
-fun UIMessagePart.Video.encodeBase64(withPrefix: Boolean = true): Result<String> = runCatching {
+fun UIMessagePart.Video.encodeBase64Media(withPrefix: Boolean = true): Result<EncodedMedia> = runCatching {
     when {
         this.url.startsWith("file://") -> {
             val filePath =
@@ -90,12 +95,29 @@ fun UIMessagePart.Video.encodeBase64(withPrefix: Boolean = true): Result<String>
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
             val encoded = file.encodeToBase64Streaming()
-            if (withPrefix) "data:video/mp4;base64,$encoded" else encoded
+            val mimeType = file.videoMimeType()
+            EncodedMedia(
+                data = if (withPrefix) "data:$mimeType;base64,$encoded" else encoded,
+                mimeType = mimeType,
+            )
         }
+
+        this.url.startsWith("data:") -> EncodedMedia(
+            data = if (withPrefix) url else url.substringAfter("base64,"),
+            mimeType = url.substringAfter("data:").substringBefore(";"),
+        )
+
+        this.url.startsWith("http") -> EncodedMedia(
+            data = url,
+            mimeType = url.substringBefore('?').substringAfterLast('.').videoMimeType(),
+        )
 
         else -> throw IllegalArgumentException("Unsupported URL format: $url")
     }
 }
+
+fun UIMessagePart.Video.encodeBase64(withPrefix: Boolean = true): Result<String> =
+    encodeBase64Media(withPrefix).map { it.data }
 
 fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String> = runCatching {
     when {
@@ -203,6 +225,15 @@ private fun File.encodeToBase64Streaming(): String {
         }
     }
     return byteArrayOutputStream.toString(Charsets.ISO_8859_1.name())
+}
+
+private fun File.videoMimeType(): String = extension.videoMimeType()
+
+private fun String.videoMimeType(): String = when (lowercase()) {
+    "mpeg", "mpg" -> "video/mpeg"
+    "mov" -> "video/mov"
+    "webm" -> "video/webm"
+    else -> "video/mp4"
 }
 
 internal fun calculateImageInSampleSize(

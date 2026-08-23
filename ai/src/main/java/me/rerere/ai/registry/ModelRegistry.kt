@@ -1,6 +1,7 @@
 package me.rerere.ai.registry
 
 import me.rerere.ai.provider.Modality
+import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 
 fun interface ModelData<T> {
@@ -8,6 +9,25 @@ fun interface ModelData<T> {
 }
 
 object ModelRegistry {
+    /**
+     * 合并 Provider 模型列表返回的能力与本地注册表推断结果。
+     *
+     * Provider 对某个字段有明确描述时以 Provider 为准；只有字段缺失时才按 model id 推断。
+     * 返回值会移除临时发现元数据，便于作为用户可编辑的模型配置持久化。
+     */
+    fun resolveCapabilities(model: Model): Model {
+        val discovered = model.discoveredCapabilities
+        return model.copy(
+            inputModalities = discovered?.inputModalities
+                ?: MODEL_INPUT_MODALITIES.getData(model.modelId),
+            outputModalities = discovered?.outputModalities
+                ?: MODEL_OUTPUT_MODALITIES.getData(model.modelId),
+            abilities = discovered?.abilities
+                ?: MODEL_ABILITIES.getData(model.modelId),
+            discoveredCapabilities = null,
+        )
+    }
+
     private val GPT4O = defineModel {
         tokens("gpt", "4", "o")
         visionInput()
@@ -89,20 +109,20 @@ object ModelRegistry {
 
     private val GEMINI_20_FLASH = defineModel {
         tokens("gemini", "2", "0", "flash")
-        visionInput()
+        multimediaInput()
         toolAbility()
     }
 
     val GEMINI_2_5_FLASH = defineModel {
         tokens("gemini", "2", "5", "flash")
         notTokens("image")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
     val GEMINI_2_5_PRO = defineModel {
         tokens("gemini", "2", "5", "pro")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
@@ -126,50 +146,50 @@ object ModelRegistry {
 
     val GEMINI_3_PRO = defineModel {
         tokens("gemini", "3", "pro")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
     val GEMINI_3_FLASH = defineModel {
         tokens("gemini", "3", "flash")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
     val GEMINI_3_1_PRO_PREVIEW = defineModel {
         tokens("gemini", "3", "1", "pro", "preview")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
     val GEMINI_3_1_PRO_PREVIEW_CUSTOMTOOLS = defineModel {
         tokens("gemini", "3", "1", "pro", "preview", "customtools")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
     val GEMINI_3_1_FLASH_IMAGE = defineModel {
         tokens("gemini", "3", "1", "flash", "image")
-        visionInput()
+        input(Modality.TEXT, Modality.IMAGE, Modality.VIDEO)
         imageOutput()
         reasoningAbility()
     }
 
     val GEMINI_3_5 = defineModel {
         tokens("gemini", "3", "5")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
     val GEMINI_FLASH_LATEST = defineModel {
         exact("gemini-flash-latest")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
     val GEMINI_PRO_LATEST = defineModel {
         exact("gemini-pro-latest")
-        visionInput()
+        multimediaInput()
         toolReasoningAbility()
     }
 
@@ -693,12 +713,16 @@ object ModelRegistry {
         return if (modalities.isEmpty()) {
             listOf(Modality.TEXT)
         } else {
-            listOf(Modality.TEXT, Modality.IMAGE).filter { it in modalities }
+            Modality.entries.filter { it in modalities }
         }
     }
 
     private fun ModelDefinitionBuilder.visionInput() {
         input(Modality.TEXT, Modality.IMAGE)
+    }
+
+    private fun ModelDefinitionBuilder.multimediaInput() {
+        input(Modality.TEXT, Modality.IMAGE, Modality.AUDIO, Modality.VIDEO)
     }
 
     private fun ModelDefinitionBuilder.imageOutput() {

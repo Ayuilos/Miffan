@@ -2,7 +2,20 @@ package me.rerere.ai.provider
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
+
+/**
+ * Provider 模型列表接口返回的能力元数据。
+ *
+ * 各字段可独立缺省：Provider 明确返回的字段优先使用，缺省字段再交给本地 ModelRegistry 推断。
+ * 该信息只参与“发现并添加模型”的过程，不持久化到设置中。
+ */
+data class DiscoveredModelCapabilities(
+    val inputModalities: List<Modality>? = null,
+    val outputModalities: List<Modality>? = null,
+    val abilities: List<ModelAbility>? = null,
+)
 
 @Serializable
 data class Model(
@@ -17,6 +30,8 @@ data class Model(
     val abilities: List<ModelAbility> = emptyList(),
     val tools: Set<BuiltInTools> = emptySet(),
     val providerOverwrite: ProviderSetting? = null,
+    @Transient
+    val discoveredCapabilities: DiscoveredModelCapabilities? = null,
 )
 
 @Serializable
@@ -30,6 +45,9 @@ enum class ModelType {
 enum class Modality {
     TEXT,
     IMAGE,
+    AUDIO,
+    VIDEO,
+    FILE,
 }
 
 @Serializable
@@ -55,6 +73,5 @@ sealed class BuiltInTools {
     @SerialName("image_generation")
     data object ImageGeneration : BuiltInTools()
 }
-
 
 

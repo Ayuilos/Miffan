@@ -194,6 +194,33 @@ class ChatCompletionsRequestMessageTest {
     }
 
     @Test
+    fun `user video should use OpenRouter video url content format`() {
+        val result = invokeBuildMessages(
+            listOf(
+                UIMessage(
+                    role = MessageRole.USER,
+                    parts = listOf(
+                        UIMessagePart.Text("Describe this video"),
+                        UIMessagePart.Video("https://example.com/clip.webm"),
+                    ),
+                )
+            )
+        )
+
+        val content = result.single().jsonObject["content"]!!.jsonArray
+        assertEquals("text", content[0].jsonObject["type"]?.jsonPrimitive?.content)
+        assertEquals("video_url", content[1].jsonObject["type"]?.jsonPrimitive?.content)
+        assertEquals(
+            "https://example.com/clip.webm",
+            content[1].jsonObject["video_url"]
+                ?.jsonObject
+                ?.get("url")
+                ?.jsonPrimitive
+                ?.content,
+        )
+    }
+
+    @Test
     fun `reasoning should be included for all assistant messages when history reasoning enabled`() {
         val messages = createMultiRoundReasoningMessages()
 

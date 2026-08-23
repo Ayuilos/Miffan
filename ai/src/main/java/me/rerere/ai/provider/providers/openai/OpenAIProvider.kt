@@ -13,13 +13,17 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import me.rerere.ai.provider.DiscoveredModelCapabilities
 import me.rerere.ai.provider.EmbeddingGenerationParams
 import me.rerere.ai.provider.EmbeddingGenerationResult
 import me.rerere.ai.provider.ImageEditParams
 import me.rerere.ai.provider.ImageGenerationParams
+import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderSetting
@@ -35,6 +39,8 @@ import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.toHeaders
 import me.rerere.common.http.await
 import me.rerere.common.http.getByKey
+import me.rerere.common.http.jsonArrayOrNull
+import me.rerere.common.http.jsonObjectOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -392,11 +398,63 @@ internal fun parseOpenAIModels(body: String): List<Model> {
             ?: modelObj["slug"]?.jsonPrimitive?.contentOrNull
             ?: modelObj["model"]?.jsonPrimitive?.contentOrNull
             ?: return@mapNotNull null
-        val displayName = modelObj["display_name"]?.jsonPrimitive?.contentOrNull ?: id
+        val displayName = modelObj["display_name"]?.jsonPrimitive?.contentOrNull
+            ?: modelObj["name"]?.jsonPrimitive?.contentOrNull
+            ?: id
+        val architecture = modelObj["architecture"]?.jsonObjectOrNull
+        val inputModalities = architecture?.modalities("input_modalities")
+            ?: modelObj.modalities("input_modalities")
+        val outputModalities = architecture?.modalities("output_modalities")
+            ?: modelObj.modalities("output_modalities")
+        val abilities = modelObj.supportedAbilities()
+        val discoveredCapabilities = if (
+            inputModalities != null || outputModalities != null || abilities != null
+        ) {
+            DiscoveredModelCapabilities(
+                inputModalities = inputModalities,
+                outputModalities = outputModalities,
+                abilities = abilities,
+            )
+        } else {
+            null
+        }
 
         Model(
             modelId = id,
             displayName = displayName,
+            discoveredCapabilities = discoveredCapabilities,
         )
+    }
+}
+
+private fun JsonObject.modalities(key: String): List<Modality>? {
+    val values = this[key]?.jsonArrayOrNull ?: return null
+    val parsed = values.mapNotNull { element ->
+        when (element.jsonPrimitive.contentOrNull?.lowercase()) {
+            "text" -> Modality.TEXT
+            "image" -> Modality.IMAGE
+            "audio" -> Modality.AUDIO
+            "video" -> Modality.VIDEO
+            "file", "document" -> Modality.FILE
+            else -> null
+        }
+    }.distinct()
+    // A future provider value that this client does not understand should not
+    // erase a useful registry fallback. An explicitly empty array remains authoritative.
+    return parsed.takeIf { it.isNotEmpty() || values.isEmpty() }
+}
+
+private fun JsonObject.supportedAbilities(): List<ModelAbility>? {
+    val parameters = this["supported_parameters"]?.jsonArrayOrNull
+        ?.mapNotNull { it.jsonPrimitive.contentOrNull?.lowercase() }
+        ?.toSet()
+        ?: return null
+    return buildList {
+        if ("tools" in parameters || "tool_choice" in parameters) {
+            add(ModelAbility.TOOL)
+        }
+        if ("reasoning" in parameters || "include_reasoning" in parameters) {
+            add(ModelAbility.REASONING)
+        }
     }
 }

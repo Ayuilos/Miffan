@@ -395,6 +395,7 @@ private fun ModelList(
             println("loading models...")
             providerManager.getProviderByType(providerSetting)
                 .listModels(providerSetting)
+                .map(ModelRegistry::resolveCapabilities)
                 .sortedBy { it.modelId }
                 .toList()
         }.onFailure {
@@ -703,16 +704,7 @@ private fun AddModelButton(
             modelListError = modelListError,
             selectedModels = selectedModels,
             onModelSelected = { model ->
-                val inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(model.modelId)
-                val outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(model.modelId)
-                val abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId)
-                onAddModel(
-                    model.copy(
-                        inputModalities = inputModalities,
-                        outputModalities = outputModalities,
-                        abilities = abilities
-                    )
-                )
+                onAddModel(model)
             },
             onModelDeselected = { model ->
                 onRemoveModel(model)
@@ -722,12 +714,6 @@ private fun AddModelButton(
                     parentProvider.copyProvider(
                         models = parentProvider.models + it.filter { model ->
                             parentProvider.models.none { existing -> existing.modelId == model.modelId }
-                        }.map { model ->
-                            model.copy(
-                                inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(model.modelId),
-                                outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(model.modelId),
-                                abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId)
-                            )
                         }
                     )
                 )
@@ -960,18 +946,11 @@ private fun ModelPicker(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
-                                        val modelMeta = remember(it) {
-                                            it.copy(
-                                                inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(it.modelId),
-                                                outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(it.modelId),
-                                                abilities = ModelRegistry.MODEL_ABILITIES.getData(it.modelId),
-                                            )
-                                        }
                                         ModelModalityTag(
-                                            model = modelMeta,
+                                            model = it,
                                         )
                                         ModelAbilityTag(
-                                            model = modelMeta,
+                                            model = it,
                                         )
                                     }
                                 }
@@ -1095,6 +1074,9 @@ private fun ModelModalitySelector(
                             when (modality) {
                                 Modality.TEXT -> R.string.setting_provider_page_text
                                 Modality.IMAGE -> R.string.setting_provider_page_image
+                                Modality.AUDIO -> R.string.audio
+                                Modality.VIDEO -> R.string.video
+                                Modality.FILE -> R.string.upload_file
                             }
                         )
                     )
@@ -1126,6 +1108,9 @@ private fun ModelModalitySelector(
                             when (modality) {
                                 Modality.TEXT -> R.string.setting_provider_page_text
                                 Modality.IMAGE -> R.string.setting_provider_page_image
+                                Modality.AUDIO -> R.string.audio
+                                Modality.VIDEO -> R.string.video
+                                Modality.FILE -> R.string.upload_file
                             }
                         )
                     )
