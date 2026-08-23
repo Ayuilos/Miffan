@@ -45,14 +45,17 @@ import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
-import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.isMiffanAvatar
 import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
+import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
+import me.ayuilos.miffan.data.model.withMiffanAppearance
+import me.ayuilos.miffan.data.model.withMiffanMotionProfile
 import me.ayuilos.miffan.ui.components.ai.ModelSelector
 import me.ayuilos.miffan.ui.components.ai.ReasoningButton
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.FormItem
 import me.ayuilos.miffan.ui.components.ui.MiffanAppearanceEditor
+import me.ayuilos.miffan.ui.components.ui.MiffanMotionProfileEditor
 import me.ayuilos.miffan.ui.components.ui.Select
 import me.ayuilos.miffan.ui.components.ui.TagsInput
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
@@ -147,12 +150,26 @@ internal fun AssistantBasicContent(
                     .heroAnimation("assistant_${assistant.id}")
             )
             if (assistant.avatar.isMiffanAvatar()) {
+                val appearance = assistant.avatar.miffanAppearanceOrDefault()
+                val motionProfile = assistant.avatar.miffanMotionProfileOrDefault()
                 MiffanAppearanceEditor(
-                    appearance = assistant.avatar.miffanAppearanceOrDefault(),
-                    onAppearanceChange = { appearance ->
+                    appearance = appearance,
+                    onAppearanceChange = { updatedAppearance ->
                         onUpdate(
                             assistant.copy(
-                                avatar = Avatar.Miffan(appearance),
+                                avatar = assistant.avatar.withMiffanAppearance(updatedAppearance),
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                MiffanMotionProfileEditor(
+                    appearance = appearance,
+                    motionProfile = motionProfile,
+                    onMotionProfileChange = { updatedProfile ->
+                        onUpdate(
+                            assistant.copy(
+                                avatar = assistant.avatar.withMiffanMotionProfile(updatedProfile),
                             )
                         )
                     },

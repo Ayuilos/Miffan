@@ -59,6 +59,7 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.isMiffanAvatar
 import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
+import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.hooks.rememberAvatarShape
 import kotlinx.coroutines.delay
@@ -203,6 +204,7 @@ fun UIAvatar(
                         MiffanMascot(
                             state = MiffanMascotState.Idle,
                             appearance = value.appearance,
+                            motionProfile = value.motionProfile,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -387,6 +389,7 @@ fun AssistantAvatar(
     var showingCompletion by remember { mutableStateOf(false) }
     val dayPhase = rememberMiffanDayPhase()
     val appearance = value.miffanAppearanceOrDefault()
+    val motionProfile = value.miffanMotionProfileOrDefault()
 
     LaunchedEffect(loading) {
         val justCompleted = wasLoading && !loading
@@ -395,7 +398,7 @@ fun AssistantAvatar(
             showingCompletion = false
         } else if (justCompleted) {
             showingCompletion = true
-            delay(900)
+            delay(motionProfile.miffanMotionTuning().duration(900).toLong())
             showingCompletion = false
         }
     }
@@ -416,6 +419,7 @@ fun AssistantAvatar(
             MiffanMascot(
                 state = mascotState,
                 appearance = appearance,
+                motionProfile = motionProfile,
                 dayPhase = dayPhase,
                 modifier = Modifier.fillMaxSize(),
             )

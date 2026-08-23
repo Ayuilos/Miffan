@@ -31,6 +31,7 @@ import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -55,6 +56,7 @@ import kotlinx.coroutines.launch
 import me.rerere.common.android.Logging
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanMotionProfile
 import me.ayuilos.miffan.data.model.MiffanPalette
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
 import me.ayuilos.miffan.ui.components.ui.MiffanDayPhase
@@ -180,6 +182,8 @@ private enum class MiffanLabMode(
 private fun MiffanLabPage() {
     var mode by remember { mutableStateOf(MiffanLabMode.Idle) }
     var phase by remember { mutableStateOf(MiffanDayPhase.Noon) }
+    var motionProfile by remember { mutableStateOf(MiffanMotionProfile.CURIOUS) }
+    var reducedMotion by remember { mutableStateOf(false) }
     var submitId by remember { mutableIntStateOf(0) }
     val sizes = listOf(28.dp, 40.dp, 80.dp, 128.dp)
 
@@ -198,6 +202,40 @@ private fun MiffanLabPage() {
                             onClick = { mode = option },
                             label = { Text(option.label) },
                         )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = "Reduced motion preview",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = reducedMotion,
+                        onCheckedChange = { reducedMotion = it },
+                    )
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Motion profile", style = MaterialTheme.typography.titleSmall)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    MiffanMotionProfile.entries.forEachIndexed { index, profile ->
+                        SegmentedButton(
+                            selected = motionProfile == profile,
+                            onClick = { motionProfile = profile },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index,
+                                MiffanMotionProfile.entries.size,
+                            ),
+                        ) {
+                            Text(profile.displayName)
+                        }
                     }
                 }
             }
@@ -244,6 +282,8 @@ private fun MiffanLabPage() {
                                 MiffanMascot(
                                     state = mode.mascotState,
                                     appearance = MiffanAppearance(palette),
+                                    motionProfile = motionProfile,
+                                    reducedMotion = reducedMotion,
                                     inputState = mode.inputState,
                                     submitId = submitId,
                                     dayPhase = phase,

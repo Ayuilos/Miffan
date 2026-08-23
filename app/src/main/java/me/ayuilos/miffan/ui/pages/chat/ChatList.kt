@@ -99,8 +99,10 @@ import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanMotionProfile
 import me.ayuilos.miffan.data.model.isMiffanAvatar
 import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
+import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
 import me.ayuilos.miffan.service.ChatError
 import me.ayuilos.miffan.ui.components.message.ChatMessage
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
@@ -518,6 +520,8 @@ private fun ChatListNormal(
                         state = if (errors.isEmpty()) MiffanMascotState.Idle else MiffanMascotState.Error,
                         appearance = assistant?.avatar?.miffanAppearanceOrDefault()
                             ?: MiffanAppearance(),
+                        motionProfile = assistant?.avatar?.miffanMotionProfileOrDefault()
+                            ?: MiffanMotionProfile.CURIOUS,
                         interactive = true,
                         attentionTarget = mascotAttentionTarget,
                         attentionId = mascotAttentionId,

@@ -21,6 +21,7 @@ sealed class Avatar {
     @SerialName("miffan")
     data class Miffan(
         val appearance: MiffanAppearance = MiffanAppearance(),
+        val motionProfile: MiffanMotionProfile = MiffanMotionProfile.CURIOUS,
     ) : Avatar()
 }
 
@@ -50,7 +51,34 @@ enum class MiffanPalette {
     INK_JADE,
 }
 
+@Serializable
+enum class MiffanMotionProfile {
+    @SerialName("lively")
+    LIVELY,
+
+    @SerialName("calm")
+    CALM,
+
+    @SerialName("curious")
+    CURIOUS,
+}
+
 fun Avatar.isMiffanAvatar(): Boolean = this is Avatar.Miffan || this is Avatar.Dummy
 
 fun Avatar.miffanAppearanceOrDefault(): MiffanAppearance =
     (this as? Avatar.Miffan)?.appearance ?: MiffanAppearance()
+
+fun Avatar.miffanMotionProfileOrDefault(): MiffanMotionProfile =
+    (this as? Avatar.Miffan)?.motionProfile ?: MiffanMotionProfile.CURIOUS
+
+fun Avatar.withMiffanAppearance(appearance: MiffanAppearance): Avatar.Miffan =
+    Avatar.Miffan(
+        appearance = appearance,
+        motionProfile = miffanMotionProfileOrDefault(),
+    )
+
+fun Avatar.withMiffanMotionProfile(motionProfile: MiffanMotionProfile): Avatar.Miffan =
+    Avatar.Miffan(
+        appearance = miffanAppearanceOrDefault(),
+        motionProfile = motionProfile,
+    )

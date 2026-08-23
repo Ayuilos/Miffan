@@ -10,15 +10,18 @@ class MiffanAvatarTest {
     @Test
     fun everyPresetRoundTrips() {
         MiffanPalette.entries.forEach { palette ->
-            val original: Avatar = Avatar.Miffan(
-                appearance = MiffanAppearance(palette = palette),
-            )
+            MiffanMotionProfile.entries.forEach { motionProfile ->
+                val original: Avatar = Avatar.Miffan(
+                    appearance = MiffanAppearance(palette = palette),
+                    motionProfile = motionProfile,
+                )
 
-            val encoded = JsonInstant.encodeToString(original)
-            val decoded = JsonInstant.decodeFromString<Avatar>(encoded)
+                val encoded = JsonInstant.encodeToString(original)
+                val decoded = JsonInstant.decodeFromString<Avatar>(encoded)
 
-            assertEquals(original, decoded)
-            assertTrue(encoded.contains("\"type\":\"miffan\""))
+                assertEquals(original, decoded)
+                assertTrue(encoded.contains("\"type\":\"miffan\""))
+            }
         }
     }
 
@@ -26,6 +29,7 @@ class MiffanAvatarTest {
     fun legacyDummyResolvesToClassicWithoutChangingStoredValue() {
         assertTrue(Avatar.Dummy.isMiffanAvatar())
         assertEquals(MiffanPalette.CLASSIC, Avatar.Dummy.miffanAppearanceOrDefault().palette)
+        assertEquals(MiffanMotionProfile.CURIOUS, Avatar.Dummy.miffanMotionProfileOrDefault())
     }
 
     @Test
@@ -38,5 +42,28 @@ class MiffanAvatarTest {
     @Test
     fun newAssistantDefaultsToExplicitMiffan() {
         assertEquals(Avatar.Miffan(), Assistant().avatar)
+    }
+
+    @Test
+    fun appearanceAndMotionUpdatesPreserveTheOtherCharacterAxis() {
+        val original: Avatar = Avatar.Miffan(
+            appearance = MiffanAppearance(MiffanPalette.MATCHA),
+            motionProfile = MiffanMotionProfile.CALM,
+        )
+
+        assertEquals(
+            Avatar.Miffan(
+                appearance = MiffanAppearance(MiffanPalette.SAKURA),
+                motionProfile = MiffanMotionProfile.CALM,
+            ),
+            original.withMiffanAppearance(MiffanAppearance(MiffanPalette.SAKURA)),
+        )
+        assertEquals(
+            Avatar.Miffan(
+                appearance = MiffanAppearance(MiffanPalette.MATCHA),
+                motionProfile = MiffanMotionProfile.LIVELY,
+            ),
+            original.withMiffanMotionProfile(MiffanMotionProfile.LIVELY),
+        )
     }
 }
