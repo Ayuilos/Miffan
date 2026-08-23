@@ -2,7 +2,7 @@
 
 ## Model boundary
 
-`Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance`; V1 stores a preset palette identifier and leaves room for later character genes.
+`Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance` and a separate `MiffanMotionProfile`. Appearance V1 stores a preset palette identifier; Motion V1 stores Lively, Calm, or Curious.
 
 `Avatar.Dummy` remains valid for backward compatibility and for the procedural user avatar. In assistant-only UI it is interpreted as legacy Miffan Classic. New assistants default to `Avatar.Miffan()`.
 
@@ -13,6 +13,7 @@ The model layer contains no Compose colors. UI code resolves palette identifiers
 `MiffanMascot` is the renderer. Its public inputs are semantic:
 
 - appearance;
+- motion profile;
 - mascot state;
 - time-of-day phase;
 - input scene state;
@@ -32,9 +33,11 @@ Use monotonically increasing event identifiers for one-shot reactions such as at
 
 - Decoding legacy `dummy` avatars must continue to succeed.
 - A legacy assistant `Dummy` renders exactly like Miffan Classic.
+- Legacy `Dummy` and Miffan data without a motion field use the Curious profile.
 - Selecting a Miffan palette writes an explicit `Avatar.Miffan` value.
 - Resetting an assistant avatar writes `Avatar.Miffan()`; resetting the user avatar continues to write `Avatar.Dummy`.
 - Copying an assistant preserves a Miffan appearance. Image avatars may still reset according to the existing file-ownership policy.
+- Changing palette preserves motion profile, and changing motion profile preserves appearance.
 
 ## Evolution path
 
@@ -43,12 +46,10 @@ Future fields belong in `MiffanAppearance`, with defaults for backward-compatibl
 - material or surface pattern;
 - bowl contents;
 - accessory set;
-- motion temperament;
 - optional custom color tokens.
 
-Motion selection should eventually be separated into a `MiffanMotionProfile`, and page inputs should converge on a single `MiffanSceneState`. Appearance must not encode runtime animation state.
+`MiffanMotionProfile` resolves to one immutable `MiffanMotionTuning` table. The renderer applies those parameters to shared breathing, gaze, attention, input, submit, and semantic-state animations. Page inputs should converge on a single `MiffanSceneState`; appearance and motion profile must not encode runtime animation state.
 
 ## Validation
 
-The Debug page contains Miffan Lab, a deterministic visual matrix for palette, semantic state, size, and time-of-day inspection. Data-model and avatar-policy behavior require JVM tests. Every milestone runs Kotlin compilation, focused tests, and a Debug APK build before delivery.
-
+The Debug page contains Miffan Lab, a deterministic visual matrix for palette, motion profile, semantic state, size, and time-of-day inspection. Data-model, tuning-order, and avatar-policy behavior require JVM tests. Every milestone runs Kotlin compilation, focused tests, and a Debug APK build before delivery.

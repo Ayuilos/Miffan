@@ -5,6 +5,8 @@
 - A newly created assistant uses Miffan Classic without requiring avatar setup.
 - A legacy assistant with `Avatar.Dummy` still renders Miffan Classic.
 - Each of the six palettes persists after leaving and reopening assistant settings.
+- Each of the three motion profiles persists after leaving and reopening assistant settings.
+- Changing palette does not reset motion profile, and changing motion profile does not reset palette.
 - Two assistants can use different palettes and remain visually distinguishable in the picker, drawer, message list, and settings.
 - Custom emoji and image avatars continue to render and edit normally.
 - Resetting an assistant custom avatar returns to Miffan Classic.
@@ -16,6 +18,7 @@
 - Thinking, happy, error, idle, focused, and typing states work for every palette.
 - Decorative input cues use palette-derived colors rather than Classic-only hard-coded colors.
 - No palette changes geometry or interaction hit targets.
+- Lively, Calm, and Curious share the same semantic states without duplicated drawing implementations.
 
 ## Interaction
 
@@ -25,10 +28,14 @@
 - Keyboard movement does not cover half of the mascot.
 - Sending triggers the one-shot submit reaction and the mascot remains present while the assistant responds.
 - Loading completion transitions briefly through happy and then returns to the appropriate idle phase.
+- Lively is visibly quicker but keeps tap compression light.
+- Calm has the smallest movement amplitude and slowest rhythm.
+- Curious moves its eyes before its delayed body lean.
 
 ## Regression and delivery
 
 - Avatar serialization round-trips for all Miffan presets.
+- Avatar serialization round-trips for every palette and motion-profile combination.
 - Legacy `dummy`, emoji, and image avatar decoding tests pass.
 - Avatar-policy tests cover Miffan, legacy Dummy, and custom-avatar preference behavior.
 - `./gradlew :app:compileDebugKotlin` passes.

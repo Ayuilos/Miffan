@@ -29,6 +29,16 @@ The first release provides six curated palettes:
 
 Users select a palette per assistant. New assistants use Miffan Classic. Existing assistants whose avatar is the legacy `Dummy` value are displayed as Miffan Classic and become an explicit Miffan when the user changes the palette. Custom image and emoji avatars remain supported.
 
+## Motion V1
+
+Each explicit Miffan can use one of three motion profiles:
+
+- Lively: faster rhythm, slightly broader gaze, and a light elastic response;
+- Calm: slower breathing, smaller movement, and restrained reactions;
+- Curious: eyes lead the response, followed by a small delayed lean.
+
+Curious is the compatibility default for existing Miffan and legacy `Dummy` assistants. Profiles tune one shared semantic animation system; they do not own independent animation clips.
+
 ## Semantic motion states
 
 Components ask Miffan to express meaning rather than selecting animation clips. The shared V1 vocabulary is:
@@ -56,7 +66,5 @@ Time-of-day idle gestures enrich the character but must never override an active
 
 - interchangeable contents, accessories, and materials;
 - downloadable character packs;
-- assistant-specific motion temperaments;
 - an arbitrary color picker;
 - cloud synchronization beyond the existing assistant settings persistence.
-
