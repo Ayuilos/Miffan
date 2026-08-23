@@ -27,6 +27,7 @@ import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.ReasoningCapabilities
 import me.rerere.ai.provider.TextGenerationResult
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.ImageGenerationItem
@@ -406,6 +407,7 @@ internal fun parseOpenAIModels(body: String): List<Model> {
             ?: modelObj.modalities("input_modalities")
         val outputModalities = architecture?.modalities("output_modalities")
             ?: modelObj.modalities("output_modalities")
+        val reasoningCapabilities = modelObj.reasoningCapabilities()
         val abilities = modelObj.supportedAbilities()
         val discoveredCapabilities = if (
             inputModalities != null || outputModalities != null || abilities != null
@@ -422,6 +424,7 @@ internal fun parseOpenAIModels(body: String): List<Model> {
         Model(
             modelId = id,
             displayName = displayName,
+            reasoningCapabilities = reasoningCapabilities,
             discoveredCapabilities = discoveredCapabilities,
         )
     }
@@ -442,6 +445,19 @@ private fun JsonObject.modalities(key: String): List<Modality>? {
     // A future provider value that this client does not understand should not
     // erase a useful registry fallback. An explicitly empty array remains authoritative.
     return parsed.takeIf { it.isNotEmpty() || values.isEmpty() }
+}
+
+private fun JsonObject.reasoningCapabilities(): ReasoningCapabilities? {
+    val reasoning = this["reasoning"]?.jsonObjectOrNull ?: return null
+    return ReasoningCapabilities(
+        supportedEfforts = reasoning["supported_efforts"]?.jsonArrayOrNull
+            ?.mapNotNull { it.jsonPrimitive.contentOrNull?.lowercase() }
+            ?.distinct(),
+        defaultEffort = reasoning["default_effort"]?.jsonPrimitive?.contentOrNull?.lowercase(),
+        defaultEnabled = reasoning["default_enabled"]?.jsonPrimitive?.booleanOrNull,
+        supportsMaxTokens = reasoning["supports_max_tokens"]?.jsonPrimitive?.booleanOrNull,
+        mandatory = reasoning["mandatory"]?.jsonPrimitive?.booleanOrNull == true,
+    )
 }
 
 private fun JsonObject.supportedAbilities(): List<ModelAbility>? {

@@ -16,6 +16,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.ReasoningCapabilities
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.OpenAIReasoningMetadata
 import me.rerere.ai.ui.ReasoningType
@@ -28,6 +29,7 @@ import me.rerere.ai.ui.toMetadata
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -63,15 +65,44 @@ class ResponseApiRequestMessageTest {
         return api.buildRequestBody(providerSetting, listOf(UIMessage.user("hello")), params, stream)
     }
 
-    private fun createReasoningParams(reasoningLevel: ReasoningLevel = ReasoningLevel.OFF): TextGenerationParams {
+    private fun createReasoningParams(
+        reasoningLevel: ReasoningLevel = ReasoningLevel.OFF,
+        reasoningCapabilities: ReasoningCapabilities? = null,
+    ): TextGenerationParams {
         return TextGenerationParams(
             model = Model(
                 modelId = "test-model",
                 displayName = "test-model",
-                abilities = listOf(ModelAbility.REASONING)
+                abilities = listOf(ModelAbility.REASONING),
+                reasoningCapabilities = reasoningCapabilities,
             ),
             reasoningLevel = reasoningLevel
         )
+    }
+
+    @Test
+    fun `mandatory reasoning model cannot send none effort to responses endpoint`() {
+        val requestBody = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.OpenAI(baseUrl = "https://openrouter.ai/api/v1"),
+            params = createReasoningParams(
+                reasoningLevel = ReasoningLevel.OFF,
+                reasoningCapabilities = ReasoningCapabilities(mandatory = true),
+            ),
+        )
+
+        val reasoning = requestBody["reasoning"]?.jsonObject
+        assertNull(reasoning?.get("effort"))
+    }
+
+    @Test
+    fun `model saved before metadata support does not disable OpenRouter responses reasoning`() {
+        val requestBody = invokeBuildRequestBody(
+            providerSetting = ProviderSetting.OpenAI(baseUrl = "https://openrouter.ai/api/v1"),
+            params = createReasoningParams(reasoningLevel = ReasoningLevel.OFF),
+        )
+
+        val reasoning = requestBody["reasoning"]?.jsonObject
+        assertNull(reasoning?.get("effort"))
     }
 
     @Test

@@ -265,17 +265,18 @@ class ChatCompletionsAPI(
             }
 
             if (params.model.abilities.contains(ModelAbility.REASONING)) {
-                val level = params.reasoningLevel
+                val level = params.model.resolveReasoningLevelForProvider(
+                    host = host,
+                    requested = params.reasoningLevel,
+                )
                 when (host) {
                     "openrouter.ai" -> {
                         // https://openrouter.ai/docs/use-cases/reasoning-tokens
-                        put("reasoning", buildJsonObject {
-                            when (level) {
-                                ReasoningLevel.OFF -> put("effort", "none")
-                                ReasoningLevel.AUTO -> put("enabled", true)
-                                else -> put("effort", level.effort)
-                            }
-                        })
+                        if (level != ReasoningLevel.AUTO) {
+                            put("reasoning", buildJsonObject {
+                                put("effort", level.effort)
+                            })
+                        }
                     }
 
                     "dashscope.aliyuncs.com" -> {

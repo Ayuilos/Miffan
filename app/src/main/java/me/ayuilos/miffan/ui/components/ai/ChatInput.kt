@@ -338,6 +338,7 @@ fun ChatInput(
                                 if (model?.abilities?.contains(ModelAbility.REASONING) == true) {
                                     ReasoningButton(
                                         reasoningLevel = assistant.reasoningLevel,
+                                        availableLevels = model.supportedReasoningLevels(),
                                         onUpdateReasoningLevel = {
                                             onUpdateAssistant(assistant.copy(reasoningLevel = it))
                                         },

@@ -17,13 +17,17 @@ object ModelRegistry {
      */
     fun resolveCapabilities(model: Model): Model {
         val discovered = model.discoveredCapabilities
+        val abilities = (discovered?.abilities
+            ?: MODEL_ABILITIES.getData(model.modelId)).toMutableList()
+        if (model.reasoningCapabilities != null && ModelAbility.REASONING !in abilities) {
+            abilities += ModelAbility.REASONING
+        }
         return model.copy(
             inputModalities = discovered?.inputModalities
                 ?: MODEL_INPUT_MODALITIES.getData(model.modelId),
             outputModalities = discovered?.outputModalities
                 ?: MODEL_OUTPUT_MODALITIES.getData(model.modelId),
-            abilities = discovered?.abilities
-                ?: MODEL_ABILITIES.getData(model.modelId),
+            abilities = abilities,
             discoveredCapabilities = null,
         )
     }

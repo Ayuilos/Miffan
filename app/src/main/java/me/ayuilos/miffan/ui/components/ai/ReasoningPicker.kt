@@ -43,28 +43,31 @@ import me.ayuilos.miffan.ui.components.ui.icons.ReasoningLow
 import me.ayuilos.miffan.ui.components.ui.icons.ReasoningMedium
 import kotlin.math.roundToInt
 
-private val levels = ReasoningLevel.entries
-private val levelCount = levels.size
-
 @Composable
 fun ReasoningButton(
     modifier: Modifier = Modifier,
     onlyIcon: Boolean = false,
     reasoningLevel: ReasoningLevel,
+    availableLevels: List<ReasoningLevel> = ReasoningLevel.entries,
     onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
 ) {
     var showPicker by remember { mutableStateOf(false) }
+    val levels = availableLevels.distinct().ifEmpty { listOf(ReasoningLevel.AUTO) }
+    val effectiveReasoningLevel = reasoningLevel.takeIf { it in levels }
+        ?: ReasoningLevel.AUTO.takeIf { it in levels }
+        ?: levels.first()
 
     if (showPicker) {
         ReasoningPicker(
-            reasoningLevel = reasoningLevel,
+            reasoningLevel = effectiveReasoningLevel,
+            availableLevels = levels,
             onDismissRequest = { showPicker = false },
             onUpdateReasoningLevel = onUpdateReasoningLevel
         )
     }
 
     ToggleSurface(
-        checked = reasoningLevel.isEnabled,
+        checked = effectiveReasoningLevel.isEnabled,
         onClick = { showPicker = true },
         modifier = modifier,
     ) {
@@ -77,7 +80,7 @@ fun ReasoningButton(
                 modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                ReasoningIcon(reasoningLevel)
+                ReasoningIcon(effectiveReasoningLevel)
             }
             if (!onlyIcon) Text(stringResource(R.string.setting_provider_page_reasoning))
         }
@@ -87,10 +90,16 @@ fun ReasoningButton(
 @Composable
 fun ReasoningPicker(
     reasoningLevel: ReasoningLevel,
+    availableLevels: List<ReasoningLevel> = ReasoningLevel.entries,
     onDismissRequest: () -> Unit = {},
     onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
 ) {
-    val currentIndex = levels.indexOf(reasoningLevel).coerceAtLeast(0)
+    val levels = availableLevels.distinct().ifEmpty { listOf(ReasoningLevel.AUTO) }
+    val effectiveReasoningLevel = reasoningLevel.takeIf { it in levels }
+        ?: ReasoningLevel.AUTO.takeIf { it in levels }
+        ?: levels.first()
+    val levelCount = levels.size
+    val currentIndex = levels.indexOf(effectiveReasoningLevel)
     var sliderValue by remember { mutableFloatStateOf(currentIndex.toFloat()) }
 
     LaunchedEffect(currentIndex) {
@@ -132,11 +141,11 @@ fun ReasoningPicker(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 val iconColor by animateColorAsState(
-                    if (reasoningLevel.isEnabled) MaterialTheme.colorScheme.primary
+                    if (effectiveReasoningLevel.isEnabled) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurface
                 )
                 Icon(
-                    imageVector = when (reasoningLevel) {
+                    imageVector = when (effectiveReasoningLevel) {
                         ReasoningLevel.OFF -> HugeIcons.Idea
                         ReasoningLevel.AUTO -> HugeIcons.Idea01
                         ReasoningLevel.LOW -> ReasoningLow
@@ -150,7 +159,7 @@ fun ReasoningPicker(
                     tint = iconColor,
                 )
                 Text(
-                    text = reasoningLevel.label(),
+                    text = effectiveReasoningLevel.label(),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
@@ -158,13 +167,14 @@ fun ReasoningPicker(
             Slider(
                 value = sliderValue,
                 onValueChange = { sliderValue = it },
+                enabled = levelCount > 1,
                 onValueChangeFinished = {
                     val snappedIndex = sliderValue.roundToInt().coerceIn(0, levelCount - 1)
                     sliderValue = snappedIndex.toFloat()
                     onUpdateReasoningLevel(levels[snappedIndex])
                 },
-                valueRange = 0f..(levelCount - 1).toFloat(),
-                steps = levelCount - 2,
+                valueRange = 0f..(levelCount - 1).coerceAtLeast(1).toFloat(),
+                steps = (levelCount - 2).coerceAtLeast(0),
                 modifier = Modifier.fillMaxWidth(),
                 thumb = {
                     Box(

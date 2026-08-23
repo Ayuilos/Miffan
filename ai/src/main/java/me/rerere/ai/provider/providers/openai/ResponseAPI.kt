@@ -248,7 +248,10 @@ class ResponseAPI(
 
             // reasoning
             if (params.model.abilities.contains(ModelAbility.REASONING)) {
-                val level = params.reasoningLevel
+                val level = params.model.resolveReasoningLevelForProvider(
+                    host = host,
+                    requested = params.reasoningLevel,
+                )
                 put("reasoning", buildJsonObject {
                     if (capabilities.supportsReasoningSummary) {
                         put("summary", "auto")

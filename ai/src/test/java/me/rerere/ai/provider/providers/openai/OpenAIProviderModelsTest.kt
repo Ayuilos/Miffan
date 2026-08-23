@@ -82,6 +82,13 @@ class OpenAIProviderModelsTest {
                     "input_modalities": ["text", "image", "audio", "video", "file"],
                     "output_modalities": ["text"]
                   },
+                  "reasoning": {
+                    "supported_efforts": ["high", "medium", "low"],
+                    "default_effort": "medium",
+                    "default_enabled": true,
+                    "supports_max_tokens": false,
+                    "mandatory": true
+                  },
                   "supported_parameters": ["temperature", "tools", "reasoning"]
                 }
               ]
@@ -95,6 +102,48 @@ class OpenAIProviderModelsTest {
             model.inputModalities,
         )
         assertEquals(listOf(Modality.TEXT), model.outputModalities)
+        assertEquals(listOf(ModelAbility.TOOL, ModelAbility.REASONING), model.abilities)
+        assertEquals(listOf("high", "medium", "low"), model.reasoningCapabilities?.supportedEfforts)
+        assertEquals("medium", model.reasoningCapabilities?.defaultEffort)
+        assertEquals(true, model.reasoningCapabilities?.defaultEnabled)
+        assertEquals(false, model.reasoningCapabilities?.supportsMaxTokens)
+        assertEquals(true, model.reasoningCapabilities?.mandatory)
+    }
+
+    @Test
+    fun `Reasoning metadata implies reasoning ability without supported parameters`() {
+        val model = parseOpenAIModels(
+            """
+            {
+              "data": [
+                {
+                  "id": "vendor/mandatory-reasoner",
+                  "reasoning": {"mandatory": true}
+                }
+              ]
+            }
+            """.trimIndent()
+        ).single().let(ModelRegistry::resolveCapabilities)
+
+        assertEquals(listOf(ModelAbility.REASONING), model.abilities)
+        assertEquals(true, model.reasoningCapabilities?.mandatory)
+    }
+
+    @Test
+    fun `Reasoning-only metadata keeps registry abilities as fallback`() {
+        val model = parseOpenAIModels(
+            """
+            {
+              "data": [
+                {
+                  "id": "gpt-4o",
+                  "reasoning": {"mandatory": true}
+                }
+              ]
+            }
+            """.trimIndent()
+        ).single().let(ModelRegistry::resolveCapabilities)
+
         assertEquals(listOf(ModelAbility.TOOL, ModelAbility.REASONING), model.abilities)
     }
 

@@ -41,8 +41,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.isMiffanAvatar
@@ -549,6 +551,10 @@ internal fun AssistantBasicContent(
             ) {
                 ReasoningButton(
                     reasoningLevel = assistant.reasoningLevel,
+                    availableLevels = assistant.chatModelId
+                        ?.let(providers::findModelById)
+                        ?.supportedReasoningLevels()
+                        ?: ReasoningLevel.entries,
                     onUpdateReasoningLevel = { level ->
                         onUpdate(assistant.copy(reasoningLevel = level))
                     }
