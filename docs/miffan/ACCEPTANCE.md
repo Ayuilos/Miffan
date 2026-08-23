@@ -5,8 +5,10 @@
 - A newly created assistant uses Miffan Classic without requiring avatar setup.
 - A legacy assistant with `Avatar.Dummy` still renders Miffan Classic.
 - Each of the six palettes persists after leaving and reopening assistant settings.
+- Each of the four character kinds persists after leaving and reopening assistant settings.
 - Each of the three motion profiles persists after leaving and reopening assistant settings.
 - Changing palette does not reset motion profile, and changing motion profile does not reset palette.
+- Changing character kind preserves palette and motion profile.
 - Two assistants can use different palettes and remain visually distinguishable in the picker, drawer, message list, and settings.
 - Custom emoji and image avatars continue to render and edit normally.
 - Resetting an assistant custom avatar returns to Miffan Classic.
@@ -14,6 +16,8 @@
 ## Rendering
 
 - Bowl, face, and contents remain readable at 28 dp, 32 dp, 40 dp, 80 dp, and the large empty-chat size.
+- Rice, Sprout, Dumpling, and Stargazer remain distinguishable by silhouette or content at 40 dp and above.
+- Material details support recognition at large sizes without making the face noisy at avatar sizes.
 - Every palette has sufficient contrast in light and dark app themes.
 - Thinking, happy, error, idle, focused, and typing states work for every palette.
 - Decorative input cues use palette-derived colors rather than Classic-only hard-coded colors.
@@ -36,6 +40,8 @@
 
 - Avatar serialization round-trips for all Miffan presets.
 - Avatar serialization round-trips for every palette and motion-profile combination.
+- Avatar serialization round-trips for every character-kind, palette, and motion-profile combination.
+- Miffan JSON without a character-kind field decodes as Rice.
 - Legacy `dummy`, emoji, and image avatar decoding tests pass.
 - Avatar-policy tests cover Miffan, legacy Dummy, and custom-avatar preference behavior.
 - `./gradlew :app:compileDebugKotlin` passes.

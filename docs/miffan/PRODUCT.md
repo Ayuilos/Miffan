@@ -29,6 +29,17 @@ The first release provides six curated palettes:
 
 Users select a palette per assistant. New assistants use Miffan Classic. Existing assistants whose avatar is the legacy `Dummy` value are displayed as Miffan Classic and become an explicit Miffan when the user changes the palette. Custom image and emoji avatars remain supported.
 
+## Character V1
+
+The first Miffan world collection contains four curated inhabitants:
+
+- Rice: the original smooth ceramic bowl with a soft rice mound;
+- Sprout: a fluted bowl whose rice carries a young two-leaf sprout;
+- Dumpling: a banded bowl carrying three round dumplings and a small spoon;
+- Stargazer: a speckled bowl carrying star-shaped rice with a rim charm.
+
+A character kind is a coherent shape preset, not a bag of independently swappable parts. It changes content, material treatment, and one restrained accessory together so every option reads as an intentional inhabitant. Palette and motion profile remain independent axes, allowing the same inhabitant to belong to different assistants without multiplying renderer implementations.
+
 ## Motion V1
 
 Each explicit Miffan can use one of three motion profiles:
@@ -62,9 +73,9 @@ Time-of-day idle gestures enrich the character but must never override an active
 - Keyboard and input movement are coordinated through scene state, without direct layout coupling between the mascot and input component.
 - Reduced-motion behavior must preserve meaning with shorter, lower-amplitude transitions.
 
-## Out of scope for Appearance V1
+## Out of scope for Character V1
 
-- interchangeable contents, accessories, and materials;
+- freely interchangeable contents, accessories, and materials;
 - downloadable character packs;
 - an arbitrary color picker;
 - cloud synchronization beyond the existing assistant settings persistence.

@@ -2,11 +2,11 @@
 
 ## Model boundary
 
-`Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance` and a separate `MiffanMotionProfile`. Appearance V1 stores a preset palette identifier; Motion V1 stores Lively, Calm, or Curious.
+`Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance` and a separate `MiffanMotionProfile`. Appearance V1 stores a preset palette identifier; Character V1 adds a curated Miffan kind; Motion V1 stores Lively, Calm, or Curious.
 
 `Avatar.Dummy` remains valid for backward compatibility and for the procedural user avatar. In assistant-only UI it is interpreted as legacy Miffan Classic. New assistants default to `Avatar.Miffan()`.
 
-The model layer contains no Compose colors. UI code resolves palette identifiers into `MiffanColors`, keeping serialized data stable if visual color values are tuned later.
+The model layer contains no Compose colors or drawing primitives. UI code resolves palette identifiers into `MiffanColors` and character kinds into one content/material/accessory treatment, keeping serialized data stable if visual details are tuned later.
 
 ## Rendering boundary
 
@@ -33,15 +33,16 @@ Use monotonically increasing event identifiers for one-shot reactions such as at
 
 - Decoding legacy `dummy` avatars must continue to succeed.
 - A legacy assistant `Dummy` renders exactly like Miffan Classic.
+- A legacy assistant `Dummy`, or Miffan data without a kind field, resolves to Rice.
 - Legacy `Dummy` and Miffan data without a motion field use the Curious profile.
 - Selecting a Miffan palette writes an explicit `Avatar.Miffan` value.
 - Resetting an assistant avatar writes `Avatar.Miffan()`; resetting the user avatar continues to write `Avatar.Dummy`.
 - Copying an assistant preserves a Miffan appearance. Image avatars may still reset according to the existing file-ownership policy.
-- Changing palette preserves motion profile, and changing motion profile preserves appearance.
+- Changing kind or palette preserves motion profile, and changing motion profile preserves the complete appearance.
 
 ## Evolution path
 
-Future fields belong in `MiffanAppearance`, with defaults for backward-compatible decoding:
+Character V1 stores one curated kind in `MiffanAppearance`. Each kind resolves in the renderer to a coherent content, material, and accessory treatment. Future customization fields also belong in `MiffanAppearance`, with defaults for backward-compatible decoding:
 
 - material or surface pattern;
 - bowl contents;
