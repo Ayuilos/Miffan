@@ -1303,4 +1303,25 @@
   <string name="setting_page_preferences_network_proxy">Прокси</string>
   <string name="setting_page_preferences_network_proxy_desc">Поддерживает HTTP и SOCKS5 прокси-URL. Оставьте пустым для использования системных настроек.</string>
   <string name="setting_page_preferences_network_proxy_invalid">Введите корректный URL прокси-сервера с хостом и портом.</string>
+  <string name="safe_mode_enter_app">Войти в приложение</string>
+  <string name="setting_provider_page_auth_method">Аутентификация</string>
+  <string name="setting_provider_page_chatgpt_subscription">Тариф ChatGPT</string>
+  <string name="setting_provider_page_chatgpt_subscription_desc">Используйте доступ к Codex, включённый в подходящую подписку ChatGPT. Вход выполняется через OpenAI в браузере и не расходует средства API.</string>
+  <string name="setting_provider_page_signed_in">Выполнен вход</string>
+  <string name="setting_provider_page_sign_in_chatgpt">Войти через ChatGPT</string>
+  <string name="setting_provider_page_signing_in">Ожидание входа…</string>
+  <string name="setting_provider_page_sign_out">Выйти</string>
+  <string name="setting_provider_page_device_code_title">Войти в OpenAI Codex</string>
+  <string name="setting_provider_page_device_code_desc">Одноразовый код ниже скопирован в буфер обмена. Вставьте его на странице OpenAI, открытой в браузере.</string>
+  <string name="setting_provider_page_open_browser">Открыть браузер</string>
+  <string name="setting_tts_page_default_playback_speed">Скорость воспроизведения по умолчанию</string>
+  <string name="setting_tts_page_default_playback_speed_description">Применяется локально ко всем провайдерам TTS без изменения настроек синтеза.</string>
+  <string name="setting_tts_page_temperature">Температура</string>
+  <string name="setting_tts_page_temperature_description">Управляет случайностью голоса (0.0–1.0; чем выше значение, тем выразительнее голос)</string>
+  <string name="setting_tts_page_fish_audio_speed_description">Скорость речи (0.5–2.0; 1.0 — обычная)</string>
+  <string name="theme_name_claude">Claude</string>
+  <string name="workspace_terminal_busy">В этой рабочей области уже есть активный сеанс выполнения</string>
+  <string name="workspace_terminal_resource_limit">Терминал остановлен политикой ограничения ресурсов</string>
+  <string name="assistant_page_context_message_limit_hint">Введите 0, чтобы снять ограничение, или значение не меньше %d</string>
+  <string name="assistant_page_context_message_limit_too_small">Лимит сообщений контекста не может быть меньше %1$d. Он сброшен до %1$d.</string>
 </resources>

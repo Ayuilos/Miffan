@@ -1303,4 +1303,25 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_page_preferences_network_proxy">プロキシ</string>
   <string name="setting_page_preferences_network_proxy_desc">HTTPおよびSOCKS5プロキシURLをサポートします。空白の場合はシステム設定を使用します。</string>
   <string name="setting_page_preferences_network_proxy_invalid">ホストとポートを含む有効なプロキシURLを入力してください。</string>
+  <string name="safe_mode_enter_app">アプリを開く</string>
+  <string name="setting_provider_page_auth_method">認証方法</string>
+  <string name="setting_provider_page_chatgpt_subscription">ChatGPT プラン</string>
+  <string name="setting_provider_page_chatgpt_subscription_desc">対象の ChatGPT サブスクリプションに含まれる Codex アクセスを使用します。ブラウザで OpenAI にサインインし、API クレジットは消費しません。</string>
+  <string name="setting_provider_page_signed_in">サインイン済み</string>
+  <string name="setting_provider_page_sign_in_chatgpt">ChatGPT でサインイン</string>
+  <string name="setting_provider_page_signing_in">サインインを待機中…</string>
+  <string name="setting_provider_page_sign_out">サインアウト</string>
+  <string name="setting_provider_page_device_code_title">OpenAI Codex にサインイン</string>
+  <string name="setting_provider_page_device_code_desc">以下のワンタイムコードをクリップボードにコピーしました。ブラウザで開いた OpenAI ページに貼り付けてください。</string>
+  <string name="setting_provider_page_open_browser">ブラウザを開く</string>
+  <string name="setting_tts_page_default_playback_speed">既定の再生速度</string>
+  <string name="setting_tts_page_default_playback_speed_description">音声合成設定を変更せず、すべての TTS プロバイダーにローカルで適用します。</string>
+  <string name="setting_tts_page_temperature">温度</string>
+  <string name="setting_tts_page_temperature_description">音声のランダム性を調整します（0.0～1.0。値が高いほど表現豊かになります）</string>
+  <string name="setting_tts_page_fish_audio_speed_description">発話速度（0.5～2.0、1.0 が標準）</string>
+  <string name="theme_name_claude">Claude</string>
+  <string name="workspace_terminal_busy">このワークスペースには実行中のセッションがあります</string>
+  <string name="workspace_terminal_resource_limit">リソースポリシーによりターミナルが停止しました</string>
+  <string name="assistant_page_context_message_limit_hint">0 を入力すると無制限になります。それ以外は %d 以上の値を入力してください</string>
+  <string name="assistant_page_context_message_limit_too_small">コンテキストメッセージ数の上限は %1$d 未満にできません。%1$d にリセットしました。</string>
 </resources>

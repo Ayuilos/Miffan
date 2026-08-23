@@ -1318,5 +1318,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_preferences_network_proxy">代理</string>
   <string name="setting_page_preferences_network_proxy_desc">支持 HTTP 和 SOCKS5 代理 URL。留空以使用系统设置。</string>
   <string name="setting_page_preferences_network_proxy_invalid">请输入包含主机和端口的有效代理 URL。</string>
+  <string name="safe_mode_enter_app">进入应用</string>
+  <string name="setting_tts_page_default_playback_speed">默认播放速度</string>
+  <string name="setting_tts_page_default_playback_speed_description">在本地应用于所有 TTS 提供商，不会更改其语音合成设置。</string>
+  <string name="theme_name_claude">Claude</string>
+  <string name="workspace_terminal_busy">此工作区已有正在执行的会话</string>
+  <string name="workspace_terminal_resource_limit">终端已因资源策略而停止</string>
 </resources>
-

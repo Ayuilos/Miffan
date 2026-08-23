@@ -1301,4 +1301,25 @@
   <string name="setting_page_preferences_network_proxy">代理</string>
   <string name="setting_page_preferences_network_proxy_desc">支援 HTTP 和 SOCKS5 代理網址。留空以使用系統設定。</string>
   <string name="setting_page_preferences_network_proxy_invalid">請輸入包含主機和連接埠的有效代理 URL。</string>
+  <string name="safe_mode_enter_app">進入應用程式</string>
+  <string name="setting_provider_page_auth_method">驗證方式</string>
+  <string name="setting_provider_page_chatgpt_subscription">ChatGPT 訂閱</string>
+  <string name="setting_provider_page_chatgpt_subscription_desc">使用符合條件的 ChatGPT 訂閱所包含的 Codex 用量。登入會在 OpenAI 官方網頁中完成，不消耗 API 額度。</string>
+  <string name="setting_provider_page_signed_in">已登入</string>
+  <string name="setting_provider_page_sign_in_chatgpt">使用 ChatGPT 登入</string>
+  <string name="setting_provider_page_signing_in">等待登入…</string>
+  <string name="setting_provider_page_sign_out">登出</string>
+  <string name="setting_provider_page_device_code_title">登入 OpenAI Codex</string>
+  <string name="setting_provider_page_device_code_desc">下方的一次性代碼已複製到剪貼簿，請貼到瀏覽器中開啟的 OpenAI 頁面。</string>
+  <string name="setting_provider_page_open_browser">開啟瀏覽器</string>
+  <string name="setting_tts_page_default_playback_speed">預設播放速度</string>
+  <string name="setting_tts_page_default_playback_speed_description">在本機套用至所有 TTS 供應商，不會變更其語音合成設定。</string>
+  <string name="setting_tts_page_temperature">溫度</string>
+  <string name="setting_tts_page_temperature_description">控制語音的隨機性（0.0 - 1.0，數值越高越有表現力）</string>
+  <string name="setting_tts_page_fish_audio_speed_description">語音速度（0.5 - 2.0，1.0 為正常速度）</string>
+  <string name="theme_name_claude">Claude</string>
+  <string name="workspace_terminal_busy">此工作區已有執行中的工作階段</string>
+  <string name="workspace_terminal_resource_limit">終端機已因資源政策而停止</string>
+  <string name="assistant_page_context_message_limit_hint">輸入 0 表示不限制，其他值不得小於 %d</string>
+  <string name="assistant_page_context_message_limit_too_small">上下文訊息限制不得小於 %1$d，已自動重設為 %1$d。</string>
 </resources>
