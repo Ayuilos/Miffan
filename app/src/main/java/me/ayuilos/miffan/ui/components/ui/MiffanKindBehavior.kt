@@ -129,9 +129,9 @@ internal fun MiffanKindBehavior.poseFor(
         MiffanSignatureMotion.GrainHop -> {
             val hop = wave.coerceAtLeast(0f) * strength
             MiffanSignaturePose(
-                offsetY = -5.2f * hop,
-                scaleX = 1f + 0.022f * hop,
-                scaleY = 1f - 0.016f * hop,
+                offsetY = -9f * hop,
+                scaleX = 1f + 0.035f * hop,
+                scaleY = 1f - 0.025f * hop,
             )
         }
         MiffanSignatureMotion.LeafSway -> {
@@ -143,26 +143,26 @@ internal fun MiffanKindBehavior.poseFor(
                 0f
             }
             MiffanSignaturePose(
-                offsetX = listening * 1.4f * strength,
-                rotationDegrees = (wave * 2.8f + listening * 2.2f) * strength,
+                offsetX = listening * 2.2f * strength,
+                rotationDegrees = (wave * 4.5f + listening * 3.5f) * strength,
             )
         }
         MiffanSignatureMotion.DumplingRipple -> {
             val step = sin(radians * 2.0).toFloat()
             MiffanSignaturePose(
-                offsetX = step * 2.6f * strength,
-                offsetY = -abs(wave) * 1.6f * strength,
-                rotationDegrees = step * 1.5f * strength,
-                scaleY = 1f + abs(sin(radians * 3.0).toFloat()) * 0.014f * strength,
+                offsetX = step * 5f * strength,
+                offsetY = -abs(wave) * 2.5f * strength,
+                rotationDegrees = step * 3f * strength,
+                scaleY = 1f + abs(sin(radians * 3.0).toFloat()) * 0.022f * strength,
             )
         }
         MiffanSignatureMotion.StarTwinkle -> {
             val hover = (cos(radians).toFloat() + 1f) / 2f
             MiffanSignaturePose(
-                offsetY = -3.8f * hover * strength,
-                rotationDegrees = wave * 1.3f * strength,
-                scaleX = 1f + hover * 0.018f * strength,
-                scaleY = 1f + hover * 0.018f * strength,
+                offsetY = -9f * hover * strength,
+                rotationDegrees = wave * 2f * strength,
+                scaleX = 1f + hover * 0.025f * strength,
+                scaleY = 1f + hover * 0.025f * strength,
             )
         }
     }

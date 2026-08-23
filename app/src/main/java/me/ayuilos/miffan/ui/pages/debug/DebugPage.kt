@@ -171,8 +171,10 @@ private enum class MiffanLabMode(
     val label: String,
     val mascotState: MiffanMascotState = MiffanMascotState.Idle,
     val inputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
+    val signaturePreview: Boolean = false,
 ) {
     Idle("Idle"),
+    Signature("Signature", signaturePreview = true),
     Thinking("Thinking", mascotState = MiffanMascotState.Thinking),
     Happy("Happy", mascotState = MiffanMascotState.Happy),
     Error("Error", mascotState = MiffanMascotState.Error),
@@ -182,7 +184,7 @@ private enum class MiffanLabMode(
 
 @Composable
 private fun MiffanLabPage() {
-    var mode by remember { mutableStateOf(MiffanLabMode.Idle) }
+    var mode by remember { mutableStateOf(MiffanLabMode.Signature) }
     var phase by remember { mutableStateOf(MiffanDayPhase.Noon) }
     var kind by remember { mutableStateOf(MiffanKind.RICE) }
     var colorSource by remember { mutableStateOf(MiffanColorSource.PALETTE) }
@@ -328,7 +330,11 @@ private fun MiffanLabPage() {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Character behavior comparison", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    text = "Same semantic state and motion profile; only the inhabitant changes.",
+                    text = if (mode.signaturePreview) {
+                        "Isolated at full strength: hop, listen, step, and hover."
+                    } else {
+                        "Same semantic state and motion profile; only the inhabitant changes."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -354,6 +360,7 @@ private fun MiffanLabPage() {
                                 submitId = submitId,
                                 dayPhase = phase,
                                 previewIdleGestures = mode == MiffanLabMode.Idle,
+                                previewSignatureBehavior = mode.signaturePreview,
                                 modifier = Modifier.size(96.dp),
                             )
                             Text(option.displayName, style = MaterialTheme.typography.labelSmall)
@@ -388,6 +395,7 @@ private fun MiffanLabPage() {
                                     submitId = submitId,
                                     dayPhase = phase,
                                     previewIdleGestures = mode == MiffanLabMode.Idle,
+                                    previewSignatureBehavior = mode.signaturePreview,
                                     modifier = Modifier.size(previewSize),
                                 )
                             }

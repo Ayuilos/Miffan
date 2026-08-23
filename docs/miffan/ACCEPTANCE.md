@@ -33,6 +33,7 @@
 - Error states settle their signature instead of looking celebratory.
 - Motion profile still controls the overall tempo and amplitude of every character signature.
 - Reduced motion preserves each signature's meaning with substantially lower movement.
+- Miffan Lab provides an isolated full-strength Signature mode without shared idle gestures.
 
 ## Interaction
 
