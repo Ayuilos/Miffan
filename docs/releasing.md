@@ -21,7 +21,7 @@ Keep the Miffan version distinct from upstream:
 
 For example, the first Miffan release based on upstream `2.4.10` (`versionCode` 177) is `2.4.10-miffan.1` with `versionCode` 177001. Increment only the fork revision for releases on the same upstream base. After rebasing to a newer upstream release, use that release's version and code as the new base.
 
-Miffan builds disable the upstream update feed. Configure a Miffan-owned feed before re-enabling automatic update checks.
+Miffan checks the latest formal release published in `Ayuilos/Miffan` on GitHub. Keep the release tag identical to `versionName` and attach the arm64 APK using the name `Miffan-<version>-arm64-v8a.apk`; the in-app updater uses those GitHub Releases as its source of truth.
 
 ## Prepare
 

@@ -3,9 +3,12 @@ package me.ayuilos.miffan.utils
 import android.app.DownloadManager
 import android.content.Context
 import android.os.Environment
+import android.util.Xml
 import android.widget.Toast
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,21 +16,31 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import me.rerere.common.http.await
 import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.BuildConfig
+import me.rerere.common.http.await
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.xmlpull.v1.XmlPullParser
+import java.io.IOException
+import java.io.StringReader
 
-private const val API_URL = "https://updates.rikka-ai.com/"
+private const val GITHUB_RELEASE_API_URL =
+    "https://api.github.com/repos/Ayuilos/Miffan/releases/latest"
+private const val GITHUB_RELEASE_ATOM_URL =
+    "https://github.com/Ayuilos/Miffan/releases.atom"
+private const val GITHUB_RELEASES_URL =
+    "https://github.com/Ayuilos/Miffan/releases"
+private val MIFFAN_RELEASE_VERSION = Regex("""\d+\.\d+\.\d+-miffan\.\d+""")
 
 class UpdateChecker(
-    private val client: OkHttpClient,
+    client: OkHttpClient,
     appScope: AppScope,
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val releaseSource = GitHubReleaseSource(client)
 
     val updateState: StateFlow<UiState<UpdateInfo>> = checkUpdate().stateIn(
         scope = appScope,
@@ -40,22 +53,9 @@ class UpdateChecker(
         emit(
             UiState.Success(
                 data = try {
-                    val response = client.newCall(
-                        Request.Builder()
-                            .url(API_URL)
-                            .get()
-                            .addHeader(
-                                "User-Agent",
-                                "Miffan ${BuildConfig.VERSION_NAME} #${BuildConfig.VERSION_CODE}"
-                            )
-                            .build()
-                    ).await()
-                    if (response.isSuccessful) {
-                        json.decodeFromString<UpdateInfo>(response.body.string())
-                    } else {
-                        throw Exception("Failed to fetch update info")
-                    }
+                    releaseSource.fetchLatest()
                 } catch (e: Exception) {
+                    currentCoroutineContext().ensureActive()
                     throw Exception("Failed to fetch update info", e)
                 }
             )
@@ -94,16 +94,213 @@ class UpdateChecker(
 data class UpdateDownload(
     val name: String,
     val url: String,
-    val size: String
+    val sizeBytes: Long?,
 )
 
-@Serializable
 data class UpdateInfo(
     val version: String,
     val publishedAt: String,
     val changelog: String,
-    val downloads: List<UpdateDownload>
+    val downloads: List<UpdateDownload>,
+    val releaseUrl: String,
 )
+
+internal class GitHubReleaseSource(
+    private val client: OkHttpClient,
+    private val apiUrl: String = GITHUB_RELEASE_API_URL,
+    private val atomUrl: String = GITHUB_RELEASE_ATOM_URL,
+) {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    suspend fun fetchLatest(): UpdateInfo {
+        try {
+            return fetchFromApi()
+        } catch (apiError: Exception) {
+            currentCoroutineContext().ensureActive()
+            try {
+                return fetchFromAtom()
+            } catch (atomError: Exception) {
+                currentCoroutineContext().ensureActive()
+                apiError.addSuppressed(atomError)
+                throw apiError
+            }
+        }
+    }
+
+    private suspend fun fetchFromApi(): UpdateInfo {
+        val request = Request.Builder()
+            .url(apiUrl)
+            .get()
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header(
+                "User-Agent",
+                "Miffan-Android/${BuildConfig.VERSION_NAME} #${BuildConfig.VERSION_CODE}",
+            )
+            .build()
+        return json.decodeFromString<GitHubRelease>(requestBody(request)).toUpdateInfo()
+    }
+
+    private suspend fun fetchFromAtom(): UpdateInfo {
+        val request = Request.Builder()
+            .url(atomUrl)
+            .get()
+            .header("Accept", "application/atom+xml")
+            .header("User-Agent", "Miffan-Android/${BuildConfig.VERSION_NAME}")
+            .build()
+        return parseLatestMiffanReleaseAtom(requestBody(request))
+    }
+
+    private suspend fun requestBody(request: Request): String =
+        client.newCall(request).await().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("GitHub request failed with HTTP ${response.code}")
+            }
+            response.body.string()
+        }
+}
+
+@Serializable
+internal data class GitHubRelease(
+    @SerialName("tag_name")
+    val tagName: String,
+    @SerialName("published_at")
+    val publishedAt: String? = null,
+    @SerialName("created_at")
+    val createdAt: String? = null,
+    val body: String? = null,
+    val draft: Boolean = false,
+    val prerelease: Boolean = false,
+    val assets: List<GitHubReleaseAsset> = emptyList(),
+)
+
+@Serializable
+internal data class GitHubReleaseAsset(
+    val name: String,
+    @SerialName("browser_download_url")
+    val browserDownloadUrl: String,
+    val size: Long,
+)
+
+internal fun GitHubRelease.toUpdateInfo(): UpdateInfo {
+    require(!draft && !prerelease) { "The latest GitHub release is not a formal release" }
+    val version = tagName.toMiffanReleaseVersion()
+    val expectedAssetName = apkAssetName(version)
+    val downloads = assets
+        .filter { asset ->
+            asset.name == expectedAssetName &&
+                asset.browserDownloadUrl.startsWith("$GITHUB_RELEASES_URL/download/$version/")
+        }
+        .map { asset ->
+            UpdateDownload(
+                name = asset.name,
+                url = asset.browserDownloadUrl,
+                sizeBytes = asset.size,
+            )
+        }
+    return UpdateInfo(
+        version = version,
+        publishedAt = publishedAt ?: createdAt
+            ?: throw IllegalArgumentException("GitHub release has no publication time"),
+        changelog = body.orEmpty(),
+        downloads = downloads,
+        releaseUrl = releasePageUrl(version),
+    )
+}
+
+internal fun parseLatestMiffanReleaseAtom(xml: String): UpdateInfo {
+    val parser = Xml.newPullParser().apply {
+        setInput(StringReader(xml))
+    }
+    var inEntry = false
+    var currentTextTag: String? = null
+    val text = StringBuilder()
+    var releaseLink: String? = null
+    var publishedAt: String? = null
+    var changelog: String? = null
+
+    while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+        when (parser.eventType) {
+            XmlPullParser.START_TAG -> when (parser.name) {
+                "entry" -> {
+                    inEntry = true
+                    releaseLink = null
+                    publishedAt = null
+                    changelog = null
+                }
+
+                "link" -> if (inEntry && parser.getAttributeValue(null, "rel") == "alternate") {
+                    releaseLink = parser.getAttributeValue(null, "href")
+                }
+
+                "updated", "content" -> if (inEntry) {
+                    currentTextTag = parser.name
+                    text.clear()
+                }
+            }
+
+            XmlPullParser.TEXT -> if (currentTextTag != null) {
+                text.append(parser.text)
+            }
+
+            XmlPullParser.END_TAG -> {
+                when {
+                    parser.name == currentTextTag -> {
+                        when (currentTextTag) {
+                            "updated" -> publishedAt = text.toString().trim()
+                            "content" -> changelog = text.toString().trim()
+                        }
+                        currentTextTag = null
+                    }
+
+                    parser.name == "entry" -> {
+                        val tag = releaseLink
+                            ?.substringAfter("$GITHUB_RELEASES_URL/tag/", missingDelimiterValue = "")
+                            ?.substringBefore('?')
+                            ?.takeIf { MIFFAN_RELEASE_VERSION.matches(it) }
+                        if (tag != null) {
+                            return UpdateInfo(
+                                version = tag,
+                                publishedAt = publishedAt
+                                    ?: throw IllegalArgumentException(
+                                        "GitHub release feed entry has no publication time"
+                                    ),
+                                changelog = changelog.orEmpty(),
+                                downloads = listOf(
+                                    UpdateDownload(
+                                        name = apkAssetName(tag),
+                                        url = releaseDownloadUrl(tag),
+                                        sizeBytes = null,
+                                    )
+                                ),
+                                releaseUrl = releasePageUrl(tag),
+                            )
+                        }
+                        inEntry = false
+                    }
+                }
+            }
+        }
+        parser.next()
+    }
+    throw IllegalArgumentException("GitHub release feed has no formal Miffan release")
+}
+
+private fun String.toMiffanReleaseVersion(): String {
+    require(MIFFAN_RELEASE_VERSION.matches(this)) {
+        "Unexpected Miffan release tag: $this"
+    }
+    return this
+}
+
+private fun apkAssetName(version: String): String =
+    "Miffan-$version-arm64-v8a.apk"
+
+private fun releasePageUrl(version: String): String =
+    "$GITHUB_RELEASES_URL/tag/$version"
+
+private fun releaseDownloadUrl(version: String): String =
+    "$GITHUB_RELEASES_URL/download/$version/${apkAssetName(version)}"
 
 /**
  * 版本号值类，封装版本号字符串并提供比较功能

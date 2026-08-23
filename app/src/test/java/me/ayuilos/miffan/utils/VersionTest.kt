@@ -32,7 +32,7 @@ class VersionTest {
         assertTrue(Version("1.0.0-alpha") < Version("1.0.0-beta"))
         assertTrue(Version("1.0.0-beta") < Version("1.0.0-rc"))
         assertTrue(Version("1.0.0-alpha.1") < Version("1.0.0-alpha.2"))
-        assertTrue(Version("2.4.10-ayuilos.1") < Version("2.4.10-ayuilos.2"))
+        assertTrue(Version("2.4.10-miffan.1") < Version("2.4.10-miffan.2"))
     }
 
     @Test

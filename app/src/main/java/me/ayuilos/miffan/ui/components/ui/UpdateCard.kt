@@ -43,8 +43,10 @@ import me.ayuilos.miffan.ui.hooks.useThrottle
 import me.ayuilos.miffan.ui.pages.chat.ChatVM
 import me.ayuilos.miffan.utils.UpdateDownload
 import me.ayuilos.miffan.utils.Version
+import me.ayuilos.miffan.utils.fileSizeToString
 import me.ayuilos.miffan.utils.onError
 import me.ayuilos.miffan.utils.onSuccess
+import me.ayuilos.miffan.utils.openUrl
 import me.ayuilos.miffan.utils.toLocalDateTime
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
@@ -56,6 +58,7 @@ fun UpdateCard(vm: ChatVM) {
     val state by vm.updateState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val toaster = LocalToaster.current
+    val downloadingMessage = stringResource(R.string.update_card_downloading)
     state.onError {
         Card {
             Column(
@@ -125,7 +128,7 @@ fun UpdateCard(vm: ChatVM) {
             val downloadHandler = useThrottle<UpdateDownload>(500) { item ->
                 vm.updateChecker.downloadUpdate(context, item)
                 showDetail = false
-                toaster.show(context.getString(R.string.update_card_downloading), type = ToastType.Info)
+                toaster.show(downloadingMessage, type = ToastType.Info)
             }
             ModalBottomSheet(
                 onDismissRequest = { showDetail = false },
@@ -168,10 +171,8 @@ fun UpdateCard(vm: ChatVM) {
                                         text = downloadItem.name,
                                     )
                                 },
-                                supportingContent = {
-                                    Text(
-                                        text = downloadItem.size
-                                    )
+                                supportingContent = downloadItem.sizeBytes?.let { size ->
+                                    { Text(text = size.fileSizeToString()) }
                                 },
                                 leadingContent = {
                                     Icon(
@@ -181,6 +182,12 @@ fun UpdateCard(vm: ChatVM) {
                                 }
                             )
                         }
+                    }
+                    OutlinedCard(onClick = { context.openUrl(info.releaseUrl) }) {
+                        ListItem(
+                            headlineContent = { Text("GitHub Release") },
+                            supportingContent = { Text(info.releaseUrl) },
+                        )
                     }
                 }
             }

@@ -25,7 +25,6 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyInputMessage
-import me.ayuilos.miffan.BuildConfig
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
@@ -170,8 +169,7 @@ class ChatVM(
     // Update checker
     val updateState = settingsStore.settingsFlow
         .map { settings ->
-            BuildConfig.UPSTREAM_UPDATE_CHECK_ENABLED &&
-                !settings.init &&
+            !settings.init &&
                 settings.displaySetting.updateCheckDisabledUntilEpochMillis <= System.currentTimeMillis()
         }
         .distinctUntilChanged()
