@@ -11,6 +11,7 @@ import me.rerere.tts.provider.providers.GroqTTSProvider
 import me.rerere.tts.provider.providers.MiMoTTSProvider
 import me.rerere.tts.provider.providers.MiniMaxTTSProvider
 import me.rerere.tts.provider.providers.OpenAITTSProvider
+import me.rerere.tts.provider.providers.OpenRouterTTSProvider
 import me.rerere.tts.provider.providers.QwenTTSProvider
 import me.rerere.tts.provider.providers.StepTTSProvider
 import me.rerere.tts.provider.providers.SystemTTSProvider
@@ -18,6 +19,7 @@ import me.rerere.tts.provider.providers.XAITTSProvider
 
 class TTSManager(private val context: Context) {
     private val openAIProvider = OpenAITTSProvider()
+    private val openRouterProvider = OpenRouterTTSProvider()
     private val geminiProvider = GeminiTTSProvider()
     private val systemProvider = SystemTTSProvider()
     private val miniMaxProvider = MiniMaxTTSProvider()
@@ -35,6 +37,7 @@ class TTSManager(private val context: Context) {
     ): Flow<AudioChunk> {
         return when (providerSetting) {
             is TTSProviderSetting.OpenAI -> openAIProvider.generateSpeech(context, providerSetting, request)
+            is TTSProviderSetting.OpenRouter -> openRouterProvider.generateSpeech(context, providerSetting, request)
             is TTSProviderSetting.Gemini -> geminiProvider.generateSpeech(context, providerSetting, request)
             is TTSProviderSetting.SystemTTS -> systemProvider.generateSpeech(context, providerSetting, request)
             is TTSProviderSetting.MiniMax -> miniMaxProvider.generateSpeech(context, providerSetting, request)
@@ -55,6 +58,7 @@ class TTSManager(private val context: Context) {
     fun getPromptGuidance(providerSetting: TTSProviderSetting): String {
         return when (providerSetting) {
             is TTSProviderSetting.OpenAI -> openAIProvider.promptGuidance
+            is TTSProviderSetting.OpenRouter -> openRouterProvider.promptGuidance
             is TTSProviderSetting.Gemini -> geminiProvider.promptGuidance
             is TTSProviderSetting.SystemTTS -> systemProvider.promptGuidance
             is TTSProviderSetting.MiniMax -> miniMaxProvider.promptGuidance

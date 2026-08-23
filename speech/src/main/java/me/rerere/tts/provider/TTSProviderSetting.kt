@@ -35,6 +35,36 @@ sealed class TTSProviderSetting {
         }
     }
 
+    /**
+     * OpenRouter text-to-speech.
+     *
+     * OpenRouter exposes an OpenAI-compatible [POST /api/v1/audio/speech] endpoint. Model and
+     * voice identifiers remain provider-specific, so both are editable rather than restricted to
+     * OpenAI's built-in values.
+     */
+    @Serializable
+    @SerialName("openrouter")
+    data class OpenRouter(
+        override var id: Uuid = Uuid.random(),
+        override var name: String = "OpenRouter TTS",
+        val apiKey: String = "",
+        val baseUrl: String = "https://openrouter.ai/api/v1",
+        val model: String = "openai/gpt-4o-mini-tts-2025-12-15",
+        val voice: String = "alloy",
+        val responseFormat: String = "mp3",
+        val speed: Float = 1.0f,
+    ) : TTSProviderSetting() {
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): TTSProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
     @Serializable
     @SerialName("gemini")
     data class Gemini(
@@ -286,6 +316,7 @@ sealed class TTSProviderSetting {
         val Types by lazy {
             listOf(
                 OpenAI::class,
+                OpenRouter::class,
                 Gemini::class,
                 SystemTTS::class,
                 MiniMax::class,

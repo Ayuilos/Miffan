@@ -748,6 +748,7 @@ private fun TTSProviderItem(
                     Text(
                         text = when (provider) {
                             is TTSProviderSetting.OpenAI -> stringResource(R.string.setting_tts_page_provider_openai)
+                            is TTSProviderSetting.OpenRouter -> "OpenRouter"
                             is TTSProviderSetting.Gemini -> stringResource(R.string.setting_tts_page_provider_gemini)
                             is TTSProviderSetting.MiniMax -> "MiniMax"
                             is TTSProviderSetting.SystemTTS -> stringResource(R.string.setting_tts_page_provider_system)

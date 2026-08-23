@@ -38,6 +38,7 @@ fun TTSProviderConfigure(
             SelectTextField(
                 value = when (setting) {
                     is TTSProviderSetting.OpenAI -> "OpenAI"
+                    is TTSProviderSetting.OpenRouter -> "OpenRouter"
                     is TTSProviderSetting.Gemini -> "Gemini"
                     is TTSProviderSetting.SystemTTS -> "System TTS"
                     is TTSProviderSetting.MiniMax -> "MiniMax"
@@ -55,6 +56,7 @@ fun TTSProviderConfigure(
                 optionToString = { providerClass ->
                     when (providerClass) {
                         TTSProviderSetting.OpenAI::class -> "OpenAI"
+                        TTSProviderSetting.OpenRouter::class -> "OpenRouter"
                         TTSProviderSetting.Gemini::class -> "Gemini"
                         TTSProviderSetting.SystemTTS::class -> "System TTS"
                         TTSProviderSetting.MiniMax::class -> "MiniMax"
@@ -73,6 +75,11 @@ fun TTSProviderConfigure(
                         TTSProviderSetting.OpenAI::class -> TTSProviderSetting.OpenAI(
                             id = setting.id,
                             name = "OpenAI TTS"
+                        )
+
+                        TTSProviderSetting.OpenRouter::class -> TTSProviderSetting.OpenRouter(
+                            id = setting.id,
+                            name = "OpenRouter TTS"
                         )
 
                         TTSProviderSetting.Gemini::class -> TTSProviderSetting.Gemini(
@@ -150,6 +157,7 @@ fun TTSProviderConfigure(
         // Provider-specific fields
         when (setting) {
             is TTSProviderSetting.OpenAI -> OpenAITTSConfiguration(setting, onValueChange)
+            is TTSProviderSetting.OpenRouter -> OpenRouterTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.Gemini -> GeminiTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.MiniMax -> MiniMaxTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.SystemTTS -> SystemTTSConfiguration(setting, onValueChange)
@@ -161,6 +169,87 @@ fun TTSProviderConfigure(
             is TTSProviderSetting.FishAudio -> FishAudioTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.Step -> StepTTSConfiguration(setting, onValueChange)
         }
+    }
+}
+
+@Composable
+private fun OpenRouterTTSConfiguration(
+    setting: TTSProviderSetting.OpenRouter,
+    onValueChange: (TTSProviderSetting) -> Unit,
+) {
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_api_key)) },
+        description = { Text(stringResource(R.string.setting_tts_page_api_key_description)) },
+    ) {
+        OutlinedTextField(
+            value = setting.apiKey,
+            onValueChange = { onValueChange(setting.copy(apiKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("sk-or-v1-...") },
+        )
+    }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_base_url)) },
+        description = { Text(stringResource(R.string.setting_tts_page_base_url_description)) },
+    ) {
+        OutlinedTextField(
+            value = setting.baseUrl,
+            onValueChange = { onValueChange(setting.copy(baseUrl = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://openrouter.ai/api/v1") },
+        )
+    }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_model)) },
+        description = { Text("OpenRouter speech-output model ID") },
+    ) {
+        OutlinedTextField(
+            value = setting.model,
+            onValueChange = { onValueChange(setting.copy(model = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("openai/gpt-4o-mini-tts-2025-12-15") },
+        )
+    }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_voice)) },
+        description = { Text("Voice ID supported by the selected model; leave blank for its default voice") },
+    ) {
+        OutlinedTextField(
+            value = setting.voice,
+            onValueChange = { onValueChange(setting.copy(voice = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("alloy") },
+        )
+    }
+
+    FormItem(
+        label = { Text("Response Format") },
+        description = { Text("Audio encoding returned by OpenRouter") },
+    ) {
+        SelectTextField(
+            value = setting.responseFormat,
+            options = listOf("mp3", "pcm"),
+            onValueChange = { onValueChange(setting.copy(responseFormat = it)) },
+            onOptionSelected = { onValueChange(setting.copy(responseFormat = it)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_speed)) },
+        description = { Text("Supported models use this speech-speed multiplier") },
+    ) {
+        OutlinedNumberInput(
+            value = setting.speed,
+            onValueChange = {
+                onValueChange(setting.copy(speed = it.coerceIn(0.25f, 4.0f)))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = "1.0",
+        )
     }
 }
 
