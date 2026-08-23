@@ -45,8 +45,8 @@ class OpenRouterTTSProvider : TTSProvider<TTSProviderSetting.OpenRouter> {
             .addHeader("Authorization", "Bearer ${providerSetting.apiKey}")
             .addHeader("Content-Type", "application/json")
             .addHeader("Accept", responseFormat.mimeType)
-            .addHeader("X-Title", "Miffan")
-            .addHeader("HTTP-Referer", "https://rikka-ai.com")
+            .addHeader("X-OpenRouter-Title", "Miffan")
+            .addHeader("HTTP-Referer", "https://miffan.ayuilos.me")
             .post(requestBody.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
