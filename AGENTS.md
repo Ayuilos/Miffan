@@ -74,3 +74,11 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 - If the user does not explicitly request localization, prioritize implementing functionality without considering
   localization. (e.g `Text("Hello world")`)
 - For `locale-tui` operations, use the `locale-tui-localization` skill.
+
+## Miffan Character System
+
+- Product rules: `docs/miffan/PRODUCT.md`
+- Architecture and compatibility rules: `docs/miffan/ARCHITECTURE.md`
+- Visual and delivery acceptance checklist: `docs/miffan/ACCEPTANCE.md`
+- Preserve the bowl silhouette, face, and readable bowl contents for every Miffan variant.
+- Pages should pass semantic state to `MiffanMascot`/`AssistantAvatar`; do not duplicate drawing logic or couple the mascot directly to input layout.
