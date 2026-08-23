@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -21,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -52,11 +54,15 @@ import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import me.rerere.common.android.Logging
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanPalette
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
 import me.ayuilos.miffan.ui.components.ui.MiffanDayPhase
 import me.ayuilos.miffan.ui.components.ui.MiffanDayPhaseDebugOverride
 import me.ayuilos.miffan.ui.components.ui.MiffanMascot
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
+import me.ayuilos.miffan.ui.components.ui.displayName
 import me.ayuilos.miffan.ui.components.ui.rememberMiffanDayPhase
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
@@ -86,7 +92,7 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
             )
         }
     ) { contentPadding ->
-        val state = rememberPagerState { 3 }
+        val state = rememberPagerState { 4 }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -125,6 +131,17 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                         }
                     },
                     text = {
+                        Text("Miffan")
+                    }
+                )
+                Tab(
+                    selected = state.currentPage == 3,
+                    onClick = {
+                        scope.launch {
+                            state.animateScrollToPage(3)
+                        }
+                    },
+                    text = {
                         Text("Logging")
                     }
                 )
@@ -138,7 +155,108 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                 when (page) {
                     0 -> MainPage(vm)
                     1 -> ColorsPage()
-                    2 -> Box {}
+                    2 -> MiffanLabPage()
+                    3 -> Box {}
+                }
+            }
+        }
+    }
+}
+
+private enum class MiffanLabMode(
+    val label: String,
+    val mascotState: MiffanMascotState = MiffanMascotState.Idle,
+    val inputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
+) {
+    Idle("Idle"),
+    Thinking("Thinking", mascotState = MiffanMascotState.Thinking),
+    Happy("Happy", mascotState = MiffanMascotState.Happy),
+    Error("Error", mascotState = MiffanMascotState.Error),
+    Focused("Focused", inputState = MiffanMascotInputState.Focused),
+    Typing("Typing", inputState = MiffanMascotInputState.Typing),
+}
+
+@Composable
+private fun MiffanLabPage() {
+    var mode by remember { mutableStateOf(MiffanLabMode.Idle) }
+    var phase by remember { mutableStateOf(MiffanDayPhase.Noon) }
+    var submitId by remember { mutableIntStateOf(0) }
+    val sizes = listOf(28.dp, 40.dp, 80.dp, 128.dp)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Semantic state", style = MaterialTheme.typography.titleSmall)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(MiffanLabMode.entries, key = { it.name }) { option ->
+                        FilterChip(
+                            selected = mode == option,
+                            onClick = { mode = option },
+                            label = { Text(option.label) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Time of day", style = MaterialTheme.typography.titleSmall)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    MiffanDayPhase.entries.forEachIndexed { index, option ->
+                        SegmentedButton(
+                            selected = phase == option,
+                            onClick = { phase = option },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index,
+                                MiffanDayPhase.entries.size,
+                            ),
+                        ) {
+                            Text(option.name)
+                        }
+                    }
+                }
+                Button(onClick = { submitId++ }) {
+                    Text("Preview submit")
+                }
+            }
+        }
+        items(MiffanPalette.entries, key = { it.name }) { palette ->
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(palette.displayName, style = MaterialTheme.typography.titleSmall)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(sizes, key = { it.value }) { previewSize ->
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.size(128.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                MiffanMascot(
+                                    state = mode.mascotState,
+                                    appearance = MiffanAppearance(palette),
+                                    inputState = mode.inputState,
+                                    submitId = submitId,
+                                    dayPhase = phase,
+                                    previewIdleGestures = mode == MiffanLabMode.Idle,
+                                    modifier = Modifier.size(previewSize),
+                                )
+                            }
+                            Text(
+                                text = "${previewSize.value.toInt()} dp",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
                 }
             }
         }

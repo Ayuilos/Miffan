@@ -8,6 +8,16 @@ import org.junit.Test
 
 class AssistantAvatarPolicyTest {
     @Test
+    fun miffanAvatarAlwaysUsesAssistantIdentity() {
+        val assistant = Assistant(
+            avatar = Avatar.Miffan(),
+            useAssistantAvatar = false,
+        )
+
+        assertTrue(shouldUseAssistantIdentity(assistant))
+    }
+
+    @Test
     fun dummyAvatarAlwaysUsesAssistantIdentity() {
         val assistant = Assistant(
             avatar = Avatar.Dummy,

@@ -96,9 +96,11 @@ import me.rerere.ai.ui.UIMessage
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.getAssistantById
-import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.isMiffanAvatar
+import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.service.ChatError
 import me.ayuilos.miffan.ui.components.message.ChatMessage
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
@@ -511,9 +513,11 @@ private fun ChatListNormal(
                 enter = fadeIn() + scaleIn(initialScale = 0.78f),
                 exit = fadeOut() + scaleOut(targetScale = 0.88f),
             ) {
-                if (assistant == null || assistant.avatar is Avatar.Dummy) {
+                if (assistant == null || assistant.avatar.isMiffanAvatar()) {
                     MiffanMascot(
                         state = if (errors.isEmpty()) MiffanMascotState.Idle else MiffanMascotState.Error,
+                        appearance = assistant?.avatar?.miffanAppearanceOrDefault()
+                            ?: MiffanAppearance(),
                         interactive = true,
                         attentionTarget = mascotAttentionTarget,
                         attentionId = mascotAttentionId,

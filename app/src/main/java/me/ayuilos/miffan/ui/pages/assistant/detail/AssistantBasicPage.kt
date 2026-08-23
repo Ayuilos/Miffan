@@ -45,10 +45,14 @@ import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.isMiffanAvatar
+import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.ui.components.ai.ModelSelector
 import me.ayuilos.miffan.ui.components.ai.ReasoningButton
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.FormItem
+import me.ayuilos.miffan.ui.components.ui.MiffanAppearanceEditor
 import me.ayuilos.miffan.ui.components.ui.Select
 import me.ayuilos.miffan.ui.components.ui.TagsInput
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
@@ -142,6 +146,19 @@ internal fun AssistantBasicContent(
                     .size(80.dp)
                     .heroAnimation("assistant_${assistant.id}")
             )
+            if (assistant.avatar.isMiffanAvatar()) {
+                MiffanAppearanceEditor(
+                    appearance = assistant.avatar.miffanAppearanceOrDefault(),
+                    onAppearanceChange = { appearance ->
+                        onUpdate(
+                            assistant.copy(
+                                avatar = Avatar.Miffan(appearance),
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
 
         Card(

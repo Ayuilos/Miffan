@@ -78,9 +78,11 @@ private val persistedTypeNameMapping = mapOf(
     "me.rerere.rikkahub.data.model.Avatar.Dummy" to "dummy",
     "me.rerere.rikkahub.data.model.Avatar.Emoji" to "emoji",
     "me.rerere.rikkahub.data.model.Avatar.Image" to "image",
+    "me.rerere.rikkahub.data.model.Avatar.Miffan" to "miffan",
     "me.ayuilos.miffan.data.model.Avatar.Dummy" to "dummy",
     "me.ayuilos.miffan.data.model.Avatar.Emoji" to "emoji",
     "me.ayuilos.miffan.data.model.Avatar.Image" to "image",
+    "me.ayuilos.miffan.data.model.Avatar.Miffan" to "miffan",
 )
 
 private fun migratePersistedTypeNames(element: JsonElement): JsonElement = when (element) {

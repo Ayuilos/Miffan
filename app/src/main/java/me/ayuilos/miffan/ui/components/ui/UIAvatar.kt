@@ -57,6 +57,8 @@ import me.rerere.hugeicons.stroke.Edit03
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.isMiffanAvatar
+import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.hooks.rememberAvatarShape
 import kotlinx.coroutines.delay
@@ -195,6 +197,14 @@ fun UIAvatar(
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
+                    }
+
+                    is Avatar.Miffan -> {
+                        MiffanMascot(
+                            state = MiffanMascotState.Idle,
+                            appearance = value.appearance,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
@@ -356,13 +366,18 @@ fun AssistantAvatar(
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
-    if (value !is Avatar.Dummy) {
+    val assistantUpdate = onUpdate?.let { update ->
+        { avatar: Avatar ->
+            update(if (avatar is Avatar.Dummy) Avatar.Miffan() else avatar)
+        }
+    }
+    if (!value.isMiffanAvatar()) {
         UIAvatar(
             name = name,
             value = value,
             modifier = modifier,
             loading = loading,
-            onUpdate = onUpdate,
+            onUpdate = assistantUpdate,
             onClick = onClick,
         )
         return
@@ -371,6 +386,7 @@ fun AssistantAvatar(
     var wasLoading by remember { mutableStateOf(loading) }
     var showingCompletion by remember { mutableStateOf(false) }
     val dayPhase = rememberMiffanDayPhase()
+    val appearance = value.miffanAppearanceOrDefault()
 
     LaunchedEffect(loading) {
         val justCompleted = wasLoading && !loading
@@ -391,14 +407,15 @@ fun AssistantAvatar(
     }
     UIAvatar(
         name = name,
-        value = value,
+        value = Avatar.Dummy,
         modifier = modifier,
         loading = loading,
-        onUpdate = onUpdate,
+        onUpdate = assistantUpdate,
         onClick = onClick,
         dummyContent = {
             MiffanMascot(
                 state = mascotState,
+                appearance = appearance,
                 dayPhase = dayPhase,
                 modifier = Modifier.fillMaxSize(),
             )

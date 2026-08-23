@@ -15,6 +15,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -43,6 +44,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanPalette
 import me.ayuilos.miffan.ui.context.LocalSettings
 import kotlin.math.cos
 import kotlin.math.sin
@@ -59,6 +62,67 @@ enum class MiffanMascotInputState {
     Inactive,
     Focused,
     Typing,
+}
+
+@Immutable
+data class MiffanColors(
+    val bowl: Color,
+    val rim: Color,
+    val rice: Color,
+    val face: Color,
+    val cueSurface: Color,
+    val cueInk: Color,
+)
+
+fun MiffanPalette.miffanColors(): MiffanColors = when (this) {
+    MiffanPalette.CLASSIC -> MiffanColors(
+        bowl = Color(0xFFC76644),
+        rim = Color(0xFFD6724F),
+        rice = Color(0xFFFFE8A9),
+        face = Color(0xFFFFE8A9),
+        cueSurface = Color(0xFFFFF3D2),
+        cueInk = Color(0xFFC76644),
+    )
+    MiffanPalette.MATCHA -> MiffanColors(
+        bowl = Color(0xFF5F7F50),
+        rim = Color(0xFF769761),
+        rice = Color(0xFFE8F0B4),
+        face = Color(0xFFF4F5D5),
+        cueSurface = Color(0xFFEFF5D8),
+        cueInk = Color(0xFF5F7F50),
+    )
+    MiffanPalette.SAKURA -> MiffanColors(
+        bowl = Color(0xFFC86F83),
+        rim = Color(0xFFDC8497),
+        rice = Color(0xFFFFE5D7),
+        face = Color(0xFFFFE9D9),
+        cueSurface = Color(0xFFFFF0F3),
+        cueInk = Color(0xFFC86F83),
+    )
+    MiffanPalette.MOONLIGHT -> MiffanColors(
+        bowl = Color(0xFF5A5F91),
+        rim = Color(0xFF7278AA),
+        rice = Color(0xFFE2DCF8),
+        face = Color(0xFFF0E9FF),
+        cueSurface = Color(0xFFEEEBFF),
+        cueInk = Color(0xFF5A5F91),
+    )
+    MiffanPalette.SEA_SALT -> MiffanColors(
+        bowl = Color(0xFF3E8391),
+        rim = Color(0xFF59A0AD),
+        rice = Color(0xFFDCF1E8),
+        face = Color(0xFFE8FAF4),
+        cueSurface = Color(0xFFE7F7F6),
+        cueInk = Color(0xFF3E8391),
+    )
+    MiffanPalette.INK_JADE -> MiffanColors(
+        bowl = Color(0xFF354947),
+        rim = Color(0xFF49635E),
+        rice = Color(0xFF9EDBC3),
+        face = Color(0xFFB9E9D5),
+        cueSurface = Color(0xFFE2F2EC),
+        cueInk = Color(0xFF354947),
+    )
 }
 
 private enum class MiffanIdleGesture {
@@ -83,6 +147,7 @@ private data class IdleGazeSpec(
 fun MiffanMascot(
     state: MiffanMascotState,
     modifier: Modifier = Modifier,
+    appearance: MiffanAppearance = MiffanAppearance(),
     interactive: Boolean = false,
     attentionTarget: Offset? = null,
     attentionId: Int = 0,
@@ -91,6 +156,7 @@ fun MiffanMascot(
     dayPhase: MiffanDayPhase = MiffanDayPhase.Noon,
     previewIdleGestures: Boolean = false,
 ) {
+    val colors = remember(appearance.palette) { appearance.palette.miffanColors() }
     val infiniteTransition = rememberInfiniteTransition(label = "miffan_mascot")
     val breathDuration = when (dayPhase) {
         MiffanDayPhase.Morning -> 2_600
@@ -404,7 +470,7 @@ fun MiffanMascot(
             scale(unit, unit, pivot = Offset.Zero)
         }) {
             drawOval(
-                color = Color.Black.copy(alpha = 0.10f),
+                color = colors.bowl.copy(alpha = 0.16f),
                 topLeft = Offset(49f, 169f + stateOffsetY),
                 size = Size(102f, 11f - bodyBob.coerceAtMost(2f)),
             )
@@ -415,6 +481,7 @@ fun MiffanMascot(
                 scale(bodyScaleX, bodyScaleY, pivot = Offset(100f, 112f))
             }) {
                 drawMascotBody(
+                    colors = colors,
                     state = state,
                     eyeScaleY =
                         blink.value *
@@ -432,6 +499,7 @@ fun MiffanMascot(
 
             if (state == MiffanMascotState.Idle) {
                 drawInputCue(
+                    colors = colors,
                     focusProgress = inputFocusProgress,
                     typingProgress = inputTypingProgress,
                     pulse = inputPulse,
@@ -444,6 +512,7 @@ fun MiffanMascot(
 }
 
 private fun DrawScope.drawInputCue(
+    colors: MiffanColors,
     focusProgress: Float,
     typingProgress: Float,
     pulse: Float,
@@ -466,8 +535,8 @@ private fun DrawScope.drawInputCue(
     } else {
         appearScale
     }
-    val bubbleColor = Color(0xFFFFF3D2)
-    val inkColor = Color(0xFFC76644)
+    val bubbleColor = colors.cueSurface
+    val inkColor = colors.cueInk
     val travelOffset = (catchPoint - bubbleCenter) * travel
     val settleOffset = Offset(0f, (1f - focusProgress) * 4f)
 
@@ -537,6 +606,7 @@ fun MiffanMascotLoadingIndicator(modifier: Modifier = Modifier) {
 }
 
 private fun DrawScope.drawMascotBody(
+    colors: MiffanColors,
     state: MiffanMascotState,
     eyeScaleY: Float,
     lookX: Float,
@@ -556,7 +626,7 @@ private fun DrawScope.drawMascotBody(
         cubicTo(60f, 170f, 32f, 149f, 27f, 112f)
         close()
     }
-    drawPath(bowl, Color(0xFFC76644))
+    drawPath(bowl, colors.bowl)
 
     val rim = Path().apply {
         moveTo(24f, 67f)
@@ -566,7 +636,7 @@ private fun DrawScope.drawMascotBody(
         cubicTo(58f, 93f, 24f, 82f, 24f, 67f)
         close()
     }
-    drawPath(rim, Color(0xFFD6724F))
+    drawPath(rim, colors.rim)
 
     val rice = Path().apply {
         moveTo(38f, 69f)
@@ -593,7 +663,7 @@ private fun DrawScope.drawMascotBody(
         translate(0f, -riceBounce * 1.8f)
         scale(1f + riceBounce * 0.012f, 1f, pivot = Offset(100f, 69f))
     }) {
-        drawPath(rice, Color(0xFFFFE8A9))
+        drawPath(rice, colors.rice)
         drawPath(riceHighlight, Color.White.copy(alpha = 0.24f))
     }
 
@@ -601,7 +671,7 @@ private fun DrawScope.drawMascotBody(
         val grainCenter = Offset(116f + idleGestureProgress * 5f, 51f - riceBounce * 13f)
         rotate(-18f + idleGestureProgress * 42f, pivot = grainCenter) {
             drawRoundRect(
-                color = Color(0xFFFFE8A9).copy(alpha = riceBounce),
+                color = colors.rice.copy(alpha = riceBounce),
                 topLeft = Offset(grainCenter.x - 4.5f, grainCenter.y - 2.2f),
                 size = Size(9f, 4.4f),
                 cornerRadius = CornerRadius(3f, 3f),
@@ -615,7 +685,7 @@ private fun DrawScope.drawMascotBody(
         val grainY = 40f + sin(radians).toFloat() * 8f
         rotate(thinkingPhase + 18f, pivot = Offset(grainX, grainY)) {
             drawRoundRect(
-                color = Color(0xFFFFE8A9),
+                color = colors.rice,
                 topLeft = Offset(grainX - 5f, grainY - 2.4f),
                 size = Size(10f, 4.8f),
                 cornerRadius = CornerRadius(3f, 3f),
@@ -623,7 +693,7 @@ private fun DrawScope.drawMascotBody(
         }
     }
 
-    val eyeColor = Color(0xFFFFE8A9)
+    val eyeColor = colors.face
     val reaction = reactionProgress.coerceIn(0f, 1f)
     val restingMouthColor = eyeColor.copy(alpha = 1f - reaction)
     val eyeHeight = 14f * eyeScaleY.coerceAtLeast(0.08f)

@@ -18,13 +18,14 @@ import me.rerere.ai.ui.isEmptyUIMessage
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.isMiffanAvatar
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
 import me.ayuilos.miffan.ui.context.LocalSettings
 
 internal fun shouldUseAssistantIdentity(assistant: Assistant?): Boolean = assistant?.let {
-    it.useAssistantAvatar || it.avatar is Avatar.Dummy
+    it.useAssistantAvatar || it.avatar.isMiffanAvatar()
 } == true
 
 @Composable

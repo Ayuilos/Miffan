@@ -73,7 +73,7 @@ class AssistantVM(
             val copiedAssistant = assistant.copy(
                 id = kotlin.uuid.Uuid.random(),
                 name = "${assistant.name} (Clone)",
-                avatar = if(assistant.avatar is Avatar.Image) Avatar.Dummy else assistant.avatar,
+                avatar = if (assistant.avatar is Avatar.Image) Avatar.Miffan() else assistant.avatar,
             )
             settingsStore.update(
                 settings.copy(
