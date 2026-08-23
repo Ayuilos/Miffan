@@ -76,6 +76,7 @@ import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.Folder
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.ui.components.ai.AssistantPicker
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.BackupReminderCard
 import me.ayuilos.miffan.ui.components.ui.Greeting
 import me.ayuilos.miffan.ui.components.ui.Tooltip
@@ -919,7 +920,7 @@ private fun AssistantItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            UIAvatar(
+            AssistantAvatar(
                 name = assistant.name,
                 value = assistant.avatar,
                 onUpdate = {},

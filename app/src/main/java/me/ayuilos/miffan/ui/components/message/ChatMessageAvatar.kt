@@ -18,9 +18,14 @@ import me.rerere.ai.ui.isEmptyUIMessage
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
 import me.ayuilos.miffan.ui.context.LocalSettings
+
+internal fun shouldUseAssistantIdentity(assistant: Assistant?): Boolean = assistant?.let {
+    it.useAssistantAvatar || it.avatar is Avatar.Dummy
+} == true
 
 @Composable
 fun ChatMessageUserAvatar(
@@ -61,19 +66,19 @@ fun ChatMessageAssistantAvatar(
 ) {
     val settings = LocalSettings.current
     val showIcon = settings.displaySetting.showModelIcon
-    val useAssistantAvatar = assistant?.useAssistantAvatar == true
-    if (message.role == MessageRole.ASSISTANT && (model != null || useAssistantAvatar)) {
+    val assistantIdentity = assistant?.takeIf(::shouldUseAssistantIdentity)
+    if (message.role == MessageRole.ASSISTANT && (model != null || assistantIdentity != null)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = modifier
         ) {
-            if (useAssistantAvatar) {
+            if (assistantIdentity != null) {
                 if (showIcon) {
-                    UIAvatar(
-                        name = assistant.name,
+                    AssistantAvatar(
+                        name = assistantIdentity.name,
                         modifier = Modifier.size(28.dp),
-                        value = assistant.avatar,
+                        value = assistantIdentity.avatar,
                         loading = loading,
                     )
                 }
@@ -84,7 +89,9 @@ fun ChatMessageAssistantAvatar(
                 ) {
                     if (settings.displaySetting.showModelName) {
                         Text(
-                            text = assistant.name.ifEmpty { stringResource(R.string.assistant_page_default_assistant) },
+                            text = assistantIdentity.name.ifEmpty {
+                                stringResource(R.string.assistant_page_default_assistant)
+                            },
                             style = MaterialTheme.typography.labelLargeEmphasized,
                             maxLines = 1,
                         )

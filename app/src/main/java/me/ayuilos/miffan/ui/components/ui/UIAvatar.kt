@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +59,7 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.hooks.rememberAvatarShape
+import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import java.io.File
 
@@ -97,7 +99,8 @@ fun UIAvatar(
     modifier: Modifier = Modifier,
     loading: Boolean = false,
     onUpdate: ((Avatar) -> Unit)? = null,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    dummyContent: (@Composable () -> Unit)? = null,
 ) {
     val filesManager: FilesManager = koinInject()
     val context = LocalContext.current
@@ -184,10 +187,14 @@ fun UIAvatar(
                     }
 
                     is Avatar.Dummy -> {
-                        ProceduralAvatar(
-                            name = name,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        if (dummyContent != null) {
+                            dummyContent()
+                        } else {
+                            ProceduralAvatar(
+                                name = name,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             }
@@ -338,6 +345,65 @@ fun UIAvatar(
             }
         )
     }
+}
+
+@Composable
+fun AssistantAvatar(
+    name: String,
+    value: Avatar,
+    modifier: Modifier = Modifier,
+    loading: Boolean = false,
+    onUpdate: ((Avatar) -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    if (value !is Avatar.Dummy) {
+        UIAvatar(
+            name = name,
+            value = value,
+            modifier = modifier,
+            loading = loading,
+            onUpdate = onUpdate,
+            onClick = onClick,
+        )
+        return
+    }
+
+    var wasLoading by remember { mutableStateOf(loading) }
+    var showingCompletion by remember { mutableStateOf(false) }
+    val dayPhase = rememberMiffanDayPhase()
+
+    LaunchedEffect(loading) {
+        val justCompleted = wasLoading && !loading
+        wasLoading = loading
+        if (loading) {
+            showingCompletion = false
+        } else if (justCompleted) {
+            showingCompletion = true
+            delay(900)
+            showingCompletion = false
+        }
+    }
+
+    val mascotState = when {
+        loading -> MiffanMascotState.Thinking
+        showingCompletion -> MiffanMascotState.Happy
+        else -> MiffanMascotState.Idle
+    }
+    UIAvatar(
+        name = name,
+        value = value,
+        modifier = modifier,
+        loading = loading,
+        onUpdate = onUpdate,
+        onClick = onClick,
+        dummyContent = {
+            MiffanMascot(
+                state = mascotState,
+                dayPhase = dayPhase,
+                modifier = Modifier.fillMaxSize(),
+            )
+        },
+    )
 }
 
 @Composable

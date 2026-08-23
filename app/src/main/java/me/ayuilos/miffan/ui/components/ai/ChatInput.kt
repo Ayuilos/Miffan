@@ -121,6 +121,12 @@ import me.ayuilos.miffan.utils.SoundEffectPlayer
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
 
+enum class ChatInputActivity {
+    Inactive,
+    Focused,
+    Typing,
+}
+
 @Composable
 fun ChatInput(
     state: ChatInputState,
@@ -138,6 +144,7 @@ fun ChatInput(
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
+    onActivityChanged: (ChatInputActivity) -> Unit = {},
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -149,6 +156,15 @@ fun ChatInput(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     var isInputFocused by remember { mutableStateOf(false) }
+    val inputActivity = when {
+        !isInputFocused -> ChatInputActivity.Inactive
+        state.textContent.text.isEmpty() -> ChatInputActivity.Focused
+        else -> ChatInputActivity.Typing
+    }
+
+    LaunchedEffect(inputActivity) {
+        onActivityChanged(inputActivity)
+    }
 
     // 失焦时收拢成胶囊；聚焦后展开，键盘弹出时底部两角贴合 IME。
     val imeVisible = WindowInsets.isImeVisible

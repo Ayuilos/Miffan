@@ -37,7 +37,7 @@ import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
-import me.ayuilos.miffan.ui.components.ui.UIAvatar
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.heroAnimation
 import me.ayuilos.miffan.ui.theme.CustomColors
@@ -158,7 +158,7 @@ private fun AssistantHeader(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        UIAvatar(
+        AssistantAvatar(
             value = assistant.avatar,
             name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
             onUpdate = null,

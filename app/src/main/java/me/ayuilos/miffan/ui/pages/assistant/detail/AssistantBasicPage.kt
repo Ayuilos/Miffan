@@ -51,7 +51,7 @@ import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.FormItem
 import me.ayuilos.miffan.ui.components.ui.Select
 import me.ayuilos.miffan.ui.components.ui.TagsInput
-import me.ayuilos.miffan.ui.components.ui.UIAvatar
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.hooks.heroAnimation
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.toFixed
@@ -128,7 +128,7 @@ internal fun AssistantBasicContent(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            UIAvatar(
+            AssistantAvatar(
                 value = assistant.avatar,
                 name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
                 onUpdate = { avatar ->

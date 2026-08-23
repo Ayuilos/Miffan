@@ -34,6 +34,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -79,10 +80,12 @@ import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.service.ChatError
 import me.ayuilos.miffan.ui.components.ai.ChatInput
+import me.ayuilos.miffan.ui.components.ai.ChatInputActivity
 import me.ayuilos.miffan.ui.components.ai.FilesPicker
 import me.ayuilos.miffan.ui.components.ai.SearchMode
 import me.ayuilos.miffan.ui.components.ai.completion.WorkspaceCompletionProvider
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionCamera
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionManager
 import me.ayuilos.miffan.ui.components.ui.permission.rememberPermissionState
@@ -290,6 +293,10 @@ private fun ChatPageContent(
     val hazeState = rememberHazeState()
     val assistant = setting.getCurrentAssistant()
     var showFilesSheet by remember { mutableStateOf(false) }
+    var mascotInputState by remember(conversation.id) {
+        mutableStateOf(MiffanMascotInputState.Inactive)
+    }
+    var mascotSubmitId by remember(conversation.id) { mutableIntStateOf(0) }
 
     val completionProviders = remember(assistant.workspaceId, conversation.workspaceCwd, workspaceRepository) {
         assistant.workspaceId?.let { workspaceId ->
@@ -386,6 +393,7 @@ private fun ChatPageContent(
                                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
                             }
                         }
+                        mascotSubmitId++
                         inputState.clearInput()
                     },
                     onLongSendClick = {
@@ -400,7 +408,15 @@ private fun ChatPageContent(
                                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
                             }
                         }
+                        mascotSubmitId++
                         inputState.clearInput()
+                    },
+                    onActivityChanged = { activity ->
+                        mascotInputState = when (activity) {
+                            ChatInputActivity.Inactive -> MiffanMascotInputState.Inactive
+                            ChatInputActivity.Focused -> MiffanMascotInputState.Focused
+                            ChatInputActivity.Typing -> MiffanMascotInputState.Typing
+                        }
                     },
                     onUpdateChatModel = {
                         vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
@@ -452,6 +468,8 @@ private fun ChatPageContent(
                 settings = setting,
                 hazeState = hazeState,
                 errors = errors,
+                mascotInputState = mascotInputState,
+                mascotSubmitId = mascotSubmitId,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = {

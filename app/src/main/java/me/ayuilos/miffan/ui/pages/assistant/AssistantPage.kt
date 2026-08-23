@@ -68,7 +68,7 @@ import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.FormItem
 import me.ayuilos.miffan.ui.components.ui.Tag
 import me.ayuilos.miffan.ui.components.ui.TagType
-import me.ayuilos.miffan.ui.components.ui.UIAvatar
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.EditState
 import me.ayuilos.miffan.ui.hooks.EditStateContent
@@ -412,7 +412,7 @@ private fun AssistantItem(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            UIAvatar(
+            AssistantAvatar(
                 name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
                 value = assistant.avatar,
                 modifier = Modifier
@@ -505,7 +505,7 @@ private fun AssistantActionSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                UIAvatar(
+                AssistantAvatar(
                     name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
                     value = assistant.avatar,
                     modifier = Modifier.size(40.dp)

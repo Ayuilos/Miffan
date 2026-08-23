@@ -47,7 +47,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Assistant
-import me.ayuilos.miffan.ui.components.ui.UIAvatar
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.rememberAssistantState
 import kotlin.uuid.Uuid
@@ -79,7 +79,7 @@ fun AssistantPicker(
 
                 Spacer(Modifier.weight(1f))
 
-                UIAvatar(
+                AssistantAvatar(
                     name = state.currentAssistant.name.ifEmpty { defaultAssistantName },
                     value = state.currentAssistant.avatar,
                     onClick = onClickSetting
@@ -224,7 +224,7 @@ private fun AssistantItem(
             )
         },
         leadingContent = {
-            UIAvatar(
+            AssistantAvatar(
                 name = assistant.name.ifEmpty { defaultAssistantName },
                 value = assistant.avatar,
                 modifier = Modifier.size(32.dp)

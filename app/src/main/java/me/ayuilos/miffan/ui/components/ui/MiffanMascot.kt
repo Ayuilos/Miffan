@@ -55,6 +55,12 @@ enum class MiffanMascotState {
     Error,
 }
 
+enum class MiffanMascotInputState {
+    Inactive,
+    Focused,
+    Typing,
+}
+
 private enum class MiffanIdleGesture {
     None,
     Yawn,
@@ -80,6 +86,8 @@ fun MiffanMascot(
     interactive: Boolean = false,
     attentionTarget: Offset? = null,
     attentionId: Int = 0,
+    inputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
+    submitId: Int = 0,
     dayPhase: MiffanDayPhase = MiffanDayPhase.Noon,
     previewIdleGestures: Boolean = false,
 ) {
@@ -106,6 +114,15 @@ fun MiffanMascot(
         ),
         label = "miffan_thinking",
     )
+    val inputPulse by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(760, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "miffan_input_pulse",
+    )
 
     val blink = remember { Animatable(1f) }
     val gazeX = remember { Animatable(0f) }
@@ -116,10 +133,35 @@ fun MiffanMascot(
     val tapGazeX = remember { Animatable(0f) }
     val tapGazeY = remember { Animatable(0f) }
     val idleGestureProgress = remember { Animatable(0f) }
+    val submitProgress = remember { Animatable(0f) }
     var idleGesture by remember { mutableStateOf(MiffanIdleGesture.None) }
+    var submitActive by remember { mutableStateOf(false) }
     var tapTargetX by remember { mutableFloatStateOf(0f) }
     var tapTargetY by remember { mutableFloatStateOf(0f) }
     var pokeCount by remember { mutableIntStateOf(0) }
+    val inputEngaged = state == MiffanMascotState.Idle && inputState != MiffanMascotInputState.Inactive
+    val inputFocusProgress by animateFloatAsState(
+        targetValue = if (inputEngaged) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (inputEngaged) 240 else 280,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "miffan_input_focus",
+    )
+    val inputTypingProgress by animateFloatAsState(
+        targetValue = if (inputEngaged && inputState == MiffanMascotInputState.Typing) 1f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "miffan_input_typing",
+    )
+
+    LaunchedEffect(submitId) {
+        if (submitId == 0 || state != MiffanMascotState.Idle) return@LaunchedEffect
+        submitActive = true
+        submitProgress.snapTo(0f)
+        submitProgress.animateTo(1f, tween(420, easing = FastOutSlowInEasing))
+        submitActive = false
+        submitProgress.snapTo(0f)
+    }
 
     LaunchedEffect(state, dayPhase) {
         blink.snapTo(1f)
@@ -302,7 +344,9 @@ fun MiffanMascot(
         } else {
             0f
         }
-        val gestureVisibility = 1f - pokeExpression.value
+        val submitAmount = if (submitActive) submitProgress.value else 0f
+        val gestureVisibility =
+            (1f - pokeExpression.value) * (1f - inputFocusProgress) * (1f - submitAmount)
         val yawnAmount = if (idleGesture == MiffanIdleGesture.Yawn) {
             rawGestureProgress * gestureVisibility
         } else {
@@ -330,7 +374,13 @@ fun MiffanMascot(
                 -breath * breathAmplitude - riceBounceAmount * 0.8f + dozeAmount * 1.5f
             }
         }
-        val bodyScaleY = (1f + breath * 0.018f + yawnAmount * 0.025f) * pokeSquash.value
+        val submitNod = if (submitActive) {
+            sin(submitAmount * Math.PI).toFloat().coerceAtLeast(0f) * 1.4f
+        } else {
+            0f
+        }
+        val bodyScaleY =
+            (1f + breath * 0.018f + yawnAmount * 0.025f + inputFocusProgress * 0.006f) * pokeSquash.value
         val bodyScaleX = (1f - breath * 0.008f - yawnAmount * 0.01f) * (2f - pokeSquash.value)
         val thinkingRadians = Math.toRadians(thinkingPhase.toDouble())
         val ambientLookX = when (state) {
@@ -343,8 +393,11 @@ fun MiffanMascot(
             MiffanMascotState.Error -> 2f
             else -> gazeY.value
         }
-        val lookX = ambientLookX * (1f - pokeExpression.value) + tapGazeX.value
-        val lookY = ambientLookY * (1f - pokeExpression.value) + tapGazeY.value
+        val inputLookWeight = inputFocusProgress * (1f - pokeExpression.value)
+        val lookX = ambientLookX * (1f - pokeExpression.value) * (1f - inputLookWeight) + tapGazeX.value
+        val lookY =
+            ambientLookY * (1f - pokeExpression.value) * (1f - inputLookWeight) +
+                3.8f * inputLookWeight + tapGazeY.value
 
         withTransform({
             translate(left, top)
@@ -357,13 +410,16 @@ fun MiffanMascot(
             )
 
             withTransform({
-                translate(0f, bodyBob + stateOffsetY + pokeOffset.value)
+                translate(0f, bodyBob + stateOffsetY + pokeOffset.value + inputFocusProgress * 0.7f + submitNod)
                 rotate(stateRotation + dozeAmount * 4f, pivot = Offset(100f, 112f))
                 scale(bodyScaleX, bodyScaleY, pivot = Offset(100f, 112f))
             }) {
                 drawMascotBody(
                     state = state,
-                    eyeScaleY = blink.value * (1f - yawnAmount * 0.78f - dozeAmount * 0.92f),
+                    eyeScaleY =
+                        blink.value *
+                            (1f - yawnAmount * 0.78f - dozeAmount * 0.92f) *
+                            (1f + inputFocusProgress * 0.07f),
                     lookX = lookX,
                     lookY = lookY,
                     thinkingPhase = thinkingPhase,
@@ -373,7 +429,98 @@ fun MiffanMascot(
                     idleGestureVisibility = gestureVisibility,
                 )
             }
+
+            if (state == MiffanMascotState.Idle) {
+                drawInputCue(
+                    focusProgress = inputFocusProgress,
+                    typingProgress = inputTypingProgress,
+                    pulse = inputPulse,
+                    submitProgress = submitAmount,
+                    submitting = submitActive,
+                )
+            }
         }
+    }
+}
+
+private fun DrawScope.drawInputCue(
+    focusProgress: Float,
+    typingProgress: Float,
+    pulse: Float,
+    submitProgress: Float,
+    submitting: Boolean,
+) {
+    val visibility = if (submitting) {
+        1f - submitProgress * 0.15f
+    } else {
+        focusProgress
+    }.coerceIn(0f, 1f)
+    if (visibility <= 0.001f) return
+
+    val bubbleCenter = Offset(152f, 24.5f)
+    val catchPoint = Offset(113f, 63f)
+    val travel = if (submitting) submitProgress.coerceIn(0f, 1f) else 0f
+    val appearScale = 0.82f + focusProgress * 0.18f
+    val bubbleScale = if (submitting) {
+        1f - travel * 0.86f
+    } else {
+        appearScale
+    }
+    val bubbleColor = Color(0xFFFFF3D2)
+    val inkColor = Color(0xFFC76644)
+    val travelOffset = (catchPoint - bubbleCenter) * travel
+    val settleOffset = Offset(0f, (1f - focusProgress) * 4f)
+
+    withTransform({
+        translate(
+            left = travelOffset.x + settleOffset.x,
+            top = travelOffset.y + settleOffset.y,
+        )
+        scale(bubbleScale, bubbleScale, pivot = bubbleCenter)
+    }) {
+        val tail = Path().apply {
+            moveTo(145f, 39f)
+            lineTo(154f, 49f)
+            lineTo(160f, 39f)
+            close()
+        }
+        drawPath(tail, bubbleColor.copy(alpha = visibility))
+        drawRoundRect(
+            color = bubbleColor.copy(alpha = visibility),
+            topLeft = Offset(118f, 7f),
+            size = Size(68f, 35f),
+            cornerRadius = CornerRadius(11f, 11f),
+        )
+        drawRoundRect(
+            color = inkColor.copy(alpha = visibility * 0.42f),
+            topLeft = Offset(118f, 7f),
+            size = Size(68f, 35f),
+            cornerRadius = CornerRadius(11f, 11f),
+            style = Stroke(width = 1.6f),
+        )
+
+        val contentVisibility = visibility * (1f - travel * 2f).coerceIn(0f, 1f)
+        val cursorAlpha = (0.28f + (1f - pulse) * 0.72f) * (1f - typingProgress)
+        drawRoundRect(
+            color = inkColor.copy(alpha = contentVisibility * cursorAlpha),
+            topLeft = Offset(150f, 14f),
+            size = Size(3.6f, 21f),
+            cornerRadius = CornerRadius(2f, 2f),
+        )
+
+        val lineAlpha = contentVisibility * typingProgress
+        drawRoundRect(
+            color = inkColor.copy(alpha = lineAlpha * 0.88f),
+            topLeft = Offset(130f, 16f),
+            size = Size(38f, 4f),
+            cornerRadius = CornerRadius(2f, 2f),
+        )
+        drawRoundRect(
+            color = inkColor.copy(alpha = lineAlpha * 0.62f),
+            topLeft = Offset(130f, 26f),
+            size = Size(25f + pulse * 4f, 4f),
+            cornerRadius = CornerRadius(2f, 2f),
+        )
     }
 }
 

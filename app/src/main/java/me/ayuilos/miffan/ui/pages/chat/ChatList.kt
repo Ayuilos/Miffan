@@ -96,14 +96,16 @@ import me.rerere.ai.ui.UIMessage
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.getAssistantById
+import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.service.ChatError
 import me.ayuilos.miffan.ui.components.message.ChatMessage
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.ErrorCardsDisplay
 import me.ayuilos.miffan.ui.components.ui.ListSelectableItem
 import me.ayuilos.miffan.ui.components.ui.MiffanMascot
-import me.ayuilos.miffan.ui.components.ui.MiffanMascotLoadingIndicator
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.Tooltip
 import me.ayuilos.miffan.ui.components.ui.rememberMiffanDayPhase
@@ -130,6 +132,8 @@ fun ChatList(
     settings: Settings,
     hazeState: HazeState,
     errors: List<ChatError> = emptyList(),
+    mascotInputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
+    mascotSubmitId: Int = 0,
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
@@ -173,6 +177,8 @@ fun ChatList(
                 settings = settings,
                 hazeState = hazeState,
                 errors = errors,
+                mascotInputState = mascotInputState,
+                mascotSubmitId = mascotSubmitId,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
@@ -203,6 +209,8 @@ private fun ChatListNormal(
     settings: Settings,
     hazeState: HazeState,
     errors: List<ChatError>,
+    mascotInputState: MiffanMascotInputState,
+    mascotSubmitId: Int,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
@@ -450,9 +458,19 @@ private fun ChatListNormal(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        MiffanMascotLoadingIndicator(
-                            modifier = Modifier.size(40.dp)
-                        )
+                        if (assistant != null) {
+                            AssistantAvatar(
+                                name = assistant.name,
+                                value = assistant.avatar,
+                                loading = true,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        } else {
+                            MiffanMascot(
+                                state = MiffanMascotState.Thinking,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
                         AnimatedVisibility(
                             visible = processingStatus != null,
                         ) {
@@ -493,14 +511,24 @@ private fun ChatListNormal(
                 enter = fadeIn() + scaleIn(initialScale = 0.78f),
                 exit = fadeOut() + scaleOut(targetScale = 0.88f),
             ) {
-                MiffanMascot(
-                    state = if (errors.isEmpty()) MiffanMascotState.Idle else MiffanMascotState.Error,
-                    interactive = true,
-                    attentionTarget = mascotAttentionTarget,
-                    attentionId = mascotAttentionId,
-                    dayPhase = dayPhase,
-                    modifier = Modifier.size(mascotSize),
-                )
+                if (assistant == null || assistant.avatar is Avatar.Dummy) {
+                    MiffanMascot(
+                        state = if (errors.isEmpty()) MiffanMascotState.Idle else MiffanMascotState.Error,
+                        interactive = true,
+                        attentionTarget = mascotAttentionTarget,
+                        attentionId = mascotAttentionId,
+                        inputState = mascotInputState,
+                        submitId = mascotSubmitId,
+                        dayPhase = dayPhase,
+                        modifier = Modifier.size(mascotSize),
+                    )
+                } else {
+                    AssistantAvatar(
+                        name = assistant.name,
+                        value = assistant.avatar,
+                        modifier = Modifier.size(mascotSize),
+                    )
+                }
             }
         }
 
