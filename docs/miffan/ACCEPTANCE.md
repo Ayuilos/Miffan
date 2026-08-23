@@ -27,6 +27,11 @@
 - Decorative input cues use palette-derived colors rather than Classic-only hard-coded colors.
 - No palette changes geometry or interaction hit targets.
 - Lively, Calm, and Curious share the same semantic states without duplicated drawing implementations.
+- Rice, Sprout, Dumpling, and Stargazer each have one recognizable motion signature at 80 dp and above.
+- Character signatures stay restrained during idle and become clearer for thinking, typing, submit, and happy states.
+- Error states settle their signature instead of looking celebratory.
+- Motion profile still controls the overall tempo and amplitude of every character signature.
+- Reduced motion preserves each signature's meaning with substantially lower movement.
 
 ## Interaction
 

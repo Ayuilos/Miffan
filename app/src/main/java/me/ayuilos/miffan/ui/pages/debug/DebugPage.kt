@@ -324,6 +324,44 @@ private fun MiffanLabPage() {
                 }
             }
         }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Character behavior comparison", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = "Same semantic state and motion profile; only the inhabitant changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(MiffanKind.entries, key = { it.name }) { option ->
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            MiffanMascot(
+                                state = mode.mascotState,
+                                appearance = MiffanAppearance(
+                                    kind = option,
+                                    colorSource = colorSource,
+                                ),
+                                motionProfile = motionProfile,
+                                reducedMotion = reducedMotion,
+                                inputState = mode.inputState,
+                                submitId = submitId,
+                                dayPhase = phase,
+                                previewIdleGestures = mode == MiffanLabMode.Idle,
+                                modifier = Modifier.size(96.dp),
+                            )
+                            Text(option.displayName, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
         items(previewAppearances, key = { it.first }) { (label, appearance) ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(label, style = MaterialTheme.typography.titleSmall)

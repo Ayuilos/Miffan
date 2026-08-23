@@ -56,6 +56,19 @@ Each explicit Miffan can use one of three motion profiles:
 
 Curious is the compatibility default for existing Miffan and legacy `Dummy` assistants. Profiles tune one shared semantic animation system; they do not own independent animation clips.
 
+## Character Behavior V1
+
+Each inhabitant adds one restrained motion signature to the shared semantic animation system:
+
+- Rice uses a soft grain hop;
+- Sprout listens through a gentle leaf sway;
+- Dumpling answers with a staggered three-dumpling ripple;
+- Stargazer uses a slow star pulse and sparse twinkles.
+
+The signature becomes clearer while thinking, typing, submitting, or celebrating, but remains quiet during ordinary idle. Error states settle rather than adding celebratory motion. Stargazer may be slightly more visible at night, while time-of-day gestures remain shared across the world.
+
+Character behavior is not another user setting. It is derived from character kind inside the renderer, then scaled by the selected motion profile and reduced-motion preference. Feature pages continue to emit semantic scene state and never select signature animations directly.
+
 ## Semantic motion states
 
 Components ask Miffan to express meaning rather than selecting animation clips. The shared V1 vocabulary is:

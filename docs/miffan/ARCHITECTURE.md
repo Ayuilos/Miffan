@@ -53,6 +53,8 @@ Character V1 stores one curated kind in `MiffanAppearance`. Each kind resolves i
 
 `MiffanMotionProfile` resolves to one immutable `MiffanMotionTuning` table. The renderer applies those parameters to shared breathing, gaze, attention, input, submit, and semantic-state animations. Page inputs should converge on a single `MiffanSceneState`; appearance and motion profile must not encode runtime animation state.
 
+`MiffanKind` also resolves to one immutable `MiffanKindBehavior`. This renderer-owned table selects a single signature motion and its relative strength for idle, focused, typing, thinking, submitted, happy, and error conditions. The final frame is semantic state × motion tuning × kind behavior. No signature behavior is serialized, and feature pages must not branch on character kind.
+
 Theme-aware color resolves from `MaterialTheme.colorScheme` inside the renderer. It must not read `SettingsStore`, theme IDs, dynamic-color flags, or custom-theme records. This keeps the mascot coupled only to Material semantic color roles and makes every upstream theme source update automatically.
 
 ## Validation
