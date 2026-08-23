@@ -16,9 +16,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanKind
 import me.ayuilos.miffan.data.model.MiffanPalette
 
 @Composable
@@ -29,66 +31,146 @@ fun MiffanAppearanceEditor(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            text = "Miffan 配色",
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(
-                items = MiffanPalette.entries,
-                key = { it.name },
-            ) { palette ->
-                val selected = appearance.palette == palette
-                Surface(
-                    onClick = {
-                        onAppearanceChange(appearance.copy(palette = palette))
-                    },
-                    shape = MaterialTheme.shapes.large,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainer
-                    },
-                    border = BorderStroke(
-                        width = if (selected) 2.dp else 1.dp,
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Miffan 角色",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(
+                    items = MiffanKind.entries,
+                    key = { it.name },
+                ) { kind ->
+                    val selected = appearance.kind == kind
+                    Surface(
+                        onClick = { onAppearanceChange(appearance.copy(kind = kind)) },
+                        shape = MaterialTheme.shapes.large,
                         color = if (selected) {
-                            MaterialTheme.colorScheme.primary
+                            MaterialTheme.colorScheme.primaryContainer
                         } else {
-                            MaterialTheme.colorScheme.outlineVariant
+                            MaterialTheme.colorScheme.surfaceContainer
                         },
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .width(76.dp)
-                            .padding(horizontal = 8.dp, vertical = 10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        border = BorderStroke(
+                            width = if (selected) 2.dp else 1.dp,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        ),
                     ) {
-                        MiffanMascot(
-                            state = MiffanMascotState.Idle,
-                            appearance = MiffanAppearance(palette),
-                            modifier = Modifier.size(48.dp),
-                        )
-                        Text(
-                            text = palette.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(
+                            modifier = Modifier
+                                .width(108.dp)
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            MiffanMascot(
+                                state = MiffanMascotState.Idle,
+                                appearance = appearance.copy(kind = kind),
+                                modifier = Modifier.size(56.dp),
+                            )
+                            Text(
+                                text = kind.displayName,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            Text(
+                                text = kind.description,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                minLines = 2,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Miffan 配色",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(
+                    items = MiffanPalette.entries,
+                    key = { it.name },
+                ) { palette ->
+                    val selected = appearance.palette == palette
+                    Surface(
+                        onClick = { onAppearanceChange(appearance.copy(palette = palette)) },
+                        shape = MaterialTheme.shapes.large,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainer
+                        },
+                        border = BorderStroke(
+                            width = if (selected) 2.dp else 1.dp,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .width(76.dp)
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            MiffanMascot(
+                                state = MiffanMascotState.Idle,
+                                appearance = appearance.copy(palette = palette),
+                                modifier = Modifier.size(48.dp),
+                            )
+                            Text(
+                                text = palette.displayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
+
+val MiffanKind.displayName: String
+    get() = when (this) {
+        MiffanKind.RICE -> "米团"
+        MiffanKind.SPROUT -> "芽团"
+        MiffanKind.DUMPLING -> "丸团"
+        MiffanKind.STARGAZER -> "星团"
+    }
+
+val MiffanKind.description: String
+    get() = when (this) {
+        MiffanKind.RICE -> "软糯米丘\n光滑陶碗"
+        MiffanKind.SPROUT -> "一株新芽\n刻纹陶碗"
+        MiffanKind.DUMPLING -> "三颗糯丸\n随身小勺"
+        MiffanKind.STARGAZER -> "收藏星米\n星光挂饰"
+    }
 
 val MiffanPalette.displayName: String
     get() = when (this) {

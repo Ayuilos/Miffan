@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import me.rerere.common.android.Logging
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanKind
 import me.ayuilos.miffan.data.model.MiffanMotionProfile
 import me.ayuilos.miffan.data.model.MiffanPalette
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
@@ -182,6 +183,7 @@ private enum class MiffanLabMode(
 private fun MiffanLabPage() {
     var mode by remember { mutableStateOf(MiffanLabMode.Idle) }
     var phase by remember { mutableStateOf(MiffanDayPhase.Noon) }
+    var kind by remember { mutableStateOf(MiffanKind.RICE) }
     var motionProfile by remember { mutableStateOf(MiffanMotionProfile.CURIOUS) }
     var reducedMotion by remember { mutableStateOf(false) }
     var submitId by remember { mutableIntStateOf(0) }
@@ -218,6 +220,25 @@ private fun MiffanLabPage() {
                         checked = reducedMotion,
                         onCheckedChange = { reducedMotion = it },
                     )
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Character kind", style = MaterialTheme.typography.titleSmall)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    MiffanKind.entries.forEachIndexed { index, option ->
+                        SegmentedButton(
+                            selected = kind == option,
+                            onClick = { kind = option },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index,
+                                MiffanKind.entries.size,
+                            ),
+                        ) {
+                            Text(option.displayName)
+                        }
+                    }
                 }
             }
         }
@@ -281,7 +302,10 @@ private fun MiffanLabPage() {
                             ) {
                                 MiffanMascot(
                                     state = mode.mascotState,
-                                    appearance = MiffanAppearance(palette),
+                                    appearance = MiffanAppearance(
+                                        palette = palette,
+                                        kind = kind,
+                                    ),
                                     motionProfile = motionProfile,
                                     reducedMotion = reducedMotion,
                                     inputState = mode.inputState,

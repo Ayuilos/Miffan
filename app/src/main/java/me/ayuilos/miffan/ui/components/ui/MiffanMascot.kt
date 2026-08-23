@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -45,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanKind
 import me.ayuilos.miffan.data.model.MiffanMotionProfile
 import me.ayuilos.miffan.data.model.MiffanPalette
 import me.ayuilos.miffan.ui.context.LocalSettings
@@ -78,6 +80,57 @@ data class MiffanColors(
     val cueSurface: Color,
     val cueInk: Color,
 )
+
+enum class MiffanContentStyle {
+    Rice,
+    SproutedRice,
+    Dumplings,
+    StarRice,
+}
+
+enum class MiffanBowlFinish {
+    Smooth,
+    Fluted,
+    Banded,
+    Speckled,
+}
+
+enum class MiffanAccessoryStyle {
+    None,
+    Sprout,
+    Spoon,
+    StarCharm,
+}
+
+@Immutable
+data class MiffanKindStyle(
+    val content: MiffanContentStyle,
+    val bowlFinish: MiffanBowlFinish,
+    val accessory: MiffanAccessoryStyle,
+)
+
+fun MiffanKind.miffanKindStyle(): MiffanKindStyle = when (this) {
+    MiffanKind.RICE -> MiffanKindStyle(
+        content = MiffanContentStyle.Rice,
+        bowlFinish = MiffanBowlFinish.Smooth,
+        accessory = MiffanAccessoryStyle.None,
+    )
+    MiffanKind.SPROUT -> MiffanKindStyle(
+        content = MiffanContentStyle.SproutedRice,
+        bowlFinish = MiffanBowlFinish.Fluted,
+        accessory = MiffanAccessoryStyle.Sprout,
+    )
+    MiffanKind.DUMPLING -> MiffanKindStyle(
+        content = MiffanContentStyle.Dumplings,
+        bowlFinish = MiffanBowlFinish.Banded,
+        accessory = MiffanAccessoryStyle.Spoon,
+    )
+    MiffanKind.STARGAZER -> MiffanKindStyle(
+        content = MiffanContentStyle.StarRice,
+        bowlFinish = MiffanBowlFinish.Speckled,
+        accessory = MiffanAccessoryStyle.StarCharm,
+    )
+}
 
 fun MiffanPalette.miffanColors(): MiffanColors = when (this) {
     MiffanPalette.CLASSIC -> MiffanColors(
@@ -656,6 +709,7 @@ fun MiffanMascot(
             }) {
                 drawMascotBody(
                     colors = colors,
+                    kind = appearance.kind,
                     state = state,
                     eyeScaleY =
                         blink.value *
@@ -780,8 +834,277 @@ fun MiffanMascotLoadingIndicator(modifier: Modifier = Modifier) {
     }
 }
 
+private fun DrawScope.drawBackAccessory(
+    accessory: MiffanAccessoryStyle,
+    colors: MiffanColors,
+) {
+    if (accessory != MiffanAccessoryStyle.Spoon) return
+
+    rotate(12f, pivot = Offset(164f, 69f)) {
+        drawRoundRect(
+            color = colors.cueInk.copy(alpha = 0.28f),
+            topLeft = Offset(157f, 42f),
+            size = Size(9f, 81f),
+            cornerRadius = CornerRadius(5f, 5f),
+        )
+        drawRoundRect(
+            color = colors.cueSurface,
+            topLeft = Offset(159f, 43f),
+            size = Size(5f, 79f),
+            cornerRadius = CornerRadius(3f, 3f),
+        )
+        drawOval(
+            color = colors.cueInk.copy(alpha = 0.3f),
+            topLeft = Offset(149f, 22f),
+            size = Size(25f, 31f),
+        )
+        drawOval(
+            color = colors.cueSurface,
+            topLeft = Offset(152f, 24f),
+            size = Size(19f, 25f),
+        )
+    }
+}
+
+private fun DrawScope.drawBowlFinish(
+    finish: MiffanBowlFinish,
+    colors: MiffanColors,
+) {
+    when (finish) {
+        MiffanBowlFinish.Smooth -> Unit
+        MiffanBowlFinish.Fluted -> {
+            listOf(55f, 77f, 100f, 123f, 145f).forEach { x ->
+                val distanceFromCenter = abs(x - 100f) / 45f
+                drawLine(
+                    color = colors.rim.copy(alpha = 0.44f),
+                    start = Offset(x, 99f + distanceFromCenter * 3f),
+                    end = Offset(100f + (x - 100f) * 0.68f, 156f - distanceFromCenter * 5f),
+                    strokeWidth = 2.4f,
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+        MiffanBowlFinish.Banded -> {
+            listOf(119f, 143f).forEach { y ->
+                val band = Path().apply {
+                    moveTo(34f + (y - 119f) * 0.32f, y)
+                    cubicTo(68f, y + 8f, 132f, y + 8f, 166f - (y - 119f) * 0.32f, y)
+                }
+                drawPath(
+                    path = band,
+                    color = colors.rim.copy(alpha = 0.48f),
+                    style = Stroke(width = 2.8f),
+                )
+            }
+        }
+        MiffanBowlFinish.Speckled -> {
+            listOf(
+                Offset(49f, 112f) to 2.4f,
+                Offset(66f, 141f) to 1.8f,
+                Offset(88f, 154f) to 2.2f,
+                Offset(116f, 108f) to 1.9f,
+                Offset(137f, 137f) to 2.6f,
+                Offset(151f, 116f) to 1.6f,
+            ).forEach { (center, radius) ->
+                drawCircle(
+                    color = colors.rim.copy(alpha = 0.62f),
+                    radius = radius,
+                    center = center,
+                )
+            }
+        }
+    }
+}
+
+private fun DrawScope.drawMascotContent(
+    content: MiffanContentStyle,
+    colors: MiffanColors,
+) {
+    when (content) {
+        MiffanContentStyle.Rice -> drawRiceMound(colors)
+        MiffanContentStyle.SproutedRice -> {
+            drawLine(
+                color = colors.cueInk,
+                start = Offset(101f, 61f),
+                end = Offset(101f, 27f),
+                strokeWidth = 4f,
+                cap = StrokeCap.Round,
+            )
+            rotate(-30f, pivot = Offset(91f, 35f)) {
+                drawOval(
+                    color = colors.cueInk,
+                    topLeft = Offset(80f, 28f),
+                    size = Size(23f, 13f),
+                )
+            }
+            rotate(31f, pivot = Offset(111f, 34f)) {
+                drawOval(
+                    color = colors.rice,
+                    topLeft = Offset(100f, 27f),
+                    size = Size(23f, 13f),
+                )
+            }
+            drawRiceMound(colors)
+        }
+        MiffanContentStyle.Dumplings -> {
+            listOf(
+                Triple(72f, 65f, 17f),
+                Triple(128f, 65f, 17f),
+                Triple(100f, 57f, 20f),
+            ).forEachIndexed { index, (x, y, radius) ->
+                drawCircle(
+                    color = if (index == 2) colors.rice else colors.rice.copy(alpha = 0.94f),
+                    radius = radius,
+                    center = Offset(x, y),
+                )
+                drawArc(
+                    color = Color.White.copy(alpha = 0.28f),
+                    startAngle = 205f,
+                    sweepAngle = 78f,
+                    useCenter = false,
+                    topLeft = Offset(x - radius * 0.58f, y - radius * 0.58f),
+                    size = Size(radius * 1.16f, radius * 1.16f),
+                    style = Stroke(width = 2.2f),
+                )
+            }
+        }
+        MiffanContentStyle.StarRice -> {
+            drawRiceMound(colors, top = 61f, highlight = false)
+            drawStar(
+                center = Offset(100f, 53f),
+                outerRadius = 22f,
+                innerRadius = 10f,
+                color = colors.rice,
+            )
+            drawStar(
+                center = Offset(68f, 65f),
+                outerRadius = 13f,
+                innerRadius = 6f,
+                color = colors.rice.copy(alpha = 0.94f),
+                rotationDegrees = -72f,
+            )
+            drawStar(
+                center = Offset(134f, 66f),
+                outerRadius = 12f,
+                innerRadius = 5.5f,
+                color = colors.rice.copy(alpha = 0.94f),
+                rotationDegrees = -108f,
+            )
+        }
+    }
+}
+
+private fun DrawScope.drawRiceMound(
+    colors: MiffanColors,
+    top: Float = 43f,
+    highlight: Boolean = true,
+) {
+    val offset = top - 43f
+    val rice = Path().apply {
+        moveTo(38f, 69f)
+        cubicTo(42f, 62f, 53f, 58f, 66f, 58f)
+        cubicTo(73f, 50f + offset, 86f, 48f + offset, 98f, 51f + offset)
+        cubicTo(110f, 43f + offset, 128f, 44f + offset, 137f, 52f + offset)
+        cubicTo(150f, 52f, 160f, 58f, 162f, 66f)
+        cubicTo(156f, 76f, 131f, 82f, 101f, 83f)
+        cubicTo(72f, 84f, 47f, 79f, 38f, 72f)
+        close()
+    }
+    drawPath(rice, colors.rice)
+    if (highlight) {
+        val riceHighlight = Path().apply {
+            moveTo(54f, 66f)
+            cubicTo(68f, 56f + offset * 0.5f, 91f, 53f + offset * 0.5f, 113f, 55f + offset * 0.5f)
+            cubicTo(101f, 61f, 80f, 67f, 54f, 69f)
+            close()
+        }
+        drawPath(riceHighlight, Color.White.copy(alpha = 0.24f))
+    }
+}
+
+private fun DrawScope.drawFrontAccessory(
+    accessory: MiffanAccessoryStyle,
+    colors: MiffanColors,
+) {
+    if (accessory != MiffanAccessoryStyle.StarCharm) return
+
+    drawLine(
+        color = colors.face.copy(alpha = 0.76f),
+        start = Offset(155f, 74f),
+        end = Offset(169f, 94f),
+        strokeWidth = 2.5f,
+        cap = StrokeCap.Round,
+    )
+    drawStar(
+        center = Offset(172f, 99f),
+        outerRadius = 9f,
+        innerRadius = 4.2f,
+        color = colors.face,
+        rotationDegrees = -18f,
+    )
+}
+
+private fun DrawScope.drawContentParticle(
+    content: MiffanContentStyle,
+    colors: MiffanColors,
+    center: Offset,
+    rotation: Float,
+    alpha: Float = 1f,
+) {
+    when (content) {
+        MiffanContentStyle.Dumplings -> {
+            drawCircle(
+                color = colors.rice.copy(alpha = alpha),
+                radius = 4.8f,
+                center = center,
+            )
+        }
+        MiffanContentStyle.StarRice -> {
+            drawStar(
+                center = center,
+                outerRadius = 6f,
+                innerRadius = 2.8f,
+                color = colors.rice.copy(alpha = alpha),
+                rotationDegrees = rotation,
+            )
+        }
+        MiffanContentStyle.Rice,
+        MiffanContentStyle.SproutedRice,
+        -> rotate(rotation, pivot = center) {
+            drawRoundRect(
+                color = colors.rice.copy(alpha = alpha),
+                topLeft = Offset(center.x - 4.5f, center.y - 2.2f),
+                size = Size(9f, 4.4f),
+                cornerRadius = CornerRadius(3f, 3f),
+            )
+        }
+    }
+}
+
+private fun DrawScope.drawStar(
+    center: Offset,
+    outerRadius: Float,
+    innerRadius: Float,
+    color: Color,
+    rotationDegrees: Float = -90f,
+) {
+    val path = Path()
+    repeat(10) { index ->
+        val radius = if (index % 2 == 0) outerRadius else innerRadius
+        val angle = Math.toRadians((rotationDegrees + index * 36f).toDouble())
+        val point = Offset(
+            x = center.x + cos(angle).toFloat() * radius,
+            y = center.y + sin(angle).toFloat() * radius,
+        )
+        if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+    }
+    path.close()
+    drawPath(path, color)
+}
+
 private fun DrawScope.drawMascotBody(
     colors: MiffanColors,
+    kind: MiffanKind,
     state: MiffanMascotState,
     eyeScaleY: Float,
     lookX: Float,
@@ -792,6 +1115,9 @@ private fun DrawScope.drawMascotBody(
     idleGestureProgress: Float,
     idleGestureVisibility: Float,
 ) {
+    val kindStyle = kind.miffanKindStyle()
+    drawBackAccessory(kindStyle.accessory, colors)
+
     val bowl = Path().apply {
         moveTo(24f, 67f)
         cubicTo(24f, 52f, 58f, 43f, 100f, 43f)
@@ -802,6 +1128,7 @@ private fun DrawScope.drawMascotBody(
         close()
     }
     drawPath(bowl, colors.bowl)
+    drawBowlFinish(kindStyle.bowlFinish, colors)
 
     val rim = Path().apply {
         moveTo(24f, 67f)
@@ -813,22 +1140,6 @@ private fun DrawScope.drawMascotBody(
     }
     drawPath(rim, colors.rim)
 
-    val rice = Path().apply {
-        moveTo(38f, 69f)
-        cubicTo(42f, 62f, 53f, 58f, 66f, 58f)
-        cubicTo(73f, 50f, 86f, 48f, 98f, 51f)
-        cubicTo(110f, 43f, 128f, 44f, 137f, 52f)
-        cubicTo(150f, 52f, 160f, 58f, 162f, 66f)
-        cubicTo(156f, 76f, 131f, 82f, 101f, 83f)
-        cubicTo(72f, 84f, 47f, 79f, 38f, 72f)
-        close()
-    }
-    val riceHighlight = Path().apply {
-        moveTo(54f, 66f)
-        cubicTo(68f, 56f, 91f, 53f, 113f, 55f)
-        cubicTo(101f, 61f, 80f, 67f, 54f, 69f)
-        close()
-    }
     val riceBounce = if (idleGesture == MiffanIdleGesture.RiceBounce) {
         sin(idleGestureProgress * Math.PI).toFloat().coerceAtLeast(0f) * idleGestureVisibility
     } else {
@@ -838,34 +1149,32 @@ private fun DrawScope.drawMascotBody(
         translate(0f, -riceBounce * 1.8f)
         scale(1f + riceBounce * 0.012f, 1f, pivot = Offset(100f, 69f))
     }) {
-        drawPath(rice, colors.rice)
-        drawPath(riceHighlight, Color.White.copy(alpha = 0.24f))
+        drawMascotContent(kindStyle.content, colors)
     }
+
+    drawFrontAccessory(kindStyle.accessory, colors)
 
     if (riceBounce > 0f) {
         val grainCenter = Offset(116f + idleGestureProgress * 5f, 51f - riceBounce * 13f)
-        rotate(-18f + idleGestureProgress * 42f, pivot = grainCenter) {
-            drawRoundRect(
-                color = colors.rice.copy(alpha = riceBounce),
-                topLeft = Offset(grainCenter.x - 4.5f, grainCenter.y - 2.2f),
-                size = Size(9f, 4.4f),
-                cornerRadius = CornerRadius(3f, 3f),
-            )
-        }
+        drawContentParticle(
+            content = kindStyle.content,
+            colors = colors,
+            center = grainCenter,
+            rotation = -18f + idleGestureProgress * 42f,
+            alpha = riceBounce,
+        )
     }
 
     if (state == MiffanMascotState.Thinking) {
         val radians = Math.toRadians(thinkingPhase.toDouble())
         val grainX = 100f + cos(radians).toFloat() * 41f
         val grainY = 40f + sin(radians).toFloat() * 8f
-        rotate(thinkingPhase + 18f, pivot = Offset(grainX, grainY)) {
-            drawRoundRect(
-                color = colors.rice,
-                topLeft = Offset(grainX - 5f, grainY - 2.4f),
-                size = Size(10f, 4.8f),
-                cornerRadius = CornerRadius(3f, 3f),
-            )
-        }
+        drawContentParticle(
+            content = kindStyle.content,
+            colors = colors,
+            center = Offset(grainX, grainY),
+            rotation = thinkingPhase + 18f,
+        )
     }
 
     val eyeColor = colors.face

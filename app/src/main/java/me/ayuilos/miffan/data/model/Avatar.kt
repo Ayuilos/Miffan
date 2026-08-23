@@ -28,7 +28,27 @@ sealed class Avatar {
 @Serializable
 data class MiffanAppearance(
     val palette: MiffanPalette = MiffanPalette.CLASSIC,
+    val kind: MiffanKind = MiffanKind.RICE,
 )
+
+/**
+ * Curated inhabitants of the Miffan world. A kind changes the readable
+ * silhouette and surface language while keeping palette and motion independent.
+ */
+@Serializable
+enum class MiffanKind {
+    @SerialName("rice")
+    RICE,
+
+    @SerialName("sprout")
+    SPROUT,
+
+    @SerialName("dumpling")
+    DUMPLING,
+
+    @SerialName("stargazer")
+    STARGAZER,
+}
 
 @Serializable
 enum class MiffanPalette {

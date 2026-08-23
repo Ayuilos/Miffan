@@ -9,18 +9,23 @@ import org.junit.Test
 class MiffanAvatarTest {
     @Test
     fun everyPresetRoundTrips() {
-        MiffanPalette.entries.forEach { palette ->
-            MiffanMotionProfile.entries.forEach { motionProfile ->
-                val original: Avatar = Avatar.Miffan(
-                    appearance = MiffanAppearance(palette = palette),
-                    motionProfile = motionProfile,
-                )
+        MiffanKind.entries.forEach { kind ->
+            MiffanPalette.entries.forEach { palette ->
+                MiffanMotionProfile.entries.forEach { motionProfile ->
+                    val original: Avatar = Avatar.Miffan(
+                        appearance = MiffanAppearance(
+                            palette = palette,
+                            kind = kind,
+                        ),
+                        motionProfile = motionProfile,
+                    )
 
-                val encoded = JsonInstant.encodeToString(original)
-                val decoded = JsonInstant.decodeFromString<Avatar>(encoded)
+                    val encoded = JsonInstant.encodeToString(original)
+                    val decoded = JsonInstant.decodeFromString<Avatar>(encoded)
 
-                assertEquals(original, decoded)
-                assertTrue(encoded.contains("\"type\":\"miffan\""))
+                    assertEquals(original, decoded)
+                    assertTrue(encoded.contains("\"type\":\"miffan\""))
+                }
             }
         }
     }
@@ -40,6 +45,23 @@ class MiffanAvatarTest {
     }
 
     @Test
+    fun miffanAppearanceWithoutKindUsesRice() {
+        val decoded = JsonInstant.decodeFromString<Avatar>(
+            """{"type":"miffan","appearance":{"palette":"moonlight"}}""",
+        )
+
+        assertEquals(
+            Avatar.Miffan(
+                appearance = MiffanAppearance(
+                    palette = MiffanPalette.MOONLIGHT,
+                    kind = MiffanKind.RICE,
+                ),
+            ),
+            decoded,
+        )
+    }
+
+    @Test
     fun newAssistantDefaultsToExplicitMiffan() {
         assertEquals(Avatar.Miffan(), Assistant().avatar)
     }
@@ -47,20 +69,34 @@ class MiffanAvatarTest {
     @Test
     fun appearanceAndMotionUpdatesPreserveTheOtherCharacterAxis() {
         val original: Avatar = Avatar.Miffan(
-            appearance = MiffanAppearance(MiffanPalette.MATCHA),
+            appearance = MiffanAppearance(
+                palette = MiffanPalette.MATCHA,
+                kind = MiffanKind.DUMPLING,
+            ),
             motionProfile = MiffanMotionProfile.CALM,
         )
 
         assertEquals(
             Avatar.Miffan(
-                appearance = MiffanAppearance(MiffanPalette.SAKURA),
+                appearance = MiffanAppearance(
+                    palette = MiffanPalette.SAKURA,
+                    kind = MiffanKind.STARGAZER,
+                ),
                 motionProfile = MiffanMotionProfile.CALM,
             ),
-            original.withMiffanAppearance(MiffanAppearance(MiffanPalette.SAKURA)),
+            original.withMiffanAppearance(
+                MiffanAppearance(
+                    palette = MiffanPalette.SAKURA,
+                    kind = MiffanKind.STARGAZER,
+                ),
+            ),
         )
         assertEquals(
             Avatar.Miffan(
-                appearance = MiffanAppearance(MiffanPalette.MATCHA),
+                appearance = MiffanAppearance(
+                    palette = MiffanPalette.MATCHA,
+                    kind = MiffanKind.DUMPLING,
+                ),
                 motionProfile = MiffanMotionProfile.LIVELY,
             ),
             original.withMiffanMotionProfile(MiffanMotionProfile.LIVELY),
