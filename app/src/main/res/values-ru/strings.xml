@@ -542,7 +542,7 @@
   <string name="regenerate">Сгенерировать заново</string>
   <string name="regenerate_confirm_message">Вы уверены, что хотите перегенерировать это сообщение?</string>
   <string name="render_with_webview">Отображать в WebView</string>
-  <string name="rikkahub_provider_description">Официальный бесплатный AI-сервис, использующий средства спонсоров для предоставления новым пользователям бесплатных моделей в качестве резерва; API-ключ не требуется. Действуют строгие ограничения по частоте запросов. Если у вас есть собственный провайдер, используйте его по возможности.</string>
+  <string name="rikkahub_provider_description">Сторонний бесплатный ИИ-сервис от RikkaHub, не управляемый Miffan. За счёт поддержки сообщества он предоставляет ограниченный набор резервных моделей без API-ключа. Действуют строгие ограничения частоты запросов; по возможности используйте собственного провайдера.</string>
   <string name="safe_mode_assistants">Помощники</string>
   <string name="safe_mode_copy">Копировать</string>
   <string name="safe_mode_crash_report">Отчёт о сбое</string>
@@ -819,7 +819,7 @@
   <string name="setting_page_search_title">Служба поиска</string>
   <string name="setting_page_share">Поделиться</string>
   <string name="setting_page_share_desc">Поделиться этим приложением с друзьями</string>
-  <string name="setting_page_share_text">Miffan — открытый Android-ассистент с ИИ\n\nСайт: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan — открытое рабочее пространство ИИ для Android\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
   <string name="setting_page_sponsor_alert_confirm">Пожертвовать</string>
   <string name="setting_page_sponsor_alert_desc">Вы запустили приложение более 100 раз! Если вам нравится им пользоваться, пожалуйста, поддержите разработчика.</string>
   <string name="setting_page_sponsor_alert_dismiss">Не сейчас</string>

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add an opt-in, built-in extension-management capability that lets an assistant inspect RikkaHub's
+Add an opt-in, built-in extension-management capability that lets an assistant inspect Miffan's
 extension configuration, prepare validated changes, and apply those changes only after explicit user
 approval.
 

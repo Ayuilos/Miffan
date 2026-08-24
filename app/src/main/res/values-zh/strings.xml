@@ -544,7 +544,7 @@
   <string name="regenerate">重新生成</string>
   <string name="regenerate_confirm_message">确定要重新生成此消息吗？</string>
   <string name="render_with_webview">网页视图渲染</string>
-  <string name="rikkahub_provider_description">官方免费 AI 服务，使用用户赞助资金为新用户提供部分免费模型作为备用，无需 API 密钥。有严格速率限制，如已购买自有服务商，请尽量使用自有服务商。</string>
+  <string name="rikkahub_provider_description">由 RikkaHub 提供、非 Miffan 运营的第三方免费 AI 服务。该服务使用社区赞助资金提供少量免 API Key 的备用模型，并设有严格的速率限制；如有自有服务商，请优先使用。</string>
   <string name="safe_mode_assistants">助手</string>
   <string name="safe_mode_copy">复制</string>
   <string name="safe_mode_crash_report">崩溃报告</string>
@@ -857,7 +857,7 @@
   <string name="setting_page_search_title">搜索服务</string>
   <string name="setting_page_share">分享</string>
   <string name="setting_page_share_desc">分享本APP给朋友</string>
-  <string name="setting_page_share_text">Miffan - 开源安卓AI助手\n\n官网: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - 开源 Android AI 工作空间\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
   <string name="setting_page_sponsor_alert_confirm">捐赠</string>
   <string name="setting_page_sponsor_alert_desc">您已启动应用超过100次！如果您喜欢使用它，请考虑支持开发者。</string>
   <string name="setting_page_sponsor_alert_dismiss">暂不</string>

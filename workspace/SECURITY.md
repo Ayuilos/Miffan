@@ -2,9 +2,9 @@
 
 PRoot is used as a local Linux compatibility environment. It translates paths and traces guest
 processes, but it is not a Docker-, namespace-, or VM-grade security boundary. Product shell
-commands run inside the primary RikkaHub application UID and inherit that app's private-data access
+commands run inside the primary Miffan application UID and inherit that app's private-data access
 and Android permissions, including `INTERNET`. A malicious command or a PRoot escape can therefore
-read or modify RikkaHub private data. The single-APK product deliberately accepts this boundary and
+read or modify Miffan private data. The single-APK product deliberately accepts this boundary and
 must present it to users accurately; only trusted commands should be executed.
 
 ## Hardening phases
@@ -161,7 +161,7 @@ must present it to users accurately; only trusted commands should be executed.
      host to complete the release matrix.
 14. **Single-APK execution trust decision (implemented)**
    - RootFS ownership, extraction, patching, health checks, PRoot launch, process monitoring, AI
-     commands, and the interactive PTY run inside the RikkaHub package and UID. No companion APK is
+     commands, and the interactive PTY run inside the Miffan package and UID. No companion APK is
      required. A separate Android process without an isolated UID would not strengthen this file
      boundary, while a same-APK isolated service cannot persistently traverse the owner's private
      RootFS under tested Android SELinux policy.
@@ -182,7 +182,7 @@ must present it to users accurately; only trusted commands should be executed.
    - `workspace_fetch_url` remains an always-approved, bounded HTTPS broker that pins public DNS
      answers and rejects private/local addresses, cross-host redirects, non-standard ports, and
      responses above 8 MiB. It is a safer convenience, not the only network path: an approved shell
-     command shares RikkaHub's `INTERNET` permission and can connect directly.
+     command shares Miffan's `INTERNET` permission and can connect directly.
    - Cancellation interrupts `waitFor`, kills the verified PRoot process group and descendants,
      waits for cleanup, and repairs fixed RootFS mount-point modes that PRoot could not restore
      after forced termination. AI shell and interactive PTY use the same execution specification.
@@ -216,7 +216,7 @@ archive with `WORKSPACE_VERIFY_ROOTFS_ARCHIVE=/absolute/path/to/archive` to
    `/workspace/escape/no.txt`. Confirm the write is rejected and `/etc/no.txt` is absent.
 6. Open the interactive terminal and confirm it launches with the same environment, working
    directory, limits, and visible bind paths as repeated `workspace_shell` calls. Confirm both run
-   under the RikkaHub application UID and neither exposes `/skills`, `/upload`, or `/tool_outputs`.
+   under the Miffan application UID and neither exposes `/skills`, `/upload`, or `/tool_outputs`.
 7. Start `sh -c 'sleep 600 & wait'` through `workspace_shell`, then cancel and repeat with a timeout.
    Use `adb shell ps -A | grep -E 'proot|sleep'` to confirm no child remains. Repeat rapid command
    submissions and verify they serialize per workspace.
@@ -238,7 +238,7 @@ archive with `WORKSPACE_VERIFY_ROOTFS_ARCHIVE=/absolute/path/to/archive` to
 13. Start `sleep 600 & wait` in both AI Shell and the terminal. Cancel/close each surface and use
     `adb shell ps -A -o PID,PGID,NAME | grep -E 'proot|sleep'` to confirm the full process group is
     gone. Repeat while rapidly navigating away during terminal startup.
-14. While a shell and terminal are running, force-stop or kill the RikkaHub Java process without a
+14. While a shell and terminal are running, force-stop or kill the Miffan Java process without a
     normal lifecycle callback. Relaunch the app and confirm `Workspace orphan recovery completed`
     is logged, `run-as <package> ls files/workspaces/.runtime/processes` has no surviving record,
     and no matching PRoot group remains. Create a synthetic stale record with a reused PID but a

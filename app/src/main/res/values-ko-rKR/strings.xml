@@ -542,7 +542,7 @@
   <string name="regenerate">다시 생성</string>
   <string name="regenerate_confirm_message">이 메시지를 다시 생성하시겠습니까?</string>
   <string name="render_with_webview">WebView로 렌더링</string>
-  <string name="rikkahub_provider_description">공식 무료 AI 서비스로, 사용자 후원금으로 일부 무료 모델을 신규 사용자에게 대체 수단으로 제공하며 API 키가 필요 없습니다. 엄격한 요청 제한이 있으므로, 자체 제공자를 구매한 경우 되도록 자체 제공자를 사용하세요.</string>
+  <string name="rikkahub_provider_description">RikkaHub에서 제공하며 Miffan이 운영하지 않는 타사 무료 AI 서비스입니다. 커뮤니티 후원금으로 API 키 없이 사용할 수 있는 제한된 대체 모델을 제공합니다. 엄격한 요청 제한이 적용되므로 가능하면 자체 제공자를 우선 사용하세요.</string>
   <string name="safe_mode_assistants">도우미</string>
   <string name="safe_mode_copy">복사</string>
   <string name="safe_mode_crash_report">충돌 보고서</string>
@@ -819,7 +819,7 @@
   <string name="setting_page_search_title">검색 서비스</string>
   <string name="setting_page_share">공유</string>
   <string name="setting_page_share_desc">앱을 친구들과 공유하기</string>
-  <string name="setting_page_share_text">Miffan - 오픈소스 Android AI 어시스턴트\n\n웹사이트: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - 오픈소스 Android AI 작업 공간\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
   <string name="setting_page_sponsor_alert_confirm">기부하기</string>
   <string name="setting_page_sponsor_alert_desc">앱을 100번 이상 실행하셨네요! 만족스럽게 사용하고 계시다면 개발자를 후원해 주세요.</string>
   <string name="setting_page_sponsor_alert_dismiss">나중에</string>

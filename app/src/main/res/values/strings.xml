@@ -550,7 +550,7 @@
   <string name="regenerate">Regenerate</string>
   <string name="regenerate_confirm_message">Are you sure you want to regenerate this message?</string>
   <string name="render_with_webview">Render with WebView</string>
-  <string name="rikkahub_provider_description">Official free AI service, using user sponsorship funds to provide some free models for new users as fallback, no API key required. Has strict rate limits, if you have purchased your own provider, please use your own provider as much as possible.</string>
+  <string name="rikkahub_provider_description">A third-party free AI service provided by RikkaHub and not operated by Miffan. It uses community sponsorship to offer a limited selection of fallback models without an API key. Strict rate limits apply; use your own provider when available.</string>
   <string name="safe_mode_assistants">Assistants</string>
   <string name="safe_mode_copy">Copy</string>
   <string name="safe_mode_crash_report">Crash Report</string>
@@ -884,7 +884,7 @@
   <string name="setting_page_search_title">Search Service</string>
   <string name="setting_page_share">Share</string>
   <string name="setting_page_share_desc">Share this app with friends</string>
-  <string name="setting_page_share_text">Miffan - Open Source Android AI Assistant\n\nWebsite: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - Open Source Android AI Workspace\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
   <string name="setting_page_sponsor_alert_confirm">Donate</string>
   <string name="setting_page_sponsor_alert_desc">You have launched the app over 100 times! If you enjoy using it, please consider supporting the developer.</string>
   <string name="setting_page_sponsor_alert_dismiss">Not Now</string>

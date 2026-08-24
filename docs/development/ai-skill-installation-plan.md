@@ -16,10 +16,10 @@ must go through the existing assistant binding workflow before it can enter a mo
 - The documented `/api/v1` API requires a Vercel OIDC bearer token. A native Android application
   must not embed such a credential.
 - The open-source skills CLI currently uses the unauthenticated `/api/search` endpoint for
-  discovery. RikkaHub may use it as an explicitly unstable, best-effort search provider, but
+  discovery. Miffan may use it as an explicitly unstable, best-effort search provider, but
   installation must not trust its metadata or depend on it being available.
 - Actual installation content is fetched from GitHub's public API and raw-content host at a pinned
-  commit. RikkaHub never executes `npx`, Git, setup scripts, or any file from the package.
+  commit. Miffan never executes `npx`, Git, setup scripts, or any file from the package.
 
 Primary references:
 

@@ -542,7 +542,7 @@
   <string name="regenerate">再生成</string>
   <string name="regenerate_confirm_message">このメッセージを再生成してもよろしいですか？</string>
   <string name="render_with_webview">WebViewで表示</string>
-  <string name="rikkahub_provider_description">公式の無料AIサービスです。ユーザーのスポンサー資金を使い、新規ユーザーのためのフォールバック用の一部無料モデルを提供します。APIキーは不要です。厳しいレート制限があります。独自のプロバイダーを購入済みの場合は、可能な限りそちらをご利用ください。</string>
+  <string name="rikkahub_provider_description">RikkaHub が提供する、Miffan が運営していない第三者の無料 AI サービスです。コミュニティの支援金により、API キー不要の限定的な予備モデルを提供します。厳しいレート制限があるため、利用可能な場合はご自身のプロバイダーを優先してください。</string>
   <string name="safe_mode_assistants">アシスタント</string>
   <string name="safe_mode_copy">コピー</string>
   <string name="safe_mode_crash_report">クラッシュレポート</string>
@@ -819,7 +819,7 @@
   <string name="setting_page_search_title">検索サービス</string>
   <string name="setting_page_share">共有</string>
   <string name="setting_page_share_desc">このアプリを友達と共有</string>
-  <string name="setting_page_share_text">Miffan - オープンソースAndroid AIアシスタント\n\nウェブサイト: https://rikka-ai.com/</string>
+  <string name="setting_page_share_text">Miffan - オープンソース Android AI ワークスペース\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
   <string name="setting_page_sponsor_alert_confirm">寄付</string>
   <string name="setting_page_sponsor_alert_desc">アプリを100回以上起動しました！気に入っていただけたら、開発者をサポートしていただけると嬉しいです。</string>
   <string name="setting_page_sponsor_alert_dismiss">今はしない</string>

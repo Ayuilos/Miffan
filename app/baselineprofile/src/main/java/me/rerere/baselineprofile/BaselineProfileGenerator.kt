@@ -65,7 +65,7 @@ class BaselineProfileGenerator {
             if (input != null) {
                 input.click()
                 input.text = """
-                    # Hello RikkaHub
+                    # Hello Miffan
 
                     这是一段 **Markdown** 文本，包含 *斜体*、`行内代码` 和列表：
 
