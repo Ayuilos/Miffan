@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  width="1280"
+  height="640"
+  viewBox="0 0 1280 640"
+  role="img"
+  aria-labelledby="title description"
+>
+  <title id="title">Miffan social preview</title>
+  <desc id="description">Miffan icon and the tagline Your AI workspace on Android.</desc>
+
+  <defs>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f9fbfd" />
+      <stop offset="1" stop-color="#eaf3f9" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0b718f" />
+      <stop offset="1" stop-color="#4d9fc1" />
+    </linearGradient>
+    <radialGradient id="iconBackground" cx="50%" cy="45%" r="72%">
+      <stop offset="0" stop-color="#dceefa" />
+      <stop offset="1" stop-color="#bcdaf2" />
+    </radialGradient>
+    <linearGradient id="iconBowlBody" x1="0" y1="0" x2="0.72" y2="1">
+      <stop offset="0" stop-color="#d57450" />
+      <stop offset="0.52" stop-color="#c76644" />
+      <stop offset="1" stop-color="#b75a3d" />
+    </linearGradient>
+    <linearGradient id="iconBowlRim" x1="0.12" y1="0" x2="0.82" y2="1">
+      <stop offset="0" stop-color="#d97852" />
+      <stop offset="0.58" stop-color="#cb6744" />
+      <stop offset="1" stop-color="#ba5a3d" />
+    </linearGradient>
+    <radialGradient id="iconRice" cx="48%" cy="35%" r="78%">
+      <stop offset="0" stop-color="#fff1bd" />
+      <stop offset="1" stop-color="#f5d992" />
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#3e6072" flood-opacity="0.18" />
+    </filter>
+    <clipPath id="iconClip">
+      <rect x="84" y="84" width="472" height="472" rx="108" />
+    </clipPath>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#canvas)" />
+  <circle cx="1188" cy="-20" r="250" fill="#cbe5f4" opacity="0.52" />
+  <circle cx="1116" cy="606" r="180" fill="#f0d7cc" opacity="0.42" />
+  <path d="M612 102 H1160" stroke="#c9dbe5" stroke-width="2" />
+
+  <g filter="url(#shadow)">
+    <rect x="72" y="72" width="496" height="496" rx="120" fill="#ffffff" />
+    <svg x="84" y="84" width="472" height="472" viewBox="0 0 1254 1254" clip-path="url(#iconClip)" preserveAspectRatio="xMidYMid meet">
+      <rect width="1254" height="1254" fill="url(#iconBackground)" />
+      <path
+        fill="url(#iconBowlBody)"
+        d="M49 495 C51 557 150 604 311 616 C518 632 784 597 999 527 C1125 486 1203 435 1215 373 L1227 523 C1237 785 1077 1030 834 1117 C566 1214 283 1138 142 936 C80 848 51 733 49 495Z"
+      />
+      <path
+        fill="url(#iconBowlRim)"
+        d="M49 495 C47 422 160 353 337 312 C540 264 808 238 1005 249 C1140 256 1207 300 1215 354 C1225 423 1139 481 998 527 C786 597 518 632 311 616 C150 604 51 557 49 495Z"
+      />
+      <path
+        fill="url(#iconRice)"
+        d="M168 515 C183 469 259 423 367 410 C413 362 497 331 585 340 C649 284 763 275 853 315 C930 279 1039 296 1082 357 C1071 407 978 456 829 495 C628 548 378 565 222 543 C187 538 169 528 168 515Z"
+      />
+      <rect x="351" y="718" width="70" height="127" rx="35" fill="url(#iconRice)" transform="rotate(-4 386 781.5)" />
+      <rect x="760" y="686" width="71" height="130" rx="35.5" fill="url(#iconRice)" transform="rotate(-4 795.5 751)" />
+      <circle cx="590" cy="819" r="30" fill="url(#iconRice)" />
+    </svg>
+  </g>
+
+  <text
+    x="612"
+    y="224"
+    fill="#182126"
+    font-family="Inter, SF Pro Display, Roboto, sans-serif"
+    font-size="96"
+    font-weight="750"
+    letter-spacing="-3"
+  >Miffan</text>
+  <rect x="612" y="254" width="108" height="9" rx="4.5" fill="url(#accent)" />
+  <text
+    x="612"
+    y="334"
+    fill="#33434c"
+    font-family="Inter, SF Pro Display, Roboto, sans-serif"
+    font-size="38"
+    font-weight="500"
+  >Your AI workspace on Android</text>
+
+  <g fill="#ffffff" stroke="#c7dae5" stroke-width="2">
+    <rect x="612" y="382" width="168" height="58" rx="29" />
+    <rect x="798" y="382" width="188" height="58" rx="29" />
+    <rect x="1004" y="382" width="118" height="58" rx="29" />
+    <rect x="612" y="458" width="128" height="58" rx="29" />
+    <rect x="758" y="458" width="218" height="58" rx="29" />
+  </g>
+  <g
+    fill="#38515e"
+    font-family="Inter, SF Pro Display, Roboto, sans-serif"
+    font-size="24"
+    font-weight="600"
+    text-anchor="middle"
+  >
+    <text x="696" y="419">Models</text>
+    <text x="892" y="419">Assistants</text>
+    <text x="1063" y="419">MCP</text>
+    <text x="676" y="495">Skills</text>
+    <text x="867" y="495">Local tools</text>
+  </g>
+
+  <text
+    x="612"
+    y="566"
+    fill="#667b86"
+    font-family="Inter, SF Pro Display, Roboto, sans-serif"
+    font-size="22"
+    font-weight="500"
+    letter-spacing="0.5"
+  >OPEN SOURCE · NATIVE · MULTI-PROVIDER</text>
+</svg>
