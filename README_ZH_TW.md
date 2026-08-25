@@ -115,6 +115,8 @@ Miffan 目前透過 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases
 
 Miffan 的應用程式 ID 為 `me.ayuilos.miffan.app`，Deep Link 協定為 `miffan://`。RikkaHub 的既有資料不會自動共享；如需移轉，請先在舊 APP 中匯出備份，再匯入 Miffan。
 
+自 `3.0.0-rc.1` 起，Miffan 採用不再編入 RikkaHub 版本的獨立 SemVer 發布線。正式 APK 保留既有套件名稱與正式簽署身分，因此 `2.4.11-miffan.1` 可在不變更使用者資料或資料庫相容策略的前提下原地升級。Nightly 工作流程成品使用 `me.ayuilos.miffan.app.nightly` 與 CI 臨時 debug 簽署，只能分開安裝，不能覆蓋正式版。Nightly 屬於一次性測試產物；不同執行的簽署可能變更，因此不保證 Nightly 之間可以原地升級。
+
 ## 安全與隱私說明
 
 Miffan 是用戶端：提示詞、附件和工具資料會傳送到你選擇的模型、搜尋、語音、MCP、同步或其他服務端點。請分別了解所設定服務的隱私權政策和計費方式。詳細資料流說明見 [PRIVACY.md](PRIVACY.md)。
@@ -157,7 +159,7 @@ cd Miffan
 
 ## 專案歷史與歸屬
 
-Miffan 最初源自 [RikkaHub](https://github.com/rikkahub/rikkahub) 的社群分支，並會繼續選擇性吸收上游改進。現在它作為獨立應用程式維護，擁有自己的產品定位、角色系統、套件名稱、簽署憑證、發布版本線與功能開發方向。
+Miffan 最初源自 [RikkaHub](https://github.com/rikkahub/rikkahub) 的社群分支，並會繼續選擇性吸收上游改進。現在它作為獨立應用程式維護，擁有自己的產品定位、角色系統、套件名稱、簽署憑證、發布版本線與功能開發方向。RikkaHub 僅作為選擇性的程式碼輸入，而不是產品版本來源；具體審查與來源記錄規則請見[上游同步策略](docs/upstream-sync.md)。
 
 專案會依照授權條款保留上游版權與歸屬資訊。Miffan 不是 RikkaHub 的官方版本。
 

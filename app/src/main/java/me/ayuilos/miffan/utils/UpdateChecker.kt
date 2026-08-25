@@ -34,7 +34,21 @@ private const val GITHUB_RELEASE_ATOM_URL =
     "https://github.com/Ayuilos/Miffan/releases.atom"
 private const val GITHUB_RELEASES_URL =
     "https://github.com/Ayuilos/Miffan/releases"
-private val MIFFAN_RELEASE_VERSION = Regex("""\d+\.\d+\.\d+-miffan\.\d+""")
+private const val SEMVER_NUMERIC_IDENTIFIER = "(?:0|[1-9]\\d*)"
+private const val SEMVER_NON_NUMERIC_IDENTIFIER = "(?:\\d*[A-Za-z-][0-9A-Za-z-]*)"
+private const val SEMVER_PRERELEASE_IDENTIFIER =
+    "(?:$SEMVER_NUMERIC_IDENTIFIER|$SEMVER_NON_NUMERIC_IDENTIFIER)"
+private const val SEMVER_BUILD_IDENTIFIER = "[0-9A-Za-z-]+"
+private val LEGACY_MIFFAN_RELEASE_VERSION = Regex(
+    "$SEMVER_NUMERIC_IDENTIFIER\\.$SEMVER_NUMERIC_IDENTIFIER\\." +
+        "$SEMVER_NUMERIC_IDENTIFIER-miffan\\.$SEMVER_NUMERIC_IDENTIFIER"
+)
+private val STANDARD_SEMVER = Regex(
+    "($SEMVER_NUMERIC_IDENTIFIER)\\.($SEMVER_NUMERIC_IDENTIFIER)\\." +
+        "($SEMVER_NUMERIC_IDENTIFIER)" +
+        "(?:-($SEMVER_PRERELEASE_IDENTIFIER(?:\\.$SEMVER_PRERELEASE_IDENTIFIER)*))?" +
+        "(?:\\+($SEMVER_BUILD_IDENTIFIER(?:\\.$SEMVER_BUILD_IDENTIFIER)*))?"
+)
 
 class UpdateChecker(
     client: OkHttpClient,
@@ -184,6 +198,9 @@ internal data class GitHubReleaseAsset(
 
 internal fun GitHubRelease.toUpdateInfo(): UpdateInfo {
     require(!draft && !prerelease) { "The latest GitHub release is not a formal release" }
+    require(tagName.isFormalMiffanReleaseVersion()) {
+        "The latest GitHub release tag is not a formal Miffan version: $tagName"
+    }
     val version = tagName.toMiffanReleaseVersion()
     val expectedAssetName = apkAssetName(version)
     val downloads = assets
@@ -208,10 +225,11 @@ internal fun GitHubRelease.toUpdateInfo(): UpdateInfo {
     )
 }
 
-internal fun parseLatestMiffanReleaseAtom(xml: String): UpdateInfo {
-    val parser = Xml.newPullParser().apply {
-        setInput(StringReader(xml))
-    }
+internal fun parseLatestMiffanReleaseAtom(
+    xml: String,
+    parser: XmlPullParser = Xml.newPullParser(),
+): UpdateInfo {
+    parser.setInput(StringReader(xml))
     var inEntry = false
     var currentTextTag: String? = null
     val text = StringBuilder()
@@ -255,9 +273,12 @@ internal fun parseLatestMiffanReleaseAtom(xml: String): UpdateInfo {
 
                     parser.name == "entry" -> {
                         val tag = releaseLink
-                            ?.substringAfter("$GITHUB_RELEASES_URL/tag/", missingDelimiterValue = "")
+                            ?.substringAfter(
+                                "$GITHUB_RELEASES_URL/tag/",
+                                missingDelimiterValue = "",
+                            )
                             ?.substringBefore('?')
-                            ?.takeIf { MIFFAN_RELEASE_VERSION.matches(it) }
+                            ?.takeIf { it.isFormalMiffanReleaseVersion() }
                         if (tag != null) {
                             return UpdateInfo(
                                 version = tag,
@@ -287,10 +308,19 @@ internal fun parseLatestMiffanReleaseAtom(xml: String): UpdateInfo {
 }
 
 private fun String.toMiffanReleaseVersion(): String {
-    require(MIFFAN_RELEASE_VERSION.matches(this)) {
+    require(isSupportedMiffanReleaseVersion()) {
         "Unexpected Miffan release tag: $this"
     }
     return this
+}
+
+internal fun String.isSupportedMiffanReleaseVersion(): Boolean =
+    LEGACY_MIFFAN_RELEASE_VERSION.matches(this) || STANDARD_SEMVER.matches(this)
+
+private fun String.isFormalMiffanReleaseVersion(): Boolean {
+    if (LEGACY_MIFFAN_RELEASE_VERSION.matches(this)) return true
+    val match = STANDARD_SEMVER.matchEntire(this) ?: return false
+    return match.groupValues[4].isEmpty()
 }
 
 private fun apkAssetName(version: String): String =

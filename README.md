@@ -115,6 +115,8 @@ Miffan currently distributes signed APKs through [GitHub Releases](https://githu
 
 Miffan uses the application ID `me.ayuilos.miffan.app` and the `miffan://` deep-link scheme. Existing RikkaHub data is not shared automatically; export a backup from the old app and import it into Miffan if you want to migrate.
 
+Beginning with `3.0.0-rc.1`, Miffan uses an independent SemVer release line that does not encode a RikkaHub version. Official APKs retain the existing package and production signing identity, so `2.4.11-miffan.1` can be upgraded in place without changing the app's data or database compatibility policy. Nightly workflow artifacts use `me.ayuilos.miffan.app.nightly` and an ephemeral CI debug signer; they install separately and cannot replace an official build. Nightlies are disposable test artifacts, and the signer may change between runs, so in-place upgrades between Nightlies are not guaranteed.
+
 ## Security and privacy notes
 
 Miffan is a client: prompts, attachments, and tool data are sent to the model, search, speech, MCP, sync, or other endpoints you choose. Review the privacy policy and pricing of every service you configure. The repository's data-flow disclosures are in [PRIVACY.md](PRIVACY.md).
@@ -157,7 +159,7 @@ Useful verification commands:
 
 ## Project history and attribution
 
-Miffan began as a community fork of [RikkaHub](https://github.com/rikkahub/rikkahub) and continues to incorporate selected upstream improvements. It is now maintained as an independent application with its own product identity, character system, package name, signing certificate, release line, and feature development.
+Miffan began as a community fork of [RikkaHub](https://github.com/rikkahub/rikkahub) and continues to incorporate selected upstream improvements. It is now maintained as an independent application with its own product identity, character system, package name, signing certificate, release line, and feature development. RikkaHub is treated as a selective code input rather than a product-version source; the review and provenance rules are documented in the [upstream synchronization policy](docs/upstream-sync.md).
 
 Upstream copyright and attribution are retained as required by the license. Miffan is not an official RikkaHub release.
 
