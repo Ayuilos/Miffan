@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -66,7 +65,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -165,11 +163,7 @@ fun ChatInput(
         onActivityChanged(inputActivity)
     }
 
-    // imeAnimationTarget 在键盘动画开始时就会改变，可避免工具栏展开与 IME 关闭互相干扰。
-    val density = LocalDensity.current
-    val imeTargetVisible = WindowInsets.imeAnimationTarget.getBottom(density) > 0
-
-    // 失焦时收拢成胶囊，聚焦后展开；键盘弹出时仍保留完整圆角。
+    // 失焦时收拢成胶囊，聚焦后展开；键盘弹出时仍保留完整圆角和工具栏。
     val topCorner by animateDpAsState(
         targetValue = if (isInputFocused) 24.dp else 32.dp,
         animationSpec = tween(durationMillis = 180),
@@ -270,14 +264,13 @@ fun ChatInput(
                         isFocused = isInputFocused,
                         loading = loading,
                         completionProviders = completionProviders,
-                        showInlineSendButton = imeTargetVisible,
                         onFocusChanged = { isInputFocused = it },
                         onSendMessage = { sendMessage() },
                         onLongSendMessage = { sendMessageWithoutAnswer() },
                     )
 
                     AnimatedVisibility(
-                        visible = isInputFocused && !imeTargetVisible,
+                        visible = isInputFocused,
                         enter = EnterTransition.None,
                         exit = shrinkVertically(
                             animationSpec = tween(durationMillis = 160),
@@ -484,7 +477,6 @@ private fun TextInputRow(
     isFocused: Boolean,
     loading: Boolean,
     completionProviders: List<ChatCompletionProvider>,
-    showInlineSendButton: Boolean,
     onFocusChanged: (Boolean) -> Unit,
     onSendMessage: () -> Unit,
     onLongSendMessage: () -> Unit,
@@ -663,7 +655,7 @@ private fun TextInputRow(
                             Icon(HugeIcons.Fullscreen, null)
                         }
                     }
-                    if (showInlineSendButton || !isFocused) {
+                    if (!isFocused) {
                         SendActionButton(
                             state = state,
                             loading = loading,
