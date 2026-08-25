@@ -1324,4 +1324,9 @@
   <string name="workspace_terminal_resource_limit">Терминал остановлен политикой ограничения ресурсов</string>
   <string name="assistant_page_context_message_limit_hint">Введите 0, чтобы снять ограничение, или значение не меньше %d</string>
   <string name="assistant_page_context_message_limit_too_small">Лимит сообщений контекста не может быть меньше %1$d. Он сброшен до %1$d.</string>
+  <string name="setting_provider_page_test_non_streaming">Без стриминга</string>
+  <string name="setting_provider_page_test_streaming">Стриминг</string>
+  <string name="setting_provider_page_test_tool_call">Вызов инструмента</string>
+  <string name="setting_provider_page_test_tool_called">Вызвано: %1$s  Аргументы: %2$s</string>
+  <string name="setting_provider_page_test_tool_not_called">Инструмент не вызван, ответ: %s</string>
 </resources>

@@ -236,6 +236,9 @@ dependencies {
     // serialization
     implementation(libs.kotlinx.serialization.json)
 
+    // YAML front matter
+    implementation(libs.snakeyaml)
+
     // zxing
     implementation(libs.zxing.core)
 
@@ -297,6 +300,7 @@ dependencies {
     implementation(project(":highlight"))
     implementation(project(":search"))
     implementation(project(":speech"))
+    implementation(project(":videogen"))
     implementation(project(":common"))
     implementation(project(":material3"))
     implementation(project(":workspace"))

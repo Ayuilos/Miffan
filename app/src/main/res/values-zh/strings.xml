@@ -1324,4 +1324,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="theme_name_claude">Claude</string>
   <string name="workspace_terminal_busy">此工作区已有正在执行的会话</string>
   <string name="workspace_terminal_resource_limit">终端已因资源策略而停止</string>
+  <string name="setting_provider_page_test_non_streaming">非流式</string>
+  <string name="setting_provider_page_test_streaming">流式</string>
+  <string name="setting_provider_page_test_tool_call">工具调用</string>
+  <string name="setting_provider_page_test_tool_called">已调用: %1$s  参数: %2$s</string>
+  <string name="setting_provider_page_test_tool_not_called">未调用工具，响应：%s</string>
 </resources>

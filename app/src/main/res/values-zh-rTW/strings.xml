@@ -1322,4 +1322,9 @@
   <string name="workspace_terminal_resource_limit">終端機已因資源政策而停止</string>
   <string name="assistant_page_context_message_limit_hint">輸入 0 表示不限制，其他值不得小於 %d</string>
   <string name="assistant_page_context_message_limit_too_small">上下文訊息限制不得小於 %1$d，已自動重設為 %1$d。</string>
+  <string name="setting_provider_page_test_non_streaming">非串流</string>
+  <string name="setting_provider_page_test_streaming">串流</string>
+  <string name="setting_provider_page_test_tool_call">工具呼叫</string>
+  <string name="setting_provider_page_test_tool_called">已調用：%1$s  參數：%2$s</string>
+  <string name="setting_provider_page_test_tool_not_called">工具未被呼叫，回應：%s</string>
 </resources>

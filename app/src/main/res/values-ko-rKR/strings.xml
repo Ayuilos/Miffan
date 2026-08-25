@@ -1324,4 +1324,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_terminal_resource_limit">리소스 정책으로 인해 터미널이 중지되었습니다</string>
   <string name="assistant_page_context_message_limit_hint">0을 입력하면 제한 없음, 그 외에는 %d 이상의 값을 입력하세요</string>
   <string name="assistant_page_context_message_limit_too_small">컨텍스트 메시지 제한은 %1$d보다 작을 수 없습니다. %1$d로 재설정되었습니다.</string>
+  <string name="setting_provider_page_test_non_streaming">비스트리밍</string>
+  <string name="setting_provider_page_test_streaming">스트리밍</string>
+  <string name="setting_provider_page_test_tool_call">도구 호출</string>
+  <string name="setting_provider_page_test_tool_called">호출: %1$s  인수: %2$s</string>
+  <string name="setting_provider_page_test_tool_not_called">도구가 호출되지 않음, 응답: %s</string>
 </resources>

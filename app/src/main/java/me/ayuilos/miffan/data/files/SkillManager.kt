@@ -196,7 +196,10 @@ class SkillManager(
                 name = name,
                 description = description,
                 compatibility = frontmatter["compatibility"],
-                allowedTools = frontmatter["allowed-tools"]?.split(" ")?.filter { it.isNotBlank() } ?: emptyList(),
+                allowedTools = frontmatter["allowed-tools"]
+                    ?.split(Regex("\\s+"))
+                    ?.filter { it.isNotBlank() }
+                    .orEmpty(),
                 skillDir = skillDir,
             )
         }.getOrElse {

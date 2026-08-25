@@ -1324,4 +1324,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_terminal_resource_limit">リソースポリシーによりターミナルが停止しました</string>
   <string name="assistant_page_context_message_limit_hint">0 を入力すると無制限になります。それ以外は %d 以上の値を入力してください</string>
   <string name="assistant_page_context_message_limit_too_small">コンテキストメッセージ数の上限は %1$d 未満にできません。%1$d にリセットしました。</string>
+  <string name="setting_provider_page_test_non_streaming">非ストリーミング</string>
+  <string name="setting_provider_page_test_streaming">ストリーミング</string>
+  <string name="setting_provider_page_test_tool_call">ツール呼び出し</string>
+  <string name="setting_provider_page_test_tool_called">呼び出し: %1$s  引数: %2$s</string>
+  <string name="setting_provider_page_test_tool_not_called">ツールが呼び出されませんでした。応答: %s</string>
 </resources>
