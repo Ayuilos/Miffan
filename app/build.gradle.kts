@@ -45,8 +45,8 @@ android {
         applicationId = "me.ayuilos.miffan.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 178001
-        versionName = "2.4.11-miffan.1"
+        versionCode = 178002
+        versionName = "3.0.0-rc.1"
 
         buildConfigField("boolean", "FIREBASE_ENABLED", hasGoogleServicesConfig.toString())
 
@@ -94,6 +94,18 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
+            buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
+        }
+        create("nightly") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".nightly"
+            versionNameSuffix = "-nightly"
+            matchingFallbacks += listOf("debug")
+            buildConfigField(
+                "String",
+                "VERSION_NAME",
+                "\"${android.defaultConfig.versionName}-nightly\"",
+            )
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
     }
@@ -312,6 +324,7 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

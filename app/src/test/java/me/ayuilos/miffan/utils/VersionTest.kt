@@ -36,6 +36,12 @@ class VersionTest {
     }
 
     @Test
+    fun `legacy Miffan releases upgrade into independent version line`() {
+        assertTrue(Version("2.4.11-miffan.1") < Version("3.0.0-rc.1"))
+        assertTrue(Version("3.0.0-rc.1") < Version("3.0.0"))
+    }
+
+    @Test
     fun `prerelease with more fields has higher precedence`() {
         assertTrue(Version("1.0.0-alpha") < Version("1.0.0-alpha.1"))
     }

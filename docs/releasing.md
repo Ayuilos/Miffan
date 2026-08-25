@@ -1,38 +1,77 @@
-# Miffan APK release process
+# Miffan release process
 
-Formal Miffan releases use the version in `app/build.gradle.kts` and a tag with the exact version number, without a `v` prefix. This project distributes APKs directly and does not publish an AAB to Google Play.
+Miffan is an independent project with its own version line, package identity, signing trust anchor, and GitHub Releases. RikkaHub remains an optional source of selected code improvements, not a source of Miffan product versions. See [upstream-sync.md](upstream-sync.md) for the upstream policy.
 
-## Application identity
+## Application identity and channels
 
-Miffan is installed as an application independent from upstream RikkaHub:
+Official Miffan releases keep all of these values stable:
 
 - namespace: `me.ayuilos.miffan`
 - application ID: `me.ayuilos.miffan.app`
 - deep-link scheme: `miffan://`
+- production signing certificate: the trust anchor recorded below
 
-The separate application ID lets Miffan and upstream RikkaHub coexist on the same Android device even though they use different signing certificates. Their private data, permissions, databases, and settings are separate. Users who want to migrate existing data must export it from the old app and import it into Miffan.
+The release channels are intentionally isolated:
 
-## Version scheme
+| Channel | Gradle build type | Application ID | Signing | Distribution |
+| --- | --- | --- | --- | --- |
+| Official / release candidate | `release` | `me.ayuilos.miffan.app` | Miffan production certificate | Verified draft GitHub Release, then explicit publication approval |
+| Nightly | `nightly` | `me.ayuilos.miffan.app.nightly` | Ephemeral CI debug certificate | Disposable GitHub Actions artifact only |
+| Local debug | `debug` | `me.ayuilos.miffan.app.debug` | Android debug certificate | Local or CI artifact |
 
-Keep the Miffan version distinct from upstream:
+Nightly never reads production signing secrets, never updates the fixed `nightly` tag, and never creates a GitHub Release. Its different application ID prevents a nightly APK from replacing or upgrading an official installation. Each hosted CI run uses a temporary debug signer that may differ from another run, so Nightly is a disposable test artifact and is not guaranteed to upgrade in place over an earlier Nightly. A fresh install may be required.
 
-- `versionName`: `<upstream-version>-miffan.<fork-revision>`
-- `versionCode`: `<upstream-version-code> * 1000 + <fork-revision>`
+## Independent version scheme
 
-For example, the first Miffan release based on upstream `2.4.10` (`versionCode` 177) is `2.4.10-miffan.1` with `versionCode` 177001. Increment only the fork revision for releases on the same upstream base. After rebasing to a newer upstream release, use that release's version and code as the new base.
+New Miffan releases use standard Semantic Versioning without a `v` prefix:
 
-Miffan checks the latest formal release published in `Ayuilos/Miffan` on GitHub. Keep the release tag identical to `versionName` and attach the arm64 APK using the name `Miffan-<version>-arm64-v8a.apk`; the in-app updater uses those GitHub Releases as its source of truth.
+- stable: `MAJOR.MINOR.PATCH`, for example `3.0.0`
+- prerelease: `MAJOR.MINOR.PATCH-PRERELEASE`, for example `3.0.0-rc.1`
+- tag and Release title: exactly the same as `versionName`
 
-## Prepare
+Do not encode an upstream RikkaHub version or sync revision in a new Miffan version. Historical versions such as `2.4.11-miffan.1` remain supported only as updater and upgrade-acceptance inputs.
 
-1. Start from an up-to-date, clean `master` worktree and inspect the commits since the upstream base tag and the latest Miffan release tag.
-2. Increment both `versionName` and `versionCode` according to the scheme above.
-3. Add bilingual release notes to `docs/releases/<version>.md`. Keep the user-facing change list to no more than ten items and avoid implementation details.
-4. Confirm the release notes with the user before creating a GitHub Release.
+`versionCode` is an Android upgrade counter, independent of SemVer. Every installable release APK that uses `me.ayuilos.miffan.app` and the production certificate must have a `versionCode` strictly greater than every previously distributed upgrade-capable APK. It does not need to encode the SemVer components.
 
-## Configure signing
+The first candidate in the independent line is:
 
-Release signing credentials are local or CI secrets and must never be committed. For a local build, place the authorized keystore outside version control and configure these entries in the ignored root `local.properties` file:
+- `versionName`: `3.0.0-rc.1`
+- `versionCode`: `178002`
+
+Because the RC uses the official package name, the eventual `3.0.0` release must use a value greater than `178002`.
+
+## Update compatibility and safety boundary
+
+The in-app updater accepts both generations of version tags:
+
+- historical formal tags: `x.y.z-miffan.n`
+- independent SemVer tags: `x.y.z` and syntactically valid prerelease tags such as `x.y.z-rc.n`
+
+The official update source still ignores drafts and prereleases. GitHub's latest-release API excludes them, and Miffan also rejects release metadata marked `draft` or `prerelease`. If the API is unavailable, the Atom fallback skips standard SemVer prereleases and selects the next historical formal tag or stable SemVer tag.
+
+Consequences for the transition:
+
+- `2.4.11-miffan.1` can be upgraded in place to the production-signed `3.0.0-rc.1` APK by an explicit RC installation.
+- The RC understands both version generations, so it will recognize a future stable `3.0.0` release.
+- The official updater does not automatically offer the RC; prerelease participation is opt-in.
+
+Official arm64 assets use `Miffan-<version>-arm64-v8a.apk`. The checksum companion uses the same name plus `.sha256`.
+
+## Production signing trust anchor
+
+The first Miffan production certificate was created on 2026-08-19. It must remain unchanged for every official update:
+
+- Subject: `CN=Miffan Release, OU=Android, O=Ayuilos, C=CN`
+- SHA-256: `6C:4B:84:1A:D2:EF:14:8C:88:8D:38:41:1F:02:68:C6:C6:FA:90:8B:5E:0D:00:9E:A1:87:BF:AF:2F:1F:9D:31`
+- Validity: 2026-08-19 through 2126-07-26
+
+The authorized local keystore remains outside the repository at `~/Library/Application Support/Miffan/signing/miffan-release.jks`. Its password is stored in the macOS login Keychain under the service `Miffan Release Keystore Password`. Back up the keystore and credential separately.
+
+GitHub copies of the keystore and signing properties must be stored as `KEY_BASE64` and `SIGNING_CONFIG` secrets in the `production` Environment. Do not put production signing secrets in repository-level nightly configuration, change their values in source, or reuse the certificate for `.nightly` builds.
+
+After the Environment copies have been verified, delete repository-level secrets with the same `KEY_BASE64` and `SIGNING_CONFIG` names. Keeping those duplicates would let a future workflow read production signing material without passing through the `production` Environment approval gate.
+
+For an authorized local build, configure the ignored root `local.properties`:
 
 ```properties
 storeFile=<path-to-existing-keystore>
@@ -41,59 +80,86 @@ keyAlias=<key-alias>
 keyPassword=<key-password>
 ```
 
-The first Miffan release needs a dedicated signing key stored outside version control. Keep that key and its credentials backed up: every later Miffan APK must use the same certificate to upgrade an installed Miffan release without data loss.
+When these four entries are absent, `assembleRelease` may produce unsigned verification APKs. They are not production releases and must not be distributed.
 
-If a new key must be created, generate it interactively outside the repository and omit passwords from shell history:
+`app/google-services.json` is optional. Only a configuration registered for `me.ayuilos.miffan.app` may be used; an upstream or nightly application ID configuration must not be substituted.
+
+## Prepare a release
+
+1. Start from an up-to-date, clean `master` and create a dedicated release branch.
+2. Select and record the exact target commit. Do not silently build a moving branch head.
+3. Set an independent SemVer `versionName` and a strictly increasing `versionCode` in `app/build.gradle.kts`.
+4. Add bilingual notes at `docs/releases/<version>.md` using [the template](releases/TEMPLATE.md). Keep Miffan-owned changes separate from improvements incorporated from RikkaHub.
+5. Require the PR/push CI workflow to pass `test`, `lint`, and `assembleDebug` before merging the target commit.
+6. Review the in-place upgrade acceptance below for any release that shares the official package name.
+
+No upstream tag is a Miffan release trigger. Do not fetch-and-push, mirror, or automatically propagate upstream tags.
+
+## Build a verified draft Release
+
+Run `.github/workflows/release.yml` manually and provide all three explicit inputs:
+
+- the target commit's full 40-character SHA;
+- the exact SemVer `versionName`;
+- the exact Android `versionCode`.
+
+The workflow is gated by the `production` Environment. It verifies that the requested commit, source version, and notes agree; refuses to replace an existing tag; runs tests and lint; builds the release; and checks:
+
+- application ID is `me.ayuilos.miffan.app`;
+- `versionName` and `versionCode` match the approved inputs;
+- the staged APK is arm64-only;
+- the signer SHA-256 matches the Miffan production trust anchor;
+- the asset name follows the official convention.
+
+It then computes SHA-256, creates GitHub build provenance for the verified APK with `actions/attest@v4`, uploads the verified APK/checksum as a workflow artifact, and prepares a draft GitHub Release at the requested commit. A version containing a prerelease component is marked as a prerelease. The workflow does not make the draft public; publication remains a separate approval.
+
+Download the APK and verify its build provenance before publication:
 
 ```bash
-keytool -genkeypair -v \
-  -keystore /secure/backup/location/miffan-release.jks \
-  -alias miffan \
-  -keyalg RSA -keysize 4096 -validity 10000
+gh attestation verify <apk> -R Ayuilos/Miffan
 ```
 
-Record the certificate digest with `keytool -list -v`, back up the keystore and credentials separately, then configure the ignored `local.properties` entries above. Do not commit either file.
+Treat the signer verification, SHA-256 checksum, and build-provenance verification as separate required checks.
 
-The first Miffan production certificate was created on 2026-08-19. Its identity must remain the trust anchor for every later Miffan update:
-
-- Subject: `CN=Miffan Release, OU=Android, O=Ayuilos, C=CN`
-- SHA-256: `6C:4B:84:1A:D2:EF:14:8C:88:8D:38:41:1F:02:68:C6:C6:FA:90:8B:5E:0D:00:9E:A1:87:BF:AF:2F:1F:9D:31`
-- Validity: 2026-08-19 through 2126-07-26
-
-The authorized local keystore is stored at `~/Library/Application Support/Miffan/signing/miffan-release.jks`; its password is stored in the macOS login Keychain under the service `Miffan Release Keystore Password`. Back up the keystore and its credential separately in secure, recoverable locations. The GitHub Actions copies are configured as the `KEY_BASE64` and `SIGNING_CONFIG` repository secrets.
-
-`app/google-services.json` is optional. When an authorized configuration for `me.ayuilos.miffan.app` is present, analytics and crash reporting are enabled. When it is absent, those integrations are disabled. A configuration registered for the upstream application ID must not be reused.
-
-When the four signing entries are absent, `assembleRelease` produces unsigned APKs for build verification. Those artifacts are not installable production releases and must not be published.
-
-## Verify and build
+For local verification without publication:
 
 ```bash
 ./gradlew test
 ./gradlew lint
 ./gradlew assembleRelease
-```
 
-Before distributing an APK, verify all of the following:
-
-- the package name is `me.ayuilos.miffan.app`;
-- the version name and code match the planned release;
-- only the `arm64-v8a` APK is staged for the formal release;
-- native libraries are compatible with 16 KB page-size devices;
-- the APK signature matches the certificate selected for Miffan releases;
-- the APK installs alongside upstream RikkaHub;
-- the APK upgrades the previous Miffan release without removing app data.
-
-The CI workflow verifies the arm64 APK signature before uploading it. An unsigned build therefore remains a local verification artifact instead of being published accidentally.
-
-Record the staged APK's SHA-256 digest. Rename and copy the arm64 artifact to the ignored staging directory:
-
-```bash
 mkdir -p app/release
-cp app/build/outputs/apk/release/app-arm64-v8a-release.apk app/release/Miffan-<version>-arm64-v8a.apk
+cp app/build/outputs/apk/release/app-arm64-v8a-release.apk \
+  app/release/Miffan-<version>-arm64-v8a.apk
 shasum -a 256 app/release/Miffan-<version>-arm64-v8a.apk
 ```
 
-## Publish after approval
+Never upload the universal or x86_64 APK to an official Release.
 
-Publishing is a separate, explicitly authorized action. After the user approves the notes, create the release with the version as the title and tag (no `v` prefix), attach only the staged arm64 APK, and use `docs/releases/<version>.md` as the description. Do not upload the universal or x86_64 APK.
+## In-place upgrade acceptance from 2.4.11-miffan.1
+
+This release migration does not change the app's data ownership, database compatibility policy, or migration strategy. Validate upgrades with a disposable device or emulator that represents real user state:
+
+1. Install the official, production-signed `2.4.11-miffan.1` APK.
+2. Create representative local state: a conversation, assistant/provider settings without live credentials, and a workspace reference or backup marker.
+3. Record the package, version, certificate digest, and a non-sensitive inventory of that state.
+4. Install the candidate with `adb install -r Miffan-<version>-arm64-v8a.apk`. Do not uninstall the old app and do not clear app data.
+5. Confirm Android reports the same package `me.ayuilos.miffan.app`, the higher `versionCode`, and the expected `versionName`.
+6. Launch Miffan and confirm the existing conversations, settings, files, and database open normally. Exercise startup and any existing Room migrations; do not add a release-only data reset or migration bypass.
+7. Confirm the updater in `3.0.0-rc.1` can parse and rank future `3.0.0` above the installed RC.
+
+Also verify a fresh install, coexistence with RikkaHub, deep links, and Android 8.0 minimum support. Any certificate mismatch or data loss blocks publication.
+
+## Publish after explicit approval
+
+Review the draft's target commit, bilingual notes, signer, APK, and checksum. Only after explicit authorization should the draft be published. Use the version as the title and tag without a `v` prefix. Do not move, replace, delete, or reuse an existing release tag.
+
+## Repository settings requiring manual administration
+
+These GitHub settings are deliberately outside the source change and require a repository administrator:
+
+- add a `master` ruleset requiring pull requests and the `CI / verify` status check;
+- add a tag ruleset for independent Miffan SemVer tags and restrict tag creation/deletion;
+- enable Release immutability and decide how to handle the existing non-immutable Releases;
+- create or review the `production` Environment, copy or migrate `KEY_BASE64` and `SIGNING_CONFIG` there, verify the workflow can access the Environment copies, delete the repository-level secrets with those same names, and require authorized reviewers;
+- verify Actions permissions allow the production workflow to prepare drafts only when explicitly dispatched.

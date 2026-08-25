@@ -1,0 +1,269 @@
+name: Prepare Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full 40-character commit SHA to build
+        required: true
+        type: string
+      release_version:
+        description: Exact SemVer in app/build.gradle.kts (for example, 3.0.0-rc.1)
+        required: true
+        type: string
+      version_code:
+        description: Exact Android versionCode in app/build.gradle.kts
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: production-release-${{ inputs.release_version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      EXPECTED_COMMIT: ${{ inputs.commit_sha }}
+      EXPECTED_VERSION: ${{ inputs.release_version }}
+      EXPECTED_VERSION_CODE: ${{ inputs.version_code }}
+      EXPECTED_PACKAGE: me.ayuilos.miffan.app
+      PRODUCTION_CERT_SHA256: 6C4B841AD2EF148C888D38411F0268C6C6FA908B5E0D009EA187BFAF2F1F9D31
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: recursive
+
+      - name: Validate explicit release inputs
+        id: release_inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "commit_sha must be a full 40-character SHA" >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "${EXPECTED_COMMIT,,}" ]; then
+            echo "Checkout does not match the requested commit" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          if ! git merge-base --is-ancestor "$EXPECTED_COMMIT" origin/master; then
+            echo "Requested commit must be reachable from origin/master" >&2
+            exit 1
+          fi
+
+          semver_regex='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ ! "$EXPECTED_VERSION" =~ $semver_regex ]]; then
+            echo "release_version must be an independent SemVer without a v prefix" >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]; then
+            echo "version_code must be a positive integer" >&2
+            exit 1
+          fi
+          version_without_build="${EXPECTED_VERSION%%+*}"
+          is_prerelease=false
+          if [[ "$version_without_build" == *-* ]]; then
+            is_prerelease=true
+            prerelease="${version_without_build#*-}"
+            IFS='.' read -ra prerelease_identifiers <<< "$prerelease"
+            for identifier in "${prerelease_identifiers[@]}"; do
+              if [[ "$identifier" =~ ^[0-9]+$ && "$identifier" == 0* && "$identifier" != "0" ]]; then
+                echo "Numeric SemVer prerelease identifiers must not contain leading zeroes" >&2
+                exit 1
+              fi
+            done
+          fi
+          echo "is_prerelease=$is_prerelease" >> "$GITHUB_OUTPUT"
+
+          source_version="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts | head -n 1)"
+          source_version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\)/\1/p' app/build.gradle.kts | head -n 1)"
+          if [ "$source_version" != "$EXPECTED_VERSION" ]; then
+            echo "Source versionName $source_version does not match $EXPECTED_VERSION" >&2
+            exit 1
+          fi
+          if [ "$source_version_code" != "$EXPECTED_VERSION_CODE" ]; then
+            echo "Source versionCode $source_version_code does not match $EXPECTED_VERSION_CODE" >&2
+            exit 1
+          fi
+          if [ ! -f "docs/releases/$EXPECTED_VERSION.md" ]; then
+            echo "Missing bilingual release notes: docs/releases/$EXPECTED_VERSION.md" >&2
+            exit 1
+          fi
+
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$EXPECTED_VERSION" >/dev/null 2>&1
+          tag_status=$?
+          set -e
+          case "$tag_status" in
+            0)
+              echo "Tag $EXPECTED_VERSION already exists; refusing to move or replace it" >&2
+              exit 1
+              ;;
+            2) ;;
+            *)
+              echo "Unable to verify that tag $EXPECTED_VERSION is unused" >&2
+              exit 1
+              ;;
+          esac
+
+          release_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$EXPECTED_VERSION")"
+          case "$release_status" in
+            404) ;;
+            200)
+              echo "Release $EXPECTED_VERSION already exists; refusing to replace it" >&2
+              exit 1
+              ;;
+            *)
+              echo "Unable to verify that Release $EXPECTED_VERSION is unused (HTTP $release_status)" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+
+      - name: Install web-ui dependencies
+        working-directory: web-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare production signing credentials
+        shell: bash
+        env:
+          KEY_BASE64: ${{ secrets.KEY_BASE64 }}
+          SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEY_BASE64" ] || [ -z "$SIGNING_CONFIG" ]; then
+            echo "Production signing secrets are missing from the production Environment" >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEY_BASE64" | base64 --decode > app/app.key
+          printf '%s' "$SIGNING_CONFIG" > local.properties
+
+      - name: Build production release from requested commit
+        run: ./gradlew test lint assembleRelease --stacktrace
+
+      - name: Verify package, version, ABI, and production signature
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "Signed arm64 release APK is missing: $apk" >&2
+            exit 1
+          fi
+
+          android_sdk_dir="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$android_sdk_dir" ]; then
+            echo "Android SDK path is not configured" >&2
+            exit 1
+          fi
+          aapt="$(find "$android_sdk_dir/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner="$(find "$android_sdk_dir/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$aapt" ] || [ -z "$apksigner" ]; then
+            echo "Android APK verification tools were not found" >&2
+            exit 1
+          fi
+
+          badging="$($aapt dump badging "$apk")"
+          package_name="$(printf '%s\n' "$badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          version_name="$(printf '%s\n' "$badging" | sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p")"
+          version_code="$(printf '%s\n' "$badging" | sed -n "s/^package:.* versionCode='\([^']*\)'.*/\1/p")"
+          native_code="$(printf '%s\n' "$badging" | sed -n 's/^native-code: //p')"
+          if [ "$package_name" != "$EXPECTED_PACKAGE" ]; then
+            echo "Unexpected production package name: $package_name" >&2
+            exit 1
+          fi
+          if [ "$version_name" != "$EXPECTED_VERSION" ] || [ "$version_code" != "$EXPECTED_VERSION_CODE" ]; then
+            echo "APK version $version_name/$version_code does not match requested version" >&2
+            exit 1
+          fi
+          if [ "$native_code" != "'arm64-v8a'" ]; then
+            echo "Release APK is not arm64-only: $native_code" >&2
+            exit 1
+          fi
+
+          signer_digest="$($apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr '[:lower:]' '[:upper:]')"
+          signer_digest="${signer_digest//:/}"
+          if [ "$signer_digest" != "$PRODUCTION_CERT_SHA256" ]; then
+            echo "APK signature does not match the Miffan production trust anchor" >&2
+            exit 1
+          fi
+
+          asset_name="Miffan-$EXPECTED_VERSION-arm64-v8a.apk"
+          staging_dir="app/build/release-staging"
+          mkdir -p "$staging_dir"
+          cp "$apk" "$staging_dir/$asset_name"
+          (
+            cd "$staging_dir"
+            sha256sum "$asset_name" > "$asset_name.sha256"
+          )
+          echo "apk_path=$staging_dir/$asset_name" >> "$GITHUB_OUTPUT"
+          echo "sha_path=$staging_dir/$asset_name.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Attest production APK build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ steps.stage.outputs.apk_path }}
+
+      - name: Upload verified release candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miffan-${{ inputs.release_version }}-verified
+          path: |
+            ${{ steps.stage.outputs.apk_path }}
+            ${{ steps.stage.outputs.sha_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Prepare draft GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_version }}
+          name: ${{ inputs.release_version }}
+          target_commitish: ${{ inputs.commit_sha }}
+          body_path: docs/releases/${{ inputs.release_version }}.md
+          draft: true
+          prerelease: ${{ steps.release_inputs.outputs.is_prerelease }}
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.stage.outputs.apk_path }}
+            ${{ steps.stage.outputs.sha_path }}

@@ -1,56 +1,54 @@
-name: Daily Build
+name: Nightly Build
 
 on:
-  # 每天 UTC 18:00 触发（北京时间次日 02:00），可按需修改
   schedule:
     - cron: '0 18 * * *'
-  # 也支持手动触发
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  # 检查过去 24 小时内是否有新提交，没有则跳过构建，避免重复打包
   check:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Check for recent commits
         id: check
+        shell: bash
         run: |
-          # 手动触发时无条件构建
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # 定时触发：仅当过去 24 小时内有新提交才构建
-          if [ -n "$(git log --since='24 hours ago' --oneline)" ]; then
+          elif [ -n "$(git log --since='24 hours ago' --oneline)" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "过去 24 小时无新提交，跳过构建"
+            echo "No commits in the last 24 hours; skipping the nightly build."
           fi
 
   build:
     needs: check
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # 发布 Release 需要写权限
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive # 拉取子模块
+          submodules: recursive
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      # web 模块的 preBuild 会执行 `pnpm run build` 构建前端，必须准备好 Node + pnpm
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -63,67 +61,85 @@ jobs:
           cache: pnpm
           cache-dependency-path: web-ui/pnpm-lock.yaml
 
-      # gradle 的 buildWebUi 任务只跑 build 不跑 install，需在此提前安装依赖
       - name: Install web-ui dependencies
         working-directory: web-ui
         run: pnpm install --frozen-lockfile
 
-      - name: Gradle cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Prepare signing files
+      - name: Build non-production nightly APK
+        run: ./gradlew assembleNightly --stacktrace
+
+      - name: Verify nightly isolation
+        id: stage
+        shell: bash
         env:
-          KEY_BASE64: ${{ secrets.KEY_BASE64 }}
-          SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
+          PRODUCTION_CERT_SHA256: 6C4B841AD2EF148C888D38411F0268C6C6FA908B5E0D009EA187BFAF2F1F9D31
         run: |
-          if [ -z "$KEY_BASE64" ] || [ -z "$SIGNING_CONFIG" ]; then
-            echo "Miffan release signing secrets are not configured" >&2
-            exit 1
-          fi
-
-          # 解码base64编码的keystore文件
-          printf '%s' "$KEY_BASE64" | base64 -d > app/app.key
-
-          # 写入签名配置到local.properties
-          printf '%s' "$SIGNING_CONFIG" > local.properties
-
-      - name: Gradle Build
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease
-
-      - name: Verify signed arm64 APK
-        run: |
-          apk="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+          set -euo pipefail
+          apk="app/build/outputs/apk/nightly/app-arm64-v8a-nightly.apk"
           if [ ! -f "$apk" ]; then
-            echo "Signed arm64 release APK is missing: $apk" >&2
+            echo "Nightly arm64 APK is missing: $apk" >&2
             exit 1
           fi
 
-          apksigner="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          if [ -z "$apksigner" ]; then
-            echo "apksigner was not found in the Android SDK" >&2
+          android_sdk_dir="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$android_sdk_dir" ]; then
+            echo "Android SDK path is not configured" >&2
             exit 1
           fi
-          "$apksigner" verify --verbose "$apk"
+          aapt="$(find "$android_sdk_dir/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner="$(find "$android_sdk_dir/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$aapt" ] || [ -z "$apksigner" ]; then
+            echo "Android APK verification tools were not found" >&2
+            exit 1
+          fi
 
-      # 把 APK 直接发布为 Prerelease，用户点链接即可下载单个 apk，无需登录、无需解压
-      - name: Publish nightly prerelease
-        uses: softprops/action-gh-release@v2
-        if: success()
+          badging="$($aapt dump badging "$apk")"
+          package_name="$(printf '%s\n' "$badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          version_name="$(printf '%s\n' "$badging" | sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p")"
+          if [ "$package_name" != "me.ayuilos.miffan.app.nightly" ]; then
+            echo "Unexpected nightly package name: $package_name" >&2
+            exit 1
+          fi
+          case "$version_name" in
+            *-nightly) ;;
+            *)
+              echo "Nightly version is not clearly marked: $version_name" >&2
+              exit 1
+              ;;
+          esac
+
+          signer_digest="$($apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr '[:lower:]' '[:upper:]')"
+          signer_digest="${signer_digest//:/}"
+          if [ -z "$signer_digest" ]; then
+            echo "Unable to read the nightly signing certificate" >&2
+            exit 1
+          fi
+          if [ "$signer_digest" = "$PRODUCTION_CERT_SHA256" ]; then
+            echo "Nightly APK must never use the Miffan production certificate" >&2
+            exit 1
+          fi
+
+          short_sha="${GITHUB_SHA:0:12}"
+          staged="app/build/nightly-staging/Miffan-nightly-$short_sha-arm64-v8a.apk"
+          mkdir -p "$(dirname "$staged")"
+          cp "$apk" "$staged"
+          echo "apk_path=$staged" >> "$GITHUB_OUTPUT"
+
+      - name: Upload non-production nightly artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: nightly            # 固定 tag，每晚覆盖同一个「最新每日构建」
-          name: Miffan Nightly Build
-          prerelease: true
-          body: |
-            Miffan 自动每日构建（commit `${{ github.sha }}`）
+          name: Miffan-nightly-${{ github.sha }}
+          path: ${{ steps.stage.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 14
 
-            > ⚠️ 开发版本，可能不稳定，仅供测试。
-            >
-            > Miffan 的应用 ID 为 `me.ayuilos.miffan.app`，可与上游 RikkaHub 同时安装。两者的数据、设置和权限相互独立。
-          files: app/build/outputs/apk/release/app-arm64-v8a-release.apk
+      - name: Summarize nightly channel
+        run: |
+          echo '### Non-production nightly' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Package: `me.ayuilos.miffan.app.nightly`' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Signing: ephemeral CI debug certificate (never the production certificate)' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Upgrade policy: disposable test artifact; the signer may change between runs, so in-place upgrades are not guaranteed' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Distribution: workflow artifact only; no tag or GitHub Release is created' >> "$GITHUB_STEP_SUMMARY"
