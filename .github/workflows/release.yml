@@ -161,7 +161,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Prepare production signing credentials
+      - name: Prepare and verify production signing credentials
         shell: bash
         env:
           KEY_BASE64: ${{ secrets.KEY_BASE64 }}
@@ -175,6 +175,27 @@ jobs:
           umask 077
           printf '%s' "$KEY_BASE64" | base64 --decode > app/app.key
           printf '%s' "$SIGNING_CONFIG" > local.properties
+
+          store_password="$(sed -n 's/^storePassword=//p' local.properties | head -n 1)"
+          key_alias="$(sed -n 's/^keyAlias=//p' local.properties | head -n 1)"
+          if [ -z "$store_password" ] || [ -z "$key_alias" ]; then
+            echo "Production signing configuration is incomplete" >&2
+            exit 1
+          fi
+          keystore_digest="$(keytool -J-Duser.language=en -J-Duser.country=US \
+            -list -v -keystore app/app.key -storepass "$store_password" -alias "$key_alias" \
+            | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' \
+            | head -n 1 \
+            | tr -d '[:space:]:' \
+            | tr '[:lower:]' '[:upper:]')"
+          if [ -z "$keystore_digest" ]; then
+            echo "Unable to read the production keystore certificate digest" >&2
+            exit 1
+          fi
+          if [ "$keystore_digest" != "$PRODUCTION_CERT_SHA256" ]; then
+            echo "Production keystore certificate digest $keystore_digest does not match the Miffan trust anchor" >&2
+            exit 1
+          fi
 
       - name: Build production release from requested commit
         run: ./gradlew test lint assembleRelease --stacktrace
@@ -220,10 +241,17 @@ jobs:
             exit 1
           fi
 
-          signer_digest="$($apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr '[:lower:]' '[:upper:]')"
-          signer_digest="${signer_digest//:/}"
+          signer_digest="$($apksigner verify --print-certs "$apk" \
+            | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*//p' \
+            | head -n 1 \
+            | tr -d '[:space:]:' \
+            | tr '[:lower:]' '[:upper:]')"
+          if [ -z "$signer_digest" ]; then
+            echo "Unable to read the APK signer certificate digest" >&2
+            exit 1
+          fi
           if [ "$signer_digest" != "$PRODUCTION_CERT_SHA256" ]; then
-            echo "APK signature does not match the Miffan production trust anchor" >&2
+            echo "APK signer certificate digest $signer_digest does not match the Miffan production trust anchor" >&2
             exit 1
           fi
 
