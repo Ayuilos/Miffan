@@ -63,9 +63,11 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.components.ui.Select
+import me.ayuilos.miffan.ui.components.ui.UpdateAvailableBanner
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.Navigator
 import me.ayuilos.miffan.ui.hooks.rememberColorMode
+import me.ayuilos.miffan.ui.hooks.rememberIsPlayStoreVersion
 import me.ayuilos.miffan.ui.theme.ColorMode
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.openUrl
@@ -78,6 +80,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val isPlayStore = rememberIsPlayStoreVersion()
+    val availableUpdate = if (isPlayStore) {
+        null
+    } else {
+        vm.availableUpdate.collectAsStateWithLifecycle().value
+    }
     val filesManager: FilesManager = koinInject()
 
     Scaffold(
@@ -101,6 +109,17 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             contentPadding = innerPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            availableUpdate?.let { info ->
+                item("availableUpdate") {
+                    val context = LocalContext.current
+                    UpdateAvailableBanner(
+                        info = info,
+                        onDownload = { vm.downloadUpdate(context, it) },
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                }
+            }
+
             if (settings.isNotConfigured()) {
                 item {
                     ProviderConfigWarningCard(navController)

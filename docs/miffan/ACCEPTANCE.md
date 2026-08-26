@@ -24,6 +24,8 @@
 - Theme-synced colors update for dynamic, preset, and custom themes in both light and dark mode.
 - Theme sync changes colors without changing kind, material, contents, accessories, or motion profile.
 - Thinking, happy, error, idle, focused, and typing states work for every palette.
+- Update-available state remains readable for every character and palette at avatar sizes.
+- An idle Miffan on the empty chat page receives the update-available semantic state; chat errors still take priority.
 - Decorative input cues use palette-derived colors rather than Classic-only hard-coded colors.
 - No palette changes geometry or interaction hit targets.
 - Lively, Calm, and Curious share the same semantic states without duplicated drawing implementations.
@@ -49,6 +51,7 @@
 
 ## Regression and delivery
 
+- In a Debug build, Settings > About > long-press Version opens Debug Mode, where the update-reminder preview can deterministically drive the drawer badge, Settings banner, and Miffan update-available state without a real release.
 - Avatar serialization round-trips for all Miffan presets.
 - Avatar serialization round-trips for every palette and motion-profile combination.
 - Avatar serialization round-trips for every character-kind, palette, and motion-profile combination.

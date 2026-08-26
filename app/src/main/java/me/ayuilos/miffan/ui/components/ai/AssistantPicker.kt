@@ -48,6 +48,7 @@ import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.rememberAssistantState
 import kotlin.uuid.Uuid
@@ -57,6 +58,7 @@ fun AssistantPicker(
     settings: Settings,
     onUpdateSettings: (Settings) -> Unit,
     modifier: Modifier = Modifier,
+    mascotState: MiffanMascotState = MiffanMascotState.Idle,
     onClickSetting: () -> Unit,
 ) {
     val state = rememberAssistantState(settings, onUpdateSettings)
@@ -82,6 +84,7 @@ fun AssistantPicker(
                 AssistantAvatar(
                     name = state.currentAssistant.name.ifEmpty { defaultAssistantName },
                     value = state.currentAssistant.avatar,
+                    semanticState = mascotState,
                     onClick = onClickSetting
                 )
             }

@@ -8,11 +8,17 @@ import android.widget.Toast
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
@@ -21,6 +27,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.BuildConfig
+import me.ayuilos.miffan.data.datastore.Settings
 import me.rerere.common.http.await
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,6 +41,8 @@ private const val GITHUB_RELEASE_ATOM_URL =
     "https://github.com/Ayuilos/Miffan/releases.atom"
 private const val GITHUB_RELEASES_URL =
     "https://github.com/Ayuilos/Miffan/releases"
+private const val DEBUG_UPDATE_VERSION = "999.0.0-debug-preview"
+private const val DEBUG_UPDATE_PUBLISHED_AT = "2026-08-26T00:00:00Z"
 private const val SEMVER_NUMERIC_IDENTIFIER = "(?:0|[1-9]\\d*)"
 private const val SEMVER_NON_NUMERIC_IDENTIFIER = "(?:\\d*[A-Za-z-][0-9A-Za-z-]*)"
 private const val SEMVER_PRERELEASE_IDENTIFIER =
@@ -55,12 +64,48 @@ class UpdateChecker(
     appScope: AppScope,
 ) {
     private val releaseSource = GitHubReleaseSource(client)
+    private val _debugUpdateOverrideEnabled = MutableStateFlow(false)
+    val debugUpdateOverrideEnabled: StateFlow<Boolean> =
+        _debugUpdateOverrideEnabled.asStateFlow()
 
-    val updateState: StateFlow<UiState<UpdateInfo>> = checkUpdate().stateIn(
-        scope = appScope,
-        started = SharingStarted.Lazily,
-        initialValue = UiState.Loading,
-    )
+    val updateState: StateFlow<UiState<UpdateInfo>> =
+        combine(checkUpdate(), debugUpdateOverrideEnabled) { state, debugOverrideEnabled ->
+            state.withDebugUpdateOverride(
+                enabled = BuildConfig.DEBUG && debugOverrideEnabled,
+            )
+        }.stateIn(
+            scope = appScope,
+            started = SharingStarted.Lazily,
+            initialValue = UiState.Loading,
+        )
+
+    fun observeUpdateState(settings: Flow<Settings>): Flow<UiState<UpdateInfo>> =
+        combine(settings, debugUpdateOverrideEnabled) { currentSettings, debugOverrideEnabled ->
+            currentSettings to (BuildConfig.DEBUG && debugOverrideEnabled)
+        }.flatMapLatest { (currentSettings, debugOverrideEnabled) ->
+            flow {
+                if (currentSettings.init) {
+                    emit(UiState.Loading)
+                    return@flow
+                }
+
+                val disabledUntil =
+                    currentSettings.displaySetting.updateCheckDisabledUntilEpochMillis
+                val now = System.currentTimeMillis()
+                if (!debugOverrideEnabled && disabledUntil > now) {
+                    emit(UiState.Loading)
+                    delay(disabledUntil - now)
+                }
+
+                emitAll(updateState)
+            }
+        }
+
+    fun setDebugUpdateOverrideEnabled(enabled: Boolean) {
+        if (BuildConfig.DEBUG) {
+            _debugUpdateOverrideEnabled.value = enabled
+        }
+    }
 
     private fun checkUpdate(): Flow<UiState<UpdateInfo>> = flow {
         emit(UiState.Loading)
@@ -118,6 +163,33 @@ data class UpdateInfo(
     val downloads: List<UpdateDownload>,
     val releaseUrl: String,
 )
+
+fun UiState<UpdateInfo>.availableUpdate(
+    currentVersion: String = BuildConfig.VERSION_NAME,
+): UpdateInfo? = (this as? UiState.Success)?.data?.takeIf { info ->
+    Version(info.version) > Version(currentVersion)
+}
+
+internal fun UiState<UpdateInfo>.withDebugUpdateOverride(
+    enabled: Boolean,
+): UiState<UpdateInfo> {
+    if (!enabled) return this
+    val releaseInfo = (this as? UiState.Success)?.data
+    return UiState.Success(
+        UpdateInfo(
+            version = DEBUG_UPDATE_VERSION,
+            publishedAt = releaseInfo?.publishedAt ?: DEBUG_UPDATE_PUBLISHED_AT,
+            changelog = """
+                ## Debug update preview
+
+                This local preview exercises the update badge, settings banner, detail sheet,
+                and Miffan semantic state. No fake APK download is provided.
+            """.trimIndent(),
+            downloads = emptyList(),
+            releaseUrl = releaseInfo?.releaseUrl ?: GITHUB_RELEASES_URL,
+        )
+    )
+}
 
 internal class GitHubReleaseSource(
     private val client: OkHttpClient,

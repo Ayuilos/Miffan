@@ -77,6 +77,7 @@ Components ask Miffan to express meaning rather than selecting animation clips. 
 - Thinking
 - Happy
 - Error
+- Update available
 - input focused
 - typing
 - submitted

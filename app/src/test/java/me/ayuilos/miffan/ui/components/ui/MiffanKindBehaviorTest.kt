@@ -29,6 +29,22 @@ class MiffanKindBehaviorTest {
     }
 
     @Test
+    fun updateAvailableIsAnActiveButRestrainedCharacterState() {
+        MiffanKind.entries.forEach { kind ->
+            val behavior = kind.miffanKindBehavior()
+            val updateStrength = behavior.strengthFor(
+                state = MiffanMascotState.UpdateAvailable,
+                inputState = MiffanMascotInputState.Inactive,
+                dayPhase = MiffanDayPhase.Noon,
+                submitProgress = 0f,
+            )
+
+            assertTrue(updateStrength > behavior.idleStrength)
+            assertTrue(updateStrength < behavior.happyStrength)
+        }
+    }
+
+    @Test
     fun dumplingSignatureUsesAGentleCycle() {
         val behavior = MiffanKind.DUMPLING.miffanKindBehavior()
 

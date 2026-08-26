@@ -66,6 +66,7 @@ enum class MiffanMascotState {
     Thinking,
     Happy,
     Error,
+    UpdateAvailable,
 }
 
 enum class MiffanMascotInputState {
@@ -611,6 +612,7 @@ fun MiffanMascot(
         targetValue = when (state) {
             MiffanMascotState.Happy -> -5f * motion.stateAmplitude
             MiffanMascotState.Error -> 6f * motion.stateAmplitude
+            MiffanMascotState.UpdateAvailable -> -2f * motion.stateAmplitude
             else -> 0f
         },
         animationSpec = spring(dampingRatio = 0.48f, stiffness = Spring.StiffnessMediumLow),
@@ -696,6 +698,7 @@ fun MiffanMascot(
             MiffanMascotState.Thinking ->
                 sin(Math.toRadians(thinkingPhase.toDouble())).toFloat() * motion.thinkingBob
             MiffanMascotState.Happy -> -breath * motion.happyBob
+            MiffanMascotState.UpdateAvailable -> -breath * motion.happyBob * 0.45f
             else -> {
                 val breathAmplitude = when (dayPhase) {
                     MiffanDayPhase.Morning -> 1.3f
@@ -722,12 +725,14 @@ fun MiffanMascot(
             MiffanMascotState.Thinking ->
                 sin(thinkingRadians).toFloat() * 4.5f * motion.gazeAmplitude
             MiffanMascotState.Error -> -2f
+            MiffanMascotState.UpdateAvailable -> 3f * motion.gazeAmplitude
             else -> gazeX.value
         }
         val ambientLookY = when (state) {
             MiffanMascotState.Thinking ->
                 cos(thinkingRadians * 0.7).toFloat() * 1.8f * motion.gazeAmplitude
             MiffanMascotState.Error -> 2f
+            MiffanMascotState.UpdateAvailable -> -2f * motion.gazeAmplitude
             else -> gazeY.value
         }
         val inputLookWeight = inputFocusProgress * (1f - pokeExpression.value)
@@ -792,6 +797,14 @@ fun MiffanMascot(
                 )
             }
 
+            if (state == MiffanMascotState.UpdateAvailable) {
+                drawUpdateAvailableCue(
+                    colors = colors,
+                    pulse = inputPulse,
+                    amplitude = motion.stateAmplitude,
+                )
+            }
+
             if (state == MiffanMascotState.Idle) {
                 drawInputCue(
                     colors = colors,
@@ -803,6 +816,49 @@ fun MiffanMascot(
                 )
             }
         }
+    }
+}
+
+private fun DrawScope.drawUpdateAvailableCue(
+    colors: MiffanColors,
+    pulse: Float,
+    amplitude: Float,
+) {
+    val center = Offset(156f, 43f)
+    val pulseScale = 0.92f + pulse * 0.08f * amplitude
+    withTransform({ scale(pulseScale, pulseScale, pivot = center) }) {
+        drawCircle(
+            color = colors.cueSurface,
+            radius = 17f,
+            center = center,
+        )
+        drawCircle(
+            color = colors.cueInk.copy(alpha = 0.28f),
+            radius = 17f,
+            center = center,
+            style = Stroke(width = 3f),
+        )
+        drawLine(
+            color = colors.cueInk,
+            start = Offset(156f, 34f),
+            end = Offset(156f, 51f),
+            strokeWidth = 5f,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = colors.cueInk,
+            start = Offset(149f, 45f),
+            end = Offset(156f, 52f),
+            strokeWidth = 5f,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = colors.cueInk,
+            start = Offset(163f, 45f),
+            end = Offset(156f, 52f),
+            strokeWidth = 5f,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
@@ -1470,7 +1526,8 @@ private fun DrawScope.drawMascotBody(
     }
 
     when (state) {
-        MiffanMascotState.Happy -> {
+        MiffanMascotState.Happy,
+        MiffanMascotState.UpdateAvailable -> {
             drawArc(
                 color = restingMouthColor,
                 startAngle = 12f,

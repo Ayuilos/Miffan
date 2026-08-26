@@ -136,6 +136,7 @@ fun ChatList(
     settings: Settings,
     hazeState: HazeState,
     errors: List<ChatError> = emptyList(),
+    mascotSemanticState: MiffanMascotState = MiffanMascotState.Idle,
     mascotInputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
     mascotSubmitId: Int = 0,
     onDismissError: (Uuid) -> Unit = {},
@@ -181,6 +182,7 @@ fun ChatList(
                 settings = settings,
                 hazeState = hazeState,
                 errors = errors,
+                mascotSemanticState = mascotSemanticState,
                 mascotInputState = mascotInputState,
                 mascotSubmitId = mascotSubmitId,
                 onDismissError = onDismissError,
@@ -213,6 +215,7 @@ private fun ChatListNormal(
     settings: Settings,
     hazeState: HazeState,
     errors: List<ChatError>,
+    mascotSemanticState: MiffanMascotState,
     mascotInputState: MiffanMascotInputState,
     mascotSubmitId: Int,
     onDismissError: (Uuid) -> Unit,
@@ -517,7 +520,10 @@ private fun ChatListNormal(
             ) {
                 if (assistant == null || assistant.avatar.isMiffanAvatar()) {
                     MiffanMascot(
-                        state = if (errors.isEmpty()) MiffanMascotState.Idle else MiffanMascotState.Error,
+                        state = resolveChatMascotState(
+                            hasErrors = errors.isNotEmpty(),
+                            semanticState = mascotSemanticState,
+                        ),
                         appearance = assistant?.avatar?.miffanAppearanceOrDefault()
                             ?: MiffanAppearance(),
                         motionProfile = assistant?.avatar?.miffanMotionProfileOrDefault()
@@ -654,6 +660,15 @@ private fun ChatListNormal(
             }
         }
     }
+}
+
+internal fun resolveChatMascotState(
+    hasErrors: Boolean,
+    semanticState: MiffanMascotState,
+): MiffanMascotState = if (hasErrors) {
+    MiffanMascotState.Error
+} else {
+    semanticState
 }
 
 /**
