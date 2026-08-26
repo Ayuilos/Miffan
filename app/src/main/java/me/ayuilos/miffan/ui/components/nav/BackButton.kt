@@ -13,12 +13,13 @@ import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.theme.CustomColors
 
 @Composable
-fun BackButton(modifier: Modifier = Modifier) {
+fun BackButton(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
     val navController = LocalNavController.current
     FilledTonalIconButton(
-        onClick = {
-            navController.popBackStack()
-        },
+        onClick = onClick ?: { navController.popBackStack() },
         modifier = modifier,
         shapes = IconButtonDefaults.shapes(),
         colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = CustomColors.listItemColors.containerColor),

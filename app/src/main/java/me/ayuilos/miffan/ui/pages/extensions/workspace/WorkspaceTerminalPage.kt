@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace
 
 import android.graphics.Typeface
 import android.view.MotionEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -46,6 +47,8 @@ import com.termux.view.TerminalView
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.nav.BackButton
+import me.ayuilos.miffan.ui.components.ui.MiffanConfirmDialog
+import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.theme.ColorMode
 import me.ayuilos.miffan.ui.theme.MiffanTheme
 import kotlinx.coroutines.Dispatchers
@@ -65,7 +68,13 @@ import org.koin.core.parameter.parametersOf
 fun WorkspaceTerminalPage(id: String) {
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val workspaceManager = koinInject<WorkspaceManager>()
+    val navController = LocalNavController.current
     val state by vm.state.collectAsStateWithLifecycle()
+    var showCloseConfirm by remember(id) { mutableStateOf(false) }
+
+    BackHandler {
+        showCloseConfirm = true
+    }
 
     MiffanTheme(colorMode = ColorMode.DARK) {
         Scaffold(
@@ -78,7 +87,9 @@ fun WorkspaceTerminalPage(id: String) {
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    navigationIcon = { BackButton() },
+                    navigationIcon = {
+                        BackButton(onClick = { showCloseConfirm = true })
+                    },
                 )
             },
         ) { innerPadding ->
@@ -87,6 +98,20 @@ fun WorkspaceTerminalPage(id: String) {
                 contentPadding = innerPadding,
                 workspaceManager = workspaceManager,
             )
+        }
+
+        MiffanConfirmDialog(
+            show = showCloseConfirm,
+            title = stringResource(R.string.workspace_terminal_close_confirm_title),
+            confirmText = stringResource(R.string.workspace_terminal_close),
+            dismissText = stringResource(R.string.common_cancel),
+            onConfirm = {
+                showCloseConfirm = false
+                navController.popBackStack()
+            },
+            onDismiss = { showCloseConfirm = false },
+        ) {
+            Text(stringResource(R.string.workspace_terminal_close_confirm_message))
         }
     }
 }
