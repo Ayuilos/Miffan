@@ -95,7 +95,7 @@ When these four entries are absent, `assembleRelease` may produce unsigned verif
 2. Select and record the exact target commit. Do not silently build a moving branch head.
 3. Set an independent SemVer `versionName` and a strictly increasing `versionCode` in `app/build.gradle.kts`.
 4. Add bilingual notes at `docs/releases/<version>.md` using [the template](releases/TEMPLATE.md). Keep Miffan-owned changes separate from improvements incorporated from RikkaHub.
-5. Require the PR/push CI workflow to pass `test`, `lint`, and `assembleDebug` before merging the target commit.
+5. Require the pull-request CI workflow to pass `test`, `lint`, and `assembleDebug` before merging the target commit. CI does not repeat the same full verification after the protected PR is merged to `master`; it can still be started manually when needed.
 6. Review the in-place upgrade acceptance below for any release that shares the official package name.
 
 No upstream tag is a Miffan release trigger. Do not fetch-and-push, mirror, or automatically propagate upstream tags.
@@ -108,13 +108,15 @@ Run `.github/workflows/release.yml` manually and provide all three explicit inpu
 - the exact SemVer `versionName`;
 - the exact Android `versionCode`.
 
-The workflow is gated by the `production` Environment. It verifies that the requested commit, source version, and notes agree; refuses to replace an existing tag; runs tests and lint; builds the release; and checks:
+The workflow is gated by the `production` Environment. It verifies that the requested commit is the merge commit of a PR into `master`, and that the source PR head has a successful run of `.github/workflows/ci.yml`. It also verifies that the source version and notes agree, refuses to replace an existing tag, builds the production release without repeating the PR's full tests and debug lint, and checks:
 
 - application ID is `me.ayuilos.miffan.app`;
 - `versionName` and `versionCode` match the approved inputs;
 - the staged APK is arm64-only;
 - the signer SHA-256 matches the Miffan production trust anchor;
 - the asset name follows the official convention.
+
+`assembleRelease` still performs R8 optimization, packaging, and signing. Lint remains a required pull-request check, and the workflow never skips the artifact, signer, ABI, checksum, or provenance checks.
 
 It then computes SHA-256, creates GitHub build provenance for the verified APK with `actions/attest@v4`, uploads the verified APK/checksum as a workflow artifact, and prepares a draft GitHub Release at the requested commit. A version containing a prerelease component is marked as a prerelease. The workflow does not make the draft public; publication remains a separate approval.
 

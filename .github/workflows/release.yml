@@ -17,9 +17,11 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: write
   id-token: write
   attestations: write
+  pull-requests: read
 
 concurrency:
   group: production-release-${{ inputs.release_version }}
@@ -64,6 +66,7 @@ jobs:
             echo "Requested commit must be reachable from origin/master" >&2
             exit 1
           fi
+          bash .github/scripts/verify_release_pr.sh
 
           semver_regex='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           if [[ ! "$EXPECTED_VERSION" =~ $semver_regex ]]; then
@@ -197,8 +200,10 @@ jobs:
             exit 1
           fi
 
-      - name: Build production release from requested commit
-        run: ./gradlew test lint assembleRelease --stacktrace
+      - name: Build production release from verified commit
+        # Tests and lint already passed on the source PR. This step keeps the
+        # release-only optimization, packaging, and signing work.
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Verify package, version, ABI, and production signature
         id: stage
