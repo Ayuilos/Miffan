@@ -6,8 +6,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
@@ -68,14 +73,18 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.FolderOpen
+import me.rerere.hugeicons.stroke.FolderUnknown
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 import me.ayuilos.miffan.data.datastore.getCurrentChatModel
+import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
@@ -103,6 +112,8 @@ import me.ayuilos.miffan.utils.ImageUtils
 import me.ayuilos.miffan.utils.base64Decode
 import me.ayuilos.miffan.utils.isAllowedFileType
 import me.ayuilos.miffan.utils.navigateToChatPage
+import me.rerere.workspace.WorkspaceShellStatus
+import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -281,6 +292,59 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 }
 
+internal data class ChatWorkspaceEntry(
+    val id: String,
+    val name: String?,
+    val warning: Boolean,
+)
+
+internal fun resolveChatWorkspaceEntry(
+    boundWorkspaceId: String?,
+    workspace: WorkspaceEntity?,
+): ChatWorkspaceEntry? {
+    val id = boundWorkspaceId ?: return null
+    val matchingWorkspace = workspace?.takeIf { it.id == id }
+    val shellStatus = matchingWorkspace?.shellStatus?.let { status ->
+        runCatching { WorkspaceShellStatus.valueOf(status) }.getOrNull()
+    }
+    return ChatWorkspaceEntry(
+        id = id,
+        name = matchingWorkspace?.name?.takeIf { it.isNotBlank() },
+        warning = matchingWorkspace == null ||
+            shellStatus == null ||
+            shellStatus == WorkspaceShellStatus.BROKEN,
+    )
+}
+
+internal fun workspaceCwdToFilesPath(workspaceCwd: String?): String {
+    val normalized = workspaceCwd
+        ?.replace('\\', '/')
+        ?.trim()
+        ?.trimEnd('/')
+        .orEmpty()
+    if (normalized.isBlank()) return ""
+
+    val relativePath = when {
+        normalized == "/workspace" || normalized == "workspace" -> ""
+        normalized.startsWith("/workspace/") -> normalized.removePrefix("/workspace/")
+        normalized.startsWith("workspace/") -> normalized.removePrefix("workspace/")
+        normalized.startsWith('/') -> return ""
+        else -> normalized
+    }
+    val segments = relativePath.split('/').filter { it.isNotBlank() && it != "." }
+    if (segments.any { it == ".." }) return ""
+    return segments.joinToString("/")
+}
+
+internal fun workspaceFilesRoute(workspaceId: String, workspaceCwd: String?): Screen.WorkspaceDetail {
+    return Screen.WorkspaceDetail(
+        id = workspaceId,
+        area = WorkspaceStorageArea.FILES.name,
+        path = workspaceCwdToFilesPath(workspaceCwd),
+        openFiles = true,
+    )
+}
+
 @Composable
 private fun ChatPageContent(
     inputState: ChatInputState,
@@ -307,6 +371,12 @@ private fun ChatPageContent(
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
     val assistant = setting.getCurrentAssistant()
+    val workspaceId = assistant.workspaceId?.toString()
+    val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(initialValue = emptyList())
+    val workspaceEntry = resolveChatWorkspaceEntry(
+        boundWorkspaceId = workspaceId,
+        workspace = workspaces.find { it.id == workspaceId },
+    )
     var showFilesSheet by remember { mutableStateOf(false) }
     var mascotInputState by remember(conversation.id) {
         mutableStateOf(MiffanMascotInputState.Inactive)
@@ -340,8 +410,12 @@ private fun ChatPageContent(
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
+                    workspaceEntry = workspaceEntry,
                     onNewChat = {
                         navigateToChatPage(navController)
+                    },
+                    onOpenWorkspace = { entry ->
+                        navController.navigate(workspaceFilesRoute(entry.id, conversation.workspaceCwd))
                     },
                     onClickMenu = {
                         previewMode = !previewMode
@@ -775,14 +849,78 @@ private fun ChatFilesPickerSheet(
 }
 
 @Composable
+private fun WorkspaceTopBarAction(
+    entry: ChatWorkspaceEntry,
+    showName: Boolean,
+    onClick: () -> Unit,
+) {
+    val workspaceLabel = stringResource(R.string.extensions_page_workspace)
+    val filesLabel = stringResource(R.string.workspace_detail_tab_files)
+    val errorLabel = stringResource(R.string.workspace_detail_shell_broken)
+    val displayName = entry.name ?: workspaceLabel
+    val actionLabel = buildString {
+        append(workspaceLabel)
+        append(' ')
+        append(filesLabel)
+        if (!showName) {
+            append(": ")
+            append(displayName)
+        }
+        if (entry.warning) {
+            append(", ")
+            append(errorLabel)
+        }
+    }
+    val contentColor = if (entry.warning) {
+        MaterialTheme.colorScheme.error
+    } else {
+        LocalContentColor.current
+    }
+    val icon = if (entry.warning) HugeIcons.FolderUnknown else HugeIcons.FolderOpen
+
+    if (showName) {
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .widthIn(max = 200.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = actionLabel,
+                modifier = Modifier.size(20.dp),
+                tint = contentColor,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = displayName,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    } else {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = icon,
+                contentDescription = actionLabel,
+                tint = contentColor,
+            )
+        }
+    }
+}
+
+@Composable
 private fun TopBar(
     settings: Settings,
     conversation: Conversation,
     drawerState: DrawerState,
     bigScreen: Boolean,
     previewMode: Boolean,
+    workspaceEntry: ChatWorkspaceEntry?,
     onClickMenu: () -> Unit,
     onNewChat: () -> Unit,
+    onOpenWorkspace: (ChatWorkspaceEntry) -> Unit,
     onUpdateTitle: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -841,6 +979,14 @@ private fun TopBar(
             }
         },
         actions = {
+            workspaceEntry?.let { entry ->
+                WorkspaceTopBarAction(
+                    entry = entry,
+                    showName = bigScreen,
+                    onClick = { onOpenWorkspace(entry) },
+                )
+            }
+
             IconButton(
                 onClick = {
                     onClickMenu()
