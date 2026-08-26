@@ -94,6 +94,7 @@ import me.ayuilos.miffan.ui.pages.extensions.QuickMessagesPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspacePage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceDetailPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceFileEditorPage
+import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceFilePreviewPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceTerminalPage
 import me.rerere.workspace.WorkspaceStorageArea
 import me.ayuilos.miffan.ui.pages.favorite.FavoritePage
@@ -498,7 +499,12 @@ class RouteActivity : ComponentActivity() {
                             }
 
                             entry<Screen.WorkspaceDetail> { key ->
-                                WorkspaceDetailPage(key.id)
+                                WorkspaceDetailPage(
+                                    id = key.id,
+                                    initialArea = key.area,
+                                    initialPath = key.path,
+                                    openFiles = key.openFiles,
+                                )
                             }
 
                             entry<Screen.WorkspaceTerminal> { key ->
@@ -509,6 +515,13 @@ class RouteActivity : ComponentActivity() {
                                 WorkspaceFileEditorPage(
                                     id = key.id,
                                     area = WorkspaceStorageArea.valueOf(key.area),
+                                    path = key.path,
+                                )
+                            }
+
+                            entry<Screen.WorkspaceFilePreview> { key ->
+                                WorkspaceFilePreviewPage(
+                                    id = key.id,
                                     path = key.path,
                                 )
                             }
@@ -703,13 +716,21 @@ sealed interface Screen : NavKey {
     data object Workspaces : Screen
 
     @Serializable
-    data class WorkspaceDetail(val id: String) : Screen
+    data class WorkspaceDetail(
+        val id: String,
+        val area: String? = null,
+        val path: String? = null,
+        val openFiles: Boolean = false,
+    ) : Screen
 
     @Serializable
     data class WorkspaceTerminal(val id: String) : Screen
 
     @Serializable
     data class WorkspaceFileEditor(val id: String, val area: String, val path: String) : Screen
+
+    @Serializable
+    data class WorkspaceFilePreview(val id: String, val path: String) : Screen
 
     @Serializable
     data object MessageSearch : Screen

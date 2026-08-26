@@ -228,14 +228,19 @@ class WorkspaceManager(
         )
     }
 
-    fun exportRootfsFile(root: String, path: String, outputStream: OutputStream) {
+    fun exportRootfsFile(
+        root: String,
+        path: String,
+        outputStream: OutputStream,
+        maxBytes: Long = MAX_ROOTFS_TOOL_READ_BYTES,
+    ) {
         val location = resolveRootfsPath(root, path)
         outputStream.use { out ->
             fileSystem.exportNoFollow(
                 root = location.rootDir,
                 path = location.relativePath,
                 outputStream = out,
-                maxBytes = MAX_ROOTFS_TOOL_READ_BYTES,
+                maxBytes = maxBytes,
                 displayPath = location.guestPath.value,
             )
         }

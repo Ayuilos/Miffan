@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
@@ -28,6 +29,8 @@ class WorkspaceDetailVM(
     private val repository: WorkspaceRepository,
     private val skillManager: SkillManager,
 ) : ViewModel() {
+    private var filesLoadJob: Job? = null
+
     private val _state = MutableStateFlow(WorkspaceDetailState())
     val state = _state.asStateFlow()
 
@@ -56,6 +59,18 @@ class WorkspaceDetailVM(
         refresh()
     }
 
+    fun navigateTo(area: WorkspaceStorageArea, path: String) {
+        _state.update {
+            it.copy(
+                area = area,
+                path = path.trim('/'),
+                entries = emptyList(),
+                error = null,
+            )
+        }
+        refresh()
+    }
+
     fun open(entry: WorkspaceFileEntry) {
         if (!entry.isDirectory) return
         _state.update { it.copy(path = entry.path, entries = emptyList(), error = null) }
@@ -77,17 +92,23 @@ class WorkspaceDetailVM(
 
     fun refresh() {
         loadWorkspace()
-        viewModelScope.launch {
+        val area = state.value.area
+        val path = state.value.path
+        filesLoadJob?.cancel()
+        filesLoadJob = viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching {
-                repository.listFiles(
+            try {
+                val entries = repository.listFiles(
                     id = id,
-                    area = state.value.area,
-                    path = state.value.path,
+                    area = area,
+                    path = path,
                 )
-            }.onSuccess { entries ->
-                _state.update { it.copy(entries = entries, loading = false) }
-            }.onFailure { error ->
+                if (state.value.area == area && state.value.path == path) {
+                    _state.update { it.copy(entries = entries, loading = false) }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
                 _state.update {
                     it.copy(
                         entries = emptyList(),

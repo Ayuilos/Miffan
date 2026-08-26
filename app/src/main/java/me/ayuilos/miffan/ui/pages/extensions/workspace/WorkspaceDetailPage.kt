@@ -2,7 +2,6 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace
 
 import android.content.Intent
 import android.provider.OpenableColumns
-import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,7 +75,6 @@ import me.ayuilos.miffan.data.files.SkillMetadata
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.nav.BackButton
-import me.ayuilos.miffan.ui.components.ui.ImagePreviewDialog
 import me.ayuilos.miffan.ui.components.ui.MiffanConfirmDialog
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.theme.CustomColors
@@ -90,7 +89,12 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 @Composable
-fun WorkspaceDetailPage(id: String) {
+fun WorkspaceDetailPage(
+    id: String,
+    initialArea: String? = null,
+    initialPath: String? = null,
+    openFiles: Boolean = false,
+) {
     val navController = LocalNavController.current
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -100,7 +104,6 @@ fun WorkspaceDetailPage(id: String) {
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
-    var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -123,6 +126,15 @@ fun WorkspaceDetailPage(id: String) {
         if (uri == null) return@rememberLauncherForActivityResult
         val outputStream = context.contentResolver.openOutputStream(uri) ?: return@rememberLauncherForActivityResult
         vm.exportFile(entry, outputStream)
+    }
+
+    LaunchedEffect(id, initialArea, initialPath, openFiles) {
+        if (initialArea != null || initialPath != null) {
+            val area = runCatching { WorkspaceStorageArea.valueOf(initialArea.orEmpty()) }
+                .getOrDefault(WorkspaceStorageArea.FILES)
+            vm.navigateTo(area, initialPath.orEmpty())
+        }
+        if (openFiles) pagerState.scrollToPage(1)
     }
 
     BackHandler(enabled = pagerState.currentPage == 1 && state.path.isNotBlank()) {
@@ -208,34 +220,12 @@ fun WorkspaceDetailPage(id: String) {
                         when {
                             entry.isDirectory -> vm.open(entry)
 
-                            else -> when (entry.detectFileType()) {
-                                WorkspaceFileType.TEXT -> navController.navigate(
-                                    Screen.WorkspaceFileEditor(id, state.area.name, entry.path)
-                                )
-
-                                WorkspaceFileType.IMAGE -> vm.exportToCacheFile(entry, context.cacheDir) { file ->
-                                    // 传绝对路径 (而非 content:// URI): Coil 可直接加载,
-                                    // 预览弹窗的保存按钮 saveMessageImage 只认 "/" 开头路径, content URI 会报错
-                                    previewImageUri = file.absolutePath
+                            else -> {
+                                val guestPath = when (state.area) {
+                                    WorkspaceStorageArea.FILES -> "/workspace/${entry.path.trimStart('/')}"
+                                    WorkspaceStorageArea.LINUX -> "/${entry.path.trimStart('/')}"
                                 }
-
-                                WorkspaceFileType.OTHER -> vm.exportToCacheFile(entry, context.cacheDir) { file ->
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file,
-                                    )
-                                    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
-                                        file.extension.lowercase()
-                                    ) ?: "*/*"
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(uri, mime)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    runCatching {
-                                        context.startActivity(Intent.createChooser(intent, null))
-                                    }
-                                }
+                                navController.navigate(Screen.WorkspaceFilePreview(id, guestPath))
                             }
                         }
                     },
@@ -296,13 +286,6 @@ fun WorkspaceDetailPage(id: String) {
                     Text(stringResource(R.string.common_confirm))
                 }
             },
-        )
-    }
-
-    previewImageUri?.let { uri ->
-        ImagePreviewDialog(
-            images = listOf(uri),
-            onDismissRequest = { previewImageUri = null },
         )
     }
 
