@@ -865,7 +865,23 @@ class WorkspaceFileSystem(
         return current.toFile()
     }
 
-    fun resolve(root: File, path: String): File = resolvePath(root, path)
+    /**
+     * Resolves an existing directory without accepting aliases or following links. This is the
+     * cwd boundary used before a path is passed to PRoot.
+     */
+    fun resolveDirectoryNoFollow(root: File, path: String): File {
+        val canonical = canonicalRelativeDirectoryPath(path)
+        val directory = resolveExistingPathNoFollow(root, canonical)
+        require(Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Working path is not a directory: $path"
+        }
+        return directory
+    }
+
+    fun canonicalRelativeDirectoryPath(path: String): String {
+        if (path.isEmpty()) return ""
+        return path.strictRelativeFileSegments().joinToString("/")
+    }
 
     private fun File.toEntry(root: File): WorkspaceFileEntry {
         val attributes = Files.readAttributes(

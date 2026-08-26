@@ -12,6 +12,7 @@ import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.skills.install.WorkspaceSkillInstallTarget
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceScope
 
 class SkillManager(
     private val context: Context,
@@ -40,12 +41,18 @@ class SkillManager(
      * The directory is intentionally not created while listing. Merely opening a workspace must
      * not add Miffan metadata to an otherwise empty project.
      */
-    fun listWorkspaceSkills(workspaceId: String, workspaceRoot: String): List<SkillMetadata> {
-        val skillsDir = workspaceManager.filesDir(workspaceRoot).resolve(WORKSPACE_SKILLS_PATH)
+    fun listWorkspaceSkills(
+        workspaceId: String,
+        workspaceRoot: String,
+        scopeId: String? = null,
+    ): List<SkillMetadata> {
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        val skillsDir = workspaceManager.filesDir(workspaceRoot, scope).resolve(WORKSPACE_SKILLS_PATH)
         return discoverSkills(
             skillsDir = skillsDir,
             scope = SkillScope.WORKSPACE,
             workspaceId = workspaceId,
+            workspaceScopeId = scopeId,
         )
     }
 
@@ -66,9 +73,14 @@ class SkillManager(
         }
 
         val legacyByName = listLegacySkills().associateBy { it.name }
-        val workspaceNames = listWorkspaceSkills(workspace.id, workspace.root)
+        val scopeId = assistant.workspaceScopeId?.toString()
+        val workspaceNames = listWorkspaceSkills(workspace.id, workspace.root, scopeId)
             .mapTo(hashSetOf()) { it.name }
-        val target = WorkspaceSkillInstallTarget(workspaceManager, workspace.root)
+        val target = WorkspaceSkillInstallTarget(
+            workspaceManager,
+            workspace.root,
+            WorkspaceScope.fromNullableId(scopeId),
+        )
         if (!target.isAvailable()) return@withContext emptySet()
 
         val completed = buildSet {
@@ -93,7 +105,10 @@ class SkillManager(
             settingsStore.update { settings ->
                 settings.copy(
                     assistants = settings.assistants.map { current ->
-                        if (current.id == assistant.id && current.workspaceId == assistant.workspaceId) {
+                        if (current.id == assistant.id &&
+                            current.workspaceId == assistant.workspaceId &&
+                            current.workspaceScopeId == assistant.workspaceScopeId
+                        ) {
                             current.copy(enabledSkills = current.enabledSkills - completed)
                         } else {
                             current
@@ -143,6 +158,7 @@ internal fun discoverSkills(
     skillsDir: File,
     scope: SkillScope,
     workspaceId: String? = null,
+    workspaceScopeId: String? = null,
 ): List<SkillMetadata> {
     if (!Files.isDirectory(skillsDir.toPath(), LinkOption.NOFOLLOW_LINKS)) return emptyList()
     return skillsDir.listFiles()
@@ -159,6 +175,7 @@ internal fun discoverSkills(
                 skillDir = dir,
                 scope = scope,
                 workspaceId = workspaceId,
+                workspaceScopeId = workspaceScopeId,
             )
         }
         ?.toList()
@@ -170,6 +187,7 @@ private fun parseSkillFile(
     skillDir: File,
     scope: SkillScope,
     workspaceId: String? = null,
+    workspaceScopeId: String? = null,
 ): SkillMetadata? {
     return runCatching {
         val content = skillFile.readText()
@@ -188,6 +206,7 @@ private fun parseSkillFile(
             skillDir = skillDir,
             scope = scope,
             workspaceId = workspaceId,
+            workspaceScopeId = workspaceScopeId,
             requiresWorkspace = frontmatter.boolean("requires-workspace") == true ||
                 allowedTools.any(::isWorkspaceToolDeclaration),
         )
@@ -225,6 +244,7 @@ data class SkillMetadata(
     val skillDir: File,
     val scope: SkillScope = SkillScope.GLOBAL,
     val workspaceId: String? = null,
+    val workspaceScopeId: String? = null,
     val requiresWorkspace: Boolean = false,
 ) {
     val skillFile: File get() = skillDir.resolve("SKILL.md")

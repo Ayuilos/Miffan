@@ -10,9 +10,11 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
+import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -199,5 +201,27 @@ class ChatServiceTest {
                 Model(abilities = listOf(ModelAbility.TOOL)),
             )
         )
+    }
+
+    @Test
+    fun `persistent shell approval changes only the matching assistant scope`() {
+        val workspaceId = Uuid.random()
+        val first = Assistant().withWorkspaceBinding(workspaceId)
+        val second = Assistant().withWorkspaceBinding(workspaceId)
+        val updated = Settings(assistants = listOf(first, second))
+            .withWorkspaceShellAllowedFor(first)
+
+        assertFalse(updated.assistants[0].workspaceShellApprovalRequired)
+        assertTrue(updated.assistants[1].workspaceShellApprovalRequired)
+    }
+
+    @Test
+    fun `stale shell approval cannot cross a changed binding`() {
+        val assistant = Assistant().withWorkspaceBinding(Uuid.random())
+        val rebound = assistant.withWorkspaceBinding(Uuid.random())
+        val updated = Settings(assistants = listOf(rebound))
+            .withWorkspaceShellAllowedFor(assistant)
+
+        assertTrue(updated.assistants.single().workspaceShellApprovalRequired)
     }
 }

@@ -9,6 +9,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.core.ReasoningLevel
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.utils.SimpleCache
+import me.rerere.workspace.WorkspaceScope
 import java.util.concurrent.TimeUnit
 import kotlin.uuid.Uuid
 
@@ -41,6 +42,10 @@ data class Assistant(
     val localTools: List<LocalToolOption> = listOf(LocalToolOption.TimeInfo),
     val enableWebSearch: Boolean = false, // 网络搜索开关(每个助手独立)
     val workspaceId: Uuid? = null,
+    /** Null is the explicit legacy whole-workspace compatibility mode. */
+    val workspaceScopeId: Uuid? = null,
+    /** Shell approval is isolated per Assistant instead of inherited from a shared Workspace. */
+    val workspaceShellApprovalRequired: Boolean = true,
     val background: String? = null, // 聊天页背景图地址(本地文件 URI 或网络 URL), 为 null 时无背景
     val backgroundOpacity: Float = 1.0f, // 背景图不透明度(0~1)
     val useGradientBackground: Boolean = false, // 开启后聊天页使用动态渐变背景
@@ -51,7 +56,29 @@ data class Assistant(
     val enableTimeReminder: Boolean = false,            // 时间间隔提醒注入
     val allowConversationSystemPrompt: Boolean = false, // 允许对话单独重写 system prompt
     val allowConversationPromptInjection: Boolean = false, // 允许对话单独绑定提示词注入
-)
+) {
+    init {
+        require(workspaceScopeId == null || workspaceScopeId == id) {
+            "A private Workspace scope must use the stable Assistant id"
+        }
+    }
+}
+
+fun Assistant.workspaceScope(): WorkspaceScope =
+    WorkspaceScope.fromNullableId(workspaceScopeId?.toString())
+
+/**
+ * Binds a new Workspace to a private scope named by the stable Assistant id. Re-selecting the
+ * current Workspace preserves an existing legacy binding so old files are never silently hidden.
+ */
+fun Assistant.withWorkspaceBinding(newWorkspaceId: Uuid?): Assistant {
+    if (newWorkspaceId == workspaceId) return this
+    return copy(
+        workspaceId = newWorkspaceId,
+        workspaceScopeId = newWorkspaceId?.let { this.id },
+        workspaceShellApprovalRequired = true,
+    )
+}
 
 @Serializable
 data class QuickMessage(

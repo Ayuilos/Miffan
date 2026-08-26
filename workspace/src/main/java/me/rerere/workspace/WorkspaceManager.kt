@@ -42,6 +42,13 @@ class WorkspaceManager(
         require(Files.isDirectory(baseDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             "Workspace base directory must not be a symbolic link"
         }
+        val workspaceStorage = baseDir.toPath().toAbsolutePath().normalize()
+        bindMounts.forEach { mount ->
+            val source = mount.source.toPath().toAbsolutePath().normalize()
+            require(!source.startsWith(workspaceStorage) && !workspaceStorage.startsWith(source)) {
+                "Bind mount source must not overlap Workspace storage: ${mount.source}"
+            }
+        }
         processRecoveryReport = processSupervisor.recoverStaleProcesses()
         recoverInterruptedFileSnapshots()
     }
@@ -55,12 +62,42 @@ class WorkspaceManager(
         return dir
     }
 
+    /** Lazily creates the private directories belonging to one assistant scope. */
+    fun ensureScope(root: String, scope: WorkspaceScope): WorkspaceScopeDirectories {
+        val workspace = ensureWorkspace(root)
+        if (scope.isLegacyWholeWorkspace) {
+            return WorkspaceScopeDirectories(
+                files = filesDir(root),
+                home = File(linuxDir(root), ROOT_HOME_DIR),
+                temp = File(linuxDir(root), ROOTFS_TEMP_DIR),
+                varTemp = File(linuxDir(root), ROOTFS_VAR_TEMP_DIR),
+                prootTemp = tempDir(root),
+            )
+        }
+        val scopes = workspace.ensureDirectoryNoFollow(SCOPES_DIR)
+        val scopeRoot = scopes.ensureDirectoryNoFollow(requireNotNull(scope.id))
+        return WorkspaceScopeDirectories(
+            files = scopeRoot.ensureDirectoryNoFollow(SCOPE_FILES_DIR),
+            home = scopeRoot.ensureDirectoryNoFollow(SCOPE_HOME_DIR),
+            temp = scopeRoot.ensureDirectoryNoFollow(SCOPE_TEMP_DIR),
+            varTemp = scopeRoot.ensureDirectoryNoFollow(SCOPE_VAR_TEMP_DIR),
+            prootTemp = scopeRoot.ensureDirectoryNoFollow(SCOPE_PROOT_TEMP_DIR),
+        )
+    }
+
     fun workspaceDir(root: String): File {
         requireValidRoot(root)
         return File(baseDir, root)
     }
 
-    fun filesDir(root: String): File = File(workspaceDir(root), FILES_DIR)
+    fun filesDir(
+        root: String,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
+    ): File = if (scope.isLegacyWholeWorkspace) {
+        File(workspaceDir(root), FILES_DIR)
+    } else {
+        File(File(File(workspaceDir(root), SCOPES_DIR), requireNotNull(scope.id)), SCOPE_FILES_DIR)
+    }
 
     fun linuxDir(root: String): File = File(workspaceDir(root), LINUX_DIR)
 
@@ -89,14 +126,16 @@ class WorkspaceManager(
         root: String,
         path: String = "",
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ): List<WorkspaceFileEntry> =
-        fileSystem.list(areaDir(root, area), path)
+        fileSystem.list(areaDir(root, area, scope), path)
 
     fun readText(
         root: String,
         path: String,
         charset: Charset = StandardCharsets.UTF_8,
-    ): String = fileSystem.readText(filesDir(root), path, charset)
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
+    ): String = fileSystem.readText(filesDir(root, scope), path, charset)
 
     fun writeText(
         root: String,
@@ -104,17 +143,19 @@ class WorkspaceManager(
         text: String,
         overwrite: Boolean = true,
         charset: Charset = StandardCharsets.UTF_8,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ): WorkspaceFileEntry = withExclusiveAccess(root) {
+        ensureScope(root, scope)
         requireGrowth(
             root = root,
             area = WorkspaceDiskArea.FILES,
             additionalBytes = positiveGrowth(
-                rootDir = filesDir(root),
+                rootDir = filesDir(root, scope),
                 path = path,
                 newSize = text.toByteArray(charset).size.toLong(),
             ),
         )
-        fileSystem.writeText(filesDir(root), path, text, overwrite, charset)
+        fileSystem.writeText(filesDir(root, scope), path, text, overwrite, charset)
     }
 
     /**
@@ -129,10 +170,12 @@ class WorkspaceManager(
     fun <T> withFilesWriteAccess(
         root: String,
         additionalBytes: Long,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
         block: (File) -> T,
     ): T = withExclusiveAccess(root) {
+        ensureScope(root, scope)
         requireGrowth(root, WorkspaceDiskArea.FILES, additionalBytes)
-        block(filesDir(root))
+        block(filesDir(root, scope))
     }
 
     fun importFile(
@@ -141,9 +184,11 @@ class WorkspaceManager(
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
         fileName: String,
         inputStream: InputStream,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ): WorkspaceFileEntry {
         return withExclusiveAccess(root) {
-            val areaRoot = areaDir(root, area)
+            ensureScope(root, scope)
+            val areaRoot = areaDir(root, area, scope)
             val targetPath = if (destinationPath.isBlank()) fileName else "$destinationPath/$fileName"
             fileSystem.importBytes(
                 root = areaRoot,
@@ -158,7 +203,8 @@ class WorkspaceManager(
         root: String,
         path: String,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
-    ): Long = fileSystem.fileSizeNoFollow(areaDir(root, area), path)
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
+    ): Long = fileSystem.fileSizeNoFollow(areaDir(root, area, scope), path)
 
     fun exportFile(
         root: String,
@@ -166,10 +212,11 @@ class WorkspaceManager(
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
         outputStream: OutputStream,
         maxBytes: Long = Long.MAX_VALUE,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ) {
         outputStream.use { out ->
             fileSystem.exportNoFollow(
-                root = areaDir(root, area),
+                root = areaDir(root, area, scope),
                 path = path,
                 outputStream = out,
                 maxBytes = maxBytes,
@@ -184,7 +231,11 @@ class WorkspaceManager(
      * 可以直接用文件 IO 访问, 无需经过 PRoot; 只是 Rootfs 目录里对应位置是个空挂载点,
      * 按 [WorkspaceStorageArea.LINUX] 解析必然落空。
      */
-    fun resolveRootfsPath(root: String, path: String): RootfsLocation {
+    fun resolveRootfsPath(
+        root: String,
+        path: String,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
+    ): RootfsLocation {
         requireValidRoot(root)
         val guestPath = GuestPath.parse(path)
 
@@ -201,10 +252,29 @@ class WorkspaceManager(
 
         if (guestPath.isWithin(ROOTFS_WORKSPACE_PATH)) {
             return RootfsLocation(
-                rootDir = filesDir(root),
+                rootDir = filesDir(root, scope),
                 relativePath = guestPath.relativeTo(ROOTFS_WORKSPACE_PATH),
                 guestPath = guestPath,
             )
+        }
+
+        if (!scope.isLegacyWholeWorkspace) {
+            val directories = ensureScope(root, scope)
+            SCOPED_PRIVATE_GUEST_ROOTS.firstOrNull { (guestRoot, _) ->
+                guestPath.isWithin(guestRoot)
+            }?.let { (guestRoot, area) ->
+                val rootDir = when (area) {
+                    WorkspaceStorageArea.HOME -> directories.home
+                    WorkspaceStorageArea.TEMP -> directories.temp
+                    WorkspaceStorageArea.VAR_TEMP -> directories.varTemp
+                    else -> error("Invalid private scope mapping")
+                }
+                return RootfsLocation(
+                    rootDir = rootDir,
+                    relativePath = guestPath.relativeTo(guestRoot),
+                    guestPath = guestPath,
+                )
+            }
         }
 
         // 内核伪文件系统: 显式拒绝, 而不是回落到一个必然读不到的物理路径
@@ -219,8 +289,12 @@ class WorkspaceManager(
         )
     }
 
-    fun rootfsFileSize(root: String, path: String): Long {
-        val location = resolveRootfsPath(root, path)
+    fun rootfsFileSize(
+        root: String,
+        path: String,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
+    ): Long {
+        val location = resolveRootfsPath(root, path, scope)
         return fileSystem.fileSizeNoFollow(
             root = location.rootDir,
             path = location.relativePath,
@@ -233,8 +307,9 @@ class WorkspaceManager(
         path: String,
         outputStream: OutputStream,
         maxBytes: Long = MAX_ROOTFS_TOOL_READ_BYTES,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ) {
-        val location = resolveRootfsPath(root, path)
+        val location = resolveRootfsPath(root, path, scope)
         outputStream.use { out ->
             fileSystem.exportNoFollow(
                 root = location.rootDir,
@@ -252,8 +327,10 @@ class WorkspaceManager(
         text: String,
         overwrite: Boolean = true,
         charset: Charset = StandardCharsets.UTF_8,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ): WorkspaceFileEntry = withExclusiveAccess(root) {
-        val location = resolveRootfsPath(root, path)
+        ensureScope(root, scope)
+        val location = resolveRootfsPath(root, path, scope)
         require(location.writable) { "Path is read-only: ${location.guestPath.value}" }
         requireGrowth(
             root = root,
@@ -282,17 +359,28 @@ class WorkspaceManager(
         path: String,
         recursive: Boolean = false,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ): Boolean = withExclusiveAccess(root) {
-        fileSystem.delete(areaDir(root, area), path, recursive)
+        fileSystem.delete(areaDir(root, area, scope), path, recursive)
     }
 
-    fun moveFile(root: String, source: String, target: String, overwrite: Boolean = false): WorkspaceFileEntry =
+    fun moveFile(
+        root: String,
+        source: String,
+        target: String,
+        overwrite: Boolean = false,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
+    ): WorkspaceFileEntry =
         withExclusiveAccess(root) {
-            fileSystem.move(filesDir(root), source, target, overwrite)
+            fileSystem.move(filesDir(root, scope), source, target, overwrite)
         }
 
-    fun glob(root: String, pattern: String, path: String = ""): List<WorkspaceFileEntry> =
-        fileSystem.glob(filesDir(root), pattern, path)
+    fun glob(
+        root: String,
+        pattern: String,
+        path: String = "",
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
+    ): List<WorkspaceFileEntry> = fileSystem.glob(filesDir(root, scope), pattern, path)
 
     fun grep(
         root: String,
@@ -301,8 +389,9 @@ class WorkspaceManager(
         regex: Boolean = false,
         ignoreCase: Boolean = true,
         includeGlob: String? = null,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ): List<WorkspaceSearchMatch> =
-        fileSystem.grep(filesDir(root), query, path, regex, ignoreCase, includeGlob)
+        fileSystem.grep(filesDir(root, scope), query, path, regex, ignoreCase, includeGlob)
 
     fun executeCommand(
         root: String,
@@ -310,28 +399,29 @@ class WorkspaceManager(
         cwd: String = "",
         timeoutMillis: Long = DEFAULT_COMMAND_TIMEOUT_MS,
         stdin: ByteArray? = null,
+        scope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
     ): WorkspaceCommandResult {
         require(command.isNotBlank()) { "Command is required" }
         require(timeoutMillis > 0) { "Command timeout must be positive" }
         return withExclusiveAccess(root, interruptible = true) {
-            ensureWorkspace(root)
+            val scopeDirectories = ensureScope(root, scope)
             requireWithinResourceLimits(root)
-            val workingDir = fileSystem.resolve(filesDir(root), cwd)
-            require(workingDir.exists()) { "Working directory does not exist: $cwd" }
-            require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
-            // Never pass the caller's possibly aliased spelling into PRoot. The host-side
-            // validation and guest process use the same canonical relative directory.
-            val canonicalCwd = workingDir
-                .relativeTo(filesDir(root).canonicalFile)
-                .invariantSeparatorsPath
+            val canonicalCwd = fileSystem.canonicalRelativeDirectoryPath(cwd)
+            val workingDir = fileSystem.resolveDirectoryNoFollow(
+                scopeDirectories.files,
+                canonicalCwd,
+            )
             val result = shellRunner.execute(
                 WorkspaceShellContext(
                     root = root,
                     command = command,
                     cwd = canonicalCwd,
-                    filesDir = filesDir(root),
+                    filesDir = scopeDirectories.files,
                     linuxDir = linuxDir(root),
-                    tempDir = tempDir(root),
+                    tempDir = scopeDirectories.prootTemp,
+                    homeDir = scopeDirectories.home.takeUnless { scope.isLegacyWholeWorkspace },
+                    guestTempDir = scopeDirectories.temp.takeUnless { scope.isLegacyWholeWorkspace },
+                    guestVarTempDir = scopeDirectories.varTemp.takeUnless { scope.isLegacyWholeWorkspace },
                     workingDir = workingDir,
                     timeoutMillis = timeoutMillis,
                     stdin = stdin,
@@ -514,14 +604,38 @@ class WorkspaceManager(
     fun diskUsage(root: String): WorkspaceDiskUsage {
         requireValidRoot(root)
         val workspace = workspaceDir(root)
-        val files = filesDir(root).logicalTreeSize()
+        val scopes = File(workspace, SCOPES_DIR)
+        val scopeFiles = scopes.listFiles()
+            .orEmpty()
+            .filter { Files.isDirectory(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+            .fold(0L) { total, scopeRoot ->
+                val persistent = listOf(SCOPE_FILES_DIR, SCOPE_HOME_DIR)
+                    .fold(0L) { scopeTotal, name ->
+                        addSaturated(scopeTotal, File(scopeRoot, name).logicalTreeSize())
+                    }
+                addSaturated(total, persistent)
+            }
+        val files = addSaturated(filesDir(root).logicalTreeSize(), scopeFiles)
         val rootfs = linuxDir(root).logicalTreeSize()
-        val temp = tempDir(root).logicalTreeSize()
+        val scopeTemp = scopes.listFiles()
+            .orEmpty()
+            .filter { Files.isDirectory(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+            .fold(0L) { total, scopeRoot ->
+                val transient = listOf(SCOPE_TEMP_DIR, SCOPE_VAR_TEMP_DIR, SCOPE_PROOT_TEMP_DIR)
+                    .fold(0L) { scopeTotal, name ->
+                        addSaturated(scopeTotal, File(scopeRoot, name).logicalTreeSize())
+                    }
+                addSaturated(total, transient)
+            }
+        val temp = addSaturated(tempDir(root).logicalTreeSize(), scopeTemp)
         val toolOutputs = toolOutputDir(root)?.logicalTreeSize() ?: 0
         val other = workspace.listFiles()
             .orEmpty()
             .asSequence()
-            .filterNot { it.name == FILES_DIR || it.name == LINUX_DIR || it.name == TEMP_DIR }
+            .filterNot {
+                it.name == FILES_DIR || it.name == LINUX_DIR || it.name == TEMP_DIR ||
+                    it.name == SCOPES_DIR
+            }
             .fold(0L) { total, file ->
                 runCatching { Math.addExact(total, file.logicalTreeSize()) }.getOrDefault(Long.MAX_VALUE)
             }
@@ -689,15 +803,32 @@ class WorkspaceManager(
     private fun Long?.orZero(): Long = this ?: 0
 
     private fun WorkspaceStorageArea.toDiskArea(): WorkspaceDiskArea = when (this) {
-        WorkspaceStorageArea.FILES -> WorkspaceDiskArea.FILES
+        WorkspaceStorageArea.FILES,
+        WorkspaceStorageArea.HOME,
+            -> WorkspaceDiskArea.FILES
         WorkspaceStorageArea.LINUX -> WorkspaceDiskArea.ROOTFS
+        WorkspaceStorageArea.TEMP,
+        WorkspaceStorageArea.VAR_TEMP,
+            -> WorkspaceDiskArea.TEMP
     }
 
-    private fun RootfsLocation.diskArea(root: String): WorkspaceDiskArea = when (rootDir) {
-        filesDir(root) -> WorkspaceDiskArea.FILES
-        linuxDir(root) -> WorkspaceDiskArea.ROOTFS
-        tempDir(root) -> WorkspaceDiskArea.TEMP
-        else -> WorkspaceDiskArea.OTHER
+    private fun addSaturated(left: Long, right: Long): Long =
+        runCatching { Math.addExact(left, right) }.getOrDefault(Long.MAX_VALUE)
+
+    private fun RootfsLocation.diskArea(root: String): WorkspaceDiskArea {
+        val workspace = workspaceDir(root).toPath().toAbsolutePath().normalize()
+        val location = rootDir.toPath().toAbsolutePath().normalize()
+        val scopes = workspace.resolve(SCOPES_DIR)
+        return when {
+            location == filesDir(root).toPath().toAbsolutePath().normalize() -> WorkspaceDiskArea.FILES
+            location == linuxDir(root).toPath().toAbsolutePath().normalize() -> WorkspaceDiskArea.ROOTFS
+            location == tempDir(root).toPath().toAbsolutePath().normalize() -> WorkspaceDiskArea.TEMP
+            location.startsWith(scopes) &&
+                location.fileName.toString() in setOf(SCOPE_FILES_DIR, SCOPE_HOME_DIR) ->
+                WorkspaceDiskArea.FILES
+            location.startsWith(scopes) -> WorkspaceDiskArea.TEMP
+            else -> WorkspaceDiskArea.OTHER
+        }
     }
 
     private fun toolOutputDir(root: String): File? = sortedBindMounts
@@ -712,9 +843,15 @@ class WorkspaceManager(
         }
     }
 
-    private fun areaDir(root: String, area: WorkspaceStorageArea): File = when (area) {
-        WorkspaceStorageArea.FILES -> filesDir(root)
-        WorkspaceStorageArea.LINUX -> linuxDir(root)
+    private fun areaDir(root: String, area: WorkspaceStorageArea, scope: WorkspaceScope): File {
+        val directories = ensureScope(root, scope)
+        return when (area) {
+            WorkspaceStorageArea.FILES -> directories.files
+            WorkspaceStorageArea.LINUX -> linuxDir(root)
+            WorkspaceStorageArea.HOME -> directories.home
+            WorkspaceStorageArea.TEMP -> directories.temp
+            WorkspaceStorageArea.VAR_TEMP -> directories.varTemp
+        }
     }
 
     fun cleanupAllTempDirs() {
@@ -730,6 +867,14 @@ class WorkspaceManager(
                 // Rootfs /tmp and /var/tmp
                 dir.deleteRelativeTreeNoFollow("$LINUX_DIR/tmp")
                 dir.deleteRelativeTreeNoFollow("$LINUX_DIR/var/tmp")
+                File(dir, SCOPES_DIR).listFiles()
+                    .orEmpty()
+                    .filter { Files.isDirectory(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+                    .forEach { scopeRoot ->
+                        scopeRoot.deleteRelativeTreeNoFollow(SCOPE_TEMP_DIR)
+                        scopeRoot.deleteRelativeTreeNoFollow(SCOPE_VAR_TEMP_DIR)
+                        scopeRoot.deleteRelativeTreeNoFollow(SCOPE_PROOT_TEMP_DIR)
+                    }
             }
         }
     }
@@ -738,6 +883,15 @@ class WorkspaceManager(
         private const val FILES_DIR = "files"
         private const val LINUX_DIR = "linux"
         private const val TEMP_DIR = "tmp"
+        private const val SCOPES_DIR = "scopes"
+        private const val SCOPE_FILES_DIR = "files"
+        private const val SCOPE_HOME_DIR = "home"
+        private const val SCOPE_TEMP_DIR = "tmp"
+        private const val SCOPE_VAR_TEMP_DIR = "var-tmp"
+        private const val SCOPE_PROOT_TEMP_DIR = "proot-tmp"
+        private const val ROOT_HOME_DIR = "root"
+        private const val ROOTFS_TEMP_DIR = "tmp"
+        private const val ROOTFS_VAR_TEMP_DIR = "var/tmp"
         private const val FILES_STAGING_DIR = "files-staging"
         private const val FILES_BACKUP_DIR = "files-backup"
         private const val FILES_COMMITTED_BACKUP_DIR = "files-backup-committed"
@@ -748,6 +902,15 @@ class WorkspaceManager(
         /** Rootfs 内工作区文件区的挂载点 */
         const val ROOTFS_WORKSPACE_DIR = "/workspace"
         val ROOTFS_WORKSPACE_PATH: GuestPath = GuestPath.parse(ROOTFS_WORKSPACE_DIR)
+
+        val ROOTFS_HOME_PATH: GuestPath = GuestPath.parse("/root")
+        val ROOTFS_TEMP_PATH: GuestPath = GuestPath.parse("/tmp")
+        val ROOTFS_VAR_TEMP_PATH: GuestPath = GuestPath.parse("/var/tmp")
+        private val SCOPED_PRIVATE_GUEST_ROOTS = listOf(
+            ROOTFS_HOME_PATH to WorkspaceStorageArea.HOME,
+            ROOTFS_TEMP_PATH to WorkspaceStorageArea.TEMP,
+            ROOTFS_VAR_TEMP_PATH to WorkspaceStorageArea.VAR_TEMP,
+        )
 
         /** 由宿主机透传的内核伪文件系统, 只能通过 shell 访问 */
         val KERNEL_FS_MOUNTS = listOf("/dev", "/proc", "/sys")

@@ -20,7 +20,54 @@ enum class WorkspaceShellStatus {
 enum class WorkspaceStorageArea {
     FILES,
     LINUX,
+    HOME,
+    TEMP,
+    VAR_TEMP,
 }
+
+/**
+ * Selects the host-side file view mounted at `/workspace` for one execution.
+ *
+ * A null id is the explicit compatibility mode for workspaces created before assistant scopes
+ * existed. It continues to expose the historical `files/` directory without moving any data.
+ * Non-null ids are stable opaque identities (normally an Assistant UUID), never display names.
+ */
+class WorkspaceScope private constructor(
+    val id: String?,
+) {
+    val isLegacyWholeWorkspace: Boolean
+        get() = id == null
+
+    override fun equals(other: Any?): Boolean = other is WorkspaceScope && id == other.id
+
+    override fun hashCode(): Int = id?.hashCode() ?: 0
+
+    override fun toString(): String = id ?: "legacy-whole-workspace"
+
+    companion object {
+        val LEGACY_WHOLE_WORKSPACE = WorkspaceScope(null)
+
+        fun assistant(id: String): WorkspaceScope {
+            require(id.matches(SCOPE_ID_REGEX) && id != "." && id != "..") {
+                "Invalid workspace scope id: $id"
+            }
+            return WorkspaceScope(id)
+        }
+
+        fun fromNullableId(id: String?): WorkspaceScope =
+            id?.let(::assistant) ?: LEGACY_WHOLE_WORKSPACE
+
+        private val SCOPE_ID_REGEX = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+    }
+}
+
+data class WorkspaceScopeDirectories(
+    val files: java.io.File,
+    val home: java.io.File,
+    val temp: java.io.File,
+    val varTemp: java.io.File,
+    val prootTemp: java.io.File,
+)
 
 enum class RootfsInstallStage {
     DOWNLOADING,

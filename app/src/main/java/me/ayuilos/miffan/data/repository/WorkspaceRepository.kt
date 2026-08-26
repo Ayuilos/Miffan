@@ -18,6 +18,7 @@ import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceScope
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import java.io.ByteArrayOutputStream
@@ -136,19 +137,23 @@ class WorkspaceRepository(
         id: String,
         area: WorkspaceStorageArea,
         path: String,
+        scopeId: String? = null,
     ): List<WorkspaceFileEntry> = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: return@withContext emptyList()
-        manager.ensureWorkspace(workspace.root)
-        manager.listFiles(workspace.root, path, area)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.listFiles(workspace.root, path, area, scope)
     }
 
     suspend fun readText(
         id: String,
         path: String,
+        scopeId: String? = null,
     ): String = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.readText(workspace.root, path)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.readText(workspace.root, path, scope = scope)
     }
 
     suspend fun writeText(
@@ -156,10 +161,12 @@ class WorkspaceRepository(
         path: String,
         text: String,
         overwrite: Boolean,
+        scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.writeText(workspace.root, path, text, overwrite)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.writeText(workspace.root, path, text, overwrite, scope = scope)
     }
 
     /**
@@ -171,18 +178,24 @@ class WorkspaceRepository(
         id: String,
         area: WorkspaceStorageArea,
         path: String,
+        scopeId: String? = null,
     ): String = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
         when (area) {
-            WorkspaceStorageArea.FILES -> manager.readText(workspace.root, path)
-            WorkspaceStorageArea.LINUX -> {
-                val size = manager.fileSize(workspace.root, path, area)
+            WorkspaceStorageArea.FILES -> manager.readText(workspace.root, path, scope = scope)
+            WorkspaceStorageArea.LINUX,
+            WorkspaceStorageArea.HOME,
+            WorkspaceStorageArea.TEMP,
+            WorkspaceStorageArea.VAR_TEMP,
+                -> {
+                val size = manager.fileSize(workspace.root, path, area, scope)
                 require(size <= MAX_PREVIEW_BYTES) {
                     "文件过大, 无法预览 (${size} bytes)"
                 }
                 ByteArrayOutputStream().use { out ->
-                    manager.exportFile(workspace.root, path, area, out)
+                    manager.exportFile(workspace.root, path, area, out, scope = scope)
                     out.toString(Charsets.UTF_8.name())
                 }
             }
@@ -193,15 +206,17 @@ class WorkspaceRepository(
     suspend fun readRootfsTextForPreview(
         id: String,
         path: String,
+        scopeId: String? = null,
     ): String = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        val size = manager.rootfsFileSize(workspace.root, path)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        val size = manager.rootfsFileSize(workspace.root, path, scope)
         require(size <= MAX_PREVIEW_BYTES) {
             "文件过大, 无法在应用内预览 (${size} bytes)"
         }
         ByteArrayOutputStream(size.toInt()).use { out ->
-            manager.exportRootfsFile(workspace.root, path, out)
+            manager.exportRootfsFile(workspace.root, path, out, scope = scope)
             out.toString(Charsets.UTF_8.name())
         }
     }
@@ -212,19 +227,22 @@ class WorkspaceRepository(
         destinationPath: String,
         fileName: String,
         inputStream: InputStream,
+        scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.importFile(workspace.root, destinationPath, area, fileName, inputStream)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.importFile(workspace.root, destinationPath, area, fileName, inputStream, scope)
     }
 
     suspend fun fileSize(
         id: String,
         area: WorkspaceStorageArea,
         path: String,
+        scopeId: String? = null,
     ): Long = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.fileSize(workspace.root, path, area)
+        manager.fileSize(workspace.root, path, area, WorkspaceScope.fromNullableId(scopeId))
     }
 
     suspend fun exportFile(
@@ -232,19 +250,28 @@ class WorkspaceRepository(
         area: WorkspaceStorageArea,
         path: String,
         outputStream: OutputStream,
+        scopeId: String? = null,
     ) = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.exportFile(workspace.root, path, area, outputStream)
+        manager.exportFile(
+            workspace.root,
+            path,
+            area,
+            outputStream,
+            scope = WorkspaceScope.fromNullableId(scopeId),
+        )
     }
 
     /** 按 Rootfs 内绝对路径读取文件大小, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
     suspend fun rootfsFileSize(
         id: String,
         path: String,
+        scopeId: String? = null,
     ): Long = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.rootfsFileSize(workspace.root, path)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.rootfsFileSize(workspace.root, path, scope)
     }
 
     /** 按 Rootfs 内绝对路径导出文件内容, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
@@ -252,10 +279,12 @@ class WorkspaceRepository(
         id: String,
         path: String,
         outputStream: OutputStream,
+        scopeId: String? = null,
     ) = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.exportRootfsFile(workspace.root, path, outputStream)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.exportRootfsFile(workspace.root, path, outputStream, scope = scope)
     }
 
     /** Export a user-selected artifact without the smaller AI tool read limit. */
@@ -263,10 +292,18 @@ class WorkspaceRepository(
         id: String,
         path: String,
         outputStream: OutputStream,
+        scopeId: String? = null,
     ) = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.exportRootfsFile(workspace.root, path, outputStream, maxBytes = Long.MAX_VALUE)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.exportRootfsFile(
+            workspace.root,
+            path,
+            outputStream,
+            maxBytes = Long.MAX_VALUE,
+            scope = scope,
+        )
     }
 
     /** Writes a Rootfs guest path without invoking a shell or following symbolic links. */
@@ -275,10 +312,12 @@ class WorkspaceRepository(
         path: String,
         text: String,
         overwrite: Boolean,
+        scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.writeRootfsText(workspace.root, path, text, overwrite)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
+        manager.writeRootfsText(workspace.root, path, text, overwrite, scope = scope)
     }
 
     suspend fun deleteFile(
@@ -286,10 +325,17 @@ class WorkspaceRepository(
         area: WorkspaceStorageArea,
         path: String,
         recursive: Boolean,
+        scopeId: String? = null,
     ): Boolean {
         val deleted = withContext(Dispatchers.IO) {
             val workspace = dao.getById(id) ?: return@withContext false
-            manager.deleteFile(workspace.root, path, recursive, area)
+            manager.deleteFile(
+                workspace.root,
+                path,
+                recursive,
+                area,
+                WorkspaceScope.fromNullableId(scopeId),
+            )
         }
         return deleted
     }
@@ -299,16 +345,24 @@ class WorkspaceRepository(
         source: String,
         target: String,
         overwrite: Boolean,
+        scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
-        manager.moveFile(workspace.root, source, target, overwrite)
+        manager.moveFile(
+            workspace.root,
+            source,
+            target,
+            overwrite,
+            WorkspaceScope.fromNullableId(scopeId),
+        )
     }
 
     suspend fun fetchUrl(
         id: String,
         url: String,
         destinationPath: String,
+        scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         val guestPath = me.rerere.workspace.GuestPath.parse(destinationPath, "destination_path")
@@ -318,13 +372,15 @@ class WorkspaceRepository(
         val relative = guestPath.relativeTo(WorkspaceManager.ROOTFS_WORKSPACE_PATH)
         val parent = relative.substringBeforeLast('/', "")
         val fileName = relative.substringAfterLast('/')
-        manager.ensureWorkspace(workspace.root)
+        val scope = WorkspaceScope.fromNullableId(scopeId)
+        manager.ensureScope(workspace.root, scope)
         networkBroker.fetch(url) { input ->
             manager.importFile(
                 root = workspace.root,
                 destinationPath = parent,
                 fileName = fileName,
                 inputStream = input,
+                scope = scope,
             )
         }
     }
@@ -335,12 +391,14 @@ class WorkspaceRepository(
         cwd: String = "",
         timeoutMillis: Long = WorkspaceManager.DEFAULT_COMMAND_TIMEOUT_MS,
         stdin: ByteArray? = null,
+        scopeId: String? = null,
     ): WorkspaceCommandResult {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         // runInterruptible 让协程取消转化为线程中断，从而打断阻塞的 Process.waitFor 并杀掉进程
         return runInterruptible(Dispatchers.IO) {
-            manager.ensureWorkspace(workspace.root)
-            manager.executeCommand(workspace.root, command, cwd, timeoutMillis, stdin)
+            val scope = WorkspaceScope.fromNullableId(scopeId)
+            manager.ensureScope(workspace.root, scope)
+            manager.executeCommand(workspace.root, command, cwd, timeoutMillis, stdin, scope)
         }
     }
 
@@ -359,7 +417,7 @@ class WorkspaceRepository(
             settings.copy(
                 assistants = settings.assistants.map { assistant ->
                     if (assistant.workspaceId?.toString() == workspaceId) {
-                        assistant.copy(workspaceId = null)
+                        assistant.copy(workspaceId = null, workspaceScopeId = null)
                     } else {
                         assistant
                     }

@@ -231,8 +231,8 @@
   <string name="chat_message_remove_favorite">즐겨찾기 제거</string>
   <string name="chat_message_tool_approve">승인</string>
   <string name="chat_message_tool_pending_count">도구 승인 %d개 대기 중</string>
-  <string name="chat_message_shell_always_allow">이 워크스페이스에서 Shell 항상 허용</string>
-  <string name="chat_message_shell_always_allow_desc">대기 중인 Shell 명령 %d개를 승인하고 이 워크스페이스에서 향후 Shell 확인을 건너뜁니다.</string>
+  <string name="chat_message_shell_always_allow">이 어시스턴트 범위에서 Shell 항상 허용</string>
+  <string name="chat_message_shell_always_allow_desc">대기 중인 Shell 명령 %d개를 승인하고 이 어시스턴트 범위에서만 향후 확인을 건너뜁니다. /etc, /usr 같은 공유 Rootfs 경로의 변경은 이 작업 공간에 연결된 모든 어시스턴트에 영향을 줍니다.</string>
   <string name="chat_message_tool_ask_questions">%d개의 질문</string>
   <string name="chat_message_tool_call_generic">도구 호출 %1$s</string>
   <string name="chat_message_tool_call_label">도구 %1$s 호출함</string>
@@ -1128,7 +1128,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="assistant_page_gradient_background">그라데이션 배경</string>
   <string name="assistant_page_gradient_background_desc">채팅 페이지에서 동적 그라데이션 배경 사용</string>
   <string name="assistant_page_workspace">작업 공간</string>
-  <string name="assistant_page_workspace_desc">바인딩 후 에이전트는 이 워크스페이스의 파일과 선택적 로컬 PRoot 도구를 사용할 수 있습니다.</string>
+  <string name="assistant_page_workspace_desc">새 바인딩마다 /workspace의 비공개 파일 범위를 사용하며, 이 작업 공간의 Rootfs와 설치된 시스템 환경은 공유합니다.</string>
+  <string name="assistant_page_workspace_shell_approval">Shell 승인 필요</string>
+  <string name="assistant_page_workspace_shell_approval_desc">이 어시스턴트 범위에만 적용됩니다. 비활성화해도 시스템 수준 Shell 변경은 작업 공간 Rootfs를 공유하는 모든 어시스턴트에 영향을 줍니다.</string>
+  <string name="workspace_scope">파일 범위</string>
+  <string name="workspace_scope_private">비공개 · %s</string>
+  <string name="workspace_scope_legacy">호환 모드: 전체 작업 공간</string>
   <string name="assistant_page_workspace_unbound">연결되지 않음</string>
   <string name="workspace_page_title">작업 공간</string>
   <string name="workspace_page_create">워크스페이스 만들기</string>
@@ -1142,10 +1147,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_tab_basic">기본</string>
   <string name="workspace_detail_tab_files">파일</string>
   <string name="workspace_detail_tab_skills">스킬</string>
-  <string name="workspace_skills_title">작업 공간 스킬</string>
-  <string name="workspace_skills_description">이 디렉터리의 스킬은 작업 공간에 속하며 이 작업 공간에 연결된 어시스턴트에서 자동으로 사용할 수 있습니다.</string>
-  <string name="workspace_skills_empty">작업 공간 스킬을 찾을 수 없습니다. 위 경로에 SKILL.md가 포함된 스킬 디렉터리를 추가하세요.</string>
-  <string name="workspace_skills_automatic">이 작업 공간에서 자동 사용</string>
+  <string name="workspace_skills_title">파일 범위 스킬</string>
+  <string name="workspace_skills_description">이 디렉터리의 스킬은 정확히 같은 파일 범위를 사용하는 어시스턴트만 검색합니다. Miffan은 형제 범위를 검색하거나 암시적 공유 스킬 디렉터리를 제공하지 않습니다.</string>
+  <string name="workspace_skills_empty">파일 범위 스킬을 찾을 수 없습니다. 위 경로에 SKILL.md가 포함된 스킬 디렉터리를 추가하세요.</string>
+  <string name="workspace_skills_automatic">이 파일 범위에서 자동으로 사용 가능</string>
   <string name="workspace_skills_requires_shell">작업 공간 Shell이 준비되어야 합니다</string>
   <string name="workspace_detail_import_file">파일 가져오기</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 설치 실패</string>
@@ -1160,7 +1165,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_shell_status">셸 상태</string>
   <string name="workspace_detail_loading">로딩 중</string>
   <string name="workspace_detail_enable_shell">셸 활성화</string>
-  <string name="workspace_detail_enable_shell_desc">명령은 Miffan 앱 UID에서 실행되며 앱의 비공개 데이터 및 네트워크 권한을 공유합니다. PRoot는 보안 샌드박스가 아니므로 신뢰하는 명령만 실행하세요.</string>
+  <string name="workspace_detail_enable_shell_desc">명령은 Miffan 앱 UID에서 실행되며 앱의 비공개 데이터 및 네트워크 권한을 공유합니다. Rootfs와 /etc, /usr 같은 시스템 경로는 이 작업 공간에 연결된 모든 어시스턴트가 공유합니다. PRoot는 보안 샌드박스가 아니므로 신뢰하는 명령만 실행하세요.</string>
   <string name="workspace_detail_tool_approval">도구 승인</string>
   <string name="workspace_detail_tool_approval_desc">활성화되면 AI가 이 도구를 호출하기 전에 사용자 확인이 필요합니다.</string>
   <string name="workspace_detail_tool_list_files">파일 목록</string>
@@ -1170,7 +1175,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_tool_delete_file">파일 삭제</string>
   <string name="workspace_detail_tool_move_file">파일 이동</string>
   <string name="workspace_detail_tool_shell">명령 실행</string>
-  <string name="workspace_detail_install_rootfs_desc">%s의 linux 디렉터리에 tar.gz를 다운로드하여 압축을 풉니다.</string>
+  <string name="workspace_detail_install_rootfs_desc">%s의 Linux 디렉터리에 tar.gz를 다운로드하여 압축을 풉니다. 이 Rootfs와 시스템 수준 변경은 작업 공간에 연결된 모든 어시스턴트가 공유합니다.</string>
   <string name="workspace_detail_download_url">tar.gz 다운로드 URL</string>
   <string name="workspace_detail_area_files">파일</string>
   <string name="workspace_detail_area_rootfs">루트 파일 시스템</string>

@@ -60,17 +60,26 @@ import kotlinx.coroutines.withContext
 import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceProcessRegistration
 import me.rerere.workspace.WorkspaceSessionLease
+import me.rerere.workspace.WorkspaceScope
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 @Composable
-fun WorkspaceTerminalPage(id: String) {
-    val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
+fun WorkspaceTerminalPage(
+    id: String,
+    scopeId: String? = null,
+    scopeName: String? = null,
+) {
+    val vm: WorkspaceDetailVM = koinViewModel(
+        parameters = {
+            parametersOf(WorkspaceDetailArgs(id = id, scopeId = scopeId, scopeName = scopeName))
+        }
+    )
     val workspaceManager = koinInject<WorkspaceManager>()
     val navController = LocalNavController.current
     val state by vm.state.collectAsStateWithLifecycle()
-    var showCloseConfirm by remember(id) { mutableStateOf(false) }
+    var showCloseConfirm by remember(id, scopeId) { mutableStateOf(false) }
 
     BackHandler {
         showCloseConfirm = true
@@ -82,7 +91,14 @@ fun WorkspaceTerminalPage(id: String) {
                 TopAppBar(
                     title = {
                         Text(
-                            text = state.workspace?.name?.let { stringResource(R.string.workspace_terminal_title_with_name, it) } ?: stringResource(R.string.workspace_terminal_title),
+                            text = state.workspace?.name?.let { workspaceName ->
+                                val displayName = if (scopeId == null) {
+                                    workspaceName
+                                } else {
+                                    "$workspaceName · ${scopeName?.takeIf { it.isNotBlank() } ?: scopeId.take(8)}"
+                                }
+                                stringResource(R.string.workspace_terminal_title_with_name, displayName)
+                            } ?: stringResource(R.string.workspace_terminal_title),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -95,6 +111,7 @@ fun WorkspaceTerminalPage(id: String) {
         ) { innerPadding ->
             WorkspaceTerminalContent(
                 root = state.workspace?.root,
+                scopeId = scopeId,
                 contentPadding = innerPadding,
                 workspaceManager = workspaceManager,
             )
@@ -119,6 +136,7 @@ fun WorkspaceTerminalPage(id: String) {
 @Composable
 private fun WorkspaceTerminalContent(
     root: String?,
+    scopeId: String?,
     contentPadding: PaddingValues,
     workspaceManager: WorkspaceManager,
 ) {
@@ -128,15 +146,15 @@ private fun WorkspaceTerminalContent(
     val terminalTypeface = remember(context) {
         ResourcesCompat.getFont(context, R.font.jetbrains_mono) ?: Typeface.MONOSPACE
     }
-    var finished by remember(root) { mutableStateOf(false) }
-    var resourceError by remember(root) { mutableStateOf<String?>(null) }
-    var activeLease by remember(root) { mutableStateOf<WorkspaceSessionLease?>(null) }
-    var activeProcessRegistration by remember(root) {
+    var finished by remember(root, scopeId) { mutableStateOf(false) }
+    var resourceError by remember(root, scopeId) { mutableStateOf<String?>(null) }
+    var activeLease by remember(root, scopeId) { mutableStateOf<WorkspaceSessionLease?>(null) }
+    var activeProcessRegistration by remember(root, scopeId) {
         mutableStateOf<WorkspaceProcessRegistration?>(null)
     }
     var controlDown by remember(root) { mutableStateOf(false) }
     var altDown by remember(root) { mutableStateOf(false) }
-    val sessionClient = remember(root, workspaceManager) {
+    val sessionClient = remember(root, scopeId, workspaceManager) {
         WorkspaceTerminalSessionClient(context.applicationContext) {
             scope.launch {
                 val finishedLease = activeLease
@@ -159,7 +177,7 @@ private fun WorkspaceTerminalContent(
             }
         }
     }
-    val viewClient = remember(root) {
+    val viewClient = remember(root, scopeId) {
         WorkspaceTerminalViewClient(context)
     }
     viewClient.controlDown = controlDown
@@ -168,6 +186,7 @@ private fun WorkspaceTerminalContent(
     val sessionState by produceState<TerminalSessionUiState>(
         initialValue = TerminalSessionUiState.Loading,
         root,
+        scopeId,
         sessionClient,
         workspaceManager,
     ) {
@@ -198,6 +217,10 @@ private fun WorkspaceTerminalContent(
             // install or AI command cannot race terminal preparation.
             withContext(Dispatchers.IO) {
                 prepareWorkspaceTerminalSession(context, current)
+                workspaceManager.ensureScope(
+                    current,
+                    WorkspaceScope.fromNullableId(scopeId),
+                )
                 workspaceManager.checkResourceLimits(current)
             }
             if (!isActive) {
@@ -211,6 +234,14 @@ private fun WorkspaceTerminalContent(
                 client = sessionClient,
                 resourceLimits = workspaceManager.resourceLimits,
                 bindMounts = workspaceManager.executionBindMounts,
+                scopeDirectories = if (scopeId == null) {
+                    null
+                } else {
+                    workspaceManager.ensureScope(
+                        current,
+                        WorkspaceScope.fromNullableId(scopeId),
+                    )
+                },
             )
             val registration = try {
                 // Once the native process exists, registration must either publish its durable
@@ -247,7 +278,7 @@ private fun WorkspaceTerminalContent(
         }
     }
 
-    DisposableEffect(root) {
+    DisposableEffect(root, scopeId) {
         onDispose {
             activeLease?.close()
             activeLease = null

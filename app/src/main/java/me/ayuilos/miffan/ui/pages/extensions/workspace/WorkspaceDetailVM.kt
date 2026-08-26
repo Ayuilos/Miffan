@@ -25,10 +25,12 @@ import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceStorageArea
 
 class WorkspaceDetailVM(
-    private val id: String,
+    private val args: WorkspaceDetailArgs,
     private val repository: WorkspaceRepository,
     private val skillManager: SkillManager,
 ) : ViewModel() {
+    private val id = args.id
+    private val scopeId = args.scopeId
     private var filesLoadJob: Job? = null
 
     private val _state = MutableStateFlow(WorkspaceDetailState())
@@ -102,6 +104,7 @@ class WorkspaceDetailVM(
                     id = id,
                     area = area,
                     path = path,
+                    scopeId = scopeId,
                 )
                 if (state.value.area == area && state.value.path == path) {
                     _state.update { it.copy(entries = entries, loading = false) }
@@ -121,7 +124,7 @@ class WorkspaceDetailVM(
     }
 
     fun openWorkspaceSkill(skill: SkillMetadata) {
-        if (skill.workspaceId != id) return
+        if (skill.workspaceId != id || skill.workspaceScopeId != scopeId) return
         _state.update {
             it.copy(
                 area = WorkspaceStorageArea.FILES,
@@ -141,6 +144,7 @@ class WorkspaceDetailVM(
                     area = state.value.area,
                     path = entry.path,
                     recursive = entry.isDirectory,
+                    scopeId = scopeId,
                 )
             }.onSuccess {
                 refresh()
@@ -159,6 +163,7 @@ class WorkspaceDetailVM(
                     destinationPath = state.value.path,
                     fileName = fileName,
                     inputStream = inputStream,
+                    scopeId = scopeId,
                 )
             }.onSuccess {
                 refresh()
@@ -176,6 +181,7 @@ class WorkspaceDetailVM(
                     area = state.value.area,
                     path = entry.path,
                     outputStream = outputStream,
+                    scopeId = scopeId,
                 )
             }.onFailure { error ->
                 _state.update { it.copy(error = error.message ?: "导出文件失败") }
@@ -198,6 +204,7 @@ class WorkspaceDetailVM(
                         area = state.value.area,
                         path = entry.path,
                         outputStream = output,
+                        scopeId = scopeId,
                     )
                 }
                 file
@@ -257,7 +264,7 @@ class WorkspaceDetailVM(
         if (previous.running) return
         viewModelScope.launch {
             runCatching {
-                repository.executeCommand(id, trimmed)
+                repository.executeCommand(id, trimmed, scopeId = scopeId)
             }.onSuccess { result ->
                 _terminalState.update {
                     it.copy(
@@ -294,10 +301,18 @@ class WorkspaceDetailVM(
                     skillManager.listWorkspaceSkills(
                         workspaceId = workspace.id,
                         workspaceRoot = workspace.root,
+                        scopeId = scopeId,
                     )
                 }
             }
-            _state.update { it.copy(workspace = workspace, skills = skills) }
+            _state.update {
+                it.copy(
+                    workspace = workspace,
+                    skills = skills,
+                    scopeId = scopeId,
+                    scopeName = args.scopeName,
+                )
+            }
         }
     }
 }
@@ -310,6 +325,14 @@ data class WorkspaceDetailState(
     val skills: List<SkillMetadata> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
+    val scopeId: String? = null,
+    val scopeName: String? = null,
+)
+
+data class WorkspaceDetailArgs(
+    val id: String,
+    val scopeId: String? = null,
+    val scopeName: String? = null,
 )
 
 data class WorkspaceTerminalState(

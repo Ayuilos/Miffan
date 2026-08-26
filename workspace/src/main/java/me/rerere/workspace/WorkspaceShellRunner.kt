@@ -21,7 +21,12 @@ data class WorkspaceShellContext(
     val cwd: String,
     val filesDir: File,
     val linuxDir: File,
+    /** Host scratch used by PRoot itself, not the guest `/tmp` mount. */
     val tempDir: File,
+    /** Non-null only for an assistant-private scope. */
+    val homeDir: File? = null,
+    val guestTempDir: File? = null,
+    val guestVarTempDir: File? = null,
     val workingDir: File,
     val timeoutMillis: Long,
     val stdin: ByteArray? = null,

@@ -191,6 +191,33 @@ must present it to users accurately; only trusted commands should be executed.
      `RLIMIT_NPROC` is scoped to an Android UID, not to an individual workspace.
    - Treat a real VM or kernel-enforced container as a separate execution backend rather than
      describing PRoot as equivalent.
+16. **Assistant file scopes on a shared Workspace Rootfs (implemented)**
+   - A Workspace continues to own exactly one mutable Rootfs. Assistants bound to that Workspace
+     therefore share `/bin`, `/usr`, `/etc`, installed packages, and every other system-level
+     Rootfs mutation. The UI, Shell approval, tool description, and injected prompt state this
+     shared effect explicitly.
+   - A non-legacy Assistant is assigned an opaque stable scope id (its Assistant UUID). Only
+     `scopes/<id>/files` is mounted at guest `/workspace`; `scopes/<id>/home`, `tmp`, and `var-tmp`
+     are mounted at `/root`, `/tmp`, and `/var/tmp`. The scope parent and sibling directories are
+     never mounted. Host-side file tools, completion, Skills, UI browsing, Artifact preview/export,
+     and Shell cwd resolution all receive the same scope identity and no-follow mapping.
+   - Shell cwd accepts only canonical relative segments beneath the selected files directory.
+     Absolute paths outside the exact `/workspace` guest prefix, `.`, `..`, repeated separators,
+     missing components, non-directories, and symbolic-link components fail before PRoot launch.
+   - Existing Assistant records without a scope id remain in explicit legacy whole-workspace mode
+     and continue to use the historical `files/` directory. No file is moved, renamed, or hidden by
+     decoding or by reselecting the same binding. Historical Artifacts without a persisted scope id
+     also resolve to this legacy view; new Artifacts persist both Workspace and scope identity.
+   - Workspace Skills are discovered only at `.miffan/skills` below the selected file scope. There
+     is no implicit shared-Skills directory and sibling scopes are never scanned.
+   - Persistent “Always allow Shell” state belongs to the Assistant binding, not the Workspace.
+     Changing the Workspace binding creates the Assistant's stable private scope and restores Shell
+     approval. The Workspace session registry remains keyed by Workspace, so commands from two
+     scopes sharing a Rootfs remain serialized with installs, maintenance, and interactive sessions.
+
+These scope checks are defense in depth against accidental and tool-mediated cross-scope access.
+They do not turn PRoot into hostile-code containment: every command still runs under Miffan's UID,
+and malicious native code or a PRoot escape may attack other app-private data.
 
 ## Android device / emulator verification checklist
 

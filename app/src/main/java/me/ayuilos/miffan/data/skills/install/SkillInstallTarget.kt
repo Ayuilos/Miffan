@@ -7,6 +7,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.UUID
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceScope
 
 /** The local persistence boundary. Implementations must reject existing targets, including links. */
 interface SkillInstallTarget {
@@ -23,6 +24,7 @@ interface SkillInstallTarget {
 class WorkspaceSkillInstallTarget(
     private val workspaceManager: WorkspaceManager,
     private val workspaceRoot: String,
+    private val workspaceScope: WorkspaceScope = WorkspaceScope.LEGACY_WHOLE_WORKSPACE,
 ) : SkillInstallTarget {
     override fun isAvailable(): Boolean = runCatching {
         val files = safeFilesRoot() ?: return@runCatching false
@@ -72,6 +74,7 @@ class WorkspaceSkillInstallTarget(
             workspaceManager.withFilesWriteAccess(
                 root = workspaceRoot,
                 additionalBytes = additionalBytes,
+                scope = workspaceScope,
             ) write@{ suppliedFilesRoot ->
                 val filesRoot = suppliedFilesRoot.toPath().normalize()
                 if (filesRoot != safeFilesRoot()) return@write false
@@ -137,9 +140,11 @@ class WorkspaceSkillInstallTarget(
 
     private fun safeFilesRoot(): Path? = runCatching {
         val workspace = workspaceManager.workspaceDir(workspaceRoot).toPath().normalize()
-        val files = workspaceManager.filesDir(workspaceRoot).toPath().normalize()
+        val files = workspaceManager.ensureScope(workspaceRoot, workspaceScope)
+            .files.toPath().normalize()
         files.takeIf {
-            files.parent == workspace && isDirectoryNoFollow(workspace) && isDirectoryNoFollow(files)
+            files.startsWith(workspace) && files != workspace &&
+                isDirectoryNoFollow(workspace) && isDirectoryNoFollow(files)
         }
     }.getOrNull()
 

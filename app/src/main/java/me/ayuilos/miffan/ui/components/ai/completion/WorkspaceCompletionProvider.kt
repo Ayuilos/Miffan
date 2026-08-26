@@ -12,6 +12,7 @@ import kotlin.math.max
 
 class WorkspaceCompletionProvider(
     private val workspaceId: String?,
+    private val workspaceScopeId: String? = null,
     private val repository: WorkspaceRepository,
     private val currentCwd: String? = null,
 ) : ChatCompletionProvider {
@@ -84,6 +85,7 @@ class WorkspaceCompletionProvider(
                     id = workspaceId ?: return emptyList(),
                     area = WorkspaceStorageArea.FILES,
                     path = path,
+                    scopeId = workspaceScopeId,
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -133,7 +135,7 @@ class WorkspaceCompletionProvider(
         val id = workspaceId ?: return null
         val path = if (directory.isBlank()) ".gitignore" else "$directory/.gitignore"
         return try {
-            repository.readText(id, path)
+            repository.readText(id, path, workspaceScopeId)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

@@ -87,6 +87,7 @@ import kotlin.math.roundToInt
 fun WorkspaceFilePreviewPage(
     id: String,
     path: String,
+    scopeId: String? = null,
 ) {
     val repository = koinInject<WorkspaceRepository>()
     val navController = LocalNavController.current
@@ -98,6 +99,7 @@ fun WorkspaceFilePreviewPage(
         WorkspaceArtifact(
             workspaceId = id,
             path = path,
+            scopeId = scopeId,
             name = name,
             mimeType = workspaceMimeType(name),
         )
@@ -120,13 +122,18 @@ fun WorkspaceFilePreviewPage(
         scope.launch {
             runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { output ->
-                    repository.exportRootfsArtifact(artifact.workspaceId, artifact.path, output)
+                    repository.exportRootfsArtifact(
+                        artifact.workspaceId,
+                        artifact.path,
+                        output,
+                        artifact.scopeId,
+                    )
                 } ?: error("Unable to open export destination")
             }.onFailure(::reportFailure)
         }
     }
 
-    LaunchedEffect(id, path, kind) {
+    LaunchedEffect(id, path, kind, scopeId) {
         preview = null
         loadError = null
         runCatching {
@@ -138,7 +145,7 @@ fun WorkspaceFilePreviewPage(
                     WorkspacePreviewKind.DELIMITED_TEXT,
                     WorkspacePreviewKind.HTML,
                         -> WorkspacePreviewContent.Text(
-                            repository.readRootfsTextForPreview(id, path)
+                            repository.readRootfsTextForPreview(id, path, scopeId)
                         )
 
                     WorkspacePreviewKind.DOCUMENT_TEXT -> {
@@ -192,6 +199,7 @@ fun WorkspaceFilePreviewPage(
                                     area = location.area.name,
                                     path = artifact.parentDirectory(),
                                     openFiles = true,
+                                    scopeId = artifact.scopeId,
                                 )
                             )
                         }
@@ -219,6 +227,7 @@ fun WorkspaceFilePreviewPage(
                                             id = artifact.workspaceId,
                                             area = location.area.name,
                                             path = location.relativePath,
+                                            scopeId = artifact.scopeId,
                                         )
                                     )
                                 },

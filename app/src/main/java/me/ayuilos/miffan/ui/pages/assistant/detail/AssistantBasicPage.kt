@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
@@ -52,6 +53,7 @@ import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
 import me.ayuilos.miffan.data.model.withMiffanAppearance
 import me.ayuilos.miffan.data.model.withMiffanMotionProfile
+import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.ui.components.ai.ModelSelector
 import me.ayuilos.miffan.ui.components.ai.ReasoningButton
 import me.ayuilos.miffan.ui.components.nav.BackButton
@@ -61,17 +63,20 @@ import me.ayuilos.miffan.ui.components.ui.MiffanMotionProfileEditor
 import me.ayuilos.miffan.ui.components.ui.Select
 import me.ayuilos.miffan.ui.components.ui.TagsInput
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
+import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.heroAnimation
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.toFixed
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import me.rerere.workspace.WorkspaceStorageArea
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 import me.ayuilos.miffan.data.model.Tag as DataTag
 
 @Composable
 fun AssistantBasicPage(id: String) {
+    val navController = LocalNavController.current
     val vm: AssistantDetailVM = koinViewModel(
         parameters = {
             parametersOf(id)
@@ -106,6 +111,17 @@ fun AssistantBasicPage(id: String) {
             tags = tags,
             workspaces = workspaces,
             onUpdate = { vm.update(it) },
+            onOpenWorkspaceScope = { workspaceId, scopeId, scopeName ->
+                navController.navigate(
+                    Screen.WorkspaceDetail(
+                        id = workspaceId,
+                        area = WorkspaceStorageArea.FILES.name,
+                        openFiles = true,
+                        scopeId = scopeId,
+                        scopeName = scopeName,
+                    )
+                )
+            },
             vm = vm
         )
     }
@@ -119,6 +135,7 @@ internal fun AssistantBasicContent(
     tags: List<DataTag>,
     workspaces: List<WorkspaceEntity>,
     onUpdate: (Assistant) -> Unit,
+    onOpenWorkspaceScope: (String, String?, String?) -> Unit = { _, _, _ -> },
     vm: AssistantDetailVM
 ) {
     Column(
@@ -232,19 +249,64 @@ internal fun AssistantBasicContent(
                 modifier = Modifier.padding(8.dp),
             ) {
                 val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
-                Select(
-                    options = listOf<WorkspaceEntity?>(null) + workspaces,
-                    selectedOption = selectedWorkspace,
-                    onOptionSelected = { workspace ->
-                        onUpdate(
-                            assistant.copy(
-                                workspaceId = workspace?.id?.let { Uuid.parse(it) }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Select(
+                        options = listOf<WorkspaceEntity?>(null) + workspaces,
+                        selectedOption = selectedWorkspace,
+                        onOptionSelected = { workspace ->
+                            onUpdate(assistant.withWorkspaceBinding(workspace?.id?.let { Uuid.parse(it) }))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        optionToString = { workspace ->
+                            workspace?.name ?: stringResource(R.string.workspace_no_binding)
+                        },
+                    )
+                    if (selectedWorkspace != null) {
+                        TextButton(
+                            onClick = {
+                                onOpenWorkspaceScope(
+                                    selectedWorkspace.id,
+                                    assistant.workspaceScopeId?.toString(),
+                                    assistant.name.takeIf { it.isNotBlank() },
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                if (assistant.workspaceScopeId == null) {
+                                    stringResource(R.string.workspace_scope_legacy)
+                                } else {
+                                    stringResource(
+                                        R.string.workspace_scope_private,
+                                        assistant.name.ifBlank { assistant.id.toString() },
+                                    )
+                                }
                             )
-                        )
+                        }
+                    }
+                }
+            }
+
+            if (assistant.workspaceId != null) {
+                HorizontalDivider()
+
+                FormItem(
+                    modifier = Modifier.padding(8.dp),
+                    label = {
+                        Text(stringResource(R.string.assistant_page_workspace_shell_approval))
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    optionToString = { workspace ->
-                        workspace?.name ?: stringResource(R.string.workspace_no_binding)
+                    description = {
+                        Text(stringResource(R.string.assistant_page_workspace_shell_approval_desc))
+                    },
+                    tail = {
+                        Switch(
+                            checked = assistant.workspaceShellApprovalRequired,
+                            onCheckedChange = { required ->
+                                onUpdate(
+                                    assistant.copy(workspaceShellApprovalRequired = required)
+                                )
+                            },
+                        )
                     },
                 )
             }

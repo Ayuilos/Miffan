@@ -231,8 +231,8 @@
   <string name="chat_message_remove_favorite">移除最愛</string>
   <string name="chat_message_tool_approve">核准</string>
   <string name="chat_message_tool_pending_count">有 %d 個工具核准待處理</string>
-  <string name="chat_message_shell_always_allow">一律允許此工作區中的 Shell</string>
-  <string name="chat_message_shell_always_allow_desc">核准目前待處理的 %d 條 Shell 指令，並略過此工作區後續的 Shell 確認。</string>
+  <string name="chat_message_shell_always_allow">一律允許此 Assistant Scope 的 Shell</string>
+  <string name="chat_message_shell_always_allow_desc">核准目前待處理的 %d 條 Shell 指令，並僅略過此 Assistant Scope 後續的確認。對 /etc、/usr 等共用 Rootfs 路徑的修改仍會影響綁定此 Workspace 的所有 Assistant。</string>
   <string name="chat_message_tool_ask_questions">詢問 %d 個問題</string>
   <string name="chat_message_tool_call_generic">調用工具 %1$s</string>
   <string name="chat_message_tool_call_label">調用工具 %1$s</string>
@@ -1126,7 +1126,12 @@
   <string name="assistant_page_gradient_background">漸層背景</string>
   <string name="assistant_page_gradient_background_desc">在聊天頁面上使用動態漸變背景</string>
   <string name="assistant_page_workspace">工作區</string>
-  <string name="assistant_page_workspace_desc">綁定後，Agent 可以使用此工作區的檔案和選用的本機 PRoot 工具</string>
+  <string name="assistant_page_workspace_desc">每個新綁定都會取得 /workspace 的私人檔案 Scope，同時共用此 Workspace 的 Rootfs 與已安裝系統環境。</string>
+  <string name="assistant_page_workspace_shell_approval">要求確認 Shell</string>
+  <string name="assistant_page_workspace_shell_approval_desc">僅套用於此 Assistant Scope。即使停用確認，系統層級 Shell 修改仍會影響共用該 Workspace Rootfs 的所有 Assistant。</string>
+  <string name="workspace_scope">檔案 Scope</string>
+  <string name="workspace_scope_private">私人 · %s</string>
+  <string name="workspace_scope_legacy">相容模式：整個 Workspace</string>
   <string name="assistant_page_workspace_unbound">未綁定</string>
   <string name="workspace_page_title">工作區</string>
   <string name="workspace_page_create">創建工作區</string>
@@ -1140,10 +1145,10 @@
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">檔案</string>
   <string name="workspace_detail_tab_skills">Skills</string>
-  <string name="workspace_skills_title">工作區 Skills</string>
-  <string name="workspace_skills_description">此目錄中的 Skills 屬於目前工作區，並自動提供給綁定此工作區的助理。</string>
-  <string name="workspace_skills_empty">尚未發現工作區 Skill。請在上方路徑中新增包含 SKILL.md 的 Skill 目錄。</string>
-  <string name="workspace_skills_automatic">在此工作區中自動可用</string>
+  <string name="workspace_skills_title">檔案 Scope Skills</string>
+  <string name="workspace_skills_description">此目錄中的 Skills 僅供使用相同檔案 Scope 的 Assistant 探索。Miffan 不會掃描兄弟 Scope，也不會隱式提供共用 Skills 目錄。</string>
+  <string name="workspace_skills_empty">未發現檔案 Scope Skills。請在上方路徑中新增包含 SKILL.md 的 Skill 目錄。</string>
+  <string name="workspace_skills_automatic">在此檔案 Scope 中自動可用</string>
   <string name="workspace_skills_requires_shell">需要工作區 Shell 就緒</string>
   <string name="workspace_detail_import_file">匯入檔案</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 安裝失敗</string>
@@ -1158,7 +1163,7 @@
   <string name="workspace_detail_shell_status">Shell 狀態</string>
   <string name="workspace_detail_loading">載入中</string>
   <string name="workspace_detail_enable_shell">啟用 Shell</string>
-  <string name="workspace_detail_enable_shell_desc">命令在 Miffan 應用 UID 內執行，並共用其私人資料與網路權限。PRoot 不是安全沙箱；請只執行你信任的命令。</string>
+  <string name="workspace_detail_enable_shell_desc">命令在 Miffan 應用 UID 內執行，並共用其私人資料與網路權限。Rootfs 及 /etc、/usr 等系統路徑由綁定此 Workspace 的所有 Assistant 共用。PRoot 不是安全沙箱；請只執行你信任的命令。</string>
   <string name="workspace_detail_tool_approval">工具核准</string>
   <string name="workspace_detail_tool_approval_desc">啟用後，AI 調用此工具前需要用戶確認。</string>
   <string name="workspace_detail_tool_list_files">列出檔案</string>
@@ -1168,7 +1173,7 @@
   <string name="workspace_detail_tool_delete_file">刪除檔案</string>
   <string name="workspace_detail_tool_move_file">移動檔案</string>
   <string name="workspace_detail_tool_shell">執行命令</string>
-  <string name="workspace_detail_install_rootfs_desc">將下載 tar.gz 並解壓縮到 %s 的 linux 目錄。</string>
+  <string name="workspace_detail_install_rootfs_desc">將下載 tar.gz 並解壓縮到 %s 的 Linux 目錄。該 Rootfs 及其系統層級修改由綁定此 Workspace 的所有 Assistant 共用。</string>
   <string name="workspace_detail_download_url">tar.gz 下載網址</string>
   <string name="workspace_detail_area_files">檔案</string>
   <string name="workspace_detail_area_rootfs">Rootfs</string>

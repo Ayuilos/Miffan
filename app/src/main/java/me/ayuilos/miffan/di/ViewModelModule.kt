@@ -64,7 +64,7 @@ val viewModelModule = module {
     viewModelOf(::WorkspaceVM)
     viewModel<WorkspaceDetailVM> {
         WorkspaceDetailVM(
-            id = it.get(),
+            args = it.get(),
             repository = get(),
             skillManager = get(),
         )

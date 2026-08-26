@@ -73,6 +73,7 @@ import me.ayuilos.miffan.data.datastore.getCurrentChatModel
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.ui.components.ui.ExtensionSelector
@@ -154,13 +155,21 @@ internal fun FilesPicker(
                 workspaces = workspaces,
                 onUpdateAssistant = onUpdateAssistant,
                 onUpdateConversation = onUpdateConversation,
-                onNavigateToDetail = { id ->
+                onNavigateToDetail = { id, scopeId, scopeName ->
                     onDismiss()
-                    navController.navigate(Screen.WorkspaceDetail(id))
+                    navController.navigate(
+                        Screen.WorkspaceDetail(
+                            id = id,
+                            area = me.rerere.workspace.WorkspaceStorageArea.FILES.name,
+                            openFiles = true,
+                            scopeId = scopeId,
+                            scopeName = scopeName,
+                        )
+                    )
                 },
-                onNavigateToTerminal = { id ->
+                onNavigateToTerminal = { id, scopeId, scopeName ->
                     onDismiss()
-                    navController.navigate(Screen.WorkspaceTerminal(id))
+                    navController.navigate(Screen.WorkspaceTerminal(id, scopeId, scopeName))
                 },
                 onNavigateToManage = {
                     onDismiss()
@@ -273,6 +282,7 @@ internal fun FilesPicker(
             if (showCwdSheet) {
                 WorkspaceCwdPickerSheet(
                     workspaceId = boundWorkspace.id,
+                    workspaceScopeId = assistant.workspaceScopeId?.toString(),
                     currentCwd = conversation.workspaceCwd,
                     onSelectCwd = { newCwd ->
                         onUpdateConversation(conversation.copy(workspaceCwd = newCwd))
@@ -314,8 +324,8 @@ private fun WorkspacePickerListItem(
     workspaces: List<WorkspaceEntity>,
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateConversation: (Conversation) -> Unit,
-    onNavigateToDetail: (String) -> Unit,
-    onNavigateToTerminal: (String) -> Unit,
+    onNavigateToDetail: (String, String?, String?) -> Unit,
+    onNavigateToTerminal: (String, String?, String?) -> Unit,
     onNavigateToManage: () -> Unit,
 ) {
     var showSheet by remember { mutableStateOf(false) }
@@ -334,25 +344,61 @@ private fun WorkspacePickerListItem(
             Text(stringResource(R.string.assistant_page_workspace))
         },
         supportingContent = {
-            Text(
-                text = boundWorkspace?.name ?: stringResource(R.string.assistant_page_workspace_unbound),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (boundWorkspace == null) {
+                Text(stringResource(R.string.assistant_page_workspace_unbound))
+            } else {
+                Column {
+                    Text(
+                        text = boundWorkspace.name,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = if (assistant.workspaceScopeId == null) {
+                            stringResource(R.string.workspace_scope_legacy)
+                        } else {
+                            stringResource(
+                                R.string.workspace_scope_private,
+                                assistant.name.ifBlank { assistant.id.toString() },
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         },
         trailingContent = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (boundWorkspace != null) {
-                    IconButton(onClick = { onNavigateToDetail(boundWorkspace.id) }) {
+                    IconButton(
+                        onClick = {
+                            onNavigateToDetail(
+                                boundWorkspace.id,
+                                assistant.workspaceScopeId?.toString(),
+                                assistant.name.takeIf { it.isNotBlank() },
+                            )
+                        }
+                    ) {
                         Icon(
                             imageVector = HugeIcons.Settings02,
                             contentDescription = stringResource(R.string.workspace_detail),
                         )
                     }
                     if (boundWorkspace.shellStatus != WorkspaceShellStatus.DISABLED.name) {
-                        IconButton(onClick = { onNavigateToTerminal(boundWorkspace.id) }) {
+                        IconButton(
+                            onClick = {
+                                onNavigateToTerminal(
+                                    boundWorkspace.id,
+                                    assistant.workspaceScopeId?.toString(),
+                                    assistant.name.takeIf { it.isNotBlank() },
+                                )
+                            }
+                        ) {
                             Icon(
                                 imageVector = HugeIcons.ComputerTerminal01,
                                 contentDescription = stringResource(R.string.workspace_terminal),
@@ -377,7 +423,7 @@ private fun WorkspacePickerListItem(
             onSelect = { workspaceId ->
                 val newId = workspaceId?.let { Uuid.parse(it) }
                 if (newId != assistant.workspaceId) {
-                    onUpdateAssistant(assistant.copy(workspaceId = newId))
+                    onUpdateAssistant(assistant.withWorkspaceBinding(newId))
                     if (conversation.workspaceCwd != null) {
                         onUpdateConversation(conversation.copy(workspaceCwd = null))
                     }

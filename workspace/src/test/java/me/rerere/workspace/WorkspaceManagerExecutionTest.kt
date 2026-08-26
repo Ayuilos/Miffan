@@ -2,7 +2,9 @@ package me.rerere.workspace
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeNoException
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -11,13 +13,14 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.nio.file.Files
 
 class WorkspaceManagerExecutionTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
     @Test
-    fun `shell receives canonical workspace relative cwd`() {
+    fun `shell accepts only canonical cwd within the selected scope`() {
         var receivedContext: WorkspaceShellContext? = null
         val runner = object : WorkspaceShellRunner {
             override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
@@ -28,16 +31,23 @@ class WorkspaceManagerExecutionTest {
         val manager = WorkspaceManager(tmp.newFolder("workspaces"), shellRunner = runner)
         val root = "root"
         manager.ensureWorkspace(root)
-        File(manager.filesDir(root), "b").mkdirs()
+        val scope = WorkspaceScope.assistant("assistant-a")
+        val files = manager.ensureScope(root, scope).files
+        File(files, "b").mkdirs()
 
-        manager.executeCommand(root, command = "pwd", cwd = "a/../b")
+        manager.executeCommand(root, command = "pwd", cwd = "b", scope = scope)
 
         assertEquals("b", receivedContext?.cwd)
-        assertEquals(File(manager.filesDir(root), "b").canonicalFile, receivedContext?.workingDir)
+        assertEquals(File(files, "b").toPath().toAbsolutePath().normalize(), receivedContext?.workingDir?.toPath())
+        listOf("a/../b", "/workspace/b", "a//b", "./b").forEach { invalid ->
+            assertThrows(IllegalArgumentException::class.java) {
+                manager.executeCommand(root, command = "pwd", cwd = invalid, scope = scope)
+            }
+        }
     }
 
     @Test
-    fun `commands in one workspace are serialized`() {
+    fun `commands from two assistant scopes in one workspace are serialized`() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
         val calls = AtomicInteger()
@@ -62,14 +72,14 @@ class WorkspaceManagerExecutionTest {
         val root = "root"
         manager.ensureWorkspace(root)
 
-        fun commandThread() = Thread {
-            runCatching { manager.executeCommand(root, "true") }
+        fun commandThread(scope: WorkspaceScope) = Thread {
+            runCatching { manager.executeCommand(root, "true", scope = scope) }
                 .exceptionOrNull()
                 ?.let(errors::add)
         }
-        val first = commandThread().apply { start() }
+        val first = commandThread(WorkspaceScope.assistant("assistant-a")).apply { start() }
         assertTrue(entered.await(2, TimeUnit.SECONDS))
-        val second = commandThread().apply { start() }
+        val second = commandThread(WorkspaceScope.assistant("assistant-b")).apply { start() }
         Thread.sleep(100)
 
         assertEquals(1, calls.get())
@@ -83,6 +93,42 @@ class WorkspaceManagerExecutionTest {
         assertTrue(errors.toString(), errors.isEmpty())
         assertEquals(2, calls.get())
         assertEquals(1, maxActive.get())
+    }
+
+    @Test
+    fun `shell cwd refuses a symbolic link out of the assistant scope`() {
+        val manager = WorkspaceManager(tmp.newFolder("symlink-workspaces"))
+        val scope = WorkspaceScope.assistant("assistant-a")
+        val files = manager.ensureScope("root", scope).files
+        val outside = tmp.newFolder("outside-scope")
+        try {
+            Files.createSymbolicLink(File(files, "escape").toPath(), outside.toPath())
+        } catch (error: Exception) {
+            assumeNoException(error)
+        }
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            manager.executeCommand("root", "pwd", cwd = "escape", scope = scope)
+        }
+
+        assertTrue(error.message.orEmpty().contains("symbolic link"))
+    }
+
+    @Test
+    fun `bind mounts cannot expose workspace storage or its parent`() {
+        val parent = tmp.newFolder("bind-boundary")
+        val base = File(parent, "workspaces").apply { mkdirs() }
+        val scopeParent = File(base, "root/scopes").apply { mkdirs() }
+
+        listOf(parent, base, scopeParent).forEach { source ->
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                WorkspaceManager(
+                    baseDir = base,
+                    bindMounts = listOf(WorkspaceBindMount(source, "/leak")),
+                )
+            }
+            assertTrue(error.message.orEmpty().contains("must not overlap Workspace storage"))
+        }
     }
 
     @Test

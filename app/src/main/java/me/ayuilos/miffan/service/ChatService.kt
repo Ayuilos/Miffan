@@ -72,6 +72,7 @@ import me.ayuilos.miffan.data.ai.transformers.WorkspaceReminderTransformer
 import me.ayuilos.miffan.data.event.AppEvent
 import me.ayuilos.miffan.data.event.AppEventBus
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.datastore.getAssistantById
@@ -568,10 +569,7 @@ class ChatService(
         session.setJob(job)
     }
 
-    /**
-     * Approve the current Shell batch and persist a per-workspace override so later
-     * workspace_shell calls can run without individual confirmation.
-     */
+    /** Approve this batch and persist the choice only for the current Assistant scope. */
     fun alwaysAllowWorkspaceShell(conversationId: Uuid) {
         val session = getOrCreateSession(conversationId)
         session.getJob()?.cancel()
@@ -584,16 +582,10 @@ class ChatService(
                 val settings = settingsStore.settingsFlow.first()
                 val assistant = settings.getAssistantById(conversation.assistantId)
                     ?: error("Assistant not found")
-                val workspaceId = assistant.workspaceId?.toString()
-                    ?: error("Assistant has no bound workspace")
-
-                check(
-                    workspaceRepository.setToolApproval(
-                        id = workspaceId,
-                        toolName = WORKSPACE_SHELL_TOOL_NAME,
-                        needsApproval = false,
-                    )
-                ) { "Workspace not found" }
+                assistant.workspaceId ?: error("Assistant has no bound workspace")
+                settingsStore.update { current ->
+                    current.withWorkspaceShellAllowedFor(assistant)
+                }
 
                 val updatedConversation = conversation.approvePendingWorkspaceShellTools()
                 saveConversation(conversationId, updatedConversation)
@@ -670,6 +662,7 @@ class ChatService(
                         skillManager.listWorkspaceSkills(
                             workspaceId = boundWorkspace.id,
                             workspaceRoot = boundWorkspace.root,
+                            scopeId = assistant.workspaceScopeId?.toString(),
                         )
                     )
                 }
@@ -716,7 +709,7 @@ class ChatService(
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
-                    addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
+                    addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd))
                     if (
                         extensionManagementEnabled ||
                         availableSkills.isNotEmpty()
@@ -821,7 +814,11 @@ class ChatService(
         }
     }
 
-    private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String? = null): List<Tool> {
+    private suspend fun createWorkspaceToolsIfReady(
+        assistant: Assistant,
+        cwd: String? = null,
+    ): List<Tool> {
+        val workspaceId = assistant.workspaceId?.toString()
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
         if (workspace.shellStatus != WorkspaceShellStatus.READY.name) {
@@ -831,7 +828,13 @@ class ChatService(
             )
             return emptyList()
         }
-        return createWorkspaceTools(workspaceId, workspaceRepository, cwd)
+        return createWorkspaceTools(
+            workspaceId = workspaceId,
+            scopeId = assistant.workspaceScopeId?.toString(),
+            shellApprovalRequired = assistant.workspaceShellApprovalRequired,
+            workspaceRepository = workspaceRepository,
+            cwd = cwd,
+        )
     }
 
     // ---- 检查无效消息 ----
@@ -1445,3 +1448,17 @@ class ChatService(
         finishInterruptedPendingTools(conversationId)
     }
 }
+
+/** Applies a persistent Shell approval only when the Assistant's binding is still unchanged. */
+internal fun Settings.withWorkspaceShellAllowedFor(binding: Assistant): Settings = copy(
+    assistants = assistants.map { candidate ->
+        if (candidate.id == binding.id &&
+            candidate.workspaceId == binding.workspaceId &&
+            candidate.workspaceScopeId == binding.workspaceScopeId
+        ) {
+            candidate.copy(workspaceShellApprovalRequired = false)
+        } else {
+            candidate
+        }
+    },
+)

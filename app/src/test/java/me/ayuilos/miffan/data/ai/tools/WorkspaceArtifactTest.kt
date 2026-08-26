@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.ai.tools
 
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.workspace.WorkspaceStorageArea
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,6 +31,27 @@ class WorkspaceArtifactTest {
     }
 
     @Test
+    fun `persisted artifact keeps scope and maps private guest directories`() {
+        val tool = tool(
+            name = "workspace_publish_files",
+            input = """{"paths":["/root/report.md"]}""",
+            output = """{"artifacts":[{
+                "type":"workspace_artifact",
+                "workspaceId":"workspace",
+                "scopeId":"assistant-a",
+                "path":"/root/report.md",
+                "name":"report.md"
+            }]}""".trimIndent(),
+        )
+
+        val artifact = tool.workspaceArtifacts().single()
+
+        assertEquals("assistant-a", artifact.scopeId)
+        assertEquals(WorkspaceStorageArea.HOME, artifact.location().area)
+        assertEquals("report.md", artifact.location().relativePath)
+    }
+
+    @Test
     fun `legacy write artifact falls back to current workspace`() {
         val tool = tool(
             name = "workspace_write_file",
@@ -41,6 +63,8 @@ class WorkspaceArtifactTest {
 
         assertEquals("fallback-workspace", artifact.workspaceId)
         assertEquals("/workspace/legacy.txt", artifact.path)
+        assertEquals(null, artifact.scopeId)
+        assertEquals(WorkspaceStorageArea.FILES, artifact.location().area)
     }
 
     @Test

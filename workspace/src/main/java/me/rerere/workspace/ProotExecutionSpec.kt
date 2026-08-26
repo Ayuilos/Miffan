@@ -28,6 +28,9 @@ object ProotExecutionSpec {
         filesDir: File,
         cwd: String,
         bindMounts: List<WorkspaceBindMount>,
+        homeDir: File? = null,
+        guestTempDir: File? = null,
+        guestVarTempDir: File? = null,
     ): List<String> = buildList {
         add("--root-id")
         add("--link2symlink")
@@ -38,6 +41,17 @@ object ProotExecutionSpec {
         add(cwd)
         add("-b")
         add("${filesDir.absolutePath}:${WorkspaceManager.ROOTFS_WORKSPACE_DIR}")
+
+        listOf(
+            homeDir to WorkspaceManager.ROOTFS_HOME_PATH,
+            guestTempDir to WorkspaceManager.ROOTFS_TEMP_PATH,
+            guestVarTempDir to WorkspaceManager.ROOTFS_VAR_TEMP_PATH,
+        ).forEach { (source, target) ->
+            source?.let {
+                add("-b")
+                add("${it.absolutePath}:${target.value}")
+            }
+        }
 
         bindMounts.asSequence()
             .map { mount -> mount to mount.sourceFor(root) }
@@ -59,6 +73,9 @@ object ProotExecutionSpec {
         add("/usr/bin/env")
         add("-i")
         add("HOME=/root")
+        add("TMPDIR=/tmp")
+        add("TEMP=/tmp")
+        add("TMP=/tmp")
         add("PATH=$GUEST_PATH")
         add("TERM=xterm-256color")
         add("LANG=C.UTF-8")
@@ -83,7 +100,18 @@ object ProotExecutionSpec {
         val cwd = guestCwd(context.cwd)
         return buildList {
             add(proot.absolutePath)
-            addAll(baseArguments(context.root, context.linuxDir, context.filesDir, cwd, context.bindMounts))
+            addAll(
+                baseArguments(
+                    root = context.root,
+                    linuxDir = context.linuxDir,
+                    filesDir = context.filesDir,
+                    cwd = cwd,
+                    bindMounts = context.bindMounts,
+                    homeDir = context.homeDir,
+                    guestTempDir = context.guestTempDir,
+                    guestVarTempDir = context.guestVarTempDir,
+                )
+            )
             addAll(guestEnvironment(interactive = false))
             addAll(
                 listOf(
@@ -108,6 +136,9 @@ object ProotExecutionSpec {
         linuxDir: File,
         filesDir: File,
         bindMounts: List<WorkspaceBindMount> = emptyList(),
+        homeDir: File? = null,
+        guestTempDir: File? = null,
+        guestVarTempDir: File? = null,
         maxFileSizeBytes: Long? = null,
         maxCpuTimeSeconds: Long? = null,
         maxVirtualMemoryBytes: Long? = null,
@@ -120,6 +151,9 @@ object ProotExecutionSpec {
                 filesDir = filesDir,
                 cwd = WorkspaceManager.ROOTFS_WORKSPACE_DIR,
                 bindMounts = bindMounts,
+                homeDir = homeDir,
+                guestTempDir = guestTempDir,
+                guestVarTempDir = guestVarTempDir,
             )
         )
         addAll(guestEnvironment(interactive = true))

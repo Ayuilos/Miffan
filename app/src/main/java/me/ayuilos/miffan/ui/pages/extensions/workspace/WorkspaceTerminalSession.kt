@@ -26,6 +26,7 @@ import me.rerere.workspace.RootfsPatcher
 import me.rerere.workspace.WorkspaceBindMount
 import me.rerere.workspace.WorkspaceProcessRegistration
 import me.rerere.workspace.WorkspaceResourceLimits
+import me.rerere.workspace.WorkspaceScopeDirectories
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -36,17 +37,22 @@ internal fun createWorkspaceTerminalSession(
     client: TerminalSessionClient,
     resourceLimits: WorkspaceResourceLimits,
     bindMounts: List<WorkspaceBindMount>,
+    scopeDirectories: WorkspaceScopeDirectories? = null,
 ): TerminalSession {
     val appContext = context.applicationContext
     val workspaceDir = File(File(appContext.filesDir, "workspaces"), root)
-    val filesDir = File(workspaceDir, "files")
+    val filesDir = scopeDirectories?.files ?: File(workspaceDir, "files")
     val linuxDir = File(workspaceDir, "linux")
-    val tempDir = File(workspaceDir, "tmp")
+    val tempDir = scopeDirectories?.prootTemp ?: File(workspaceDir, "tmp")
     val nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir)
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
     require(
-        listOf(workspaceDir, filesDir, tempDir).all { directory ->
+        (listOf(workspaceDir, filesDir, tempDir) + listOfNotNull(
+            scopeDirectories?.home,
+            scopeDirectories?.temp,
+            scopeDirectories?.varTemp,
+        )).all { directory ->
             Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)
         } && RootfsHealth.isHealthy(linuxDir)
     ) { "Workspace terminal directories are unavailable or unsafe" }
@@ -63,6 +69,9 @@ internal fun createWorkspaceTerminalSession(
         linuxDir = linuxDir,
         filesDir = filesDir,
         bindMounts = bindMounts,
+        homeDir = scopeDirectories?.home,
+        guestTempDir = scopeDirectories?.temp,
+        guestVarTempDir = scopeDirectories?.varTemp,
         maxFileSizeBytes = resourceLimits.maxShellFileBytes,
         maxCpuTimeSeconds = resourceLimits.maxShellCpuTimeSeconds,
         maxVirtualMemoryBytes = resourceLimits.maxShellVirtualMemoryBytes,

@@ -42,6 +42,31 @@ Use monotonically increasing event identifiers for one-shot reactions such as at
 - Changing kind or palette preserves motion profile, and changing motion profile preserves the complete appearance.
 - Enabling theme sync does not erase the saved palette; disabling it restores that palette.
 
+## Workspace ownership and Assistant scopes
+
+A Workspace owns one Rootfs and one process/session coordination domain. Multiple Assistants may
+bind that Workspace; package installation and changes under `/bin`, `/usr`, `/etc`, and the rest of
+the Rootfs are intentionally shared. The session registry remains keyed by Workspace, with one
+active session per Workspace, so different Assistant scopes do not concurrently mutate the shared
+Rootfs in the first implementation.
+
+Each new Assistant binding also stores a stable file-scope identity equal to the Assistant UUID.
+The host layout is `scopes/<assistant-id>/{files,home,tmp,var-tmp,proot-tmp}` below the Workspace,
+while the guest consistently sees that scope as `/workspace`, `/root`, `/tmp`, and `/var/tmp`.
+Sibling scope roots are not mounted. Model file tools, Shell cwd validation, completion, file
+pickers, Skills, and Artifact UI all use the same `(workspaceId, scopeId)` mapping.
+
+Missing `workspaceScopeId` is an explicit legacy whole-workspace mode. It continues to expose the
+historical `files/` directory without moving data. Re-selecting the same binding keeps this mode.
+Artifacts created after this architecture persist scope identity; historical Artifacts without it
+stay in the legacy view. `.miffan/skills` is private to the selected file scope, with no implicit
+shared Skills scan. Persistent Shell approval is stored per Assistant binding and resets when the
+binding changes.
+
+These are repository, validation, and mount boundaries for normal product operations, not a claim
+that PRoot isolates malicious commands. PRoot processes run under the Miffan application UID; the
+full residual trust boundary is documented in `workspace/SECURITY.md`.
+
 ## Evolution path
 
 Character V1 stores one curated kind in `MiffanAppearance`. Each kind resolves in the renderer to a coherent content, material, and accessory treatment. Future customization fields also belong in `MiffanAppearance`, with defaults for backward-compatible decoding:
