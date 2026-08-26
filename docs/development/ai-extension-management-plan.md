@@ -29,7 +29,7 @@ risk of sending sensitive user-authored content.
 - Read-only catalog of assistants, quick messages, mode injections, lorebooks, skills, MCP servers,
   local tools, and workspaces.
 - Create or update quick messages and mode injections.
-- Bind or unbind existing quick messages, mode injections, lorebooks, skills, and MCP servers from an
+- Bind or unbind existing quick messages, mode injections, lorebooks, and MCP servers from an
   assistant.
 - Select or clear an assistant workspace.
 - Enable or disable supported local tools and external web search.
@@ -56,7 +56,7 @@ risk of sending sensitive user-authored content.
 ### Domain layer
 
 `ExtensionManagementService` owns catalog generation, validation, preview, and mutations. It delegates
-to `SettingsStore`, `SkillManager`, and `WorkspaceRepository`, and never returns secret values.
+to `SettingsStore` and `WorkspaceRepository`, and never returns secret values.
 
 The service exposes stable resource references (`type` + `id` or skill name). Name lookup may be used
 for convenience, but a preview resolves it to a stable identifier before applying changes.

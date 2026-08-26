@@ -62,6 +62,20 @@ enum class SkillInstallRiskCategory {
 }
 
 @Serializable
+enum class SkillInstallScope {
+    WORKSPACE,
+}
+
+/** The exact local destination authorized by an install preview. */
+@Serializable
+data class SkillInstallDestination(
+    val scope: SkillInstallScope,
+    val path: String,
+    val workspaceId: String? = null,
+    val workspaceName: String? = null,
+)
+
+@Serializable
 data class SkillInstallPreview(
     /** One-use, expiring capability whose serialized value also carries approval summaries. */
     val previewId: String,
@@ -74,6 +88,7 @@ data class SkillInstallPreview(
     val totalSizeBytes: Long,
     val bundleSha256: String,
     val riskCategories: List<SkillInstallRiskCategory>,
+    val destination: SkillInstallDestination,
     val summaries: List<String>,
 )
 
@@ -81,6 +96,7 @@ data class SkillInstallPreview(
 data class SkillInstallApplyResult(
     val applied: Boolean,
     val skillName: String? = null,
+    val destination: SkillInstallDestination? = null,
     val summaries: List<String> = emptyList(),
     val errorCode: SkillInstallErrorCode? = null,
     val error: String? = null,
@@ -102,6 +118,9 @@ enum class SkillInstallErrorCode {
     CONFLICT,
     PREVIEW_NOT_FOUND,
     PREVIEW_EXPIRED,
+    WORKSPACE_REQUIRED,
+    TARGET_NOT_FOUND,
+    TARGET_CHANGED,
     INSTALL_FAILED,
 }
 

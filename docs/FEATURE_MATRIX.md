@@ -62,7 +62,7 @@ availability, and scraping behavior differ by service.
 | --- | --- | --- |
 | Isolated assistant configuration | ✓ | Model, prompt, memory, parameters, history, tools, visual identity, and injections |
 | MCP | ✓ | SSE and Streamable HTTP, OAuth, and per-assistant server selection |
-| Skills | ✓ | File import plus guarded GitHub and skills.sh installation; installed Skills remain disabled until bound |
+| Skills | ✓ | Workspace-owned Skills under `/workspace/.miffan/skills` are discovered automatically; installs are pinned to the bound workspace and legacy global bindings migrate one-way on use |
 | Built-in local tools | ✓ | Time, clipboard, JavaScript, TTS, user questions, screen time, calendar, and extension management |
 | Local Linux workspace | ✓ | Per-workspace files, editor, terminal, and AI file/shell tools; PRoot is not a security container |
 | Web access to conversations | ✓ | Optional embedded server, localhost/LAN modes, password authentication, and mDNS |

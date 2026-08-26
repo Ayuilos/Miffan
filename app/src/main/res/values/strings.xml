@@ -20,13 +20,11 @@
   <string name="assistant_extensions_page_empty_lorebooks">No lorebooks available, create one in Prompts</string>
   <string name="assistant_extensions_page_empty_mode_injections">No mode injections available, create one in Prompts</string>
   <string name="assistant_extensions_page_empty_quick_messages">No quick messages available, create one in Extensions</string>
-  <string name="assistant_extensions_page_empty_skills">No skills available, install one in Extensions</string>
   <string name="assistant_extensions_page_goto_extensions">Go to Extensions</string>
   <string name="assistant_extensions_page_goto_prompts">Go to Prompts</string>
   <string name="assistant_extensions_page_tab_lorebooks">Lorebooks</string>
   <string name="assistant_extensions_page_tab_mode_injections">Mode Injections</string>
   <string name="assistant_extensions_page_tab_quick_messages">Quick Messages</string>
-  <string name="assistant_extensions_page_tab_skills">Skills</string>
   <string name="assistant_extensions_page_title">Extensions</string>
   <string name="assistant_importer_import_failed">Import failed</string>
   <string name="assistant_importer_import_tavern_json">Import Tavern Character Card (JSON)</string>
@@ -348,6 +346,8 @@
   <string name="export_to_file">Export to file</string>
   <string name="export_to_file_desc">Save as JSON file</string>
   <string name="extension_content_manage">Manage</string>
+  <string name="skill_status_workspace_automatic">Workspace Skill · automatically available</string>
+  <string name="skill_status_workspace_required">Requires a ready workspace</string>
   <string name="extension_content_unnamed">Unnamed</string>
   <string name="extension_content_unnamed_lorebook">Unnamed Lorebook</string>
   <string name="extension_selector_go_to_extensions">Manage Extensions</string>
@@ -1197,6 +1197,12 @@
   <string name="workspace_detail_title">Workspace Details</string>
   <string name="workspace_detail_tab_basic">Basic</string>
   <string name="workspace_detail_tab_files">Files</string>
+  <string name="workspace_detail_tab_skills">Skills</string>
+  <string name="workspace_skills_title">Workspace Skills</string>
+  <string name="workspace_skills_description">Skills in this directory belong to the workspace and are automatically available to assistants bound to it.</string>
+  <string name="workspace_skills_empty">No workspace Skills found. Add a Skill directory containing SKILL.md at the path above.</string>
+  <string name="workspace_skills_automatic">Automatically available in this workspace</string>
+  <string name="workspace_skills_requires_shell">Requires the workspace Shell to be ready</string>
   <string name="workspace_detail_import_file">Import File</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs Installation Failed</string>
   <string name="workspace_detail_delete_directory">Delete Directory</string>

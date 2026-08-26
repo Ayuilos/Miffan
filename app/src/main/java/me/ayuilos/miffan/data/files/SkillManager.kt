@@ -3,210 +3,218 @@ package me.ayuilos.miffan.data.files
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.skills.install.WorkspaceSkillInstallTarget
+import me.rerere.workspace.WorkspaceManager
 
 class SkillManager(
     private val context: Context,
     private val settingsStore: SettingsStore,
+    private val workspaceManager: WorkspaceManager,
 ) {
     companion object {
         private const val TAG = "SkillManager"
+        const val WORKSPACE_SKILLS_PATH = ".miffan/skills"
+        private const val MAX_LEGACY_MIGRATION_FILES = 512
+        private const val MAX_LEGACY_MIGRATION_FILE_BYTES = 16L * 1024 * 1024
+        private const val MAX_LEGACY_MIGRATION_TOTAL_BYTES = 64L * 1024 * 1024
     }
 
-    fun getSkillsDir(): File {
-        val dir = context.filesDir.resolve(FileFolders.SKILLS)
-        if (!dir.exists()) dir.mkdirs()
-        return dir
+    /** Read-only compatibility source used to migrate pre-workspace Skill installations. */
+    fun listLegacySkills(): List<SkillMetadata> {
+        return discoverSkills(
+            skillsDir = legacySkillsDir(),
+            scope = SkillScope.GLOBAL,
+        )
     }
 
-    fun listSkills(): List<SkillMetadata> {
-        val skillsDir = getSkillsDir()
-        return skillsDir.listFiles()
-            ?.filter { it.isDirectory }
-            ?.mapNotNull { dir ->
-                val skillFile = dir.resolve("SKILL.md")
-                if (!skillFile.exists()) return@mapNotNull null
-                parseSkillFile(skillFile, dir)
-            }
-            ?: emptyList()
+    /**
+     * Discover project-owned Skills from the persistent files area of one workspace.
+     *
+     * The directory is intentionally not created while listing. Merely opening a workspace must
+     * not add Miffan metadata to an otherwise empty project.
+     */
+    fun listWorkspaceSkills(workspaceId: String, workspaceRoot: String): List<SkillMetadata> {
+        val skillsDir = workspaceManager.filesDir(workspaceRoot).resolve(WORKSPACE_SKILLS_PATH)
+        return discoverSkills(
+            skillsDir = skillsDir,
+            scope = SkillScope.WORKSPACE,
+            workspaceId = workspaceId,
+        )
     }
 
-    fun readSkillBody(skillName: String): String? {
-        val skillFile = resolveSkillDir(skillName)?.resolve("SKILL.md") ?: return null
-        if (!skillFile.exists()) return null
-        return SkillFrontmatterParser.extractBody(skillFile.readText())
-    }
-
-    fun readSkillContent(skillName: String): String? {
-        val skillFile = resolveSkillDir(skillName)?.resolve("SKILL.md") ?: return null
-        if (!skillFile.exists()) return null
-        return skillFile.readText()
-    }
-
-    fun saveSkill(name: String, content: String): SkillMetadata? {
-        // 通过原子写入(staging + rename)落盘，避免直接 mkdirs 失败时
-        // writeText 抛出 FileNotFoundException 导致崩溃
-        if (!saveSkillFileBytesAtomically(name, mapOf("SKILL.md" to content.toByteArray()))) {
-            return null
+    /**
+     * One-way compatibility migration for the old global binding model.
+     *
+     * Successfully migrated names are removed from [Assistant.enabledSkills]. The legacy source is
+     * retained as a read-only recovery copy and is never loaded into a conversation again.
+     */
+    suspend fun migrateLegacySkillsToWorkspace(
+        assistant: Assistant,
+        workspace: WorkspaceEntity,
+    ): Set<String> = withContext(Dispatchers.IO) {
+        if (assistant.enabledSkills.isEmpty() ||
+            assistant.workspaceId?.toString() != workspace.id
+        ) {
+            return@withContext emptySet()
         }
-        val skillDir = resolveSkillDir(name) ?: return null
-        return parseSkillFile(skillDir.resolve("SKILL.md"), skillDir)
-    }
 
-    suspend fun deleteSkill(name: String): Boolean = withContext(Dispatchers.IO) {
-        val skillDir = resolveSkillDir(name) ?: return@withContext false
-        val deleted = skillDir.deleteRecursively()
-        if (deleted) {
+        val legacyByName = listLegacySkills().associateBy { it.name }
+        val workspaceNames = listWorkspaceSkills(workspace.id, workspace.root)
+            .mapTo(hashSetOf()) { it.name }
+        val target = WorkspaceSkillInstallTarget(workspaceManager, workspace.root)
+        if (!target.isAvailable()) return@withContext emptySet()
+
+        val completed = buildSet {
+            for (name in assistant.enabledSkills) {
+                val legacy = legacyByName[name]
+                if (legacy == null || name in workspaceNames) {
+                    add(name)
+                    continue
+                }
+                val files = readLegacySkillFiles(legacy.skillDir) ?: continue
+                if (
+                    target.installLegacySkillAtomically(
+                        directoryName = legacy.skillDir.name,
+                        files = files,
+                    )
+                ) {
+                    add(name)
+                }
+            }
+        }
+        if (completed.isNotEmpty()) {
             settingsStore.update { settings ->
                 settings.copy(
-                    assistants = settings.assistants.map { assistant ->
-                        if (assistant.enabledSkills.contains(name)) {
-                            assistant.copy(enabledSkills = assistant.enabledSkills - name)
+                    assistants = settings.assistants.map { current ->
+                        if (current.id == assistant.id && current.workspaceId == assistant.workspaceId) {
+                            current.copy(enabledSkills = current.enabledSkills - completed)
                         } else {
-                            assistant
+                            current
                         }
                     }
                 )
             }
         }
-        deleted
+        completed
     }
 
-    /**
-     * 清理所有助手 enabledSkills 中已不存在于磁盘的技能名。
-     *
-     * 当用户在 App 外直接删除 /skills/ 目录下的技能时，不会走 [deleteSkill] 的清理逻辑，
-     * 导致 enabledSkills 残留"幽灵"技能名，使扩展入口角标计数偏大。
-     */
-    suspend fun pruneOrphanedEnabledSkills(): List<SkillMetadata> = withContext(Dispatchers.IO) {
-        val skills = listSkills()
-        val existing = skills.mapTo(HashSet()) { it.name }
-        settingsStore.update { settings ->
-            var changed = false
-            val newAssistants = settings.assistants.map { assistant ->
-                val pruned = assistant.enabledSkills.filterTo(LinkedHashSet()) { it in existing }
-                if (pruned.size != assistant.enabledSkills.size) {
-                    changed = true
-                    assistant.copy(enabledSkills = pruned)
-                } else {
-                    assistant
+    private fun legacySkillsDir(): File = context.filesDir.resolve(FileFolders.SKILLS)
+
+    private fun readLegacySkillFiles(skillDir: File): Map<String, ByteArray>? {
+        val root = skillDir.toPath().normalize()
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(root)) {
+            return null
+        }
+        val files = LinkedHashMap<String, ByteArray>()
+        var totalBytes = 0L
+        Files.walk(root).use { paths ->
+            val iterator = paths.iterator()
+            while (iterator.hasNext()) {
+                val path = iterator.next()
+                if (path == root) continue
+                if (Files.isSymbolicLink(path)) return null
+                if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) continue
+                if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
+                if (files.size >= MAX_LEGACY_MIGRATION_FILES) return null
+                val size = Files.size(path)
+                if (size > MAX_LEGACY_MIGRATION_FILE_BYTES) return null
+                totalBytes = runCatching { Math.addExact(totalBytes, size) }.getOrNull() ?: return null
+                if (totalBytes > MAX_LEGACY_MIGRATION_TOTAL_BYTES) return null
+                val relativePath = root.relativize(path).joinToString("/") { it.toString() }
+                if (SkillPaths.resolveSkillFile(skillDir, relativePath)?.toPath()?.normalize() != path) {
+                    return null
                 }
-            }
-            if (changed) settings.copy(assistants = newAssistants) else settings
-        }
-        skills
-    }
-
-    fun getSkillDir(skillName: String): File? = resolveSkillDir(skillName)
-
-    fun saveSkillFile(skillName: String, relativePath: String, content: String): Boolean {
-        val skillDir = resolveSkillDir(skillName) ?: return false
-        val target = SkillPaths.resolveSkillFile(skillDir, relativePath) ?: return false
-        target.parentFile?.mkdirs()
-        target.writeText(content)
-        return true
-    }
-
-    fun saveSkillFilesAtomically(skillName: String, files: Map<String, String>): Boolean {
-        return saveSkillFileBytesAtomically(
-            skillName = skillName,
-            files = files.mapValues { it.value.toByteArray() },
-        )
-    }
-
-    fun saveSkillFileBytesAtomically(skillName: String, files: Map<String, ByteArray>): Boolean {
-        val skillsDir = getSkillsDir()
-        val targetDir = resolveSkillDir(skillName) ?: return false
-        val stagingDir = createTempSkillDir(skillsDir, skillName, "staging") ?: return false
-        var backupDir: File? = null
-
-        try {
-            for ((relativePath, content) in files) {
-                val target = SkillPaths.resolveSkillFile(stagingDir, relativePath) ?: return false
-                target.parentFile?.mkdirs()
-                target.writeBytes(content)
-            }
-
-            if (!stagingDir.resolve("SKILL.md").exists()) return false
-
-            if (targetDir.exists()) {
-                backupDir = createTempSkillDir(skillsDir, skillName, "backup") ?: return false
-                if (!targetDir.renameTo(backupDir)) return false
-            }
-
-            if (!stagingDir.renameTo(targetDir)) {
-                if (backupDir != null && !targetDir.exists()) {
-                    backupDir.renameTo(targetDir)
-                }
-                return false
-            }
-
-            backupDir?.deleteRecursively()
-            return true
-        } catch (e: Exception) {
-            Log.w(TAG, "saveSkillFilesAtomically: Failed to save $skillName", e)
-            if (backupDir != null && !targetDir.exists()) {
-                backupDir.renameTo(targetDir)
-            }
-            return false
-        } finally {
-            if (stagingDir.exists()) {
-                stagingDir.deleteRecursively()
-            }
-            if (backupDir?.exists() == true && targetDir.exists()) {
-                backupDir.deleteRecursively()
+                files[relativePath] = Files.readAllBytes(path)
             }
         }
+        return files.takeIf { "SKILL.md" in it }
     }
 
-    fun deleteSkillFile(skillName: String, relativePath: String): Boolean {
-        val skillDir = resolveSkillDir(skillName) ?: return false
-        val target = SkillPaths.resolveSkillFile(skillDir, relativePath) ?: return false
-        return target.delete()
-    }
+}
 
-    fun resolveSkillFile(skillName: String, relativePath: String): File? {
-        val skillDir = resolveSkillDir(skillName) ?: return null
-        return SkillPaths.resolveSkillFile(skillDir, relativePath)
-    }
-
-    private fun resolveSkillDir(skillName: String): File? {
-        return SkillPaths.resolveSkillDir(getSkillsDir(), skillName)
-    }
-
-    private fun createTempSkillDir(skillsRoot: File, skillName: String, suffix: String): File? {
-        repeat(100) { attempt ->
-            val candidate = skillsRoot.resolve(".$skillName.$suffix.$attempt.tmp")
-            if (!candidate.exists() && candidate.mkdirs()) {
-                return candidate
+internal fun discoverSkills(
+    skillsDir: File,
+    scope: SkillScope,
+    workspaceId: String? = null,
+): List<SkillMetadata> {
+    if (!Files.isDirectory(skillsDir.toPath(), LinkOption.NOFOLLOW_LINKS)) return emptyList()
+    return skillsDir.listFiles()
+        ?.asSequence()
+        ?.filter { Files.isDirectory(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+        ?.sortedBy { it.name }
+        ?.mapNotNull { dir ->
+            val skillFile = dir.resolve("SKILL.md")
+            if (!Files.isRegularFile(skillFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                return@mapNotNull null
             }
-        }
-        return null
-    }
-
-    private fun parseSkillFile(skillFile: File, skillDir: File): SkillMetadata? {
-        return runCatching {
-            val content = skillFile.readText()
-            val frontmatter = SkillFrontmatterParser.parse(content)
-            val name = frontmatter["name"]?.takeIf { it.isNotBlank() } ?: return null
-            val description = frontmatter["description"]?.takeIf { it.isNotBlank() } ?: return null
-            SkillMetadata(
-                name = name,
-                description = description,
-                compatibility = frontmatter["compatibility"],
-                allowedTools = frontmatter["allowed-tools"]
-                    ?.split(Regex("\\s+"))
-                    ?.filter { it.isNotBlank() }
-                    .orEmpty(),
-                skillDir = skillDir,
+            parseSkillFile(
+                skillFile = skillFile,
+                skillDir = dir,
+                scope = scope,
+                workspaceId = workspaceId,
             )
-        }.getOrElse {
-            Log.w(TAG, "parseSkillFile: Failed to parse ${skillFile.absolutePath}", it)
-            null
         }
+        ?.toList()
+        ?: emptyList()
+}
+
+private fun parseSkillFile(
+    skillFile: File,
+    skillDir: File,
+    scope: SkillScope,
+    workspaceId: String? = null,
+): SkillMetadata? {
+    return runCatching {
+        val content = skillFile.readText()
+        val frontmatter = SkillFrontmatterParser.parse(content)
+        val name = frontmatter["name"]?.takeIf { it.isNotBlank() } ?: return null
+        val description = frontmatter["description"]?.takeIf { it.isNotBlank() } ?: return null
+        val allowedTools = frontmatter["allowed-tools"]
+            ?.split(Regex("\\s+"))
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+        SkillMetadata(
+            name = name,
+            description = description,
+            compatibility = frontmatter["compatibility"],
+            allowedTools = allowedTools,
+            skillDir = skillDir,
+            scope = scope,
+            workspaceId = workspaceId,
+            requiresWorkspace = frontmatter.boolean("requires-workspace") == true ||
+                allowedTools.any(::isWorkspaceToolDeclaration),
+        )
+    }.getOrElse {
+        Log.w("SkillManager", "parseSkillFile: Failed to parse ${skillFile.absolutePath}", it)
+        null
     }
+}
+
+private fun isWorkspaceToolDeclaration(tool: String): Boolean {
+    val normalized = tool.substringBefore('(').trim().lowercase()
+    return normalized in WORKSPACE_TOOL_DECLARATIONS || normalized.startsWith("workspace_")
+}
+
+private val WORKSPACE_TOOL_DECLARATIONS = setOf(
+    "bash",
+    "edit",
+    "glob",
+    "grep",
+    "read",
+    "shell",
+    "write",
+)
+
+enum class SkillScope {
+    GLOBAL,
+    WORKSPACE,
 }
 
 data class SkillMetadata(
@@ -215,6 +223,9 @@ data class SkillMetadata(
     val compatibility: String? = null,
     val allowedTools: List<String> = emptyList(),
     val skillDir: File,
+    val scope: SkillScope = SkillScope.GLOBAL,
+    val workspaceId: String? = null,
+    val requiresWorkspace: Boolean = false,
 ) {
     val skillFile: File get() = skillDir.resolve("SKILL.md")
 }

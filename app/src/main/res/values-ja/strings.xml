@@ -20,13 +20,11 @@
   <string name="assistant_extensions_page_empty_lorebooks">利用可能なロアブックがありません。プロンプトで作成してください</string>
   <string name="assistant_extensions_page_empty_mode_injections">利用可能なモードインジェクションがありません。プロンプトで作成してください</string>
   <string name="assistant_extensions_page_empty_quick_messages">クイックメッセージがありません。拡張機能から作成してください</string>
-  <string name="assistant_extensions_page_empty_skills">利用可能なスキルがありません。Extensionsでインストールしてください</string>
   <string name="assistant_extensions_page_goto_extensions">拡張機能へ移動</string>
   <string name="assistant_extensions_page_goto_prompts">プロンプトへ移動</string>
   <string name="assistant_extensions_page_tab_lorebooks">Lorebooks</string>
   <string name="assistant_extensions_page_tab_mode_injections">モードインジェクション</string>
   <string name="assistant_extensions_page_tab_quick_messages">クイックメッセージ</string>
-  <string name="assistant_extensions_page_tab_skills">スキル</string>
   <string name="assistant_extensions_page_title">拡張機能</string>
   <string name="assistant_importer_import_failed">インポートに失敗しました</string>
   <string name="assistant_importer_import_tavern_json">タバーンキャラクターカードをインポート (JSON)</string>
@@ -345,6 +343,8 @@
   <string name="export_to_file">ファイルにエクスポート</string>
   <string name="export_to_file_desc">JSONファイルとして保存</string>
   <string name="extension_content_manage">管理</string>
+  <string name="skill_status_workspace_automatic">ワークスペーススキル・自動的に利用可能</string>
+  <string name="skill_status_workspace_required">準備完了のワークスペースが必要です</string>
   <string name="extension_content_unnamed">名前なし</string>
   <string name="extension_content_unnamed_lorebook">名前なしのルアーブック</string>
   <string name="extension_selector_go_to_extensions">拡張機能を管理</string>
@@ -1138,6 +1138,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_title">ワークスペース詳細</string>
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">ファイル</string>
+  <string name="workspace_detail_tab_skills">スキル</string>
+  <string name="workspace_skills_title">ワークスペーススキル</string>
+  <string name="workspace_skills_description">このディレクトリ内のスキルはワークスペースに属し、このワークスペースに接続したアシスタントで自動的に利用できます。</string>
+  <string name="workspace_skills_empty">ワークスペーススキルが見つかりません。上記のパスに SKILL.md を含むスキルディレクトリを追加してください。</string>
+  <string name="workspace_skills_automatic">このワークスペースで自動的に利用可能</string>
+  <string name="workspace_skills_requires_shell">ワークスペースの Shell が準備完了である必要があります</string>
   <string name="workspace_detail_import_file">ファイルをインポート</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfsのインストールに失敗しました</string>
   <string name="workspace_detail_delete_directory">ディレクトリを削除</string>

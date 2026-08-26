@@ -12,9 +12,12 @@ import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.data.skills.install.RemoteSkillFile
 import me.ayuilos.miffan.data.skills.install.RemoteSkillPackage
 import me.ayuilos.miffan.data.skills.install.RemoteSkillSourceClient
+import me.ayuilos.miffan.data.skills.install.ResolvedWorkspaceSkillInstallTarget
+import me.ayuilos.miffan.data.skills.install.SkillInstallScope
 import me.ayuilos.miffan.data.skills.install.SkillInstallService
 import me.ayuilos.miffan.data.skills.install.SkillInstallTarget
 import me.ayuilos.miffan.data.skills.install.VerifiedSkillSource
+import me.ayuilos.miffan.data.skills.install.WorkspaceSkillInstallTargetResolver
 import me.ayuilos.miffan.data.skills.install.createSkillInstallPreviewId
 import me.ayuilos.miffan.data.skills.source.SkillShCatalogEntry
 import me.ayuilos.miffan.data.skills.source.SkillShCatalogSearchResult
@@ -35,7 +38,10 @@ class SkillInstallToolsTest {
         )
         val apply = tools.last()
         val schema = apply.parameters() as InputSchema.Obj
+        val previewSchema = tools[1].parameters() as InputSchema.Obj
 
+        assertEquals(setOf("sourceUrl"), previewSchema.properties.keys)
+        assertEquals(listOf("sourceUrl"), previewSchema.required)
         assertEquals(setOf("previewId"), schema.properties.keys)
         assertEquals(listOf("previewId"), schema.required)
         assertTrue(apply.needsApproval(buildJsonObject {}))
@@ -75,9 +81,13 @@ class SkillInstallToolsTest {
         ).single() as UIMessagePart.Text
         val previewId = Json.parseToJsonElement(previewOutput.text)
             .jsonObject.getValue("previewId").jsonPrimitive.content
+        val destination = Json.parseToJsonElement(previewOutput.text)
+            .jsonObject.getValue("destination").jsonObject
 
         assertFalse(previewOutput.text.contains(privateDescription))
         assertFalse(previewOutput.text.contains(privateBody))
+        assertEquals(SkillInstallScope.WORKSPACE.name, destination.getValue("scope").jsonPrimitive.content)
+        assertEquals("workspace-1", destination.getValue("workspaceId").jsonPrimitive.content)
 
         val applyOutput = tools[2].execute(
             buildJsonObject { put("previewId", previewId) }
@@ -86,6 +96,23 @@ class SkillInstallToolsTest {
         assertTrue(Json.parseToJsonElement(applyOutput.text).jsonObject
             .getValue("applied").jsonPrimitive.content.toBoolean())
         assertEquals("safe-skill", target.installedName)
+    }
+
+    @Test
+    fun `preview refuses installation when assistant has no bound workspace`() = runBlocking {
+        val target = FakeTarget()
+        val preview = tools(
+            service = service(target, "description", "body"),
+            workspaceId = null,
+        )[1]
+
+        val output = preview.execute(
+            buildJsonObject { put("sourceUrl", SOURCE_URL) }
+        ).single() as UIMessagePart.Text
+        val payload = Json.parseToJsonElement(output.text).jsonObject
+
+        assertEquals("workspace_required", payload.getValue("errorCode").jsonPrimitive.content)
+        assertEquals(null, target.installedName)
     }
 
     @Test
@@ -109,10 +136,12 @@ class SkillInstallToolsTest {
     private fun tools(
         searchResult: SkillShCatalogSearchResult = SkillShCatalogSearchResult(emptyList()),
         service: SkillInstallService = service(FakeTarget(), "description", "body"),
+        workspaceId: String? = "workspace-1",
     ) = createSkillInstallTools(
         search = { searchResult },
         installService = service,
         json = Json,
+        workspaceId = workspaceId,
     )
 
     private fun service(
@@ -142,7 +171,14 @@ class SkillInstallToolsTest {
                 ),
             )
         },
-        target = target,
+        workspaceTargetResolver = WorkspaceSkillInstallTargetResolver { workspaceId ->
+            ResolvedWorkspaceSkillInstallTarget(
+                workspaceId = workspaceId,
+                workspaceName = "Test Workspace",
+                identity = "$workspaceId:root",
+                target = target,
+            )
+        },
     )
 
     private class FakeTarget : SkillInstallTarget {

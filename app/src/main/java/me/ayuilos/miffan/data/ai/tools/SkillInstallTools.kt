@@ -22,16 +22,19 @@ fun createSkillInstallTools(
     catalogClient: SkillShCatalogClient,
     installService: SkillInstallService,
     json: Json = JsonInstant,
+    workspaceId: String? = null,
 ): List<Tool> = createSkillInstallTools(
     search = catalogClient::search,
     installService = installService,
     json = json,
+    workspaceId = workspaceId,
 )
 
 internal fun createSkillInstallTools(
     search: suspend (String) -> SkillShCatalogSearchResult,
     installService: SkillInstallService,
     json: Json = JsonInstant,
+    workspaceId: String? = null,
 ): List<Tool> = listOf(
     Tool(
         name = "skills_search",
@@ -66,7 +69,7 @@ internal fun createSkillInstallTools(
     ),
     Tool(
         name = "skills_preview_install",
-        description = "Download and validate an exact supported skills.sh URL without writing files. Returns fixed metadata, hashes, risks, and a one-use previewId; remote Skill bodies and descriptions are omitted.",
+        description = "Download and validate an exact supported skills.sh URL without writing files. The destination is fixed to this assistant's bound workspace and included in the approval summary. Returns fixed metadata, hashes, risks, and a one-use previewId; remote Skill bodies and descriptions are omitted.",
         parameters = {
             InputSchema.Obj(
                 properties = buildJsonObject {
@@ -78,7 +81,7 @@ internal fun createSkillInstallTools(
         execute = { input ->
             val sourceUrl = input.requiredString("sourceUrl")
             try {
-                val preview = installService.preview(sourceUrl)
+                val preview = installService.previewInWorkspace(sourceUrl, workspaceId)
                 listOf(UIMessagePart.Text(json.encodeToString(preview)))
             } catch (error: CancellationException) {
                 throw error
@@ -160,6 +163,9 @@ private fun SkillInstallErrorCode?.safeMessage(): String = when (this) {
     SkillInstallErrorCode.CONFLICT -> "A Skill with this name is already installed"
     SkillInstallErrorCode.PREVIEW_NOT_FOUND -> "The install preview is missing, changed, expired, or already used"
     SkillInstallErrorCode.PREVIEW_EXPIRED -> "The install preview has expired"
+    SkillInstallErrorCode.WORKSPACE_REQUIRED -> "Bind a workspace before installing a Skill"
+    SkillInstallErrorCode.TARGET_NOT_FOUND -> "The approved workspace is missing or unavailable"
+    SkillInstallErrorCode.TARGET_CHANGED -> "The approved workspace changed after preview"
     SkillInstallErrorCode.INSTALL_FAILED -> "The Skill could not be installed atomically"
     null -> "Skill installation failed"
 }

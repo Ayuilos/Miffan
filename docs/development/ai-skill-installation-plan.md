@@ -3,11 +3,11 @@
 ## Goal
 
 Extend the guarded extension-management capability so an opted-in assistant can discover a Skill
-listed on skills.sh, preview the exact GitHub snapshot and its risks, and install it only after the
-user approves the canonical preview.
+listed on skills.sh, preview the exact GitHub snapshot, workspace destination, and risks, and install
+it into the assistant's bound workspace only after the user approves the canonical preview.
 
-Installing a Skill does not enable or bind it. An installed Skill is untrusted prompt content and
-must go through the existing assistant binding workflow before it can enter a model context.
+A workspace Skill remains untrusted prompt content. It is discovered automatically for assistants
+bound to that workspace on their next conversation turn and is never loaded during installation.
 
 ## External protocol findings
 
@@ -33,15 +33,16 @@ Primary references:
 
 1. `skills_search` queries the best-effort skills.sh discovery endpoint and returns only canonical
    ids, GitHub sources, install counts, and skills.sh URLs.
-2. `skills_preview_install` accepts an exact supported skills.sh URL.
+2. `skills_preview_install` accepts an exact supported skills.sh URL and fixes the destination to
+   the current assistant's bound workspace. It fails when no valid workspace is bound.
 3. The source client resolves the GitHub repository's default branch to a commit SHA, obtains its
    tree, finds one unambiguous Skill directory, and downloads text files from that fixed commit.
 4. The domain service validates the package and stores the exact approved bytes in a short-lived,
    one-use in-memory preview.
 5. `skills_apply_install` pauses in the existing tool-approval UI. The pending card renders summary
    data bound into the preview capability rather than model-provided text.
-6. Approval atomically installs the cached bytes if the name is still unused. The Skill remains
-   disabled until a separate extension binding preview is approved.
+6. Approval revalidates the workspace identity and atomically installs the cached bytes under
+   `/workspace/.miffan/skills` if the name is still unused.
 
 ## Hard security boundaries
 
@@ -57,6 +58,10 @@ Primary references:
 - Limit package file count, per-file bytes, `SKILL.md` bytes, and total bytes for mobile use.
 - Require a root `SKILL.md`, valid frontmatter, and a strict lowercase kebab-case Skill name.
 - Reject existing names and reserved built-in names. MVP has no overwrite or update operation.
+- Never accept a model-selected filesystem path or arbitrary workspace id. The current assistant's
+  workspace id is supplied by the app, fixed into the preview, and revalidated during apply.
+- Publish through the workspace mutation lock, enforce workspace storage limits, reject symbolic
+  links in the destination chain, and keep staged bytes outside the shell-visible files directory.
 - Search text, remote descriptions, README text, and Skill bodies are untrusted and never inserted
   into approval summaries or management system prompts.
 - `allowed-tools` is displayed only as an untrusted declaration; it is not described as an enforced
@@ -75,13 +80,13 @@ Primary references:
 - Package validation and deterministic SHA-256 manifest digest.
 - Stable application-generated risk categories and canonical approval summary.
 - Ten-minute, one-use preview capability containing no remote prompt body.
-- Atomic no-overwrite installation through `SkillManager`.
+- Atomic no-overwrite installation into the bound workspace with identity revalidation.
 
 ### AI and UI integration
 
 - Register all installation tools only behind the existing assistant extension-management opt-in
   and model tool-call ability.
-- Extend the trusted built-in Skill with the discover-preview-approve-install-bind workflow.
+- Extend the trusted built-in Skill with the discover-preview-approve-install workflow.
 - Add compact search, preview, apply, error, and pending-approval renderers.
 - Escape all Skill metadata inserted into the `<available_skills>` system-prompt block.
 
@@ -92,12 +97,14 @@ Primary references:
    approval without running a remote command.
 3. Rejecting approval leaves the Skill directory and assistant settings unchanged.
 4. Approval installs exactly the bytes and commit shown in the preview, once, without overwrite.
-5. Installation alone never adds the Skill to an assistant's `enabledSkills`.
+5. New installation never creates a global binding; workspace discovery makes the Skill available
+   only to assistants bound to that workspace, starting on the next turn.
 6. Traversal, symlink, submodule, LFS, binary, ambiguous, oversized, malformed, and conflicting
    packages fail before preview authorization.
 7. The model and approval card never receive remote Skill bodies or descriptions.
 8. A changed or forged preview capability cannot install any package.
-9. Existing manual Skill management and the first extension-management MVP continue to work.
+9. Existing global bindings are copied one-way into their assistant's bound workspace; global Skill
+   directories remain only as hidden recovery sources and never enter new conversation contexts.
 
 ## Deferred
 
@@ -105,4 +112,4 @@ Primary references:
 - Stable hosted skills.sh `/api/v1` proxy and security-audit integration.
 - Well-known sources and Skill packs.
 - Updates, overwrite, provenance UI, uninstall, rollback history, and automatic telemetry.
-- Automatic enabling or binding during installation.
+- Cross-workspace copying during installation.

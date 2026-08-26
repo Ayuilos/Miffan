@@ -541,6 +541,26 @@ class ChatService(
             // check invalid messages
             checkInvalidMessages(conversationId)
             val conversation = getConversationFlow(conversationId).value
+            val boundWorkspace = assistant.workspaceId
+                ?.toString()
+                ?.let { workspaceRepository.getById(it) }
+            val workspaceReady = boundWorkspace?.shellStatus == WorkspaceShellStatus.READY.name
+            val availableSkills = buildList {
+                if (boundWorkspace != null) {
+                    if (assistant.enabledSkills.isNotEmpty()) {
+                        skillManager.migrateLegacySkillsToWorkspace(
+                            assistant = assistant,
+                            workspace = boundWorkspace,
+                        )
+                    }
+                    addAll(
+                        skillManager.listWorkspaceSkills(
+                            workspaceId = boundWorkspace.id,
+                            workspaceRoot = boundWorkspace.root,
+                        )
+                    )
+                }
+            }
 
             // start generating
             val session = getOrCreateSession(conversationId)
@@ -579,22 +599,31 @@ class ChatService(
                     addAll(localTools.getTools(assistant.localTools))
                     if (extensionManagementEnabled) {
                         addAll(createExtensionManagementTools(extensionManagementService))
-                        addAll(createSkillInstallTools(skillShCatalogClient, skillInstallService))
+                        addAll(
+                            createSkillInstallTools(
+                                catalogClient = skillShCatalogClient,
+                                installService = skillInstallService,
+                                workspaceId = boundWorkspace?.id,
+                            )
+                        )
                     }
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    if (assistant.enabledSkills.isNotEmpty() || extensionManagementEnabled) {
+                    if (
+                        extensionManagementEnabled ||
+                        availableSkills.isNotEmpty()
+                    ) {
                         addAll(
                             createSkillTools(
-                                enabledSkills = assistant.enabledSkills,
-                                allSkills = skillManager.listSkills(),
+                                allSkills = availableSkills,
                                 builtInSkills = if (extensionManagementEnabled) {
                                     listOf(extensionManagementBuiltInSkill)
                                 } else {
                                     emptyList()
                                 },
+                                workspaceReady = workspaceReady,
                             )
                         )
                     }

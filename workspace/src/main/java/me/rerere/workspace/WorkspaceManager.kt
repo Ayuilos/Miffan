@@ -117,6 +117,24 @@ class WorkspaceManager(
         fileSystem.writeText(filesDir(root), path, text, overwrite, charset)
     }
 
+    /**
+     * Runs one host-side mutation of the workspace files area while shell and file operations are
+     * excluded. [additionalBytes] is admitted against both the files-area and total-workspace
+     * limits before [block] starts.
+     *
+     * Callers must keep every write below the supplied directory and must preserve no-follow path
+     * handling. This boundary exists for atomic multi-file publishers that cannot use [writeText]
+     * one file at a time.
+     */
+    fun <T> withFilesWriteAccess(
+        root: String,
+        additionalBytes: Long,
+        block: (File) -> T,
+    ): T = withExclusiveAccess(root) {
+        requireGrowth(root, WorkspaceDiskArea.FILES, additionalBytes)
+        block(filesDir(root))
+    }
+
     fun importFile(
         root: String,
         destinationPath: String,

@@ -17,13 +17,30 @@ import me.ayuilos.miffan.data.files.SkillFrontmatterParser
 
 class SkillInstallService(
     private val sourceClient: RemoteSkillSourceClient,
-    private val target: SkillInstallTarget,
+    private val workspaceTargetResolver: WorkspaceSkillInstallTargetResolver,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
     private val pendingPreviews = ConcurrentHashMap<String, PendingSkillInstall>()
     private val applyMutex = Mutex()
 
-    suspend fun preview(sourceUrl: String): SkillInstallPreview = withContext(Dispatchers.IO) {
+    /** New installs initiated from an assistant are always pinned to its bound workspace. */
+    suspend fun previewInWorkspace(
+        sourceUrl: String,
+        workspaceId: String?,
+    ): SkillInstallPreview {
+        if (workspaceId.isNullOrBlank()) {
+            throw SkillInstallException(
+                SkillInstallErrorCode.WORKSPACE_REQUIRED,
+                "Bind a workspace before installing a Skill",
+            )
+        }
+        return preview(sourceUrl, workspaceId)
+    }
+
+    private suspend fun preview(
+        sourceUrl: String,
+        workspaceId: String,
+    ): SkillInstallPreview = withContext(Dispatchers.IO) {
         pruneExpiredPreviews()
         val requestedUrl = validateSourceIdentifier(sourceUrl)
         val remotePackage = try {
@@ -41,7 +58,14 @@ class SkillInstallService(
         }
         requireMatchingRequestedSource(requestedUrl, remotePackage.source)
         val validated = validatePackage(remotePackage)
-        if (target.exists(validated.metadata.name)) {
+        val resolvedTarget = resolveTarget(workspaceId)
+        if (!resolvedTarget.target.isAvailable()) {
+            throw SkillInstallException(
+                SkillInstallErrorCode.TARGET_NOT_FOUND,
+                "The approved Skill destination is unavailable",
+            )
+        }
+        if (resolvedTarget.target.exists(validated.metadata.name)) {
             throw SkillInstallException(
                 SkillInstallErrorCode.CONFLICT,
                 "A skill named '${validated.metadata.name}' is already installed; overwrite is not allowed",
@@ -52,6 +76,7 @@ class SkillInstallService(
         val riskCategories = buildRiskCategories(validated)
         val summaries = listOf(
             "Install skill '${validated.metadata.name}' from ${remotePackage.source.canonicalUrl} at commit ${remotePackage.source.revision}",
+            destinationSummary(resolvedTarget.destination, validated.metadata.name),
             "Create ${validated.files.size} files (${validated.totalSizeBytes} bytes), bundle SHA-256 $bundleSha256, without executing scripts",
             "Risk categories: ${riskCategories.joinToString(",") { it.name }}",
         )
@@ -69,12 +94,15 @@ class SkillInstallService(
             totalSizeBytes = validated.totalSizeBytes,
             bundleSha256 = bundleSha256,
             riskCategories = riskCategories,
+            destination = resolvedTarget.destination,
             summaries = summaries,
         )
         pendingPreviews[previewId] = PendingSkillInstall(
             preview = preview,
             files = validated.files.associate { it.relativePath to it.content.copyOf() },
             createdAtMillis = currentTimeMillis(),
+            workspaceId = workspaceId,
+            targetIdentity = resolvedTarget.identity,
         )
         trimPreviewCache()
         preview
@@ -104,21 +132,49 @@ class SkillInstallService(
 
         applyMutex.withLock {
             val skillName = pending.preview.skill.name
-            if (target.exists(skillName)) {
+            val resolvedTarget = try {
+                resolveTarget(pending.workspaceId)
+            } catch (error: SkillInstallException) {
                 return@withLock SkillInstallApplyResult(
                     applied = false,
+                    destination = pending.preview.destination,
+                    errorCode = error.code,
+                    error = error.message,
+                )
+            }
+            if (resolvedTarget.identity != pending.targetIdentity) {
+                return@withLock SkillInstallApplyResult(
+                    applied = false,
+                    destination = pending.preview.destination,
+                    errorCode = SkillInstallErrorCode.TARGET_CHANGED,
+                    error = "The approved Skill destination changed after preview",
+                )
+            }
+            if (!resolvedTarget.target.isAvailable()) {
+                return@withLock SkillInstallApplyResult(
+                    applied = false,
+                    destination = pending.preview.destination,
+                    errorCode = SkillInstallErrorCode.TARGET_NOT_FOUND,
+                    error = "The approved Skill destination is unavailable",
+                )
+            }
+            if (resolvedTarget.target.exists(skillName)) {
+                return@withLock SkillInstallApplyResult(
+                    applied = false,
+                    destination = pending.preview.destination,
                     errorCode = SkillInstallErrorCode.CONFLICT,
                     error = "A skill named '$skillName' was installed after preview; overwrite is not allowed",
                 )
             }
             val installed = try {
-                target.installNewAtomically(skillName, pending.files)
+                resolvedTarget.target.installNewAtomically(skillName, pending.files)
             } catch (_: Exception) {
                 false
             }
             if (!installed) {
                 return@withLock SkillInstallApplyResult(
                     applied = false,
+                    destination = pending.preview.destination,
                     errorCode = SkillInstallErrorCode.INSTALL_FAILED,
                     error = "Unable to install '$skillName' atomically",
                 )
@@ -126,10 +182,46 @@ class SkillInstallService(
             SkillInstallApplyResult(
                 applied = true,
                 skillName = skillName,
+                destination = pending.preview.destination,
                 summaries = pending.preview.summaries,
             )
         }
     }
+
+    private suspend fun resolveTarget(workspaceId: String): ResolvedSkillInstallTarget {
+        val resolved = workspaceTargetResolver.resolve(workspaceId)
+            ?: throw SkillInstallException(
+                SkillInstallErrorCode.TARGET_NOT_FOUND,
+                "The bound workspace no longer exists or is unavailable",
+            )
+        if (resolved.workspaceId != workspaceId) {
+            throw SkillInstallException(
+                SkillInstallErrorCode.TARGET_CHANGED,
+                "The workspace resolver returned a different destination",
+            )
+        }
+        return ResolvedSkillInstallTarget(
+            target = resolved.target,
+            identity = resolved.identity,
+            destination = SkillInstallDestination(
+                scope = SkillInstallScope.WORKSPACE,
+                workspaceId = resolved.workspaceId,
+                workspaceName = sanitizeWorkspaceName(resolved.workspaceName),
+                path = WORKSPACE_SKILLS_PATH,
+            ),
+        )
+    }
+
+    private fun destinationSummary(destination: SkillInstallDestination, skillName: String): String =
+        "Destination: workspace '${destination.workspaceName}' " +
+            "(${destination.workspaceId}) at ${destination.path}/$skillName"
+
+    private fun sanitizeWorkspaceName(value: String): String = value
+        .map { character -> if (character.isISOControl()) ' ' else character }
+        .joinToString("")
+        .trim()
+        .take(MAX_WORKSPACE_NAME_LENGTH)
+        .ifBlank { "Unnamed workspace" }
 
     private fun validatePackage(remotePackage: RemoteSkillPackage): ValidatedPackage {
         val source = remotePackage.source
@@ -352,6 +444,14 @@ class SkillInstallService(
         val preview: SkillInstallPreview,
         val files: Map<String, ByteArray>,
         val createdAtMillis: Long,
+        val workspaceId: String,
+        val targetIdentity: String,
+    )
+
+    private data class ResolvedSkillInstallTarget(
+        val target: SkillInstallTarget,
+        val identity: String,
+        val destination: SkillInstallDestination,
     )
 
     private data class ValidatedPackage(
@@ -380,8 +480,10 @@ class SkillInstallService(
         private const val MAX_ALLOWED_TOOLS = 64
         private const val MAX_TOOL_NAME_LENGTH = 100
         private const val MAX_PENDING_PREVIEWS = 32
+        private const val MAX_WORKSPACE_NAME_LENGTH = 120
         private const val PREVIEW_TTL_MILLIS = 10 * 60 * 1000L
         private const val SKILL_FILE_NAME = "SKILL.md"
+        private const val WORKSPACE_SKILLS_PATH = "/workspace/.miffan/skills"
         private val SAFE_SKILL_NAME = Regex("[a-z0-9][a-z0-9-]{0,63}")
         private val SAFE_PROVIDER = Regex("[a-z0-9][a-z0-9-]{0,31}")
         private val SAFE_REVISION = Regex("[0-9a-fA-F]{40}")

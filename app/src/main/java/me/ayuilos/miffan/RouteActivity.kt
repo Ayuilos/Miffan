@@ -91,8 +91,6 @@ import me.ayuilos.miffan.ui.pages.debug.DebugPage
 import me.ayuilos.miffan.ui.pages.extensions.ExtensionsPage
 import me.ayuilos.miffan.ui.pages.extensions.PromptPage
 import me.ayuilos.miffan.ui.pages.extensions.QuickMessagesPage
-import me.ayuilos.miffan.ui.pages.extensions.skills.SkillDetailPage
-import me.ayuilos.miffan.ui.pages.extensions.skills.SkillsPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspacePage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceDetailPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceFileEditorPage
@@ -495,10 +493,6 @@ class RouteActivity : ComponentActivity() {
                                 PromptPage()
                             }
 
-                            entry<Screen.Skills> {
-                                SkillsPage()
-                            }
-
                             entry<Screen.Workspaces> {
                                 WorkspacePage()
                             }
@@ -517,10 +511,6 @@ class RouteActivity : ComponentActivity() {
                                     area = WorkspaceStorageArea.valueOf(key.area),
                                     path = key.path,
                                 )
-                            }
-
-                            entry<Screen.SkillDetail> { key ->
-                                SkillDetailPage(skillName = key.skillName)
                             }
 
                             entry<Screen.MessageSearch> {
@@ -710,9 +700,6 @@ sealed interface Screen : NavKey {
     data object Prompts : Screen
 
     @Serializable
-    data object Skills : Screen
-
-    @Serializable
     data object Workspaces : Screen
 
     @Serializable
@@ -723,9 +710,6 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class WorkspaceFileEditor(val id: String, val area: String, val path: String) : Screen
-
-    @Serializable
-    data class SkillDetail(val skillName: String) : Screen
 
     @Serializable
     data object MessageSearch : Screen

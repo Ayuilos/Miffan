@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -62,12 +63,15 @@ import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.MoreVertical
+import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.tools.resolveWorkspaceToolApproval
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.files.SkillManager
+import me.ayuilos.miffan.data.files.SkillMetadata
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.nav.BackButton
@@ -92,7 +96,7 @@ fun WorkspaceDetailPage(id: String) {
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState { 2 }
+    val pagerState = rememberPagerState { 3 }
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
@@ -170,6 +174,12 @@ fun WorkspaceDetailPage(id: String) {
                     label = { Text(stringResource(R.string.workspace_detail_tab_files)) },
                     icon = { Icon(HugeIcons.File02, contentDescription = null) },
                     onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                )
+                NavigationBarItem(
+                    selected = pagerState.currentPage == 2,
+                    label = { Text(stringResource(R.string.workspace_detail_tab_skills)) },
+                    icon = { Icon(HugeIcons.Puzzle, contentDescription = null) },
+                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
                 )
             }
         },
@@ -250,6 +260,15 @@ fun WorkspaceDetailPage(id: String) {
                         }
                     },
                 )
+
+                2 -> WorkspaceSkillsPage(
+                    skills = state.skills,
+                    shellReady = state.workspace?.shellStatus == WorkspaceShellStatus.READY.name,
+                    onOpenSkill = { skill ->
+                        vm.openWorkspaceSkill(skill)
+                        scope.launch { pagerState.animateScrollToPage(1) }
+                    },
+                )
             }
         }
     }
@@ -300,6 +319,113 @@ fun WorkspaceDetailPage(id: String) {
             onDismiss = { deleteTarget = null },
         ) {
             Text(stringResource(R.string.workspace_detail_will_delete, entry.path))
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceSkillsPage(
+    skills: List<SkillMetadata>,
+    shellReady: Boolean,
+    onOpenSkill: (SkillMetadata) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CustomColors.cardColorsOnSurfaceContainer,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.workspace_skills_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.workspace_skills_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "/workspace/${SkillManager.WORKSPACE_SKILLS_PATH}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+
+        if (skills.isEmpty()) {
+            item {
+                Text(
+                    text = stringResource(R.string.workspace_skills_empty),
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        items(skills, key = { it.skillDir.absolutePath }) { skill ->
+            val available = !skill.requiresWorkspace || shellReady
+            Card(
+                onClick = { onOpenSkill(skill) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CustomColors.cardColorsOnSurfaceContainer,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Puzzle,
+                        contentDescription = null,
+                        tint = if (available) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(text = skill.name, style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = skill.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = if (available) {
+                                stringResource(R.string.workspace_skills_automatic)
+                            } else {
+                                stringResource(R.string.workspace_skills_requires_shell)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (available) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

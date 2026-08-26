@@ -26,7 +26,7 @@ class SkillInstallServiceTest {
             extraFiles = listOf(file("scripts/check.sh", "echo safe")),
         )
 
-        val preview = service.preview(REQUEST_URL)
+        val preview = service.previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         val serialized = Json.encodeToString(preview)
 
         assertEquals("safe-skill", preview.skill.name)
@@ -58,10 +58,79 @@ class SkillInstallServiceTest {
     }
 
     @Test
+    fun `workspace preview pins destination`() = runBlocking {
+        val workspaceTarget = FakeTarget()
+        val service = SkillInstallService(
+            sourceClient = fakeSource(),
+            workspaceTargetResolver = WorkspaceSkillInstallTargetResolver { workspaceId ->
+                if (workspaceId != "workspace-1") return@WorkspaceSkillInstallTargetResolver null
+                ResolvedWorkspaceSkillInstallTarget(
+                    workspaceId = workspaceId,
+                    workspaceName = "Android Lab",
+                    identity = "$workspaceId:root-1",
+                    target = workspaceTarget,
+                )
+            },
+        )
+
+        val preview = service.previewInWorkspace(REQUEST_URL, "workspace-1")
+        val applied = service.apply(preview.previewId)
+
+        assertEquals(SkillInstallScope.WORKSPACE, preview.destination.scope)
+        assertEquals("workspace-1", preview.destination.workspaceId)
+        assertEquals("Android Lab", preview.destination.workspaceName)
+        assertEquals("/workspace/.miffan/skills", preview.destination.path)
+        assertTrue(preview.summaries.any { it.contains("workspace 'Android Lab' (workspace-1)") })
+        assertTrue(applied.applied)
+        assertEquals(preview.destination, applied.destination)
+        assertEquals("safe-skill", workspaceTarget.installedName)
+    }
+
+    @Test
+    fun `workspace identity is revalidated after preview`() = runBlocking {
+        val workspaceTarget = FakeTarget()
+        var identity = "workspace-1:root-1"
+        val service = SkillInstallService(
+            sourceClient = fakeSource(),
+            workspaceTargetResolver = WorkspaceSkillInstallTargetResolver { workspaceId ->
+                ResolvedWorkspaceSkillInstallTarget(
+                    workspaceId = workspaceId,
+                    workspaceName = "Android Lab",
+                    identity = identity,
+                    target = workspaceTarget,
+                )
+            },
+        )
+        val preview = service.previewInWorkspace(REQUEST_URL, "workspace-1")
+        identity = "workspace-1:root-2"
+
+        val result = service.apply(preview.previewId)
+
+        assertFalse(result.applied)
+        assertEquals(SkillInstallErrorCode.TARGET_CHANGED, result.errorCode)
+        assertTrue(workspaceTarget.installedFiles.isEmpty())
+    }
+
+    @Test
+    fun `workspace install requires an available bound workspace`() {
+        val service = SkillInstallService(
+            sourceClient = fakeSource(),
+            workspaceTargetResolver = WorkspaceSkillInstallTargetResolver { null },
+        )
+
+        expectError(SkillInstallErrorCode.WORKSPACE_REQUIRED) {
+            service.previewInWorkspace(REQUEST_URL, null)
+        }
+        expectError(SkillInstallErrorCode.TARGET_NOT_FOUND) {
+            service.previewInWorkspace(REQUEST_URL, "missing")
+        }
+    }
+
+    @Test
     fun `tampering with capability summaries cannot authorize install`() = runBlocking {
         val target = FakeTarget()
         val service = service(target)
-        val preview = service.preview(REQUEST_URL)
+        val preview = service.previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         val tampered = preview.previewId.replace("Install skill", "Silently install skill")
 
         assertNotEquals(preview.previewId, tampered)
@@ -81,7 +150,8 @@ class SkillInstallServiceTest {
             "nested/./dot.md",
         ).forEach { unsafePath ->
             expectError(SkillInstallErrorCode.UNSAFE_PATH) {
-                service(extraFiles = listOf(file(unsafePath, "bad"))).preview(REQUEST_URL)
+                service(extraFiles = listOf(file(unsafePath, "bad")))
+                    .previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
             }
         }
     }
@@ -98,7 +168,7 @@ class SkillInstallServiceTest {
                     extraFiles = listOf(
                         RemoteSkillFile("unsafe", ByteArray(0), kind),
                     )
-                ).preview(REQUEST_URL)
+                ).previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
             }
         }
     }
@@ -109,21 +179,21 @@ class SkillInstallServiceTest {
             file("references/$index.md", "x")
         }
         expectError(SkillInstallErrorCode.TOO_MANY_FILES) {
-            service(extraFiles = tooMany).preview(REQUEST_URL)
+            service(extraFiles = tooMany).previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
         expectError(SkillInstallErrorCode.FILE_TOO_LARGE) {
             service(
                 extraFiles = listOf(
                     RemoteSkillFile("large.bin", ByteArray(SkillInstallService.MAX_FILE_BYTES + 1)),
                 )
-            ).preview(REQUEST_URL)
+            ).previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
         expectError(SkillInstallErrorCode.PACKAGE_TOO_LARGE) {
             service(
                 extraFiles = (1..5).map { index ->
                     RemoteSkillFile("$index.bin", ByteArray(SkillInstallService.MAX_FILE_BYTES))
                 }
-            ).preview(REQUEST_URL)
+            ).previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
     }
 
@@ -132,14 +202,16 @@ class SkillInstallServiceTest {
         listOf("Uppercase", "has_underscore", "has.dot", "extension-management").forEach { name ->
             val expected = SkillInstallErrorCode.INVALID_SKILL_NAME
             expectError(expected) {
-                service(skillFile = skillMarkdown(name = name)).preview(REQUEST_URL)
+                service(skillFile = skillMarkdown(name = name))
+                    .previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
             }
         }
         expectError(SkillInstallErrorCode.INVALID_SKILL_FILE) {
-            service(skillFile = skillMarkdown(allowedTools = "Read <script>")).preview(REQUEST_URL)
+            service(skillFile = skillMarkdown(allowedTools = "Read <script>"))
+                .previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
         expectError(SkillInstallErrorCode.INVALID_SKILL_FILE) {
-            service(skillFile = "No frontmatter").preview(REQUEST_URL)
+            service(skillFile = "No frontmatter").previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
     }
 
@@ -147,12 +219,12 @@ class SkillInstallServiceTest {
     fun `existing skill is rejected both before and after preview`() = runBlocking {
         val existing = FakeTarget(existing = true)
         expectError(SkillInstallErrorCode.CONFLICT) {
-            service(existing).preview(REQUEST_URL)
+            service(existing).previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
 
         val raced = FakeTarget()
         val service = service(raced)
-        val preview = service.preview(REQUEST_URL)
+        val preview = service.previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         raced.existing = true
         val result = service.apply(preview.previewId)
 
@@ -167,10 +239,10 @@ class SkillInstallServiceTest {
         val target = FakeTarget()
         val service = SkillInstallService(
             sourceClient = fakeSource(),
-            target = target,
+            workspaceTargetResolver = resolver(target),
             currentTimeMillis = { now },
         )
-        val preview = service.preview(REQUEST_URL)
+        val preview = service.previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         now += 11 * 60 * 1000L
 
         val result = service.apply(preview.previewId)
@@ -185,18 +257,19 @@ class SkillInstallServiceTest {
         expectError(SkillInstallErrorCode.INVALID_SOURCE) {
             service(
                 source = source().copy(requestedUrl = "https://skills.sh/someone-else/repo/skill")
-            ).preview(REQUEST_URL)
+            ).previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
         expectError(SkillInstallErrorCode.INVALID_SOURCE) {
-            service(source = source().copy(revision = "main")).preview(REQUEST_URL)
+            service(source = source().copy(revision = "main"))
+                .previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
         expectError(SkillInstallErrorCode.INVALID_SOURCE) {
             service(
                 source = source().copy(canonicalUrl = "https://github.com/o/r?token=secret")
-            ).preview(REQUEST_URL)
+            ).previewInWorkspace(REQUEST_URL, WORKSPACE_ID)
         }
         expectError(SkillInstallErrorCode.INVALID_SOURCE) {
-            service().preview("http://skills.sh/o/r/skill")
+            service().previewInWorkspace("http://skills.sh/o/r/skill", WORKSPACE_ID)
         }
     }
 
@@ -207,8 +280,17 @@ class SkillInstallServiceTest {
         extraFiles: List<RemoteSkillFile> = emptyList(),
     ) = SkillInstallService(
         sourceClient = fakeSource(source, skillFile, extraFiles),
-        target = target,
+        workspaceTargetResolver = resolver(target),
     )
+
+    private fun resolver(target: FakeTarget) = WorkspaceSkillInstallTargetResolver { workspaceId ->
+        ResolvedWorkspaceSkillInstallTarget(
+            workspaceId = workspaceId,
+            workspaceName = "Test Workspace",
+            identity = "$workspaceId:root",
+            target = target,
+        )
+    }
 
     private fun fakeSource(
         source: VerifiedSkillSource = source(),
@@ -279,6 +361,7 @@ class SkillInstallServiceTest {
 
     private companion object {
         const val REQUEST_URL = "https://skills.sh/example/skills/safe-skill"
+        const val WORKSPACE_ID = "workspace-1"
         const val COMMIT = "0123456789abcdef0123456789abcdef01234567"
     }
 }

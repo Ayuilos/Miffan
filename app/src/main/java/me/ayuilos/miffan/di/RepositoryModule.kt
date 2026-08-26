@@ -16,8 +16,8 @@ import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.WorkspaceNetworkBroker
 import me.ayuilos.miffan.data.skills.install.RemoteSkillSourceClient
 import me.ayuilos.miffan.data.skills.install.SkillInstallService
-import me.ayuilos.miffan.data.skills.install.SkillInstallTarget
-import me.ayuilos.miffan.data.skills.install.SkillManagerInstallTarget
+import me.ayuilos.miffan.data.skills.install.RepositoryWorkspaceSkillInstallTargetResolver
+import me.ayuilos.miffan.data.skills.install.WorkspaceSkillInstallTargetResolver
 import me.ayuilos.miffan.data.skills.source.GitHubRemoteSkillSourceClient
 import me.ayuilos.miffan.data.skills.source.SkillShCatalogClient
 import me.rerere.workspace.AndroidPageSize
@@ -66,12 +66,6 @@ val repositoryModule = module {
             // tool_outputs 进一步按 workspace root 分区，避免工作区之间读取彼此的结果。
             bindMounts = listOf(
                 WorkspaceBindMount(
-                    source = File(context.filesDir, FileFolders.SKILLS).apply { mkdirs() },
-                    target = "/skills",
-                    exposeToShell = false,
-                    writableByTools = false,
-                ),
-                WorkspaceBindMount(
                     source = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() },
                     target = "/tool_outputs",
                     exposeToShell = false,
@@ -106,7 +100,7 @@ val repositoryModule = module {
     }
 
     single {
-        SkillManager(get(), get())
+        SkillManager(get(), get(), get())
     }
 
     single {
@@ -117,18 +111,18 @@ val repositoryModule = module {
         GitHubRemoteSkillSourceClient(get<OkHttpClient>(), get<Json>())
     }
 
-    single<SkillInstallTarget> {
-        SkillManagerInstallTarget(get())
+    single<WorkspaceSkillInstallTargetResolver> {
+        RepositoryWorkspaceSkillInstallTargetResolver(get(), get())
     }
 
     single {
         SkillInstallService(
             sourceClient = get(),
-            target = get(),
+            workspaceTargetResolver = get(),
         )
     }
 
     single {
-        ExtensionManagementService(get(), get(), get())
+        ExtensionManagementService(get(), get())
     }
 }

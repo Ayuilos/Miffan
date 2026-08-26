@@ -3,15 +3,19 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.files.SkillManager
+import me.ayuilos.miffan.data.files.SkillMetadata
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
@@ -22,6 +26,7 @@ import me.rerere.workspace.WorkspaceStorageArea
 class WorkspaceDetailVM(
     private val id: String,
     private val repository: WorkspaceRepository,
+    private val skillManager: SkillManager,
 ) : ViewModel() {
     private val _state = MutableStateFlow(WorkspaceDetailState())
     val state = _state.asStateFlow()
@@ -36,7 +41,6 @@ class WorkspaceDetailVM(
     val installError = _installError.asStateFlow()
 
     init {
-        loadWorkspace()
         refresh()
     }
 
@@ -72,6 +76,7 @@ class WorkspaceDetailVM(
     }
 
     fun refresh() {
+        loadWorkspace()
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             runCatching {
@@ -92,6 +97,19 @@ class WorkspaceDetailVM(
                 }
             }
         }
+    }
+
+    fun openWorkspaceSkill(skill: SkillMetadata) {
+        if (skill.workspaceId != id) return
+        _state.update {
+            it.copy(
+                area = WorkspaceStorageArea.FILES,
+                path = "${SkillManager.WORKSPACE_SKILLS_PATH}/${skill.skillDir.name}",
+                entries = emptyList(),
+                error = null,
+            )
+        }
+        refresh()
     }
 
     fun delete(entry: WorkspaceFileEntry) {
@@ -185,7 +203,6 @@ class WorkspaceDetailVM(
                 repository.installRootfs(workspace.id) { progress ->
                     _installProgress.value = progress
                 }
-                loadWorkspace()
                 refresh()
             } catch (e: CancellationException) {
                 throw e
@@ -249,7 +266,17 @@ class WorkspaceDetailVM(
     private fun loadWorkspace() {
         viewModelScope.launch {
             val workspace = repository.getById(id)
-            _state.update { it.copy(workspace = workspace) }
+            val skills = if (workspace == null) {
+                emptyList()
+            } else {
+                withContext(Dispatchers.IO) {
+                    skillManager.listWorkspaceSkills(
+                        workspaceId = workspace.id,
+                        workspaceRoot = workspace.root,
+                    )
+                }
+            }
+            _state.update { it.copy(workspace = workspace, skills = skills) }
         }
     }
 }
@@ -259,6 +286,7 @@ data class WorkspaceDetailState(
     val area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
     val path: String = "",
     val entries: List<WorkspaceFileEntry> = emptyList(),
+    val skills: List<SkillMetadata> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
 )
