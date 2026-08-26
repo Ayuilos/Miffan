@@ -20,13 +20,11 @@
   <string name="assistant_extensions_page_empty_lorebooks">没有世界书，前往提示词管理创建</string>
   <string name="assistant_extensions_page_empty_mode_injections">没有模式注入，前往提示词管理创建</string>
   <string name="assistant_extensions_page_empty_quick_messages">暂无快捷消息，请在扩展中创建</string>
-  <string name="assistant_extensions_page_empty_skills">没有可用的 Skill，前往扩展管理安装</string>
   <string name="assistant_extensions_page_goto_extensions">前往扩展管理</string>
   <string name="assistant_extensions_page_goto_prompts">前往提示词管理</string>
   <string name="assistant_extensions_page_tab_lorebooks">世界书</string>
   <string name="assistant_extensions_page_tab_mode_injections">模式注入</string>
   <string name="assistant_extensions_page_tab_quick_messages">快捷消息</string>
-  <string name="assistant_extensions_page_tab_skills">Skills</string>
   <string name="assistant_extensions_page_title">扩展管理</string>
   <string name="assistant_importer_import_failed">导入失败</string>
   <string name="assistant_importer_import_tavern_json">导入酒馆角色卡 (JSON)</string>
@@ -350,6 +348,8 @@
   <string name="export_to_file">导出到文件</string>
   <string name="export_to_file_desc">保存为JSON文件</string>
   <string name="extension_content_manage">管理</string>
+  <string name="skill_status_workspace_automatic">工作区 Skill · 自动可用</string>
+  <string name="skill_status_workspace_required">需要已就绪的工作区</string>
   <string name="extension_content_unnamed">未命名</string>
   <string name="extension_content_unnamed_lorebook">未命名Lorebook</string>
   <string name="extension_selector_go_to_extensions">管理扩展</string>
@@ -1185,6 +1185,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_title">工作区详情</string>
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">文件</string>
+  <string name="workspace_detail_tab_skills">Skills</string>
+  <string name="workspace_skills_title">工作区 Skills</string>
+  <string name="workspace_skills_description">此目录中的 Skills 属于当前工作区，并自动提供给绑定该工作区的助手。</string>
+  <string name="workspace_skills_empty">尚未发现工作区 Skill。请在上方路径中添加包含 SKILL.md 的 Skill 目录。</string>
+  <string name="workspace_skills_automatic">在此工作区中自动可用</string>
+  <string name="workspace_skills_requires_shell">需要工作区 Shell 就绪</string>
   <string name="workspace_detail_import_file">导入文件</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 安装失败</string>
   <string name="workspace_detail_delete_directory">删除目录</string>

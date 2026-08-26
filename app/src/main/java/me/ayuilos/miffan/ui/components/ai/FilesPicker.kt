@@ -178,7 +178,7 @@ internal fun FilesPicker(
             )
         }
 
-        // Extensions (Quick Messages + Prompt Injections + Skills)
+        // Extensions (Quick Messages + Prompt Injections)
         val modeAndLorebookCount =
             if (assistant.allowConversationPromptInjection) {
                 conversation.modeInjectionIds.size + conversation.lorebookIds.size
@@ -187,8 +187,7 @@ internal fun FilesPicker(
             }
         val activeCount =
             assistant.quickMessageIds.size +
-                modeAndLorebookCount +
-                assistant.enabledSkills.size
+                modeAndLorebookCount
         ListItem(
             leadingContent = {
                 Icon(
@@ -431,10 +430,6 @@ private fun InjectionQuickConfigSheet(
                 onNavigateToPrompts = {
                     onDismissAll()
                     navController.navigate(Screen.Prompts)
-                },
-                onNavigateToSkills = {
-                    onDismissAll()
-                    navController.navigate(Screen.Skills)
                 })
 
             Spacer(modifier = Modifier.height(16.dp))

@@ -189,6 +189,23 @@ class WorkspaceRepository(
         }
     }
 
+    /** Read a UTF-8 file by its absolute Rootfs path for the unified artifact preview screen. */
+    suspend fun readRootfsTextForPreview(
+        id: String,
+        path: String,
+    ): String = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        val size = manager.rootfsFileSize(workspace.root, path)
+        require(size <= MAX_PREVIEW_BYTES) {
+            "文件过大, 无法在应用内预览 (${size} bytes)"
+        }
+        ByteArrayOutputStream(size.toInt()).use { out ->
+            manager.exportRootfsFile(workspace.root, path, out)
+            out.toString(Charsets.UTF_8.name())
+        }
+    }
+
     suspend fun importFile(
         id: String,
         area: WorkspaceStorageArea,
@@ -239,6 +256,17 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
         manager.exportRootfsFile(workspace.root, path, outputStream)
+    }
+
+    /** Export a user-selected artifact without the smaller AI tool read limit. */
+    suspend fun exportRootfsArtifact(
+        id: String,
+        path: String,
+        outputStream: OutputStream,
+    ) = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.exportRootfsFile(workspace.root, path, outputStream, maxBytes = Long.MAX_VALUE)
     }
 
     /** Writes a Rootfs guest path without invoking a shell or following symbolic links. */

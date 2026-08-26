@@ -1,6 +1,5 @@
 package me.ayuilos.miffan.data.extensions
 
-import java.io.File
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.ai.mcp.McpCommonOptions
@@ -8,7 +7,6 @@ import me.ayuilos.miffan.data.ai.mcp.McpOAuthState
 import me.ayuilos.miffan.data.ai.mcp.McpServerConfig
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
-import me.ayuilos.miffan.data.files.SkillMetadata
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Lorebook
 import me.ayuilos.miffan.data.model.PromptInjection
@@ -61,7 +59,7 @@ class ExtensionManagementServiceTest {
             ),
         )
 
-        val catalog = buildExtensionCatalog(settings, emptyList(), emptyList())
+        val catalog = buildExtensionCatalog(settings, emptyList())
         val serialized = Json.encodeToString(catalog)
 
         assertEquals(serverId.toString(), catalog.mcpServers.single().id)
@@ -179,7 +177,7 @@ class ExtensionManagementServiceTest {
     }
 
     @Test
-    fun `catalog includes non-secret skill and workspace metadata`() {
+    fun `catalog includes non-secret workspace metadata`() {
         val workspaceId = Uuid.random().toString()
         val catalog = buildExtensionCatalog(
             settings = Settings(
@@ -197,15 +195,6 @@ class ExtensionManagementServiceTest {
                     Lorebook(name = "Book", description = "private-lorebook-description")
                 ),
             ),
-            skills = listOf(
-                SkillMetadata(
-                    name = "study-helper",
-                    description = "private-skill-description",
-                    compatibility = "RikkaHub",
-                    allowedTools = listOf("secret-internal-tool"),
-                    skillDir = File("/not/read/by/catalog"),
-                )
-            ),
             workspaces = listOf(
                 WorkspaceEntity(
                     id = workspaceId,
@@ -219,20 +208,16 @@ class ExtensionManagementServiceTest {
         )
         val serialized = Json.encodeToString(catalog)
 
-        assertEquals("study-helper", catalog.skills.single().name)
         assertEquals(workspaceId, catalog.workspaces.single().id)
-        assertFalse(serialized.contains("secret-internal-tool"))
         assertFalse(serialized.contains("private-root-name"))
         assertFalse(serialized.contains("secret-tool"))
         assertFalse(serialized.contains("private-quick-message-body"))
         assertFalse(serialized.contains("private-mode-injection-body"))
         assertFalse(serialized.contains("private-lorebook-description"))
-        assertFalse(serialized.contains("private-skill-description"))
     }
 
     private companion object {
         val emptyResources = ExternalResources(
-            skillNames = emptySet(),
             workspaceIds = emptySet(),
         )
     }

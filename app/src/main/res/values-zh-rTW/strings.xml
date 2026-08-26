@@ -20,13 +20,11 @@
   <string name="assistant_extensions_page_empty_lorebooks">尚無可用的 lorebook，請在 Prompts 中建立</string>
   <string name="assistant_extensions_page_empty_mode_injections">尚無可用的模式注入，請在 Prompts 中建立一個</string>
   <string name="assistant_extensions_page_empty_quick_messages">目前沒有可用的快速訊息，請在擴充功能中建立</string>
-  <string name="assistant_extensions_page_empty_skills">沒有可用的技能，請在 Extensions 中安裝一個</string>
   <string name="assistant_extensions_page_goto_extensions">前往擴充功能</string>
   <string name="assistant_extensions_page_goto_prompts">前往提示</string>
   <string name="assistant_extensions_page_tab_lorebooks">Lorebooks</string>
   <string name="assistant_extensions_page_tab_mode_injections">模式注入</string>
   <string name="assistant_extensions_page_tab_quick_messages">快速訊息</string>
-  <string name="assistant_extensions_page_tab_skills">技能</string>
   <string name="assistant_extensions_page_title">擴充功能</string>
   <string name="assistant_importer_import_failed">匯入失敗</string>
   <string name="assistant_importer_import_tavern_json">匯入酒館角色卡 (JSON)</string>
@@ -348,6 +346,8 @@
   <string name="export_to_file">匯出至檔案</string>
   <string name="export_to_file_desc">另存為 JSON 檔案</string>
   <string name="extension_content_manage">管理</string>
+  <string name="skill_status_workspace_automatic">工作區 Skill · 自動可用</string>
+  <string name="skill_status_workspace_required">需要已就緒的工作區</string>
   <string name="extension_content_unnamed">未命名</string>
   <string name="extension_content_unnamed_lorebook">未命名設定集</string>
   <string name="extension_selector_go_to_extensions">管理擴充功能</string>
@@ -1139,6 +1139,12 @@
   <string name="workspace_detail_title">工作區詳情</string>
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">檔案</string>
+  <string name="workspace_detail_tab_skills">Skills</string>
+  <string name="workspace_skills_title">工作區 Skills</string>
+  <string name="workspace_skills_description">此目錄中的 Skills 屬於目前工作區，並自動提供給綁定此工作區的助理。</string>
+  <string name="workspace_skills_empty">尚未發現工作區 Skill。請在上方路徑中新增包含 SKILL.md 的 Skill 目錄。</string>
+  <string name="workspace_skills_automatic">在此工作區中自動可用</string>
+  <string name="workspace_skills_requires_shell">需要工作區 Shell 就緒</string>
   <string name="workspace_detail_import_file">匯入檔案</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 安裝失敗</string>
   <string name="workspace_detail_delete_directory">刪除目錄</string>

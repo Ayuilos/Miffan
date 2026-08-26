@@ -3,6 +3,7 @@ package me.ayuilos.miffan.data.ai.tools
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -15,7 +16,6 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.utils.generateUnifiedDiff
 import me.rerere.workspace.GuestPath
-import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceManager
 import org.koin.java.KoinJavaComponent.getKoin
 import java.io.ByteArrayOutputStream
@@ -28,6 +28,7 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_read_file" to false,
     "workspace_write_file" to false,
     "workspace_edit_file" to false,
+    "workspace_publish_files" to false,
     WORKSPACE_SHELL_TOOL_NAME to true,
 )
 
@@ -50,6 +51,7 @@ suspend fun createWorkspaceTools(
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createFetchUrlTool(workspaceId, workspaceRepository),
+        createPublishFilesTool(workspaceId, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
     )
 }
@@ -89,7 +91,8 @@ private fun createFetchUrlTool(
         val url = params.string("url") ?: error("url is required")
         val destination = params.guestPath("destination_path")
         val entry = workspaceRepository.fetchUrl(workspaceId, url, destination.value)
-        listOf(UIMessagePart.Text(entry.toJson().toString()))
+        val artifact = entry.toWorkspaceArtifact(workspaceId, absolutePath = destination.value)
+        listOf(UIMessagePart.Text(artifact.toJson().toString()))
     },
 )
 
@@ -169,7 +172,7 @@ private fun createWriteFileTool(
         val text = params.string("text") ?: error("text is required")
         val overwrite = params["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
         val entry = workspaceRepository.writeRootfsText(workspaceId, path.value, text, overwrite)
-        listOf(UIMessagePart.Text(entry.toJson().toString()))
+        listOf(UIMessagePart.Text(entry.toWorkspaceArtifact(workspaceId).toJson().toString()))
     },
 )
 
@@ -231,7 +234,11 @@ private fun createEditFileTool(
         listOf(
             UIMessagePart.Text(
                 text = buildJsonObject {
+                    put("type", "workspace_artifact")
+                    put("workspaceId", workspaceId)
                     put("path", entry.path)
+                    put("name", entry.name)
+                    put("mimeType", workspaceMimeType(entry.name))
                     put("replacements", result.replacements)
                     if (result.strategy != ExactReplacer.name) put("matchStrategy", result.strategy)
                     put("sizeBytes", entry.sizeBytes)
@@ -356,6 +363,57 @@ private suspend fun WorkspaceRepository.readImageInRootfs(
     )
 }
 
+/**
+ * Marks existing files as user-facing artifacts after a shell command creates binary or generated
+ * output. The tool only validates and describes files; it never copies or mutates them.
+ */
+private fun createPublishFilesTool(
+    workspaceId: String,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_publish_files",
+    description = "Publish one or more existing user-facing files so the app can show them as " +
+        "previewable artifacts below the response. Use this after workspace_shell creates files " +
+        "such as reports, text/code, images, PDFs, documents, archives, audio, or video. " +
+        "Paths must be absolute Rootfs paths.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("paths", buildJsonObject {
+                    put("type", "array")
+                    put("description", "Absolute Rootfs paths of user-facing output files")
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                })
+            },
+            required = listOf("paths"),
+        )
+    },
+    needsApproval = { false },
+    execute = { input ->
+        val paths = input.jsonObject["paths"]?.jsonArray
+            ?.map { GuestPath.parse(it.jsonPrimitive.content, "paths") }
+            ?.distinct()
+            ?: error("paths is required")
+        require(paths.isNotEmpty()) { "paths must not be empty" }
+        require(paths.size <= MAX_PUBLISHED_ARTIFACTS) {
+            "Too many artifacts: ${paths.size}, max $MAX_PUBLISHED_ARTIFACTS"
+        }
+        val artifacts = paths.map { path ->
+            val size = workspaceRepository.rootfsFileSize(workspaceId, path.value)
+            WorkspaceArtifact(
+                workspaceId = workspaceId,
+                path = path.value,
+                name = path.name,
+                mimeType = workspaceMimeType(path.name),
+                sizeBytes = size,
+            )
+        }
+        listOf(UIMessagePart.Text(workspaceArtifactsJson(artifacts).toString()))
+    },
+)
+
 private fun kotlinx.serialization.json.JsonObject.guestPath(name: String): GuestPath =
     GuestPath.parse(string(name) ?: error("$name is required"), name)
 
@@ -387,10 +445,4 @@ private fun JsonObjectBuilder.putPathProperty(required: Boolean) {
     })
 }
 
-private fun WorkspaceFileEntry.toJson() = buildJsonObject {
-    put("path", path)
-    put("name", name)
-    put("isDirectory", isDirectory)
-    put("sizeBytes", sizeBytes)
-    put("updatedAt", updatedAt)
-}
+private const val MAX_PUBLISHED_ARTIFACTS = 20
