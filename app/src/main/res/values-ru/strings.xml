@@ -20,13 +20,11 @@
   <string name="assistant_extensions_page_empty_lorebooks">Нет доступных lorebooks, создайте один в Prompts</string>
   <string name="assistant_extensions_page_empty_mode_injections">Нет доступных внедрений режима, создайте их в Prompts</string>
   <string name="assistant_extensions_page_empty_quick_messages">Нет доступных быстрых сообщений, создайте одно в Расширениях</string>
-  <string name="assistant_extensions_page_empty_skills">Навыки отсутствуют, установите один в Extensions</string>
   <string name="assistant_extensions_page_goto_extensions">Перейти к расширениям</string>
   <string name="assistant_extensions_page_goto_prompts">Перейти к подсказкам</string>
   <string name="assistant_extensions_page_tab_lorebooks">Лорбуки</string>
   <string name="assistant_extensions_page_tab_mode_injections">Внедрения режима</string>
   <string name="assistant_extensions_page_tab_quick_messages">Быстрые сообщения</string>
-  <string name="assistant_extensions_page_tab_skills">Навыки</string>
   <string name="assistant_extensions_page_title">Расширения</string>
   <string name="assistant_importer_import_failed">Импорт не удался</string>
   <string name="assistant_importer_import_tavern_json">Импортировать карточку персонажа Tavern (JSON)</string>
@@ -232,6 +230,9 @@
   <string name="chat_message_add_favorite">Добавить в избранное</string>
   <string name="chat_message_remove_favorite">Удалить из избранного</string>
   <string name="chat_message_tool_approve">Одобрить</string>
+  <string name="chat_message_tool_pending_count">Ожидают одобрения инструменты: %d</string>
+  <string name="chat_message_shell_always_allow">Всегда разрешать Shell в этой рабочей области</string>
+  <string name="chat_message_shell_always_allow_desc">Одобрить %d ожидающих команд Shell и больше не запрашивать подтверждение Shell в этой рабочей области.</string>
   <string name="chat_message_tool_ask_questions">Задать %d вопросов</string>
   <string name="chat_message_tool_call_generic">Вызван инструмент %1$s</string>
   <string name="chat_message_tool_call_label">Вызван инструмент %1$s</string>
@@ -345,6 +346,8 @@
   <string name="export_to_file">Экспорт в файл</string>
   <string name="export_to_file_desc">Сохранить как файл JSON</string>
   <string name="extension_content_manage">Управлять</string>
+  <string name="skill_status_workspace_automatic">Навык рабочего пространства · доступен автоматически</string>
+  <string name="skill_status_workspace_required">Требуется готовое рабочее пространство</string>
   <string name="extension_content_unnamed">Без имени</string>
   <string name="extension_content_unnamed_lorebook">Безымянная книга знаний</string>
   <string name="extension_selector_go_to_extensions">Управление расширениями</string>
@@ -1138,6 +1141,12 @@
   <string name="workspace_detail_title">Детали рабочего пространства</string>
   <string name="workspace_detail_tab_basic">Основные</string>
   <string name="workspace_detail_tab_files">Файлы</string>
+  <string name="workspace_detail_tab_skills">Навыки</string>
+  <string name="workspace_skills_title">Навыки рабочего пространства</string>
+  <string name="workspace_skills_description">Навыки в этом каталоге принадлежат рабочему пространству и автоматически доступны привязанным к нему ассистентам.</string>
+  <string name="workspace_skills_empty">Навыки рабочего пространства не найдены. Добавьте по указанному выше пути каталог навыка с файлом SKILL.md.</string>
+  <string name="workspace_skills_automatic">Автоматически доступен в этом рабочем пространстве</string>
+  <string name="workspace_skills_requires_shell">Требуется готовая оболочка рабочего пространства</string>
   <string name="workspace_detail_import_file">Импортировать файл</string>
   <string name="workspace_detail_rootfs_install_failed">Сбой установки Rootfs</string>
   <string name="workspace_detail_delete_directory">Удалить папку</string>

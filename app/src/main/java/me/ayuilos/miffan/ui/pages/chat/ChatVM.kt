@@ -251,6 +251,11 @@ class ChatVM(
         chatService.handleToolApproval(_conversationId, toolCallId, approved = true, answer = answer)
     }
 
+    fun alwaysAllowWorkspaceShell() {
+        analytics.logEvent("ai_workspace_shell_always_allow")
+        chatService.alwaysAllowWorkspaceShell(_conversationId)
+    }
+
     fun stopGeneration() {
         viewModelScope.launch {
             chatService.stopGeneration(_conversationId)

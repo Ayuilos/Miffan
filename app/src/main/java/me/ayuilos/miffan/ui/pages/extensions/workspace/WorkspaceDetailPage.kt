@@ -2,7 +2,6 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace
 
 import android.content.Intent
 import android.provider.OpenableColumns
-import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -62,16 +63,18 @@ import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.MoreVertical
+import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.tools.resolveWorkspaceToolApproval
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.files.SkillManager
+import me.ayuilos.miffan.data.files.SkillMetadata
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.nav.BackButton
-import me.ayuilos.miffan.ui.components.ui.ImagePreviewDialog
 import me.ayuilos.miffan.ui.components.ui.MiffanConfirmDialog
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.theme.CustomColors
@@ -86,17 +89,21 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 @Composable
-fun WorkspaceDetailPage(id: String) {
+fun WorkspaceDetailPage(
+    id: String,
+    initialArea: String? = null,
+    initialPath: String? = null,
+    openFiles: Boolean = false,
+) {
     val navController = LocalNavController.current
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState { 2 }
+    val pagerState = rememberPagerState { 3 }
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
-    var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -119,6 +126,15 @@ fun WorkspaceDetailPage(id: String) {
         if (uri == null) return@rememberLauncherForActivityResult
         val outputStream = context.contentResolver.openOutputStream(uri) ?: return@rememberLauncherForActivityResult
         vm.exportFile(entry, outputStream)
+    }
+
+    LaunchedEffect(id, initialArea, initialPath, openFiles) {
+        if (initialArea != null || initialPath != null) {
+            val area = runCatching { WorkspaceStorageArea.valueOf(initialArea.orEmpty()) }
+                .getOrDefault(WorkspaceStorageArea.FILES)
+            vm.navigateTo(area, initialPath.orEmpty())
+        }
+        if (openFiles) pagerState.scrollToPage(1)
     }
 
     BackHandler(enabled = pagerState.currentPage == 1 && state.path.isNotBlank()) {
@@ -171,6 +187,12 @@ fun WorkspaceDetailPage(id: String) {
                     icon = { Icon(HugeIcons.File02, contentDescription = null) },
                     onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                 )
+                NavigationBarItem(
+                    selected = pagerState.currentPage == 2,
+                    label = { Text(stringResource(R.string.workspace_detail_tab_skills)) },
+                    icon = { Icon(HugeIcons.Puzzle, contentDescription = null) },
+                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                )
             }
         },
         containerColor = CustomColors.topBarColors.containerColor,
@@ -198,34 +220,12 @@ fun WorkspaceDetailPage(id: String) {
                         when {
                             entry.isDirectory -> vm.open(entry)
 
-                            else -> when (entry.detectFileType()) {
-                                WorkspaceFileType.TEXT -> navController.navigate(
-                                    Screen.WorkspaceFileEditor(id, state.area.name, entry.path)
-                                )
-
-                                WorkspaceFileType.IMAGE -> vm.exportToCacheFile(entry, context.cacheDir) { file ->
-                                    // 传绝对路径 (而非 content:// URI): Coil 可直接加载,
-                                    // 预览弹窗的保存按钮 saveMessageImage 只认 "/" 开头路径, content URI 会报错
-                                    previewImageUri = file.absolutePath
+                            else -> {
+                                val guestPath = when (state.area) {
+                                    WorkspaceStorageArea.FILES -> "/workspace/${entry.path.trimStart('/')}"
+                                    WorkspaceStorageArea.LINUX -> "/${entry.path.trimStart('/')}"
                                 }
-
-                                WorkspaceFileType.OTHER -> vm.exportToCacheFile(entry, context.cacheDir) { file ->
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file,
-                                    )
-                                    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
-                                        file.extension.lowercase()
-                                    ) ?: "*/*"
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(uri, mime)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    runCatching {
-                                        context.startActivity(Intent.createChooser(intent, null))
-                                    }
-                                }
+                                navController.navigate(Screen.WorkspaceFilePreview(id, guestPath))
                             }
                         }
                     },
@@ -248,6 +248,15 @@ fun WorkspaceDetailPage(id: String) {
                             }
                             context.startActivity(Intent.createChooser(intent, null))
                         }
+                    },
+                )
+
+                2 -> WorkspaceSkillsPage(
+                    skills = state.skills,
+                    shellReady = state.workspace?.shellStatus == WorkspaceShellStatus.READY.name,
+                    onOpenSkill = { skill ->
+                        vm.openWorkspaceSkill(skill)
+                        scope.launch { pagerState.animateScrollToPage(1) }
                     },
                 )
             }
@@ -280,13 +289,6 @@ fun WorkspaceDetailPage(id: String) {
         )
     }
 
-    previewImageUri?.let { uri ->
-        ImagePreviewDialog(
-            images = listOf(uri),
-            onDismissRequest = { previewImageUri = null },
-        )
-    }
-
     deleteTarget?.let { entry ->
         MiffanConfirmDialog(
             show = true,
@@ -300,6 +302,113 @@ fun WorkspaceDetailPage(id: String) {
             onDismiss = { deleteTarget = null },
         ) {
             Text(stringResource(R.string.workspace_detail_will_delete, entry.path))
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceSkillsPage(
+    skills: List<SkillMetadata>,
+    shellReady: Boolean,
+    onOpenSkill: (SkillMetadata) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CustomColors.cardColorsOnSurfaceContainer,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.workspace_skills_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.workspace_skills_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "/workspace/${SkillManager.WORKSPACE_SKILLS_PATH}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+
+        if (skills.isEmpty()) {
+            item {
+                Text(
+                    text = stringResource(R.string.workspace_skills_empty),
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        items(skills, key = { it.skillDir.absolutePath }) { skill ->
+            val available = !skill.requiresWorkspace || shellReady
+            Card(
+                onClick = { onOpenSkill(skill) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CustomColors.cardColorsOnSurfaceContainer,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Puzzle,
+                        contentDescription = null,
+                        tint = if (available) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(text = skill.name, style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = skill.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = if (available) {
+                                stringResource(R.string.workspace_skills_automatic)
+                            } else {
+                                stringResource(R.string.workspace_skills_requires_shell)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (available) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

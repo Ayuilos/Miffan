@@ -2,6 +2,8 @@ package me.ayuilos.miffan.ui.components.message
 
 import androidx.compose.ui.util.fastForEachIndexed
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.ToolApprovalState
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 
 /**
  * 思考步骤类型，用于分组 Reasoning、客户端 Tool 和 ServerTool
@@ -27,6 +29,19 @@ sealed interface MessagePartBlock {
     data class ThinkingBlock(val steps: List<ThinkingStep>) : MessagePartBlock
     data class ContentBlock(val part: UIMessagePart, val index: Int) : MessagePartBlock
 }
+
+internal fun List<ThinkingStep>.pendingToolApprovalCount(): Int = count { step ->
+    step is ThinkingStep.ToolStep && step.tool.approvalState is ToolApprovalState.Pending
+}
+
+internal fun List<ThinkingStep>.pendingWorkspaceShellApprovalCount(): Int = count { step ->
+    step is ThinkingStep.ToolStep &&
+        step.tool.toolName == WORKSPACE_SHELL_TOOL_NAME &&
+        step.tool.approvalState is ToolApprovalState.Pending
+}
+
+internal fun List<ThinkingStep>.approvalAwareCollapsedVisibleCount(defaultCount: Int = 2): Int =
+    if (pendingToolApprovalCount() > 0) size else defaultCount
 
 /**
  * 将 parts 分组成 ThinkingBlock 和 ContentBlock

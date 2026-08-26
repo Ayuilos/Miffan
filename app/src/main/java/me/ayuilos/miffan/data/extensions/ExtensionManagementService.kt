@@ -9,8 +9,6 @@ import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
-import me.ayuilos.miffan.data.files.SkillManager
-import me.ayuilos.miffan.data.files.SkillMetadata
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.InjectionPosition
 import me.ayuilos.miffan.data.model.PromptInjection
@@ -27,16 +25,14 @@ import kotlin.uuid.Uuid
  */
 class ExtensionManagementService(
     private val settingsStore: SettingsStore,
-    private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
 ) {
     private val pendingPreviews = ConcurrentHashMap<String, PendingExtensionPreview>()
 
     suspend fun catalog(): ExtensionCatalog {
         val settings = settingsStore.settingsFlow.value
-        val skills = skillManager.listSkills()
         val workspaces = workspaceRepository.listFlow().first()
-        return buildExtensionCatalog(settings, skills, workspaces)
+        return buildExtensionCatalog(settings, workspaces)
     }
 
     suspend fun preview(changes: List<ExtensionChange>): ExtensionChangePreview {
@@ -145,7 +141,6 @@ class ExtensionManagementService(
     }
 
     private suspend fun currentExternalResources(): ExternalResources = ExternalResources(
-        skillNames = skillManager.listSkills().mapTo(hashSetOf()) { it.name },
         workspaceIds = workspaceRepository.listFlow().first().mapTo(hashSetOf()) { it.id },
     )
 
@@ -178,7 +173,6 @@ private class ExtensionValidationException(
 ) : IllegalArgumentException(validationErrors.joinToString("; "))
 
 internal data class ExternalResources(
-    val skillNames: Set<String>,
     val workspaceIds: Set<String>,
 )
 
@@ -420,10 +414,6 @@ internal object ExtensionChangeProcessor {
         rawId: String,
         resources: ExternalResources,
     ): String = when (type) {
-        ExtensionResourceType.SKILL -> rawId.also {
-            require(it in resources.skillNames) { "Skill not found: $it" }
-        }
-
         ExtensionResourceType.QUICK_MESSAGE -> parseUuid(rawId, "quick message id").also { id ->
             require(settings.quickMessages.any { it.id == id }) { "Quick message not found: $id" }
         }.toString()
@@ -446,10 +436,6 @@ internal object ExtensionChangeProcessor {
         resourceId: String,
         enabled: Boolean,
     ): Assistant = when (type) {
-        ExtensionResourceType.SKILL -> copy(
-            enabledSkills = enabledSkills.withMembership(resourceId, enabled)
-        )
-
         ExtensionResourceType.QUICK_MESSAGE -> copy(
             quickMessageIds = quickMessageIds.withMembership(Uuid.parse(resourceId), enabled)
         )
@@ -476,7 +462,6 @@ private data class AppliedOperation(
 
 internal fun buildExtensionCatalog(
     settings: Settings,
-    skills: List<SkillMetadata>,
     workspaces: List<WorkspaceEntity>,
 ): ExtensionCatalog = ExtensionCatalog(
     assistants = settings.assistants.map { assistant ->
@@ -486,7 +471,6 @@ internal fun buildExtensionCatalog(
             quickMessageIds = assistant.quickMessageIds.map { it.toString() }.sorted(),
             modeInjectionIds = assistant.modeInjectionIds.map { it.toString() }.sorted(),
             lorebookIds = assistant.lorebookIds.map { it.toString() }.sorted(),
-            skillNames = assistant.enabledSkills.sorted(),
             mcpServerIds = assistant.mcpServers.map { it.toString() }.sorted(),
             localToolIds = assistant.localTools.mapNotNull(::localToolId).sorted(),
             externalWebSearchEnabled = assistant.enableWebSearch,
@@ -516,12 +500,6 @@ internal fun buildExtensionCatalog(
             name = item.name,
             enabled = item.enabled,
             entryCount = item.entries.size,
-        )
-    },
-    skills = skills.sortedBy { it.name }.map { skill ->
-        SkillCatalogEntry(
-            name = skill.name,
-            compatibility = skill.compatibility,
         )
     },
     mcpServers = settings.mcpServers.map { server ->
@@ -645,7 +623,6 @@ private fun ExtensionResourceType.catalogId(): String = when (this) {
     ExtensionResourceType.QUICK_MESSAGE -> "quick_message"
     ExtensionResourceType.MODE_INJECTION -> "mode_injection"
     ExtensionResourceType.LOREBOOK -> "lorebook"
-    ExtensionResourceType.SKILL -> "skill"
     ExtensionResourceType.MCP -> "mcp"
 }
 

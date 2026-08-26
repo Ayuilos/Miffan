@@ -29,6 +29,7 @@ import me.ayuilos.miffan.di.dataSourceModule
 import me.ayuilos.miffan.di.repositoryModule
 import me.ayuilos.miffan.di.viewModelModule
 import me.ayuilos.miffan.data.files.FilesManager
+import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.service.WebServerService
 import me.ayuilos.miffan.utils.CrashHandler
@@ -79,6 +80,9 @@ class MiffanApp : Application() {
         // check workspace integrity (mark workspaces with missing files as broken after backup restore)
         checkWorkspaceIntegrity()
 
+        // One-way compatibility copy from legacy global bindings into their bound workspaces.
+        migrateLegacySkills()
+
         // sync upload files to DB
         syncManagedFiles()
 
@@ -127,6 +131,25 @@ class MiffanApp : Application() {
                 get<WorkspaceRepository>().checkIntegrity()
             }.onFailure {
                 Log.e(TAG, "checkWorkspaceIntegrity failed", it)
+            }
+        }
+    }
+
+    private fun migrateLegacySkills() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val settings = get<SettingsStore>().settingsFlow.first()
+                val workspaces = get<WorkspaceRepository>().listFlow().first().associateBy { it.id }
+                val skillManager = get<SkillManager>()
+                settings.assistants.forEach { assistant ->
+                    val workspace = assistant.workspaceId
+                        ?.toString()
+                        ?.let(workspaces::get)
+                        ?: return@forEach
+                    skillManager.migrateLegacySkillsToWorkspace(assistant, workspace)
+                }
+            }.onFailure {
+                Log.e(TAG, "migrateLegacySkills failed", it)
             }
         }
     }

@@ -13,7 +13,6 @@ data class ExtensionCatalog(
     val quickMessages: List<QuickMessageCatalogEntry>,
     val modeInjections: List<ModeInjectionCatalogEntry>,
     val lorebooks: List<LorebookCatalogEntry>,
-    val skills: List<SkillCatalogEntry>,
     val mcpServers: List<McpServerCatalogEntry>,
     val localTools: List<LocalToolCatalogEntry>,
     val workspaces: List<WorkspaceCatalogEntry>,
@@ -26,7 +25,6 @@ data class ExtensionAssistantCatalogEntry(
     val quickMessageIds: List<String>,
     val modeInjectionIds: List<String>,
     val lorebookIds: List<String>,
-    val skillNames: List<String>,
     val mcpServerIds: List<String>,
     val localToolIds: List<String>,
     val externalWebSearchEnabled: Boolean,
@@ -56,12 +54,6 @@ data class LorebookCatalogEntry(
     val name: String,
     val enabled: Boolean,
     val entryCount: Int,
-)
-
-@Serializable
-data class SkillCatalogEntry(
-    val name: String,
-    val compatibility: String? = null,
 )
 
 /**
@@ -105,9 +97,6 @@ enum class ExtensionResourceType {
     @SerialName("lorebook")
     LOREBOOK,
 
-    @SerialName("skill")
-    SKILL,
-
     @SerialName("mcp")
     MCP,
 }
@@ -149,7 +138,7 @@ sealed class ExtensionChange {
     data class SetResourceBinding(
         val assistantId: String,
         val resourceType: ExtensionResourceType,
-        /** UUID for settings resources; the stable skill name for a skill. */
+        /** UUID for an existing settings resource. */
         val resourceId: String,
         val enabled: Boolean,
     ) : ExtensionChange()

@@ -27,7 +27,6 @@ import com.composables.icons.lucide.Lucide
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Link01
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.data.files.SkillMetadata
 import me.ayuilos.miffan.data.model.Lorebook
 import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
@@ -96,47 +95,6 @@ fun LorebooksContent(
                     Switch(
                         checked = selectedIds.contains(lorebook.id),
                         onCheckedChange = { checked -> onToggle(lorebook.id, checked) }
-                    )
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            )
-        }
-        if (onManage != null) {
-            item {
-                ManageButton(onClick = onManage)
-            }
-        }
-    }
-}
-
-@Composable
-fun SkillsContent(
-    skills: List<SkillMetadata>,
-    enabledSkills: Set<String>,
-    onToggle: (String, Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    onManage: (() -> Unit)? = null,
-) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        items(skills, key = { it.skillDir.absolutePath }) { skill ->
-            ListItem(
-                headlineContent = { Text(skill.name) },
-                supportingContent = if (skill.description.isNotBlank()) {
-                    {
-                        Text(
-                            text = skill.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                } else null,
-                trailingContent = {
-                    Switch(
-                        checked = enabledSkills.contains(skill.name),
-                        onCheckedChange = { checked -> onToggle(skill.name, checked) }
                     )
                 },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),

@@ -91,11 +91,10 @@ import me.ayuilos.miffan.ui.pages.debug.DebugPage
 import me.ayuilos.miffan.ui.pages.extensions.ExtensionsPage
 import me.ayuilos.miffan.ui.pages.extensions.PromptPage
 import me.ayuilos.miffan.ui.pages.extensions.QuickMessagesPage
-import me.ayuilos.miffan.ui.pages.extensions.skills.SkillDetailPage
-import me.ayuilos.miffan.ui.pages.extensions.skills.SkillsPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspacePage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceDetailPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceFileEditorPage
+import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceFilePreviewPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceTerminalPage
 import me.rerere.workspace.WorkspaceStorageArea
 import me.ayuilos.miffan.ui.pages.favorite.FavoritePage
@@ -495,16 +494,17 @@ class RouteActivity : ComponentActivity() {
                                 PromptPage()
                             }
 
-                            entry<Screen.Skills> {
-                                SkillsPage()
-                            }
-
                             entry<Screen.Workspaces> {
                                 WorkspacePage()
                             }
 
                             entry<Screen.WorkspaceDetail> { key ->
-                                WorkspaceDetailPage(key.id)
+                                WorkspaceDetailPage(
+                                    id = key.id,
+                                    initialArea = key.area,
+                                    initialPath = key.path,
+                                    openFiles = key.openFiles,
+                                )
                             }
 
                             entry<Screen.WorkspaceTerminal> { key ->
@@ -519,8 +519,11 @@ class RouteActivity : ComponentActivity() {
                                 )
                             }
 
-                            entry<Screen.SkillDetail> { key ->
-                                SkillDetailPage(skillName = key.skillName)
+                            entry<Screen.WorkspaceFilePreview> { key ->
+                                WorkspaceFilePreviewPage(
+                                    id = key.id,
+                                    path = key.path,
+                                )
                             }
 
                             entry<Screen.MessageSearch> {
@@ -710,13 +713,15 @@ sealed interface Screen : NavKey {
     data object Prompts : Screen
 
     @Serializable
-    data object Skills : Screen
-
-    @Serializable
     data object Workspaces : Screen
 
     @Serializable
-    data class WorkspaceDetail(val id: String) : Screen
+    data class WorkspaceDetail(
+        val id: String,
+        val area: String? = null,
+        val path: String? = null,
+        val openFiles: Boolean = false,
+    ) : Screen
 
     @Serializable
     data class WorkspaceTerminal(val id: String) : Screen
@@ -725,7 +730,7 @@ sealed interface Screen : NavKey {
     data class WorkspaceFileEditor(val id: String, val area: String, val path: String) : Screen
 
     @Serializable
-    data class SkillDetail(val skillName: String) : Screen
+    data class WorkspaceFilePreview(val id: String, val path: String) : Screen
 
     @Serializable
     data object MessageSearch : Screen

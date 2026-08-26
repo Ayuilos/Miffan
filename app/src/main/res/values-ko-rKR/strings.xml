@@ -20,13 +20,11 @@
   <string name="assistant_extensions_page_empty_lorebooks">사용 가능한 롤북이 없습니다. 프롬프트에서 생성하세요</string>
   <string name="assistant_extensions_page_empty_mode_injections">사용 가능한 모드 삽입이 없습니다. 프롬프트에서 생성하세요.</string>
   <string name="assistant_extensions_page_empty_quick_messages">빠른 메시지가 없습니다. 확장 기능에서 만들어 주세요.</string>
-  <string name="assistant_extensions_page_empty_skills">사용 가능한 스킬이 없습니다. Extensions에서 설치하세요.</string>
   <string name="assistant_extensions_page_goto_extensions">확장 프로그램으로 이동</string>
   <string name="assistant_extensions_page_goto_prompts">프롬프트로 이동</string>
   <string name="assistant_extensions_page_tab_lorebooks">Lorebooks</string>
   <string name="assistant_extensions_page_tab_mode_injections">모드 주입</string>
   <string name="assistant_extensions_page_tab_quick_messages">빠른 메시지</string>
-  <string name="assistant_extensions_page_tab_skills">스킬</string>
   <string name="assistant_extensions_page_title">확장 프로그램</string>
   <string name="assistant_importer_import_failed">가져오기 실패</string>
   <string name="assistant_importer_import_tavern_json">타번 캐릭터 카드 가져오기 (JSON)</string>
@@ -232,6 +230,9 @@
   <string name="chat_message_add_favorite">즐겨찌기 추가</string>
   <string name="chat_message_remove_favorite">즐겨찾기 제거</string>
   <string name="chat_message_tool_approve">승인</string>
+  <string name="chat_message_tool_pending_count">도구 승인 %d개 대기 중</string>
+  <string name="chat_message_shell_always_allow">이 워크스페이스에서 Shell 항상 허용</string>
+  <string name="chat_message_shell_always_allow_desc">대기 중인 Shell 명령 %d개를 승인하고 이 워크스페이스에서 향후 Shell 확인을 건너뜁니다.</string>
   <string name="chat_message_tool_ask_questions">%d개의 질문</string>
   <string name="chat_message_tool_call_generic">도구 호출 %1$s</string>
   <string name="chat_message_tool_call_label">도구 %1$s 호출함</string>
@@ -345,6 +346,8 @@
   <string name="export_to_file">파일로 내보내기</string>
   <string name="export_to_file_desc">JSON 파일로 저장</string>
   <string name="extension_content_manage">관리</string>
+  <string name="skill_status_workspace_automatic">작업 공간 스킬 · 자동 사용</string>
+  <string name="skill_status_workspace_required">준비된 작업 공간 필요</string>
   <string name="extension_content_unnamed">이름 없음</string>
   <string name="extension_content_unnamed_lorebook">이름 없는 롤북</string>
   <string name="extension_selector_go_to_extensions">확장 기능 관리</string>
@@ -1138,6 +1141,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_title">작업 공간 상세</string>
   <string name="workspace_detail_tab_basic">기본</string>
   <string name="workspace_detail_tab_files">파일</string>
+  <string name="workspace_detail_tab_skills">스킬</string>
+  <string name="workspace_skills_title">작업 공간 스킬</string>
+  <string name="workspace_skills_description">이 디렉터리의 스킬은 작업 공간에 속하며 이 작업 공간에 연결된 어시스턴트에서 자동으로 사용할 수 있습니다.</string>
+  <string name="workspace_skills_empty">작업 공간 스킬을 찾을 수 없습니다. 위 경로에 SKILL.md가 포함된 스킬 디렉터리를 추가하세요.</string>
+  <string name="workspace_skills_automatic">이 작업 공간에서 자동 사용</string>
+  <string name="workspace_skills_requires_shell">작업 공간 Shell이 준비되어야 합니다</string>
   <string name="workspace_detail_import_file">파일 가져오기</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 설치 실패</string>
   <string name="workspace_detail_delete_directory">디렉터리 삭제</string>

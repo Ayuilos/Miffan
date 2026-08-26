@@ -13,8 +13,6 @@ import me.ayuilos.miffan.ui.pages.stats.StatsVM
 import me.ayuilos.miffan.ui.pages.imggen.ImgGenVM
 import me.ayuilos.miffan.ui.pages.extensions.PromptVM
 import me.ayuilos.miffan.ui.pages.extensions.QuickMessagesVM
-import me.ayuilos.miffan.ui.pages.extensions.skills.SkillDetailVM
-import me.ayuilos.miffan.ui.pages.extensions.skills.SkillsVM
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceDetailVM
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 import me.ayuilos.miffan.ui.pages.setting.SettingVM
@@ -49,7 +47,6 @@ val viewModelModule = module {
             settingsStore = get(),
             memoryRepository = get(),
             filesManager = get(),
-            skillManager = get(),
             workspaceRepository = get(),
         )
     }
@@ -64,13 +61,12 @@ val viewModelModule = module {
     viewModelOf(::ImgGenVM)
     viewModelOf(::PromptVM)
     viewModelOf(::QuickMessagesVM)
-    viewModelOf(::SkillsVM)
-    viewModelOf(::SkillDetailVM)
     viewModelOf(::WorkspaceVM)
     viewModel<WorkspaceDetailVM> {
         WorkspaceDetailVM(
             id = it.get(),
             repository = get(),
+            skillManager = get(),
         )
     }
     viewModelOf(::FavoriteVM)

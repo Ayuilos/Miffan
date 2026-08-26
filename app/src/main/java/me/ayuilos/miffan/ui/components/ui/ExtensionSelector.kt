@@ -9,12 +9,7 @@ import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -23,16 +18,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
-import me.ayuilos.miffan.data.files.SkillManager
-import me.ayuilos.miffan.data.files.SkillMetadata
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.ui.components.ai.ExtensionEmptyState
 import me.ayuilos.miffan.ui.components.ai.LorebooksContent
 import me.ayuilos.miffan.ui.components.ai.ModeInjectionsContent
 import me.ayuilos.miffan.ui.components.ai.QuickMessagesContent
-import me.ayuilos.miffan.ui.components.ai.SkillsContent
-import org.koin.compose.koinInject
 
 
 @Composable
@@ -45,17 +36,7 @@ fun ExtensionSelector(
     onUpdateConversation: ((Conversation) -> Unit)? = null,
     onNavigateToQuickMessages: () -> Unit = {},
     onNavigateToPrompts: () -> Unit = {},
-    onNavigateToSkills: () -> Unit = {},
 ) {
-    val skillManager: SkillManager = koinInject()
-    var skills by remember { mutableStateOf<List<SkillMetadata>>(emptyList()) }
-
-    LaunchedEffect(Unit) {
-        // 打开扩展面板时清理运行时被删除的技能（残留的 enabledSkills 引用），
-        // prune 顺带返回现存技能列表，避免重复读盘
-        skills = skillManager.pruneOrphanedEnabledSkills()
-    }
-
     val useConversationInjections =
         assistant.allowConversationPromptInjection && conversation != null && onUpdateConversation != null
     val selectedModeInjectionIds = if (useConversationInjections) {
@@ -69,7 +50,7 @@ fun ExtensionSelector(
         assistant.lorebookIds
     }
 
-    val pagerState = rememberPagerState { 4 }
+    val pagerState = rememberPagerState { 3 }
     val scope = rememberCoroutineScope()
 
     Column(
@@ -101,13 +82,6 @@ fun ExtensionSelector(
                     scope.launch { pagerState.animateScrollToPage(2) }
                 },
                 text = { Text(stringResource(R.string.extension_selector_tab_lorebooks)) }
-            )
-            Tab(
-                selected = pagerState.currentPage == 3,
-                onClick = {
-                    scope.launch { pagerState.animateScrollToPage(3) }
-                },
-                text = { Text(stringResource(R.string.extension_selector_tab_skills)) }
             )
         }
 
@@ -194,30 +168,6 @@ fun ExtensionSelector(
                             message = stringResource(R.string.extension_selector_lorebooks_empty),
                             buttonText = stringResource(R.string.extension_selector_go_to_extensions),
                             onAction = onNavigateToPrompts,
-                        )
-                    }
-                }
-
-                3 -> {
-                    if (skills.isNotEmpty()) {
-                        SkillsContent(
-                            skills = skills,
-                            enabledSkills = assistant.enabledSkills,
-                            onToggle = { name, checked ->
-                                val newSkills = if (checked) {
-                                    assistant.enabledSkills + name
-                                } else {
-                                    assistant.enabledSkills - name
-                                }
-                                onUpdate(assistant.copy(enabledSkills = newSkills))
-                            },
-                            onManage = onNavigateToSkills,
-                        )
-                    } else {
-                        ExtensionEmptyState(
-                            message = stringResource(R.string.extension_selector_skills_empty),
-                            buttonText = stringResource(R.string.extension_selector_go_to_skills),
-                            onAction = onNavigateToSkills,
                         )
                     }
                 }

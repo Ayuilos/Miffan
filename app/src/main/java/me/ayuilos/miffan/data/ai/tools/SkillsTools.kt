@@ -10,11 +10,12 @@ import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.data.files.SkillFrontmatterParser
 import me.ayuilos.miffan.data.files.SkillMetadata
 import me.ayuilos.miffan.data.files.SkillPaths
+import me.ayuilos.miffan.data.files.SkillScope
 
 fun createSkillTools(
-    enabledSkills: Set<String>,
     allSkills: List<SkillMetadata>,
     builtInSkills: List<BuiltInSkillDefinition> = emptyList(),
+    workspaceReady: Boolean = false,
 ): List<Tool> {
     require(builtInSkills.distinctBy { it.name }.size == builtInSkills.size) {
         "Built-in skill names must be unique"
@@ -23,9 +24,15 @@ fun createSkillTools(
     val builtInsByName = builtInSkills.associateBy { it.name }
     // A bundled definition is trusted application content and must not be shadowed by a
     // user-controlled skill directory with the same frontmatter name.
-    val availableUserSkills = allSkills.filter {
-        it.name in enabledSkills && it.name !in builtInsByName
-    }
+    val availableUserSkills = allSkills
+        .asSequence()
+        .filter { skill ->
+            skill.scope == SkillScope.WORKSPACE &&
+                (!skill.requiresWorkspace || workspaceReady) &&
+                skill.name !in builtInsByName
+        }
+        .distinctBy { it.name }
+        .toList()
     if (builtInSkills.isEmpty() && availableUserSkills.isEmpty()) return emptyList()
 
     return listOf(
