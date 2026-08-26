@@ -234,6 +234,9 @@
   <string name="chat_message_add_favorite">添加收藏</string>
   <string name="chat_message_remove_favorite">取消收藏</string>
   <string name="chat_message_tool_approve">批准</string>
+  <string name="chat_message_tool_pending_count">有 %d 个工具审批待处理</string>
+  <string name="chat_message_shell_always_allow">始终允许此工作区中的 Shell</string>
+  <string name="chat_message_shell_always_allow_desc">批准当前待处理的 %d 条 Shell 指令，并跳过此工作区后续的 Shell 确认。</string>
   <string name="chat_message_tool_ask_questions">询问 %d 个问题</string>
   <string name="chat_message_tool_call_generic">调用工具 %1$s</string>
   <string name="chat_message_tool_call_label">调用工具 %1$s</string>

@@ -544,6 +544,7 @@ private fun ChatPageContent(
                 onToolAnswer = { toolCallId, answer ->
                     vm.handleToolAnswer(toolCallId, answer)
                 },
+                onAlwaysAllowWorkspaceShell = vm::alwaysAllowWorkspaceShell,
                 onToggleFavorite = { node ->
                     vm.toggleMessageFavorite(node)
                 },

@@ -57,6 +57,7 @@ import me.ayuilos.miffan.data.ai.tools.createSearchTools
 import me.ayuilos.miffan.data.ai.tools.createSkillTools
 import me.ayuilos.miffan.data.ai.tools.createWorkspaceTools
 import me.ayuilos.miffan.data.ai.tools.extensionManagementBuiltInSkill
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.skills.install.SkillInstallService
@@ -118,6 +119,46 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
 internal fun shouldEnableExtensionManagement(assistant: Assistant, model: Model): Boolean {
     return LocalToolOption.ExtensionManagement in assistant.localTools &&
         ModelAbility.TOOL in model.abilities
+}
+
+internal fun Conversation.approvePendingWorkspaceShellTools(): Conversation = copy(
+    messageNodes = messageNodes.map { node ->
+        node.copy(
+            messages = node.messages.mapIndexed { index, message ->
+                if (index != node.selectIndex) {
+                    message
+                } else {
+                    message.copy(
+                        parts = message.parts.map { part ->
+                            if (
+                                part is UIMessagePart.Tool &&
+                                part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
+                                part.isPending
+                            ) {
+                                part.copy(approvalState = ToolApprovalState.Approved)
+                            } else {
+                                part
+                            }
+                        }
+                    )
+                }
+            }
+        )
+    }
+)
+
+internal fun Conversation.hasPendingToolApprovals(): Boolean = messageNodes.any { node ->
+    node.currentMessage.parts.any { part ->
+        part is UIMessagePart.Tool && part.isPending
+    }
+}
+
+internal fun Conversation.hasPendingWorkspaceShellTools(): Boolean = messageNodes.any { node ->
+    node.currentMessage.parts.any { part ->
+        part is UIMessagePart.Tool &&
+            part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
+            part.isPending
+    }
 }
 
 internal fun createForkConversation(
@@ -478,14 +519,53 @@ class ChatService(
                 saveConversation(conversationId, updatedConversation)
 
                 // Check if there are still pending tools
-                val hasPendingTools = updatedNodes.any { node ->
-                    node.currentMessage.parts.any { part ->
-                        part is UIMessagePart.Tool && part.isPending
-                    }
-                }
+                val hasPendingTools = updatedConversation.hasPendingToolApprovals()
 
                 // Only continue generation when all pending tools are handled
                 if (!hasPendingTools) {
+                    handleMessageComplete(conversationId)
+                }
+
+                _generationDoneFlow.emit(conversationId)
+            } catch (e: Exception) {
+                addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
+            }
+        }
+
+        session.setJob(job)
+    }
+
+    /**
+     * Approve the current Shell batch and persist a per-workspace override so later
+     * workspace_shell calls can run without individual confirmation.
+     */
+    fun alwaysAllowWorkspaceShell(conversationId: Uuid) {
+        val session = getOrCreateSession(conversationId)
+        session.getJob()?.cancel()
+
+        val job = appScope.launch {
+            try {
+                val conversation = session.state.value
+                if (!conversation.hasPendingWorkspaceShellTools()) return@launch
+
+                val settings = settingsStore.settingsFlow.first()
+                val assistant = settings.getAssistantById(conversation.assistantId)
+                    ?: error("Assistant not found")
+                val workspaceId = assistant.workspaceId?.toString()
+                    ?: error("Assistant has no bound workspace")
+
+                check(
+                    workspaceRepository.setToolApproval(
+                        id = workspaceId,
+                        toolName = WORKSPACE_SHELL_TOOL_NAME,
+                        needsApproval = false,
+                    )
+                ) { "Workspace not found" }
+
+                val updatedConversation = conversation.approvePendingWorkspaceShellTools()
+                saveConversation(conversationId, updatedConversation)
+
+                if (!updatedConversation.hasPendingToolApprovals()) {
                     handleMessageComplete(conversationId)
                 }
 

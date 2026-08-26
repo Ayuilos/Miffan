@@ -25,6 +25,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -117,6 +118,7 @@ fun ChatMessage(
     onClearTranslation: (UIMessage) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onAlwaysAllowWorkspaceShell: (() -> Unit)? = null,
 ) {
     val message = node.messages[node.selectIndex]
     val settings = LocalSettings.current.displaySetting
@@ -168,6 +170,7 @@ fun ChatMessage(
                 model = model,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
+                onAlwaysAllowWorkspaceShell = onAlwaysAllowWorkspaceShell,
                 onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
             )
 
@@ -272,6 +275,7 @@ private fun MessagePartsBlock(
     loading: Boolean,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onAlwaysAllowWorkspaceShell: (() -> Unit)? = null,
     onUserMessageClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -319,9 +323,21 @@ private fun MessagePartsBlock(
             is MessagePartBlock.ThinkingBlock -> {
                 if (block.steps.isNotEmpty()) {
                     val isReasoningOnlyBlock = block.steps.fastAll { it is ThinkingStep.ReasoningStep }
+                    val pendingApprovalCount = block.steps.pendingToolApprovalCount()
+                    val pendingShellApprovalCount = block.steps.pendingWorkspaceShellApprovalCount()
+
+                    if (pendingApprovalCount > 0) {
+                        PendingToolApprovalBanner(
+                            pendingApprovalCount = pendingApprovalCount,
+                            pendingShellApprovalCount = pendingShellApprovalCount,
+                            onAlwaysAllowWorkspaceShell = onAlwaysAllowWorkspaceShell,
+                        )
+                    }
+
                     ChainOfThought(
                         modifier = Modifier.animateContentSize(),
                         steps = block.steps,
+                        collapsedVisibleCount = block.steps.approvalAwareCollapsedVisibleCount(),
                         collapsedAdaptiveWidth = isReasoningOnlyBlock,
                         cardColors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
@@ -629,6 +645,63 @@ private fun MessagePartsBlock(
                 }
             ) {
                 Text(stringResource(R.string.citations_count, annotations.size))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingToolApprovalBanner(
+    pendingApprovalCount: Int,
+    pendingShellApprovalCount: Int,
+    onAlwaysAllowWorkspaceShell: (() -> Unit)?,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.chat_message_tool_pending_count, pendingApprovalCount),
+                style = MaterialTheme.typography.labelLarge,
+            )
+
+            if (pendingShellApprovalCount > 0 && onAlwaysAllowWorkspaceShell != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.chat_message_shell_always_allow),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.chat_message_shell_always_allow_desc,
+                                pendingShellApprovalCount,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                        )
+                    }
+                    Switch(
+                        checked = false,
+                        onCheckedChange = { enabled ->
+                            if (enabled) onAlwaysAllowWorkspaceShell()
+                        },
+                    )
+                }
             }
         }
     }

@@ -22,12 +22,13 @@ import java.io.ByteArrayOutputStream
 
 private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
 private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
+const val WORKSPACE_SHELL_TOOL_NAME = "workspace_shell"
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_read_file" to false,
     "workspace_write_file" to false,
     "workspace_edit_file" to false,
-    "workspace_shell" to true,
+    WORKSPACE_SHELL_TOOL_NAME to true,
 )
 
 fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>): Boolean =
@@ -249,7 +250,7 @@ private fun createShellTool(
     workspaceRepository: WorkspaceRepository,
     defaultCwd: String? = null,
 ) = Tool(
-    name = "workspace_shell",
+    name = WORKSPACE_SHELL_TOOL_NAME,
     description = buildString {
         append("Run a shell command in the assistant's bound workspace Rootfs. The workspace files area is mounted at /workspace. ")
         append("Use cwd for a path relative to the workspace files root. ")
@@ -287,7 +288,7 @@ private fun createShellTool(
             required = listOf("command"),
         )
     },
-    needsApproval = { needsApproval("workspace_shell") },
+    needsApproval = { needsApproval(WORKSPACE_SHELL_TOOL_NAME) },
     execute = {
         val params = it.jsonObject
         val command = params.string("command") ?: error("command is required")

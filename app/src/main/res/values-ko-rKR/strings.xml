@@ -232,6 +232,9 @@
   <string name="chat_message_add_favorite">즐겨찌기 추가</string>
   <string name="chat_message_remove_favorite">즐겨찾기 제거</string>
   <string name="chat_message_tool_approve">승인</string>
+  <string name="chat_message_tool_pending_count">도구 승인 %d개 대기 중</string>
+  <string name="chat_message_shell_always_allow">이 워크스페이스에서 Shell 항상 허용</string>
+  <string name="chat_message_shell_always_allow_desc">대기 중인 Shell 명령 %d개를 승인하고 이 워크스페이스에서 향후 Shell 확인을 건너뜁니다.</string>
   <string name="chat_message_tool_ask_questions">%d개의 질문</string>
   <string name="chat_message_tool_call_generic">도구 호출 %1$s</string>
   <string name="chat_message_tool_call_label">도구 %1$s 호출함</string>

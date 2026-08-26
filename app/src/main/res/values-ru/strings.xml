@@ -232,6 +232,9 @@
   <string name="chat_message_add_favorite">Добавить в избранное</string>
   <string name="chat_message_remove_favorite">Удалить из избранного</string>
   <string name="chat_message_tool_approve">Одобрить</string>
+  <string name="chat_message_tool_pending_count">Ожидают одобрения инструменты: %d</string>
+  <string name="chat_message_shell_always_allow">Всегда разрешать Shell в этой рабочей области</string>
+  <string name="chat_message_shell_always_allow_desc">Одобрить %d ожидающих команд Shell и больше не запрашивать подтверждение Shell в этой рабочей области.</string>
   <string name="chat_message_tool_ask_questions">Задать %d вопросов</string>
   <string name="chat_message_tool_call_generic">Вызван инструмент %1$s</string>
   <string name="chat_message_tool_call_label">Вызван инструмент %1$s</string>

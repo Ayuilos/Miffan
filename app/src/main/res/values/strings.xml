@@ -234,6 +234,9 @@
   <string name="chat_message_add_favorite">Add Favorite</string>
   <string name="chat_message_remove_favorite">Remove Favorite</string>
   <string name="chat_message_tool_approve">Approve</string>
+  <string name="chat_message_tool_pending_count">%d tool approvals pending</string>
+  <string name="chat_message_shell_always_allow">Always allow Shell in this workspace</string>
+  <string name="chat_message_shell_always_allow_desc">Approve the %d pending Shell commands and skip future Shell confirmations in this workspace.</string>
   <string name="chat_message_tool_ask_questions">Ask %d questions</string>
   <string name="chat_message_tool_call_generic">Called tool %1$s</string>
   <string name="chat_message_tool_call_label">Called tool %1$s</string>

@@ -232,6 +232,9 @@
   <string name="chat_message_add_favorite">お気に入りに追加</string>
   <string name="chat_message_remove_favorite">お気に入りから削除</string>
   <string name="chat_message_tool_approve">承認</string>
+  <string name="chat_message_tool_pending_count">%d 件のツール承認が保留中です</string>
+  <string name="chat_message_shell_always_allow">このワークスペースでは常に Shell を許可</string>
+  <string name="chat_message_shell_always_allow_desc">保留中の %d 件の Shell コマンドを承認し、このワークスペースでは今後の Shell 確認を省略します。</string>
   <string name="chat_message_tool_ask_questions">%d 件の質問</string>
   <string name="chat_message_tool_call_generic">ツール %1$s を呼び出しました</string>
   <string name="chat_message_tool_call_label">ツール %1$s を呼び出しました</string>
