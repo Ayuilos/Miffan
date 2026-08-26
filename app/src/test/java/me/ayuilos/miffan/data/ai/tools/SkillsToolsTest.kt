@@ -274,11 +274,9 @@ class SkillsToolsTest {
         assertTrue(extensionManagementBuiltInSkill.body.contains("explicit approval"))
         assertTrue(extensionManagementBuiltInSkill.body.contains("redacted"))
         assertTrue(extensionManagementBuiltInSkill.body.contains("next conversation turn"))
-        assertTrue(extensionManagementBuiltInSkill.body.contains("`skills_search`"))
-        assertTrue(extensionManagementBuiltInSkill.body.contains("`skills_preview_install`"))
-        assertTrue(extensionManagementBuiltInSkill.body.contains("`skills_apply_install`"))
-        assertTrue(extensionManagementBuiltInSkill.body.contains("bound workspace"))
-        assertTrue(extensionManagementBuiltInSkill.body.contains("discovered automatically"))
+        assertFalse(extensionManagementBuiltInSkill.body.contains("skills_search"))
+        assertFalse(extensionManagementBuiltInSkill.body.contains("skills_preview_install"))
+        assertFalse(extensionManagementBuiltInSkill.body.contains("skills_apply_install"))
 
         val operations = extensionManagementBuiltInSkill
             .bundledFiles
@@ -288,8 +286,7 @@ class SkillsToolsTest {
         assertTrue(operations.contains("Binding or unbinding"))
         assertTrue(operations.contains("Setting or clearing an assistant workspace"))
         assertTrue(operations.contains("external web search"))
-        assertTrue(operations.contains("skills.sh"))
-        assertTrue(operations.contains("cross-workspace copying"))
+        assertTrue(operations.contains("Installing or modifying workspace Skills"))
         assertTrue(operations.contains("does not support"))
     }
 }

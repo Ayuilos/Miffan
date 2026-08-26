@@ -6,7 +6,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.UUID
-import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.WorkspaceManager
 
 /** The local persistence boundary. Implementations must reject existing targets, including links. */
@@ -18,38 +17,6 @@ interface SkillInstallTarget {
 
     /** Writes all files as one new skill and never replaces an existing skill. */
     fun installNewAtomically(skillName: String, files: Map<String, ByteArray>): Boolean
-}
-
-data class ResolvedWorkspaceSkillInstallTarget(
-    val workspaceId: String,
-    val workspaceName: String,
-    /** Changes if the database identity is rebound to a different local directory. */
-    val identity: String,
-    val target: SkillInstallTarget,
-)
-
-fun interface WorkspaceSkillInstallTargetResolver {
-    suspend fun resolve(workspaceId: String): ResolvedWorkspaceSkillInstallTarget?
-}
-
-class RepositoryWorkspaceSkillInstallTargetResolver(
-    private val workspaceRepository: WorkspaceRepository,
-    private val workspaceManager: WorkspaceManager,
-) : WorkspaceSkillInstallTargetResolver {
-    override suspend fun resolve(workspaceId: String): ResolvedWorkspaceSkillInstallTarget? {
-        val workspace = workspaceRepository.getById(workspaceId) ?: return null
-        val target = WorkspaceSkillInstallTarget(
-            workspaceManager = workspaceManager,
-            workspaceRoot = workspace.root,
-        )
-        if (!target.isAvailable()) return null
-        return ResolvedWorkspaceSkillInstallTarget(
-            workspaceId = workspace.id,
-            workspaceName = workspace.name,
-            identity = "${workspace.id}:${workspace.root}",
-            target = target,
-        )
-    }
 }
 
 /** Atomic, no-overwrite publisher for `/workspace/.miffan/skills`. */

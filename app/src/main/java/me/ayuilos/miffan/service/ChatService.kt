@@ -50,7 +50,6 @@ import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
-import me.ayuilos.miffan.data.ai.tools.createSkillInstallTools
 import me.ayuilos.miffan.data.ai.tools.local.LocalTools
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.ai.tools.createSearchTools
@@ -59,8 +58,6 @@ import me.ayuilos.miffan.data.ai.tools.createWorkspaceTools
 import me.ayuilos.miffan.data.ai.tools.extensionManagementBuiltInSkill
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
 import me.ayuilos.miffan.data.files.SkillManager
-import me.ayuilos.miffan.data.skills.install.SkillInstallService
-import me.ayuilos.miffan.data.skills.source.SkillShCatalogClient
 import me.ayuilos.miffan.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.ayuilos.miffan.data.ai.transformers.DocumentAsPromptTransformer
 import me.ayuilos.miffan.data.ai.transformers.OcrTransformer
@@ -180,8 +177,6 @@ class ChatService(
     private val filesManager: FilesManager,
     private val skillManager: SkillManager,
     private val extensionManagementService: ExtensionManagementService,
-    private val skillShCatalogClient: SkillShCatalogClient,
-    private val skillInstallService: SkillInstallService,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
 ) {
@@ -599,13 +594,6 @@ class ChatService(
                     addAll(localTools.getTools(assistant.localTools))
                     if (extensionManagementEnabled) {
                         addAll(createExtensionManagementTools(extensionManagementService))
-                        addAll(
-                            createSkillInstallTools(
-                                catalogClient = skillShCatalogClient,
-                                installService = skillInstallService,
-                                workspaceId = boundWorkspace?.id,
-                            )
-                        )
                     }
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))

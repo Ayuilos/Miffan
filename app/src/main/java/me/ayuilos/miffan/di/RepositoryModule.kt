@@ -1,7 +1,6 @@
 package me.ayuilos.miffan.di
 
 import android.content.Context
-import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.files.FileFolders
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.SkillManager
@@ -14,18 +13,11 @@ import me.ayuilos.miffan.data.repository.GenMediaRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.WorkspaceNetworkBroker
-import me.ayuilos.miffan.data.skills.install.RemoteSkillSourceClient
-import me.ayuilos.miffan.data.skills.install.SkillInstallService
-import me.ayuilos.miffan.data.skills.install.RepositoryWorkspaceSkillInstallTargetResolver
-import me.ayuilos.miffan.data.skills.install.WorkspaceSkillInstallTargetResolver
-import me.ayuilos.miffan.data.skills.source.GitHubRemoteSkillSourceClient
-import me.ayuilos.miffan.data.skills.source.SkillShCatalogClient
 import me.rerere.workspace.AndroidPageSize
 import me.rerere.workspace.ProotShellRunner
 import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceBindMount
 import me.rerere.workspace.WorkspaceManager
-import okhttp3.OkHttpClient
 import org.koin.dsl.module
 import java.io.File
 
@@ -101,25 +93,6 @@ val repositoryModule = module {
 
     single {
         SkillManager(get(), get(), get())
-    }
-
-    single {
-        SkillShCatalogClient(get<OkHttpClient>(), get<Json>())
-    }
-
-    single<RemoteSkillSourceClient> {
-        GitHubRemoteSkillSourceClient(get<OkHttpClient>(), get<Json>())
-    }
-
-    single<WorkspaceSkillInstallTargetResolver> {
-        RepositoryWorkspaceSkillInstallTargetResolver(get(), get())
-    }
-
-    single {
-        SkillInstallService(
-            sourceClient = get(),
-            workspaceTargetResolver = get(),
-        )
     }
 
     single {

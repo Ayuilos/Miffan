@@ -88,8 +88,6 @@ val appModule = module {
             filesManager = get(),
             skillManager = get(),
             extensionManagementService = get(),
-            skillShCatalogClient = get(),
-            skillInstallService = get(),
             workspaceRepository = get(),
             folderRepository = get()
         )
