@@ -1338,4 +1338,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_provider_page_test_tool_call">ツール呼び出し</string>
   <string name="setting_provider_page_test_tool_called">呼び出し: %1$s  引数: %2$s</string>
   <string name="setting_provider_page_test_tool_not_called">ツールが呼び出されませんでした。応答: %s</string>
+  <string name="workspace_terminal_close_confirm_title">ターミナルを閉じますか？</string>
+  <string name="workspace_terminal_close_confirm_message">ターミナルを閉じると、実行中のプロセスは終了します。</string>
+  <string name="workspace_terminal_close">閉じる</string>
+  <string name="chat_generation_network_retrying">%1$s。再試行中（%2$d/%3$d）…</string>
+  <string name="chat_generation_network_unknown_host">サーバーアドレスを解決できません</string>
+  <string name="chat_generation_network_timeout">接続がタイムアウトしました</string>
+  <string name="chat_generation_network_unreachable">サーバーに接続できません</string>
+  <string name="chat_generation_network_disconnected">ネットワーク接続が切断されました</string>
 </resources>
