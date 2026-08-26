@@ -101,6 +101,7 @@ internal fun MiffanKindBehavior.strengthFor(
         MiffanMascotState.Thinking -> thinkingStrength
         MiffanMascotState.Happy -> happyStrength
         MiffanMascotState.Error -> errorStrength
+        MiffanMascotState.UpdateAvailable -> happyStrength * 0.7f
         MiffanMascotState.Idle -> when (inputState) {
             MiffanMascotInputState.Inactive -> idleStrength * if (dayPhase == MiffanDayPhase.Night) {
                 nightIdleMultiplier

@@ -365,6 +365,7 @@ fun AssistantAvatar(
     value: Avatar,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
+    semanticState: MiffanMascotState = MiffanMascotState.Idle,
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
@@ -403,11 +404,11 @@ fun AssistantAvatar(
         }
     }
 
-    val mascotState = when {
-        loading -> MiffanMascotState.Thinking
-        showingCompletion -> MiffanMascotState.Happy
-        else -> MiffanMascotState.Idle
-    }
+    val mascotState = resolveAssistantMascotState(
+        loading = loading,
+        showingCompletion = showingCompletion,
+        semanticState = semanticState,
+    )
     UIAvatar(
         name = name,
         value = Avatar.Dummy,
@@ -425,6 +426,16 @@ fun AssistantAvatar(
             )
         },
     )
+}
+
+internal fun resolveAssistantMascotState(
+    loading: Boolean,
+    showingCompletion: Boolean,
+    semanticState: MiffanMascotState,
+): MiffanMascotState = when {
+    loading -> MiffanMascotState.Thinking
+    showingCompletion -> MiffanMascotState.Happy
+    else -> semanticState
 }
 
 @Composable

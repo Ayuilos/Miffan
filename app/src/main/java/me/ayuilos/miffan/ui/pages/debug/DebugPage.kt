@@ -54,6 +54,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import me.rerere.common.android.Logging
+import me.ayuilos.miffan.BuildConfig
+import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MiffanAppearance
 import me.ayuilos.miffan.data.model.MiffanColorSource
@@ -73,6 +75,7 @@ import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
 import me.ayuilos.miffan.ui.components.richtext.MathBlock
 import me.ayuilos.miffan.ui.components.richtext.Mermaid
 import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.theme.JetbrainsMono
 import org.koin.androidx.compose.koinViewModel
@@ -178,6 +181,7 @@ private enum class MiffanLabMode(
     Thinking("Thinking", mascotState = MiffanMascotState.Thinking),
     Happy("Happy", mascotState = MiffanMascotState.Happy),
     Error("Error", mascotState = MiffanMascotState.Error),
+    UpdateAvailable("Update available", mascotState = MiffanMascotState.UpdateAvailable),
     Focused("Focused", inputState = MiffanMascotInputState.Focused),
     Typing("Typing", inputState = MiffanMascotInputState.Typing),
 }
@@ -414,6 +418,7 @@ private fun MiffanLabPage() {
 @Composable
 private fun MainPage(vm: DebugVM) {
     val settings = LocalSettings.current
+    val navController = LocalNavController.current
     val conversationCount by vm.conversationCount.collectAsStateWithLifecycle()
     Column(
         modifier = Modifier
@@ -422,6 +427,37 @@ private fun MainPage(vm: DebugVM) {
             .imePadding(),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        if (BuildConfig.DEBUG) {
+            val debugUpdateOverrideEnabled by
+                vm.debugUpdateOverrideEnabled.collectAsStateWithLifecycle()
+            Text("Update reminder preview", style = MaterialTheme.typography.titleSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Simulate an available update")
+                    Text(
+                        "Affects the drawer badge, current Miffan avatar, and settings banner.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = debugUpdateOverrideEnabled,
+                    onCheckedChange = vm::setDebugUpdateOverrideEnabled,
+                )
+            }
+            Button(
+                enabled = debugUpdateOverrideEnabled,
+                onClick = { navController.navigate(Screen.Setting) },
+            ) {
+                Text("Open Settings preview")
+            }
+            HorizontalDivider()
+        }
+
         val phaseOverride by MiffanDayPhaseDebugOverride.phase.collectAsState()
         val effectivePhase = rememberMiffanDayPhase()
         val phaseOptions = listOf<MiffanDayPhase?>(

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -50,7 +52,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -80,9 +81,9 @@ import me.ayuilos.miffan.ui.components.ai.AssistantPicker
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.BackupReminderCard
 import me.ayuilos.miffan.ui.components.ui.Greeting
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.Tooltip
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
-import me.ayuilos.miffan.ui.components.ui.UpdateCard
 import androidx.compose.ui.draw.clip
 import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.context.Navigator
@@ -110,6 +111,11 @@ fun ChatDrawerContent(
     val resources = LocalResources.current
     val toaster = LocalToaster.current
     val isPlayStore = rememberIsPlayStoreVersion()
+    val availableUpdate = if (isPlayStore) {
+        null
+    } else {
+        vm.availableUpdate.collectAsStateWithLifecycle().value
+    }
     val repo = koinInject<ConversationRepository>()
 
     val activity = context as ComponentActivity
@@ -165,22 +171,6 @@ fun ChatDrawerContent(
     // Menu popup 状态
     var showMenuPopup by remember { mutableStateOf(false) }
 
-    val updateCheckDisabledUntil = settings.displaySetting.updateCheckDisabledUntilEpochMillis
-    var updateChecksEnabled by remember(updateCheckDisabledUntil) {
-        mutableStateOf(updateCheckDisabledUntil <= System.currentTimeMillis())
-    }
-    LaunchedEffect(updateCheckDisabledUntil) {
-        while (true) {
-            val remaining = updateCheckDisabledUntil - System.currentTimeMillis()
-            if (remaining <= 0) {
-                updateChecksEnabled = true
-                break
-            }
-            updateChecksEnabled = false
-            delay(minOf(remaining, 60 * 60 * 1_000L))
-        }
-    }
-
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp)
     ) {
@@ -188,10 +178,6 @@ fun ChatDrawerContent(
             modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (updateChecksEnabled && !isPlayStore) {
-                UpdateCard(vm)
-            }
-
             BackupReminderCard(
                 settings = settings,
                 onClick = { navController.navigate(Screen.Backup) },
@@ -304,6 +290,11 @@ fun ChatDrawerContent(
             // 助手选择器
             AssistantPicker(
                 settings = settings,
+                mascotState = if (availableUpdate != null) {
+                    MiffanMascotState.UpdateAvailable
+                } else {
+                    MiffanMascotState.Idle
+                },
                 onUpdateSettings = {
                     val updateJob = vm.updateSettings(it)
                     scope.launch {
@@ -411,7 +402,28 @@ fun ChatDrawerContent(
 
                 DrawerAction(
                     icon = {
-                        Icon(HugeIcons.Settings03, null)
+                        val contentDescription = availableUpdate?.let { info ->
+                            stringResource(R.string.update_card_new_version_found, info.version)
+                        } ?: stringResource(R.string.settings)
+                        Box(
+                            modifier = Modifier.size(20.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Settings03,
+                                contentDescription = contentDescription,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            if (availableUpdate != null) {
+                                Badge(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = 3.dp, y = (-3).dp)
+                                        .size(8.dp),
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                     },
                     label = { Text(stringResource(R.string.settings)) },
                     onClick = {

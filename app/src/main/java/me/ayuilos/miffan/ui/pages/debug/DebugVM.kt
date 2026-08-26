@@ -17,6 +17,7 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.repository.ConversationRepository
+import me.ayuilos.miffan.utils.UpdateChecker
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
@@ -26,12 +27,15 @@ import kotlin.uuid.Uuid
 class DebugVM(
     private val settingsStore: SettingsStore,
     private val conversationRepository: ConversationRepository,
+    private val updateChecker: UpdateChecker,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Lazily, Settings.dummy())
 
     private val _conversationCount = MutableStateFlow<Int?>(null)
     val conversationCount: StateFlow<Int?> = _conversationCount.asStateFlow()
+    val debugUpdateOverrideEnabled: StateFlow<Boolean> =
+        updateChecker.debugUpdateOverrideEnabled
 
     init {
         refreshConversationCount()
@@ -47,6 +51,10 @@ class DebugVM(
         viewModelScope.launch {
             settingsStore.update(settings)
         }
+    }
+
+    fun setDebugUpdateOverrideEnabled(enabled: Boolean) {
+        updateChecker.setDebugUpdateOverrideEnabled(enabled)
     }
 
     /**

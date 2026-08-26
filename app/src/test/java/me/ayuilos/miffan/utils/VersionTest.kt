@@ -93,4 +93,34 @@ class VersionTest {
         assertTrue("1.0.0" < Version("2.0.0"))
         assertTrue(Version("2.0.0") > "1.0.0")
     }
+
+    @Test
+    fun `available update only returns newer successful releases`() {
+        val newer = updateInfo("3.1.0")
+
+        assertEquals(newer, UiState.Success(newer).availableUpdate("3.0.0"))
+        assertEquals(null, UiState.Success(updateInfo("3.0.0")).availableUpdate("3.0.0"))
+        assertEquals(null, UiState.Success(updateInfo("2.9.0")).availableUpdate("3.0.0"))
+        assertEquals(null, UiState.Loading.availableUpdate("3.0.0"))
+        assertEquals(null, UiState.Error(IllegalStateException()).availableUpdate("3.0.0"))
+    }
+
+    @Test
+    fun `debug override makes every update state deterministically testable`() {
+        val original = UiState.Error(IllegalStateException("offline"))
+
+        assertEquals(original, original.withDebugUpdateOverride(enabled = false))
+        val overridden = original.withDebugUpdateOverride(enabled = true)
+        val info = (overridden as UiState.Success).data
+        assertEquals(info, overridden.availableUpdate("3.0.0"))
+        assertTrue(info.downloads.isEmpty())
+    }
+
+    private fun updateInfo(version: String) = UpdateInfo(
+        version = version,
+        publishedAt = "2026-08-26T00:00:00Z",
+        changelog = "Changes",
+        downloads = emptyList(),
+        releaseUrl = "https://example.com/releases/$version",
+    )
 }

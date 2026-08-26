@@ -15,9 +15,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -43,8 +40,8 @@ import me.ayuilos.miffan.service.ChatService
 import me.ayuilos.miffan.ui.hooks.writeStringPreference
 import me.ayuilos.miffan.ui.hooks.ChatInputState
 import me.ayuilos.miffan.utils.AppAnalytics
-import me.ayuilos.miffan.utils.UiState
 import me.ayuilos.miffan.utils.UpdateChecker
+import me.ayuilos.miffan.utils.availableUpdate
 import java.util.Locale
 import kotlin.uuid.Uuid
 
@@ -167,19 +164,12 @@ class ChatVM(
     }
 
     // Update checker
-    val updateState = settingsStore.settingsFlow
-        .map { settings ->
-            !settings.init &&
-                settings.displaySetting.updateCheckDisabledUntilEpochMillis <= System.currentTimeMillis()
-        }
-        .distinctUntilChanged()
-        .flatMapLatest { enabled ->
-            if (enabled) updateChecker.updateState else flowOf(UiState.Loading)
-        }
+    val availableUpdate = updateChecker.observeUpdateState(settingsStore.settingsFlow)
+        .map { it.availableUpdate() }
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-            UiState.Loading,
+            null,
         )
 
     /**

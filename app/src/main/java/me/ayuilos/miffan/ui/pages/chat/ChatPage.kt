@@ -88,6 +88,7 @@ import me.ayuilos.miffan.ui.components.ai.SearchMode
 import me.ayuilos.miffan.ui.components.ai.completion.WorkspaceCompletionProvider
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionCamera
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionManager
 import me.ayuilos.miffan.ui.components.ui.permission.rememberPermissionState
@@ -96,6 +97,7 @@ import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.context.Navigator
 import me.ayuilos.miffan.ui.hooks.ChatInputState
 import me.ayuilos.miffan.ui.hooks.EditStateContent
+import me.ayuilos.miffan.ui.hooks.rememberIsPlayStoreVersion
 import me.ayuilos.miffan.ui.hooks.useEditState
 import me.ayuilos.miffan.utils.ImageUtils
 import me.ayuilos.miffan.utils.base64Decode
@@ -126,6 +128,13 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     val currentChatModel by vm.currentChatModel.collectAsStateWithLifecycle()
     val enableWebSearch by vm.enableWebSearch.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
+    val availableUpdate by vm.availableUpdate.collectAsStateWithLifecycle()
+    val isPlayStore = rememberIsPlayStoreVersion()
+    val mascotSemanticState = if (!isPlayStore && availableUpdate != null) {
+        MiffanMascotState.UpdateAvailable
+    } else {
+        MiffanMascotState.Idle
+    }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
@@ -227,6 +236,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = true,
                     errors = errors,
+                    mascotSemanticState = mascotSemanticState,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -259,6 +269,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = false,
                     errors = errors,
+                    mascotSemanticState = mascotSemanticState,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -285,6 +296,7 @@ private fun ChatPageContent(
     enableWebSearch: Boolean,
     currentChatModel: Model?,
     errors: List<ChatError>,
+    mascotSemanticState: MiffanMascotState,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
 ) {
@@ -472,6 +484,7 @@ private fun ChatPageContent(
                 settings = setting,
                 hazeState = hazeState,
                 errors = errors,
+                mascotSemanticState = mascotSemanticState,
                 mascotInputState = mascotInputState,
                 mascotSubmitId = mascotSubmitId,
                 onDismissError = onDismissError,
