@@ -38,7 +38,12 @@ The first candidate in the independent line is:
 - `versionName`: `3.0.0-rc.1`
 - `versionCode`: `178002`
 
-Because the RC uses the official package name, the eventual `3.0.0` release must use a value greater than `178002`.
+The first stable release in the independent line is:
+
+- `versionName`: `3.0.0`
+- `versionCode`: `178003`
+
+Future official releases must use a `versionCode` greater than `178003`.
 
 ## Update compatibility and safety boundary
 
