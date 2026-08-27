@@ -111,8 +111,11 @@ jobs:
               ;;
           esac
 
-          signer_digest="$($apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr '[:lower:]' '[:upper:]')"
-          signer_digest="${signer_digest//:/}"
+          signer_digest="$($apksigner verify --print-certs "$apk" \
+            | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*//p' \
+            | head -n 1 \
+            | tr -d '[:space:]:' \
+            | tr '[:lower:]' '[:upper:]')"
           if [ -z "$signer_digest" ]; then
             echo "Unable to read the nightly signing certificate" >&2
             exit 1
