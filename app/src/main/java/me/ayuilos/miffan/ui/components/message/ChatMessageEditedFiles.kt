@@ -70,7 +70,7 @@ internal fun EditedFilesList(
     val artifacts = remember(parts, fallbackWorkspaceId) {
         parts.filterIsInstance<UIMessagePart.Tool>()
             .flatMap { it.workspaceArtifacts(fallbackWorkspaceId) }
-            .distinctBy { "${it.workspaceId}:${it.path}" }
+            .distinctBy { "${it.workspaceId}:${it.scopeId}:${it.path}" }
     }
     if (artifacts.isEmpty()) return
 
@@ -91,6 +91,7 @@ internal fun EditedFilesList(
             Screen.WorkspaceFilePreview(
                 id = artifact.workspaceId,
                 path = artifact.path,
+                scopeId = artifact.scopeId,
             )
         )
     }
@@ -112,6 +113,7 @@ internal fun EditedFilesList(
                         artifact.workspaceId,
                         artifact.path,
                         output,
+                        artifact.scopeId,
                     )
                 } ?: error("Unable to open export destination")
             }.onFailure(::reportFailure)
@@ -228,6 +230,7 @@ internal fun EditedFilesList(
                                 area = location.area.name,
                                 path = artifact.parentDirectory(),
                                 openFiles = true,
+                                scopeId = artifact.scopeId,
                             )
                         )
                     },

@@ -48,6 +48,7 @@ import org.koin.compose.koinInject
 @Composable
 fun WorkspaceCwdPickerSheet(
     workspaceId: String,
+    workspaceScopeId: String? = null,
     currentCwd: String?,
     onSelectCwd: (String?) -> Unit,
     onDismiss: () -> Unit,
@@ -58,11 +59,16 @@ fun WorkspaceCwdPickerSheet(
     var entries by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(browsePath) {
+    LaunchedEffect(workspaceId, workspaceScopeId, browsePath) {
         loading = true
         try {
             val result = withContext(Dispatchers.IO) {
-                workspaceRepository.listFiles(workspaceId, WorkspaceStorageArea.FILES, browsePath)
+                workspaceRepository.listFiles(
+                    id = workspaceId,
+                    area = WorkspaceStorageArea.FILES,
+                    path = browsePath,
+                    scopeId = workspaceScopeId,
+                )
             }
             entries = result.sortedWith(compareByDescending<WorkspaceFileEntry> { it.isDirectory }.thenBy { it.name })
             loading = false

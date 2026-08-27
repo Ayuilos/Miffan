@@ -70,10 +70,13 @@ class AssistantVM(
     fun copyAssistant(assistant: Assistant) {
         viewModelScope.launch {
             val settings = settings.value
+            val copiedId = kotlin.uuid.Uuid.random()
             val copiedAssistant = assistant.copy(
-                id = kotlin.uuid.Uuid.random(),
+                id = copiedId,
                 name = "${assistant.name} (Clone)",
                 avatar = if (assistant.avatar is Avatar.Image) Avatar.Miffan() else assistant.avatar,
+                workspaceScopeId = assistant.workspaceId?.let { copiedId },
+                workspaceShellApprovalRequired = true,
             )
             settingsStore.update(
                 settings.copy(

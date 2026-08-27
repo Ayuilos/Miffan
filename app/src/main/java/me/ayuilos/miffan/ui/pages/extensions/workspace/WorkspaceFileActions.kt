@@ -19,13 +19,13 @@ internal suspend fun WorkspaceRepository.exportArtifactToCache(
         .takeUnless { it.isBlank() || it == "." || it == ".." }
         ?: "file"
     val key = MessageDigest.getInstance("SHA-256")
-        .digest("${artifact.workspaceId}\u0000${artifact.path}".toByteArray())
+        .digest("${artifact.workspaceId}\u0000${artifact.scopeId}\u0000${artifact.path}".toByteArray())
         .take(12)
         .joinToString("") { byte -> "%02x".format(byte) }
     val directory = File(context.cacheDir, "workspace_preview/$key").apply { mkdirs() }
     val file = File(directory, safeName)
     file.outputStream().use { output ->
-        exportRootfsArtifact(artifact.workspaceId, artifact.path, output)
+        exportRootfsArtifact(artifact.workspaceId, artifact.path, output, artifact.scopeId)
     }
     file
 }

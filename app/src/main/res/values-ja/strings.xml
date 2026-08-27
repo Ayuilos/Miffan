@@ -231,8 +231,8 @@
   <string name="chat_message_remove_favorite">お気に入りから削除</string>
   <string name="chat_message_tool_approve">承認</string>
   <string name="chat_message_tool_pending_count">%d 件のツール承認が保留中です</string>
-  <string name="chat_message_shell_always_allow">このワークスペースでは常に Shell を許可</string>
-  <string name="chat_message_shell_always_allow_desc">保留中の %d 件の Shell コマンドを承認し、このワークスペースでは今後の Shell 確認を省略します。</string>
+  <string name="chat_message_shell_always_allow">このアシスタントスコープで Shell を常に許可</string>
+  <string name="chat_message_shell_always_allow_desc">保留中の %d 件の Shell コマンドを承認し、このアシスタントスコープでのみ今後の確認を省略します。/etc や /usr など共有 Rootfs への変更は、このワークスペースに接続したすべてのアシスタントに影響します。</string>
   <string name="chat_message_tool_ask_questions">%d 件の質問</string>
   <string name="chat_message_tool_call_generic">ツール %1$s を呼び出しました</string>
   <string name="chat_message_tool_call_label">ツール %1$s を呼び出しました</string>
@@ -1128,7 +1128,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="assistant_page_gradient_background">グラデーション背景</string>
   <string name="assistant_page_gradient_background_desc">チャットページで動的なグラデーション背景を使用します</string>
   <string name="assistant_page_workspace">ワークスペース</string>
-  <string name="assistant_page_workspace_desc">バインド後、エージェントはこのワークスペースのファイルと任意のローカル PRoot ツールを使用できます</string>
+  <string name="assistant_page_workspace_desc">新しいバインドごとに /workspace のプライベートファイルスコープが割り当てられ、このワークスペースの Rootfs とインストール済みシステム環境は共有されます。</string>
+  <string name="assistant_page_workspace_shell_approval">Shell の承認を必須にする</string>
+  <string name="assistant_page_workspace_shell_approval_desc">このアシスタントスコープにのみ適用されます。無効にしても、システムレベルの Shell 変更はワークスペースの Rootfs を共有するすべてのアシスタントに影響します。</string>
+  <string name="workspace_scope">ファイルスコープ</string>
+  <string name="workspace_scope_private">プライベート · %s</string>
+  <string name="workspace_scope_legacy">互換モード：ワークスペース全体</string>
   <string name="assistant_page_workspace_unbound">未バインド</string>
   <string name="workspace_page_title">ワークスペース</string>
   <string name="workspace_page_create">ワークスペースを作成</string>
@@ -1142,10 +1147,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">ファイル</string>
   <string name="workspace_detail_tab_skills">スキル</string>
-  <string name="workspace_skills_title">ワークスペーススキル</string>
-  <string name="workspace_skills_description">このディレクトリ内のスキルはワークスペースに属し、このワークスペースに接続したアシスタントで自動的に利用できます。</string>
-  <string name="workspace_skills_empty">ワークスペーススキルが見つかりません。上記のパスに SKILL.md を含むスキルディレクトリを追加してください。</string>
-  <string name="workspace_skills_automatic">このワークスペースで自動的に利用可能</string>
+  <string name="workspace_skills_title">ファイルスコープのスキル</string>
+  <string name="workspace_skills_description">このディレクトリ内のスキルは、同じファイルスコープを使用するアシスタントだけが検出します。Miffan は兄弟スコープを走査せず、暗黙の共有スキルディレクトリも提供しません。</string>
+  <string name="workspace_skills_empty">ファイルスコープのスキルが見つかりません。上記のパスに SKILL.md を含むスキルディレクトリを追加してください。</string>
+  <string name="workspace_skills_automatic">このファイルスコープで自動的に利用可能</string>
   <string name="workspace_skills_requires_shell">ワークスペースの Shell が準備完了である必要があります</string>
   <string name="workspace_detail_import_file">ファイルをインポート</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfsのインストールに失敗しました</string>
@@ -1160,7 +1165,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_shell_status">Shell ステータス</string>
   <string name="workspace_detail_loading">読み込み中</string>
   <string name="workspace_detail_enable_shell">シェルを有効にする</string>
-  <string name="workspace_detail_enable_shell_desc">コマンドは Miffan アプリの UID で実行され、プライベートデータとネットワーク権限を共有します。PRoot はセキュリティサンドボックスではありません。信頼できるコマンドのみ実行してください。</string>
+  <string name="workspace_detail_enable_shell_desc">コマンドは Miffan アプリの UID で実行され、プライベートデータとネットワーク権限を共有します。Rootfs と /etc、/usr などのシステムパスは、このワークスペースに接続したすべてのアシスタントで共有されます。PRoot はセキュリティサンドボックスではありません。信頼できるコマンドのみ実行してください。</string>
   <string name="workspace_detail_tool_approval">ツール承認</string>
   <string name="workspace_detail_tool_approval_desc">有効にすると、AIがこのツールを呼び出す前にユーザーの確認が必要です</string>
   <string name="workspace_detail_tool_list_files">ファイル一覧</string>
@@ -1170,7 +1175,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_tool_delete_file">ファイルを削除</string>
   <string name="workspace_detail_tool_move_file">ファイルを移動</string>
   <string name="workspace_detail_tool_shell">コマンド実行</string>
-  <string name="workspace_detail_install_rootfs_desc">tar.gzをダウンロードして、%sのLinuxディレクトリに展開します。</string>
+  <string name="workspace_detail_install_rootfs_desc">tar.gz をダウンロードして %s の Linux ディレクトリに展開します。この Rootfs とシステムレベルの変更は、ワークスペースに接続したすべてのアシスタントで共有されます。</string>
   <string name="workspace_detail_download_url">tar.gz ダウンロードURL</string>
   <string name="workspace_detail_area_files">ファイル</string>
   <string name="workspace_detail_area_rootfs">Rootfs</string>

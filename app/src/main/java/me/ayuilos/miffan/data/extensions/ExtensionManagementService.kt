@@ -13,6 +13,7 @@ import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.InjectionPosition
 import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
+import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import kotlin.uuid.Uuid
 
@@ -353,7 +354,7 @@ internal object ExtensionChangeProcessor {
                 require(parsed in resources.workspaceIds) { "Workspace not found: $parsed" }
                 parsed
             }
-            val updatedAssistant = assistant.copy(workspaceId = workspaceId?.let(Uuid::parse))
+            val updatedAssistant = assistant.withWorkspaceBinding(workspaceId?.let(Uuid::parse))
             AppliedOperation(
                 settings = settings.replaceAssistant(updatedAssistant),
                 change = change.copy(
@@ -475,6 +476,7 @@ internal fun buildExtensionCatalog(
             localToolIds = assistant.localTools.mapNotNull(::localToolId).sorted(),
             externalWebSearchEnabled = assistant.enableWebSearch,
             workspaceId = assistant.workspaceId?.toString(),
+            workspaceScopeId = assistant.workspaceScopeId?.toString(),
         )
     },
     quickMessages = settings.quickMessages.map { item ->

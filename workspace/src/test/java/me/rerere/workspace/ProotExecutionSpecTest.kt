@@ -3,6 +3,7 @@ package me.rerere.workspace
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -10,6 +11,16 @@ import org.junit.rules.TemporaryFolder
 class ProotExecutionSpecTest {
     @get:Rule
     val tmp = TemporaryFolder()
+
+    @Test
+    fun `custom bind mounts cannot shadow or expose assistant scope roots`() {
+        val source = tmp.newFolder("scope-shadow-source")
+        listOf("/workspace/sibling", "/root/config", "/tmp/cache", "/var", "/").forEach { target ->
+            assertThrows(IllegalArgumentException::class.java) {
+                WorkspaceBindMount(source, target, exposeToShell = false)
+            }
+        }
+    }
 
     @Test
     fun `global read-only mappings are omitted from PRoot arguments`() {
@@ -33,6 +44,38 @@ class ProotExecutionSpecTest {
 
         assertTrue(args.contains("${files.absolutePath}:/workspace"))
         assertFalse(args.any { it.endsWith(":/upload") })
+    }
+
+    @Test
+    fun `scoped shell mounts only selected files home and temp directories`() {
+        val linux = tmp.newFolder("scope-linux")
+        val scopeParent = tmp.newFolder("scopes")
+        val selected = java.io.File(scopeParent, "assistant-a").apply { mkdirs() }
+        val sibling = java.io.File(scopeParent, "assistant-b").apply { mkdirs() }
+        val files = java.io.File(selected, "files").apply { mkdirs() }
+        val home = java.io.File(selected, "home").apply { mkdirs() }
+        val guestTemp = java.io.File(selected, "tmp").apply { mkdirs() }
+        val varTemp = java.io.File(selected, "var-tmp").apply { mkdirs() }
+
+        val binds = bindArguments(
+            ProotExecutionSpec.baseArguments(
+                root = "root",
+                linuxDir = linux,
+                filesDir = files,
+                cwd = "/workspace",
+                bindMounts = emptyList(),
+                homeDir = home,
+                guestTempDir = guestTemp,
+                guestVarTempDir = varTemp,
+            )
+        )
+
+        assertTrue(binds.contains("${files.absolutePath}:/workspace"))
+        assertTrue(binds.contains("${home.absolutePath}:/root"))
+        assertTrue(binds.contains("${guestTemp.absolutePath}:/tmp"))
+        assertTrue(binds.contains("${varTemp.absolutePath}:/var/tmp"))
+        assertFalse(binds.any { it.contains(scopeParent.absolutePath + ":") })
+        assertFalse(binds.any { it.contains(sibling.absolutePath) })
     }
 
     @Test
@@ -72,6 +115,9 @@ class ProotExecutionSpecTest {
         val files = tmp.newFolder("shared-mount-files")
         val exposed = tmp.newFolder("shared-mount-exposed")
         val hidden = tmp.newFolder("shared-mount-hidden")
+        val home = tmp.newFolder("shared-mount-home")
+        val guestTemp = tmp.newFolder("shared-mount-guest-temp")
+        val varTemp = tmp.newFolder("shared-mount-var-temp")
         val mounts = listOf(
             WorkspaceBindMount(exposed, "/shared", exposeToShell = true),
             WorkspaceBindMount(hidden, "/hidden", exposeToShell = false),
@@ -83,6 +129,9 @@ class ProotExecutionSpecTest {
             filesDir = files,
             linuxDir = linux,
             tempDir = tmp.newFolder("shared-mount-temp"),
+            homeDir = home,
+            guestTempDir = guestTemp,
+            guestVarTempDir = varTemp,
             workingDir = files,
             timeoutMillis = 1_000,
             bindMounts = mounts,
@@ -94,10 +143,16 @@ class ProotExecutionSpecTest {
             linuxDir = linux,
             filesDir = files,
             bindMounts = mounts,
+            homeDir = home,
+            guestTempDir = guestTemp,
+            guestVarTempDir = varTemp,
         )
 
         assertEquals(bindArguments(ai), bindArguments(interactive))
         assertTrue(bindArguments(ai).contains("${exposed.absolutePath}:/shared"))
+        assertTrue(bindArguments(ai).contains("${home.absolutePath}:/root"))
+        assertTrue(bindArguments(ai).contains("${guestTemp.absolutePath}:/tmp"))
+        assertTrue(bindArguments(ai).contains("${varTemp.absolutePath}:/var/tmp"))
         assertFalse(bindArguments(ai).any { it.endsWith(":/hidden") })
     }
 

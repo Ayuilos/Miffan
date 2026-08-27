@@ -29,10 +29,12 @@ class SkillDiscoveryTest {
             skillsDir = root,
             scope = SkillScope.WORKSPACE,
             workspaceId = "workspace-id",
+            workspaceScopeId = "assistant-a",
         ).single()
 
         assertEquals(SkillScope.WORKSPACE, skill.scope)
         assertEquals("workspace-id", skill.workspaceId)
+        assertEquals("assistant-a", skill.workspaceScopeId)
         assertTrue(skill.requiresWorkspace)
         assertEquals(listOf("Read", "Grep", "Bash(git:*)"), skill.allowedTools)
     }

@@ -11,6 +11,7 @@ import org.junit.rules.TemporaryFolder
 import me.rerere.workspace.WorkspaceConfig
 import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceResourceLimits
+import me.rerere.workspace.WorkspaceScope
 
 class SkillInstallTargetTest {
     @get:Rule
@@ -35,6 +36,36 @@ class SkillInstallTargetTest {
             "Reference",
             manager.readText("root-1", ".miffan/skills/safe-skill/references/readme.md"),
         )
+    }
+
+    @Test
+    fun `workspace skill target never installs into a sibling assistant scope`() {
+        val manager = WorkspaceManager(tempFolder.newFolder("scoped-workspace-targets"))
+        manager.ensureWorkspace("root-1")
+        val first = WorkspaceScope.assistant("assistant-a")
+        val second = WorkspaceScope.assistant("assistant-b")
+        val target = WorkspaceSkillInstallTarget(manager, "root-1", first)
+
+        assertTrue(
+            target.installNewAtomically(
+                "private-skill",
+                mapOf("SKILL.md" to "private".toByteArray()),
+            )
+        )
+        assertEquals(
+            "private",
+            manager.readText(
+                "root-1",
+                ".miffan/skills/private-skill/SKILL.md",
+                scope = first,
+            ),
+        )
+        assertFalse(
+            manager.filesDir("root-1", second)
+                .resolve(".miffan/skills/private-skill/SKILL.md")
+                .exists()
+        )
+        assertFalse(manager.filesDir("root-1").resolve(".miffan/skills/private-skill").exists())
     }
 
     @Test

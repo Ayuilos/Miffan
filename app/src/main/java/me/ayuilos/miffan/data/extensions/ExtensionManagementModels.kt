@@ -29,6 +29,7 @@ data class ExtensionAssistantCatalogEntry(
     val localToolIds: List<String>,
     val externalWebSearchEnabled: Boolean,
     val workspaceId: String? = null,
+    val workspaceScopeId: String? = null,
 )
 
 @Serializable

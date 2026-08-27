@@ -18,9 +18,25 @@ data class WorkspaceBindMount(
 
     init {
         require(guestTarget != GuestPath.ROOT) { "Bind mount target must not replace the Rootfs root" }
+        require(
+            ASSISTANT_SCOPE_GUEST_ROOTS.none { protected ->
+                guestTarget.isWithin(protected) || protected.isWithin(guestTarget)
+            }
+        ) {
+            "Bind mount target must not overlap an Assistant scope mount: ${guestTarget.value}"
+        }
     }
 
     internal fun sourceFor(root: String): File = if (workspaceScoped) File(source, root) else source
+
+    private companion object {
+        val ASSISTANT_SCOPE_GUEST_ROOTS = listOf(
+            GuestPath.parse("/workspace"),
+            GuestPath.parse("/root"),
+            GuestPath.parse("/tmp"),
+            GuestPath.parse("/var/tmp"),
+        )
+    }
 }
 
 class ProotShellRunner(
@@ -73,6 +89,13 @@ class ProotShellRunner(
         require(Files.isDirectory(context.tempDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             "Workspace temp directory must not be a symbolic link"
         }
+        listOf(context.homeDir, context.guestTempDir, context.guestVarTempDir)
+            .filterNotNull()
+            .forEach { directory ->
+                require(Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    "Workspace scope directory must not be a symbolic link"
+                }
+            }
         patcher.patch(context.linuxDir)
         return try {
             val process = WorkspaceNativeProcess.start(

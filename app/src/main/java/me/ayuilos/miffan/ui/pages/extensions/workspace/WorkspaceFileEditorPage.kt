@@ -47,6 +47,7 @@ fun WorkspaceFileEditorPage(
     id: String,
     area: WorkspaceStorageArea,
     path: String,
+    scopeId: String? = null,
 ) {
     val repository = koinInject<WorkspaceRepository>()
     val toaster = LocalToaster.current
@@ -59,11 +60,11 @@ fun WorkspaceFileEditorPage(
     var loadError by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
 
-    LaunchedEffect(id, area, path) {
+    LaunchedEffect(id, area, path, scopeId) {
         loading = true
         loadError = null
         runCatching {
-            repository.readTextForPreview(id, area, path)
+            repository.readTextForPreview(id, area, path, scopeId)
         }.onSuccess { content ->
             textState.setTextAndPlaceCursorAtEnd(content)
             loading = false
@@ -97,6 +98,7 @@ fun WorkspaceFileEditorPage(
                                             path = path,
                                             text = textState.text.toString(),
                                             overwrite = true,
+                                            scopeId = scopeId,
                                         )
                                     }.onSuccess {
                                         toaster.show("已保存", type = ToastType.Success)

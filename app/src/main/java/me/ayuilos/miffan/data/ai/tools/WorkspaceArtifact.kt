@@ -15,6 +15,7 @@ import me.ayuilos.miffan.utils.JsonInstant
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceStorageArea
+import me.rerere.workspace.WorkspaceScope
 
 /**
  * A persistent reference to a user-facing file produced in a workspace.
@@ -26,6 +27,8 @@ import me.rerere.workspace.WorkspaceStorageArea
 data class WorkspaceArtifact(
     val workspaceId: String,
     val path: String,
+    /** Null means the historical whole-workspace files view. */
+    val scopeId: String? = null,
     val name: String = path.substringAfterLast('/'),
     val mimeType: String = workspaceMimeType(name),
     val sizeBytes: Long? = null,
@@ -33,19 +36,30 @@ data class WorkspaceArtifact(
 ) {
     init {
         require(workspaceId.isNotBlank()) { "workspaceId is required" }
+        WorkspaceScope.fromNullableId(scopeId)
         require(path.startsWith('/')) { "Workspace artifact path must be absolute: $path" }
         require(name.isNotBlank()) { "Workspace artifact name is required" }
     }
 
     fun location(): WorkspaceFileLocation {
         val normalized = path.trimEnd('/')
-        return if (normalized == "/workspace" || normalized.startsWith("/workspace/")) {
-            WorkspaceFileLocation(
-                area = WorkspaceStorageArea.FILES,
-                relativePath = normalized.removePrefix("/workspace").trimStart('/'),
-            )
-        } else {
-            WorkspaceFileLocation(
+        val scopedArea = if (scopeId == null) null else when {
+            normalized == "/root" || normalized.startsWith("/root/") ->
+                WorkspaceStorageArea.HOME to normalized.removePrefix("/root").trimStart('/')
+            normalized == "/tmp" || normalized.startsWith("/tmp/") ->
+                WorkspaceStorageArea.TEMP to normalized.removePrefix("/tmp").trimStart('/')
+            normalized == "/var/tmp" || normalized.startsWith("/var/tmp/") ->
+                WorkspaceStorageArea.VAR_TEMP to normalized.removePrefix("/var/tmp").trimStart('/')
+            else -> null
+        }
+        return when {
+            normalized == "/workspace" || normalized.startsWith("/workspace/") ->
+                WorkspaceFileLocation(
+                    area = WorkspaceStorageArea.FILES,
+                    relativePath = normalized.removePrefix("/workspace").trimStart('/'),
+                )
+            scopedArea != null -> WorkspaceFileLocation(scopedArea.first, scopedArea.second)
+            else -> WorkspaceFileLocation(
                 area = WorkspaceStorageArea.LINUX,
                 relativePath = normalized.trimStart('/'),
             )
@@ -60,9 +74,11 @@ data class WorkspaceFileLocation(
 
 internal fun WorkspaceFileEntry.toWorkspaceArtifact(
     workspaceId: String,
+    scopeId: String? = null,
     absolutePath: String = path,
 ): WorkspaceArtifact = WorkspaceArtifact(
     workspaceId = workspaceId,
+    scopeId = scopeId,
     path = absolutePath,
     name = name,
     mimeType = workspaceMimeType(name),
@@ -73,6 +89,7 @@ internal fun WorkspaceFileEntry.toWorkspaceArtifact(
 internal fun WorkspaceArtifact.toJson(): JsonObject = buildJsonObject {
     put("type", "workspace_artifact")
     put("workspaceId", workspaceId)
+    scopeId?.let { put("scopeId", it) }
     put("path", path)
     put("name", name)
     put("mimeType", mimeType)
@@ -111,7 +128,9 @@ internal fun UIMessagePart.Tool.workspaceArtifacts(
             emptyList()
         }
     }
-    if (persisted.isNotEmpty()) return persisted.distinctBy { "${it.workspaceId}:${it.path}" }
+    if (persisted.isNotEmpty()) {
+        return persisted.distinctBy { "${it.workspaceId}:${it.scopeId}:${it.path}" }
+    }
 
     // Messages created before workspaceId was added to tool outputs only retain the input path.
     if (toolName !in LEGACY_ARTIFACT_TOOL_NAMES || fallbackWorkspaceId.isNullOrBlank()) {
@@ -133,6 +152,7 @@ private fun JsonElement.toWorkspaceArtifactOrNull(fallbackWorkspaceId: String?):
     return runCatching {
         WorkspaceArtifact(
             workspaceId = workspaceId,
+            scopeId = value.string("scopeId"),
             path = path,
             name = name,
             mimeType = value.string("mimeType") ?: workspaceMimeType(name),

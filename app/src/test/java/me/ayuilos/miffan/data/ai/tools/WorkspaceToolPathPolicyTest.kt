@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.ai.tools
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class WorkspaceToolPathPolicyTest {
@@ -22,5 +23,14 @@ class WorkspaceToolPathPolicyTest {
         assertTrue(workspaceWriteRequiresApproval("/workspace//evil.txt"))
         assertTrue(workspaceWriteRequiresApproval("/workspace\\evil.txt"))
         assertTrue(workspaceWriteRequiresApproval("/workspace/evil.txt\u0000tail"))
+    }
+
+    @Test
+    fun `shell cwd strips only the exact workspace mount`() {
+        assertEquals("", "/workspace".toWorkspaceRelativeCwd())
+        assertEquals("project", "/workspace/project".toWorkspaceRelativeCwd())
+        assertEquals("/workspaceevil", "/workspaceevil".toWorkspaceRelativeCwd())
+        assertEquals("/tmp", "/tmp".toWorkspaceRelativeCwd())
+        assertEquals("a/../b", "a/../b".toWorkspaceRelativeCwd())
     }
 }

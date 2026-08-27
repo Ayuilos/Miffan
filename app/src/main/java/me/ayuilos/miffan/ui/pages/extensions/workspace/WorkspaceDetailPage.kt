@@ -94,9 +94,15 @@ fun WorkspaceDetailPage(
     initialArea: String? = null,
     initialPath: String? = null,
     openFiles: Boolean = false,
+    scopeId: String? = null,
+    scopeName: String? = null,
 ) {
     val navController = LocalNavController.current
-    val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
+    val vm: WorkspaceDetailVM = koinViewModel(
+        parameters = {
+            parametersOf(WorkspaceDetailArgs(id = id, scopeId = scopeId, scopeName = scopeName))
+        }
+    )
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
@@ -128,7 +134,7 @@ fun WorkspaceDetailPage(
         vm.exportFile(entry, outputStream)
     }
 
-    LaunchedEffect(id, initialArea, initialPath, openFiles) {
+    LaunchedEffect(id, initialArea, initialPath, openFiles, scopeId) {
         if (initialArea != null || initialPath != null) {
             val area = runCatching { WorkspaceStorageArea.valueOf(initialArea.orEmpty()) }
                 .getOrDefault(WorkspaceStorageArea.FILES)
@@ -146,7 +152,15 @@ fun WorkspaceDetailPage(
             TopAppBar(
                 title = {
                     Text(
-                        text = state.workspace?.name ?: stringResource(R.string.workspace_detail_title),
+                        text = state.workspace?.name?.let { workspaceName ->
+                            if (state.scopeId == null) {
+                                workspaceName
+                            } else {
+                                val scopeLabel = state.scopeName?.takeIf { it.isNotBlank() }
+                                    ?: requireNotNull(state.scopeId).take(8)
+                                "$workspaceName · $scopeLabel"
+                            }
+                        } ?: stringResource(R.string.workspace_detail_title),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -165,7 +179,17 @@ fun WorkspaceDetailPage(
                         Icon(HugeIcons.Refresh01, contentDescription = null)
                     }
                     if (state.workspace?.shellStatus != WorkspaceShellStatus.DISABLED.name) {
-                        IconButton(onClick = { navController.navigate(Screen.WorkspaceTerminal(id)) }) {
+                        IconButton(
+                            onClick = {
+                                navController.navigate(
+                                    Screen.WorkspaceTerminal(
+                                        id = id,
+                                        scopeId = state.scopeId,
+                                        scopeName = state.scopeName,
+                                    )
+                                )
+                            }
+                        ) {
                             Icon(HugeIcons.ComputerTerminal01, contentDescription = null)
                         }
                     }
@@ -206,6 +230,8 @@ fun WorkspaceDetailPage(
             when (page) {
                 0 -> WorkspaceBasicPage(
                     workspace = state.workspace,
+                    scopeId = state.scopeId,
+                    scopeName = state.scopeName,
                     installProgress = installProgress,
                     onInstallRootfs = { showInstallDialog = true },
                     onToolApprovalChange = vm::setToolApproval,
@@ -224,8 +250,13 @@ fun WorkspaceDetailPage(
                                 val guestPath = when (state.area) {
                                     WorkspaceStorageArea.FILES -> "/workspace/${entry.path.trimStart('/')}"
                                     WorkspaceStorageArea.LINUX -> "/${entry.path.trimStart('/')}"
+                                    WorkspaceStorageArea.HOME -> "/root/${entry.path.trimStart('/')}"
+                                    WorkspaceStorageArea.TEMP -> "/tmp/${entry.path.trimStart('/')}"
+                                    WorkspaceStorageArea.VAR_TEMP -> "/var/tmp/${entry.path.trimStart('/')}"
                                 }
-                                navController.navigate(Screen.WorkspaceFilePreview(id, guestPath))
+                                navController.navigate(
+                                    Screen.WorkspaceFilePreview(id, guestPath, state.scopeId)
+                                )
                             }
                         }
                     },
@@ -416,6 +447,8 @@ private fun WorkspaceSkillsPage(
 @Composable
 private fun WorkspaceBasicPage(
     workspace: WorkspaceEntity?,
+    scopeId: String?,
+    scopeName: String?,
     installProgress: RootfsInstallProgress?,
     onInstallRootfs: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
@@ -451,6 +484,17 @@ private fun WorkspaceBasicPage(
                     )
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_name), workspace?.name ?: stringResource(R.string.workspace_detail_loading))
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_shell_status), workspace?.shellStatus?.toShellStatusLabel() ?: "-")
+                    WorkspaceInfoRow(
+                        stringResource(R.string.workspace_scope),
+                        if (scopeId == null) {
+                            stringResource(R.string.workspace_scope_legacy)
+                        } else {
+                            stringResource(
+                                R.string.workspace_scope_private,
+                                scopeName?.takeIf { it.isNotBlank() } ?: scopeId,
+                            )
+                        },
+                    )
                 }
             }
         }
@@ -571,7 +615,6 @@ private fun workspaceToolApprovalItems() = listOf(
     "workspace_read_file" to stringResource(R.string.workspace_detail_tool_read_file),
     "workspace_write_file" to stringResource(R.string.workspace_detail_tool_write_file),
     "workspace_edit_file" to stringResource(R.string.workspace_detail_tool_edit_file),
-    "workspace_shell" to stringResource(R.string.workspace_detail_tool_shell),
 )
 
 @Composable
@@ -739,10 +782,15 @@ private fun WorkspaceAreaSelector(
     selected: WorkspaceStorageArea,
     onSelected: (WorkspaceStorageArea) -> Unit,
 ) {
-    val areas = listOf(
+    val standardAreas = listOf(
         WorkspaceStorageArea.FILES to stringResource(R.string.workspace_detail_area_files),
         WorkspaceStorageArea.LINUX to stringResource(R.string.workspace_detail_area_rootfs),
     )
+    val areas = if (selected in standardAreas.map { it.first }) {
+        standardAreas
+    } else {
+        listOf(selected to selected.privateAreaLabel()) + standardAreas
+    }
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         areas.forEachIndexed { index, (area, label) ->
             SegmentedButton(
@@ -754,6 +802,14 @@ private fun WorkspaceAreaSelector(
             }
         }
     }
+}
+
+private fun WorkspaceStorageArea.privateAreaLabel(): String = when (this) {
+    WorkspaceStorageArea.HOME -> "Home"
+    WorkspaceStorageArea.TEMP -> "Temp"
+    WorkspaceStorageArea.VAR_TEMP -> "Var temp"
+    WorkspaceStorageArea.FILES -> "Files"
+    WorkspaceStorageArea.LINUX -> "Rootfs"
 }
 
 @Composable

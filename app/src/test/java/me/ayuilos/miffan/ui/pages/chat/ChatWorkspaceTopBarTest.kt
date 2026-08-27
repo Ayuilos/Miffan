@@ -69,12 +69,19 @@ class ChatWorkspaceTopBarTest {
 
     @Test
     fun workspaceRouteOpensFilesAtConversationCwd() {
-        val route = workspaceFilesRoute("workspace-id", "/workspace/project")
+        val route = workspaceFilesRoute(
+            "workspace-id",
+            "/workspace/project",
+            scopeId = "assistant-a",
+            scopeName = "Research",
+        )
 
         assertEquals("workspace-id", route.id)
         assertEquals(WorkspaceStorageArea.FILES.name, route.area)
         assertEquals("project", route.path)
         assertTrue(route.openFiles)
+        assertEquals("assistant-a", route.scopeId)
+        assertEquals("Research", route.scopeName)
     }
 
     private fun workspace(shellStatus: String) = WorkspaceEntity(

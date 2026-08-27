@@ -93,6 +93,9 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
         if (parent.isRoot) {
             // 顶层：列出所有 workspace
             for (ws in allWorkspaces()) {
+                // SAF is a user-admin surface without an Assistant identity. Keep exposing the
+                // historical files/ root for compatibility; Assistant-scoped browsing uses the
+                // in-app Workspace routes, which always carry scopeId.
                 val dir = manager().filesDir(ws.root).also { it.mkdirs() }
                 addFileRow(cursor, ws.root, dir)
             }

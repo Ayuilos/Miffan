@@ -504,11 +504,17 @@ class RouteActivity : ComponentActivity() {
                                     initialArea = key.area,
                                     initialPath = key.path,
                                     openFiles = key.openFiles,
+                                    scopeId = key.scopeId,
+                                    scopeName = key.scopeName,
                                 )
                             }
 
                             entry<Screen.WorkspaceTerminal> { key ->
-                                WorkspaceTerminalPage(key.id)
+                                WorkspaceTerminalPage(
+                                    id = key.id,
+                                    scopeId = key.scopeId,
+                                    scopeName = key.scopeName,
+                                )
                             }
 
                             entry<Screen.WorkspaceFileEditor> { key ->
@@ -516,6 +522,7 @@ class RouteActivity : ComponentActivity() {
                                     id = key.id,
                                     area = WorkspaceStorageArea.valueOf(key.area),
                                     path = key.path,
+                                    scopeId = key.scopeId,
                                 )
                             }
 
@@ -523,6 +530,7 @@ class RouteActivity : ComponentActivity() {
                                 WorkspaceFilePreviewPage(
                                     id = key.id,
                                     path = key.path,
+                                    scopeId = key.scopeId,
                                 )
                             }
 
@@ -721,16 +729,31 @@ sealed interface Screen : NavKey {
         val area: String? = null,
         val path: String? = null,
         val openFiles: Boolean = false,
+        val scopeId: String? = null,
+        val scopeName: String? = null,
     ) : Screen
 
     @Serializable
-    data class WorkspaceTerminal(val id: String) : Screen
+    data class WorkspaceTerminal(
+        val id: String,
+        val scopeId: String? = null,
+        val scopeName: String? = null,
+    ) : Screen
 
     @Serializable
-    data class WorkspaceFileEditor(val id: String, val area: String, val path: String) : Screen
+    data class WorkspaceFileEditor(
+        val id: String,
+        val area: String,
+        val path: String,
+        val scopeId: String? = null,
+    ) : Screen
 
     @Serializable
-    data class WorkspaceFilePreview(val id: String, val path: String) : Screen
+    data class WorkspaceFilePreview(
+        val id: String,
+        val path: String,
+        val scopeId: String? = null,
+    ) : Screen
 
     @Serializable
     data object MessageSearch : Screen

@@ -295,12 +295,16 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
 internal data class ChatWorkspaceEntry(
     val id: String,
     val name: String?,
+    val scopeId: String?,
+    val scopeName: String?,
     val warning: Boolean,
 )
 
 internal fun resolveChatWorkspaceEntry(
     boundWorkspaceId: String?,
     workspace: WorkspaceEntity?,
+    scopeId: String? = null,
+    scopeName: String? = null,
 ): ChatWorkspaceEntry? {
     val id = boundWorkspaceId ?: return null
     val matchingWorkspace = workspace?.takeIf { it.id == id }
@@ -310,6 +314,8 @@ internal fun resolveChatWorkspaceEntry(
     return ChatWorkspaceEntry(
         id = id,
         name = matchingWorkspace?.name?.takeIf { it.isNotBlank() },
+        scopeId = scopeId,
+        scopeName = scopeName,
         warning = matchingWorkspace == null ||
             shellStatus == null ||
             shellStatus == WorkspaceShellStatus.BROKEN,
@@ -336,12 +342,19 @@ internal fun workspaceCwdToFilesPath(workspaceCwd: String?): String {
     return segments.joinToString("/")
 }
 
-internal fun workspaceFilesRoute(workspaceId: String, workspaceCwd: String?): Screen.WorkspaceDetail {
+internal fun workspaceFilesRoute(
+    workspaceId: String,
+    workspaceCwd: String?,
+    scopeId: String? = null,
+    scopeName: String? = null,
+): Screen.WorkspaceDetail {
     return Screen.WorkspaceDetail(
         id = workspaceId,
         area = WorkspaceStorageArea.FILES.name,
         path = workspaceCwdToFilesPath(workspaceCwd),
         openFiles = true,
+        scopeId = scopeId,
+        scopeName = scopeName,
     )
 }
 
@@ -376,6 +389,8 @@ private fun ChatPageContent(
     val workspaceEntry = resolveChatWorkspaceEntry(
         boundWorkspaceId = workspaceId,
         workspace = workspaces.find { it.id == workspaceId },
+        scopeId = assistant.workspaceScopeId?.toString(),
+        scopeName = assistant.name.takeIf { it.isNotBlank() },
     )
     var showFilesSheet by remember { mutableStateOf(false) }
     var mascotInputState by remember(conversation.id) {
@@ -383,11 +398,17 @@ private fun ChatPageContent(
     }
     var mascotSubmitId by remember(conversation.id) { mutableIntStateOf(0) }
 
-    val completionProviders = remember(assistant.workspaceId, conversation.workspaceCwd, workspaceRepository) {
+    val completionProviders = remember(
+        assistant.workspaceId,
+        assistant.workspaceScopeId,
+        conversation.workspaceCwd,
+        workspaceRepository,
+    ) {
         assistant.workspaceId?.let { workspaceId ->
             listOf(
                 WorkspaceCompletionProvider(
                     workspaceId = workspaceId.toString(),
+                    workspaceScopeId = assistant.workspaceScopeId?.toString(),
                     repository = workspaceRepository,
                     currentCwd = conversation.workspaceCwd,
                 )
@@ -415,7 +436,14 @@ private fun ChatPageContent(
                         navigateToChatPage(navController)
                     },
                     onOpenWorkspace = { entry ->
-                        navController.navigate(workspaceFilesRoute(entry.id, conversation.workspaceCwd))
+                        navController.navigate(
+                            workspaceFilesRoute(
+                                workspaceId = entry.id,
+                                workspaceCwd = conversation.workspaceCwd,
+                                scopeId = entry.scopeId,
+                                scopeName = entry.scopeName,
+                            )
+                        )
                     },
                     onClickMenu = {
                         previewMode = !previewMode
@@ -857,7 +885,15 @@ private fun WorkspaceTopBarAction(
     val workspaceLabel = stringResource(R.string.extensions_page_workspace)
     val filesLabel = stringResource(R.string.workspace_detail_tab_files)
     val errorLabel = stringResource(R.string.workspace_detail_shell_broken)
-    val displayName = entry.name ?: workspaceLabel
+    val scopeLabel = if (entry.scopeId == null) {
+        stringResource(R.string.workspace_scope_legacy)
+    } else {
+        stringResource(
+            R.string.workspace_scope_private,
+            entry.scopeName ?: entry.scopeId.take(8),
+        )
+    }
+    val displayName = "${entry.name ?: workspaceLabel} · $scopeLabel"
     val actionLabel = buildString {
         append(workspaceLabel)
         append(' ')

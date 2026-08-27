@@ -87,6 +87,46 @@ class RootfsPathResolutionTest {
     }
 
     @Test
+    fun `assistant scopes map workspace home and temp privately while rootfs remains shared`() {
+        manager = createManager()
+        val first = WorkspaceScope.assistant("assistant-a")
+        val second = WorkspaceScope.assistant("assistant-b")
+
+        manager.writeRootfsText(root, "/workspace/private.txt", "first", scope = first)
+        manager.writeRootfsText(root, "/root/home.txt", "home-first", scope = first)
+        manager.writeRootfsText(root, "/tmp/cache.txt", "tmp-first", scope = first)
+        manager.writeRootfsText(root, "/var/tmp/cache.txt", "var-first", scope = first)
+        manager.writeRootfsText(root, "/etc/shared.conf", "shared", scope = first)
+
+        assertFalse(manager.filesDir(root, second).resolve("private.txt").exists())
+        assertFalse(manager.resolveRootfsPath(root, "/root/home.txt", second).rootDir
+            .resolve("home.txt").exists())
+        assertFalse(manager.resolveRootfsPath(root, "/tmp/cache.txt", second).rootDir
+            .resolve("cache.txt").exists())
+        assertFalse(manager.resolveRootfsPath(root, "/var/tmp/cache.txt", second).rootDir
+            .resolve("cache.txt").exists())
+        assertEquals(
+            manager.resolveRootfsPath(root, "/etc/shared.conf", first).rootDir,
+            manager.resolveRootfsPath(root, "/etc/shared.conf", second).rootDir,
+        )
+        assertEquals("shared", File(manager.linuxDir(root), "etc/shared.conf").readText())
+    }
+
+    @Test
+    fun `legacy files remain visible only through explicit legacy scope`() {
+        manager = createManager()
+        File(manager.filesDir(root), "legacy.txt").writeText("kept")
+        val privateScope = WorkspaceScope.assistant("assistant-new")
+
+        assertEquals(
+            manager.filesDir(root),
+            manager.resolveRootfsPath(root, "/workspace/legacy.txt").rootDir,
+        )
+        assertFalse(manager.filesDir(root, privateScope).resolve("legacy.txt").exists())
+        assertEquals("kept", File(manager.filesDir(root), "legacy.txt").readText())
+    }
+
+    @Test
     fun unknownAbsolutePathFallsBackToRootfsInterior() {
         manager = createManager()
         File(manager.linuxDir(root), "etc").mkdirs()
