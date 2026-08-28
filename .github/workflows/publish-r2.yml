@@ -1,0 +1,70 @@
+name: Publish APK to R2
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Stable release tag to retry (leave empty for latest)
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - '.github/scripts/publish_r2*'
+      - '.github/workflows/publish-r2.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-publish-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name != 'release' || github.event.release.prerelease == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.ref || 'master' }}
+          persist-credentials: false
+          sparse-checkout: .github
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - name: Test release validation and failure safety
+        run: node --test .github/scripts/publish_r2.test.mjs
+
+  publish:
+    needs: verify
+    if: >-
+      github.repository == 'Ayuilos/Miffan' &&
+      ((github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # Never execute code from an arbitrary release tag with deployment credentials.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: master
+          persist-credentials: false
+          sparse-checkout: .github
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - name: Verify runner tools
+        run: |
+          gh --version
+          aws --version
+          curl --version
+      - name: Mirror and verify the published APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.MIFFAN_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MIFFAN_R2_SECRET_ACCESS_KEY }}
+        run: node .github/scripts/publish_r2.mjs
