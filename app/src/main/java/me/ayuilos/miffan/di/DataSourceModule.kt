@@ -19,6 +19,7 @@ import me.ayuilos.miffan.data.ai.RequestLoggingInterceptor
 import me.ayuilos.miffan.data.ai.openai.OpenAICodexAuthService
 import me.ayuilos.miffan.data.ai.transformers.AssistantTemplateLoader
 import me.ayuilos.miffan.data.ai.GenerationHandler
+import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.transformers.TemplateTransformer
 import me.ayuilos.miffan.data.api.MiffanAPI
 import me.ayuilos.miffan.data.api.SponsorAPI
@@ -165,6 +166,10 @@ val dataSourceModule = module {
             memoryRepo = get(),
             workspaceManager = get(),
         )
+    }
+
+    single {
+        TranslationHandler(providerManager = get())
     }
 
     single<OkHttpClient> {

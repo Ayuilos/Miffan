@@ -24,6 +24,7 @@
 - Theme-synced colors update for dynamic, preset, and custom themes in both light and dark mode.
 - Theme sync changes colors without changing kind, material, contents, accessories, or motion profile.
 - Thinking, happy, error, idle, focused, and typing states work for every palette.
+- Neutral and thinking mouths stay round; mouth corners remain smooth through expression changes, taps, and yawns rather than forming pointed almond shapes.
 - Update-available state remains readable for every character and palette at avatar sizes.
 - An idle Miffan on the empty chat page receives the update-available semantic state; chat errors still take priority.
 - Decorative input cues use palette-derived colors rather than Classic-only hard-coded colors.
@@ -44,10 +45,24 @@
 - Focusing and typing in the input produces a distinct but restrained reaction.
 - Keyboard movement does not cover half of the mascot.
 - Sending triggers the one-shot submit reaction and the mascot remains present while the assistant responds.
-- Loading completion transitions briefly through happy and then returns to the appropriate idle phase.
+- A confirmed successful reply transitions briefly through happy and then returns to idle; cancellation, failure, user-only sends, and pending tool approval never celebrate.
+- First active send shrinks the same empty-chat mascot into the waiting slot without restarting its face or gaze.
+- Waiting avatars remain aligned while scrolling; offscreen/disposed slots leave no visible or interactive ghost.
+- Short conversations already at the bottom do not repeatedly request the same scroll position during generation.
+- A quick completion or cancellation during the handoff fades safely; changing conversation does not reuse the previous scene.
+- Enqueueing during generation does not replay submit/handoff, and the next active generation clears an old celebration.
+- Historical avatars remain still; active 28/32/48 dp avatars have restrained motion.
+- Retry/loading overrides old reminders, errors override celebration, and focused/typing input overrides update reminders.
+- Turning system animations off and back on updates the mascot without reopening the screen. With animations off, expressions remain readable and handoff/ambient movement stops.
 - Lively is visibly quicker but keeps tap compression light.
 - Calm has the smallest movement amplitude and slowest rhythm.
 - Curious moves its eyes before its delayed body lean.
+- Face changes stay continuous when interrupted by a new semantic state.
+- Rapid taps in opposite directions do not reset the body pose; the latest reaction settles fully.
+- Thinking gaze holds a destination and periodically returns to center, while input and taps override it.
+- Entering error settles character signatures gradually rather than snapping them to the rest pose.
+- Miffan Lab's Transitions mode repeats focus, typing, rapid taps, submit, thinking, error, retry, and completion.
+- Expression and avatar-size screenshots are checked in light, dark, and reduced-motion previews.
 
 ## Regression and delivery
 

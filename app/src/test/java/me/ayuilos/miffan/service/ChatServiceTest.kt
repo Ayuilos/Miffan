@@ -21,11 +21,25 @@ import me.rerere.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
 
 class ChatServiceTest {
+    @Test
+    fun `completion feedback requires an assistant reply without pending approval`() {
+        val reply = UIMessage.assistant("Done")
+        val conversation = Conversation(assistantId = Uuid.random(), messageNodes = listOf(MessageNode.of(reply)))
+        assertEquals(reply.id, conversation.completedAssistantReplyId())
+        assertNull(conversation.completedAssistantReplyId(conversation))
+        assertNull(conversation.copy(messageNodes = emptyList()).completedAssistantReplyId())
+        assertNull(conversation.copy(messageNodes = listOf(MessageNode.of(UIMessage.user("Queued")))).completedAssistantReplyId())
+        assertNull(conversation.copy(messageNodes = listOf(MessageNode.of(UIMessage.assistant("")))).completedAssistantReplyId())
+        val pending = reply.copy(parts = reply.parts + tool("approval", "ask_user", ToolApprovalState.Pending))
+        assertNull(conversation.copy(messageNodes = listOf(MessageNode.of(pending))).completedAssistantReplyId())
+    }
+
     @Test
     fun `always allow approves pending shell tools on selected branches only`() {
         val selectedMessage = UIMessage(

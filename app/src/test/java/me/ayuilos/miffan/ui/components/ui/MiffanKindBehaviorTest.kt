@@ -164,4 +164,40 @@ class MiffanKindBehaviorTest {
             assertEquals(MiffanSignaturePose(), pose)
         }
     }
+
+    @Test
+    fun enteringErrorCanKeepTheCurrentPoseThenSettleGradually() {
+        MiffanKind.entries.forEach { kind ->
+            val behavior = kind.miffanKindBehavior()
+            val active = behavior.poseFor(90f, 1f, MiffanMascotState.Thinking, MiffanMascotInputState.Inactive)
+            val entering = behavior.poseFor(
+                90f, 1f, MiffanMascotState.Error, MiffanMascotInputState.Inactive,
+                settleProgress = 0f,
+            )
+            val midway = behavior.poseFor(
+                90f, 1f, MiffanMascotState.Error, MiffanMascotInputState.Inactive,
+                settleProgress = 0.5f,
+            )
+            assertEquals(active, entering)
+            assertEquals(active.offsetY * 0.5f, midway.offsetY, 0.0001f)
+            assertEquals(active.rotationDegrees * 0.5f, midway.rotationDegrees, 0.0001f)
+            assertEquals(1f + (active.scaleY - 1f) * 0.5f, midway.scaleY, 0.0001f)
+        }
+    }
+
+    @Test
+    fun sproutListeningLeanUsesTransitionProgress() {
+        val behavior = MiffanKind.SPROUT.miffanKindBehavior()
+        val starting = behavior.poseFor(
+            0f, 1f, MiffanMascotState.Idle, MiffanMascotInputState.Focused,
+            listeningProgress = 0f,
+        )
+        val midway = behavior.poseFor(
+            0f, 1f, MiffanMascotState.Idle, MiffanMascotInputState.Focused,
+            listeningProgress = 0.5f,
+        )
+        assertEquals(0f, starting.offsetX, 0f)
+        assertEquals(1.1f, midway.offsetX, 0.0001f)
+        assertEquals(1.75f, midway.rotationDegrees, 0.0001f)
+    }
 }

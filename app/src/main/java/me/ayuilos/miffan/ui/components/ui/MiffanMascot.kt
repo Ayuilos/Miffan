@@ -2,15 +2,11 @@ package me.ayuilos.miffan.ui.components.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateOffsetAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.ColorScheme
@@ -43,10 +39,8 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.model.MiffanAppearance
 import me.ayuilos.miffan.data.model.MiffanColorSource
 import me.ayuilos.miffan.data.model.MiffanKind
@@ -57,7 +51,6 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
-import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -311,13 +304,6 @@ private enum class MiffanIdleGesture {
     Doze,
 }
 
-private data class IdleGazeSpec(
-    val delayRange: LongRange,
-    val horizontalRange: IntRange,
-    val verticalRange: IntRange,
-    val duration: Int,
-)
-
 /**
  * The in-app form of the launcher icon. Its pieces are drawn separately so the
  * bowl can breathe while the face and rice react to the current chat state.
@@ -329,6 +315,7 @@ fun MiffanMascot(
     appearance: MiffanAppearance = MiffanAppearance(),
     motionProfile: MiffanMotionProfile = MiffanMotionProfile.CURIOUS,
     reducedMotion: Boolean = false,
+    presentation: MiffanPresentation = MiffanPresentation.Scene,
     interactive: Boolean = false,
     attentionTarget: Offset? = null,
     attentionId: Int = 0,
@@ -345,74 +332,51 @@ fun MiffanMascot(
             MiffanColorSource.APP_THEME -> appColorScheme.miffanColors()
         }
     }
-    val motion = remember(motionProfile, reducedMotion) {
-        motionProfile.miffanMotionTuning().let { tuning ->
-            if (reducedMotion) tuning.reduced() else tuning
+    val motionReduced = reducedMotion || rememberMiffanReducedMotion()
+    val runAmbient = miffanRunsAmbientMotion(presentation, state, motionReduced)
+    val motion = remember(motionProfile, motionReduced, presentation) {
+        motionProfile.miffanMotionTuning().let {
+            if (presentation == MiffanPresentation.Avatar) it.forAvatar() else it
+        }.let { tuning ->
+            if (motionReduced) tuning.reduced() else tuning
         }
     }
     val kindBehavior = remember(appearance.kind) {
         appearance.kind.miffanKindBehavior()
     }
-    val infiniteTransition = rememberInfiniteTransition(label = "miffan_mascot")
-    val breathDuration = motion.duration(when (dayPhase) {
-        MiffanDayPhase.Morning -> 2_600
-        MiffanDayPhase.Noon -> 2_100
-        MiffanDayPhase.Night -> 3_000
-    })
-    val breath by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(breathDuration, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "miffan_breath",
+    val breath by rememberMiffanCycle(
+        runAmbient,
+        motion.duration(when (dayPhase) {
+            MiffanDayPhase.Morning -> 2_600
+            MiffanDayPhase.Noon -> 2_100
+            MiffanDayPhase.Night -> 3_000
+        }),
+        reverse = true, label = "miffan_breath",
     )
-    val thinkingPhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(motion.duration(1500), easing = LinearEasing),
-        ),
-        label = "miffan_thinking",
+    val thinkingPhase by rememberMiffanCycle(
+        runAmbient, motion.duration(1500), peak = 360f, label = "miffan_thinking",
     )
-    val inputPulse by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(motion.duration(760), easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "miffan_input_pulse",
+    val inputPulse by rememberMiffanCycle(
+        runAmbient, motion.duration(760), reverse = true, label = "miffan_input_pulse",
     )
-    val signaturePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = motion.duration(kindBehavior.cycleMillis),
-                easing = LinearEasing,
-            ),
-        ),
-        label = "miffan_kind_signature",
+    val signaturePhase by rememberMiffanCycle(
+        runAmbient, motion.duration(kindBehavior.cycleMillis), peak = 360f, label = "miffan_kind_signature",
     )
 
     val blink = remember { Animatable(1f) }
-    val gazeX = remember { Animatable(0f) }
-    val gazeY = remember { Animatable(0f) }
-    val pokeOffset = remember { Animatable(0f) }
-    val pokeSquash = remember { Animatable(1f) }
-    val pokeExpression = remember { Animatable(0f) }
-    val tapGazeX = remember { Animatable(0f) }
-    val tapGazeY = remember { Animatable(0f) }
+    var ambientGaze by remember { mutableStateOf(Offset.Zero) }
     val idleGestureProgress = remember { Animatable(0f) }
     val submitProgress = remember { Animatable(0f) }
-    val attentionTilt = remember { Animatable(0f) }
     var idleGesture by remember { mutableStateOf(MiffanIdleGesture.None) }
     var submitActive by remember { mutableStateOf(false) }
     var tapTargetX by remember { mutableFloatStateOf(0f) }
     var tapTargetY by remember { mutableFloatStateOf(0f) }
     var pokeCount by remember { mutableIntStateOf(0) }
+    val attention = rememberMiffanAttention(
+        pokeCount,
+        Offset(tapTargetX, tapTargetY) * motion.gazeAmplitude.coerceAtMost(1f),
+        motion,
+    )
     val inputEngaged = state == MiffanMascotState.Idle && inputState != MiffanMascotInputState.Inactive
     val inputFocusProgress by animateFloatAsState(
         targetValue = if (inputEngaged) 1f else 0f,
@@ -427,9 +391,42 @@ fun MiffanMascot(
         animationSpec = tween(durationMillis = motion.duration(220), easing = FastOutSlowInEasing),
         label = "miffan_input_typing",
     )
+    val gaze by animateOffsetAsState(
+        targetValue = (attention.lookAt.takeUnless { state == MiffanMascotState.Error }) ?: when {
+            previewSignatureBehavior -> Offset.Zero
+            inputEngaged -> Offset(0f, motion.inputLookY)
+            else -> ambientGaze
+        },
+        animationSpec = motion.springSpec(520f),
+        label = "miffan_gaze",
+    )
+    val face by animateMiffanFace(state, inputState, motion)
+    val semanticTransition = updateTransition(state, label = "miffan_semantic_state")
+    val thinkingBlend = semanticTransition.animateFloat(
+        transitionSpec = { motion.springSpec(260f) }, label = "thinking",
+    ) { if (it == MiffanMascotState.Thinking) 1f else 0f }
+    val happyBlend = semanticTransition.animateFloat(
+        transitionSpec = { motion.springSpec(260f) }, label = "happy",
+    ) { if (it == MiffanMascotState.Happy) 1f else 0f }
+    val errorBlend = semanticTransition.animateFloat(
+        transitionSpec = { motion.springSpec(260f) }, label = "error",
+    ) { if (it == MiffanMascotState.Error) 1f else 0f }
+    val updateBlend = semanticTransition.animateFloat(
+        transitionSpec = { motion.springSpec(260f) }, label = "update",
+    ) { if (it == MiffanMascotState.UpdateAvailable) 1f else 0f }
+    val baseSignatureStrength by animateFloatAsState(
+        targetValue = if (previewSignatureBehavior) {
+            if (motionReduced) motion.stateAmplitude else 1f
+        } else {
+            if (!runAmbient) 0f else
+                kindBehavior.strengthFor(state, inputState, dayPhase, submitProgress = 0f) * motion.stateAmplitude
+        }.coerceIn(0f, 1f),
+        animationSpec = motion.springSpec(260f),
+        label = "miffan_signature_strength",
+    )
 
     LaunchedEffect(submitId) {
-        if (submitId == 0 || state != MiffanMascotState.Idle) return@LaunchedEffect
+        if (submitId == 0 || state == MiffanMascotState.Error) return@LaunchedEffect
         submitActive = true
         submitProgress.snapTo(0f)
         submitProgress.animateTo(1f, tween(motion.duration(420), easing = FastOutSlowInEasing))
@@ -437,8 +434,9 @@ fun MiffanMascot(
         submitProgress.snapTo(0f)
     }
 
-    LaunchedEffect(state, dayPhase, motionProfile, reducedMotion) {
-        blink.snapTo(1f)
+    LaunchedEffect(state, dayPhase, motion, runAmbient) {
+        blink.animateTo(1f, tween(motion.duration(100)))
+        if (!runAmbient) return@LaunchedEffect
         while (currentCoroutineContext().isActive) {
             val delayRange = if (state == MiffanMascotState.Idle) {
                 when (dayPhase) {
@@ -464,35 +462,24 @@ fun MiffanMascot(
         }
     }
 
-    LaunchedEffect(state, dayPhase, motionProfile, reducedMotion) {
-        if (state != MiffanMascotState.Idle) {
-            gazeX.animateTo(0f, tween(motion.duration(180)))
-            gazeY.animateTo(0f, tween(motion.duration(180)))
+    LaunchedEffect(state, dayPhase, motion, previewSignatureBehavior, inputEngaged, runAmbient) {
+        if (!runAmbient || previewSignatureBehavior || inputEngaged) {
+            ambientGaze = Offset.Zero
             return@LaunchedEffect
         }
+        var gazeStep = 0
         while (currentCoroutineContext().isActive) {
-            val (delayRange, horizontalRange, verticalRange, duration) = when (dayPhase) {
-                MiffanDayPhase.Morning -> IdleGazeSpec(1_800L..4_000L, -3..3, -1..2, 420)
-                MiffanDayPhase.Noon -> IdleGazeSpec(1_100L..3_000L, -4..4, -2..2, 280)
-                MiffanDayPhase.Night -> IdleGazeSpec(2_600L..5_200L, -2..2, -1..1, 520)
-            }
-            val scaledDelayRange = delayRange.scaleBy(motion.gazeIntervalScale)
-            delay(Random.nextLong(scaledDelayRange.first, scaledDelayRange.last + 1))
-            gazeX.animateTo(
-                Random.nextInt(horizontalRange.first, horizontalRange.last + 1) * motion.gazeAmplitude,
-                tween(motion.duration(duration)),
-            )
-            gazeY.animateTo(
-                Random.nextInt(verticalRange.first, verticalRange.last + 1) * motion.gazeAmplitude,
-                tween(motion.duration(duration)),
-            )
+            val target = nextMiffanGaze(state, dayPhase, gazeStep++)
+            ambientGaze = Offset(target.x, target.y) * motion.gazeAmplitude
+            delay((target.holdMillis * motion.gazeIntervalScale).roundToLong())
         }
     }
 
-    LaunchedEffect(state, dayPhase, previewIdleGestures, motionProfile, reducedMotion) {
-        idleGestureProgress.snapTo(0f)
+    LaunchedEffect(state, dayPhase, previewIdleGestures, previewSignatureBehavior, motion, runAmbient, presentation) {
+        idleGestureProgress.animateTo(0f, tween(motion.duration(200)))
         idleGesture = MiffanIdleGesture.None
-        if (state != MiffanMascotState.Idle) return@LaunchedEffect
+        if (!runAmbient || presentation == MiffanPresentation.Avatar ||
+            state != MiffanMascotState.Idle || previewSignatureBehavior) return@LaunchedEffect
 
         delay(
             if (previewIdleGestures) {
@@ -551,61 +538,9 @@ fun MiffanMascot(
         pokeCount++
     }
 
-    LaunchedEffect(pokeCount) {
-        if (pokeCount == 0) return@LaunchedEffect
-        coroutineScope {
-            launch {
-                delay(motion.attentionBodyDelayMillis)
-                pokeExpression.animateTo(1f, tween(motion.duration(240), easing = FastOutSlowInEasing))
-                delay(motion.duration(520).toLong())
-                pokeExpression.animateTo(0f, tween(motion.duration(320), easing = FastOutSlowInEasing))
-            }
-            launch {
-                delay(motion.attentionBodyDelayMillis)
-                pokeSquash.animateTo(motion.tapSquash, tween(motion.duration(120), easing = FastOutSlowInEasing))
-                pokeSquash.animateTo(
-                    motion.tapOvershoot,
-                    tween(motion.duration(200), easing = FastOutSlowInEasing),
-                )
-                pokeSquash.animateTo(1f, tween(motion.duration(240), easing = FastOutSlowInEasing))
-            }
-            launch {
-                delay(motion.attentionBodyDelayMillis)
-                pokeOffset.animateTo(motion.tapOffset, tween(motion.duration(120), easing = FastOutSlowInEasing))
-                pokeOffset.animateTo(-motion.tapOffset, tween(motion.duration(200), easing = FastOutSlowInEasing))
-                pokeOffset.animateTo(0f, tween(motion.duration(240), easing = FastOutSlowInEasing))
-            }
-            launch {
-                delay(motion.attentionBodyDelayMillis)
-                val direction = if (abs(tapTargetX) > 0.4f) -sign(tapTargetX) else 0.35f
-                attentionTilt.animateTo(
-                    direction * motion.attentionTiltDegrees,
-                    tween(motion.duration(240), easing = FastOutSlowInEasing),
-                )
-                delay(motion.duration(380).toLong())
-                attentionTilt.animateTo(0f, tween(motion.duration(360), easing = FastOutSlowInEasing))
-            }
-            launch {
-                coroutineScope {
-                    launch {
-                        tapGazeX.animateTo(tapTargetX, tween(motion.duration(210), easing = FastOutSlowInEasing))
-                    }
-                    launch {
-                        tapGazeY.animateTo(tapTargetY, tween(motion.duration(210), easing = FastOutSlowInEasing))
-                    }
-                }
-                delay(motion.duration(500).toLong())
-                coroutineScope {
-                    launch { tapGazeX.animateTo(0f, tween(motion.duration(340), easing = FastOutSlowInEasing)) }
-                    launch { tapGazeY.animateTo(0f, tween(motion.duration(340), easing = FastOutSlowInEasing)) }
-                }
-            }
-        }
-    }
-
     val stateRotation by animateFloatAsState(
         targetValue = if (state == MiffanMascotState.Error) -6f * motion.stateAmplitude else 0f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessLow),
+        animationSpec = motion.springSpec(180f),
         label = "miffan_state_rotation",
     )
     val stateOffsetY by animateFloatAsState(
@@ -615,7 +550,7 @@ fun MiffanMascot(
             MiffanMascotState.UpdateAvailable -> -2f * motion.stateAmplitude
             else -> 0f
         },
-        animationSpec = spring(dampingRatio = 0.48f, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = motion.springSpec(220f, if (motionReduced) 1f else 0.9f),
         label = "miffan_state_offset",
     )
 
@@ -652,30 +587,27 @@ fun MiffanMascot(
         val unit = size.minDimension / 200f
         val left = (size.width - size.minDimension) / 2f
         val top = (size.height - size.minDimension) / 2f
-        val rawGestureProgress = if (state == MiffanMascotState.Idle) {
-            idleGestureProgress.value
-        } else {
-            0f
-        }
+        val thinkingProgress = thinkingBlend.value.coerceIn(0f, 1f)
+        val happyProgress = happyBlend.value.coerceIn(0f, 1f)
+        val errorProgress = errorBlend.value.coerceIn(0f, 1f)
+        val updateProgress = updateBlend.value.coerceIn(0f, 1f)
+        val rawGestureProgress = idleGestureProgress.value
         val submitAmount = if (submitActive) submitProgress.value else 0f
-        val signatureStrength = if (previewSignatureBehavior) {
-            if (reducedMotion) motion.stateAmplitude else 1f
-        } else {
-            kindBehavior.strengthFor(
-                state = state,
-                inputState = inputState,
-                dayPhase = dayPhase,
-                submitProgress = submitAmount,
-            ) * motion.stateAmplitude
-        }.coerceIn(0f, 1f)
+        val signatureStrength = maxOf(
+            baseSignatureStrength,
+            kindBehavior.submitStrength * sin(submitAmount * Math.PI).toFloat() * motion.stateAmplitude,
+        ).coerceIn(0f, 1f)
         val signaturePose = kindBehavior.poseFor(
             phaseDegrees = signaturePhase,
             strength = signatureStrength,
             state = state,
             inputState = inputState,
+            settleProgress = errorProgress,
+            listeningProgress = inputFocusProgress,
         )
+        val reaction = attention.expression.value.coerceIn(0f, 1f) * (1f - errorProgress)
         val gestureVisibility =
-            (1f - pokeExpression.value) * (1f - inputFocusProgress) * (1f - submitAmount)
+            (1f - reaction) * (1f - inputFocusProgress) * (1f - submitAmount)
         val yawnAmount = if (idleGesture == MiffanIdleGesture.Yawn) {
             rawGestureProgress * gestureVisibility * motion.breathAmplitude
         } else {
@@ -692,23 +624,17 @@ fun MiffanMascot(
         } else {
             0f
         }
-        val bodyBob = if (previewSignatureBehavior) {
-            0f
-        } else when (state) {
-            MiffanMascotState.Thinking ->
-                sin(Math.toRadians(thinkingPhase.toDouble())).toFloat() * motion.thinkingBob
-            MiffanMascotState.Happy -> -breath * motion.happyBob
-            MiffanMascotState.UpdateAvailable -> -breath * motion.happyBob * 0.45f
-            else -> {
-                val breathAmplitude = when (dayPhase) {
-                    MiffanDayPhase.Morning -> 1.3f
-                    MiffanDayPhase.Noon -> 1.6f
-                    MiffanDayPhase.Night -> 1f
-                }
-                -breath * breathAmplitude * motion.breathAmplitude -
-                    riceBounceAmount * 0.8f + dozeAmount * 1.5f
-            }
+        val breathAmplitude = when (dayPhase) {
+            MiffanDayPhase.Morning -> 1.3f
+            MiffanDayPhase.Noon -> 1.6f
+            MiffanDayPhase.Night -> 1f
         }
+        val idleBob = -breath * breathAmplitude * motion.breathAmplitude -
+            riceBounceAmount * 0.8f + dozeAmount * 1.5f
+        val bodyBob = if (previewSignatureBehavior) 0f else
+            idleBob * (1f - thinkingProgress - happyProgress - updateProgress).coerceIn(0f, 1f) +
+                sin(Math.toRadians(thinkingPhase.toDouble())).toFloat() * motion.thinkingBob * thinkingProgress -
+                breath * motion.happyBob * (happyProgress + updateProgress * 0.45f)
         val submitNod = if (submitActive) {
             sin(submitAmount * Math.PI).toFloat().coerceAtLeast(0f) * motion.submitNod
         } else {
@@ -716,30 +642,10 @@ fun MiffanMascot(
         }
         val bodyScaleY =
             (1f + breath * 0.018f * motion.breathAmplitude + yawnAmount * 0.025f +
-                inputFocusProgress * 0.006f) * pokeSquash.value
+                inputFocusProgress * 0.006f) * attention.squash.value
         val bodyScaleX =
             (1f - breath * 0.008f * motion.breathAmplitude - yawnAmount * 0.01f) *
-                (2f - pokeSquash.value)
-        val thinkingRadians = Math.toRadians(thinkingPhase.toDouble())
-        val ambientLookX = when (state) {
-            MiffanMascotState.Thinking ->
-                sin(thinkingRadians).toFloat() * 4.5f * motion.gazeAmplitude
-            MiffanMascotState.Error -> -2f
-            MiffanMascotState.UpdateAvailable -> 3f * motion.gazeAmplitude
-            else -> gazeX.value
-        }
-        val ambientLookY = when (state) {
-            MiffanMascotState.Thinking ->
-                cos(thinkingRadians * 0.7).toFloat() * 1.8f * motion.gazeAmplitude
-            MiffanMascotState.Error -> 2f
-            MiffanMascotState.UpdateAvailable -> -2f * motion.gazeAmplitude
-            else -> gazeY.value
-        }
-        val inputLookWeight = inputFocusProgress * (1f - pokeExpression.value)
-        val lookX = ambientLookX * (1f - pokeExpression.value) * (1f - inputLookWeight) + tapGazeX.value
-        val lookY =
-            ambientLookY * (1f - pokeExpression.value) * (1f - inputLookWeight) +
-                motion.inputLookY * inputLookWeight + tapGazeY.value
+                (2f - attention.squash.value)
 
         withTransform({
             translate(left, top)
@@ -759,12 +665,12 @@ fun MiffanMascot(
             withTransform({
                 translate(
                     signaturePose.offsetX,
-                    bodyBob + stateOffsetY + pokeOffset.value +
+                    bodyBob + stateOffsetY + attention.offsetY.value +
                         inputFocusProgress * motion.inputLift + submitNod +
                         signaturePose.offsetY,
                 )
                 rotate(
-                    stateRotation + dozeAmount * 4f + attentionTilt.value +
+                    stateRotation + dozeAmount * 4f + attention.tilt.value +
                         signaturePose.rotationDegrees,
                     pivot = Offset(100f, 112f),
                 )
@@ -779,17 +685,19 @@ fun MiffanMascot(
                     kind = appearance.kind,
                     signature = kindBehavior.signature,
                     state = state,
+                    face = face.blendTo(MiffanFacePose.Attention, reaction),
+                    thinkingProgress = thinkingProgress,
+                    errorProgress = errorProgress,
                     eyeScaleY =
                         blink.value *
                             (1f - yawnAmount * 0.78f - dozeAmount * 0.92f) *
                             (1f + inputFocusProgress * 0.07f),
-                    lookX = lookX,
-                    lookY = lookY,
+                    lookX = gaze.x,
+                    lookY = gaze.y,
                     thinkingPhase = thinkingPhase,
                     signaturePhase = signaturePhase,
                     signatureStrength = signatureStrength,
                     inputState = inputState,
-                    reactionProgress = pokeExpression.value,
                     idleGesture = idleGesture,
                     idleGestureProgress = rawGestureProgress,
                     idleGestureVisibility =
@@ -1047,17 +955,14 @@ private fun DrawScope.drawMascotContent(
     colors: MiffanColors,
     signaturePhase: Float,
     signatureStrength: Float,
-    state: MiffanMascotState,
+    errorProgress: Float,
 ) {
     when (content) {
         MiffanContentStyle.Rice -> drawRiceMound(colors)
         MiffanContentStyle.SproutedRice -> {
             val radians = Math.toRadians(signaturePhase.toDouble())
-            val sway = if (state == MiffanMascotState.Error) {
-                8f * signatureStrength
-            } else {
-                sin(radians).toFloat() * 22f * signatureStrength
-            }
+            val sway = (sin(radians).toFloat() * 22f * (1f - errorProgress) +
+                8f * errorProgress) * signatureStrength
             val leafPulse = 1f +
                 (cos(radians).toFloat() * 0.045f + 0.045f) * signatureStrength
             withTransform({
@@ -1095,12 +1000,9 @@ private fun DrawScope.drawMascotContent(
                 Triple(128f, 65f, 17f),
                 Triple(100f, 57f, 20f),
             ).forEachIndexed { index, (x, y, radius) ->
-                val ripple = if (state == MiffanMascotState.Error) {
-                    1.2f * signatureStrength
-                } else {
-                    val wave = sin(radians + index * Math.PI * 2.0 / 3.0).toFloat()
-                    -wave.coerceAtLeast(0f) * 9f * signatureStrength
-                }
+                val wave = sin(radians + index * Math.PI * 2.0 / 3.0).toFloat()
+                val ripple = (-wave.coerceAtLeast(0f) * 9f * (1f - errorProgress) +
+                    1.2f * errorProgress) * signatureStrength
                 withTransform({ translate(0f, ripple) }) {
                     drawCircle(
                         color = if (index == 2) colors.rice else colors.rice.copy(alpha = 0.94f),
@@ -1123,7 +1025,7 @@ private fun DrawScope.drawMascotContent(
             drawRiceMound(colors, top = 61f, highlight = false)
             val radians = Math.toRadians(signaturePhase.toDouble())
             val starWave = (sin(radians).toFloat() + 1f) / 2f
-            val errorTilt = if (state == MiffanMascotState.Error) -5f * signatureStrength else 0f
+            val errorTilt = -5f * signatureStrength * errorProgress
             withTransform({
                 scale(
                     scaleX = 1f + starWave * 0.08f * signatureStrength,
@@ -1408,6 +1310,9 @@ private fun DrawScope.drawMascotBody(
     kind: MiffanKind,
     signature: MiffanSignatureMotion,
     state: MiffanMascotState,
+    face: MiffanFacePose,
+    thinkingProgress: Float,
+    errorProgress: Float,
     eyeScaleY: Float,
     lookX: Float,
     lookY: Float,
@@ -1415,7 +1320,6 @@ private fun DrawScope.drawMascotBody(
     signaturePhase: Float,
     signatureStrength: Float,
     inputState: MiffanMascotInputState,
-    reactionProgress: Float,
     idleGesture: MiffanIdleGesture,
     idleGestureProgress: Float,
     idleGestureVisibility: Float,
@@ -1464,7 +1368,7 @@ private fun DrawScope.drawMascotBody(
             colors = colors,
             signaturePhase = signaturePhase,
             signatureStrength = signatureStrength,
-            state = state,
+            errorProgress = errorProgress,
         )
     }
 
@@ -1486,7 +1390,7 @@ private fun DrawScope.drawMascotBody(
         )
     }
 
-    if (state == MiffanMascotState.Thinking && signature == MiffanSignatureMotion.GrainHop) {
+    if (thinkingProgress > 0.001f && signature == MiffanSignatureMotion.GrainHop) {
         val radians = Math.toRadians(thinkingPhase.toDouble())
         val grainX = 100f + cos(radians).toFloat() * 41f * signatureStrength
         val grainY = 52f - 12f * signatureStrength +
@@ -1496,7 +1400,7 @@ private fun DrawScope.drawMascotBody(
             colors = colors,
             center = Offset(grainX, grainY),
             rotation = thinkingPhase * signatureStrength + 18f,
-            alpha = 0.38f + signatureStrength * 0.62f,
+            alpha = (0.38f + signatureStrength * 0.62f) * thinkingProgress,
         )
     }
 
@@ -1510,10 +1414,9 @@ private fun DrawScope.drawMascotBody(
     )
 
     val eyeColor = colors.face
-    val reaction = reactionProgress.coerceIn(0f, 1f)
-    val restingMouthColor = eyeColor.copy(alpha = 1f - reaction)
-    val eyeHeight = 14f * eyeScaleY.coerceAtLeast(0.08f)
-    listOf(70f, 130f).forEach { eyeCenterX ->
+    listOf(70f, 130f).forEachIndexed { index, eyeCenterX ->
+        val asymmetry = if (index == 0) face.eyeAsymmetry else -face.eyeAsymmetry
+        val eyeHeight = 14f * (eyeScaleY * (face.eyeOpen + asymmetry)).coerceIn(0.08f, 1.4f)
         drawRoundRect(
             color = eyeColor,
             topLeft = Offset(
@@ -1525,61 +1428,50 @@ private fun DrawScope.drawMascotBody(
         )
     }
 
-    when (state) {
-        MiffanMascotState.Happy,
-        MiffanMascotState.UpdateAvailable -> {
-            drawArc(
-                color = restingMouthColor,
-                startAngle = 12f,
-                sweepAngle = 156f,
-                useCenter = false,
-                topLeft = Offset(89f, 119f),
-                size = Size(22f, 16f),
-                style = Stroke(width = 5f),
-            )
-        }
-
-        MiffanMascotState.Error -> {
-            drawArc(
-                color = restingMouthColor,
-                startAngle = 194f,
-                sweepAngle = 152f,
-                useCenter = false,
-                topLeft = Offset(91f, 130f),
-                size = Size(18f, 12f),
-                style = Stroke(width = 4f),
-            )
-        }
-
-        MiffanMascotState.Thinking -> {
-            drawOval(
-                color = restingMouthColor,
-                topLeft = Offset(94f, 124f),
-                size = Size(12f, 15f),
-            )
-        }
-
-        MiffanMascotState.Idle -> {
-            val yawn = if (idleGesture == MiffanIdleGesture.Yawn) {
-                idleGestureProgress * idleGestureVisibility
-            } else {
-                0f
-            }
-            val mouthWidth = 10f + 7f * reaction + 3f * yawn
-            val mouthHeight = 8f + 5f * reaction + 11f * yawn
-            drawOval(
-                color = eyeColor,
-                topLeft = Offset(100f - mouthWidth / 2f, 131f - yawn - mouthHeight / 2f),
-                size = Size(mouthWidth, mouthHeight),
-            )
-        }
+    val yawn = if (idleGesture == MiffanIdleGesture.Yawn) {
+        (idleGestureProgress * idleGestureVisibility).coerceIn(0f, 1f)
+    } else {
+        0f
     }
+    val mouth = miffanMouthPath(face, yawn)
+    drawPath(mouth, eyeColor)
+    drawPath(mouth, eyeColor, style = Stroke(width = 1f))
+}
 
-    if (reaction > 0f && state != MiffanMascotState.Idle) {
-        drawOval(
-            color = eyeColor.copy(alpha = reaction),
-            topLeft = Offset(91.5f, 124.5f),
-            size = Size(17f, 13f),
+internal fun miffanMouthPath(face: MiffanFacePose, yawnProgress: Float = 0f): Path {
+    val yawn = yawnProgress.coerceIn(0f, 1f)
+    val curve = face.mouthCurve.coerceIn(-1f, 1f) * (1f - yawn)
+    val openness = face.mouthOpen.coerceIn(3f, 15f) + 11f * yawn
+    val halfWidth = 5f + abs(curve) * 6f + (openness - 8f).coerceAtLeast(0f) * 0.3f
+    val halfHeight = openness / 2f
+    val mouthY = 128f - yawn
+    val bend = curve * 8f
+
+    // Four quarter-ellipse curves share tangents at every join. Two arcs meeting
+    // at the sides make pointed, lemon-shaped lips even when the face is neutral.
+    val ovalControl = 0.55228475f
+    return Path().apply {
+        moveTo(100f - halfWidth, mouthY)
+        cubicTo(
+            100f - halfWidth, mouthY - halfHeight * ovalControl,
+            100f - halfWidth * ovalControl, mouthY + bend - halfHeight,
+            100f, mouthY + bend - halfHeight,
         )
+        cubicTo(
+            100f + halfWidth * ovalControl, mouthY + bend - halfHeight,
+            100f + halfWidth, mouthY - halfHeight * ovalControl,
+            100f + halfWidth, mouthY,
+        )
+        cubicTo(
+            100f + halfWidth, mouthY + halfHeight * ovalControl,
+            100f + halfWidth * ovalControl, mouthY + bend + halfHeight,
+            100f, mouthY + bend + halfHeight,
+        )
+        cubicTo(
+            100f - halfWidth * ovalControl, mouthY + bend + halfHeight,
+            100f - halfWidth, mouthY + halfHeight * ovalControl,
+            100f - halfWidth, mouthY,
+        )
+        close()
     }
 }

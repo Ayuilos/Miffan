@@ -75,6 +75,8 @@ class ChatVM(
         chatService
             .getProcessingStatusFlow(_conversationId)
 
+    val messageQueue = chatService.getMessageQueueFlow(_conversationId)
+
     val conversationJobs = chatService
         .getConversationJobs()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
@@ -121,6 +123,7 @@ class ChatVM(
 
     // 生成完成
     val generationDoneFlow: SharedFlow<Uuid> = chatService.generationDoneFlow
+    val assistantReplyCompleted = chatService.assistantReplyCompleted
 
     // MCP管理器
     val mcpManager = chatService.mcpManager
@@ -178,11 +181,23 @@ class ChatVM(
      * @param content 消息内容
      * @param answer 是否触发消息生成，如果为false，则仅添加消息到消息列表中
      */
-    fun handleMessageSend(content: List<UIMessagePart>,answer: Boolean = true) {
+    fun handleMessageSend(content: List<UIMessagePart>, answer: Boolean = true, immediately: Boolean = false) {
         if (content.isEmptyInputMessage()) return
         analytics.logEvent("ai_send_message")
 
-        chatService.sendMessage(_conversationId, content, answer)
+        chatService.sendMessage(_conversationId, content, answer = answer, immediately = immediately)
+    }
+
+    fun sendQueuedMessageImmediately(messageId: Uuid) {
+        chatService.sendQueuedMessageImmediately(_conversationId, messageId)
+    }
+
+    fun removeQueuedMessage(messageId: Uuid) {
+        chatService.removeQueuedMessage(_conversationId, messageId)
+    }
+
+    fun resumeMessageQueue() {
+        chatService.resumeMessageQueue(_conversationId)
     }
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
@@ -277,7 +292,7 @@ class ChatVM(
 
     fun deleteConversation(conversation: Conversation): Job =
         viewModelScope.launch {
-            conversationRepo.deleteConversation(conversation)
+            chatService.deleteConversation(conversation)
         }
 
     fun updatePinnedStatus(conversation: Conversation) {

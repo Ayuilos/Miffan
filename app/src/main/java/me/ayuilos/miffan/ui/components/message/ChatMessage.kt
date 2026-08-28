@@ -75,6 +75,7 @@ import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
@@ -106,6 +107,7 @@ fun ChatMessage(
     model: Model? = null,
     assistant: Assistant? = null,
     lastMessage: Boolean = false,
+    mascotState: MiffanMascotState = MiffanMascotState.Idle,
     onFork: () -> Unit,
     onRegenerate: () -> Unit,
     onEdit: () -> Unit,
@@ -150,6 +152,7 @@ fun ChatMessage(
                     model = model,
                     assistant = assistant,
                     loading = loading,
+                    mascotState = mascotState,
                     modifier = Modifier.weight(1f)
                 )
                 ChatMessageUserAvatar(

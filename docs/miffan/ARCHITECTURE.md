@@ -29,6 +29,43 @@ The chat page owns transient scene state. `ChatInput` emits input activity; `Cha
 
 Use monotonically increasing event identifiers for one-shot reactions such as attention and submit. Use enum/state values for durable conditions such as focused, typing, loading, and error.
 
+`MiffanHandoff` owns only layout interpolation. `ChatList` supplies measured empty/waiting slots
+through `MiffanHandoffAnchor`; one renderer stays outside lazy item lifetimes. Root coordinates
+are translated into the clipped scene viewport. Destination changes animate, while movement
+within a settled slot (including scrolling) tracks directly. Missing/offscreen slots fade out
+without leaving an interactive ghost. Each conversation has its own transient host.
+
+`ChatService.assistantReplyCompleted` is a non-replaying, best-effort feedback stream emitted
+only after a reply succeeds and is saved without pending approvals. It is separate from the
+existing generation-done stream, which also covers non-reply operations. `ChatMascotScene`
+awaits the originating job, rejects cancellation or replacement, and expires the reply feedback;
+it does not change session ownership or queue dispatch. `AssistantAvatar` never infers success
+from a falling loading flag. Submit reactions follow active job changes, not enqueue button taps.
+
+`MiffanPresentation.Avatar` lowers active movement and stops ambient scheduling at rest.
+Renderer cycles settle before stopping; saved appearance/profile data remains unchanged.
+`MiffanSystemMotion` shares one application-context observer of the system animator setting;
+it is released when no active avatar subscribes. The renderer also honors a disabled Compose
+`MotionDurationScale`. Both system reduction and explicit preview reduction stop ambient timers
+and skip spatial interpolation. No feature page reads Android animation settings itself.
+
+## Conversation follow-up queue
+
+The native composer submits new messages to a FIFO queue owned by `ConversationSession`.
+The queue is scoped to the conversation, not the screen or assistant, and keeps its session
+alive when the user navigates away. It is in-memory state; process termination does not restore
+unsent messages. No provider-specific steering API is required.
+
+An immediate send cancels the current turn, waits for all interrupted turns to finish cleanup,
+and starts the chosen message with the current conversation context. Other queued messages
+retain their order. Inputs interrupted before being added to history are returned to the queue.
+Old completion callbacks must never clear a replacement job or advance its queue.
+
+Successful turns automatically dispatch the next message. Pending tool approvals block dispatch.
+Stopping or failing a turn pauses the queue without deleting it; the user can resume, send a
+specific item immediately, or remove an item. Conversation deletion discards the queue and
+awaits generation cleanup before deleting history. REST sends retain their immediate behavior.
+
 ## Compatibility rules
 
 - Decoding legacy `dummy` avatars must continue to succeed.
@@ -56,6 +93,15 @@ while the guest consistently sees that scope as `/workspace`, `/root`, `/tmp`, a
 Sibling scope roots are not mounted. Model file tools, Shell cwd validation, completion, file
 pickers, Skills, and Artifact UI all use the same `(workspaceId, scopeId)` mapping.
 
+Conversation artifacts use a prompt-level convention within that file scope:
+`/workspace/conversations/<conversation-id>/`. The stable conversation UUID is passed through the
+generation pipeline to `WorkspaceReminderTransformer`. The Agent is instructed to create this
+directory when first saving an artifact and reuse it across turns, regenerations, title changes,
+and cwd changes. Newly generated outputs and related task files belong there unless the user
+explicitly requests another location or an in-place project edit. `workspaceCwd` remains the input
+and project context. This adds no filesystem enforcement, automatic directory creation, or legacy
+file migration; existing scope boundaries, tool approvals, and artifact publishing are unchanged.
+
 Missing `workspaceScopeId` is an explicit legacy whole-workspace mode. It continues to expose the
 historical `files/` directory without moving data. Re-selecting the same binding keeps this mode.
 Artifacts created after this architecture persist scope identity; historical Artifacts without it
@@ -77,6 +123,12 @@ Character V1 stores one curated kind in `MiffanAppearance`. Each kind resolves i
 - optional custom color tokens.
 
 `MiffanMotionProfile` resolves to one immutable `MiffanMotionTuning` table. The renderer applies those parameters to shared breathing, gaze, attention, input, submit, and semantic-state animations. Page inputs should converge on a single `MiffanSceneState`; appearance and motion profile must not encode runtime animation state.
+
+`MiffanMotion.kt` owns renderer-only face parameters, gaze destinations, and attention timing.
+Face parameters and attention targets use persistent Compose springs; cancelling an attention timer
+must not reset an animated value. The drawing layer reads animation state during drawing, and uses
+one mouth contour for idle, thinking, happy, error, and input expressions. Semantic blend weights
+smooth body bobbing, signature strength, and error settling without changing serialized models.
 
 `MiffanKind` also resolves to one immutable `MiffanKindBehavior`. This renderer-owned table selects a single signature motion and its relative strength for idle, focused, typing, thinking, submitted, happy, and error conditions. The final frame is semantic state × motion tuning × kind behavior. No signature behavior is serialized, and feature pages must not branch on character kind.
 

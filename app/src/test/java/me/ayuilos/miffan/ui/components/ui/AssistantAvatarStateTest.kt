@@ -5,6 +5,13 @@ import org.junit.Test
 
 class AssistantAvatarStateTest {
     @Test
+    fun stoppingWithoutConfirmedSuccessDoesNotCelebrate() {
+        assertEquals(MiffanMascotState.Idle, resolveAssistantMascotState(false, false, MiffanMascotState.Idle))
+        assertEquals(MiffanMascotState.Error, resolveAssistantMascotState(false, true, MiffanMascotState.Error))
+        assertEquals(MiffanMascotState.Thinking, resolveAssistantMascotState(true, true, MiffanMascotState.Error))
+    }
+
+    @Test
     fun semanticUpdateStateReachesIdleAssistantAvatar() {
         assertEquals(
             MiffanMascotState.UpdateAvailable,

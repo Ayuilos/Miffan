@@ -14,6 +14,7 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.repository.ConversationRepository
+import me.ayuilos.miffan.service.ChatService
 import kotlin.uuid.Uuid
 
 private const val TAG = "HistoryVM"
@@ -21,6 +22,7 @@ private const val TAG = "HistoryVM"
 class HistoryVM(
     private val conversationRepo: ConversationRepository,
     private val settingsStore: SettingsStore,
+    private val chatService: ChatService,
 ) : ViewModel() {
     val assistant = settingsStore.settingsFlow
         .map { it.getCurrentAssistant() }
@@ -34,14 +36,14 @@ class HistoryVM(
 
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
-            conversationRepo.deleteConversation(conversation)
+            chatService.deleteConversation(conversation)
         }
     }
 
     fun deleteAllConversations() {
         val assistant = assistant.value ?: return
         viewModelScope.launch {
-            conversationRepo.deleteConversationOfAssistant(assistant.id)
+            chatService.deleteConversationsOfAssistant(assistant.id)
         }
     }
 
