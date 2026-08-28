@@ -140,6 +140,33 @@ class UpdateSourceTest {
     }
 
     @Test
+    fun `browser challenges on the official source fall back to GitHub API`() = runBlocking {
+        val requests = mutableListOf<String>()
+        val client = client { url ->
+            requests += url
+            when (url) {
+                "$DEFAULT_UPDATE_DOWNLOAD_BASE_URL/latest.json" ->
+                    403 to "<!doctype html><html><title>Just a moment...</title></html>"
+                "https://api.github.com/repos/Ayuilos/Miffan/releases/latest" -> 200 to """{
+                  "tag_name":"3.0.5", "published_at":"2026-08-28T08:21:48Z",
+                  "body":"GitHub release notes",
+                  "assets":[{"name":"Miffan-3.0.5-arm64-v8a.apk",
+                    "browser_download_url":"${releaseDownloadUrl("3.0.5")}", "size":40466226}]
+                }"""
+                else -> error("Unexpected fallback: $url")
+            }
+        }
+        val info = UpdateReleaseSource(client, "").fetchLatest()
+
+        assertEquals(
+            listOf("$DEFAULT_UPDATE_DOWNLOAD_BASE_URL/latest.json", "https://api.github.com/repos/Ayuilos/Miffan/releases/latest"),
+            requests,
+        )
+        assertEquals(releaseDownloadUrl("3.0.5"), info.downloads.single().url)
+        assertEquals("GitHub release notes", info.changelog)
+    }
+
+    @Test
     fun `cancellation stops fallback and all source errors remain diagnosable`() = runBlocking {
         val cancellation = CancellationException("source changed")
         var reachedFallback = false
