@@ -52,6 +52,7 @@ import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.GenerationChunk
 import me.ayuilos.miffan.data.ai.GenerationHandler
+import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
@@ -227,6 +228,7 @@ class ChatService(
     private val conversationRepo: ConversationRepository,
     private val memoryRepository: MemoryRepository,
     private val generationHandler: GenerationHandler,
+    private val translationHandler: TranslationHandler,
     private val templateTransformer: TemplateTransformer,
     private val providerManager: ProviderManager,
     private val localTools: LocalTools,
@@ -1273,7 +1275,7 @@ class ChatService(
                 val loadingText = context.getString(R.string.translating)
                 updateTranslationField(conversationId, message.id, loadingText)
 
-                generationHandler.translateText(
+                translationHandler.translateText(
                     settings = settings,
                     sourceText = messageText,
                     targetLanguage = targetLanguage

@@ -8,6 +8,11 @@ import org.junit.Test
 
 class DefaultProvidersTest {
     @Test
+    fun `default providers no longer add the RikkaHub service`() {
+        assertFalse(DEFAULT_PROVIDERS.any { it.name == "RikkaHub" })
+    }
+
+    @Test
     fun `default providers should include vercel ai gateway with expected balance config`() {
         val vercelProviders = DEFAULT_PROVIDERS
             .filterIsInstance<ProviderSetting.OpenAI>()
