@@ -419,6 +419,7 @@ class GenerationHandler(
             conversationLorebookIds = conversationLorebookIds,
             processingStatus = processingStatus,
             workspaceCwd = workspaceCwd,
+            conversationId = conversationId,
         )
 
         var messages: List<UIMessage> = messages

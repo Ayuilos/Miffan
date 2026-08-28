@@ -56,6 +56,15 @@ while the guest consistently sees that scope as `/workspace`, `/root`, `/tmp`, a
 Sibling scope roots are not mounted. Model file tools, Shell cwd validation, completion, file
 pickers, Skills, and Artifact UI all use the same `(workspaceId, scopeId)` mapping.
 
+Conversation artifacts use a prompt-level convention within that file scope:
+`/workspace/conversations/<conversation-id>/`. The stable conversation UUID is passed through the
+generation pipeline to `WorkspaceReminderTransformer`. The Agent is instructed to create this
+directory when first saving an artifact and reuse it across turns, regenerations, title changes,
+and cwd changes. Newly generated outputs and related task files belong there unless the user
+explicitly requests another location or an in-place project edit. `workspaceCwd` remains the input
+and project context. This adds no filesystem enforcement, automatic directory creation, or legacy
+file migration; existing scope boundaries, tool approvals, and artifact publishing are unchanged.
+
 Missing `workspaceScopeId` is an explicit legacy whole-workspace mode. It continues to expose the
 historical `files/` directory without moving data. Re-selecting the same binding keeps this mode.
 Artifacts created after this architecture persist scope identity; historical Artifacts without it
