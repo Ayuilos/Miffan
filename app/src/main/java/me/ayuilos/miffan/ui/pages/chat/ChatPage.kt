@@ -5,16 +5,22 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
@@ -31,7 +37,6 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
@@ -45,7 +50,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -54,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,6 +70,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.dokar.sonner.ToastType
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.material3.Material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
@@ -384,6 +398,7 @@ private fun ChatPageContent(
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
     val assistant = setting.getCurrentAssistant()
+    val messageQueue by vm.messageQueue.collectAsStateWithLifecycle()
     val workspaceId = assistant.workspaceId?.toString()
     val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     val workspaceEntry = resolveChatWorkspaceEntry(
@@ -437,6 +452,7 @@ private fun ChatPageContent(
         Scaffold(
             topBar = {
                 TopBar(
+                    hazeState = hazeState,
                     settings = setting,
                     conversation = conversation,
                     bigScreen = bigScreen,
@@ -468,6 +484,10 @@ private fun ChatPageContent(
                 ChatInput(
                     state = inputState,
                     loading = loadingJob != null,
+                    messageQueue = messageQueue,
+                    onRemoveQueuedMessage = vm::removeQueuedMessage,
+                    onSendQueuedMessageImmediately = vm::sendQueuedMessageImmediately,
+                    onResumeQueue = vm::resumeMessageQueue,
                     settings = setting,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
@@ -523,6 +543,18 @@ private fun ChatPageContent(
                             }
                         }
                         inputState.clearInput()
+                    },
+                    onSendImmediatelyClick = {
+                        if (currentChatModel == null) {
+                            toaster.show("请先选择模型", type = ToastType.Error)
+                            return@ChatInput
+                        }
+                        vm.handleMessageSend(inputState.getContents(), immediately = true)
+                        inputState.clearInput()
+                        scope.launch {
+                            delay(100.milliseconds)
+                            chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                        }
                     },
                     onLongSendClick = {
                         if (inputState.isEditing()) {
@@ -957,7 +989,42 @@ private fun WorkspaceTopBarAction(
 }
 
 @Composable
+private fun ChatTopBarCapsule(
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(50)
+    // Keep the theme's hue, with a tonal step from the page (including AMOLED black).
+    val glassColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val glassStyle = HazeBlurStyle.Material3 {
+        blurRadius(20.dp)
+        noiseFactor(0.04f)
+        colorEffects(listOf(HazeColorEffect.tint(glassColor.copy(alpha = 0.8f))))
+        fallbackColorEffect(HazeColorEffect.tint(glassColor.copy(alpha = 0.9f)))
+    }
+    Surface(
+        modifier = modifier
+            .clip(shape)
+            .hazeBlur(input = HazeInput.Sources(hazeState), style = glassStyle),
+        shape = shape,
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
+}
+
+@Composable
 private fun TopBar(
+    hazeState: HazeState,
     settings: Settings,
     conversation: Conversation,
     drawerState: DrawerState,
@@ -975,9 +1042,19 @@ private fun TopBar(
         onUpdateTitle(it)
     }
 
-    TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-        navigationIcon = {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("chat_floating_topbar")
+            .windowInsetsPadding(TopAppBarDefaults.windowInsets)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        ChatTopBarCapsule(
+            hazeState = hazeState,
+            modifier = Modifier.weight(1f, fill = false).testTag("chat_title_capsule"),
+        ) {
             if (!bigScreen) {
                 IconButton(
                     onClick = {
@@ -987,10 +1064,9 @@ private fun TopBar(
                     Icon(HugeIcons.Menu03, "Messages")
                 }
             }
-        },
-        title = {
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
             Surface(
+                modifier = Modifier.weight(1f, fill = false),
                 onClick = {
                     if (conversation.messageNodes.isNotEmpty()) {
                         titleState.open(conversation.title)
@@ -1000,7 +1076,14 @@ private fun TopBar(
                 },
                 color = Color.Transparent,
             ) {
-                Column {
+                Column(
+                    modifier = Modifier.padding(
+                        start = if (bigScreen) 12.dp else 2.dp,
+                        end = 12.dp,
+                        top = 6.dp,
+                        bottom = 6.dp,
+                    ),
+                ) {
                     val assistant = settings.getCurrentAssistant()
                     val model = settings.getCurrentChatModel()
                     val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
@@ -1023,8 +1106,14 @@ private fun TopBar(
                     }
                 }
             }
-        },
-        actions = {
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        ChatTopBarCapsule(
+            hazeState = hazeState,
+            modifier = Modifier.testTag("chat_actions_capsule"),
+        ) {
             workspaceEntry?.let { entry ->
                 WorkspaceTopBarAction(
                     entry = entry,
@@ -1048,8 +1137,8 @@ private fun TopBar(
             ) {
                 Icon(HugeIcons.MessageAdd01, "New Message")
             }
-        },
-    )
+        }
+    }
     titleState.EditStateContent { title, onUpdate ->
         AlertDialog(
             onDismissRequest = {

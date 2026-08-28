@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.isEmptyInputMessage
 import kotlin.uuid.Uuid
 
 class ChatInputState {
@@ -84,7 +85,7 @@ class ChatInputState {
     }
 
     fun isEmpty(): Boolean {
-        return textContent.text.isEmpty()
+        return getContents().isEmptyInputMessage()
     }
 
     fun addImages(uris: List<Uri>) {

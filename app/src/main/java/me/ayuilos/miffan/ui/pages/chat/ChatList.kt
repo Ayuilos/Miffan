@@ -78,6 +78,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalScrollCaptureInProgress
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -406,19 +407,24 @@ private fun ChatListNormal(
         ChatFontProvider(displaySetting = settings.displaySetting) {
             LazyColumn(
                 state = state,
-                contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
+                // Insets belong to the scrollable content, not the viewport: messages must
+                // be able to pass behind the floating glass capsules.
+                contentPadding = PaddingValues(16.dp) + PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = 32.dp + innerPadding.calculateBottomPadding(),
+                ),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .hazeSource(state = hazeState)
-                    .padding(top = innerPadding.calculateTopPadding()),
+                    .testTag("chat_message_list")
+                    .hazeSource(state = hazeState),
             ) {
             itemsIndexed(
                 items = conversation.messageNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
-                Column {
+                Column(modifier = Modifier.testTag("chat_message_${node.id}")) {
                     ListSelectableItem(
                         key = node.id,
                         onSelectChange = {
@@ -507,7 +513,7 @@ private fun ChatListNormal(
                                 name = assistant.name,
                                 value = assistant.avatar,
                                 loading = true,
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(48.dp),
                             )
                         }
                         AnimatedVisibility(
@@ -818,98 +824,97 @@ private fun ChatListPreview(
         }
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
-            .padding(top = innerPadding.calculateTopPadding())
             .fillMaxSize()
+            .testTag("chat_preview_list")
             .hazeSource(state = hazeState),
+        contentPadding = PaddingValues(16.dp) + PaddingValues(
+            top = innerPadding.calculateTopPadding(),
+            bottom = 32.dp + innerPadding.calculateBottomPadding(),
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // 搜索框
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            placeholder = { Text(stringResource(R.string.history_page_search)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = HugeIcons.Search01,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(
-                            imageVector = HugeIcons.Cancel01,
-                            contentDescription = "Clear",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            },
-            singleLine = true,
-            shape = CircleShape,
-            maxLines = 1,
-        )
-
-        // 消息预览
-        LazyColumn(
-            contentPadding = PaddingValues(16.dp) + PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            itemsIndexed(
-                items = filteredMessages,
-                key = { index, item -> item.second.id },
-            ) { _, (originalIndex, node) ->
-                val message = node.currentMessage
-                val isUser = message.role == me.rerere.ai.core.MessageRole.USER
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (!isUser) Modifier.padding(end = 24.dp) else Modifier
-                        ),
-                    horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-                ) {
-                    Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .clickable {
-                                    onJumpToMessage(originalIndex)
-                                }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
-                            val highlightedText = remember(searchQuery, message) {
-                                val fullText = message.toText().trim().ifBlank { "[...]" }
-                                val messageText = extractMatchingSnippet(
-                                    text = fullText,
-                                    query = searchQuery
-                                )
-                                buildHighlightedText(
-                                    text = messageText,
-                                    query = searchQuery,
-                                    highlightColor = highlightColor
-                                )
-                            }
-                            Text(
-                                text = highlightedText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+        item(key = "chat_preview_search") {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                placeholder = { Text(stringResource(R.string.history_page_search)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = HugeIcons.Search01,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                imageVector = HugeIcons.Cancel01,
+                                contentDescription = "Clear",
+                                modifier = Modifier.size(20.dp)
                             )
                         }
+                    }
+                },
+                singleLine = true,
+                shape = CircleShape,
+                maxLines = 1,
+            )
+        }
+
+        // 消息预览
+        itemsIndexed(
+            items = filteredMessages,
+            key = { index, item -> item.second.id },
+        ) { _, (originalIndex, node) ->
+            val message = node.currentMessage
+            val isUser = message.role == me.rerere.ai.core.MessageRole.USER
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (!isUser) Modifier.padding(end = 24.dp) else Modifier
+                    ),
+                horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+            ) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clickable {
+                                onJumpToMessage(originalIndex)
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+                        val highlightedText = remember(searchQuery, message) {
+                            val fullText = message.toText().trim().ifBlank { "[...]" }
+                            val messageText = extractMatchingSnippet(
+                                text = fullText,
+                                query = searchQuery
+                            )
+                            buildHighlightedText(
+                                text = messageText,
+                                query = searchQuery,
+                                highlightColor = highlightColor
+                            )
+                        }
+                        Text(
+                            text = highlightedText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }

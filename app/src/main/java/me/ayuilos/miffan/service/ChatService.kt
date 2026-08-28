@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -291,7 +292,10 @@ class ChatService(
                     assistantId = settings.getCurrentAssistant().id
                 ),
                 scope = appScope,
-                onIdle = { removeSession(it) }
+                onIdle = { removeSession(it) },
+                onQueueReady = { session ->
+                    session.takeNextQueuedMessage()?.let { sendMessageNow(session, it) }
+                },
             ).also {
                 _sessionsVersion.value++
                 Log.i(TAG, "createSession: $id (total: ${sessions.size + 1})")
@@ -349,6 +353,10 @@ class ChatService(
         return getOrCreateSession(conversationId).processingStatus
     }
 
+    fun getMessageQueueFlow(conversationId: Uuid): StateFlow<MessageQueueState> {
+        return getOrCreateSession(conversationId).messageQueue
+    }
+
     fun getConversationJobs(): Flow<Map<Uuid, Job?>> {
         return _sessionsVersion.flatMapLatest {
             val currentSessions = sessions.values.toList()
@@ -367,17 +375,16 @@ class ChatService(
     private fun launchGenerationJob(
         conversationId: Uuid,
         keepAliveInBackground: Boolean = true,
+        queuedMessage: QueuedMessage? = null,
         block: suspend () -> Unit,
     ): Job {
-        if (!keepAliveInBackground) return appScope.launch { block() }
-
-        val generationId = Uuid.random()
-        val foregroundStarted = ChatGenerationForegroundService.acquire(
-            context = context,
-            generationId = generationId,
-            conversationId = conversationId,
-        )
-        return appScope.launch {
+        return getOrCreateSession(conversationId).launchGeneration(message = queuedMessage) {
+            val generationId = Uuid.random()
+            val foregroundStarted = keepAliveInBackground && ChatGenerationForegroundService.acquire(
+                context = context,
+                generationId = generationId,
+                conversationId = conversationId,
+            )
             try {
                 block()
             } finally {
@@ -411,30 +418,59 @@ class ChatService(
 
     // ---- 发送消息 ----
 
-    fun sendMessage(conversationId: Uuid, content: List<UIMessagePart>, answer: Boolean = true) {
+    fun sendMessage(
+        conversationId: Uuid,
+        content: List<UIMessagePart>,
+        answer: Boolean = true,
+        // Keep the existing REST send behavior; the native composer explicitly opts into queuing.
+        immediately: Boolean = true,
+    ) {
         if (content.isEmptyInputMessage()) return
-
         val session = getOrCreateSession(conversationId)
-        val previousJob = session.getJob()
-        previousJob?.cancel()
+        val message = QueuedMessage(content = content.toList(), answer = answer)
+        if (immediately) {
+            sendMessageNow(session, message)
+            session.resumeQueue()
+        } else {
+            session.enqueueMessage(message)
+        }
+    }
 
-        val job = launchGenerationJob(
+    fun sendQueuedMessageImmediately(conversationId: Uuid, messageId: Uuid) {
+        val session = getOrCreateSession(conversationId)
+        val message = session.removeQueuedMessage(messageId) ?: return
+        sendMessageNow(session, message)
+        session.resumeQueue()
+    }
+
+    fun removeQueuedMessage(conversationId: Uuid, messageId: Uuid) {
+        sessions[conversationId]?.removeQueuedMessage(messageId)
+    }
+
+    fun resumeMessageQueue(conversationId: Uuid) {
+        sessions[conversationId]?.resumeQueue()
+    }
+
+    private fun sendMessageNow(session: ConversationSession, message: QueuedMessage) {
+        val conversationId = session.id
+        launchGenerationJob(
             conversationId = conversationId,
-            keepAliveInBackground = answer,
+            keepAliveInBackground = message.answer,
+            queuedMessage = message,
         ) {
             try {
-                runCatching { previousJob?.join() }
                 finishInterruptedPendingTools(conversationId)
 
                 val currentConversation = session.state.value
                 val settings = settingsStore.settingsFlow.first()
                 val assistant = settings.getAssistantById(currentConversation.assistantId)
                     ?: settings.getCurrentAssistant()
-                val processedContent = preprocessUserInputParts(content, assistant)
+                val processedContent = preprocessUserInputParts(message.content, assistant)
 
                 // 添加消息到列表
                 val newConversation = currentConversation.copy(
                     messageNodes = currentConversation.messageNodes + UIMessage(
+                        id = message.id,
                         role = MessageRole.USER,
                         parts = processedContent,
                     ).toMessageNode(),
@@ -442,17 +478,18 @@ class ChatService(
                 saveConversation(conversationId, newConversation)
 
                 // 开始补全
-                if (answer) {
+                if (message.answer) {
                     handleMessageComplete(conversationId)
                 }
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                session.pauseQueue()
                 e.printStackTrace()
                 addError(e, conversationId, title = context.getString(R.string.error_title_send_message))
             }
         }
-        session.setJob(job)
     }
 
     private fun preprocessUserInputParts(parts: List<UIMessagePart>, assistant: Assistant): List<UIMessagePart> {
@@ -481,9 +518,8 @@ class ChatService(
         regenerateAssistantMsg: Boolean = true
     ) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
 
-        val job = launchGenerationJob(
+        launchGenerationJob(
             conversationId = conversationId,
             keepAliveInBackground = message.role == MessageRole.USER || regenerateAssistantMsg,
         ) {
@@ -511,11 +547,12 @@ class ChatService(
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                session.pauseQueue()
                 addError(e, conversationId, title = context.getString(R.string.error_title_regenerate_message))
             }
         }
 
-        session.setJob(job)
     }
 
     // ---- 处理工具调用审批 ----
@@ -528,7 +565,6 @@ class ChatService(
         answer: String? = null,
     ) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
 
         val hasOtherPendingTools = session.state.value.messageNodes.any { node ->
             node.currentMessage.parts.any { part ->
@@ -536,7 +572,7 @@ class ChatService(
             }
         }
 
-        val job = launchGenerationJob(
+        launchGenerationJob(
             conversationId = conversationId,
             keepAliveInBackground = !hasOtherPendingTools,
         ) {
@@ -579,22 +615,22 @@ class ChatService(
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                session.pauseQueue()
                 addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
             }
         }
 
-        session.setJob(job)
     }
 
     /** Approve this batch and persist the choice only for the current Assistant scope. */
     fun alwaysAllowWorkspaceShell(conversationId: Uuid) {
         val session = getOrCreateSession(conversationId)
-        session.getJob()?.cancel()
 
-        val job = appScope.launch {
+        launchGenerationJob(conversationId) {
             try {
                 val conversation = session.state.value
-                if (!conversation.hasPendingWorkspaceShellTools()) return@launch
+                if (!conversation.hasPendingWorkspaceShellTools()) return@launchGenerationJob
 
                 val settings = settingsStore.settingsFlow.first()
                 val assistant = settings.getAssistantById(conversation.assistantId)
@@ -613,11 +649,12 @@ class ChatService(
 
                 _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                session.pauseQueue()
                 addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
             }
         }
 
-        session.setJob(job)
     }
 
     // ---- 处理消息补全 ----
@@ -630,7 +667,8 @@ class ChatService(
         val initialConversation = getConversationFlow(conversationId).value
         val assistant = settings.getAssistantById(initialConversation.assistantId)
             ?: settings.getCurrentAssistant()
-        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId) ?: return
+        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+            ?: error("请先选择模型")
 
         val senderName = if (assistant.useAssistantAvatar) {
             assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
@@ -814,6 +852,9 @@ class ChatService(
             // 兜底取消 Live Update 通知（生成开始前失败时 onCompletion 不会执行）
             appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
 
+            if (it is CancellationException) throw it
+            currentCoroutineContext().ensureActive()
+            getOrCreateSession(conversationId).pauseQueue()
             it.printStackTrace()
             addError(it, conversationId, title = context.getString(R.string.error_title_generation))
             Logging.log(TAG, "handleMessageComplete: $it")
@@ -1466,10 +1507,34 @@ class ChatService(
 
     // 停止当前会话生成任务（不清理会话缓存）
     suspend fun stopGeneration(conversationId: Uuid) {
-        val job = sessions[conversationId]?.getJob() ?: return
-        job.cancel()
-        runCatching { job.join() }
+        val session = sessions[conversationId] ?: return
+        val generationVersion = session.generationVersion
+        session.stopGeneration().joinAll()
+        // A subsequent immediate send owns the conversation once it has replaced this job.
+        if (session.generationVersion != generationVersion) return
         finishInterruptedPendingTools(conversationId)
+        saveConversation(conversationId, session.state.value)
+    }
+
+    /** Deleting a conversation also discards its unsent messages and stops its turn chain. */
+    suspend fun deleteConversation(conversation: Conversation) {
+        discardSession(conversation.id)
+        conversationRepo.deleteConversation(conversation)
+    }
+
+    suspend fun deleteConversationsOfAssistant(assistantId: Uuid) {
+        sessions.values.filter { it.state.value.assistantId == assistantId }.forEach {
+            discardSession(it.id)
+        }
+        conversationRepo.deleteConversationOfAssistant(assistantId)
+    }
+
+    private suspend fun discardSession(conversationId: Uuid) {
+        val session = sessions[conversationId] ?: return
+        val jobs = session.stopGeneration()
+        session.cleanup()
+        jobs.joinAll()
+        if (sessions.remove(conversationId, session)) _sessionsVersion.value++
     }
 }
 

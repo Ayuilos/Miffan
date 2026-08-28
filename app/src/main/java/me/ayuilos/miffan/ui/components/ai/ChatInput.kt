@@ -69,6 +69,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -101,6 +102,7 @@ import me.ayuilos.miffan.data.datastore.getQuickMessagesOfAssistant
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.QuickMessage
+import me.ayuilos.miffan.service.MessageQueueState
 import me.ayuilos.miffan.ui.components.ai.completion.ChatCompletionContext
 import me.ayuilos.miffan.ui.components.ai.completion.ChatCompletionItem
 import me.ayuilos.miffan.ui.components.ai.completion.ChatCompletionList
@@ -116,6 +118,7 @@ import me.ayuilos.miffan.ui.hooks.ChatInputState
 import me.ayuilos.miffan.utils.SoundEffectPlayer
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
+import kotlin.uuid.Uuid
 
 enum class ChatInputActivity {
     Inactive,
@@ -127,6 +130,10 @@ enum class ChatInputActivity {
 fun ChatInput(
     state: ChatInputState,
     loading: Boolean,
+    messageQueue: MessageQueueState,
+    onRemoveQueuedMessage: (Uuid) -> Unit,
+    onSendQueuedMessageImmediately: (Uuid) -> Unit,
+    onResumeQueue: () -> Unit,
     settings: Settings,
     hazeState: HazeState,
     enableSearch: Boolean,
@@ -139,6 +146,7 @@ fun ChatInput(
     onMoreClick: () -> Unit,
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
+    onSendImmediatelyClick: () -> Unit,
     onLongSendClick: () -> Unit,
     onActivityChanged: (ChatInputActivity) -> Unit = {},
 ) {
@@ -186,16 +194,33 @@ fun ChatInput(
     )
 
     fun sendMessage() {
+        if (state.isEmpty() || (loading && state.isEditing())) return
+        if (!loading) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+        onSendClick()
+    }
+
+    fun sendImmediately() {
+        if (state.isEmpty() || state.isEditing()) return
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        if (loading) onCancelClick() else onSendClick()
+        onSendImmediatelyClick()
     }
 
     fun sendMessageWithoutAnswer() {
-        focusManager.clearFocus(force = true)
-        keyboardController?.hide()
-        if (loading) onCancelClick() else onLongSendClick()
+        if (state.isEmpty() || (loading && state.isEditing())) return
+        if (!state.isEditing() && (loading || messageQueue.messages.isNotEmpty())) {
+            sendImmediately()
+        } else {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onLongSendClick()
+        }
     }
+
+    if (loading) KeepScreenOn()
 
     val asr = LocalASRState.current
     val asrState by asr.state.collectAsState()
@@ -239,6 +264,13 @@ fun ChatInput(
                 .padding(bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            ChatMessageQueue(
+                state = messageQueue,
+                loading = loading,
+                onRemove = onRemoveQueuedMessage,
+                onSendImmediately = onSendQueuedMessageImmediately,
+                onResume = onResumeQueue,
+            )
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -267,10 +299,13 @@ fun ChatInput(
                         state = state,
                         isFocused = isInputFocused,
                         loading = loading,
+                        hasQueuedMessages = messageQueue.messages.isNotEmpty(),
                         completionProviders = completionProviders,
                         onFocusChanged = { isInputFocused = it },
                         onSendMessage = { sendMessage() },
                         onLongSendMessage = { sendMessageWithoutAnswer() },
+                        onStopGeneration = onCancelClick,
+                        onSendImmediately = { sendImmediately() },
                     )
 
                     AnimatedVisibility(
@@ -379,11 +414,14 @@ fun ChatInput(
                                 enter = fadeIn() + scaleIn(),
                                 exit = fadeOut() + scaleOut(),
                             ) {
-                                SendActionButton(
+                                SendActions(
                                     state = state,
                                     loading = loading,
+                                    hasQueuedMessages = messageQueue.messages.isNotEmpty(),
                                     onClick = { sendMessage() },
                                     onLongClick = { sendMessageWithoutAnswer() },
+                                    onStop = onCancelClick,
+                                    onSendImmediately = { sendImmediately() },
                                 )
                             }
                         }
@@ -401,56 +439,75 @@ fun ChatInput(
 }
 
 @Composable
-private fun SendActionButton(
+private fun SendActions(
     state: ChatInputState,
     loading: Boolean,
+    hasQueuedMessages: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onStop: () -> Unit,
+    onSendImmediately: () -> Unit,
+    showImmediateAction: Boolean = true,
 ) {
-    val containerColor = when {
-        loading -> MaterialTheme.colorScheme.errorContainer
-        state.isEmpty() -> MaterialTheme.colorScheme.surfaceContainerHigh
-        else -> MaterialTheme.colorScheme.primary
-    }
-    val contentColor = when {
-        loading -> MaterialTheme.colorScheme.onErrorContainer
-        state.isEmpty() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-        else -> MaterialTheme.colorScheme.onPrimary
-    }
+    val enabled = !state.isEmpty() && !(loading && state.isEditing())
+    val queueing = !state.isEditing() && (loading || hasQueuedMessages)
+    val contentColor = if (enabled) MaterialTheme.colorScheme.onPrimary
+        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
 
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(30.dp)
-            .testTag("chat_send_button")
-            .clip(CircleShape)
-            .combinedClickable(
-                enabled = loading || !state.isEmpty(),
-                onClick = onClick,
-                onLongClick = onLongClick,
-            )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            shape = CircleShape,
-            color = containerColor,
-            content = {},
-        )
         if (loading) {
-            KeepScreenOn()
-            Icon(
-                imageVector = HugeIcons.Cancel01,
-                contentDescription = stringResource(R.string.stop),
-                tint = contentColor,
-                modifier = Modifier.size(18.dp),
-            )
-        } else {
-            Icon(
-                imageVector = HugeIcons.ArrowUp02,
-                contentDescription = stringResource(R.string.send),
-                tint = contentColor,
-                modifier = Modifier.size(18.dp),
-            )
+            IconButton(
+                onClick = onStop,
+                modifier = Modifier.size(36.dp).testTag("chat_stop_button"),
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Cancel01,
+                    contentDescription = stringResource(R.string.stop),
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        if (queueing && enabled && showImmediateAction) {
+            TextButton(
+                onClick = onSendImmediately,
+                modifier = Modifier.testTag("chat_send_immediately_button"),
+            ) {
+                Text("立即发送", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = if (enabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier
+                .testTag("chat_send_button")
+                .clip(CircleShape)
+                .combinedClickable(
+                    enabled = enabled,
+                    role = Role.Button,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                    onLongClickLabel = if (queueing) "立即发送" else "发送但不生成回复",
+                ),
+        ) {
+            Row(
+                modifier = if (queueing) Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                    else Modifier.size(36.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+            ) {
+                if (queueing) Text("排队", color = contentColor, style = MaterialTheme.typography.labelMedium)
+                Icon(
+                    imageVector = HugeIcons.ArrowUp02,
+                    contentDescription = if (queueing) "加入队列" else stringResource(R.string.send),
+                    tint = contentColor,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }
@@ -480,10 +537,13 @@ private fun TextInputRow(
     state: ChatInputState,
     isFocused: Boolean,
     loading: Boolean,
+    hasQueuedMessages: Boolean,
     completionProviders: List<ChatCompletionProvider>,
     onFocusChanged: (Boolean) -> Unit,
     onSendMessage: () -> Unit,
     onLongSendMessage: () -> Unit,
+    onStopGeneration: () -> Unit,
+    onSendImmediately: () -> Unit,
 ) {
     val settings = LocalSettings.current
     val filesManager: FilesManager = koinInject()
@@ -660,11 +720,15 @@ private fun TextInputRow(
                         }
                     }
                     if (!isFocused) {
-                        SendActionButton(
+                        SendActions(
                             state = state,
                             loading = loading,
+                            hasQueuedMessages = hasQueuedMessages,
                             onClick = onSendMessage,
                             onLongClick = onLongSendMessage,
+                            onStop = onStopGeneration,
+                            onSendImmediately = onSendImmediately,
+                            showImmediateAction = false,
                         )
                     }
                 }

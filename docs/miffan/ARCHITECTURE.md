@@ -49,6 +49,23 @@ it is released when no active avatar subscribes. The renderer also honors a disa
 `MotionDurationScale`. Both system reduction and explicit preview reduction stop ambient timers
 and skip spatial interpolation. No feature page reads Android animation settings itself.
 
+## Conversation follow-up queue
+
+The native composer submits new messages to a FIFO queue owned by `ConversationSession`.
+The queue is scoped to the conversation, not the screen or assistant, and keeps its session
+alive when the user navigates away. It is in-memory state; process termination does not restore
+unsent messages. No provider-specific steering API is required.
+
+An immediate send cancels the current turn, waits for all interrupted turns to finish cleanup,
+and starts the chosen message with the current conversation context. Other queued messages
+retain their order. Inputs interrupted before being added to history are returned to the queue.
+Old completion callbacks must never clear a replacement job or advance its queue.
+
+Successful turns automatically dispatch the next message. Pending tool approvals block dispatch.
+Stopping or failing a turn pauses the queue without deleting it; the user can resume, send a
+specific item immediately, or remove an item. Conversation deletion discards the queue and
+awaits generation cleanup before deleting history. REST sends retain their immediate behavior.
+
 ## Compatibility rules
 
 - Decoding legacy `dummy` avatars must continue to succeed.
