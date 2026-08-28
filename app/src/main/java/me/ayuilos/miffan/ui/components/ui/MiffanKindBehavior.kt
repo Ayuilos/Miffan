@@ -121,14 +121,19 @@ internal fun MiffanKindBehavior.poseFor(
     strength: Float,
     state: MiffanMascotState,
     inputState: MiffanMascotInputState,
+    settleProgress: Float = if (state == MiffanMascotState.Error) 1f else 0f,
+    listeningProgress: Float = if (
+        state == MiffanMascotState.Idle && inputState != MiffanMascotInputState.Inactive
+    ) 1f else 0f,
 ): MiffanSignaturePose {
-    if (state == MiffanMascotState.Error) return MiffanSignaturePose()
+    val activeStrength = strength * (1f - settleProgress.coerceIn(0f, 1f))
+    if (activeStrength <= 0f) return MiffanSignaturePose()
 
     val radians = Math.toRadians(phaseDegrees.toDouble())
     val wave = sin(radians).toFloat()
     return when (signature) {
         MiffanSignatureMotion.GrainHop -> {
-            val hop = wave.coerceAtLeast(0f) * strength
+            val hop = wave.coerceAtLeast(0f) * activeStrength
             MiffanSignaturePose(
                 offsetY = -9f * hop,
                 scaleX = 1f + 0.035f * hop,
@@ -136,34 +141,28 @@ internal fun MiffanKindBehavior.poseFor(
             )
         }
         MiffanSignatureMotion.LeafSway -> {
-            val listening = if (
-                state == MiffanMascotState.Idle && inputState != MiffanMascotInputState.Inactive
-            ) {
-                1f
-            } else {
-                0f
-            }
+            val listening = listeningProgress.coerceIn(0f, 1f)
             MiffanSignaturePose(
-                offsetX = listening * 2.2f * strength,
-                rotationDegrees = (wave * 4.5f + listening * 3.5f) * strength,
+                offsetX = listening * 2.2f * activeStrength,
+                rotationDegrees = (wave * 4.5f + listening * 3.5f) * activeStrength,
             )
         }
         MiffanSignatureMotion.DumplingRipple -> {
             val step = sin(radians).toFloat()
             MiffanSignaturePose(
-                offsetX = step * 3f * strength,
-                offsetY = -abs(wave) * 1.8f * strength,
-                rotationDegrees = step * 1.8f * strength,
-                scaleY = 1f + abs(sin(radians * 3.0).toFloat()) * 0.015f * strength,
+                offsetX = step * 3f * activeStrength,
+                offsetY = -abs(wave) * 1.8f * activeStrength,
+                rotationDegrees = step * 1.8f * activeStrength,
+                scaleY = 1f + abs(sin(radians * 3.0).toFloat()) * 0.015f * activeStrength,
             )
         }
         MiffanSignatureMotion.StarTwinkle -> {
             val hover = (cos(radians).toFloat() + 1f) / 2f
             MiffanSignaturePose(
-                offsetY = -9f * hover * strength,
-                rotationDegrees = wave * 2f * strength,
-                scaleX = 1f + hover * 0.025f * strength,
-                scaleY = 1f + hover * 0.025f * strength,
+                offsetY = -9f * hover * activeStrength,
+                rotationDegrees = wave * 2f * activeStrength,
+                scaleX = 1f + hover * 0.025f * activeStrength,
+                scaleY = 1f + hover * 0.025f * activeStrength,
             )
         }
     }

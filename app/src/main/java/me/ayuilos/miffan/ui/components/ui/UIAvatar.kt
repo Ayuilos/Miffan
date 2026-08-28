@@ -28,7 +28,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +61,6 @@ import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.hooks.rememberAvatarShape
-import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import java.io.File
 
@@ -386,27 +384,13 @@ fun AssistantAvatar(
         return
     }
 
-    var wasLoading by remember { mutableStateOf(loading) }
-    var showingCompletion by remember { mutableStateOf(false) }
     val dayPhase = rememberMiffanDayPhase()
     val appearance = value.miffanAppearanceOrDefault()
     val motionProfile = value.miffanMotionProfileOrDefault()
 
-    LaunchedEffect(loading) {
-        val justCompleted = wasLoading && !loading
-        wasLoading = loading
-        if (loading) {
-            showingCompletion = false
-        } else if (justCompleted) {
-            showingCompletion = true
-            delay(motionProfile.miffanMotionTuning().duration(900).toLong())
-            showingCompletion = false
-        }
-    }
-
     val mascotState = resolveAssistantMascotState(
         loading = loading,
-        showingCompletion = showingCompletion,
+        showingCompletion = semanticState == MiffanMascotState.Happy,
         semanticState = semanticState,
     )
     UIAvatar(
@@ -421,6 +405,7 @@ fun AssistantAvatar(
                 state = mascotState,
                 appearance = appearance,
                 motionProfile = motionProfile,
+                presentation = MiffanPresentation.Avatar,
                 dayPhase = dayPhase,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -434,6 +419,7 @@ internal fun resolveAssistantMascotState(
     semanticState: MiffanMascotState,
 ): MiffanMascotState = when {
     loading -> MiffanMascotState.Thinking
+    semanticState == MiffanMascotState.Error -> MiffanMascotState.Error
     showingCompletion -> MiffanMascotState.Happy
     else -> semanticState
 }

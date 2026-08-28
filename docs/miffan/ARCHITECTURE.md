@@ -29,6 +29,26 @@ The chat page owns transient scene state. `ChatInput` emits input activity; `Cha
 
 Use monotonically increasing event identifiers for one-shot reactions such as attention and submit. Use enum/state values for durable conditions such as focused, typing, loading, and error.
 
+`MiffanHandoff` owns only layout interpolation. `ChatList` supplies measured empty/waiting slots
+through `MiffanHandoffAnchor`; one renderer stays outside lazy item lifetimes. Root coordinates
+are translated into the clipped scene viewport. Destination changes animate, while movement
+within a settled slot (including scrolling) tracks directly. Missing/offscreen slots fade out
+without leaving an interactive ghost. Each conversation has its own transient host.
+
+`ChatService.assistantReplyCompleted` is a non-replaying, best-effort feedback stream emitted
+only after a reply succeeds and is saved without pending approvals. It is separate from the
+existing generation-done stream, which also covers non-reply operations. `ChatMascotScene`
+awaits the originating job, rejects cancellation or replacement, and expires the reply feedback;
+it does not change session ownership or queue dispatch. `AssistantAvatar` never infers success
+from a falling loading flag. Submit reactions follow active job changes, not enqueue button taps.
+
+`MiffanPresentation.Avatar` lowers active movement and stops ambient scheduling at rest.
+Renderer cycles settle before stopping; saved appearance/profile data remains unchanged.
+`MiffanSystemMotion` shares one application-context observer of the system animator setting;
+it is released when no active avatar subscribes. The renderer also honors a disabled Compose
+`MotionDurationScale`. Both system reduction and explicit preview reduction stop ambient timers
+and skip spatial interpolation. No feature page reads Android animation settings itself.
+
 ## Compatibility rules
 
 - Decoding legacy `dummy` avatars must continue to succeed.
@@ -86,6 +106,12 @@ Character V1 stores one curated kind in `MiffanAppearance`. Each kind resolves i
 - optional custom color tokens.
 
 `MiffanMotionProfile` resolves to one immutable `MiffanMotionTuning` table. The renderer applies those parameters to shared breathing, gaze, attention, input, submit, and semantic-state animations. Page inputs should converge on a single `MiffanSceneState`; appearance and motion profile must not encode runtime animation state.
+
+`MiffanMotion.kt` owns renderer-only face parameters, gaze destinations, and attention timing.
+Face parameters and attention targets use persistent Compose springs; cancelling an attention timer
+must not reset an animated value. The drawing layer reads animation state during drawing, and uses
+one mouth contour for idle, thinking, happy, error, and input expressions. Semantic blend weights
+smooth body bobbing, signature strength, and error settling without changing serialized models.
 
 `MiffanKind` also resolves to one immutable `MiffanKindBehavior`. This renderer-owned table selects a single signature motion and its relative strength for idle, focused, typing, thinking, submitted, happy, and error conditions. The final frame is semantic state × motion tuning × kind behavior. No signature behavior is serialized, and feature pages must not branch on character kind.
 

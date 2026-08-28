@@ -121,6 +121,7 @@ class ChatVM(
 
     // 生成完成
     val generationDoneFlow: SharedFlow<Uuid> = chatService.generationDoneFlow
+    val assistantReplyCompleted = chatService.assistantReplyCompleted
 
     // MCP管理器
     val mcpManager = chatService.mcpManager

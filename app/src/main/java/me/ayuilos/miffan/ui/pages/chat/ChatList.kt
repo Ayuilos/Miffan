@@ -109,6 +109,11 @@ import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.ErrorCardsDisplay
 import me.ayuilos.miffan.ui.components.ui.ListSelectableItem
 import me.ayuilos.miffan.ui.components.ui.MiffanMascot
+import me.ayuilos.miffan.ui.components.ui.MiffanHandoff
+import me.ayuilos.miffan.ui.components.ui.MiffanHandoffAnchor
+import me.ayuilos.miffan.ui.components.ui.MiffanHandoffDestination
+import me.ayuilos.miffan.ui.components.ui.MiffanHandoffState
+import me.ayuilos.miffan.ui.components.ui.MiffanPresentation
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.Tooltip
@@ -139,6 +144,7 @@ fun ChatList(
     mascotSemanticState: MiffanMascotState = MiffanMascotState.Idle,
     mascotInputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
     mascotSubmitId: Int = 0,
+    completedMascotReplyId: Uuid? = null,
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
@@ -186,6 +192,7 @@ fun ChatList(
                 mascotSemanticState = mascotSemanticState,
                 mascotInputState = mascotInputState,
                 mascotSubmitId = mascotSubmitId,
+                completedMascotReplyId = completedMascotReplyId,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
@@ -220,6 +227,7 @@ private fun ChatListNormal(
     mascotSemanticState: MiffanMascotState,
     mascotInputState: MiffanMascotInputState,
     mascotSubmitId: Int,
+    completedMascotReplyId: Uuid?,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
@@ -299,8 +307,17 @@ private fun ChatListNormal(
             .associateBy { it.id }
     }
     val lastMessageIndex = conversation.messageNodes.lastIndex
-    var mascotAttentionTarget by remember { mutableStateOf<Offset?>(null) }
-    var mascotAttentionId by remember { mutableIntStateOf(0) }
+    val miffanIdentity = assistant == null || assistant.avatar.isMiffanAvatar()
+    val handoff = remember(conversation.id) { MiffanHandoffState() }
+    val handoffDestination = when {
+        loading -> MiffanHandoffDestination.WaitingReply
+        conversation.messageNodes.isEmpty() -> MiffanHandoffDestination.EmptyChat
+        else -> null
+    }
+    val hasMascotErrors = errors.any { it.conversationId == null || it.conversationId == conversation.id }
+
+    var mascotAttentionTarget by remember(conversation.id) { mutableStateOf<Offset?>(null) }
+    var mascotAttentionId by remember(conversation.id) { mutableIntStateOf(0) }
     val contentTopPx = with(density) { innerPadding.calculateTopPadding().toPx() }
     val contentBottomPx = with(density) { innerPadding.calculateBottomPadding().toPx() }
 
@@ -362,7 +379,9 @@ private fun ChatListNormal(
             LaunchedEffect(state) {
                 snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
                     // println("is bottom = ${visibleItemsInfo.isAtBottom()}, scroll = ${state.isScrollInProgress}, can_scroll = ${state.canScrollForward}, loading = $loading")
-                    if (!state.isScrollInProgress && loadingState) {
+                    // A short conversation already fits in the viewport. Requesting the same
+                    // bottom position again would publish another layout and feed this collector.
+                    if (!state.isScrollInProgress && state.canScrollForward && loadingState) {
                         if (visibleItemsInfo.isAtBottom()) {
                             state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
                             // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
@@ -417,6 +436,14 @@ private fun ChatListNormal(
                             model = node.currentMessage.modelId?.let(modelById::get),
                             assistant = assistant,
                             loading = loading && index == lastMessageIndex,
+                            mascotState = if (index == lastMessageIndex) {
+                                resolveChatMascotState(
+                                    hasErrors = hasMascotErrors,
+                                    semanticState = MiffanMascotState.Idle,
+                                    loading = loading,
+                                    showingCompletion = node.currentMessage.id == completedMascotReplyId,
+                                )
+                            } else MiffanMascotState.Idle,
                             onRegenerate = {
                                 onRegenerate(node.currentMessage)
                             },
@@ -469,16 +496,17 @@ private fun ChatListNormal(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        if (assistant != null) {
+                        if (miffanIdentity) {
+                            MiffanHandoffAnchor(
+                                state = handoff,
+                                destination = MiffanHandoffDestination.WaitingReply,
+                                modifier = Modifier.size(48.dp),
+                            )
+                        } else if (assistant != null) {
                             AssistantAvatar(
                                 name = assistant.name,
                                 value = assistant.avatar,
                                 loading = true,
-                                modifier = Modifier.size(40.dp),
-                            )
-                        } else {
-                            MiffanMascot(
-                                state = MiffanMascotState.Thinking,
                                 modifier = Modifier.size(40.dp),
                             )
                         }
@@ -517,34 +545,58 @@ private fun ChatListNormal(
                 maxWidth * 0.52f,
                 maxHeight * 0.52f,
             )
-            AnimatedVisibility(
-                visible = conversation.messageNodes.isEmpty() && !loading && mascotSize >= 48.dp,
-                enter = fadeIn() + scaleIn(initialScale = 0.78f),
-                exit = fadeOut() + scaleOut(targetScale = 0.88f),
-            ) {
-                if (assistant == null || assistant.avatar.isMiffanAvatar()) {
-                    MiffanMascot(
-                        state = resolveChatMascotState(
-                            hasErrors = errors.isNotEmpty(),
-                            semanticState = mascotSemanticState,
-                        ),
-                        appearance = assistant?.avatar?.miffanAppearanceOrDefault()
-                            ?: MiffanAppearance(),
-                        motionProfile = assistant?.avatar?.miffanMotionProfileOrDefault()
-                            ?: MiffanMotionProfile.CURIOUS,
-                        interactive = true,
-                        attentionTarget = mascotAttentionTarget,
-                        attentionId = mascotAttentionId,
-                        inputState = mascotInputState,
-                        submitId = mascotSubmitId,
-                        dayPhase = dayPhase,
+            val showEmpty = conversation.messageNodes.isEmpty() && !loading && mascotSize >= 48.dp
+            if (miffanIdentity) {
+                if (showEmpty) {
+                    MiffanHandoffAnchor(
+                        state = handoff,
+                        destination = MiffanHandoffDestination.EmptyChat,
                         modifier = Modifier.size(mascotSize),
                     )
-                } else {
-                    AssistantAvatar(
-                        name = assistant.name,
-                        value = assistant.avatar,
-                        modifier = Modifier.size(mascotSize),
+                }
+            } else {
+                AnimatedVisibility(
+                    visible = showEmpty,
+                    enter = fadeIn() + scaleIn(initialScale = 0.78f),
+                    exit = fadeOut() + scaleOut(targetScale = 0.88f),
+                ) {
+                    if (assistant != null) {
+                        AssistantAvatar(
+                            name = assistant.name,
+                            value = assistant.avatar,
+                            modifier = Modifier.size(mascotSize),
+                        )
+                    }
+                }
+            }
+        }
+
+        if (miffanIdentity) {
+            androidx.compose.runtime.key(conversation.id) {
+                MiffanHandoff(
+                    state = handoff,
+                    destination = handoffDestination,
+                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                ) { mascotModifier, visible ->
+                    MiffanMascot(
+                        state = if (!visible) MiffanMascotState.Idle else resolveChatMascotState(
+                            hasErrors = hasMascotErrors,
+                            semanticState = mascotSemanticState,
+                            loading = loading,
+                            inputState = mascotInputState,
+                        ),
+                        appearance = assistant?.avatar?.miffanAppearanceOrDefault() ?: MiffanAppearance(),
+                        motionProfile = assistant?.avatar?.miffanMotionProfileOrDefault() ?: MiffanMotionProfile.CURIOUS,
+                        presentation = if (visible && handoffDestination == MiffanHandoffDestination.EmptyChat) {
+                            MiffanPresentation.Scene
+                        } else MiffanPresentation.Avatar,
+                        interactive = visible && handoffDestination == MiffanHandoffDestination.EmptyChat,
+                        attentionTarget = mascotAttentionTarget,
+                        attentionId = mascotAttentionId,
+                        inputState = if (visible) mascotInputState else MiffanMascotInputState.Inactive,
+                        submitId = mascotSubmitId,
+                        dayPhase = dayPhase,
+                        modifier = mascotModifier,
                     )
                 }
             }
@@ -669,10 +721,15 @@ private fun ChatListNormal(
 internal fun resolveChatMascotState(
     hasErrors: Boolean,
     semanticState: MiffanMascotState,
-): MiffanMascotState = if (hasErrors) {
-    MiffanMascotState.Error
-} else {
-    semanticState
+    loading: Boolean = false,
+    showingCompletion: Boolean = false,
+    inputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
+): MiffanMascotState = when {
+    loading -> MiffanMascotState.Thinking
+    hasErrors -> MiffanMascotState.Error
+    showingCompletion -> MiffanMascotState.Happy
+    inputState != MiffanMascotInputState.Inactive -> MiffanMascotState.Idle
+    else -> semanticState
 }
 
 /**

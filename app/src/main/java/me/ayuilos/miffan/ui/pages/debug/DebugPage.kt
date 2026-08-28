@@ -36,6 +36,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -46,12 +47,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.common.android.Logging
 import me.ayuilos.miffan.BuildConfig
@@ -184,7 +187,31 @@ private enum class MiffanLabMode(
     UpdateAvailable("Update available", mascotState = MiffanMascotState.UpdateAvailable),
     Focused("Focused", inputState = MiffanMascotInputState.Focused),
     Typing("Typing", inputState = MiffanMascotInputState.Typing),
+    Transitions("Transitions"),
 }
+
+private data class MiffanLabFrame(
+    val label: String,
+    val durationMillis: Long,
+    val state: MiffanMascotState = MiffanMascotState.Idle,
+    val input: MiffanMascotInputState = MiffanMascotInputState.Inactive,
+    val attention: Offset? = null,
+    val submitted: Boolean = false,
+)
+
+private val miffanTransitionFrames = listOf(
+    MiffanLabFrame("Idle", 1_000),
+    MiffanLabFrame("Focus input", 600, input = MiffanMascotInputState.Focused),
+    MiffanLabFrame("Typing", 900, input = MiffanMascotInputState.Typing),
+    MiffanLabFrame("Repeated taps: left", 120, attention = Offset(-0.9f, -0.4f)),
+    MiffanLabFrame("Repeated taps: right", 120, attention = Offset(0.9f, 0.3f)),
+    MiffanLabFrame("Repeated taps: left", 600, attention = Offset(-0.7f, 0.2f)),
+    MiffanLabFrame("Submit", 220, submitted = true),
+    MiffanLabFrame("Thinking", 2_600, state = MiffanMascotState.Thinking),
+    MiffanLabFrame("Interrupted by error", 1_000, state = MiffanMascotState.Error),
+    MiffanLabFrame("Retry", 900, state = MiffanMascotState.Thinking),
+    MiffanLabFrame("Completed", 1_000, state = MiffanMascotState.Happy),
+)
 
 @Composable
 private fun MiffanLabPage() {
@@ -195,7 +222,27 @@ private fun MiffanLabPage() {
     var motionProfile by remember { mutableStateOf(MiffanMotionProfile.CURIOUS) }
     var reducedMotion by remember { mutableStateOf(false) }
     var submitId by remember { mutableIntStateOf(0) }
-    val sizes = listOf(28.dp, 40.dp, 80.dp, 128.dp)
+    var frameIndex by remember { mutableIntStateOf(0) }
+    var attentionId by remember { mutableIntStateOf(0) }
+    var attentionTarget by remember { mutableStateOf<Offset?>(null) }
+    LaunchedEffect(mode) {
+        if (mode != MiffanLabMode.Transitions) return@LaunchedEffect
+        while (true) {
+            miffanTransitionFrames.forEachIndexed { index, frame ->
+                frameIndex = index
+                frame.attention?.let {
+                    attentionTarget = it
+                    attentionId++
+                }
+                if (frame.submitted) submitId++
+                delay(frame.durationMillis)
+            }
+        }
+    }
+    val frame = miffanTransitionFrames[frameIndex]
+    val previewState = if (mode == MiffanLabMode.Transitions) frame.state else mode.mascotState
+    val previewInput = if (mode == MiffanLabMode.Transitions) frame.input else mode.inputState
+    val sizes = listOf(28.dp, 32.dp, 40.dp, 80.dp, 168.dp)
     val previewAppearances = if (colorSource == MiffanColorSource.APP_THEME) {
         listOf(
             "App theme" to MiffanAppearance(
@@ -228,6 +275,13 @@ private fun MiffanLabPage() {
                             label = { Text(option.label) },
                         )
                     }
+                }
+                if (mode == MiffanLabMode.Transitions) {
+                    Text(
+                        "Loop: ${frame.label}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -353,14 +407,17 @@ private fun MiffanLabPage() {
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             MiffanMascot(
-                                state = mode.mascotState,
+                                state = previewState,
                                 appearance = MiffanAppearance(
                                     kind = option,
                                     colorSource = colorSource,
                                 ),
                                 motionProfile = motionProfile,
                                 reducedMotion = reducedMotion,
-                                inputState = mode.inputState,
+                                inputState = previewInput,
+                                interactive = true,
+                                attentionId = attentionId,
+                                attentionTarget = attentionTarget,
                                 submitId = submitId,
                                 dayPhase = phase,
                                 previewIdleGestures = mode == MiffanLabMode.Idle,
@@ -387,15 +444,18 @@ private fun MiffanLabPage() {
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Box(
-                                modifier = Modifier.size(128.dp),
+                                modifier = Modifier.size(176.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 MiffanMascot(
-                                    state = mode.mascotState,
+                                    state = previewState,
                                     appearance = appearance,
                                     motionProfile = motionProfile,
                                     reducedMotion = reducedMotion,
-                                    inputState = mode.inputState,
+                                    inputState = previewInput,
+                                    interactive = true,
+                                    attentionId = attentionId,
+                                    attentionTarget = attentionTarget,
                                     submitId = submitId,
                                     dayPhase = phase,
                                     previewIdleGestures = mode == MiffanLabMode.Idle,

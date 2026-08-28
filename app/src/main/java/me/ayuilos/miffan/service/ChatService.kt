@@ -10,6 +10,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
@@ -42,6 +45,7 @@ import me.rerere.ai.ui.canResumeToolExecution
 import me.rerere.ai.ui.finishPendingTools
 import me.rerere.ai.ui.finishReasoning
 import me.rerere.ai.ui.isEmptyInputMessage
+import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.common.android.Logging
 import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.R
@@ -151,6 +155,16 @@ internal fun Conversation.hasPendingToolApprovals(): Boolean = messageNodes.any 
     }
 }
 
+internal fun Conversation.completedAssistantReplyId(previous: Conversation? = null): Uuid? = currentMessages.lastOrNull()
+    ?.takeIf {
+        it.role == MessageRole.ASSISTANT && !it.parts.isEmptyUIMessage() && !hasPendingToolApprovals() &&
+            it != previous?.currentMessages?.lastOrNull()
+    }
+    ?.id
+
+/** Transient UI feedback; unlike generationDoneFlow this only describes a successful reply. */
+data class AssistantReplyCompleted(val conversationId: Uuid, val messageId: Uuid, val job: Job)
+
 internal fun Conversation.hasPendingWorkspaceShellTools(): Boolean = messageNodes.any { node ->
     node.currentMessage.parts.any { part ->
         part is UIMessagePart.Tool &&
@@ -256,6 +270,9 @@ class ChatService(
     // 生成完成流
     private val _generationDoneFlow = MutableSharedFlow<Uuid>()
     val generationDoneFlow: SharedFlow<Uuid> = _generationDoneFlow.asSharedFlow()
+
+    private val _assistantReplyCompleted = MutableSharedFlow<AssistantReplyCompleted>(extraBufferCapacity = 1)
+    val assistantReplyCompleted: SharedFlow<AssistantReplyCompleted> = _assistantReplyCompleted.asSharedFlow()
 
     fun cleanup() = runCatching {
         sessions.values.forEach { it.cleanup() }
@@ -804,6 +821,13 @@ class ChatService(
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
             saveConversation(conversationId, finalConversation)
+
+            currentCoroutineContext().ensureActive()
+            finalConversation.completedAssistantReplyId(initialConversation)?.let { messageId ->
+                _assistantReplyCompleted.tryEmit(
+                    AssistantReplyCompleted(conversationId, messageId, currentCoroutineContext().job),
+                )
+            }
 
             launchWithConversationReference(conversationId) {
                 generateTitle(conversationId, finalConversation)

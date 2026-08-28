@@ -397,6 +397,17 @@ private fun ChatPageContent(
         mutableStateOf(MiffanMascotInputState.Inactive)
     }
     var mascotSubmitId by remember(conversation.id) { mutableIntStateOf(0) }
+    var observedMascotJob by remember(conversation.id) { mutableStateOf(loadingJob) }
+    LaunchedEffect(conversation.id, loadingJob) {
+        if (loadingJob != null && loadingJob !== observedMascotJob) mascotSubmitId++
+        observedMascotJob = loadingJob
+    }
+    val completedMascotReply by rememberCompletedMascotReply(
+        conversationId = conversation.id,
+        completions = vm.assistantReplyCompleted,
+        generationJobs = vm.conversationJob,
+        holdMillis = 900L,
+    )
 
     val completionProviders = remember(
         assistant.workspaceId,
@@ -511,7 +522,6 @@ private fun ChatPageContent(
                                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
                             }
                         }
-                        mascotSubmitId++
                         inputState.clearInput()
                     },
                     onLongSendClick = {
@@ -526,7 +536,6 @@ private fun ChatPageContent(
                                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
                             }
                         }
-                        mascotSubmitId++
                         inputState.clearInput()
                     },
                     onActivityChanged = { activity ->
@@ -589,6 +598,7 @@ private fun ChatPageContent(
                 mascotSemanticState = mascotSemanticState,
                 mascotInputState = mascotInputState,
                 mascotSubmitId = mascotSubmitId,
+                completedMascotReplyId = completedMascotReply,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = {

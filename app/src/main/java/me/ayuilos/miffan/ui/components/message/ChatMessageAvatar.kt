@@ -19,6 +19,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.isMiffanAvatar
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
@@ -63,6 +64,7 @@ fun ChatMessageAssistantAvatar(
     loading: Boolean,
     model: Model?,
     assistant: Assistant?,
+    mascotState: MiffanMascotState = MiffanMascotState.Idle,
     modifier: Modifier = Modifier,
 ) {
     val settings = LocalSettings.current
@@ -81,6 +83,7 @@ fun ChatMessageAssistantAvatar(
                         modifier = Modifier.size(28.dp),
                         value = assistantIdentity.avatar,
                         loading = loading,
+                        semanticState = mascotState,
                     )
                 }
                 Row(

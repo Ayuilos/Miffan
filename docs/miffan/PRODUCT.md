@@ -69,6 +69,37 @@ The signature becomes clearer while thinking, typing, submitting, or celebrating
 
 Character behavior is not another user setting. It is derived from character kind inside the renderer, then scaled by the selected motion profile and reduced-motion preference. Feature pages continue to emit semantic scene state and never select signature animations directly.
 
+## Continuous expression and attention
+
+Face changes share one parameterized mouth contour and independently adjustable eye openness.
+Transitions begin from the displayed expression, including when a new state interrupts a transition.
+Thinking gaze chooses a direction, holds it, and periodically returns to the center instead of
+continuously orbiting. Input focus and attention temporarily take precedence over ambient gaze.
+
+Repeated taps retarget persistent springs. Eyes respond before the profile's delayed body reaction,
+and every reaction returns to its resting pose after the latest tap. Character signature strength
+and error settling also transition continuously; existing silhouettes, palettes, and saved avatar
+settings remain unchanged.
+
+## Chat continuity and restrained avatars
+
+The empty-chat character and the waiting character share one renderer instance. On the first
+active send it shrinks and moves into the waiting slot; scrolling thereafter tracks that slot
+directly. A queued submission does not replay this handoff or interrupt the current expression.
+Custom image and emoji avatars retain their existing presentation.
+
+Historical message avatars are still at rest. Active small avatars retain readable expressions
+with less body movement. Only a confirmed successful assistant reply can briefly celebrate;
+stopping, failing, storing a user-only message, or awaiting tool approval cannot. Starting another
+turn clears the previous celebration. Loading takes precedence over old error reminders during
+a retry; otherwise visible errors take precedence over celebration, and input takes precedence
+over update reminders.
+
+The system's disabled-animation setting is observed live. It disables the spatial handoff and
+ambient cycles, blinks, and wandering gaze while preserving semantic expressions. The Lab's
+reduced-motion preview additionally allows checking the same quiet rendering without changing
+the device setting.
+
 ## Semantic motion states
 
 Components ask Miffan to express meaning rather than selecting animation clips. The shared V1 vocabulary is:
