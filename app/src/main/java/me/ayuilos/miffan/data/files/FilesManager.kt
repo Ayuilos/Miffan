@@ -404,6 +404,37 @@ class FilesManager(
         false
     }
 
+    suspend fun deleteOlderThan(
+        folder: String = FileFolders.UPLOAD,
+        cutoffMillis: Long,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val root = runCatching { File(context.filesDir, folder).canonicalFile }.getOrNull()
+            ?: return@withContext false
+        if (root.parentFile != context.filesDir.canonicalFile) return@withContext false
+
+        var allDeleted = true
+        repository.listByFolder(folder).first()
+            .filter { it.createdAt < cutoffMillis }
+            .forEach { entity ->
+                val deletedFromDisk = runCatching {
+                    val file = getFile(entity)
+                    // Restored metadata must not let scoped cleanup escape its category,
+                    // follow an external symlink, or recursively remove a directory.
+                    file.canonicalFile.parentFile == root &&
+                        (!file.exists() || (file.isFile && file.delete()))
+                }.getOrDefault(false)
+
+                if (deletedFromDisk) {
+                    if (repository.deleteById(entity.id) == 0) {
+                        allDeleted = false
+                    }
+                } else {
+                    allDeleted = false
+                }
+            }
+        allDeleted
+    }
+
     private fun createTargetFile(folder: String, displayName: String, mimeType: String?): File {
         val dir = File(context.filesDir, folder)
         if (!dir.exists()) {

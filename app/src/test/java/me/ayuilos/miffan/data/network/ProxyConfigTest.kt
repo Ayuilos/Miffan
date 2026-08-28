@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.network
 
+import kotlinx.serialization.json.Json
+import me.ayuilos.miffan.data.datastore.NetworkSetting
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -7,6 +9,22 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 
 class ProxyConfigTest {
+    @Test
+    fun `old network settings retain their values and use default update source`() {
+        val setting = Json.decodeFromString<NetworkSetting>(
+            """{"userAgent":"test-agent","proxyUrl":"http://localhost:8080"}"""
+        )
+        assertEquals("", setting.updateDownloadBaseUrl)
+        assertEquals("test-agent", setting.userAgent)
+        assertEquals("http://localhost:8080", setting.proxyUrl)
+    }
+
+    @Test
+    fun `custom update source survives network settings serialization`() {
+        val setting = NetworkSetting(updateDownloadBaseUrl = "https://mirror.example/miffan")
+        assertEquals(setting, Json.decodeFromString<NetworkSetting>(Json.encodeToString(setting)))
+    }
+
     @Test
     fun `parses http proxy URL`() {
         val proxy = "http://127.0.0.1:7890".toProxyOrNull()!!

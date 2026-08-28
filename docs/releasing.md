@@ -62,6 +62,22 @@ Consequences for the transition:
 
 Official arm64 assets use `Miffan-<version>-arm64-v8a.apk`. The checksum companion uses the same name plus `.sha256`.
 
+### In-app download sources
+
+The updater reads `https://downloads.ayuilos.me/latest.json` by default. Users can set a trusted HTTPS directory in **Settings → Preferences → Network → APK 下载源**. An empty setting uses the official source, including after upgrading an older installation or restoring an older backup. Changing the source starts a fresh update check; the existing temporary update-check pause still applies.
+
+Source order is **custom directory (if configured) → official directory → GitHub latest-release API → GitHub Atom feed**. A valid manifest is sufficient on its own; GitHub connectivity is not required for mirror updates. Each metadata request has a 12-second total timeout. A healthy but stale mirror is not compared with GitHub, so mirror operators must keep their manifest current.
+
+Mirrors must expose the following paths relative to their configured directory (subdirectories are supported):
+
+- `latest.json`: the same manifest as the official download site, with `version`, ISO-8601 `publishedAt`, `architecture` (`arm64-v8a`), `fileName`, positive `size`, `sha256`, `downloadUrl`, `checksumUrl`, and `releaseUrl`.
+- `releases/<version>/Miffan-<version>-arm64-v8a.apk`: the original signed release APK.
+- The corresponding `.apk.sha256` checksum file.
+
+The manifest can retain the official download/checksum URLs or use matching URLs under the custom directory. The app rebases the versioned APK path onto the selected directory, so an unchanged copy of the official manifest works on a mirror. Arbitrary external APK URLs, prerelease tags, other architectures, and mismatched filenames are rejected. An optional `changelog` field supplies Markdown release notes; otherwise the details sheet links to GitHub for notes. Manifest checksum syntax is validated; installation authenticity remains enforced by Android's package signature check.
+
+After metadata succeeds, APK download failures try the remaining directories and then the **same version's** GitHub asset. Pending download IDs and remaining URLs are saved locally; a permission-protected system download receiver handles terminal network/HTTP failures even after the settings screen is closed. Cancellation, paused downloads, storage errors, and existing destination files do not trigger source switching. There is no automatic APK installation, and the GitHub Release page remains available for manual recovery. System download scheduling/retries determine when an asynchronous failure becomes terminal; the 12-second timeout applies only to metadata requests.
+
 ## Production signing trust anchor
 
 The first Miffan production certificate was created on 2026-08-19. It must remain unchanged for every official update:

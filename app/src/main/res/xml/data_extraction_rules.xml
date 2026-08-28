@@ -5,15 +5,14 @@
 -->
 <data-extraction-rules>
   <cloud-backup>
+    <!-- DownloadManager IDs are local to a device/install and must never be restored. -->
+    <exclude domain="sharedpref" path="pending_update_downloads.xml" />
     <!-- TODO: Use <include> and <exclude> to control what is backed up.
     <include .../>
     <exclude .../>
     -->
   </cloud-backup>
-  <!--
   <device-transfer>
-      <include .../>
-      <exclude .../>
+    <exclude domain="sharedpref" path="pending_update_downloads.xml" />
   </device-transfer>
-  -->
 </data-extraction-rules>

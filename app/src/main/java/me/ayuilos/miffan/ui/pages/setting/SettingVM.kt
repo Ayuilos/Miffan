@@ -26,7 +26,7 @@ class SettingVM(
         .stateIn(viewModelScope, SharingStarted.Lazily, Settings(init = true, providers = emptyList()))
 
     val availableUpdate: StateFlow<UpdateInfo?> =
-        updateChecker.observeUpdateState(settingsStore.settingsFlow)
+        updateChecker.updateState
             .map { it.availableUpdate() }
             .stateIn(
                 viewModelScope,

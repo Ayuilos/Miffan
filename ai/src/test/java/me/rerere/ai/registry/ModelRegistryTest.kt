@@ -9,6 +9,15 @@ import org.junit.Test
 
 class ModelRegistryTest {
     @Test
+    fun testHy4UsesTextInputWithoutLosingToolsOrReasoning() {
+        assertEquals(listOf(Modality.TEXT), ModelRegistry.MODEL_INPUT_MODALITIES.getData("hy-4"))
+        assertEquals(
+            listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+            ModelRegistry.MODEL_ABILITIES.getData("hy-4"),
+        )
+    }
+
+    @Test
     fun testGPT5() {
         assertTrue(ModelRegistry.GPT_5.match("gpt-5"))
         assertFalse(ModelRegistry.GPT_5.match("gpt-5-chat"))
