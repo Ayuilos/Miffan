@@ -150,6 +150,15 @@
         android:value="local web server for LLM chat UI" />
     </service>
 
+    <receiver
+      android:name=".utils.UpdateDownloadReceiver"
+      android:exported="true"
+      android:permission="android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS">
+      <intent-filter>
+        <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+      </intent-filter>
+    </receiver>
+
     <provider
       android:name="androidx.core.content.FileProvider"
       android:authorities="${applicationId}.fileprovider"

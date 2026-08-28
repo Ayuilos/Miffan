@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.BuildConfig
 import me.ayuilos.miffan.data.ai.tools.local.LocalTools
+import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.event.AppEventBus
 import me.ayuilos.miffan.service.ChatNotificationManager
 import me.ayuilos.miffan.service.ChatService
@@ -33,7 +34,8 @@ val appModule = module {
     single {
         UpdateChecker(
             client = get(),
-            appScope = get(),
+            appScope = get<AppScope>(),
+            settings = get<SettingsStore>().settingsFlow,
         )
     }
 

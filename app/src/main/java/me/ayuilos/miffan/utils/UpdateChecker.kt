@@ -1,11 +1,9 @@
 package me.ayuilos.miffan.utils
 
-import android.app.DownloadManager
 import android.content.Context
-import android.os.Environment
 import android.util.Xml
 import android.widget.Toast
-import androidx.core.net.toUri
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -17,15 +15,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.BuildConfig
 import me.ayuilos.miffan.data.datastore.Settings
 import me.rerere.common.http.await
@@ -61,45 +62,45 @@ private val STANDARD_SEMVER = Regex(
 
 class UpdateChecker(
     client: OkHttpClient,
-    appScope: AppScope,
+    private val appScope: CoroutineScope,
+    settings: Flow<Settings>,
 ) {
-    private val releaseSource = GitHubReleaseSource(client)
+    private val client = client
     private val _debugUpdateOverrideEnabled = MutableStateFlow(false)
     val debugUpdateOverrideEnabled: StateFlow<Boolean> =
         _debugUpdateOverrideEnabled.asStateFlow()
 
     val updateState: StateFlow<UiState<UpdateInfo>> =
-        combine(checkUpdate(), debugUpdateOverrideEnabled) { state, debugOverrideEnabled ->
-            state.withDebugUpdateOverride(
-                enabled = BuildConfig.DEBUG && debugOverrideEnabled,
-            )
+        combine(
+            settings.map {
+                UpdateCheckConfig(
+                    initialized = !it.init,
+                    baseUrl = normalizeUpdateDownloadBaseUrl(it.networkSetting.updateDownloadBaseUrl)
+                        ?: DEFAULT_UPDATE_DOWNLOAD_BASE_URL,
+                    disabledUntil = it.displaySetting.updateCheckDisabledUntilEpochMillis,
+                )
+            }.distinctUntilChanged(),
+            debugUpdateOverrideEnabled,
+        ) { config, debugOverrideEnabled ->
+            config to (BuildConfig.DEBUG && debugOverrideEnabled)
+        }.flatMapLatest { (config, debugOverrideEnabled) ->
+            flow {
+                emit(UiState.Loading)
+                if (!config.initialized) return@flow
+
+                val now = System.currentTimeMillis()
+                if (!debugOverrideEnabled && config.disabledUntil > now) {
+                    delay(config.disabledUntil - now)
+                }
+                emitAll(checkUpdate(config.baseUrl).map { state ->
+                    state.withDebugUpdateOverride(enabled = debugOverrideEnabled)
+                })
+            }
         }.stateIn(
             scope = appScope,
             started = SharingStarted.Lazily,
             initialValue = UiState.Loading,
         )
-
-    fun observeUpdateState(settings: Flow<Settings>): Flow<UiState<UpdateInfo>> =
-        combine(settings, debugUpdateOverrideEnabled) { currentSettings, debugOverrideEnabled ->
-            currentSettings to (BuildConfig.DEBUG && debugOverrideEnabled)
-        }.flatMapLatest { (currentSettings, debugOverrideEnabled) ->
-            flow {
-                if (currentSettings.init) {
-                    emit(UiState.Loading)
-                    return@flow
-                }
-
-                val disabledUntil =
-                    currentSettings.displaySetting.updateCheckDisabledUntilEpochMillis
-                val now = System.currentTimeMillis()
-                if (!debugOverrideEnabled && disabledUntil > now) {
-                    emit(UiState.Loading)
-                    delay(disabledUntil - now)
-                }
-
-                emitAll(updateState)
-            }
-        }
 
     fun setDebugUpdateOverrideEnabled(enabled: Boolean) {
         if (BuildConfig.DEBUG) {
@@ -107,12 +108,12 @@ class UpdateChecker(
         }
     }
 
-    private fun checkUpdate(): Flow<UiState<UpdateInfo>> = flow {
+    private fun checkUpdate(baseUrl: String): Flow<UiState<UpdateInfo>> = flow {
         emit(UiState.Loading)
         emit(
             UiState.Success(
                 data = try {
-                    releaseSource.fetchLatest()
+                    UpdateReleaseSource(client, baseUrl).fetchLatest()
                 } catch (e: Exception) {
                     currentCoroutineContext().ensureActive()
                     throw Exception("Failed to fetch update info", e)
@@ -124,36 +125,30 @@ class UpdateChecker(
     }.flowOn(Dispatchers.IO)
 
     fun downloadUpdate(context: Context, download: UpdateDownload) {
-        runCatching {
-            val request = DownloadManager.Request(download.url.toUri()).apply {
-                // 设置下载时通知栏的标题和描述
-                setTitle(download.name)
-                setDescription("正在下载更新包...")
-                // 下载完成后通知栏可见
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                // 允许在移动网络和WiFi下下载
-                setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
-                // 设置文件保存路径
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, download.name)
-                // 允许下载的文件类型
-                setMimeType("application/vnd.android.package-archive")
+        val appContext = context.applicationContext
+        appScope.launch(Dispatchers.IO) {
+            runCatching { UpdateDownloader.enqueue(appContext, download) }.onFailure {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(appContext, "无法启动下载，请使用 GitHub 备用下载", Toast.LENGTH_SHORT).show()
+                    context.openUrl(download.fallbackUrls.lastOrNull() ?: download.url)
+                }
             }
-            // 获取系统的DownloadManager
-            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            dm.enqueue(request)
-            // 你可以保存返回的downloadId到本地，以便后续查询下载进度或状态
-        }.onFailure {
-            Toast.makeText(context, "Failed to update", Toast.LENGTH_SHORT).show()
-            context.openUrl(download.url) // 跳转到下载页面
         }
     }
 }
+
+private data class UpdateCheckConfig(
+    val initialized: Boolean,
+    val baseUrl: String,
+    val disabledUntil: Long,
+)
 
 @Serializable
 data class UpdateDownload(
     val name: String,
     val url: String,
     val sizeBytes: Long?,
+    val fallbackUrls: List<String> = emptyList(),
 )
 
 data class UpdateInfo(
@@ -195,10 +190,10 @@ internal class GitHubReleaseSource(
     private val client: OkHttpClient,
     private val apiUrl: String = GITHUB_RELEASE_API_URL,
     private val atomUrl: String = GITHUB_RELEASE_ATOM_URL,
-) {
+) : ReleaseSource {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun fetchLatest(): UpdateInfo {
+    override suspend fun fetchLatest(): UpdateInfo {
         try {
             return fetchFromApi()
         } catch (apiError: Exception) {
@@ -389,19 +384,19 @@ private fun String.toMiffanReleaseVersion(): String {
 internal fun String.isSupportedMiffanReleaseVersion(): Boolean =
     LEGACY_MIFFAN_RELEASE_VERSION.matches(this) || STANDARD_SEMVER.matches(this)
 
-private fun String.isFormalMiffanReleaseVersion(): Boolean {
+internal fun String.isFormalMiffanReleaseVersion(): Boolean {
     if (LEGACY_MIFFAN_RELEASE_VERSION.matches(this)) return true
     val match = STANDARD_SEMVER.matchEntire(this) ?: return false
     return match.groupValues[4].isEmpty()
 }
 
-private fun apkAssetName(version: String): String =
+internal fun apkAssetName(version: String): String =
     "Miffan-$version-arm64-v8a.apk"
 
-private fun releasePageUrl(version: String): String =
+internal fun releasePageUrl(version: String): String =
     "$GITHUB_RELEASES_URL/tag/$version"
 
-private fun releaseDownloadUrl(version: String): String =
+internal fun releaseDownloadUrl(version: String): String =
     "$GITHUB_RELEASES_URL/download/$version/${apkAssetName(version)}"
 
 /**

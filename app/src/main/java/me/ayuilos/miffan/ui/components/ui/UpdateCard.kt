@@ -43,6 +43,7 @@ import me.ayuilos.miffan.utils.UpdateInfo
 import me.ayuilos.miffan.utils.fileSizeToString
 import me.ayuilos.miffan.utils.openUrl
 import me.ayuilos.miffan.utils.toLocalDateTime
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 import kotlin.time.toJavaInstant
@@ -120,22 +121,31 @@ fun UpdateAvailableBanner(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                MarkdownBlock(
-                    content = info.changelog,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp)
-                        .verticalScroll(rememberScrollState()),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                if (info.changelog.isNotBlank()) {
+                    MarkdownBlock(
+                        content = info.changelog,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                            .verticalScroll(rememberScrollState()),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    Text("更新日志请查看下方 GitHub Release。")
+                }
                 info.downloads.fastForEach { downloadItem ->
                     OutlinedCard(
                         onClick = { downloadHandler(downloadItem) },
                     ) {
                         ListItem(
                             headlineContent = { Text(text = downloadItem.name) },
-                            supportingContent = downloadItem.sizeBytes?.let { size ->
-                                { Text(text = size.fileSizeToString()) }
+                            supportingContent = {
+                                Text(
+                                    listOfNotNull(
+                                        downloadItem.url.toHttpUrlOrNull()?.host,
+                                        downloadItem.sizeBytes?.fileSizeToString(),
+                                    ).joinToString(" · ")
+                                )
                             },
                             leadingContent = {
                                 Icon(

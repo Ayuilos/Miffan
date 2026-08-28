@@ -595,6 +595,8 @@ data class NetworkSetting(
     val proxyUrl: String = "",
     val proxyUsername: String = "",
     val proxyPassword: String = "",
+    // Empty means the official download source, including for existing installations/backups.
+    val updateDownloadBaseUrl: String = "",
 )
 
 @Serializable

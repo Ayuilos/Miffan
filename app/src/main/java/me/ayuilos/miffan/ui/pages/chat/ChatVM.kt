@@ -167,7 +167,7 @@ class ChatVM(
     }
 
     // Update checker
-    val availableUpdate = updateChecker.observeUpdateState(settingsStore.settingsFlow)
+    val availableUpdate = updateChecker.updateState
         .map { it.availableUpdate() }
         .stateIn(
             viewModelScope,
