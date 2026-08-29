@@ -17,6 +17,7 @@ import me.ayuilos.miffan.BuildConfig
 import me.ayuilos.miffan.data.ai.AIRequestInterceptor
 import me.ayuilos.miffan.data.ai.RequestLoggingInterceptor
 import me.ayuilos.miffan.data.ai.openai.OpenAICodexAuthService
+import me.ayuilos.miffan.data.ai.openrouter.OpenRouterAuthService
 import me.ayuilos.miffan.data.ai.transformers.AssistantTemplateLoader
 import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.TranslationHandler
@@ -259,6 +260,15 @@ val dataSourceModule = module {
         OpenAICodexAuthService(
             httpClient = get(),
             settingsStore = get(),
+        )
+    }
+
+    single {
+        OpenRouterAuthService(
+            context = get(),
+            httpClient = get(),
+            settingsStore = get(),
+            appScope = get(),
         )
     }
 

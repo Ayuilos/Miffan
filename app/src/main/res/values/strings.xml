@@ -8,6 +8,17 @@
   <string name="about_page_website">Website</string>
   <string name="add">Add</string>
   <string name="app_name">Miffan</string>
+  <string name="onboarding_page_title">Start chatting in a minute</string>
+  <string name="onboarding_page_description">Connect a free model now. You can change providers and models at any time.</string>
+  <string name="onboarding_page_free_badge">FREE TO START</string>
+  <string name="onboarding_page_openrouter_button">Connect OpenRouter</string>
+  <string name="onboarding_page_openrouter_connecting">Waiting for OpenRouter…</string>
+  <string name="onboarding_page_cancel">Cancel</string>
+  <string name="onboarding_page_manual_button">Set up another provider</string>
+  <string name="onboarding_page_privacy">A secure OpenRouter page will open for sign-in and approval. Miffan never receives your password.</string>
+  <string name="onboarding_page_free_limit">Uses OpenRouter’s free model router. Model availability, speed, and daily limits may vary.</string>
+  <string name="onboarding_page_error_title">Could not connect</string>
+  <string name="onboarding_page_retry">Try again</string>
   <string name="asr_button_content_description">Speech Recognition</string>
   <string name="asr_button_stop">Stop</string>
   <string name="assistant_detail_basic_desc">Configure name, avatar, model, and parameters</string>

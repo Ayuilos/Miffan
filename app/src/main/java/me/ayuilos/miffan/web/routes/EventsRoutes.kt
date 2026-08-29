@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.datastore.withoutProviderSecrets
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.data.repository.FolderRepository
 import me.ayuilos.miffan.service.ChatService
@@ -23,7 +24,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * A single `/api/events` connection carries several event types, distinguished by the
  * SSE `event:` field, so new event kinds can be added without opening a new connection:
- *  - `settings`                     -> full Settings snapshot
+ *  - `settings`                     -> Settings snapshot with provider credentials removed
  *  - `conversation_list_invalidate` -> the conversation list for an assistant changed
  *  - `folders`                      -> the folder list for an assistant changed
  *
@@ -41,9 +42,12 @@ fun Route.eventsRoutes(
             period = 15.seconds
         }
 
-        // Full settings snapshot; StateFlow emits the current value immediately on connect.
+        // The web client needs provider/model metadata, never provider credentials.
         val settingsEvents = settingsStore.settingsFlow.map { settings ->
-            EventPayload(event = "settings", json = JsonInstant.encodeToString(settings))
+            EventPayload(
+                event = "settings",
+                json = JsonInstant.encodeToString(settings.withoutProviderSecrets()),
+            )
         }
 
         // Conversation list invalidation, scoped to the currently selected assistant.

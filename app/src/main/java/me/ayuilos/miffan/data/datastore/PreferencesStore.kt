@@ -158,6 +158,7 @@ class SettingsStore(
 
     private val dataStore = context.settingsStore
     private val updateMutex = Mutex()
+    private val providerSecretCipher = ProviderSecretCipher()
 
     val settingsFlowRaw = dataStore.data
         .catch { exception ->
@@ -194,7 +195,9 @@ class SettingsStore(
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
-                providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
+                providers = JsonInstant
+                    .decodeFromString<List<ProviderSetting>>(preferences[PROVIDERS] ?: "[]")
+                    .transformProviderSecrets(providerSecretCipher::decrypt),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
                 themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
@@ -390,7 +393,9 @@ class SettingsStore(
             preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
 
-            preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
+            preferences[PROVIDERS] = JsonInstant.encodeToString(
+                settings.providers.transformProviderSecrets(providerSecretCipher::encrypt)
+            )
 
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
             preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
