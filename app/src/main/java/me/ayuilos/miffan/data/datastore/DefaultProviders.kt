@@ -15,6 +15,8 @@ import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
 import kotlin.uuid.Uuid
 
 val DEFAULT_AUTO_MODEL_ID = Uuid.parse("b7055fb4-39f9-4042-a88a-0d80ed76cf08")
+val OPENROUTER_PROVIDER_ID = Uuid.parse("d5734028-d39b-4d41-9841-fd648d65440e")
+val OPENROUTER_FREE_MODEL_ID = Uuid.parse("778d52b4-e443-42f6-9da8-dc353afdfdc6")
 
 val DEFAULT_PROVIDERS = listOf(
     ProviderSetting.OpenAI(
@@ -111,7 +113,7 @@ val DEFAULT_PROVIDERS = listOf(
         )
     ),
     ProviderSetting.OpenAI(
-        id = Uuid.parse("d5734028-d39b-4d41-9841-fd648d65440e"),
+        id = OPENROUTER_PROVIDER_ID,
         name = "OpenRouter",
         baseUrl = "https://openrouter.ai/api/v1",
         apiKey = "",

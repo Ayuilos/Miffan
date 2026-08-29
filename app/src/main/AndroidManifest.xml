@@ -134,6 +134,22 @@
       </intent-filter>
     </activity>
     <activity
+      android:name=".ui.activity.OpenRouterOAuthCallbackActivity"
+      android:exported="true"
+      android:launchMode="singleTask"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+
+        <data
+          android:host="openrouter-oauth-callback"
+          android:scheme="miffan" />
+      </intent-filter>
+    </activity>
+    <activity
       android:name="com.yalantis.ucrop.UCropActivity"
       android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 

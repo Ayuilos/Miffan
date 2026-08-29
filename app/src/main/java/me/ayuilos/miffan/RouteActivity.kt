@@ -59,6 +59,7 @@ import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import kotlinx.serialization.Serializable
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.datastore.isNotConfigured
 import me.ayuilos.miffan.data.db.DatabaseMigrationTracker
 import me.ayuilos.miffan.data.db.MigrationState
 import me.ayuilos.miffan.data.event.AppEvent
@@ -101,6 +102,7 @@ import me.ayuilos.miffan.ui.pages.favorite.FavoritePage
 import me.ayuilos.miffan.ui.pages.history.HistoryPage
 import me.ayuilos.miffan.ui.pages.imggen.ImageGenPage
 import me.ayuilos.miffan.ui.pages.log.LogPage
+import me.ayuilos.miffan.ui.pages.onboarding.OnboardingPage
 import me.ayuilos.miffan.ui.pages.search.SearchPage
 import me.ayuilos.miffan.ui.pages.setting.SettingAboutPage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesPage
@@ -238,6 +240,17 @@ class RouteActivity : ComponentActivity() {
     fun AppRoutes() {
         val toastState = rememberToasterState()
         val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
+        if (settings.init) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+            return
+        }
         val tts = rememberCustomTtsState()
         val asr = rememberCustomAsrState()
         val eventBus = koinInject<AppEventBus>()
@@ -254,16 +267,20 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
-        val startScreen = Screen.Chat(
-            id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
-                Uuid.random().toString()
-            } else {
-                readStringPreference(
-                    "lastConversationId",
+        val startScreen: Screen = if (settings.isNotConfigured()) {
+            Screen.Onboarding
+        } else {
+            Screen.Chat(
+                id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
                     Uuid.random().toString()
-                ) ?: Uuid.random().toString()
-            }
-        )
+                } else {
+                    readStringPreference(
+                        "lastConversationId",
+                        Uuid.random().toString()
+                    ) ?: Uuid.random().toString()
+                }
+            )
+        }
 
         val backStack = rememberNavBackStack(startScreen)
         SideEffect { this@RouteActivity.navStack = backStack }
@@ -327,6 +344,13 @@ class RouteActivity : ComponentActivity() {
                                     files = key.files.map { it.toUri() },
                                     nodeId = key.nodeId?.let { Uuid.parse(it) }
                                 )
+                            }
+
+                            entry<Screen.Onboarding>(
+                                metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
+                                    + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
+                            ) {
+                                OnboardingPage()
                             }
 
                             entry<Screen.ShareHandler> { key ->
@@ -592,6 +616,9 @@ class RouteActivity : ComponentActivity() {
 }
 
 sealed interface Screen : NavKey {
+    @Serializable
+    data object Onboarding : Screen
+
     @Serializable
     data class Chat(
         val id: String,

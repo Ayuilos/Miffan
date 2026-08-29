@@ -10,6 +10,7 @@ import me.ayuilos.miffan.data.files.FileFolders
 import me.ayuilos.miffan.data.files.SkillPaths
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.datastore.withoutProviderSecrets
 import me.ayuilos.miffan.data.datastore.migration.SettingsJsonMigrator
 import me.ayuilos.miffan.data.sync.s3.S3Client
 import me.ayuilos.miffan.data.sync.s3.S3Config
@@ -121,7 +122,9 @@ class S3Sync(
             addVirtualFileToZip(
                 zipOut = zipOut,
                 name = "settings.json",
-                content = json.encodeToString(settingsStore.settingsFlow.value)
+                content = json.encodeToString(
+                    settingsStore.settingsFlow.value.withoutProviderSecrets()
+                )
             )
 
             // Backup database files
