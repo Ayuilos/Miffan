@@ -1354,14 +1354,14 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_files_page_clean_all">すべてのファイル</string>
   <string name="setting_files_page_clean_older_than_days">%1$d日以上前</string>
   <string name="setting_files_page_clean_range_description">完全に削除するファイルを選択してください。この操作は元に戻せません。</string>
-  <string name="onboarding_page_title">1分でチャットを始める</string>
-  <string name="onboarding_page_description">今すぐ無料モデルに接続できます。プロバイダーとモデルはいつでも変更できます。</string>
+  <string name="onboarding_page_title">Miffan へようこそ</string>
+  <string name="onboarding_page_description">API がわからなくても大丈夫です。まずは無料モデルで始め、いつでも変更できます。</string>
   <string name="onboarding_page_free_badge">無料で始める</string>
-  <string name="onboarding_page_openrouter_button">OpenRouterに接続</string>
+  <string name="onboarding_page_openrouter_button">無料でチャットを始める</string>
   <string name="onboarding_page_openrouter_connecting">OpenRouterを待機中…</string>
   <string name="onboarding_page_cancel">キャンセル</string>
-  <string name="onboarding_page_manual_button">別のプロバイダーを設定</string>
-  <string name="onboarding_page_privacy">次に、安全なOpenRouterページを開いてログインと承認を行います。Miffanがパスワードを取得することはありません。</string>
+  <string name="onboarding_page_manual_button">別のプロバイダーを使用</string>
+  <string name="onboarding_page_privacy">OpenRouter のログイン画面が開きます。Miffan がパスワードを受け取ることはありません。</string>
   <string name="onboarding_page_free_limit">OpenRouterの無料モデルルーターを使用します。利用可能なモデル、速度、1日の上限は変更される場合があります。</string>
   <string name="onboarding_page_error_title">接続できませんでした</string>
   <string name="onboarding_page_retry">再試行</string>
@@ -1377,4 +1377,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="onboarding_page_restore_free_model_button">無料モデルを復元</string>
   <string name="onboarding_page_verify_saved_key_button">もう一度確認</string>
   <string name="onboarding_page_reconnect_openrouter_button">OpenRouter に再接続</string>
+  <string name="onboarding_page_recommended_badge">おすすめ</string>
+  <string name="onboarding_page_free_start_title">無料で始める</string>
+  <string name="onboarding_page_openrouter_brief">Miffan とは独立した第三者サービス OpenRouter が提供します。API キーを手動で入力する必要はありません。</string>
+  <string name="onboarding_page_details_show">OpenRouter と無料枠について</string>
+  <string name="onboarding_page_details_hide">詳細を閉じる</string>
 </resources>

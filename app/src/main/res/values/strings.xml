@@ -8,14 +8,14 @@
   <string name="about_page_website">Website</string>
   <string name="add">Add</string>
   <string name="app_name">Miffan</string>
-  <string name="onboarding_page_title">Start chatting in a minute</string>
-  <string name="onboarding_page_description">Connect a free model now. You can change providers and models at any time.</string>
+  <string name="onboarding_page_title">Welcome to Miffan</string>
+  <string name="onboarding_page_description">No API knowledge needed. Start with a free model and change it anytime.</string>
   <string name="onboarding_page_free_badge">FREE TO START</string>
-  <string name="onboarding_page_openrouter_button">Connect OpenRouter</string>
+  <string name="onboarding_page_openrouter_button">Start chatting for free</string>
   <string name="onboarding_page_openrouter_connecting">Waiting for OpenRouter…</string>
   <string name="onboarding_page_cancel">Cancel</string>
-  <string name="onboarding_page_manual_button">Set up another provider</string>
-  <string name="onboarding_page_privacy">A secure OpenRouter page will open for sign-in and approval. Miffan never receives your password.</string>
+  <string name="onboarding_page_manual_button">Use another provider</string>
+  <string name="onboarding_page_privacy">OpenRouter will open for sign-in. Miffan never receives your password.</string>
   <string name="onboarding_page_free_limit">Uses OpenRouter’s free model router. Model availability, speed, and daily limits may vary.</string>
   <string name="onboarding_page_error_title">Could not connect</string>
   <string name="onboarding_page_retry">Try again</string>
@@ -1375,4 +1375,9 @@
   <string name="onboarding_page_restore_free_model_button">Restore free model</string>
   <string name="onboarding_page_verify_saved_key_button">Verify again</string>
   <string name="onboarding_page_reconnect_openrouter_button">Reconnect OpenRouter</string>
+  <string name="onboarding_page_recommended_badge">Recommended</string>
+  <string name="onboarding_page_free_start_title">Start for free</string>
+  <string name="onboarding_page_openrouter_brief">Provided by third-party OpenRouter, which operates independently from Miffan. No manual API key entry needed.</string>
+  <string name="onboarding_page_details_show">About OpenRouter and free limits</string>
+  <string name="onboarding_page_details_hide">Hide details</string>
 </resources>
