@@ -4,6 +4,7 @@ import me.ayuilos.miffan.data.datastore.OPENROUTER_FREE_MODEL_ID
 import me.ayuilos.miffan.data.datastore.OPENROUTER_PROVIDER_ID
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.isNotConfigured
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderSetting
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -55,7 +56,9 @@ class OpenRouterAuthServiceTest {
         assertEquals(OpenAIAuthType.API_KEY, provider.authType)
         assertFalse(provider.useResponseApi)
         assertEquals(1, provider.models.count { it.modelId == "openrouter/free" })
-        assertEquals(OPENROUTER_FREE_MODEL_ID, provider.models.single { it.modelId == "openrouter/free" }.id)
+        val freeModel = provider.models.single { it.modelId == "openrouter/free" }
+        assertEquals(OPENROUTER_FREE_MODEL_ID, freeModel.id)
+        assertEquals(listOf(ModelAbility.TOOL, ModelAbility.REASONING), freeModel.abilities)
         assertEquals(OPENROUTER_FREE_MODEL_ID, connected.chatModelId)
         assertFalse(connected.enableSuggestion)
         assertTrue(provider.enabled)
@@ -84,6 +87,10 @@ class OpenRouterAuthServiceTest {
             .filterIsInstance<ProviderSetting.OpenAI>()
             .single { it.id == OPENROUTER_PROVIDER_ID }
         assertEquals(listOf("openrouter/free"), provider.models.map { it.modelId })
+        assertEquals(
+            listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+            provider.models.single().abilities,
+        )
         assertEquals(OPENROUTER_FREE_MODEL_ID, restored.chatModelId)
     }
 

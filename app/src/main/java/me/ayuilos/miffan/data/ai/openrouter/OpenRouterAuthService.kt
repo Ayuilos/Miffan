@@ -25,6 +25,7 @@ import me.ayuilos.miffan.data.datastore.OPENROUTER_PROVIDER_ID
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderSetting
@@ -47,6 +48,10 @@ private const val OPENROUTER_KEY_INFO_URL = "https://openrouter.ai/api/v1/key"
 private const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 private const val OPENROUTER_CALLBACK_URL = "https://miffan.ayuilos.me/openrouter-callback.html"
 private const val OPENROUTER_FREE_MODEL = "openrouter/free"
+private val OPENROUTER_FREE_MODEL_ABILITIES = listOf(
+    ModelAbility.TOOL,
+    ModelAbility.REASONING,
+)
 private const val PENDING_PREFERENCES = "openrouter_oauth_pending"
 private const val PENDING_STATE = "state"
 private const val PENDING_VERIFIER = "verifier"
@@ -383,13 +388,16 @@ private fun Settings.openRouterProvider(): ProviderSetting.OpenAI? {
 internal fun Settings.withOpenRouterConnection(apiKey: String): Settings {
     require(apiKey.isNotBlank()) { "OpenRouter API key cannot be blank" }
     val existing = openRouterProvider()
-    val freeModel = existing?.models
+    val existingFreeModel = existing?.models
         ?.firstOrNull { it.modelId == OPENROUTER_FREE_MODEL }
-        ?: Model(
+    val freeModel = existingFreeModel?.copy(
+        abilities = (existingFreeModel.abilities + OPENROUTER_FREE_MODEL_ABILITIES).distinct(),
+    ) ?: Model(
             id = OPENROUTER_FREE_MODEL_ID,
             modelId = OPENROUTER_FREE_MODEL,
             displayName = "OpenRouter Free",
             type = ModelType.CHAT,
+            abilities = OPENROUTER_FREE_MODEL_ABILITIES,
         )
     val connectedProvider = (existing ?: ProviderSetting.OpenAI(
         id = OPENROUTER_PROVIDER_ID,
