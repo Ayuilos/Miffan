@@ -1365,4 +1365,16 @@
   <string name="onboarding_page_free_limit">Используется бесплатный маршрутизатор моделей OpenRouter. Доступные модели, скорость и дневные лимиты могут меняться.</string>
   <string name="onboarding_page_error_title">Не удалось подключиться</string>
   <string name="onboarding_page_retry">Повторить</string>
+  <string name="onboarding_page_openrouter_about_title">Почему OpenRouter?</string>
+  <string name="onboarding_page_openrouter_about">OpenRouter — независимая сторонняя платформа-агрегатор моделей ИИ, не связанная с Miffan и не являющаяся её партнёром. Мы предлагаем её для быстрого старта, поскольку она объединяет множество популярных моделей и предоставляет бесплатный маршрутизатор. Поставщика можно сменить в любое время.</string>
+  <string name="onboarding_page_saved_key_checking">Проверяем сохранённое подключение OpenRouter…</string>
+  <string name="onboarding_page_saved_key_restoring">Сохранённое подключение всё ещё действительно. Восстанавливаем бесплатную модель…</string>
+  <string name="onboarding_page_saved_key_valid">Сохранённое подключение OpenRouter всё ещё действительно. Бесплатную модель можно восстановить без повторного входа.</string>
+  <string name="onboarding_page_saved_key_invalid">Сохранённое подключение OpenRouter истекло или больше недействительно. Подключитесь снова, чтобы продолжить.</string>
+  <string name="onboarding_page_saved_key_check_failed">Не удалось проверить сохранённое подключение OpenRouter. Проверьте сеть и повторите попытку.</string>
+  <string name="onboarding_page_saved_key_checking_button">Проверяем подключение…</string>
+  <string name="onboarding_page_saved_key_restoring_button">Восстанавливаем бесплатную модель…</string>
+  <string name="onboarding_page_restore_free_model_button">Восстановить бесплатную модель</string>
+  <string name="onboarding_page_verify_saved_key_button">Проверить снова</string>
+  <string name="onboarding_page_reconnect_openrouter_button">Повторно подключить OpenRouter</string>
 </resources>

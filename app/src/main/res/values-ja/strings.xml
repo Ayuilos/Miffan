@@ -1365,4 +1365,16 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="onboarding_page_free_limit">OpenRouterの無料モデルルーターを使用します。利用可能なモデル、速度、1日の上限は変更される場合があります。</string>
   <string name="onboarding_page_error_title">接続できませんでした</string>
   <string name="onboarding_page_retry">再試行</string>
+  <string name="onboarding_page_openrouter_about_title">OpenRouterを選ぶ理由</string>
+  <string name="onboarding_page_openrouter_about">OpenRouterは独立運営の第三者AIモデル集約プラットフォームであり、Miffanとの資本・提携関係はありません。多くの主要モデルと無料モデルルーターを利用できるため、すぐに始めるための選択肢として案内しています。プロバイダーはいつでも変更できます。</string>
+  <string name="onboarding_page_saved_key_checking">保存済みの OpenRouter 接続を確認しています…</string>
+  <string name="onboarding_page_saved_key_restoring">保存済みの接続は有効です。無料モデルを復元しています…</string>
+  <string name="onboarding_page_saved_key_valid">保存済みの OpenRouter 接続は引き続き有効です。再ログインせずに無料モデルを復元できます。</string>
+  <string name="onboarding_page_saved_key_invalid">保存済みの OpenRouter 接続は期限切れか、無効になっています。再接続して続行してください。</string>
+  <string name="onboarding_page_saved_key_check_failed">保存済みの OpenRouter 接続を確認できませんでした。ネットワークを確認して、もう一度お試しください。</string>
+  <string name="onboarding_page_saved_key_checking_button">接続を確認しています…</string>
+  <string name="onboarding_page_saved_key_restoring_button">無料モデルを復元しています…</string>
+  <string name="onboarding_page_restore_free_model_button">無料モデルを復元</string>
+  <string name="onboarding_page_verify_saved_key_button">もう一度確認</string>
+  <string name="onboarding_page_reconnect_openrouter_button">OpenRouter に再接続</string>
 </resources>

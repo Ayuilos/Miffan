@@ -1363,4 +1363,16 @@
   <string name="onboarding_page_free_limit">將使用 OpenRouter 免費模型路由；可用模型、速度和每日限額可能有所變化。</string>
   <string name="onboarding_page_error_title">連接失敗</string>
   <string name="onboarding_page_retry">重試</string>
+  <string name="onboarding_page_openrouter_about_title">為什麼選擇 OpenRouter？</string>
+  <string name="onboarding_page_openrouter_about">OpenRouter 是獨立營運的第三方 AI 模型聚合平台，與 Miffan 沒有隸屬或合作關係。我們將它作為快速開始選項，是因為它匯集了大量主流模型並提供免費模型路由；你也可以隨時改用其他服務商。</string>
+  <string name="onboarding_page_saved_key_checking">正在驗證已儲存的 OpenRouter 連線…</string>
+  <string name="onboarding_page_saved_key_restoring">已儲存的連線仍然有效，正在恢復免費模型…</string>
+  <string name="onboarding_page_saved_key_valid">已儲存的 OpenRouter 連線仍然有效，可以直接恢復免費模型，無需重新登入。</string>
+  <string name="onboarding_page_saved_key_invalid">已儲存的 OpenRouter 連線已過期或失效，請重新連線後繼續。</string>
+  <string name="onboarding_page_saved_key_check_failed">暫時無法驗證已儲存的 OpenRouter 連線，請檢查網路後重試。</string>
+  <string name="onboarding_page_saved_key_checking_button">正在驗證連線…</string>
+  <string name="onboarding_page_saved_key_restoring_button">正在恢復免費模型…</string>
+  <string name="onboarding_page_restore_free_model_button">恢復免費模型</string>
+  <string name="onboarding_page_verify_saved_key_button">重新驗證</string>
+  <string name="onboarding_page_reconnect_openrouter_button">重新連線 OpenRouter</string>
 </resources>

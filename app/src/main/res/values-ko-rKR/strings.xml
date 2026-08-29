@@ -1365,4 +1365,16 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="onboarding_page_free_limit">OpenRouter 무료 모델 라우터를 사용합니다. 사용 가능한 모델, 속도 및 일일 한도는 달라질 수 있습니다.</string>
   <string name="onboarding_page_error_title">연결할 수 없음</string>
   <string name="onboarding_page_retry">다시 시도</string>
+  <string name="onboarding_page_openrouter_about_title">OpenRouter를 선택한 이유</string>
+  <string name="onboarding_page_openrouter_about">OpenRouter는 독립적으로 운영되는 타사 AI 모델 통합 플랫폼이며 Miffan과 제휴 또는 소속 관계가 없습니다. 다양한 주요 모델과 무료 모델 라우터를 제공하기 때문에 빠른 시작 옵션으로 안내합니다. 제공업체는 언제든지 변경할 수 있습니다.</string>
+  <string name="onboarding_page_saved_key_checking">저장된 OpenRouter 연결을 확인하는 중…</string>
+  <string name="onboarding_page_saved_key_restoring">저장된 연결이 아직 유효합니다. 무료 모델을 복원하는 중…</string>
+  <string name="onboarding_page_saved_key_valid">저장된 OpenRouter 연결이 아직 유효합니다. 다시 로그인하지 않고 무료 모델을 복원할 수 있습니다.</string>
+  <string name="onboarding_page_saved_key_invalid">저장된 OpenRouter 연결이 만료되었거나 더 이상 유효하지 않습니다. 다시 연결하여 계속하세요.</string>
+  <string name="onboarding_page_saved_key_check_failed">저장된 OpenRouter 연결을 확인할 수 없습니다. 네트워크를 확인하고 다시 시도하세요.</string>
+  <string name="onboarding_page_saved_key_checking_button">연결 확인 중…</string>
+  <string name="onboarding_page_saved_key_restoring_button">무료 모델 복원 중…</string>
+  <string name="onboarding_page_restore_free_model_button">무료 모델 복원</string>
+  <string name="onboarding_page_verify_saved_key_button">다시 확인</string>
+  <string name="onboarding_page_reconnect_openrouter_button">OpenRouter 다시 연결</string>
 </resources>

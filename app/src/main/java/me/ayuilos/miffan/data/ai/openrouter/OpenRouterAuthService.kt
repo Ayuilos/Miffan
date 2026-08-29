@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,12 +36,14 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 
 private const val TAG = "OpenRouterAuth"
 private const val OPENROUTER_AUTH_URL = "https://openrouter.ai/auth"
 private const val OPENROUTER_KEY_EXCHANGE_URL = "https://openrouter.ai/api/v1/auth/keys"
+private const val OPENROUTER_KEY_INFO_URL = "https://openrouter.ai/api/v1/key"
 private const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 private const val OPENROUTER_CALLBACK_URL = "https://miffan.ayuilos.me/openrouter-callback.html"
 private const val OPENROUTER_FREE_MODEL = "openrouter/free"
@@ -56,6 +59,22 @@ sealed interface OpenRouterAuthState {
     data object Authorizing : OpenRouterAuthState
     data object Connected : OpenRouterAuthState
     data class Error(val message: String) : OpenRouterAuthState
+}
+
+sealed interface OpenRouterSavedKeyState {
+    data object Unchecked : OpenRouterSavedKeyState
+    data object Missing : OpenRouterSavedKeyState
+    data object Checking : OpenRouterSavedKeyState
+    data object Restoring : OpenRouterSavedKeyState
+    data class Valid(val expiresAt: Instant?) : OpenRouterSavedKeyState
+    data object Invalid : OpenRouterSavedKeyState
+    data object CheckFailed : OpenRouterSavedKeyState
+}
+
+internal sealed interface OpenRouterKeyValidationResult {
+    data class Valid(val expiresAt: Instant?) : OpenRouterKeyValidationResult
+    data object Invalid : OpenRouterKeyValidationResult
+    data object Unavailable : OpenRouterKeyValidationResult
 }
 
 internal data class OpenRouterPkce(
@@ -78,8 +97,90 @@ class OpenRouterAuthService(
     private val json = Json { ignoreUnknownKeys = true }
     private val _state = MutableStateFlow<OpenRouterAuthState>(OpenRouterAuthState.Idle)
     val state: StateFlow<OpenRouterAuthState> = _state.asStateFlow()
+    private val _savedKeyState = MutableStateFlow<OpenRouterSavedKeyState>(
+        OpenRouterSavedKeyState.Unchecked
+    )
+    val savedKeyState: StateFlow<OpenRouterSavedKeyState> = _savedKeyState.asStateFlow()
+    private var savedKeyJob: Job? = null
+
+    fun checkExistingKey() {
+        savedKeyJob?.cancel()
+        savedKeyJob = appScope.launch {
+            if (_state.value != OpenRouterAuthState.Authorizing) {
+                _state.value = OpenRouterAuthState.Idle
+            }
+            val settings = settingsStore.settingsFlow.first { current -> !current.init }
+            val apiKey = settings.openRouterApiKeyOrNull()
+            if (apiKey == null) {
+                _savedKeyState.value = OpenRouterSavedKeyState.Missing
+                return@launch
+            }
+
+            _savedKeyState.value = OpenRouterSavedKeyState.Checking
+            applySavedKeyValidation(validateOpenRouterKeySafely(apiKey))
+        }
+    }
+
+    fun restoreFreeModel() {
+        savedKeyJob?.cancel()
+        savedKeyJob = appScope.launch {
+            val settings = settingsStore.settingsFlow.first { current -> !current.init }
+            val apiKey = settings.openRouterApiKeyOrNull()
+            if (apiKey == null) {
+                _savedKeyState.value = OpenRouterSavedKeyState.Missing
+                return@launch
+            }
+
+            _savedKeyState.value = OpenRouterSavedKeyState.Restoring
+            when (val validation = validateOpenRouterKeySafely(apiKey)) {
+                is OpenRouterKeyValidationResult.Valid -> {
+                    val restored = settingsStore.updateIfCurrent(settings) { current ->
+                        current.withOpenRouterConnection(apiKey)
+                    }
+                    if (restored) {
+                        _savedKeyState.value = OpenRouterSavedKeyState.Valid(validation.expiresAt)
+                        _state.value = OpenRouterAuthState.Connected
+                    } else {
+                        checkExistingKey()
+                    }
+                }
+                OpenRouterKeyValidationResult.Invalid -> {
+                    _savedKeyState.value = OpenRouterSavedKeyState.Invalid
+                }
+                OpenRouterKeyValidationResult.Unavailable -> {
+                    _savedKeyState.value = OpenRouterSavedKeyState.CheckFailed
+                }
+            }
+        }
+    }
+
+    private suspend fun validateOpenRouterKeySafely(apiKey: String): OpenRouterKeyValidationResult =
+        runCatching { validateOpenRouterKey(apiKey) }
+            .onFailure { cause -> Log.w(TAG, "Unable to validate saved OpenRouter key", cause) }
+            .getOrDefault(OpenRouterKeyValidationResult.Unavailable)
+
+    private suspend fun validateOpenRouterKey(apiKey: String): OpenRouterKeyValidationResult =
+        withContext(Dispatchers.IO) {
+            httpClient.newCall(buildOpenRouterKeyValidationRequest(apiKey)).await().use { response ->
+                parseOpenRouterKeyValidation(
+                    code = response.code,
+                    body = response.body.string(),
+                )
+            }
+        }
+
+    private fun applySavedKeyValidation(result: OpenRouterKeyValidationResult) {
+        _savedKeyState.value = when (result) {
+            is OpenRouterKeyValidationResult.Valid -> {
+                OpenRouterSavedKeyState.Valid(result.expiresAt)
+            }
+            OpenRouterKeyValidationResult.Invalid -> OpenRouterSavedKeyState.Invalid
+            OpenRouterKeyValidationResult.Unavailable -> OpenRouterSavedKeyState.CheckFailed
+        }
+    }
 
     fun startAuthorization(languageTag: String? = null) {
+        savedKeyJob?.cancel()
         val state = UUID.randomUUID().toString()
         val pkce = generateOpenRouterPkce()
         pending.edit()
@@ -229,14 +330,59 @@ internal fun buildOpenRouterAuthorizationUrl(
         .toString()
 }
 
+internal fun buildOpenRouterKeyValidationRequest(apiKey: String): Request {
+    require(apiKey.isNotBlank()) { "OpenRouter API key cannot be blank" }
+    return Request.Builder()
+        .url(OPENROUTER_KEY_INFO_URL)
+        .header("Accept", "application/json")
+        .header("Authorization", "Bearer $apiKey")
+        .get()
+        .build()
+}
+
+internal fun parseOpenRouterKeyValidation(
+    code: Int,
+    body: String,
+    now: Instant = Instant.now(),
+): OpenRouterKeyValidationResult {
+    if (code == 401 || code == 403) return OpenRouterKeyValidationResult.Invalid
+    if (code !in 200..299) return OpenRouterKeyValidationResult.Unavailable
+
+    val expiresAt = runCatching {
+        val data = Json.parseToJsonElement(body).jsonObject["data"]?.jsonObject
+            ?: return OpenRouterKeyValidationResult.Unavailable
+        val rawExpiresAt = data["expires_at"]?.jsonPrimitive?.contentOrNull
+        rawExpiresAt?.let(Instant::parse)
+    }.getOrElse {
+        return OpenRouterKeyValidationResult.Unavailable
+    }
+    return if (expiresAt != null && !expiresAt.isAfter(now)) {
+        OpenRouterKeyValidationResult.Invalid
+    } else {
+        OpenRouterKeyValidationResult.Valid(expiresAt)
+    }
+}
+
+internal fun Settings.openRouterApiKeyOrNull(): String? = openRouterProvider()
+    ?.apiKey
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
+
+private fun Settings.openRouterProvider(): ProviderSetting.OpenAI? {
+    val openRouterProviders = providers
+        .filterIsInstance<ProviderSetting.OpenAI>()
+        .filter { provider ->
+            provider.id == OPENROUTER_PROVIDER_ID ||
+                runCatching { provider.baseUrl.toHttpUrl().host == "openrouter.ai" }
+                    .getOrDefault(false)
+        }
+    return openRouterProviders.firstOrNull { it.id == OPENROUTER_PROVIDER_ID }
+        ?: openRouterProviders.firstOrNull()
+}
+
 internal fun Settings.withOpenRouterConnection(apiKey: String): Settings {
     require(apiKey.isNotBlank()) { "OpenRouter API key cannot be blank" }
-    val existing = providers
-        .filterIsInstance<ProviderSetting.OpenAI>()
-        .firstOrNull { provider ->
-            provider.id == OPENROUTER_PROVIDER_ID ||
-                runCatching { provider.baseUrl.toHttpUrl().host == "openrouter.ai" }.getOrDefault(false)
-        }
+    val existing = openRouterProvider()
     val freeModel = existing?.models
         ?.firstOrNull { it.modelId == OPENROUTER_FREE_MODEL }
         ?: Model(

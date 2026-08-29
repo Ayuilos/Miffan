@@ -1363,4 +1363,16 @@
   <string name="chat_generation_network_timeout">Connection timed out</string>
   <string name="chat_generation_network_unreachable">Unable to connect to server</string>
   <string name="chat_generation_network_disconnected">Network connection lost</string>
+  <string name="onboarding_page_openrouter_about_title">Why OpenRouter?</string>
+  <string name="onboarding_page_openrouter_about">OpenRouter is an independently operated third-party AI model aggregation platform and is not affiliated with or partnered with Miffan. We offer it as a quick-start option because it provides access to many popular models and a free model router. You can switch providers at any time.</string>
+  <string name="onboarding_page_saved_key_checking">Checking your saved OpenRouter connection…</string>
+  <string name="onboarding_page_saved_key_restoring">Your saved connection is still valid. Restoring the free model…</string>
+  <string name="onboarding_page_saved_key_valid">Your saved OpenRouter connection is still valid. You can restore the free model without signing in again.</string>
+  <string name="onboarding_page_saved_key_invalid">Your saved OpenRouter connection has expired or is no longer valid. Reconnect to continue.</string>
+  <string name="onboarding_page_saved_key_check_failed">We couldn\'t verify your saved OpenRouter connection. Check your network and try again.</string>
+  <string name="onboarding_page_saved_key_checking_button">Checking connection…</string>
+  <string name="onboarding_page_saved_key_restoring_button">Restoring free model…</string>
+  <string name="onboarding_page_restore_free_model_button">Restore free model</string>
+  <string name="onboarding_page_verify_saved_key_button">Verify again</string>
+  <string name="onboarding_page_reconnect_openrouter_button">Reconnect OpenRouter</string>
 </resources>
