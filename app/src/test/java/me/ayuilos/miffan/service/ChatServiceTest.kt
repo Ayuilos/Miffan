@@ -197,6 +197,57 @@ class ChatServiceTest {
         assertFalse(fork.isPinned)
     }
 
+    @Test
+    fun `forking from an edited branch copies only that complete path into a new conversation`() {
+        val openingQuestion = UIMessage.user("Opening question")
+        val openingReply = UIMessage.assistant("Opening reply")
+        val originalFollowUp = UIMessage.user("Original follow-up")
+        val originalReply = UIMessage.assistant("Original follow-up reply")
+        val originalNodes = listOf(
+            openingQuestion,
+            openingReply,
+            originalFollowUp,
+            originalReply,
+        ).toLinearMessageNodes()
+        val base = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+        val editedFollowUp = UIMessage.user("Edited follow-up")
+        val editedReply = UIMessage.assistant("Edited follow-up reply")
+        val source = base
+            .addNodeAndSelect(
+                MessageNode(
+                    message = editedFollowUp,
+                    parentId = originalNodes[1].id,
+                )
+            )
+            .appendMessage(editedReply)
+
+        val copiedNodes = requireNotNull(source.copyMessagePathForFork(editedReply.id))
+        val fork = createForkConversation(source, copiedNodes)
+
+        assertNotEquals(source.id, fork.id)
+        assertEquals(
+            listOf(openingQuestion, openingReply, editedFollowUp, editedReply),
+            fork.currentMessages,
+        )
+        assertFalse(fork.currentMessages.contains(originalFollowUp))
+        assertFalse(fork.currentMessages.contains(originalReply))
+        assertTrue(copiedNodes.map { it.id }.none(source.messageNodes.map { it.id }.toSet()::contains))
+        assertNull(copiedNodes.first().parentId)
+        copiedNodes.zipWithNext().forEach { (parent, child) ->
+            assertEquals(parent.id, child.parentId)
+            assertEquals(child.id, parent.selectedChildId)
+        }
+        assertNull(copiedNodes.last().selectedChildId)
+        assertEquals(
+            listOf(openingQuestion, openingReply, originalFollowUp, originalReply),
+            source.selectNode(originalNodes[2].id).currentMessages,
+        )
+    }
+
     private fun tool(
         id: String,
         name: String,
