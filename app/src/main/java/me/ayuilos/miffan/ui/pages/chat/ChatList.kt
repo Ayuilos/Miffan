@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
@@ -122,6 +123,7 @@ import me.ayuilos.miffan.ui.components.ui.rememberMiffanDayPhase
 import me.ayuilos.miffan.ui.hooks.ImeLazyListAutoScroller
 import me.ayuilos.miffan.ui.theme.ChatFontProvider
 import me.ayuilos.miffan.utils.plus
+import me.ayuilos.miffan.utils.toLocalDateTime
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
@@ -134,6 +136,7 @@ private const val ScrollBottomKey = "ScrollBottomKey"
 fun ChatList(
     innerPadding: PaddingValues,
     conversation: Conversation,
+    recentConversations: List<Conversation> = emptyList(),
     state: LazyListState,
     loading: Boolean,
     modifier: Modifier = Modifier,
@@ -149,6 +152,7 @@ fun ChatList(
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
+    onOpenConversation: (Conversation) -> Unit = {},
     onEdit: (UIMessage) -> Unit = {},
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
@@ -184,6 +188,7 @@ fun ChatList(
             ChatListNormal(
                 innerPadding = innerPadding,
                 conversation = conversation,
+                recentConversations = recentConversations,
                 state = state,
                 loading = loading,
                 processingStatus = processingStatus,
@@ -197,6 +202,7 @@ fun ChatList(
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
+                onOpenConversation = onOpenConversation,
                 onEdit = onEdit,
                 onForkMessage = onForkMessage,
                 onDelete = onDelete,
@@ -219,6 +225,7 @@ fun ChatList(
 private fun ChatListNormal(
     innerPadding: PaddingValues,
     conversation: Conversation,
+    recentConversations: List<Conversation>,
     state: LazyListState,
     loading: Boolean,
     processingStatus: String? = null,
@@ -232,6 +239,7 @@ private fun ChatListNormal(
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
+    onOpenConversation: (Conversation) -> Unit,
     onEdit: (UIMessage) -> Unit,
     onForkMessage: (UIMessage) -> Unit,
     onDelete: (UIMessage) -> Unit,
@@ -508,7 +516,7 @@ private fun ChatListNormal(
                                 destination = MiffanHandoffDestination.WaitingReply,
                                 modifier = Modifier.size(48.dp),
                             )
-                        } else if (assistant != null) {
+                        } else {
                             AssistantAvatar(
                                 name = assistant.name,
                                 value = assistant.avatar,
@@ -546,33 +554,57 @@ private fun ChatListNormal(
                 .padding(innerPadding),
             contentAlignment = Alignment.Center,
         ) {
+            val hasRecentChats = recentConversations.isNotEmpty()
             val mascotSize = minOf(
-                168.dp,
-                maxWidth * 0.52f,
-                maxHeight * 0.52f,
+                if (hasRecentChats) 132.dp else 168.dp,
+                maxWidth * if (hasRecentChats) 0.4f else 0.52f,
+                maxHeight * if (hasRecentChats) 0.32f else 0.52f,
             )
             val showEmpty = conversation.messageNodes.isEmpty() && !loading && mascotSize >= 48.dp
-            if (miffanIdentity) {
-                if (showEmpty) {
-                    MiffanHandoffAnchor(
-                        state = handoff,
-                        destination = MiffanHandoffDestination.EmptyChat,
-                        modifier = Modifier.size(mascotSize),
-                    )
-                }
-            } else {
-                AnimatedVisibility(
-                    visible = showEmpty,
-                    enter = fadeIn() + scaleIn(initialScale = 0.78f),
-                    exit = fadeOut() + scaleOut(targetScale = 0.88f),
-                ) {
-                    if (assistant != null) {
+            val horizontalRecentChats = maxHeight < 420.dp
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (miffanIdentity) {
+                    if (showEmpty) {
+                        MiffanHandoffAnchor(
+                            state = handoff,
+                            destination = MiffanHandoffDestination.EmptyChat,
+                            modifier = Modifier.size(mascotSize),
+                        )
+                    }
+                } else {
+                    AnimatedVisibility(
+                        visible = showEmpty,
+                        enter = fadeIn() + scaleIn(initialScale = 0.78f),
+                        exit = fadeOut() + scaleOut(targetScale = 0.88f),
+                    ) {
                         AssistantAvatar(
                             name = assistant.name,
                             value = assistant.avatar,
                             modifier = Modifier.size(mascotSize),
                         )
                     }
+                }
+
+                AnimatedVisibility(
+                    visible = showEmpty && hasRecentChats,
+                    enter = fadeIn() + slideInVertically { it / 3 },
+                    exit = fadeOut() + slideOutVertically { it / 3 },
+                ) {
+                    RecentChatShortcuts(
+                        conversations = recentConversations,
+                        onOpenConversation = onOpenConversation,
+                        horizontal = horizontalRecentChats,
+                        modifier = Modifier
+                            .widthIn(max = 480.dp)
+                            .fillMaxWidth(),
+                    )
                 }
             }
         }
@@ -720,6 +752,79 @@ private fun ChatListNormal(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RecentChatShortcuts(
+    conversations: List<Conversation>,
+    onOpenConversation: (Conversation) -> Unit,
+    horizontal: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.testTag("recent_chats"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.chat_message_tool_recent_chats),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        if (horizontal) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(conversations, key = { it.id }) { conversation ->
+                    RecentChatShortcut(
+                        conversation = conversation,
+                        onClick = { onOpenConversation(conversation) },
+                        modifier = Modifier.widthIn(min = 180.dp, max = 280.dp),
+                    )
+                }
+            }
+        } else {
+            conversations.forEach { conversation ->
+                RecentChatShortcut(
+                    conversation = conversation,
+                    onClick = { onOpenConversation(conversation) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentChatShortcut(
+    conversation: Conversation,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+        modifier = modifier.testTag("recent_chat_${conversation.id}"),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = conversation.title
+                    .ifBlank { stringResource(R.string.history_page_new_conversation) }
+                    .trim(),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = conversation.updateAt.toLocalDateTime(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
         }
     }
 }
