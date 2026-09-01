@@ -14,6 +14,7 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
@@ -27,6 +28,76 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 class ChatServiceTest {
+    @Test
+    fun `editing a user message creates a sibling branch and preserves the original reply`() {
+        val originalUserMessage = UIMessage.user("Original question")
+        val editedUserMessage = UIMessage.user("Edited question")
+        val originalReply = UIMessage.assistant("Original reply")
+        val editedReply = UIMessage.assistant("Edited reply")
+        val originalNodes = listOf(originalUserMessage, originalReply).toLinearMessageNodes()
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+
+        val editedNode = MessageNode(message = editedUserMessage)
+        val editedConversation = conversation.addNodeAndSelect(editedNode)
+        val withReply = editedConversation.updateCurrentMessages(listOf(editedUserMessage, editedReply))
+
+        assertEquals(listOf(editedUserMessage, editedReply), withReply.currentMessages)
+        assertEquals(
+            listOf(originalUserMessage, originalReply),
+            withReply.selectNode(originalNodes.first().id).currentMessages,
+        )
+    }
+
+    @Test
+    fun `regenerating an assistant reply creates a sibling and switching restores descendants`() {
+        val userMessage = UIMessage.user("Question")
+        val originalReply = UIMessage.assistant("Original reply")
+        val followUp = UIMessage.user("Follow-up")
+        val followUpReply = UIMessage.assistant("Follow-up reply")
+        val originalNodes = listOf(userMessage, originalReply, followUp, followUpReply).toLinearMessageNodes()
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+        val regeneratedReply = UIMessage.assistant("Regenerated reply")
+
+        val regenerated = conversation.updateCurrentMessages(listOf(userMessage, regeneratedReply))
+
+        assertEquals(listOf(userMessage, regeneratedReply), regenerated.currentMessages)
+        assertEquals(
+            listOf(userMessage, originalReply, followUp, followUpReply),
+            regenerated.selectNode(originalNodes[1].id).currentMessages,
+        )
+    }
+
+    @Test
+    fun `deleting the selected branch removes only its subtree and restores a sibling`() {
+        val originalMessages = listOf(
+            UIMessage.user("Original question"),
+            UIMessage.assistant("Original reply"),
+        )
+        val originalNodes = originalMessages.toLinearMessageNodes()
+        val base = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+        val editedUser = UIMessage.user("Edited question")
+        val editedRoot = MessageNode(message = editedUser)
+        val edited = base.addNodeAndSelect(editedRoot)
+            .updateCurrentMessages(listOf(editedUser, UIMessage.assistant("Edited reply")))
+
+        val restored = edited.deleteNodeSubtree(editedRoot.id)
+
+        assertEquals(originalMessages, restored.currentMessages)
+        assertEquals(originalNodes.map { it.id }.toSet(), restored.messageNodes.map { it.id }.toSet())
+    }
+
     @Test
     fun `completion feedback requires an assistant reply without pending approval`() {
         val reply = UIMessage.assistant("Done")
@@ -57,15 +128,15 @@ class ChatServiceTest {
         val conversation = Conversation(
             assistantId = Uuid.random(),
             messageNodes = listOf(
-                MessageNode(
-                    messages = listOf(unselectedMessage, selectedMessage),
-                    selectIndex = 1,
-                )
+                MessageNode(message = unselectedMessage),
+                MessageNode(message = selectedMessage),
             ),
+            selectedRootId = null,
         )
+        val selectedConversation = conversation.selectNode(conversation.messageNodes[1].id)
 
-        val updated = conversation.approvePendingWorkspaceShellTools()
-        val selectedTools = updated.messageNodes.single().currentMessage.parts
+        val updated = selectedConversation.approvePendingWorkspaceShellTools()
+        val selectedTools = updated.getMessageNodeByMessageId(selectedMessage.id)!!.message.parts
             .filterIsInstance<UIMessagePart.Tool>()
 
         assertEquals(ToolApprovalState.Approved, selectedTools[0].approvalState)
@@ -73,7 +144,7 @@ class ChatServiceTest {
         assertEquals(ToolApprovalState.Auto, selectedTools[2].approvalState)
         assertEquals(
             ToolApprovalState.Pending,
-            (updated.messageNodes.single().messages[0].parts.single() as UIMessagePart.Tool).approvalState,
+            (updated.getMessageNodeByMessageId(unselectedMessage.id)!!.message.parts.single() as UIMessagePart.Tool).approvalState,
         )
         assertTrue(updated.hasPendingToolApprovals())
         assertFalse(updated.hasPendingWorkspaceShellTools())
@@ -124,6 +195,110 @@ class ChatServiceTest {
         assertEquals(source.folderId, fork.folderId)
         assertEquals("", fork.title)
         assertFalse(fork.isPinned)
+    }
+
+    @Test
+    fun `forking from an edited branch copies only that complete path into a new conversation`() {
+        val openingQuestion = UIMessage.user("Opening question")
+        val openingReply = UIMessage.assistant("Opening reply")
+        val originalFollowUp = UIMessage.user("Original follow-up")
+        val originalReply = UIMessage.assistant("Original follow-up reply")
+        val originalNodes = listOf(
+            openingQuestion,
+            openingReply,
+            originalFollowUp,
+            originalReply,
+        ).toLinearMessageNodes()
+        val base = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+        val editedFollowUp = UIMessage.user("Edited follow-up")
+        val editedReply = UIMessage.assistant("Edited follow-up reply")
+        val source = base
+            .addNodeAndSelect(
+                MessageNode(
+                    message = editedFollowUp,
+                    parentId = originalNodes[1].id,
+                )
+            )
+            .appendMessage(editedReply)
+
+        val copiedNodes = requireNotNull(source.copyMessagePathForFork(editedReply.id))
+        val fork = createForkConversation(source, copiedNodes)
+
+        assertNotEquals(source.id, fork.id)
+        assertEquals(
+            listOf(openingQuestion, openingReply, editedFollowUp, editedReply),
+            fork.currentMessages,
+        )
+        assertFalse(fork.currentMessages.contains(originalFollowUp))
+        assertFalse(fork.currentMessages.contains(originalReply))
+        assertTrue(copiedNodes.map { it.id }.none(source.messageNodes.map { it.id }.toSet()::contains))
+        assertNull(copiedNodes.first().parentId)
+        copiedNodes.zipWithNext().forEach { (parent, child) ->
+            assertEquals(parent.id, child.parentId)
+            assertEquals(child.id, parent.selectedChildId)
+        }
+        assertNull(copiedNodes.last().selectedChildId)
+        assertEquals(
+            listOf(openingQuestion, openingReply, originalFollowUp, originalReply),
+            source.selectNode(originalNodes[2].id).currentMessages,
+        )
+    }
+
+    @Test
+    fun `a hidden search result activates its complete path without losing other paths`() {
+        val openingQuestion = UIMessage.user("Opening question")
+        val openingReply = UIMessage.assistant("Opening reply")
+        val originalFollowUp = UIMessage.user("Original follow-up")
+        val originalReply = UIMessage.assistant("Original reply")
+        val originalNodes = listOf(
+            openingQuestion,
+            openingReply,
+            originalFollowUp,
+            originalReply,
+        ).toLinearMessageNodes()
+        val base = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+        val alternateFollowUp = UIMessage.user("Search target branch")
+        val alternateNode = MessageNode(
+            message = alternateFollowUp,
+            parentId = originalNodes[1].id,
+        )
+        val alternateReply = UIMessage.assistant("Hidden branch reply")
+        val withAlternatePath = base
+            .addNodeAndSelect(alternateNode)
+            .appendMessage(alternateReply)
+        val showingOriginalPath = withAlternatePath.selectNode(originalNodes[2].id)
+
+        val pathsBeforeSelection = showingOriginalPath.getMessagePaths()
+        val pathMessageIdsBeforeSelection = pathsBeforeSelection.map { path ->
+            path.map { it.message.id }
+        }
+        val searchTargetNode = requireNotNull(
+            showingOriginalPath.getMessageNodeByMessageId(alternateFollowUp.id)
+        )
+        val activated = showingOriginalPath.selectNode(searchTargetNode.id)
+
+        assertEquals(2, pathsBeforeSelection.size)
+        assertEquals(
+            listOf(openingQuestion, openingReply, alternateFollowUp, alternateReply),
+            activated.currentMessages,
+        )
+        assertEquals(searchTargetNode.id, activated.currentMessageNodes[2].id)
+        assertEquals(
+            pathMessageIdsBeforeSelection,
+            activated.getMessagePaths().map { path -> path.map { it.message.id } },
+        )
+        assertEquals(
+            listOf(openingQuestion, openingReply, originalFollowUp, originalReply),
+            activated.selectNode(originalNodes[2].id).currentMessages,
+        )
     }
 
     private fun tool(

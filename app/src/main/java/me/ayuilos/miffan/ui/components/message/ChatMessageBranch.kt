@@ -21,20 +21,20 @@ import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.ArrowRight01
-import me.ayuilos.miffan.data.model.MessageNode
 
 @Composable
 fun ChatMessageBranchSelector(
-    node: MessageNode,
+    selectedIndex: Int,
+    branchCount: Int,
     modifier: Modifier = Modifier,
-    onUpdate: (MessageNode) -> Unit,
+    onSelect: (Int) -> Unit,
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (node.messages.size > 1) {
+        if (branchCount > 1) {
             val actionColor = MaterialTheme.colorScheme.onSurfaceVariant
 
             Icon(
@@ -42,17 +42,13 @@ fun ChatMessageBranchSelector(
                 contentDescription = "Prev",
                 modifier = Modifier
                     .clip(CircleShape)
-                    .alpha(if (node.selectIndex == 0) 0.5f else 1f)
+                    .alpha(if (selectedIndex == 0) 0.5f else 1f)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = LocalIndication.current,
                         onClick = {
-                            if (node.selectIndex > 0) {
-                                onUpdate(
-                                    node.copy(
-                                        selectIndex = node.selectIndex - 1
-                                    )
-                                )
+                            if (selectedIndex > 0) {
+                                onSelect(selectedIndex - 1)
                             }
                         }
                     )
@@ -62,7 +58,7 @@ fun ChatMessageBranchSelector(
             )
 
             Text(
-                text = "${node.selectIndex + 1}/${node.messages.size}",
+                text = "${selectedIndex + 1}/$branchCount",
                 style = MaterialTheme.typography.bodySmall,
                 color = actionColor
             )
@@ -72,17 +68,13 @@ fun ChatMessageBranchSelector(
                 contentDescription = "Next",
                 modifier = Modifier
                     .clip(CircleShape)
-                    .alpha(if (node.selectIndex == node.messages.lastIndex) 0.5f else 1f)
+                    .alpha(if (selectedIndex == branchCount - 1) 0.5f else 1f)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = LocalIndication.current,
                         onClick = {
-                            if (node.selectIndex < node.messages.lastIndex) {
-                                onUpdate(
-                                    node.copy(
-                                        selectIndex = node.selectIndex + 1
-                                    )
-                                )
+                            if (selectedIndex < branchCount - 1) {
+                                onSelect(selectedIndex + 1)
                             }
                         }
                     )

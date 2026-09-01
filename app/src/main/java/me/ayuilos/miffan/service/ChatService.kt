@@ -90,7 +90,7 @@ import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.model.replaceRegexes
-import me.ayuilos.miffan.data.model.toMessageNode
+import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.data.repository.FolderRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
@@ -125,33 +125,31 @@ internal fun shouldEnableExtensionManagement(assistant: Assistant, model: Model)
         ModelAbility.TOOL in model.abilities
 }
 
-internal fun Conversation.approvePendingWorkspaceShellTools(): Conversation = copy(
-    messageNodes = messageNodes.map { node ->
-        node.copy(
-            messages = node.messages.mapIndexed { index, message ->
-                if (index != node.selectIndex) {
-                    message
-                } else {
-                    message.copy(
-                        parts = message.parts.map { part ->
-                            if (
-                                part is UIMessagePart.Tool &&
-                                part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
-                                part.isPending
-                            ) {
-                                part.copy(approvalState = ToolApprovalState.Approved)
-                            } else {
-                                part
-                            }
+internal fun Conversation.approvePendingWorkspaceShellTools(): Conversation {
+    val currentNodeIds = currentMessageNodes.mapTo(HashSet()) { it.id }
+    return copy(
+        messageNodes = messageNodes.map { node ->
+            if (node.id !in currentNodeIds) return@map node
+            node.withMessage(
+                node.message.copy(
+                    parts = node.message.parts.map { part ->
+                        if (
+                            part is UIMessagePart.Tool &&
+                            part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
+                            part.isPending
+                        ) {
+                            part.copy(approvalState = ToolApprovalState.Approved)
+                        } else {
+                            part
                         }
-                    )
-                }
-            }
-        )
-    }
-)
+                    }
+                )
+            )
+        }
+    )
+}
 
-internal fun Conversation.hasPendingToolApprovals(): Boolean = messageNodes.any { node ->
+internal fun Conversation.hasPendingToolApprovals(): Boolean = currentMessageNodes.any { node ->
     node.currentMessage.parts.any { part ->
         part is UIMessagePart.Tool && part.isPending
     }
@@ -167,7 +165,7 @@ internal fun Conversation.completedAssistantReplyId(previous: Conversation? = nu
 /** Transient UI feedback; unlike generationDoneFlow this only describes a successful reply. */
 data class AssistantReplyCompleted(val conversationId: Uuid, val messageId: Uuid, val job: Job)
 
-internal fun Conversation.hasPendingWorkspaceShellTools(): Boolean = messageNodes.any { node ->
+internal fun Conversation.hasPendingWorkspaceShellTools(): Boolean = currentMessageNodes.any { node ->
     node.currentMessage.parts.any { part ->
         part is UIMessagePart.Tool &&
             part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
@@ -182,12 +180,68 @@ internal fun createForkConversation(
     id = Uuid.random(),
     assistantId = source.assistantId,
     messageNodes = messageNodes,
+    selectedRootId = messageNodes.firstOrNull { it.parentId == null }?.id,
     customSystemPrompt = source.customSystemPrompt,
     modeInjectionIds = source.modeInjectionIds,
     lorebookIds = source.lorebookIds,
     workspaceCwd = source.workspaceCwd,
     folderId = source.folderId,
 )
+
+internal fun Conversation.copyMessagePathForFork(
+    messageId: Uuid,
+    transformMessage: (UIMessage) -> UIMessage = { it },
+): List<MessageNode>? {
+    val targetNode = getMessageNodeByMessageId(messageId) ?: return null
+    val sourcePath = getPathToNode(targetNode.id)
+    val copiedNodes = ArrayList<MessageNode>(sourcePath.size)
+    sourcePath.forEach { source ->
+        val copied = MessageNode(
+            message = transformMessage(source.message),
+            parentId = copiedNodes.lastOrNull()?.id,
+        )
+        if (copiedNodes.isNotEmpty()) {
+            copiedNodes[copiedNodes.lastIndex] = copiedNodes.last().withSelectedChild(copied.id)
+        }
+        copiedNodes += copied
+    }
+    return copiedNodes
+}
+
+internal fun Conversation.deleteNodeSubtree(nodeId: Uuid): Conversation {
+    val target = getMessageNode(nodeId) ?: return this
+    val removedIds = HashSet<Uuid>()
+    val pending = ArrayDeque<Uuid>()
+    pending += nodeId
+    while (pending.isNotEmpty()) {
+        val currentId = pending.removeLast()
+        if (!removedIds.add(currentId)) continue
+        getChildren(currentId).forEach { pending += it.id }
+    }
+
+    val siblings = getSiblings(nodeId)
+    val targetIndex = siblings.indexOfFirst { it.id == nodeId }
+    val replacement = siblings.getOrNull(targetIndex - 1)
+        ?: siblings.getOrNull(targetIndex + 1)
+    val targetWasSelected = if (target.parentId == null) {
+        (selectedRootId ?: getChildren(null).firstOrNull()?.id) == target.id
+    } else {
+        getMessageNode(target.parentId)?.selectedChildId == target.id
+    }
+
+    return copy(
+        selectedRootId = if (target.parentId == null && targetWasSelected) replacement?.id else selectedRootId,
+        messageNodes = messageNodes
+            .filterNot { it.id in removedIds }
+            .map { node ->
+                if (targetWasSelected && node.id == target.parentId) {
+                    node.withSelectedChild(replacement?.id)
+                } else {
+                    node
+                }
+            },
+    )
+}
 
 data class ChatError(
     val id: Uuid = Uuid.random(),
@@ -470,12 +524,12 @@ class ChatService(
                 val processedContent = preprocessUserInputParts(message.content, assistant)
 
                 // 添加消息到列表
-                val newConversation = currentConversation.copy(
-                    messageNodes = currentConversation.messageNodes + UIMessage(
+                val newConversation = currentConversation.appendMessage(
+                    UIMessage(
                         id = message.id,
                         role = MessageRole.USER,
                         parts = processedContent,
-                    ).toMessageNode(),
+                    )
                 )
                 saveConversation(conversationId, newConversation)
 
@@ -529,18 +583,21 @@ class ChatService(
                 val conversation = session.state.value
 
                 if (message.role == MessageRole.USER) {
-                    // 如果是用户消息，则截止到当前消息
-                    val node = conversation.getMessageNodeByMessage(message)
-                    val indexAt = conversation.messageNodes.indexOf(node)
-                    val newConversation = conversation.copy(
-                        messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
-                    )
+                    val node = conversation.getMessageNodeByMessageId(message.id)
+                        ?: throw NotFoundException("Message not found")
+                    val newConversation = conversation.selectNode(node.id)
+                    val indexAt = newConversation.currentMessageNodes.indexOfFirst { it.id == node.id }
+                    if (indexAt < 0) throw NotFoundException("Message branch not found")
                     saveConversation(conversationId, newConversation)
-                    handleMessageComplete(conversationId)
+                    handleMessageComplete(conversationId, messageRange = 0..indexAt)
                 } else {
                     if (regenerateAssistantMsg) {
                         val node = conversation.getMessageNodeByMessage(message)
-                        val nodeIndex = conversation.messageNodes.indexOf(node)
+                            ?: throw NotFoundException("Message not found")
+                        val selectedConversation = conversation.selectNode(node.id)
+                        val nodeIndex = selectedConversation.currentMessageNodes.indexOfFirst { it.id == node.id }
+                        if (nodeIndex < 0) throw NotFoundException("Message branch not found")
+                        saveConversation(conversationId, selectedConversation)
                         handleMessageComplete(conversationId, messageRange = 0..<nodeIndex)
                     } else {
                         saveConversation(conversationId, conversation)
@@ -568,7 +625,7 @@ class ChatService(
     ) {
         val session = getOrCreateSession(conversationId)
 
-        val hasOtherPendingTools = session.state.value.messageNodes.any { node ->
+        val hasOtherPendingTools = session.state.value.currentMessageNodes.any { node ->
             node.currentMessage.parts.any { part ->
                 part is UIMessagePart.Tool && part.isPending && part.toolCallId != toolCallId
             }
@@ -588,20 +645,18 @@ class ChatService(
 
                 // Update the tool approval state
                 val updatedNodes = conversation.messageNodes.map { node ->
-                    node.copy(
-                        messages = node.messages.map { msg ->
-                            msg.copy(
-                                parts = msg.parts.map { part ->
-                                    when {
-                                        part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
-                                            part.copy(approvalState = newApprovalState)
-                                        }
-
-                                        else -> part
+                    node.withMessage(
+                        node.message.copy(
+                            parts = node.message.parts.map { part ->
+                                when {
+                                    part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
+                                        part.copy(approvalState = newApprovalState)
                                     }
+
+                                    else -> part
                                 }
-                            )
-                        }
+                            }
+                        )
                     )
                 }
                 val updatedConversation = conversation.copy(messageNodes = updatedNodes)
@@ -818,7 +873,7 @@ class ChatService(
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
                     messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
-                        node.copy(messages = node.messages.map { it.finishReasoning() })
+                        node.withMessage(node.message.finishReasoning())
                     },
                     updateAt = Instant.now()
                 )
@@ -908,50 +963,12 @@ class ChatService(
 
     private fun checkInvalidMessages(conversationId: Uuid) {
         val conversation = getConversationFlow(conversationId).value
-        var messagesNodes = conversation.messageNodes
+        val invalidNode = conversation.currentMessageNodes.firstOrNull { node ->
+            val pendingTools = node.message.getTools().filterNot { it.isExecuted }
+            pendingTools.isNotEmpty() && pendingTools.none { it.approvalState.canResumeToolExecution() }
+        } ?: return
 
-        // 移除无效 tool (未执行的 Tool)
-        messagesNodes = messagesNodes.mapIndexed { _, node ->
-            // Check for Tool type with non-executed tools
-            val hasPendingTools = node.currentMessage.getTools().any { !it.isExecuted }
-
-            if (hasPendingTools) {
-                // Keep messages that are ready to resume, such as approved/denied/answered tools.
-                val hasResumableTool = node.currentMessage.getTools().any {
-                    !it.isExecuted && it.approvalState.canResumeToolExecution()
-                }
-                if (hasResumableTool) {
-                    return@mapIndexed node
-                }
-
-                // If all tools are executed, it's valid
-                val allToolsExecuted = node.currentMessage.getTools().all { it.isExecuted }
-                if (allToolsExecuted && node.currentMessage.getTools().isNotEmpty()) {
-                    return@mapIndexed node
-                }
-
-                // Remove messages that still have unresolved tool approvals.
-                return@mapIndexed node.copy(
-                    messages = node.messages.filter { it.id != node.currentMessage.id },
-                    selectIndex = node.selectIndex - 1
-                )
-            }
-            node
-        }
-
-        // 更新index
-        messagesNodes = messagesNodes.map { node ->
-            if (node.messages.isNotEmpty() && node.selectIndex !in node.messages.indices) {
-                node.copy(selectIndex = 0)
-            } else {
-                node
-            }
-        }
-
-        // 移除无效消息
-        messagesNodes = messagesNodes.filter { it.messages.isNotEmpty() }
-
-        updateConversation(conversationId, conversation.copy(messageNodes = messagesNodes))
+        updateConversation(conversationId, conversation.deleteNodeSubtree(invalidNode.id))
     }
 
     private fun cancelToolByUser(tool: UIMessagePart.Tool): UIMessagePart.Tool {
@@ -967,20 +984,14 @@ class ChatService(
 
     private suspend fun finishInterruptedPendingTools(conversationId: Uuid) {
         val currentConversation = getConversationFlow(conversationId).value
-        val lastNode = currentConversation.messageNodes.lastOrNull() ?: return
+        val lastNode = currentConversation.currentMessageNodes.lastOrNull() ?: return
         val lastMessage = lastNode.currentMessage
         val updatedMessage = lastMessage.finishPendingTools(::cancelToolByUser)
         if (updatedMessage == lastMessage) {
             return
         }
 
-        val updatedConversation = currentConversation.copy(
-            messageNodes = currentConversation.messageNodes.dropLast(1) + lastNode.copy(
-                messages = lastNode.messages.map { message ->
-                    if (message.id == lastMessage.id) updatedMessage else message
-                }
-            )
-        )
+        val updatedConversation = currentConversation.updateMessage(lastMessage.id) { updatedMessage }
         saveConversation(conversationId, updatedConversation)
     }
 
@@ -1015,7 +1026,14 @@ class ChatService(
                                 .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
                     ),
                 ),
-                params = backgroundTextGenerationParams(model),
+                params = backgroundTextGenerationParams(
+                    model = model,
+                    reasoningLevel = if (model.id == settings.fastModelId) {
+                        settings.fastModelReasoningLevel
+                    } else {
+                        ReasoningLevel.AUTO
+                    },
+                ),
             )
 
             // 生成完，conversation可能不是最新了，因此需要重新获取
@@ -1067,7 +1085,14 @@ class ChatService(
                                 .takeLast(8).joinToString("\n\n") { it.summaryAsText(maxLength = 500) }),
                     )
                 ),
-                params = backgroundTextGenerationParams(model),
+                params = backgroundTextGenerationParams(
+                    model = model,
+                    reasoningLevel = if (model.id == settings.fastModelId) {
+                        settings.fastModelReasoningLevel
+                    } else {
+                        ReasoningLevel.AUTO
+                    },
+                ),
             )
             val suggestions =
                 result.message.toText().split("\n").map { it.trim() }
@@ -1161,14 +1186,12 @@ class ChatService(
         }
 
         // Create new conversation with compressed history as multiple user messages + kept messages
-        val newMessageNodes = buildList {
-            compressedSummaries.forEach { summary ->
-                add(UIMessage.user(summary).toMessageNode())
-            }
-            addAll(messagesToKeep.map { it.toMessageNode() })
-        }
+        val newMessageNodes = (
+            compressedSummaries.map(UIMessage::user) + messagesToKeep
+            ).toLinearMessageNodes()
         val newConversation = conversation.copy(
             messageNodes = newMessageNodes,
+            selectedRootId = newMessageNodes.firstOrNull()?.id,
             chatSuggestions = emptyList(),
         )
 
@@ -1300,22 +1323,10 @@ class ChatService(
         translationText: String
     ) {
         val currentConversation = getConversationFlow(conversationId).value
-        val updatedNodes = currentConversation.messageNodes.map { node ->
-            if (node.messages.any { it.id == messageId }) {
-                val updatedMessages = node.messages.map { msg ->
-                    if (msg.id == messageId) {
-                        msg.copy(translation = translationText)
-                    } else {
-                        msg
-                    }
-                }
-                node.copy(messages = updatedMessages)
-            } else {
-                node
-            }
-        }
-
-        updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+        updateConversation(
+            conversationId,
+            currentConversation.updateMessage(messageId) { it.copy(translation = translationText) }
+        )
     }
 
     // ---- 消息操作 ----
@@ -1332,26 +1343,24 @@ class ChatService(
         val assistant = settings.getAssistantById(currentConversation.assistantId)
             ?: settings.getCurrentAssistant()
         val processedParts = preprocessUserInputParts(parts, assistant)
-        var edited = false
+        val sourceNode = currentConversation.getMessageNodeByMessageId(messageId) ?: return
+        val editedMessage = UIMessage(
+            role = sourceNode.role,
+            parts = processedParts,
+        )
+        val editedNode = MessageNode(
+            message = editedMessage,
+            parentId = sourceNode.parentId,
+        )
+        val updatedConversation = currentConversation
+            .selectNode(sourceNode.id)
+            .addNodeAndSelect(editedNode)
+        saveConversation(conversationId, updatedConversation)
 
-        val updatedNodes = currentConversation.messageNodes.map { node ->
-            if (!node.messages.any { it.id == messageId }) {
-                return@map node
-            }
-            edited = true
-
-            node.copy(
-                messages = node.messages + UIMessage(
-                    role = node.role,
-                    parts = processedParts,
-                ),
-                selectIndex = node.messages.size
-            )
+        // Editing a user message starts a new response branch immediately.
+        if (editedMessage.role == MessageRole.USER) {
+            regenerateAtMessage(conversationId, editedMessage)
         }
-
-        if (!edited) return
-
-        saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
     }
 
     suspend fun forkConversationAtMessage(
@@ -1359,27 +1368,9 @@ class ChatService(
         messageId: Uuid
     ): Conversation {
         val currentConversation = getConversationFlow(conversationId).value
-        val targetNodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
-            node.messages.any { it.id == messageId }
-        }
-        if (targetNodeIndex == -1) {
-            throw NotFoundException("Message not found")
-        }
-
-        val copiedNodes = currentConversation.messageNodes
-            .subList(0, targetNodeIndex + 1)
-            .map { node ->
-                node.copy(
-                    id = Uuid.random(),
-                    messages = node.messages.map { message ->
-                        message.copy(
-                            parts = message.parts.map { part ->
-                                part.copyWithForkedFileUrl()
-                            }
-                        )
-                    }
-                )
-            }
+        val copiedNodes = currentConversation.copyMessagePathForFork(messageId) { message ->
+            message.copy(parts = message.parts.map { it.copyWithForkedFileUrl() })
+        } ?: throw NotFoundException("Message not found")
 
         val forkConversation = createForkConversation(currentConversation, copiedNodes)
 
@@ -1395,24 +1386,27 @@ class ChatService(
         val currentConversation = getConversationFlow(conversationId).value
         val targetNode = currentConversation.messageNodes.firstOrNull { it.id == nodeId }
             ?: throw NotFoundException("Message node not found")
+        val siblings = currentConversation.getSiblings(targetNode.id)
 
-        if (selectIndex !in targetNode.messages.indices) {
+        if (selectIndex !in siblings.indices) {
             throw BadRequestException("Invalid selectIndex")
         }
 
-        if (targetNode.selectIndex == selectIndex) {
+        val selectedNode = siblings[selectIndex]
+        if (selectedNode.id == targetNode.id) {
             return
         }
+        saveConversation(conversationId, currentConversation.selectNode(selectedNode.id))
+    }
 
-        val updatedNodes = currentConversation.messageNodes.map { node ->
-            if (node.id == nodeId) {
-                node.copy(selectIndex = selectIndex)
-            } else {
-                node
-            }
-        }
-
-        saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+    suspend fun selectMessagePath(
+        conversationId: Uuid,
+        nodeId: Uuid,
+    ): Boolean {
+        val currentConversation = getConversationFlow(conversationId).value
+        if (currentConversation.getMessageNode(nodeId) == null) return false
+        saveConversation(conversationId, currentConversation.selectNode(nodeId))
+        return true
     }
 
     suspend fun deleteMessage(
@@ -1444,31 +1438,8 @@ class ChatService(
         conversation: Conversation,
         messageId: Uuid,
     ): Conversation? {
-        val targetNodeIndex = conversation.messageNodes.indexOfFirst { node ->
-            node.messages.any { it.id == messageId }
-        }
-        if (targetNodeIndex == -1) {
-            return null
-        }
-
-        val updatedNodes = conversation.messageNodes.mapIndexedNotNull { index, node ->
-            if (index != targetNodeIndex) {
-                return@mapIndexedNotNull node
-            }
-
-            val nextMessages = node.messages.filterNot { it.id == messageId }
-            if (nextMessages.isEmpty()) {
-                return@mapIndexedNotNull null
-            }
-
-            val nextSelectIndex = node.selectIndex.coerceAtMost(nextMessages.lastIndex)
-            node.copy(
-                messages = nextMessages,
-                selectIndex = nextSelectIndex,
-            )
-        }
-
-        return conversation.copy(messageNodes = updatedNodes)
+        val targetNode = conversation.getMessageNodeByMessageId(messageId) ?: return null
+        return conversation.deleteNodeSubtree(targetNode.id)
     }
 
     private fun UIMessagePart.copyWithForkedFileUrl(): UIMessagePart {
@@ -1489,22 +1460,10 @@ class ChatService(
 
     fun clearTranslationField(conversationId: Uuid, messageId: Uuid) {
         val currentConversation = getConversationFlow(conversationId).value
-        val updatedNodes = currentConversation.messageNodes.map { node ->
-            if (node.messages.any { it.id == messageId }) {
-                val updatedMessages = node.messages.map { msg ->
-                    if (msg.id == messageId) {
-                        msg.copy(translation = null)
-                    } else {
-                        msg
-                    }
-                }
-                node.copy(messages = updatedMessages)
-            } else {
-                node
-            }
-        }
-
-        updateConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+        updateConversation(
+            conversationId,
+            currentConversation.updateMessage(messageId) { it.copy(translation = null) }
+        )
     }
 
     // 停止当前会话生成任务（不清理会话缓存）

@@ -55,7 +55,6 @@ import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.WebDesign01
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.ui.components.ui.MiffanConfirmDialog
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.context.LocalTTSState
@@ -69,8 +68,9 @@ import java.util.Locale
 @Composable
 fun ColumnScope.ChatMessageActionButtons(
     message: UIMessage,
-    node: MessageNode,
-    onUpdate: (MessageNode) -> Unit,
+    branchIndex: Int,
+    branchCount: Int,
+    onSelectBranch: (Int) -> Unit,
     onRegenerate: () -> Unit,
     onOpenActionSheet: () -> Unit,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
@@ -196,8 +196,9 @@ fun ColumnScope.ChatMessageActionButtons(
         )
 
         ChatMessageBranchSelector(
-            node = node,
-            onUpdate = onUpdate,
+            selectedIndex = branchIndex,
+            branchCount = branchCount,
+            onSelect = onSelectBranch,
         )
 
         if (settings.displaySetting.showDateTimeInMessage) {

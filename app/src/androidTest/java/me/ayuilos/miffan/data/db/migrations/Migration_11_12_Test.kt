@@ -7,12 +7,12 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.serialization.Serializable
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.data.db.AppDatabase
-import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -22,6 +22,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
 import kotlin.uuid.Uuid
+
+@Serializable
+private data class LegacyMessageNode(
+    val id: Uuid,
+    val messages: List<UIMessage>,
+    val selectIndex: Int,
+)
 
 @RunWith(AndroidJUnit4::class)
 class Migration_11_12_Test {
@@ -65,7 +72,7 @@ class Migration_11_12_Test {
         // 准备测试数据
         val conversationId = Uuid.random().toString()
         val messageNodes = listOf(
-            MessageNode(
+            LegacyMessageNode(
                 id = Uuid.random(),
                 messages = listOf(
                     UIMessage(
@@ -75,7 +82,7 @@ class Migration_11_12_Test {
                 ),
                 selectIndex = 0
             ),
-            MessageNode(
+            LegacyMessageNode(
                 id = Uuid.random(),
                 messages = listOf(
                     UIMessage(
@@ -180,7 +187,7 @@ class Migration_11_12_Test {
         // 准备有分支的测试数据（一个节点有多个备选消息）
         val conversationId = Uuid.random().toString()
         val messageNodes = listOf(
-            MessageNode(
+            LegacyMessageNode(
                 id = Uuid.random(),
                 messages = listOf(
                     UIMessage(
@@ -302,7 +309,7 @@ class Migration_11_12_Test {
         val conversationId2 = Uuid.random().toString()
 
         val nodes1 = listOf(
-            MessageNode(
+            LegacyMessageNode(
                 id = Uuid.random(),
                 messages = listOf(
                     UIMessage(
@@ -315,7 +322,7 @@ class Migration_11_12_Test {
         )
 
         val nodes2 = listOf(
-            MessageNode(
+            LegacyMessageNode(
                 id = Uuid.random(),
                 messages = listOf(
                     UIMessage(
@@ -325,7 +332,7 @@ class Migration_11_12_Test {
                 ),
                 selectIndex = 0
             ),
-            MessageNode(
+            LegacyMessageNode(
                 id = Uuid.random(),
                 messages = listOf(
                     UIMessage(
@@ -424,7 +431,7 @@ class Migration_11_12_Test {
         val largeNodes = buildList {
             repeat(5000) { i ->
                 add(
-                    MessageNode(
+                    LegacyMessageNode(
                         id = Uuid.random(),
                         messages = listOf(
                             UIMessage(
@@ -456,7 +463,7 @@ class Migration_11_12_Test {
         }
 
         val normalNodes = listOf(
-            MessageNode(
+            LegacyMessageNode(
                 id = Uuid.random(),
                 messages = listOf(
                     UIMessage(

@@ -89,6 +89,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.FolderOpen
 import me.rerere.hugeicons.stroke.FolderUnknown
+import me.rerere.hugeicons.stroke.GitFork
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
@@ -136,7 +137,13 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
 @Composable
-fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
+fun ChatPage(
+    id: Uuid,
+    text: String?,
+    files: List<Uri>,
+    nodeId: Uuid? = null,
+    messageId: Uuid? = null,
+) {
     val vm: ChatVM = koinViewModel(
         parameters = {
             parametersOf(id.toString())
@@ -144,10 +151,12 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     )
     val filesManager: FilesManager = koinInject()
     val navController = LocalNavController.current
+    val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
 
     val setting by vm.settings.collectAsStateWithLifecycle()
     val conversation by vm.conversation.collectAsStateWithLifecycle()
+    val recentConversations by vm.recentConversations.collectAsStateWithLifecycle()
     val loadingJob by vm.conversationJob.collectAsStateWithLifecycle()
     val processingStatus by vm.processingStatus.collectAsStateWithLifecycle()
     val currentChatModel by vm.currentChatModel.collectAsStateWithLifecycle()
@@ -221,18 +230,55 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     val chatListState = rememberLazyListState()
-    LaunchedEffect(nodeId, conversation.messageNodes.size) {
-        if (!vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
-            if (nodeId != null) {
-                val index = conversation.messageNodes.indexOfFirst { it.id == nodeId }
-                if (index >= 0) {
-                    chatListState.scrollToItem(index)
-                }
-            } else {
+    var pendingNodeId by remember(id, nodeId, messageId) { mutableStateOf(nodeId) }
+    var pendingMessageId by remember(id, nodeId, messageId) { mutableStateOf(messageId) }
+    var highlightedNodeId by remember(id) { mutableStateOf<Uuid?>(null) }
+    val currentPathNodeIds = conversation.currentMessageNodes.map { it.id }
+    val targetMessageMissing = stringResource(R.string.chat_page_target_message_missing)
+    LaunchedEffect(pendingNodeId, pendingMessageId, currentPathNodeIds, conversation.messageNodes.size) {
+        if (conversation.messageNodes.isEmpty()) return@LaunchedEffect
+
+        val targetNodeId = pendingNodeId
+        if (targetNodeId == null) {
+            if (!vm.chatListInitialized) {
                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                vm.chatListInitialized = true
             }
-            vm.chatListInitialized = true
+            return@LaunchedEffect
         }
+
+        val targetNode = conversation.getMessageNode(targetNodeId)
+        val targetMessageId = pendingMessageId
+        if (
+            targetNode == null ||
+            (targetMessageId != null && targetNode.message.id != targetMessageId)
+        ) {
+            pendingNodeId = null
+            pendingMessageId = null
+            toaster.show(targetMessageMissing, type = ToastType.Warning)
+            if (!vm.chatListInitialized) {
+                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                vm.chatListInitialized = true
+            }
+            return@LaunchedEffect
+        }
+
+        val targetIndex = currentPathNodeIds.indexOf(targetNodeId)
+        if (targetIndex < 0) {
+            vm.selectMessagePath(targetNodeId)
+            return@LaunchedEffect
+        }
+
+        chatListState.scrollToItem(targetIndex)
+        vm.chatListInitialized = true
+        pendingNodeId = null
+        pendingMessageId = null
+        highlightedNodeId = targetNodeId
+    }
+    LaunchedEffect(highlightedNodeId) {
+        val targetNodeId = highlightedNodeId ?: return@LaunchedEffect
+        delay(1800)
+        if (highlightedNodeId == targetNodeId) highlightedNodeId = null
     }
 
     when {
@@ -253,6 +299,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
+                    recentConversations = recentConversations,
                     drawerState = drawerState,
                     navController = navController,
                     vm = vm,
@@ -261,7 +308,12 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = true,
                     errors = errors,
+                    highlightedNodeId = highlightedNodeId,
                     mascotSemanticState = mascotSemanticState,
+                    onNavigateToNode = {
+                        pendingMessageId = null
+                        pendingNodeId = it
+                    },
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -286,6 +338,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
+                    recentConversations = recentConversations,
                     drawerState = drawerState,
                     navController = navController,
                     vm = vm,
@@ -294,7 +347,12 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = false,
                     errors = errors,
+                    highlightedNodeId = highlightedNodeId,
                     mascotSemanticState = mascotSemanticState,
+                    onNavigateToNode = {
+                        pendingMessageId = null
+                        pendingNodeId = it
+                    },
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -380,6 +438,7 @@ private fun ChatPageContent(
     setting: Settings,
     bigScreen: Boolean,
     conversation: Conversation,
+    recentConversations: List<Conversation>,
     drawerState: DrawerState,
     navController: Navigator,
     vm: ChatVM,
@@ -387,7 +446,9 @@ private fun ChatPageContent(
     enableWebSearch: Boolean,
     currentChatModel: Model?,
     errors: List<ChatError>,
+    highlightedNodeId: Uuid?,
     mascotSemanticState: MiffanMascotState,
+    onNavigateToNode: (Uuid) -> Unit,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
 ) {
@@ -408,6 +469,10 @@ private fun ChatPageContent(
         scopeName = assistant.name.takeIf { it.isNotBlank() },
     )
     var showFilesSheet by remember { mutableStateOf(false) }
+    var showPathOverview by remember { mutableStateOf(false) }
+    val messagePathCount = remember(conversation.messageNodes) {
+        conversation.getMessagePathLeaves().size
+    }
     var mascotInputState by remember(conversation.id) {
         mutableStateOf(MiffanMascotInputState.Inactive)
     }
@@ -459,6 +524,7 @@ private fun ChatPageContent(
                     drawerState = drawerState,
                     previewMode = previewMode,
                     workspaceEntry = workspaceEntry,
+                    pathCount = messagePathCount,
                     onNewChat = {
                         navigateToChatPage(navController)
                     },
@@ -474,6 +540,9 @@ private fun ChatPageContent(
                     },
                     onClickMenu = {
                         previewMode = !previewMode
+                    },
+                    onOpenPaths = {
+                        showPathOverview = true
                     },
                     onUpdateTitle = {
                         vm.updateTitle(it)
@@ -610,6 +679,7 @@ private fun ChatPageContent(
             ChatList(
                 innerPadding = innerPadding,
                 conversation = conversation,
+                recentConversations = recentConversations,
                 state = chatListState,
                 loading = loadingJob != null,
                 modifier = Modifier.pointerInput(focusManager) {
@@ -627,6 +697,7 @@ private fun ChatPageContent(
                 settings = setting,
                 hazeState = hazeState,
                 errors = errors,
+                highlightedNodeId = highlightedNodeId,
                 mascotSemanticState = mascotSemanticState,
                 mascotInputState = mascotInputState,
                 mascotSubmitId = mascotSubmitId,
@@ -635,6 +706,9 @@ private fun ChatPageContent(
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = {
                     vm.regenerateAtMessage(it)
+                },
+                onOpenConversation = { recentConversation ->
+                    navigateToChatPage(navController, chatId = recentConversation.id)
                 },
                 onEdit = {
                     inputState.editingMessage = it.id
@@ -653,18 +727,8 @@ private fun ChatPageContent(
                         vm.deleteMessage(it)
                     }
                 },
-                onUpdateMessage = { newNode ->
-                    vm.updateConversation(
-                        conversation.copy(
-                            messageNodes = conversation.messageNodes.map { node ->
-                                if (node.id == newNode.id) {
-                                    newNode
-                                } else {
-                                    node
-                                }
-                            }
-                        ))
-                    vm.saveConversationAsync()
+                onSelectMessageBranch = { nodeId, branchIndex ->
+                    vm.selectMessageBranch(nodeId, branchIndex)
                 },
                 onClickSuggestion = { suggestion ->
                     inputState.editingMessage = null
@@ -707,6 +771,13 @@ private fun ChatPageContent(
                 assistant = assistant,
                 vm = vm,
                 onDismiss = { showFilesSheet = false },
+            )
+        }
+        if (showPathOverview) {
+            MessagePathOverview(
+                conversation = conversation,
+                onDismiss = { showPathOverview = false },
+                onSelectPath = onNavigateToNode,
             )
         }
     }
@@ -1031,7 +1102,9 @@ private fun TopBar(
     bigScreen: Boolean,
     previewMode: Boolean,
     workspaceEntry: ChatWorkspaceEntry?,
+    pathCount: Int,
     onClickMenu: () -> Unit,
+    onOpenPaths: () -> Unit,
     onNewChat: () -> Unit,
     onOpenWorkspace: (ChatWorkspaceEntry) -> Unit,
     onUpdateTitle: (String) -> Unit
@@ -1120,6 +1193,15 @@ private fun TopBar(
                     showName = bigScreen,
                     onClick = { onOpenWorkspace(entry) },
                 )
+            }
+
+            if (pathCount > 1) {
+                IconButton(onClick = onOpenPaths) {
+                    Icon(
+                        imageVector = HugeIcons.GitFork,
+                        contentDescription = stringResource(R.string.chat_page_message_paths),
+                    )
+                }
             }
 
             IconButton(

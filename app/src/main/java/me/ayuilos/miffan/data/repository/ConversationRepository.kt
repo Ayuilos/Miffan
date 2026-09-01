@@ -49,6 +49,12 @@ class ConversationRepository(
         }
     }
 
+    fun observeRecentConversations(limit: Int): Flow<List<Conversation>> {
+        return conversationDAO
+            .observeRecentConversations(limit)
+            .map { conversations -> conversations.map(::conversationSummaryToConversation) }
+    }
+
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
         return conversationDAO
             .getConversationsOfAssistant(assistantId.toString())
@@ -298,8 +304,6 @@ class ConversationRepository(
             conversationDAO.update(
                 conversationToConversationEntity(conversation)
             )
-            // 删除旧的节点，插入新的节点
-            messageNodeDAO.deleteByConversation(conversation.id.toString())
             saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
         }
         messageFtsManager.indexConversation(conversation)
@@ -347,7 +351,7 @@ class ConversationRepository(
     }
 
     fun conversationToConversationEntity(conversation: Conversation): ConversationEntity {
-        require(conversation.messageNodes.none { it.messages.any { message -> message.hasBase64Part() } })
+        require(conversation.messageNodes.none { it.message.hasBase64Part() })
         return ConversationEntity(
             id = conversation.id.toString(),
             title = conversation.title,
@@ -362,6 +366,7 @@ class ConversationRepository(
             lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
+            selectedRootId = conversation.selectedRootId?.toString() ?: "",
         )
     }
 
@@ -372,7 +377,8 @@ class ConversationRepository(
         return Conversation(
             id = Uuid.parse(conversationEntity.id),
             title = conversationEntity.title,
-            messageNodes = messageNodes.filter { it.messages.isNotEmpty() },
+            messageNodes = messageNodes,
+            selectedRootId = conversationEntity.selectedRootId.ifEmpty { null }?.let(Uuid::parse),
             createAt = Instant.ofEpochMilli(conversationEntity.createAt),
             updateAt = Instant.ofEpochMilli(conversationEntity.updateAt),
             assistantId = Uuid.parse(conversationEntity.assistantId),
@@ -450,14 +456,16 @@ class ConversationRepository(
                 }
                 if (page.isEmpty()) break
                 page.forEach { entity ->
-                    val messages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
+                    val message = JsonInstant.decodeFromString<UIMessage>(entity.message)
                     val nodeId = Uuid.parse(entity.id)
                     nodes.add(
                         MessageNode(
                             id = nodeId,
-                            messages = messages,
-                            selectIndex = entity.selectIndex,
-                            isFavorite = favoriteNodeIds.contains(nodeId)
+                            message = message,
+                            parentId = entity.parentId.ifEmpty { null }?.let(Uuid::parse),
+                            selectedChildId = entity.selectedChildId.ifEmpty { null }?.let(Uuid::parse),
+                            isFavorite = favoriteNodeIds.contains(nodeId),
+                            revision = entity.revision,
                         )
                     )
                 }
@@ -468,16 +476,29 @@ class ConversationRepository(
     }
 
     private suspend fun saveMessageNodes(conversationId: String, nodes: List<MessageNode>) {
-        val entities = nodes.mapIndexed { index, node ->
+        val persistedRevisions = messageNodeDAO.getNodeRevisionsOfConversation(conversationId)
+            .associate { it.id to it.revision }
+        val nodeIds = nodes.mapTo(HashSet(nodes.size)) { it.id.toString() }
+        val deletedNodeIds = persistedRevisions.keys.filterNot(nodeIds::contains)
+        if (deletedNodeIds.isNotEmpty()) {
+            messageNodeDAO.deleteByIds(deletedNodeIds)
+        }
+
+        val entities = nodes.mapIndexedNotNull { index, node ->
+            if (persistedRevisions[node.id.toString()] == node.revision) return@mapIndexedNotNull null
             MessageNodeEntity(
                 id = node.id.toString(),
                 conversationId = conversationId,
                 nodeIndex = index,
-                messages = JsonInstant.encodeToString(node.messages),
-                selectIndex = node.selectIndex
+                parentId = node.parentId?.toString() ?: "",
+                selectedChildId = node.selectedChildId?.toString() ?: "",
+                message = JsonInstant.encodeToString(node.message),
+                revision = node.revision,
             )
         }
-        messageNodeDAO.insertAll(entities)
+        if (entities.isNotEmpty()) {
+            messageNodeDAO.insertAll(entities)
+        }
     }
 }
 

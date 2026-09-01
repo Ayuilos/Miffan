@@ -46,6 +46,16 @@ import java.util.Locale
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatVM"
+private const val RECENT_CHAT_SHORTCUT_LIMIT = 3
+
+internal fun List<Conversation>.toRecentChatShortcuts(
+    currentConversationId: Uuid,
+    limit: Int = RECENT_CHAT_SHORTCUT_LIMIT,
+): List<Conversation> = asSequence()
+    .filterNot { it.id == currentConversationId }
+    .sortedByDescending { it.updateAt }
+    .take(limit)
+    .toList()
 
 class ChatVM(
     id: String,
@@ -60,6 +70,14 @@ class ChatVM(
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
+    val recentConversations: StateFlow<List<Conversation>> = conversationRepo
+        .observeRecentConversations(limit = RECENT_CHAT_SHORTCUT_LIMIT + 1)
+        .map { conversations -> conversations.toRecentChatShortcuts(_conversationId) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
     var chatListInitialized by mutableStateOf(false) // 聊天列表是否已经滚动到底部
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
@@ -247,6 +265,18 @@ class ChatVM(
     ) {
         analytics.logEvent("ai_regenerate_at_message")
         chatService.regenerateAtMessage(_conversationId, message, regenerateAssistantMsg)
+    }
+
+    fun selectMessageBranch(nodeId: Uuid, branchIndex: Int) {
+        viewModelScope.launch {
+            chatService.selectMessageNode(_conversationId, nodeId, branchIndex)
+        }
+    }
+
+    fun selectMessagePath(nodeId: Uuid) {
+        viewModelScope.launch {
+            chatService.selectMessagePath(_conversationId, nodeId)
+        }
     }
 
     fun handleToolApproval(
