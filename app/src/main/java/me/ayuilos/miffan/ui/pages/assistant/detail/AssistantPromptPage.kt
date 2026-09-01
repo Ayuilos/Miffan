@@ -394,7 +394,9 @@ private fun AssistantPromptContent(
                                 onEdit = {},
                                 onShare = {},
                                 onDelete = {},
-                                onUpdate = {},
+                                branchIndex = 0,
+                                branchCount = 1,
+                                onSelectBranch = {},
                                 lastMessage = false,
                             )
                         }

@@ -35,21 +35,20 @@ class MessageFtsManager(private val database: AppDatabase) {
         val conversationId = conversation.id.toString()
         db.execSQL("DELETE FROM message_fts WHERE conversation_id = ?", arrayOf(conversationId))
         conversation.messageNodes.forEach { node ->
-            node.messages.forEach { message ->
-                val text = message.extractFtsText()
-                if (text.isNotBlank()) {
-                    db.execSQL(
-                        "INSERT INTO message_fts(text, node_id, message_id, conversation_id, title, update_at) VALUES (?, ?, ?, ?, ?, ?)",
-                        arrayOf(
-                            text,
-                            node.id.toString(),
-                            message.id.toString(),
-                            conversationId,
-                            conversation.title,
-                            conversation.updateAt.toEpochMilli().toString(),
-                        )
+            val message = node.message
+            val text = message.extractFtsText()
+            if (text.isNotBlank()) {
+                db.execSQL(
+                    "INSERT INTO message_fts(text, node_id, message_id, conversation_id, title, update_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    arrayOf(
+                        text,
+                        node.id.toString(),
+                        message.id.toString(),
+                        conversationId,
+                        conversation.title,
+                        conversation.updateAt.toEpochMilli().toString(),
                     )
-                }
+                )
             }
         }
     }

@@ -23,6 +23,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.utils.JsonInstant
 import me.ayuilos.miffan.utils.JsonInstantPretty
 import java.io.File
@@ -267,7 +268,7 @@ internal object LegacyChatboxImporter {
         var reachedConversationMessages = false
         var minTimestamp: Long? = null
         var maxTimestamp: Long? = null
-        val nodes = messages.mapNotNull { element ->
+        val parsedMessages = messages.mapNotNull { element ->
             val message = element.jsonObject
             val timestamp = message["timestamp"]?.asLong
             if (timestamp != null) {
@@ -292,26 +293,21 @@ internal object LegacyChatboxImporter {
             }
 
             val messageId = message["id"]?.asString ?: "${sessionId}:${message.hashCode()}"
-            MessageNode(
-                id = stableUuid("chatbox:node:$sessionId:$messageId"),
-                messages = listOf(
-                    UIMessage(
-                        id = stableUuid("chatbox:message:$messageId"),
-                        role = role,
-                        parts = parseResult.parts,
-                        createdAt = millisToLocalDateTime(timestamp),
-                        modelId = resolveModelId(
-                            providers = providers,
-                            providerName = message["aiProvider"]?.asString ?: sessionProvider,
-                            modelId = sessionModelId,
-                            modelName = message["model"]?.asString
-                        ),
-                        usage = parseUsage(message["usage"]?.jsonObjectOrNull),
-                    )
+            UIMessage(
+                id = stableUuid("chatbox:message:$messageId"),
+                role = role,
+                parts = parseResult.parts,
+                createdAt = millisToLocalDateTime(timestamp),
+                modelId = resolveModelId(
+                    providers = providers,
+                    providerName = message["aiProvider"]?.asString ?: sessionProvider,
+                    modelId = sessionModelId,
+                    modelName = message["model"]?.asString
                 ),
-                selectIndex = 0
+                usage = parseUsage(message["usage"]?.jsonObjectOrNull),
             )
         }
+        val nodes = parsedMessages.toLinearMessageNodes()
 
         if (nodes.isEmpty()) {
             return ChatboxSessionParseResult(null, skippedImageParts, skippedEmptyMessages)
@@ -323,6 +319,7 @@ internal object LegacyChatboxImporter {
                 assistantId = assistantId,
                 title = title,
                 messageNodes = nodes,
+                selectedRootId = nodes.firstOrNull()?.id,
                 createAt = minTimestamp?.let { Instant.ofEpochMilli(it) } ?: Instant.now(),
                 updateAt = maxTimestamp?.let { Instant.ofEpochMilli(it) } ?: Instant.now(),
                 customSystemPrompt = customSystemPrompt,

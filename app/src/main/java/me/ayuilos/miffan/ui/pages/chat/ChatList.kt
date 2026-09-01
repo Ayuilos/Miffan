@@ -156,7 +156,7 @@ fun ChatList(
     onEdit: (UIMessage) -> Unit = {},
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
-    onUpdateMessage: (MessageNode) -> Unit = {},
+    onSelectMessageBranch: (Uuid, Int) -> Unit = { _, _ -> },
     onClickSuggestion: (String) -> Unit = {},
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
@@ -206,7 +206,7 @@ fun ChatList(
                 onEdit = onEdit,
                 onForkMessage = onForkMessage,
                 onDelete = onDelete,
-                onUpdateMessage = onUpdateMessage,
+                onSelectMessageBranch = onSelectMessageBranch,
                 onClickSuggestion = onClickSuggestion,
                 onTranslate = onTranslate,
                 onClearTranslation = onClearTranslation,
@@ -243,7 +243,7 @@ private fun ChatListNormal(
     onEdit: (UIMessage) -> Unit,
     onForkMessage: (UIMessage) -> Unit,
     onDelete: (UIMessage) -> Unit,
-    onUpdateMessage: (MessageNode) -> Unit,
+    onSelectMessageBranch: (Uuid, Int) -> Unit,
     onClickSuggestion: (String) -> Unit,
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)?,
     onClearTranslation: (UIMessage) -> Unit,
@@ -315,12 +315,13 @@ private fun ChatListNormal(
             .flatMap { it.models }
             .associateBy { it.id }
     }
-    val lastMessageIndex = conversation.messageNodes.lastIndex
+    val currentNodes = conversation.currentMessageNodes
+    val lastMessageIndex = currentNodes.lastIndex
     val miffanIdentity = assistant == null || assistant.avatar.isMiffanAvatar()
     val handoff = remember(conversation.id) { MiffanHandoffState() }
     val handoffDestination = when {
         loading -> MiffanHandoffDestination.WaitingReply
-        conversation.messageNodes.isEmpty() -> MiffanHandoffDestination.EmptyChat
+        currentNodes.isEmpty() -> MiffanHandoffDestination.EmptyChat
         else -> null
     }
     val hasMascotErrors = errors.any { it.conversationId == null || it.conversationId == conversation.id }
@@ -334,12 +335,12 @@ private fun ChatListNormal(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(
-                conversation.messageNodes.isEmpty(),
+                currentNodes.isEmpty(),
                 loading,
                 contentTopPx,
                 contentBottomPx,
             ) {
-                if (conversation.messageNodes.isNotEmpty() || loading) return@pointerInput
+                if (currentNodes.isNotEmpty() || loading) return@pointerInput
                 awaitPointerEventScope {
                     var downPosition: Offset? = null
                     var gestureBlocked = false
@@ -429,7 +430,7 @@ private fun ChatListNormal(
                     .hazeSource(state = hazeState),
             ) {
             itemsIndexed(
-                items = conversation.messageNodes,
+                items = currentNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
                 Column(modifier = Modifier.testTag("chat_message_${node.id}")) {
@@ -447,6 +448,8 @@ private fun ChatListNormal(
                     ) {
                         ChatMessage(
                             node = node,
+                            branchIndex = conversation.getSiblings(node.id).indexOfFirst { it.id == node.id },
+                            branchCount = conversation.getSiblings(node.id).size,
                             model = node.currentMessage.modelId?.let(modelById::get),
                             assistant = assistant,
                             loading = loading && index == lastMessageIndex,
@@ -473,11 +476,11 @@ private fun ChatListNormal(
                             onShare = {
                                 selecting = true  // 使用 CoroutineScope 延迟状态更新
                                 selectedItems.clear()
-                                selectedItems.addAll(conversation.messageNodes.map { it.id }
-                                    .subList(0, conversation.messageNodes.indexOf(node) + 1))
+                                selectedItems.addAll(currentNodes.map { it.id }
+                                    .subList(0, currentNodes.indexOf(node) + 1))
                             },
-                            onUpdate = {
-                                onUpdateMessage(it)
+                            onSelectBranch = { branchIndex ->
+                                onSelectMessageBranch(node.id, branchIndex)
                             },
                             isFavorite = node.isFavorite,
                             onToggleFavorite = {
@@ -560,7 +563,7 @@ private fun ChatListNormal(
                 maxWidth * if (hasRecentChats) 0.4f else 0.52f,
                 maxHeight * if (hasRecentChats) 0.32f else 0.52f,
             )
-            val showEmpty = conversation.messageNodes.isEmpty() && !loading && mascotSize >= 48.dp
+            val showEmpty = currentNodes.isEmpty() && !loading && mascotSize >= 48.dp
             val horizontalRecentChats = maxHeight < 420.dp
 
             Column(
@@ -695,7 +698,7 @@ private fun ChatListNormal(
                                 if (selectedItems.isNotEmpty()) {
                                     selectedItems.clear()
                                 } else {
-                                    selectedItems.addAll(conversation.messageNodes.map { it.id })
+                                    selectedItems.addAll(currentNodes.map { it.id })
                                 }
                             }
                         ) {
@@ -710,7 +713,7 @@ private fun ChatListNormal(
                         FilledIconButton(
                             onClick = {
                                 selecting = false
-                                val messages = conversation.messageNodes.filter { it.id in selectedItems }
+                                val messages = currentNodes.filter { it.id in selectedItems }
                                 if (messages.isNotEmpty()) {
                                     showExportSheet = true
                                 }
@@ -730,7 +733,7 @@ private fun ChatListNormal(
                     selectedItems.clear()
                 },
                 conversation = conversation,
-                selectedMessages = conversation.messageNodes.filter { it.id in selectedItems }
+                selectedMessages = currentNodes.filter { it.id in selectedItems }
                     .map { it.currentMessage }
             )
 
@@ -920,11 +923,12 @@ private fun ChatListPreview(
     var searchQuery by remember { mutableStateOf("") }
 
     // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
-    val filteredMessages = remember(conversation.messageNodes, searchQuery) {
+    val filteredMessages = remember(conversation, searchQuery) {
+        val currentNodes = conversation.currentMessageNodes
         if (searchQuery.isBlank()) {
-            conversation.messageNodes.mapIndexed { index, node -> index to node }
+            currentNodes.mapIndexed { index, node -> index to node }
         } else {
-            conversation.messageNodes.mapIndexed { index, node -> index to node }
+            currentNodes.mapIndexed { index, node -> index to node }
                 .filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
         }
     }

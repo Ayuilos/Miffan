@@ -16,7 +16,10 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("conversation_id")]
+    indices = [
+        Index("conversation_id"),
+        Index(value = ["conversation_id", "parent_id"]),
+    ]
 )
 data class MessageNodeEntity(
     @PrimaryKey
@@ -25,8 +28,12 @@ data class MessageNodeEntity(
     val conversationId: String,
     @ColumnInfo("node_index")
     val nodeIndex: Int,
-    @ColumnInfo("messages")
-    val messages: String,  // JSON serialized List<UIMessage>
-    @ColumnInfo("select_index")
-    val selectIndex: Int
+    @ColumnInfo("parent_id", defaultValue = "")
+    val parentId: String,
+    @ColumnInfo("selected_child_id", defaultValue = "")
+    val selectedChildId: String,
+    @ColumnInfo("message")
+    val message: String, // JSON serialized UIMessage
+    @ColumnInfo("revision", defaultValue = "0")
+    val revision: Long,
 )

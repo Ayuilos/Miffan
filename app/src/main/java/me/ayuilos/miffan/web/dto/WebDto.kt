@@ -327,7 +327,14 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     id = id.toString(),
     assistantId = assistantId.toString(),
     title = title,
-    messages = messageNodes.map { it.toDto() },
+    messages = currentMessageNodes.map { node ->
+        val siblings = getSiblings(node.id)
+        MessageNodeDto(
+            id = node.id.toString(),
+            messages = siblings.map { it.message.toDto() },
+            selectIndex = siblings.indexOfFirst { it.id == node.id },
+        )
+    },
     chatSuggestions = chatSuggestions,
     isPinned = isPinned,
     customSystemPrompt = customSystemPrompt,
@@ -338,12 +345,6 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     createAt = createAt.toEpochMilli(),
     updateAt = updateAt.toEpochMilli(),
     isGenerating = isGenerating
-)
-
-fun MessageNode.toDto() = MessageNodeDto(
-    id = id.toString(),
-    messages = messages.map { it.toDto() },
-    selectIndex = selectIndex
 )
 
 fun UIMessage.toDto() = MessageDto(

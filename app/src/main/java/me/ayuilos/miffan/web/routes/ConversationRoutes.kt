@@ -340,7 +340,7 @@ fun Route.conversationRoutes(
 
             val conversation = chatService.getConversationFlow(uuid).first()
             val node = conversation.getMessageNodeByMessageId(messageId)
-            val message = node?.messages?.find { it.id == messageId }
+            val message = node?.message
                 ?: throw NotFoundException("Message not found")
 
             chatService.regenerateAtMessage(uuid, message)

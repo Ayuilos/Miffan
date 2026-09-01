@@ -16,6 +16,7 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.utils.UpdateChecker
 import kotlinx.datetime.TimeZone
@@ -100,11 +101,13 @@ class DebugVM(
                 index++
             }
 
+            val linearNodes = messageNodes.map { it.message }.toLinearMessageNodes()
             val conversation = Conversation(
                 id = Uuid.random(),
                 assistantId = DEFAULT_ASSISTANT_ID,
                 title = "超大对话测试 (${sizeMB}MB)",
-                messageNodes = messageNodes,
+                messageNodes = linearNodes,
+                selectedRootId = linearNodes.firstOrNull()?.id,
             )
 
             conversationRepository.insertConversation(conversation)
@@ -126,11 +129,13 @@ class DebugVM(
                 messageNodes.add(MessageNode.of(message))
             }
 
+            val linearNodes = messageNodes.map { it.message }.toLinearMessageNodes()
             val conversation = Conversation(
                 id = Uuid.random(),
                 assistantId = DEFAULT_ASSISTANT_ID,
                 title = "${messageCount}条消息测试",
-                messageNodes = messageNodes,
+                messageNodes = linearNodes,
+                selectedRootId = linearNodes.firstOrNull()?.id,
             )
 
             conversationRepository.insertConversation(conversation)

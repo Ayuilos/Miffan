@@ -661,18 +661,8 @@ private fun ChatPageContent(
                         vm.deleteMessage(it)
                     }
                 },
-                onUpdateMessage = { newNode ->
-                    vm.updateConversation(
-                        conversation.copy(
-                            messageNodes = conversation.messageNodes.map { node ->
-                                if (node.id == newNode.id) {
-                                    newNode
-                                } else {
-                                    node
-                                }
-                            }
-                        ))
-                    vm.saveConversationAsync()
+                onSelectMessageBranch = { nodeId, branchIndex ->
+                    vm.selectMessageBranch(nodeId, branchIndex)
                 },
                 onClickSuggestion = { suggestion ->
                     inputState.editingMessage = null

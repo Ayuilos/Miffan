@@ -119,13 +119,14 @@ class ChatboxImporterTest {
         assertEquals("Thread title", conversation.title)
         assertEquals("Be helpful", conversation.customSystemPrompt)
         assertTrue(conversation.isPinned)
-        assertEquals(2, conversation.messageNodes.size)
-        assertTrue(conversation.messageNodes[0].messages.single().parts[1] is UIMessagePart.Image)
+        assertEquals(3, conversation.messageNodes.size)
+        assertTrue(conversation.currentMessageNodes[0].message.parts[1] is UIMessagePart.Image)
 
-        val assistantNode = conversation.messageNodes[1]
-        assertEquals(2, assistantNode.messages.size)
-        assertEquals(1, assistantNode.selectIndex)
-        assertEquals("Alternative answer", (assistantNode.messages[0].parts.single() as UIMessagePart.Text).text)
+        val assistantNode = conversation.currentMessageNodes[1]
+        val assistantBranches = conversation.getSiblings(assistantNode.id)
+        assertEquals(2, assistantBranches.size)
+        assertEquals(1, assistantBranches.indexOfFirst { it.id == assistantNode.id })
+        assertEquals("Alternative answer", (assistantBranches[0].message.parts.single() as UIMessagePart.Text).text)
         assertEquals("Current answer", (assistantNode.currentMessage.parts.single() as UIMessagePart.Text).text)
         assertNotNull(assistantNode.currentMessage.modelId)
     }
