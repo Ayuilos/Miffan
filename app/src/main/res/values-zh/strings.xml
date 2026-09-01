@@ -304,6 +304,13 @@
   <string name="chat_page_move_to_assistant">移至助手</string>
   <string name="chat_page_new_chat">新聊天</string>
   <string name="chat_page_new_message">新消息</string>
+  <string name="chat_page_message_paths">消息路径</string>
+  <string name="chat_page_path_count">%1$d 条路径</string>
+  <string name="chat_page_path_label">路径 %1$d</string>
+  <string name="chat_page_current_path">当前路径</string>
+  <string name="chat_page_path_message_count">%1$d 条消息</string>
+  <string name="chat_page_path_non_text_message">非文本消息</string>
+  <string name="chat_page_target_message_missing">这条消息已不存在</string>
   <string name="chat_page_nickname_placeholder">请输入昵称</string>
   <string name="chat_page_no_conversations">没有对话记录</string>
   <string name="chat_page_regenerate_title">重新生成标题</string>

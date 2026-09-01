@@ -12,6 +12,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -149,6 +150,7 @@ fun ChatList(
     mascotInputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
     mascotSubmitId: Int = 0,
     completedMascotReplyId: Uuid? = null,
+    highlightedNodeId: Uuid? = null,
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
@@ -199,6 +201,7 @@ fun ChatList(
                 mascotInputState = mascotInputState,
                 mascotSubmitId = mascotSubmitId,
                 completedMascotReplyId = completedMascotReplyId,
+                highlightedNodeId = highlightedNodeId,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
@@ -236,6 +239,7 @@ private fun ChatListNormal(
     mascotInputState: MiffanMascotInputState,
     mascotSubmitId: Int,
     completedMascotReplyId: Uuid?,
+    highlightedNodeId: Uuid?,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
@@ -433,7 +437,21 @@ private fun ChatListNormal(
                 items = currentNodes,
                 key = { index, item -> item.id },
             ) { index, node ->
-                Column(modifier = Modifier.testTag("chat_message_${node.id}")) {
+                val highlightColor by animateColorAsState(
+                    targetValue = if (node.id == highlightedNodeId) {
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f)
+                    } else {
+                        Color.Transparent
+                    },
+                    label = "MessageTargetHighlight",
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("chat_message_${node.id}")
+                        .clip(MaterialTheme.shapes.large)
+                        .background(highlightColor)
+                ) {
                     ListSelectableItem(
                         key = node.id,
                         onSelectChange = {

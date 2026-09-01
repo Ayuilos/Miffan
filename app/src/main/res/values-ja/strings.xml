@@ -291,6 +291,13 @@
   <string name="chat_page_move_to_assistant">アシスタントに移動</string>
   <string name="chat_page_new_chat">新しいチャット</string>
   <string name="chat_page_new_message">新しいメッセージ</string>
+  <string name="chat_page_message_paths">会話パス</string>
+  <string name="chat_page_path_count">%1$d 件のパス</string>
+  <string name="chat_page_path_label">パス %1$d</string>
+  <string name="chat_page_current_path">現在のパス</string>
+  <string name="chat_page_path_message_count">%1$d 件のメッセージ</string>
+  <string name="chat_page_path_non_text_message">テキスト以外のメッセージ</string>
+  <string name="chat_page_target_message_missing">このメッセージは存在しません</string>
   <string name="chat_page_nickname_placeholder">ニックネームを入力してください</string>
   <string name="chat_page_no_conversations">会話がありません</string>
   <string name="chat_page_regenerate_title">タイトルを再生成</string>

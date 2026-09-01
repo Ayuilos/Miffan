@@ -291,6 +291,13 @@
   <string name="chat_page_move_to_assistant">Перейти к ассистенту</string>
   <string name="chat_page_new_chat">Новый чат</string>
   <string name="chat_page_new_message">Новое сообщение</string>
+  <string name="chat_page_message_paths">Ветки диалога</string>
+  <string name="chat_page_path_count">Веток: %1$d</string>
+  <string name="chat_page_path_label">Ветка %1$d</string>
+  <string name="chat_page_current_path">Текущая ветка</string>
+  <string name="chat_page_path_message_count">Сообщений: %1$d</string>
+  <string name="chat_page_path_non_text_message">Нетекстовое сообщение</string>
+  <string name="chat_page_target_message_missing">Это сообщение больше не существует</string>
   <string name="chat_page_nickname_placeholder">Введите никнейм</string>
   <string name="chat_page_no_conversations">Нет бесед</string>
   <string name="chat_page_regenerate_title">Сгенерировать заголовок заново</string>

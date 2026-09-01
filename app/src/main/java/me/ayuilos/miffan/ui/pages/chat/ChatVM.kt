@@ -273,6 +273,12 @@ class ChatVM(
         }
     }
 
+    fun selectMessagePath(nodeId: Uuid) {
+        viewModelScope.launch {
+            chatService.selectMessagePath(_conversationId, nodeId)
+        }
+    }
+
     fun handleToolApproval(
         toolCallId: String,
         approved: Boolean,
