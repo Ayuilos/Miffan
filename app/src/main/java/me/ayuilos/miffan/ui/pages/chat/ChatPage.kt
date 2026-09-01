@@ -148,6 +148,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
 
     val setting by vm.settings.collectAsStateWithLifecycle()
     val conversation by vm.conversation.collectAsStateWithLifecycle()
+    val recentConversations by vm.recentConversations.collectAsStateWithLifecycle()
     val loadingJob by vm.conversationJob.collectAsStateWithLifecycle()
     val processingStatus by vm.processingStatus.collectAsStateWithLifecycle()
     val currentChatModel by vm.currentChatModel.collectAsStateWithLifecycle()
@@ -253,6 +254,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
+                    recentConversations = recentConversations,
                     drawerState = drawerState,
                     navController = navController,
                     vm = vm,
@@ -286,6 +288,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     processingStatus = processingStatus,
                     setting = setting,
                     conversation = conversation,
+                    recentConversations = recentConversations,
                     drawerState = drawerState,
                     navController = navController,
                     vm = vm,
@@ -380,6 +383,7 @@ private fun ChatPageContent(
     setting: Settings,
     bigScreen: Boolean,
     conversation: Conversation,
+    recentConversations: List<Conversation>,
     drawerState: DrawerState,
     navController: Navigator,
     vm: ChatVM,
@@ -610,6 +614,7 @@ private fun ChatPageContent(
             ChatList(
                 innerPadding = innerPadding,
                 conversation = conversation,
+                recentConversations = recentConversations,
                 state = chatListState,
                 loading = loadingJob != null,
                 modifier = Modifier.pointerInput(focusManager) {
@@ -635,6 +640,9 @@ private fun ChatPageContent(
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = {
                     vm.regenerateAtMessage(it)
+                },
+                onOpenConversation = { recentConversation ->
+                    navigateToChatPage(navController, chatId = recentConversation.id)
                 },
                 onEdit = {
                     inputState.editingMessage = it.id
