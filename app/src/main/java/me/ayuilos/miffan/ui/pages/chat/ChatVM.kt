@@ -267,6 +267,12 @@ class ChatVM(
         chatService.regenerateAtMessage(_conversationId, message, regenerateAssistantMsg)
     }
 
+    fun selectMessageBranch(nodeId: Uuid, branchIndex: Int) {
+        viewModelScope.launch {
+            chatService.selectMessageNode(_conversationId, nodeId, branchIndex)
+        }
+    }
+
     fun handleToolApproval(
         toolCallId: String,
         approved: Boolean,

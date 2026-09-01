@@ -316,6 +316,9 @@ object ChatboxImporter {
         var customSystemPrompt: String? = null
         var reachedConversationMessages = false
         val nodes = arrayListOf<MessageNode>()
+        var selectedParentId: Uuid? = null
+        var selectedParentIndex: Int? = null
+        var selectedRootId: Uuid? = null
 
         rawMessages.forEachIndexed { index, message ->
             val role = message["role"]?.asString?.toMessageRole() ?: return@forEachIndexed
@@ -378,12 +381,25 @@ object ChatboxImporter {
             selectedIndex = distinctAlternatives.indexOfFirst { it.id == selectedMessageId }
                 .takeIf { it >= 0 }
                 ?: 0
-            val rawMessageId = message["id"]?.asString ?: "$sessionId:$index"
-            nodes += MessageNode(
-                id = stableUuid("chatbox:node:$sessionId:$rawMessageId"),
-                messages = distinctAlternatives,
-                selectIndex = selectedIndex,
-            )
+            val branchNodes = distinctAlternatives.map { alternative ->
+                MessageNode(
+                    id = stableUuid("chatbox:node:$sessionId:${alternative.id}"),
+                    message = alternative,
+                    parentId = selectedParentId,
+                )
+            }
+            val selectedNode = branchNodes[selectedIndex]
+            if (selectedParentId == null) {
+                selectedRootId = selectedNode.id
+            } else {
+                selectedParentIndex?.let { parentIndex ->
+                    nodes[parentIndex] = nodes[parentIndex].withSelectedChild(selectedNode.id)
+                }
+            }
+            val branchStartIndex = nodes.size
+            nodes += branchNodes
+            selectedParentId = selectedNode.id
+            selectedParentIndex = branchStartIndex + selectedIndex
         }
 
         if (nodes.isEmpty()) return null
@@ -398,6 +414,7 @@ object ChatboxImporter {
             assistantId = assistantId,
             title = title,
             messageNodes = nodes,
+            selectedRootId = selectedRootId,
             isPinned = session["starred"]?.asBoolean ?: sessionEntry.starred,
             createAt = Instant.ofEpochMilli(createTimestamp),
             updateAt = Instant.ofEpochMilli(updateTimestamp),

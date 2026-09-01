@@ -113,7 +113,9 @@ fun ChatMessage(
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
-    onUpdate: (MessageNode) -> Unit,
+    branchIndex: Int,
+    branchCount: Int,
+    onSelectBranch: (Int) -> Unit,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
@@ -122,7 +124,7 @@ fun ChatMessage(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onAlwaysAllowWorkspaceShell: (() -> Unit)? = null,
 ) {
-    val message = node.messages[node.selectIndex]
+    val message = node.message
     val settings = LocalSettings.current.displaySetting
     val chatFontFamily = LocalChatFontFamily.current ?: rememberChatFontFamily(settings)
     val textStyle = LocalTextStyle.current.copy(
@@ -202,8 +204,9 @@ fun ChatMessage(
                 ChatMessageActionButtons(
                     message = message,
                     onRegenerate = onRegenerate,
-                    node = node,
-                    onUpdate = onUpdate,
+                    branchIndex = branchIndex,
+                    branchCount = branchCount,
+                    onSelectBranch = onSelectBranch,
                     onOpenActionSheet = {
                         showActionsSheet = true
                     },

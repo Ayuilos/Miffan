@@ -109,7 +109,7 @@ class ConversationSession(
         if (message != null) {
             job.invokeOnCompletion {
                 // Cancellation can happen before the coroutine starts or before input is saved.
-                if (!closed && state.value.messageNodes.none { node -> node.messages.any { it.id == message.id } }) {
+                if (!closed && state.value.getMessageNodeByMessageId(message.id) == null) {
                     _messageQueue.update { queue ->
                         if (queue.messages.any { it.id == message.id }) queue
                         else queue.copy(messages = listOf(message) + queue.messages)

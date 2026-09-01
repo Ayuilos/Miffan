@@ -14,6 +14,7 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
@@ -28,50 +29,73 @@ import kotlin.uuid.Uuid
 
 class ChatServiceTest {
     @Test
-    fun `regenerating after edited user message keeps its existing reply branch`() {
+    fun `editing a user message creates a sibling branch and preserves the original reply`() {
         val originalUserMessage = UIMessage.user("Original question")
         val editedUserMessage = UIMessage.user("Edited question")
         val originalReply = UIMessage.assistant("Original reply")
-        val laterUserMessage = UIMessage.user("Follow-up")
+        val editedReply = UIMessage.assistant("Edited reply")
+        val originalNodes = listOf(originalUserMessage, originalReply).toLinearMessageNodes()
         val conversation = Conversation(
             assistantId = Uuid.random(),
-            messageNodes = listOf(
-                MessageNode(
-                    messages = listOf(originalUserMessage, editedUserMessage),
-                    selectIndex = 1,
-                ),
-                MessageNode.of(originalReply),
-                MessageNode.of(laterUserMessage),
-            ),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
         )
 
-        val prepared = conversation.keepReplyNodeAfter(editedUserMessage.id)
+        val editedNode = MessageNode(message = editedUserMessage)
+        val editedConversation = conversation.addNodeAndSelect(editedNode)
+        val withReply = editedConversation.updateCurrentMessages(listOf(editedUserMessage, editedReply))
 
-        assertEquals(2, prepared?.messageNodes?.size)
-        assertEquals(originalReply, prepared?.messageNodes?.get(1)?.currentMessage)
+        assertEquals(listOf(editedUserMessage, editedReply), withReply.currentMessages)
+        assertEquals(
+            listOf(originalUserMessage, originalReply),
+            withReply.selectNode(originalNodes.first().id).currentMessages,
+        )
     }
 
     @Test
-    fun `regenerating user message without an existing reply keeps the user node`() {
-        val userMessage = UIMessage.user("Unanswered question")
+    fun `regenerating an assistant reply creates a sibling and switching restores descendants`() {
+        val userMessage = UIMessage.user("Question")
+        val originalReply = UIMessage.assistant("Original reply")
+        val followUp = UIMessage.user("Follow-up")
+        val followUpReply = UIMessage.assistant("Follow-up reply")
+        val originalNodes = listOf(userMessage, originalReply, followUp, followUpReply).toLinearMessageNodes()
         val conversation = Conversation(
             assistantId = Uuid.random(),
-            messageNodes = listOf(MessageNode.of(userMessage)),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
         )
+        val regeneratedReply = UIMessage.assistant("Regenerated reply")
 
-        val prepared = conversation.keepReplyNodeAfter(userMessage.id)
+        val regenerated = conversation.updateCurrentMessages(listOf(userMessage, regeneratedReply))
 
-        assertEquals(conversation.messageNodes, prepared?.messageNodes)
+        assertEquals(listOf(userMessage, regeneratedReply), regenerated.currentMessages)
+        assertEquals(
+            listOf(userMessage, originalReply, followUp, followUpReply),
+            regenerated.selectNode(originalNodes[1].id).currentMessages,
+        )
     }
 
     @Test
-    fun `regeneration preparation ignores unknown messages`() {
-        val conversation = Conversation(
-            assistantId = Uuid.random(),
-            messageNodes = listOf(MessageNode.of(UIMessage.user("Known"))),
+    fun `deleting the selected branch removes only its subtree and restores a sibling`() {
+        val originalMessages = listOf(
+            UIMessage.user("Original question"),
+            UIMessage.assistant("Original reply"),
         )
+        val originalNodes = originalMessages.toLinearMessageNodes()
+        val base = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+        val editedUser = UIMessage.user("Edited question")
+        val editedRoot = MessageNode(message = editedUser)
+        val edited = base.addNodeAndSelect(editedRoot)
+            .updateCurrentMessages(listOf(editedUser, UIMessage.assistant("Edited reply")))
 
-        assertNull(conversation.keepReplyNodeAfter(Uuid.random()))
+        val restored = edited.deleteNodeSubtree(editedRoot.id)
+
+        assertEquals(originalMessages, restored.currentMessages)
+        assertEquals(originalNodes.map { it.id }.toSet(), restored.messageNodes.map { it.id }.toSet())
     }
 
     @Test
@@ -104,15 +128,15 @@ class ChatServiceTest {
         val conversation = Conversation(
             assistantId = Uuid.random(),
             messageNodes = listOf(
-                MessageNode(
-                    messages = listOf(unselectedMessage, selectedMessage),
-                    selectIndex = 1,
-                )
+                MessageNode(message = unselectedMessage),
+                MessageNode(message = selectedMessage),
             ),
+            selectedRootId = null,
         )
+        val selectedConversation = conversation.selectNode(conversation.messageNodes[1].id)
 
-        val updated = conversation.approvePendingWorkspaceShellTools()
-        val selectedTools = updated.messageNodes.single().currentMessage.parts
+        val updated = selectedConversation.approvePendingWorkspaceShellTools()
+        val selectedTools = updated.getMessageNodeByMessageId(selectedMessage.id)!!.message.parts
             .filterIsInstance<UIMessagePart.Tool>()
 
         assertEquals(ToolApprovalState.Approved, selectedTools[0].approvalState)
@@ -120,7 +144,7 @@ class ChatServiceTest {
         assertEquals(ToolApprovalState.Auto, selectedTools[2].approvalState)
         assertEquals(
             ToolApprovalState.Pending,
-            (updated.messageNodes.single().messages[0].parts.single() as UIMessagePart.Tool).approvalState,
+            (updated.getMessageNodeByMessageId(unselectedMessage.id)!!.message.parts.single() as UIMessagePart.Tool).approvalState,
         )
         assertTrue(updated.hasPendingToolApprovals())
         assertFalse(updated.hasPendingWorkspaceShellTools())
