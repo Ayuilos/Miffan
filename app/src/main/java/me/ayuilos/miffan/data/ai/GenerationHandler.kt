@@ -483,11 +483,15 @@ class GenerationHandler(
                             error = error,
                             retryCount = retryCount,
                             processingStatus = processingStatus,
+                            enabled = settings.networkSetting.enableAutoRetry,
                         )
                     }
                 }
             } else {
-                val result = executeProviderRequestWithRetry(processingStatus) {
+                val result = executeProviderRequestWithRetry(
+                    processingStatus = processingStatus,
+                    enabled = settings.networkSetting.enableAutoRetry,
+                ) {
                     providerImpl.generateText(
                         providerSetting = provider,
                         messages = internalMessages,
@@ -504,6 +508,7 @@ class GenerationHandler(
 
     private suspend fun <T> executeProviderRequestWithRetry(
         processingStatus: MutableStateFlow<String?>,
+        enabled: Boolean,
         block: suspend () -> T,
     ): T {
         var retryCount = 0
@@ -515,6 +520,7 @@ class GenerationHandler(
                     error = error,
                     retryCount = retryCount,
                     processingStatus = processingStatus,
+                    enabled = enabled,
                 )
             }
         }
@@ -524,11 +530,12 @@ class GenerationHandler(
         error: Throwable,
         retryCount: Int,
         processingStatus: MutableStateFlow<String?>,
+        enabled: Boolean,
     ): Int {
         // 用户主动停止生成时，底层连接也可能以 IOException("canceled") 收尾；
         // 先检查协程状态，确保取消不会被当作网络波动重新拉起。
         currentCoroutineContext().ensureActive()
-        if (error !is IOException || retryCount >= MAX_PROVIDER_NETWORK_RETRIES) {
+        if (!enabled || error !is IOException || retryCount >= MAX_PROVIDER_NETWORK_RETRIES) {
             throw error
         }
 

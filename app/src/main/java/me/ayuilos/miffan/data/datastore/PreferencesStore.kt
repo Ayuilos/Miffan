@@ -89,6 +89,7 @@ class SettingsStore(
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
         val SELECT_MODEL = stringPreferencesKey("chat_model")
         val FAST_MODEL = stringPreferencesKey("fast_model")
+        val FAST_MODEL_REASONING_LEVEL = stringPreferencesKey("fast_model_reasoning_level")
         val TITLE_MODEL = stringPreferencesKey("title_model")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
         val ENABLE_SUGGESTION = booleanPreferencesKey("enable_suggestion")
@@ -176,6 +177,9 @@ class SettingsStore(
                     ?: DEFAULT_AUTO_MODEL_ID,
                 fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
+                fastModelReasoningLevel = preferences[FAST_MODEL_REASONING_LEVEL]
+                    ?.let { value -> ReasoningLevel.entries.find { it.name == value } }
+                    ?: ReasoningLevel.AUTO,
                 titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
@@ -375,6 +379,7 @@ class SettingsStore(
             preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
             preferences[SELECT_MODEL] = settings.chatModelId.toString()
             preferences[FAST_MODEL] = settings.fastModelId.toString()
+            preferences[FAST_MODEL_REASONING_LEVEL] = settings.fastModelReasoningLevel.name
             settings.titleModelId?.let {
                 preferences[TITLE_MODEL] = it.toString()
             } ?: preferences.remove(TITLE_MODEL)
@@ -548,6 +553,7 @@ data class Settings(
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val fastModelId: Uuid = Uuid.random(),
+    val fastModelReasoningLevel: ReasoningLevel = ReasoningLevel.AUTO,
     val titleModelId: Uuid? = null,
     val imageGenerationModelId: Uuid = Uuid.random(),
     val titlePrompt: String = DEFAULT_TITLE_PROMPT,
@@ -602,6 +608,7 @@ data class NetworkSetting(
     val proxyPassword: String = "",
     // Empty means the official download source, including for existing installations/backups.
     val updateDownloadBaseUrl: String = "",
+    val enableAutoRetry: Boolean = true,
 )
 
 @Serializable

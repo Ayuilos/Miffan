@@ -1026,7 +1026,14 @@ class ChatService(
                                 .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
                     ),
                 ),
-                params = backgroundTextGenerationParams(model),
+                params = backgroundTextGenerationParams(
+                    model = model,
+                    reasoningLevel = if (model.id == settings.fastModelId) {
+                        settings.fastModelReasoningLevel
+                    } else {
+                        ReasoningLevel.AUTO
+                    },
+                ),
             )
 
             // 生成完，conversation可能不是最新了，因此需要重新获取
@@ -1078,7 +1085,14 @@ class ChatService(
                                 .takeLast(8).joinToString("\n\n") { it.summaryAsText(maxLength = 500) }),
                     )
                 ),
-                params = backgroundTextGenerationParams(model),
+                params = backgroundTextGenerationParams(
+                    model = model,
+                    reasoningLevel = if (model.id == settings.fastModelId) {
+                        settings.fastModelReasoningLevel
+                    } else {
+                        ReasoningLevel.AUTO
+                    },
+                ),
             )
             val suggestions =
                 result.message.toText().split("\n").map { it.trim() }

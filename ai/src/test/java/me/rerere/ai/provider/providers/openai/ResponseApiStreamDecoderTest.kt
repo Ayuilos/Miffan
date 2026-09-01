@@ -162,7 +162,7 @@ class ResponseApiStreamDecoderTest {
     }
 
     @Test
-    fun `raw reasoning and summary with the same index should remain distinct without plaintext replay`() {
+    fun `raw reasoning and summary with the same index should remain distinct without replaying plaintext`() {
         val decoder = ResponseApiStreamDecoder()
         val chunks = buildList {
             addAll(decoder.decode(reasoningItemEvent("response.output_item.added")))

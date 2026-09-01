@@ -51,6 +51,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.network.toProxyOrNull
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
+import me.ayuilos.miffan.ui.components.ui.Switch
 import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.DEFAULT_UPDATE_DOWNLOAD_BASE_URL
@@ -364,6 +365,34 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                         },
                         trailingContent = {
                             Icon(HugeIcons.ArrowRight01, contentDescription = null)
+                        },
+                    )
+                }
+            }
+            item {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) {
+                    item(
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_page_preferences_network_auto_retry))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.setting_page_preferences_network_auto_retry_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.networkSetting.enableAutoRetry,
+                                onCheckedChange = { enabled ->
+                                    vm.updateSettings(
+                                        settings.copy(
+                                            networkSetting = settings.networkSetting.copy(
+                                                enableAutoRetry = enabled,
+                                            ),
+                                        )
+                                    )
+                                },
+                            )
                         },
                     )
                 }

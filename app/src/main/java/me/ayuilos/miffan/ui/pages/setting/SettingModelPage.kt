@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
@@ -42,6 +43,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.ui.components.ai.ModelListSheet
+import me.ayuilos.miffan.ui.components.ai.ReasoningButton
 import me.ayuilos.miffan.ui.components.ai.rememberModelListState
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
@@ -122,6 +124,10 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 modelId = settings.fastModelId,
                 providers = settings.providers,
                 onSelect = { vm.updateSettings(settings.copy(fastModelId = it.id)) },
+                reasoningLevel = settings.fastModelReasoningLevel,
+                onUpdateReasoningLevel = {
+                    vm.updateSettings(settings.copy(fastModelReasoningLevel = it))
+                },
             )
         }
         item {
@@ -217,7 +223,11 @@ private fun SuggestionModelSettingItem(
                                     onClick = { vm.updateSettings(settings.copy(suggestionModelId = null)) },
                                     modifier = Modifier.size(20.dp),
                                 ) {
-                                    Icon(HugeIcons.Cancel01, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(
+                                        HugeIcons.Cancel01,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                    )
                                 }
                             } else {
                                 Icon(
@@ -239,7 +249,10 @@ private fun SuggestionModelSettingItem(
         )
     }
 
-    ModelListSheet(state = state, onSelect = { vm.updateSettings(settings.copy(suggestionModelId = it.id)) })
+    ModelListSheet(
+        state = state,
+        onSelect = { vm.updateSettings(settings.copy(suggestionModelId = it.id)) },
+    )
 }
 
 @Composable
@@ -250,6 +263,8 @@ private fun ModelSettingItem(
     providers: List<ProviderSetting>,
     onSelect: (Model) -> Unit,
     onClear: (() -> Unit)? = null,
+    reasoningLevel: ReasoningLevel? = null,
+    onUpdateReasoningLevel: ((ReasoningLevel) -> Unit)? = null,
 ) {
     val state = rememberModelListState(
         modelId = modelId,
@@ -277,7 +292,11 @@ private fun ModelSettingItem(
                         )
                         if (onClear != null && state.currentModel != null) {
                             IconButton(onClick = onClear, modifier = Modifier.size(20.dp)) {
-                                Icon(HugeIcons.Cancel01, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(
+                                    HugeIcons.Cancel01,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
                             }
                         } else {
                             Icon(
@@ -289,6 +308,17 @@ private fun ModelSettingItem(
                     }
                 },
             )
+            if (reasoningLevel != null && onUpdateReasoningLevel != null) {
+                item(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_thinking_budget)) },
+                    trailingContent = {
+                        ReasoningButton(
+                            reasoningLevel = reasoningLevel,
+                            onUpdateReasoningLevel = onUpdateReasoningLevel,
+                        )
+                    },
+                )
+            }
         }
         Text(
             text = description,
