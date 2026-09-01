@@ -28,6 +28,53 @@ import kotlin.uuid.Uuid
 
 class ChatServiceTest {
     @Test
+    fun `regenerating after edited user message keeps its existing reply branch`() {
+        val originalUserMessage = UIMessage.user("Original question")
+        val editedUserMessage = UIMessage.user("Edited question")
+        val originalReply = UIMessage.assistant("Original reply")
+        val laterUserMessage = UIMessage.user("Follow-up")
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = listOf(
+                MessageNode(
+                    messages = listOf(originalUserMessage, editedUserMessage),
+                    selectIndex = 1,
+                ),
+                MessageNode.of(originalReply),
+                MessageNode.of(laterUserMessage),
+            ),
+        )
+
+        val prepared = conversation.keepReplyNodeAfter(editedUserMessage.id)
+
+        assertEquals(2, prepared?.messageNodes?.size)
+        assertEquals(originalReply, prepared?.messageNodes?.get(1)?.currentMessage)
+    }
+
+    @Test
+    fun `regenerating user message without an existing reply keeps the user node`() {
+        val userMessage = UIMessage.user("Unanswered question")
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = listOf(MessageNode.of(userMessage)),
+        )
+
+        val prepared = conversation.keepReplyNodeAfter(userMessage.id)
+
+        assertEquals(conversation.messageNodes, prepared?.messageNodes)
+    }
+
+    @Test
+    fun `regeneration preparation ignores unknown messages`() {
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = listOf(MessageNode.of(UIMessage.user("Known"))),
+        )
+
+        assertNull(conversation.keepReplyNodeAfter(Uuid.random()))
+    }
+
+    @Test
     fun `completion feedback requires an assistant reply without pending approval`() {
         val reply = UIMessage.assistant("Done")
         val conversation = Conversation(assistantId = Uuid.random(), messageNodes = listOf(MessageNode.of(reply)))

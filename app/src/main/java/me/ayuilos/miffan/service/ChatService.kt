@@ -164,6 +164,15 @@ internal fun Conversation.completedAssistantReplyId(previous: Conversation? = nu
     }
     ?.id
 
+internal fun Conversation.keepReplyNodeAfter(messageId: Uuid): Conversation? {
+    val messageNodeIndex = messageNodes.indexOfFirst { node ->
+        node.messages.any { message -> message.id == messageId }
+    }
+    if (messageNodeIndex == -1) return null
+
+    return copy(messageNodes = messageNodes.take(messageNodeIndex + 2))
+}
+
 /** Transient UI feedback; unlike generationDoneFlow this only describes a successful reply. */
 data class AssistantReplyCompleted(val conversationId: Uuid, val messageId: Uuid, val job: Job)
 
@@ -529,14 +538,13 @@ class ChatService(
                 val conversation = session.state.value
 
                 if (message.role == MessageRole.USER) {
-                    // 如果是用户消息，则截止到当前消息
-                    val node = conversation.getMessageNodeByMessage(message)
-                    val indexAt = conversation.messageNodes.indexOf(node)
-                    val newConversation = conversation.copy(
-                        messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
-                    )
+                    val newConversation = conversation.keepReplyNodeAfter(message.id)
+                        ?: throw NotFoundException("Message not found")
+                    val indexAt = newConversation.messageNodes.indexOfFirst { node ->
+                        node.messages.any { candidate -> candidate.id == message.id }
+                    }
                     saveConversation(conversationId, newConversation)
-                    handleMessageComplete(conversationId)
+                    handleMessageComplete(conversationId, messageRange = 0..indexAt)
                 } else {
                     if (regenerateAssistantMsg) {
                         val node = conversation.getMessageNodeByMessage(message)
