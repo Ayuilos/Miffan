@@ -4,6 +4,9 @@ import android.util.Log
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.utils.JsonInstant
 
 private const val TAG = "Migration_24_25"
@@ -45,6 +48,7 @@ val Migration_24_25 = object : Migration(24, 25) {
                 while (cursor.moveToNext()) add(cursor.getString(0))
             }
         }
+        val hasMessageFts = db.hasTable("message_fts")
 
         conversationIds.forEach { conversationId ->
             val selectedNodes = buildList {
@@ -68,6 +72,27 @@ val Migration_24_25 = object : Migration(24, 25) {
                         }.getOrElse { error ->
                             Log.w(TAG, "Skipping malformed legacy node $nodeId", error)
                             null
+                        }
+
+                        val selectedMessageId = (selectedMessage as? JsonObject)
+                            ?.get("id")
+                            ?.jsonPrimitive
+                            ?.contentOrNull
+                        if (hasMessageFts) {
+                            if (selectedMessageId == null) {
+                                db.execSQL(
+                                    "DELETE FROM message_fts WHERE conversation_id = ? AND node_id = ?",
+                                    arrayOf(conversationId, nodeId),
+                                )
+                            } else {
+                                db.execSQL(
+                                    """
+                                    DELETE FROM message_fts
+                                    WHERE conversation_id = ? AND node_id = ? AND message_id <> ?
+                                    """.trimIndent(),
+                                    arrayOf(conversationId, nodeId, selectedMessageId),
+                                )
+                            }
                         }
 
                         if (selectedMessage != null) {
@@ -119,3 +144,8 @@ private data class LegacySelectedNode(
     val id: String,
     val messageJson: String,
 )
+
+private fun SupportSQLiteDatabase.hasTable(tableName: String): Boolean = query(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+    arrayOf(tableName),
+).use { it.moveToFirst() }

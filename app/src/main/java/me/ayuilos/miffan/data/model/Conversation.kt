@@ -109,6 +109,19 @@ data class Conversation(
         return reversed.asReversed()
     }
 
+    /** Leaf nodes in stable insertion order. Finding them is linear in the tree size. */
+    fun getMessagePathLeaves(): List<MessageNode> {
+        val parentIds = messageNodes.mapNotNullTo(HashSet()) { it.parentId }
+        return messageNodes.filterNot { it.id in parentIds }
+    }
+
+    /** All complete root-to-leaf paths in stable node insertion order. */
+    fun getMessagePaths(): List<List<MessageNode>> = getMessagePathLeaves()
+        .asSequence()
+            .map { getPathToNode(it.id) }
+            .filter { it.isNotEmpty() && it.first().parentId == null }
+            .toList()
+
     fun appendMessage(message: UIMessage): Conversation = addNodeAndSelect(
         MessageNode(
             message = message,

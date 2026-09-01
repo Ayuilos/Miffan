@@ -304,6 +304,13 @@
   <string name="chat_page_move_to_assistant">Move to Assistant</string>
   <string name="chat_page_new_chat">New Chat</string>
   <string name="chat_page_new_message">New message</string>
+  <string name="chat_page_message_paths">Conversation paths</string>
+  <string name="chat_page_path_count">%1$d paths</string>
+  <string name="chat_page_path_label">Path %1$d</string>
+  <string name="chat_page_current_path">Current</string>
+  <string name="chat_page_path_message_count">%1$d messages</string>
+  <string name="chat_page_path_non_text_message">Non-text message</string>
+  <string name="chat_page_target_message_missing">This message no longer exists</string>
   <string name="chat_page_nickname_placeholder">Please enter nickname</string>
   <string name="chat_page_no_conversations">No conversations</string>
   <string name="chat_page_regenerate_title">Regenerate title</string>

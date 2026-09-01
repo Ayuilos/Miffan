@@ -1385,6 +1385,16 @@ class ChatService(
         saveConversation(conversationId, currentConversation.selectNode(selectedNode.id))
     }
 
+    suspend fun selectMessagePath(
+        conversationId: Uuid,
+        nodeId: Uuid,
+    ): Boolean {
+        val currentConversation = getConversationFlow(conversationId).value
+        if (currentConversation.getMessageNode(nodeId) == null) return false
+        saveConversation(conversationId, currentConversation.selectNode(nodeId))
+        return true
+    }
+
     suspend fun deleteMessage(
         conversationId: Uuid,
         messageId: Uuid,

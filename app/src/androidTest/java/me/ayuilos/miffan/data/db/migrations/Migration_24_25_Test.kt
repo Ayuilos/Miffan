@@ -37,8 +37,22 @@ class Migration_24_25_Test {
         val favoriteId = Uuid.random().toString()
         val selectedQuestion = UIMessage.user("Selected legacy question")
         val selectedAnswer = UIMessage.assistant("Selected legacy answer")
+        val unselectedQuestion = UIMessage.user("Unselected question")
+        val unselectedAnswer = UIMessage.assistant("Unselected answer")
 
         helper.createDatabase(databaseName, 24).apply {
+            execSQL(
+                """
+                CREATE TABLE message_fts (
+                    text TEXT,
+                    node_id TEXT,
+                    message_id TEXT,
+                    conversation_id TEXT,
+                    title TEXT,
+                    update_at TEXT
+                )
+                """.trimIndent()
+            )
             insert(
                 "ConversationEntity",
                 SQLiteDatabase.CONFLICT_NONE,
@@ -56,16 +70,20 @@ class Migration_24_25_Test {
                 conversationId = conversationId,
                 nodeId = firstNodeId,
                 index = 0,
-                messages = listOf(UIMessage.user("Unselected question"), selectedQuestion),
+                messages = listOf(unselectedQuestion, selectedQuestion),
                 selectIndex = 1,
             )
             insertLegacyNode(
                 conversationId = conversationId,
                 nodeId = secondNodeId,
                 index = 1,
-                messages = listOf(selectedAnswer, UIMessage.assistant("Unselected answer")),
+                messages = listOf(selectedAnswer, unselectedAnswer),
                 selectIndex = 0,
             )
+            insertFtsMessage(conversationId, firstNodeId, unselectedQuestion)
+            insertFtsMessage(conversationId, firstNodeId, selectedQuestion)
+            insertFtsMessage(conversationId, secondNodeId, selectedAnswer)
+            insertFtsMessage(conversationId, secondNodeId, unselectedAnswer)
             insert(
                 "favorites",
                 SQLiteDatabase.CONFLICT_NONE,
@@ -125,6 +143,15 @@ class Migration_24_25_Test {
             assertTrue(cursor.moveToFirst())
             assertEquals("node:$conversationId:$firstNodeId", cursor.getString(0))
         }
+        db.query("SELECT message_id FROM message_fts").use { cursor ->
+            val indexedMessageIds = buildSet {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+            assertEquals(
+                setOf(selectedQuestion.id.toString(), selectedAnswer.id.toString()),
+                indexedMessageIds,
+            )
+        }
         db.query("PRAGMA table_info(message_node)").use { cursor ->
             val nameIndex = cursor.getColumnIndex("name")
             val columns = buildSet {
@@ -154,6 +181,27 @@ class Migration_24_25_Test {
                 put("messages", JsonInstant.encodeToString(messages))
                 put("select_index", selectIndex)
             },
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertFtsMessage(
+        conversationId: String,
+        nodeId: String,
+        message: UIMessage,
+    ) {
+        execSQL(
+            """
+            INSERT INTO message_fts(text, node_id, message_id, conversation_id, title, update_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf(
+                message.toText(),
+                nodeId,
+                message.id.toString(),
+                conversationId,
+                "Legacy conversation",
+                "2",
+            ),
         )
     }
 }

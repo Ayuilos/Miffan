@@ -248,6 +248,59 @@ class ChatServiceTest {
         )
     }
 
+    @Test
+    fun `a hidden search result activates its complete path without losing other paths`() {
+        val openingQuestion = UIMessage.user("Opening question")
+        val openingReply = UIMessage.assistant("Opening reply")
+        val originalFollowUp = UIMessage.user("Original follow-up")
+        val originalReply = UIMessage.assistant("Original reply")
+        val originalNodes = listOf(
+            openingQuestion,
+            openingReply,
+            originalFollowUp,
+            originalReply,
+        ).toLinearMessageNodes()
+        val base = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = originalNodes,
+            selectedRootId = originalNodes.first().id,
+        )
+        val alternateFollowUp = UIMessage.user("Search target branch")
+        val alternateNode = MessageNode(
+            message = alternateFollowUp,
+            parentId = originalNodes[1].id,
+        )
+        val alternateReply = UIMessage.assistant("Hidden branch reply")
+        val withAlternatePath = base
+            .addNodeAndSelect(alternateNode)
+            .appendMessage(alternateReply)
+        val showingOriginalPath = withAlternatePath.selectNode(originalNodes[2].id)
+
+        val pathsBeforeSelection = showingOriginalPath.getMessagePaths()
+        val pathMessageIdsBeforeSelection = pathsBeforeSelection.map { path ->
+            path.map { it.message.id }
+        }
+        val searchTargetNode = requireNotNull(
+            showingOriginalPath.getMessageNodeByMessageId(alternateFollowUp.id)
+        )
+        val activated = showingOriginalPath.selectNode(searchTargetNode.id)
+
+        assertEquals(2, pathsBeforeSelection.size)
+        assertEquals(
+            listOf(openingQuestion, openingReply, alternateFollowUp, alternateReply),
+            activated.currentMessages,
+        )
+        assertEquals(searchTargetNode.id, activated.currentMessageNodes[2].id)
+        assertEquals(
+            pathMessageIdsBeforeSelection,
+            activated.getMessagePaths().map { path -> path.map { it.message.id } },
+        )
+        assertEquals(
+            listOf(openingQuestion, openingReply, originalFollowUp, originalReply),
+            activated.selectNode(originalNodes[2].id).currentMessages,
+        )
+    }
+
     private fun tool(
         id: String,
         name: String,

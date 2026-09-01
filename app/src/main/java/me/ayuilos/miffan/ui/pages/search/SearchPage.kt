@@ -207,6 +207,7 @@ fun SearchPage(vm: SearchVM = koinViewModel()) {
                                             navController,
                                             chatId = Uuid.parse(result.conversationId),
                                             nodeId = Uuid.parse(result.nodeId),
+                                            messageId = Uuid.parse(result.messageId),
                                         )
                                     }
                                 )
