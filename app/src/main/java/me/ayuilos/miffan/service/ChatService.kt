@@ -188,6 +188,26 @@ internal fun createForkConversation(
     folderId = source.folderId,
 )
 
+internal fun Conversation.copyMessagePathForFork(
+    messageId: Uuid,
+    transformMessage: (UIMessage) -> UIMessage = { it },
+): List<MessageNode>? {
+    val targetNode = getMessageNodeByMessageId(messageId) ?: return null
+    val sourcePath = getPathToNode(targetNode.id)
+    val copiedNodes = ArrayList<MessageNode>(sourcePath.size)
+    sourcePath.forEach { source ->
+        val copied = MessageNode(
+            message = transformMessage(source.message),
+            parentId = copiedNodes.lastOrNull()?.id,
+        )
+        if (copiedNodes.isNotEmpty()) {
+            copiedNodes[copiedNodes.lastIndex] = copiedNodes.last().withSelectedChild(copied.id)
+        }
+        copiedNodes += copied
+    }
+    return copiedNodes
+}
+
 internal fun Conversation.deleteNodeSubtree(nodeId: Uuid): Conversation {
     val target = getMessageNode(nodeId) ?: return this
     val removedIds = HashSet<Uuid>()
@@ -1334,22 +1354,9 @@ class ChatService(
         messageId: Uuid
     ): Conversation {
         val currentConversation = getConversationFlow(conversationId).value
-        val targetNode = currentConversation.getMessageNodeByMessageId(messageId)
-            ?: throw NotFoundException("Message not found")
-        val sourcePath = currentConversation.getPathToNode(targetNode.id)
-        val copiedNodes = ArrayList<MessageNode>(sourcePath.size)
-        sourcePath.forEach { source ->
-            val copied = MessageNode(
-                message = source.message.copy(
-                    parts = source.message.parts.map { it.copyWithForkedFileUrl() }
-                ),
-                parentId = copiedNodes.lastOrNull()?.id,
-            )
-            if (copiedNodes.isNotEmpty()) {
-                copiedNodes[copiedNodes.lastIndex] = copiedNodes.last().withSelectedChild(copied.id)
-            }
-            copiedNodes += copied
-        }
+        val copiedNodes = currentConversation.copyMessagePathForFork(messageId) { message ->
+            message.copy(parts = message.parts.map { it.copyWithForkedFileUrl() })
+        } ?: throw NotFoundException("Message not found")
 
         val forkConversation = createForkConversation(currentConversation, copiedNodes)
 
