@@ -167,6 +167,8 @@ Miffan 最初源自 [RikkaHub](https://github.com/rikkahub/rikkahub) 的社区�
 
 欢迎提交 Issue 与 Pull Request。对于较大的改动，建议先创建 Issue 讨论产品方向和实现范围。报告问题时请附上 Miffan 版本、Android 版本、供应商类型和复现步骤，并移除 API Key 与私人对话内容。
 
+创建 Issue 前请先阅读 [Issue 提交规范](docs/ISSUE_GUIDELINES.md)，并选择最匹配的模板。
+
 ## 许可证
 
 Miffan 使用 [GNU Affero General Public License v3.0](LICENSE) 发布。

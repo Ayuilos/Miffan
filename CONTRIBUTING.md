@@ -1,4 +1,4 @@
-# Contributing to RikkaHub
+# Contributing to Miffan
 
 Thank you for your interest in contributing to RikkaHub. To keep reviews focused and the project
 maintainable, please read the following rules before opening a pull request.
@@ -29,6 +29,22 @@ review.
 
 If a fix requires extensive changes, discuss it in the related issue first. The maintainers may ask
 you to reduce the scope or split the work into multiple independent pull requests.
+
+## Issue standards
+
+Please read the [Issue guidelines](docs/ISSUE_GUIDELINES.md) before opening an issue. Use the
+closest form, search for duplicates first, keep one topic per issue, and include enough version,
+environment, and reproduction information for the maintainer to verify it. Never post API keys,
+tokens, cookies, private conversations, or unsanitized logs.
+
+The available forms are:
+
+- Bug Report for reproducible failures, crashes, and regressions
+- Feature Request for a proposed product improvement
+- Configuration & Support for setup and usage questions
+
+Blank issues are disabled. Issues may be closed or redirected when they lack the information
+needed for triage, duplicate an existing report, or fall outside the project's scope.
 
 ## What we accept
 

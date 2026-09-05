@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: 使用文档与首次配置 / Documentation & Setup
+    url: https://github.com/Ayuilos/Miffan/blob/master/README_ZH_CN.md#下载与首次配置
+    about: 使用前请先查看安装、供应商配置和数据迁移说明。 / Check setup, provider configuration, and migration guidance first.
+  - name: 安全漏洞 / Security vulnerability
+    url: https://github.com/Ayuilos/Miffan/security/policy
+    about: 请先阅读安全政策，不要在公开 Issue 中披露凭据或完整利用细节。 / Read the security policy before sharing sensitive details.

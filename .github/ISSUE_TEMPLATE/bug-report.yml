@@ -1,7 +1,7 @@
 name: Bug Report
 description: 报告APP Bug或者崩溃
 title: "bug: "
-labels: ["bug"]
+labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
@@ -9,9 +9,9 @@ body:
         感谢你花时间提交 Bug 报告！请尽量填写完整信息以便我们复现和修复问题。
         Thanks for taking the time to report a bug! Please fill in as much detail as possible.
 
-        > **注意 | Note**
-        > 请勿提交由 AI 生成的 Issue，此类 Issue 将被直接关闭。
-        > Do not submit AI-generated issues — they will be closed without review.
+        > **提交前 | Before submitting**
+        > 请先搜索已有 Issue，并用自己的话确认问题可以复现。请勿提交 API Key、Token、Cookie、完整对话或未经脱敏的日志。
+        > Search existing issues first and confirm the problem is reproducible in your own words. Never include API keys, tokens, cookies, full conversations, or unsanitized logs.
 
   - type: textarea
     id: description
@@ -26,18 +26,35 @@ body:
       required: true
 
   - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为 | Actual Behavior
+      description: 说明实际发生了什么，以及问题出现的频率。 / Explain what actually happened and how often it occurs.
+    validations:
+      required: true
+
+  - type: textarea
     id: expected
     attributes:
       label: 期望行为 | Expected Behavior
       description: 你期望应该发生什么？ / What did you expect to happen?
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: screenshots
     attributes:
       label: 截图 | Screenshots
       description: 如有相关截图或录屏，请粘贴到此处。 / Attach relevant screenshots or screen recordings here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 | Logs
+      description: 只粘贴最小且已脱敏的相关片段；不要包含凭据或私人数据。 / Paste only the smallest relevant, sanitized excerpt; do not include credentials or private data.
+      render: text
     validations:
       required: false
 
@@ -98,3 +115,13 @@ body:
       placeholder: Xiaomi 14
     validations:
       required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认 | Checklist
+      options:
+        - label: 我已搜索已有 Issue，确认这不是重复报告。 / I searched existing issues and this is not a duplicate.
+          required: true
+        - label: 我已移除 API Key、Token、Cookie、私人对话和其他敏感信息。 / I removed credentials, private conversations, and other sensitive information.
+          required: true

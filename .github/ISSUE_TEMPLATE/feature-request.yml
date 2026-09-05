@@ -1,17 +1,16 @@
 name: Feature Request
 description: 请求一个新功能
 title: "feat: "
-labels: ["enhancement"]
+labels: ["enhancement", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        > **注意 | Note**
-        > 如果您想请求新功能，请先在聊天群与我讨论，否则您的功能请求可能会被直接关闭。
-        > If you want to request a new feature, please discuss it with me in the chat group first, otherwise your feature request may be closed directly.
-        >
-        > 功能请求是否被接受取决于其必要性以及对代码库的影响，并非所有请求都会被接受。
-        > Whether a feature request is accepted depends on its necessity and impact on the codebase — not all requests will be accepted.
+        请先搜索已有 Issue，并用一个 Issue 描述一个清晰、可验证的需求。功能请求是否被接受取决于用户价值、产品方向、维护成本和安全影响。
+        Search existing issues first and describe one clear, testable need per issue. Acceptance depends on user value, product direction, maintenance cost, and security impact.
+
+        请勿提交 API Key、Token、Cookie、完整对话或其他私人信息。
+        Never include API keys, tokens, cookies, full conversations, or other private information.
 
   - type: textarea
     id: description
@@ -36,3 +35,21 @@ body:
       description: 是否有其他方案可以替代这个需求？如果有，请说明。 / Are there any alternative solutions or workarounds you've considered?
     validations:
       required: false
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 兼容性与影响 | Compatibility and Impact
+      description: 说明对现有用户、数据、权限、性能或隐私的可能影响。 / Explain possible effects on existing users, data, permissions, performance, or privacy.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认 | Checklist
+      options:
+        - label: 我已搜索已有 Issue，确认这不是重复请求。 / I searched existing issues and this is not a duplicate request.
+          required: true
+        - label: 我已移除凭据、私人对话和其他敏感信息。 / I removed credentials, private conversations, and other sensitive information.
+          required: true

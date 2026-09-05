@@ -1,0 +1,91 @@
+name: 使用帮助 / Configuration & Support
+description: 询问安装、配置、供应商连接或功能使用问题
+title: "support: "
+labels: ["support", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的提问！请先搜索已有 Issue 和 README，并用自己的话描述问题。
+        Thanks for asking! Please search existing issues and the README first, then describe the problem in your own words.
+
+        请勿粘贴 API Key、Token、Cookie、完整对话、私人链接或未经脱敏的日志。
+        Never paste API keys, tokens, cookies, full conversations, private links, or unsanitized logs.
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: 问题类型 | Topic
+      options:
+        - 安装或升级 | Installation or upgrade
+        - 供应商、模型或 API 配置 | Provider, model, or API configuration
+        - 对话、附件或工具使用 | Chat, attachments, or tools
+        - 搜索、语音或翻译 | Search, speech, or translation
+        - 工作区或 Web 访问 | Workspace or web access
+        - 其他使用问题 | Other usage question
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 问题描述 | Problem Description
+      description: 请描述使用场景、操作过程，以及目前卡住的地方。 / Describe your goal, what you tried, and where you are stuck.
+      placeholder: |
+        我想……
+        我已经尝试……
+        目前看到……
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: 错误信息或实际结果 | Error or Actual Result
+      description: 如有错误提示，请粘贴最小且已脱敏的片段。 / Include the smallest sanitized error excerpt if available.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Miffan 版本 | Miffan Version
+      placeholder: v3.0.0-rc.1
+    validations:
+      required: true
+
+  - type: input
+    id: android-version
+    attributes:
+      label: Android 版本 | Android Version
+      placeholder: Android 14
+    validations:
+      required: true
+
+  - type: input
+    id: provider-model
+    attributes:
+      label: 供应商与模型 | Provider and Model
+      description: 如果与问题相关，请填写名称，不要填写密钥或账号信息。 / If relevant, provide names only; never include credentials.
+      placeholder: OpenAI · gpt-4o
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 补充信息 | Additional Context
+      description: 可附截图、录屏或相关链接；请确认其中没有敏感信息。 / Add screenshots, recordings, or links after checking for sensitive data.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认 | Checklist
+      options:
+        - label: 我已搜索已有 Issue 和文档，确认这不是重复问题。 / I searched existing issues and documentation and this is not a duplicate.
+          required: true
+        - label: 我已移除 API Key、Token、Cookie、私人对话和其他敏感信息。 / I removed credentials, private conversations, and other sensitive information.
+          required: true
