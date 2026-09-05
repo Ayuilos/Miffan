@@ -29,7 +29,7 @@ body:
   - type: textarea
     id: context
     attributes:
-      label: 你想完成什么？| Goal
+      label: 问题描述 | Problem Description
       description: 请描述使用场景、操作过程，以及目前卡住的地方。 / Describe your goal, what you tried, and where you are stuck.
       placeholder: |
         我想……
