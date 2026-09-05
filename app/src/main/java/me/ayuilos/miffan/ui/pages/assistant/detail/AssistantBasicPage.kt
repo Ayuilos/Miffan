@@ -48,6 +48,8 @@ import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.ui.components.ui.AssistantCharacterPicker
 import me.ayuilos.miffan.data.model.isMiffanAvatar
 import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
@@ -168,6 +170,18 @@ internal fun AssistantBasicContent(
                     .size(80.dp)
                     .heroAnimation("assistant_${assistant.id}")
             )
+            AssistantCharacterPicker(
+                avatar = assistant.avatar,
+                onAvatarChange = { onUpdate(assistant.copy(avatar = it)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (assistant.avatar is Avatar.WhaleGirl) {
+                Text(
+                    "蓝色大肥鱼 · 爱吃饭、有点嘴硬，也会认真听你说话。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (assistant.avatar.isMiffanAvatar()) {
                 val appearance = assistant.avatar.miffanAppearanceOrDefault()
                 val motionProfile = assistant.avatar.miffanMotionProfileOrDefault()

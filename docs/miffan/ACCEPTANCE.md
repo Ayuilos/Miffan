@@ -1,5 +1,34 @@
 # Miffan Acceptance Checklist
 
+## Whale girl collection
+
+- Existing dummy, bowl, image and emoji avatars retain their stored values and rendering.
+- Whale girl avatars survive serialization and restart; legacy motion profiles decode
+  without changing the single whale personality, and its UI offers no profile selector.
+- Avatar selection affects only the selected assistant; theme selection does not change prompts or models.
+- Indigo hair, white headband, lateral fins, blue bow and face remain readable at small sizes.
+- Preserve the selected positive default smile, layered hair, curled ahoge and frilled
+  headband. Sad eyes and tears are not the default expression.
+- In-app heads have real alpha transparency on both light and dark surfaces: no colored
+  rectangle, halo, leftover background in hair curls, missing white frills/rice, or
+  stationary poster visible through moving transparent frames. Launcher icons keep
+  intentional adaptive backgrounds and must have no mismatched background seams.
+- Check idle, thinking, focus, typing, success and error at 28/32/40/80/168 dp in light and dark themes.
+- Historical idle avatars remain pixel-stable as time advances; reduced motion preserves meaningful expressions.
+- Direct playback tests verify that the illustrated face changes across frames (without
+  relying on whole-head movement), reactions stop at their last frame, and lifecycle
+  pause does not advance playback. All eight RGBA atlases must decode at declared sizes.
+- Waiting eats rice, text output chews rice, and only real reasoning becomes dizzy.
+  An inactive scene sleeps after the timeout or at night and wakes on interaction/input.
+- Loop boundaries and state changes are reviewed at the 168 dp chat size; no black
+  loading frame, whole-body fragments or generated emphasis marks may appear.
+- The empty-chat head uses the shared handoff when a response begins.
+- Whale theme previews and applied colors agree, including dynamic-color precedence.
+- Every launcher choice leaves exactly one launcher entry enabled and preserves sharing.
+- All icon drawables inflate, including both adaptive foregrounds; only the original
+  bowl supplies a monochrome layer because the whale portraits have opaque backgrounds.
+- Restore the original icon, restart and upgrade the app, and check launcher refresh/placement on device.
+
 ## Identity and persistence
 
 - A newly created assistant uses Miffan Classic without requiring avatar setup.

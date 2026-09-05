@@ -112,6 +112,7 @@ import me.ayuilos.miffan.ui.components.ai.SearchMode
 import me.ayuilos.miffan.ui.components.ai.completion.WorkspaceCompletionProvider
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
+import me.ayuilos.miffan.ui.components.ui.characterReplyHoldMillis
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionCamera
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionManager
@@ -486,7 +487,7 @@ private fun ChatPageContent(
         conversationId = conversation.id,
         completions = vm.assistantReplyCompleted,
         generationJobs = vm.conversationJob,
-        holdMillis = 900L,
+        holdMillis = assistant.avatar.characterReplyHoldMillis(),
     )
 
     val completionProviders = remember(

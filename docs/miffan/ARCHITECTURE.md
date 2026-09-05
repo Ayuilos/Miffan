@@ -1,5 +1,56 @@
 # Miffan Architecture
 
+## Additional character families
+
+`Avatar.WhaleGirl` serializes as `whale_girl`. Its legacy motion-profile field remains
+readable for compatibility but no longer changes whale behavior or appears in its UI.
+It is independent of `MiffanAppearance` and `MiffanKind`. `isCharacterAvatar`
+is the shared identity policy; `isMiffanAvatar` retains its bowl-only meaning.
+`AssistantCharacterMascot` dispatches semantic scene inputs to `WhaleGirlMascot` or
+`MiffanMascot`. The existing handoff host and successful-reply feedback remain shared.
+Assistant pages use the adapter and never draw a character themselves.
+
+`WhaleGirlMascot` renders transparent stills and H3 Max footage processed into RGBA
+frame atlases. The same assets work on every app surface, with no light/dark portrait
+variant or rounded background tile. Launcher icons also use the positive transparent
+idle head, on their intentional light/deep-sea adaptive icon backgrounds.
+Source illustrations and prompts are in `whale-girl/ASSETS.md`; do not redraw the face
+with Compose paths or introduce another manually approximated character.
+
+Eight clips cover Idle, Petting, Success, Surprise, Eating, Chewing, Thinking and
+Sleeping. The first five looping conditions (Idle, Eating, Chewing, Thinking, Sleeping)
+use 48 frames / 4 seconds / 12 fps; the three reactions use 36 frames / 1.5 seconds /
+24 fps. Frames are 384 px in eight-column atlases. No runtime API calls or video
+decoders are needed. Pages pass semantic generation phase: a real unfinished reasoning
+part selects Thinking, ordinary waiting selects Eating and text streaming selects
+Chewing. Input focus alone never pretends that the model is reasoning.
+
+`WhaleGirlTimeline` counts foreground frame-clock time, wraps loops and holds the final
+reaction frame. State changes crossfade for 160 ms. Atlas loading happens on the IO
+dispatcher with ARGB_8888; the shared cache uses a 32 MiB allocation budget. A poster
+is visible only while its atlas is unavailable, never underneath transparent frames.
+Eviction does not recycle a bitmap another portrait may still display. Missing assets
+fall back to the transparent poster.
+
+Historical idle avatars and reduced-motion previews render only the appropriate still
+and never enter atlas loading or playback. Playback pauses below RESUMED and resumes
+without catching up background time. The existing semantic handoff and one-shot tap
+and submission inputs are preserved. `characterReplyHoldMillis` gives the whale's
+1.5-second authored celebration a fixed 1.7-second display window; other avatars keep
+their previous reply-feedback duration.
+
+The current generation records and transparency pipeline are in
+`output/whale-girl-motion-v2/`; earlier opaque samples remain in
+`output/whale-girl-motion/` as historical references. Background removal must preserve
+white headband frills, rice, bowl, fine hair and the sleep bubble. Source windows and
+frame counts are recorded in metadata and checked against runtime by device tests.
+
+Launcher choice lives in PackageManager component state, not a second settings field.
+Three launcher aliases target the always-enabled `RouteActivity`, preserving incoming
+shares and explicit shortcuts. Android 13+ uses atomic component updates; older APIs
+enable the selected alias before disabling alternatives and attempt rollback on failure.
+Device launchers control icon refresh timing and existing home-screen placement.
+
 ## Model boundary
 
 `Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance` and a separate `MiffanMotionProfile`. Appearance stores a preset palette plus a palette/theme color-source choice; Character V1 adds a curated Miffan kind; Motion V1 stores Lively, Calm, or Curious.

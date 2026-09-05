@@ -1,17 +1,12 @@
 package me.ayuilos.miffan.ui.pages.setting
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -20,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -29,11 +23,13 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.rememberAmoledDarkMode
 import me.ayuilos.miffan.ui.theme.CustomColors
+import me.ayuilos.miffan.ui.theme.presets.WHALE_THEME_ID
 import me.ayuilos.miffan.utils.plus
 import org.koin.androidx.compose.koinViewModel
 
@@ -66,6 +62,34 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
+                val assistant = settings.assistants.find { it.id == settings.assistantId }
+                WhaleThemeCard(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    themeApplied = settings.themeId == WHALE_THEME_ID && !settings.dynamicColor,
+                    avatarApplied = assistant?.avatar is Avatar.WhaleGirl && assistant.useAssistantAvatar,
+                    assistantName = assistant?.name,
+                    enabled = !settings.init,
+                    onApplyTheme = {
+                        vm.updateSettings { current ->
+                            current.copy(themeId = WHALE_THEME_ID, dynamicColor = false)
+                        }
+                    },
+                    onApplyAvatar = {
+                        val assistantId = assistant?.id
+                        vm.updateSettings { current ->
+                            current.copy(assistants = current.assistants.map { candidate ->
+                                if (candidate.id == assistantId) {
+                                    candidate.copy(
+                                        avatar = candidate.avatar as? Avatar.WhaleGirl ?: Avatar.WhaleGirl(),
+                                        useAssistantAvatar = true,
+                                    )
+                                } else candidate
+                            })
+                        }
+                    },
+                )
+            }
+            item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
                 ) {
@@ -96,6 +120,9 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                 }
+            }
+            item {
+                LauncherIconPicker()
             }
         }
     }

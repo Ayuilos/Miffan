@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.withCharacterMotionProfile
 import me.ayuilos.miffan.data.model.MiffanAppearance
 import me.ayuilos.miffan.data.model.MiffanMotionProfile
 
@@ -27,6 +29,7 @@ fun MiffanMotionProfileEditor(
     motionProfile: MiffanMotionProfile,
     onMotionProfileChange: (MiffanMotionProfile) -> Unit,
     modifier: Modifier = Modifier,
+    previewAvatar: Avatar? = null,
 ) {
     Column(
         modifier = modifier,
@@ -71,13 +74,21 @@ fun MiffanMotionProfileEditor(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
-                        MiffanMascot(
-                            state = MiffanMascotState.Idle,
-                            appearance = appearance,
-                            motionProfile = profile,
-                            previewIdleGestures = true,
-                            modifier = Modifier.size(52.dp),
-                        )
+                        if (previewAvatar != null) {
+                            AssistantCharacterMascot(
+                                avatar = previewAvatar.withCharacterMotionProfile(profile),
+                                state = MiffanMascotState.Idle,
+                                modifier = Modifier.size(52.dp),
+                            )
+                        } else {
+                            MiffanMascot(
+                                state = MiffanMascotState.Idle,
+                                appearance = appearance,
+                                motionProfile = profile,
+                                previewIdleGestures = true,
+                                modifier = Modifier.size(52.dp),
+                            )
+                        }
                         Text(
                             text = profile.displayName,
                             style = MaterialTheme.typography.labelMedium,

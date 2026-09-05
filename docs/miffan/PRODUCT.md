@@ -1,5 +1,38 @@
 # Miffan Character System
 
+## Whale girl theme V1
+
+The optional 蓝色大肥鱼 collection introduces a separate head-only whale girl identity.
+It retains indigo-to-light-blue hair, a curved center fringe and ahoge, a white scalloped
+headband, two lateral whale fins, a blue side bow, blue eyes and round cheeks. There is
+no body or full-body illustration. This is a new character family, not a bowl variant;
+the bowl recognition rules below continue to apply to every Miffan inhabitant.
+
+Users can select the whale girl per assistant in its basic settings or avatar picker.
+Appearance settings preview the light and dark whale theme, apply its colors, select
+the whale avatar for the current assistant, and independently choose a launcher icon.
+Applying colors disables dynamic color explicitly. The character keeps its identifying
+blue colors in other themes. Existing assistants and custom avatars are not migrated.
+The illustration preserves the reference's detailed anime face and hair. In-app heads
+and animations have transparent backgrounds: one set works on both light and dark
+surfaces without a colored square or rounded portrait tile. The whale girl has one
+optimistic, food-loving, occasionally dizzy personality; there is no whale personality
+or motion-profile selector. Choosing an avatar or theme never changes a model, system
+prompt or conversation history.
+
+The selected expressions are A (gentle default smile), C (contented petting), F (smug
+success), I (surprised reminder), K (big-mouth rice eating), L (puffed-cheek chewing),
+M (dizzy spiral-eye thinking), and O (exaggerated dozing with a sleep bubble). Eating
+may include the small rice bowl and chopsticks, but never introduces a body or hands.
+Ordinary waiting uses eating; text output uses chewing; only an actual unfinished
+reasoning part uses dizzy thinking. The default face is positive and never tearful.
+Petting, success and reminders are short reactions. An inactive scene may doze at night
+or after prolonged inactivity, and wakes for input or interaction. Errors stop the
+animation on the neutral positive still with a readable error cue. Historical avatars
+remain still, and reduced motion preserves the matching expression.
+Launcher choices include the original bowl, the whale girl and a deep-sea background.
+Users can restore the original launcher icon independently of the theme or character.
+
 ## Product intent
 
 Miffan turns the app's bowl icon into a persistent assistant identity. When an assistant has no custom image or emoji, the assistant is represented by an animated Miffan everywhere: selection, settings, empty chat, waiting, and message identity.

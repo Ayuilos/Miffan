@@ -101,17 +101,15 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
-import me.ayuilos.miffan.data.model.MiffanAppearance
-import me.ayuilos.miffan.data.model.MiffanMotionProfile
-import me.ayuilos.miffan.data.model.isMiffanAvatar
-import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
-import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.isCharacterAvatar
 import me.ayuilos.miffan.service.ChatError
 import me.ayuilos.miffan.ui.components.message.ChatMessage
+import me.ayuilos.miffan.ui.components.ui.AssistantCharacterMascot
+import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.ErrorCardsDisplay
 import me.ayuilos.miffan.ui.components.ui.ListSelectableItem
-import me.ayuilos.miffan.ui.components.ui.MiffanMascot
 import me.ayuilos.miffan.ui.components.ui.MiffanHandoff
 import me.ayuilos.miffan.ui.components.ui.MiffanHandoffAnchor
 import me.ayuilos.miffan.ui.components.ui.MiffanHandoffDestination
@@ -321,7 +319,7 @@ private fun ChatListNormal(
     }
     val currentNodes = conversation.currentMessageNodes
     val lastMessageIndex = currentNodes.lastIndex
-    val miffanIdentity = assistant == null || assistant.avatar.isMiffanAvatar()
+    val miffanIdentity = assistant == null || assistant.avatar.isCharacterAvatar()
     val handoff = remember(conversation.id) { MiffanHandoffState() }
     val handoffDestination = when {
         loading -> MiffanHandoffDestination.WaitingReply
@@ -637,15 +635,15 @@ private fun ChatListNormal(
                     destination = handoffDestination,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                 ) { mascotModifier, visible ->
-                    MiffanMascot(
+                    AssistantCharacterMascot(
+                        avatar = assistant?.avatar ?: Avatar.Miffan(),
+                        generationPhase = assistantGenerationPhase(currentNodes.lastOrNull()?.currentMessage, loading),
                         state = if (!visible) MiffanMascotState.Idle else resolveChatMascotState(
                             hasErrors = hasMascotErrors,
                             semanticState = mascotSemanticState,
                             loading = loading,
                             inputState = mascotInputState,
                         ),
-                        appearance = assistant?.avatar?.miffanAppearanceOrDefault() ?: MiffanAppearance(),
-                        motionProfile = assistant?.avatar?.miffanMotionProfileOrDefault() ?: MiffanMotionProfile.CURIOUS,
                         presentation = if (visible && handoffDestination == MiffanHandoffDestination.EmptyChat) {
                             MiffanPresentation.Scene
                         } else MiffanPresentation.Avatar,

@@ -40,6 +40,12 @@ class SettingVM(
         }
     }
 
+    fun updateSettings(transform: (Settings) -> Settings) {
+        viewModelScope.launch {
+            settingsStore.update(transform)
+        }
+    }
+
     fun downloadUpdate(context: Context, download: UpdateDownload) {
         updateChecker.downloadUpdate(context, download)
     }
