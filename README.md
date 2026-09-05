@@ -167,7 +167,7 @@ Upstream copyright and attribution are retained as required by the license. Miff
 
 Issues and pull requests are welcome. For substantial changes, open an issue first so the product direction and implementation scope can be discussed. When reporting a bug, include the Miffan version, Android version, provider type, and reproducible steps, but remove API keys and private conversation content.
 
-Before submitting a pull request, please read the [contribution guidelines](CONTRIBUTING.md).
+Before opening an issue, please read the [Issue guidelines](docs/ISSUE_GUIDELINES.md). Before submitting a pull request, please read the [contribution guidelines](CONTRIBUTING.md).
 
 ## License
 
