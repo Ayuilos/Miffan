@@ -63,6 +63,10 @@ All 15 aliases switch in one transaction; application startup reconciles newly a
 external aliases against the existing launcher choice after an upgrade. Android 13+ uses atomic component updates; older APIs
 enable the selected alias before disabling alternatives and attempt rollback on failure.
 Device launchers control icon refresh timing and existing home-screen placement.
+PROCESS_TEXT aliases also declare their selected icon and localized translation label
+on the intent filter, exposing both directly through ResolveInfo instead of requiring
+ActivityInfo fallback. Tests cover unscoped browser-style queries with flags 0 as well
+as GET_RESOLVED_FILTER, alongside actual icon pixels for all three selections.
 
 Onboarding writes its collection shortcut through one atomic `SettingsStore.update`:
 palette and the selected built-in character change together. Its content consumes the

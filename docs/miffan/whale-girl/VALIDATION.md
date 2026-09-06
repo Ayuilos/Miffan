@@ -48,3 +48,12 @@
 - Debug/设备测试APK构建、arm64 APK签名验证通过；API35模拟器15项播放及视觉回归全部通过。日志在 `build/whale-headband/reports/`。
 - 修复后的八套图集共19,797,704 bytes。可逐帧切换深浅背景的对比页为 `output/whale-girl-motion-v3/headband-preview.html`，修复前素材完整保存在 `pre-headband-fix/`。
 - 本次修正已证实的头箍透明误删；未重新生成视频或产生费用，未改原视频自带细节变化及循环过渡方式。未在实体手机验证。
+
+## 2026-09-06：文本选中翻译入口
+
+- 三个 PROCESS_TEXT intent-filter 增加各自 icon 与本地化 label。旧 APK 专项测试确认 ResolveInfo.icon 为0，新版直接提供所选图标资源；已有 Activity alias 图标和切换逻辑保持不变。
+- 六种语言的 process_text_translate_label 原来全部是简体中文“Miffan-翻译”；通过 locale-tui 的单条更新接口修正为各语言“使用 Miffan 翻译”。未配置自动翻译凭据，使用人工翻译，逐文件确认只改目标条目且 XML 有效。
+- Debug/测试APK构建及arm64 APK签名验证通过。API35模拟器5项图标回归通过，新增全局ACTION_PROCESS_TEXT text/plain查询（flags0和GET_RESOLVED_FILTER）、三款图标唯一目标、直接icon/labelRes、ActivityInfo回退与实际loadIcon像素验证。
+- 真实Chrome本地页面长按选中文本后，翻译入口位于展开菜单；本机Chrome该菜单只显示文字，因此没有复现用户手机上的“旧图标仍显示”。不能将直接字段缺失认定为用户Chrome现象的已证实根因。本次为入口元数据兼容加固，实体手机视觉结果仍需确认。
+- 对照 [Chromium菜单实现](https://chromium.googlesource.com/chromium/src/+/2e551bd1478216bfe653eb8740863b8ed02f6d0c/content/public/android/java/src/org/chromium/content/browser/selection/SelectActionMenuHelper.java) 和 [Android intent-filter属性](https://developer.android.com/guide/topics/manifest/intent-filter-element)；标准Chrome使用ResolveInfo.loadIcon，旧ActivityInfo回退理论上也应正确，因此未宣称所有浏览器均有相同缺陷。
+- 构建、旧版失败与新版通过日志和Chrome截图位于 `build/process-text/`。没有修改翻译请求或会话内容。

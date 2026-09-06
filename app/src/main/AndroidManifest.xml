@@ -152,7 +152,10 @@
       android:exported="true"
       android:icon="@mipmap/ic_launcher"
       android:label="@string/process_text_translate_label">
-      <intent-filter android:priority="100">
+      <intent-filter
+        android:priority="100"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/process_text_translate_label">
         <action android:name="android.intent.action.PROCESS_TEXT" />
 
         <category android:name="android.intent.category.DEFAULT" />
@@ -167,7 +170,10 @@
       android:exported="true"
       android:icon="@mipmap/ic_launcher_whale_girl"
       android:label="@string/process_text_translate_label">
-      <intent-filter android:priority="100">
+      <intent-filter
+        android:priority="100"
+        android:icon="@mipmap/ic_launcher_whale_girl"
+        android:label="@string/process_text_translate_label">
         <action android:name="android.intent.action.PROCESS_TEXT" />
 
         <category android:name="android.intent.category.DEFAULT" />
@@ -182,7 +188,10 @@
       android:exported="true"
       android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
       android:label="@string/process_text_translate_label">
-      <intent-filter android:priority="100">
+      <intent-filter
+        android:priority="100"
+        android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+        android:label="@string/process_text_translate_label">
         <action android:name="android.intent.action.PROCESS_TEXT" />
 
         <category android:name="android.intent.category.DEFAULT" />

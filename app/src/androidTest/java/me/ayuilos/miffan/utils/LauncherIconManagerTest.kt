@@ -67,6 +67,64 @@ class LauncherIconManagerTest {
         assertEquals(originalSelection, manager.selectedIcon())
     }
 
+    @Suppress("DEPRECATION")
+    @Test
+    fun browserProcessTextQueriesExposeTheSelectedIconAndTranslationLabelDirectly() {
+        val manager = LauncherIconManager(context)
+        val packageManager = context.packageManager
+        val originalSelection = manager.selectedIcon() ?: LauncherIcon.MIFFAN
+        val intent = Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain")
+        val labelResource = R.string.process_text_translate_label
+        try {
+            val choices = LauncherIcon.entries.filter { it != originalSelection } + originalSelection
+            choices.forEach { icon ->
+                manager.select(icon)
+                val results = listOf(0, PackageManager.GET_RESOLVED_FILTER).map { flags ->
+                    // Browser selection menus query globally with flags=0; restricting the
+                    // request to this package would miss differences in that resolver path.
+                    val matches = packageManager.queryIntentActivities(intent, flags)
+                        .filter { it.activityInfo.packageName == context.packageName }
+                    assertEquals("Browser query flags=$flags must expose one Miffan translator for $icon",
+                        1, matches.size)
+                    flags to matches.single()
+                }
+                results.forEach { (flags, resolved) ->
+                    val label = "$icon browser query flags=$flags"
+                    val activity = resolved.activityInfo
+                    assertEquals("me.ayuilos.miffan.external.ProcessText.${icon.aliasName}", activity.name)
+                    assertEquals("me.ayuilos.miffan.ui.activity.ProcessTextTranslatorActivity", activity.targetActivity)
+                    // Some menus read these fields directly, bypassing ActivityInfo fallback.
+                    assertEquals("$label must expose a direct resolver icon", icon.preview, resolved.icon)
+                    assertEquals("$label must expose the translation label directly", labelResource, resolved.labelRes)
+                    assertEquals(icon.preview, resolved.iconResource)
+                    assertEquals(icon.preview, activity.icon)
+                    assertEquals(labelResource, activity.labelRes)
+                    assertEquals(context.getString(labelResource), resolved.loadLabel(packageManager).toString())
+                    if (flags == PackageManager.GET_RESOLVED_FILTER) {
+                        val filter = requireNotNull(resolved.filter)
+                        // IntentFilter carries matching rules; its manifest icon/label are
+                        // exposed in ResolveInfo.icon/labelRes, not IntentFilter methods.
+                        assertTrue(filter.hasAction(Intent.ACTION_PROCESS_TEXT))
+                        assertTrue(filter.hasDataType("text/plain"))
+                        assertTrue(filter.hasCategory(Intent.CATEGORY_DEFAULT))
+                    }
+                    val expected = renderIcon(requireNotNull(ContextCompat.getDrawable(context, icon.preview)))
+                    val actual = renderIcon(resolved.loadIcon(packageManager))
+                    try {
+                        assertTrue("$label must load the selected portrait artwork", expected.sameAs(actual))
+                    } finally {
+                        expected.recycle()
+                        actual.recycle()
+                    }
+                }
+                assertEquals(results.first().second.activityInfo.name, results.last().second.activityInfo.name)
+                assertLauncher(icon)
+            }
+        } finally {
+            manager.select(originalSelection)
+        }
+    }
+
     @Test
     fun reconcileRepairsUpgradeDefaultsWithoutChangingTheSelectedLauncher() {
         val manager = LauncherIconManager(context)
