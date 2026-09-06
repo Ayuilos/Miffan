@@ -40,7 +40,7 @@ class LauncherIconManagerTest {
 
         try {
             // Switch away first; a new manager must recover every choice from PackageManager.
-            val choices = LauncherIcon.entries.filter { it != originalSelection } + originalSelection
+            val choices = LauncherIcon.choices.filter { it != originalSelection } + originalSelection
             choices.forEach { icon ->
                 manager.select(icon)
                 assertEquals(icon, LauncherIconManager(context).selectedIcon())
@@ -76,7 +76,7 @@ class LauncherIconManagerTest {
         val intent = Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain")
         val labelResource = R.string.process_text_translate_label
         try {
-            val choices = LauncherIcon.entries.filter { it != originalSelection } + originalSelection
+            val choices = LauncherIcon.choices.filter { it != originalSelection } + originalSelection
             choices.forEach { icon ->
                 manager.select(icon)
                 val results = listOf(0, PackageManager.GET_RESOLVED_FILTER).map { flags ->
@@ -131,7 +131,7 @@ class LauncherIconManagerTest {
         val packageManager = context.packageManager
         val originalSelection = manager.selectedIcon() ?: LauncherIcon.MIFFAN
         try {
-            listOf(LauncherIcon.WHALE_GIRL, LauncherIcon.WHALE_GIRL_DEEP_SEA).forEach { icon ->
+            listOf(LauncherIcon.WHALE_GIRL).forEach { icon ->
                 manager.select(icon)
                 val launcherStates = LauncherIcon.entries.associate { choice ->
                     val alias = component("me.ayuilos.miffan.launcher.${choice.aliasName}")
@@ -162,6 +162,43 @@ class LauncherIconManagerTest {
                 assertEquals("Already repaired entries must be a no-op", repairedStates,
                     allAliases().associateWith(packageManager::getComponentEnabledSetting))
             }
+        } finally {
+            manager.select(originalSelection)
+        }
+    }
+
+    @Test
+    fun legacyDeepSeaSelectionMigratesToTheOnlyWhaleIconAcrossAllEntries() {
+        val manager = LauncherIconManager(context)
+        val packageManager = context.packageManager
+        val originalSelection = manager.selectedIcon() ?: LauncherIcon.MIFFAN
+        try {
+            assertEquals(listOf(LauncherIcon.MIFFAN, LauncherIcon.WHALE_GIRL), LauncherIcon.choices)
+            // Reproduce an installed older version's saved PackageManager overrides.
+            externalIntents().forEach { entry ->
+                LauncherIcon.entries.sortedBy { it != LauncherIcon.WHALE_GIRL_DEEP_SEA }.forEach { icon ->
+                    packageManager.setComponentEnabledSetting(
+                        component(entry.alias(icon)),
+                        if (icon == LauncherIcon.WHALE_GIRL_DEEP_SEA)
+                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                        else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        PackageManager.DONT_KILL_APP,
+                    )
+                }
+            }
+            assertEquals(LauncherIcon.WHALE_GIRL, manager.selectedIcon())
+            manager.reconcileExternalEntries()
+            assertLauncher(LauncherIcon.WHALE_GIRL)
+            externalIntents().forEach { entry ->
+                assertExternalEntry(entry, LauncherIcon.WHALE_GIRL)
+                assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    packageManager.getComponentEnabledSetting(component(entry.alias(LauncherIcon.WHALE_GIRL_DEEP_SEA))))
+            }
+            val migrated = allAliases().associateWith(packageManager::getComponentEnabledSetting)
+            manager.reconcileExternalEntries()
+            manager.select(LauncherIcon.WHALE_GIRL_DEEP_SEA)
+            assertEquals(migrated, allAliases().associateWith(packageManager::getComponentEnabledSetting))
+            assertEquals(LauncherIcon.WHALE_GIRL, LauncherIconManager(context).selectedIcon())
         } finally {
             manager.select(originalSelection)
         }

@@ -33,12 +33,11 @@ import me.ayuilos.miffan.ui.theme.presets.WhaleThemePreset
 @Composable
 internal fun WhaleThemeCard(
     themeApplied: Boolean,
-    avatarApplied: Boolean,
-    assistantName: String?,
     enabled: Boolean,
     onApplyTheme: () -> Unit,
-    onApplyAvatar: () -> Unit,
     modifier: Modifier = Modifier,
+    onTryTheme: (() -> Unit)? = null,
+    onRestoreTheme: (() -> Unit)? = null,
 ) {
     var previewClip by remember { mutableStateOf(WhaleGirlClip.IDLE) }
     var replayId by remember { mutableIntStateOf(0) }
@@ -73,6 +72,20 @@ internal fun WhaleThemeCard(
                 WhaleThemePreview(dark = false, clip = previewClip, replayId = replayId, modifier = Modifier.weight(1f))
                 WhaleThemePreview(dark = true, clip = previewClip, replayId = replayId, modifier = Modifier.weight(1f))
             }
+            onTryTheme?.let { tryTheme ->
+                Button(onClick = tryTheme, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                    Text("一键体验蓝鱼主题")
+                }
+                Text(
+                    "首次体验会创建专属大肥鱼助手，再次体验会打开已有的大肥鱼。名字、性格和配置都可编辑或重置。桌面图标可在下方单独选择。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            onRestoreTheme?.let { restoreTheme ->
+                OutlinedButton(onClick = restoreTheme, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                    Text("恢复之前的配色")
+                }
+            }
             Button(
                 onClick = onApplyTheme,
                 enabled = enabled && !themeApplied,
@@ -85,19 +98,7 @@ internal fun WhaleThemeCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (assistantName != null) {
-                Text(
-                    "当前助手：${assistantName.ifBlank { "未命名助手" }}",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                OutlinedButton(
-                    onClick = onApplyAvatar,
-                    enabled = enabled && !avatarApplied,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(if (avatarApplied) "当前助手已使用蓝鱼头像" else "当前助手使用蓝鱼头像")
-                }
-            }
+
         }
     }
 }

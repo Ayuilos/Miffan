@@ -12,6 +12,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlin.uuid.Uuid
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -23,7 +30,8 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
-import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.markWhaleThemeSeen
+import me.ayuilos.miffan.data.model.restoreWhaleThemeTrial
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.context.LocalNavController
@@ -39,6 +47,19 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
     var amoledDarkMode by rememberAmoledDarkMode()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
+    val scope = rememberCoroutineScope()
+    var openingWhale by rememberSaveable { mutableStateOf(false) }
+    var trialError by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(openingWhale, settings.assistantId, settings.themeId, settings.whaleThemeDiscovery) {
+        if (openingWhale && settings.themeId == WHALE_THEME_ID &&
+            settings.assistantId == settings.whaleThemeDiscovery.dedicatedAssistantId) {
+            openingWhale = false
+            navController.clearAndNavigate(Screen.Chat(Uuid.random().toString()))
+        }
+    }
+    LaunchedEffect(settings.init) {
+        if (!settings.init) vm.updateSettings { it.markWhaleThemeSeen() }
+    }
 
     Scaffold(
         topBar = {
@@ -62,33 +83,34 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                val assistant = settings.assistants.find { it.id == settings.assistantId }
                 WhaleThemeCard(
                     modifier = Modifier.padding(horizontal = 8.dp),
                     themeApplied = settings.themeId == WHALE_THEME_ID && !settings.dynamicColor,
-                    avatarApplied = assistant?.avatar is Avatar.WhaleGirl && assistant.useAssistantAvatar,
-                    assistantName = assistant?.name,
-                    enabled = !settings.init,
+                    enabled = !settings.init && !openingWhale,
+                    onTryTheme = {
+                        openingWhale = true
+                        trialError = null
+                        scope.launch {
+                            try { vm.experienceWhaleTheme() }
+                            catch (failure: Exception) {
+                                if (failure is CancellationException) throw failure
+                                openingWhale = false
+                                trialError = "暂时无法创建助手，请重试。"
+                            }
+                        }
+                    },
+                    onRestoreTheme = if (settings.whaleThemeDiscovery.previousAppearance != null) {
+                        { vm.updateSettings { it.restoreWhaleThemeTrial() } }
+                    } else null,
                     onApplyTheme = {
                         vm.updateSettings { current ->
                             current.copy(themeId = WHALE_THEME_ID, dynamicColor = false)
                         }
                     },
-                    onApplyAvatar = {
-                        val assistantId = assistant?.id
-                        vm.updateSettings { current ->
-                            current.copy(assistants = current.assistants.map { candidate ->
-                                if (candidate.id == assistantId) {
-                                    candidate.copy(
-                                        avatar = candidate.avatar as? Avatar.WhaleGirl ?: Avatar.WhaleGirl(),
-                                        useAssistantAvatar = true,
-                                    )
-                                } else candidate
-                            })
-                        }
-                    },
+
                 )
             }
+            trialError?.let { message -> item { Text(message) } }
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),

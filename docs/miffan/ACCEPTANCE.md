@@ -98,6 +98,22 @@
 
 ## Regression and delivery
 
+- Existing installations see the whale introduction once on a regular chat launch;
+  fresh installs, external intents and active database migration do not show it.
+- Later/Back/outside-dismiss does not re-prompt after restart. Settings retain the
+  unseen-theme marker for at most 30 days and clear it on viewing appearance.
+- Only confirming trial creates a dedicated assistant and opens a new chat; all existing
+  assistants and global provider/model settings are preserved. Repeated trials reuse its
+  stored id without overwriting edits; deletion permits recreation on later confirmation.
+- Reset remains available after editing the dedicated assistant name/avatar, requires
+  confirmation, restores complete defaults with the same id and leaves history intact.
+- Palette restore preserves all assistants. Rotation and repeated taps cannot overwrite
+  the original backup. Launcher opt-in remains unchecked by default.
+- Only one whale launcher icon is offered. Legacy deep-sea selection migrates without
+  duplicate launcher/external entries and no longer forces dark startup appearance.
+- Introduction actions remain reachable on small/landscape screens, previews pause
+  when backgrounded, and reduced motion keeps the selected still image.
+
 - In a Debug build, Settings > About > long-press Version opens Debug Mode, where the update-reminder preview can deterministically drive the drawer badge, Settings banner, and Miffan update-available state without a real release.
 - Avatar serialization round-trips for all Miffan presets.
 - Avatar serialization round-trips for every palette and motion-profile combination.

@@ -80,7 +80,7 @@ fun LauncherIconPicker() {
         )
         Card {
             Column(Modifier.selectableGroup()) {
-                LauncherIcon.entries.forEach { icon ->
+                LauncherIcon.choices.forEach { icon ->
                     val preview = remember(context, icon) {
                         ContextCompat.getDrawable(context, icon.preview)
                             ?.toBitmap(width = 192, height = 192)?.asImageBitmap()

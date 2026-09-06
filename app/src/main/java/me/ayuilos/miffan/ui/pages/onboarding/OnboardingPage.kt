@@ -236,7 +236,7 @@ internal fun OnboardingContent(
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                     Text(
-                        "一键切换配色和角色，关闭恢复默认外观",
+                        "开启后创建并切换到可编辑的大肥鱼专属助手，同时应用主题。关闭仅恢复配色，助手会保留。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

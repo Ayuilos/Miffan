@@ -28,11 +28,15 @@ import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.plus
+import me.ayuilos.miffan.data.model.hasNewWhaleTheme
+import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.ui.components.ui.WhaleThemeNewBadge
 
 @Composable
 fun SettingPreferencesPage() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
+    val settings = LocalSettings.current
 
     Scaffold(
         topBar = {
@@ -63,6 +67,9 @@ fun SettingPreferencesPage() {
                         onClick = { navController.navigate(Screen.SettingPreferencesTheme) },
                         leadingContent = { Icon(HugeIcons.Sun01, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_theme)) },
+                        trailingContent = {
+                            if (settings.hasNewWhaleTheme(System.currentTimeMillis())) WhaleThemeNewBadge()
+                        },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_theme_desc)) },
                     )
                     item(

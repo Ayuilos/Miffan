@@ -4,7 +4,7 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MiffanMotionProfile
-import me.ayuilos.miffan.ui.theme.PresetThemes
+import me.ayuilos.miffan.data.model.createWhaleAssistant
 import me.ayuilos.miffan.ui.theme.presets.WHALE_THEME_ID
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
@@ -15,53 +15,56 @@ import org.junit.Test
 
 class OnboardingThemeTest {
     @Test
-    fun enablingChangesOnlyAppearanceAndTheSelectedBuiltInCharacter() {
-        listOf(Avatar.Miffan(), Avatar.Dummy).forEach { avatar ->
+    fun enablingCreatesAndSelectsIndependentAssistantWithoutChangingExistingConfiguration() {
+        listOf(Avatar.Miffan(), Avatar.Dummy, Avatar.Image("content://test/avatar"), Avatar.Emoji("🐳")).forEach { avatar ->
             val before = configuredSettings(avatar)
             val after = before.withOnboardingWhaleTheme(true)
             assertEquals(WHALE_THEME_ID, after.themeId)
             assertFalse(after.dynamicColor)
-            val selected = after.assistants.first { it.id == before.assistantId }
-            assertEquals(Avatar.WhaleGirl(), selected.avatar)
-            assertTrue(selected.useAssistantAvatar)
-            assertEquals(before.assistants.first().copy(avatar = selected.avatar, useAssistantAvatar = true), selected)
-            // Whole-settings comparison also protects provider credentials, all model selections,
-            // prompts, user avatars, and every assistant other than the selected character.
+            val whale = after.assistants.last()
+            assertEquals(createWhaleAssistant(whale.id), whale)
+            assertEquals(whale.id, after.assistantId)
+            assertEquals(whale.id, after.whaleThemeDiscovery.dedicatedAssistantId)
+            assertEquals(before.assistants, after.assistants.dropLast(1))
             assertEquals(before, after.copy(themeId = before.themeId, dynamicColor = before.dynamicColor,
-                assistants = listOf(before.assistants.first()) + after.assistants.drop(1)))
+                assistantId = before.assistantId, assistants = before.assistants,
+                whaleThemeDiscovery = before.whaleThemeDiscovery))
         }
     }
 
     @Test
-    fun customImageAndEmojiAvatarsSurviveBothSwitchDirections() {
-        listOf(Avatar.Image("content://test/selected-avatar"), Avatar.Emoji("🐳")).forEach { avatar ->
-            val before = configuredSettings(avatar)
-            val enabled = before.withOnboardingWhaleTheme(true)
-            val disabled = enabled.withOnboardingWhaleTheme(false)
-            assertEquals(before.assistants, enabled.assistants)
-            assertEquals(before.assistants, disabled.assistants)
-            assertEquals(before, disabled)
-        }
-    }
-
-    @Test
-    fun disablingRestoresDefaultThemeAndBowlWithoutResettingConversationConfiguration() {
-        val before = configuredSettings(Avatar.Miffan())
-        val restored = before.withOnboardingWhaleTheme(true).withOnboardingWhaleTheme(false)
-        assertEquals(PresetThemes.first().id, restored.themeId)
-        assertTrue(restored.dynamicColor)
-        assertEquals(Avatar.Miffan(), restored.assistants.first().avatar)
-        assertEquals(before.copy(assistants = listOf(before.assistants.first().copy(useAssistantAvatar = true)) +
-            before.assistants.drop(1)), restored)
+    fun disablingOnlyRestoresPreviousPaletteAndKeepsDedicatedAssistant() {
+        val before = configuredSettings(Avatar.Miffan()).copy(themeId = "my-theme", dynamicColor = false)
+        val enabled = before.withOnboardingWhaleTheme(true)
+        val restored = enabled.withOnboardingWhaleTheme(false)
+        assertEquals(before.themeId, restored.themeId)
+        assertEquals(before.dynamicColor, restored.dynamicColor)
+        assertEquals(enabled.assistants, restored.assistants)
+        assertEquals(enabled.assistantId, restored.assistantId)
+        assertEquals(enabled.whaleThemeDiscovery.dedicatedAssistantId, restored.whaleThemeDiscovery.dedicatedAssistantId)
+        assertEquals(before.assistants, restored.assistants.dropLast(1))
         assertEquals(restored, restored.withOnboardingWhaleTheme(false))
     }
 
     @Test
-    fun reapplyingKeepsLegacySerializedWhaleProfileAndIsIdempotent() {
+    fun togglingOnAgainPreservesDedicatedAssistantEditsAndDoesNotCreateDuplicates() {
         val before = configuredSettings(Avatar.WhaleGirl(MiffanMotionProfile.CALM))
         val enabled = before.withOnboardingWhaleTheme(true)
-        assertEquals(before.assistants.first().avatar, enabled.assistants.first().avatar)
-        assertEquals(enabled, enabled.withOnboardingWhaleTheme(true))
+        val edited = enabled.copy(assistants = enabled.assistants.map {
+            if (it.id == enabled.assistantId) it.copy(name = "My name", avatar = Avatar.Emoji("🌱"), systemPrompt = "My prompt") else it
+        })
+        val reenabled = edited.withOnboardingWhaleTheme(false).withOnboardingWhaleTheme(true)
+        assertEquals(edited.assistants, reenabled.assistants)
+        assertEquals(edited.assistantId, reenabled.assistantId)
+        assertEquals(reenabled, reenabled.withOnboardingWhaleTheme(true))
+        assertEquals(before.assistants, reenabled.assistants.dropLast(1))
+    }
+
+    @Test
+    fun turningOffBeforeAdoptionNeverCreatesOrModifiesAnAssistant() {
+        val before = configuredSettings(Avatar.Emoji("🐳"))
+        assertEquals(before, before.withOnboardingWhaleTheme(false))
+        assertTrue(before.whaleThemeDiscovery.dedicatedAssistantId == null)
     }
 
     private fun configuredSettings(avatar: Avatar): Settings {

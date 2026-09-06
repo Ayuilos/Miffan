@@ -13,7 +13,7 @@ Assistant pages use the adapter and never draw a character themselves.
 `WhaleGirlMascot` renders transparent stills and H3 Max footage processed into RGBA
 frame atlases. The same assets work on every app surface, with no light/dark portrait
 variant or rounded background tile. Launcher icons also use the positive transparent
-idle head, on their intentional light/deep-sea adaptive icon backgrounds.
+idle head on one adaptive icon background; legacy deep-sea aliases remain declared for upgrade compatibility and migrate to the canonical whale selection.
 Source illustrations and prompts are in `whale-girl/ASSETS.md`; do not redraw the face
 with Compose paths or introduce another manually approximated character.
 
@@ -66,10 +66,11 @@ Device launchers control icon refresh timing and existing home-screen placement.
 PROCESS_TEXT aliases also declare their selected icon and localized translation label
 on the intent filter, exposing both directly through ResolveInfo instead of requiring
 ActivityInfo fallback. Tests cover unscoped browser-style queries with flags 0 as well
-as GET_RESOLVED_FILTER, alongside actual icon pixels for all three selections.
+as GET_RESOLVED_FILTER, alongside actual icon pixels for the two choices and legacy alias migration.
 
 Onboarding writes its collection shortcut through one atomic `SettingsStore.update`:
-palette and the selected built-in character change together. Its content consumes the
+palette and dedicated assistant creation/selection change together through the shared
+trial helper. Turning it off restores only the palette. Its content consumes the
 active Material theme; classic colors are used only when the whale collection is off.
 
 `AppStartupAppearanceController` resolves startup identity from the saved whale theme,
@@ -79,6 +80,26 @@ before DataStore emits. Android 12+ receives a stable named splash style through
 this does not change launcher aliases. The first launch after an upgrade may precede
 the initial settings sync; the manifest fallback uses the selected component icon.
 Startup uses a static portrait and never decodes animation atlases.
+
+`WhaleThemeDiscoveryMigration` initializes the independent `whale_theme_discovery`
+preference once, using an existing launch count or saved provider configuration as
+evidence of an upgrade. Fresh installations are already introduced by onboarding.
+The persisted discovery timestamp prevents subsequent versions from resetting the
+30-day settings badge. `WhaleThemeDiscoveryHost` is mounted only on eligible normal
+chat launches, with saveable dialog state and durable acknowledgement; external
+intents and database migration do not consume the introduction. A single preview
+player cycles clips only while resumed and respects reduced motion.
+Trial/restore use atomic SettingsStore transforms and a saved palette snapshot.
+`dedicatedAssistantId` identifies the independently created assistant; repeated trials reuse
+it without overwriting edits. Missing/deleted ids cause creation only on confirmation.
+`createWhaleAssistant(id)` supplies a complete editable preset and resets all configuration
+using the existing id. Palette restore does not mutate assistants. Legacy avatar backup
+fields remain deserializable but are no longer applied. Successful trial navigation opens
+a fresh chat after persistence, keeping previous conversation ownership unchanged.
+The optional PackageManager change completes in a short non-cancellable operation
+with appearance persistence and rolls back its icon choice if persistence fails.
+The startup launch counter also uses an atomic SettingsStore transform so it cannot
+overwrite a concurrently persisted introduction acknowledgement with stale settings.
 
 ## Model boundary
 

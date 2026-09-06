@@ -122,7 +122,7 @@
       android:targetActivity=".RouteActivity"
       android:enabled="false"
       android:exported="true"
-      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:icon="@mipmap/ic_launcher_whale_girl"
       android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
@@ -186,11 +186,11 @@
       android:targetActivity=".ui.activity.ProcessTextTranslatorActivity"
       android:enabled="false"
       android:exported="true"
-      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:icon="@mipmap/ic_launcher_whale_girl"
       android:label="@string/process_text_translate_label">
       <intent-filter
         android:priority="100"
-        android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+        android:icon="@mipmap/ic_launcher_whale_girl"
         android:label="@string/process_text_translate_label">
         <action android:name="android.intent.action.PROCESS_TEXT" />
 
@@ -243,7 +243,7 @@
       android:targetActivity=".ui.activity.ShortcutHandlerActivity"
       android:enabled="false"
       android:exported="true"
-      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:icon="@mipmap/ic_launcher_whale_girl"
       android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
@@ -302,7 +302,7 @@
       android:targetActivity=".ui.activity.McpOAuthCallbackActivity"
       android:enabled="false"
       android:exported="true"
-      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:icon="@mipmap/ic_launcher_whale_girl"
       android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
@@ -362,7 +362,7 @@
       android:targetActivity=".ui.activity.OpenRouterOAuthCallbackActivity"
       android:enabled="false"
       android:exported="true"
-      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:icon="@mipmap/ic_launcher_whale_girl"
       android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />

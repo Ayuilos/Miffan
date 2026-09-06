@@ -98,6 +98,7 @@ import me.ayuilos.miffan.utils.toDp
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import me.ayuilos.miffan.data.model.hasNewWhaleTheme
 
 @Composable
 fun ChatDrawerContent(
@@ -110,6 +111,7 @@ fun ChatDrawerContent(
     val context = LocalContext.current
     val resources = LocalResources.current
     val toaster = LocalToaster.current
+    val hasNewWhaleTheme = settings.hasNewWhaleTheme(System.currentTimeMillis())
     val isPlayStore = rememberIsPlayStoreVersion()
     val availableUpdate = if (isPlayStore) {
         null
@@ -404,7 +406,7 @@ fun ChatDrawerContent(
                     icon = {
                         val contentDescription = availableUpdate?.let { info ->
                             stringResource(R.string.update_card_new_version_found, info.version)
-                        } ?: stringResource(R.string.settings)
+                        } ?: if (hasNewWhaleTheme) "设置，有新的蓝色大肥鱼主题" else stringResource(R.string.settings)
                         Box(
                             modifier = Modifier.size(20.dp),
                             contentAlignment = Alignment.Center,
@@ -414,7 +416,7 @@ fun ChatDrawerContent(
                                 contentDescription = contentDescription,
                                 modifier = Modifier.size(20.dp),
                             )
-                            if (availableUpdate != null) {
+                            if (availableUpdate != null || hasNewWhaleTheme) {
                                 Badge(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)

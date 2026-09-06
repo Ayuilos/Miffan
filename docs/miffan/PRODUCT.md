@@ -30,20 +30,37 @@ Petting, success and reminders are short reactions. An inactive scene may doze a
 or after prolonged inactivity, and wakes for input or interaction. Errors stop the
 animation on the neutral positive still with a readable error cue. Historical avatars
 remain still, and reduced motion preserves the matching expression.
-Launcher choices include the original bowl, the whale girl and a deep-sea background.
+Launcher choices include the original bowl and one whale girl icon. Legacy deep-sea selections migrate to the same whale icon, independently of light/dark mode.
 Users can restore the original launcher icon independently of the theme or character.
 The selected icon also identifies the app in share targets, text-processing actions and
 registered link handlers. Each intent resolves to one selected entry. Screens owned by
 other apps that read only the package-level application icon may still show the fixed
 installation icon; that icon is not dynamically replaced by component aliases.
 
-Onboarding offers one switch for the whale collection. It saves the app palette and
-current built-in assistant character together, immediately updating the onboarding
-head, background, connection card and controls. Turning it off restores the default
-appearance. Custom image/emoji avatars and other assistants remain unchanged; the
-switch does not start or cancel authorization or change providers, models or prompts.
+Onboarding offers one switch for the whale collection. Turning it on explicitly creates
+or reuses the dedicated assistant and applies the palette, immediately updating the
+onboarding head, background, connection card and controls. Turning it off restores only
+the palette and retains the assistant. Existing assistants remain unchanged; the switch
+does not start or cancel authorization or change global providers/models.
 Startup artwork follows the whale theme or independently selected whale launcher icon,
 including the loading state before the full settings are available.
+
+Existing users discover the collection through a one-time introduction on an ordinary
+chat-home launch. It previews smiling, rice eating and dizzy thinking, offers one-click
+theme/character trial, and leaves changing the launcher icon unchecked by default.
+First installations use onboarding instead. Sharing, translation and other external
+entry flows do not trigger the introduction. "Later" permanently dismisses the card;
+an unseen-theme indicator remains in the drawer/settings route for at most 30 days,
+and clears when appearance settings are visited or the collection is applied.
+Only confirming the trial creates and selects a persistent, independent whale assistant,
+then opens a new chat. Existing assistants and conversations remain unchanged.
+A stored assistant id prevents duplicate creation and preserves renamed/customized versions;
+after deletion, a later confirmed trial may create another. The assistant has one editable
+positive, rice-loving personality, with a complete default system prompt and normal assistant
+configuration. Its reset action confirms replacement of all configuration while preserving
+its id, chat history and saved memory. The preset uses the global model by default.
+Appearance restore only restores the previous palette; it neither deletes nor resets the
+whale assistant. Launcher choice remains independent.
 
 ## Product intent
 

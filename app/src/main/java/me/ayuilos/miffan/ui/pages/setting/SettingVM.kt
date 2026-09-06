@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.ai.mcp.McpManager
 import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.model.withWhaleThemeTrial
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.utils.UpdateChecker
 import me.ayuilos.miffan.utils.UpdateDownload
@@ -44,6 +45,10 @@ class SettingVM(
         viewModelScope.launch {
             settingsStore.update(transform)
         }
+    }
+
+    suspend fun experienceWhaleTheme() {
+        settingsStore.update { it.withWhaleThemeTrial() }
     }
 
     fun downloadUpdate(context: Context, download: UpdateDownload) {

@@ -256,7 +256,7 @@ class WhaleGirlVisualTest {
     }
 
     @Test
-    fun themeSettingsAppliesThemeAndOnlyTheCurrentAssistantAvatar() {
+    fun themeSettingsCreatesAnIndependentWhaleAssistant() {
         // The real settings card now loops authored animation; drive time explicitly instead
         // of asking Espresso to wait for a continuously animated screen to become idle.
         compose.mainClock.autoAdvance = false
@@ -292,16 +292,16 @@ class WhaleGirlVisualTest {
                 store.settingsFlow.value.themeId == WHALE_THEME_ID && !store.settingsFlow.value.dynamicColor
             }
             compose.mainClock.advanceTimeBy(500)
-            compose.onNodeWithText("当前助手使用蓝鱼头像").performScrollTo().performClick()
+            compose.onNodeWithText("一键体验蓝鱼主题").performScrollTo().performClick()
             compose.waitUntil(5_000) {
-                store.settingsFlow.value.assistants.find { it.id == assistant.id }?.avatar is Avatar.WhaleGirl
+                store.settingsFlow.value.whaleThemeDiscovery.dedicatedAssistantId != null
             }
             val persisted = runBlocking { store.settingsFlowRaw.first() }
+            val whaleId = persisted.whaleThemeDiscovery.dedicatedAssistantId
             assertEquals(WHALE_THEME_ID, persisted.themeId)
             assertEquals(false, persisted.dynamicColor)
-            assertEquals(assistant.copy(avatar = Avatar.WhaleGirl(), useAssistantAvatar = true),
-                persisted.assistants.first { it.id == assistant.id })
-            assertEquals(original.assistants + other, persisted.assistants.filter { it.id != assistant.id })
+            assertEquals(whaleId, persisted.assistantId)
+            assertEquals(original.assistants + assistant + other, persisted.assistants.filter { it.id != whaleId })
             compose.mainClock.advanceTimeBy(500)
             listOf("微笑", "摸摸", "开心", "提醒", "扒饭", "嚼饭", "推理", "睡觉").forEach { label ->
                 compose.onNodeWithText(label).performScrollTo().assertExists()

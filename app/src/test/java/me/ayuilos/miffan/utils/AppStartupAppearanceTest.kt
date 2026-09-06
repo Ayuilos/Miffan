@@ -19,13 +19,13 @@ class AppStartupAppearanceTest {
     }
 
     @Test
-    fun launcherChoiceWorksWithoutTheWhaleThemeAndDeepSeaKeepsItsDarkBackground() {
+    fun launcherChoiceWorksWithoutTheWhaleThemeAndLegacyChoiceRespectsColorMode() {
         assertEquals(AppStartupAppearance.WHALE_SYSTEM,
             resolveAppStartupAppearance(false, LauncherIcon.WHALE_GIRL, ColorMode.SYSTEM))
         assertEquals(AppStartupAppearance.WHALE_DARK,
             resolveAppStartupAppearance(false, LauncherIcon.WHALE_GIRL, ColorMode.DARK))
         ColorMode.entries.forEach { mode ->
-            assertEquals(AppStartupAppearance.WHALE_DARK,
+            assertEquals(resolveAppStartupAppearance(false, LauncherIcon.WHALE_GIRL, mode),
                 resolveAppStartupAppearance(false, LauncherIcon.WHALE_GIRL_DEEP_SEA, mode))
         }
     }

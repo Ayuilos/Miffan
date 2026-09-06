@@ -15,7 +15,14 @@ enum class LauncherIcon(
 ) {
     MIFFAN("Miffan", "原版饭碗", R.mipmap.ic_launcher, enabledByDefault = true),
     WHALE_GIRL("WhaleGirl", "蓝色大肥鱼", R.mipmap.ic_launcher_whale_girl),
-    WHALE_GIRL_DEEP_SEA("WhaleGirlDeepSea", "深海蓝鱼", R.mipmap.ic_launcher_whale_girl_deep_sea),
+    // Retained only to recognize component overrides from older installations.
+    WHALE_GIRL_DEEP_SEA("WhaleGirlDeepSea", "蓝色大肥鱼", R.mipmap.ic_launcher_whale_girl);
+
+    val canonical: LauncherIcon get() = if (this == WHALE_GIRL_DEEP_SEA) WHALE_GIRL else this
+
+    companion object {
+        val choices: List<LauncherIcon> = listOf(MIFFAN, WHALE_GIRL)
+    }
 }
 
 /** PackageManager persists the choice across app restarts and upgrades. */
@@ -49,22 +56,29 @@ class LauncherIconManager(context: Context) {
         else -> false
     }
 
+    private fun selectedEntry(): Entry? = launcherEntries.singleOrNull { entry ->
+        isEnabled(entry, packageManager.getComponentEnabledSetting(entry.component))
+    }
+
     fun selectedIcon(): LauncherIcon? = synchronized(selectionLock) {
-        launcherEntries.singleOrNull { entry ->
-            isEnabled(entry, packageManager.getComponentEnabledSetting(entry.component))
-        }?.icon
+        selectedEntry()?.icon?.canonical
     }
 
     /** Keep every concrete activity enabled for existing explicit intents and shortcuts. */
     fun select(icon: LauncherIcon): Unit = synchronized(selectionLock) {
-        updateEntries(launcherEntries + externalEntries, icon)
+        updateEntries(launcherEntries + externalEntries, icon.canonical)
         AppStartupAppearanceController.onLauncherIconChanged(applicationContext)
     }
 
     /** New aliases start at manifest defaults after upgrade; preserve the prior launcher choice. */
     fun reconcileExternalEntries(): Unit = synchronized(selectionLock) {
-        val selected = selectedIcon() ?: return@synchronized
-        updateEntries(externalEntries, selected)
+        val selected = selectedEntry()?.icon ?: return@synchronized
+        if (selected != selected.canonical) {
+            // Keep legacy aliases declared, but retire their enabled overrides atomically.
+            select(selected.canonical)
+        } else {
+            updateEntries(externalEntries, selected)
+        }
     }
 
     private fun updateEntries(entries: List<Entry>, icon: LauncherIcon) {

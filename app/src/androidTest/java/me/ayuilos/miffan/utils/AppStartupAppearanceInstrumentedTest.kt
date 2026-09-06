@@ -79,8 +79,12 @@ class AppStartupAppearanceInstrumentedTest {
                 assertEquals(selected, AppStartupAppearanceController.current(activity))
                 assertEquals(selected, AppStartupAppearanceController.syncCached(activity))
                 assertFalse(AppStartupAppearanceController.syncSettings(activity, "ocean", false).whale)
+                manager.select(LauncherIcon.WHALE_GIRL)
+                val whaleStartup = AppStartupAppearanceController.current(activity)
+                assertTrue(whaleStartup.whale)
                 manager.select(LauncherIcon.WHALE_GIRL_DEEP_SEA)
-                assertEquals(AppStartupAppearance.WHALE_DARK, AppStartupAppearanceController.current(activity))
+                assertEquals(LauncherIcon.WHALE_GIRL, manager.selectedIcon())
+                assertEquals(whaleStartup, AppStartupAppearanceController.current(activity))
             }
         } finally {
             activityRule.scenario.onActivity { activity ->

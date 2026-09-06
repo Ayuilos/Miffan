@@ -41,9 +41,7 @@ internal fun resolveAppStartupAppearance(
     launcherIcon: LauncherIcon?,
     colorMode: ColorMode,
 ): AppStartupAppearance {
-    // An independent deep-sea launcher choice explicitly requests the deep-sea starting view.
-    if (launcherIcon == LauncherIcon.WHALE_GIRL_DEEP_SEA) return AppStartupAppearance.WHALE_DARK
-    val whale = whaleThemeEnabled || launcherIcon == LauncherIcon.WHALE_GIRL
+    val whale = whaleThemeEnabled || launcherIcon?.canonical == LauncherIcon.WHALE_GIRL
     return when (colorMode) {
         ColorMode.SYSTEM -> if (whale) AppStartupAppearance.WHALE_SYSTEM else AppStartupAppearance.MIFFAN_SYSTEM
         ColorMode.LIGHT -> if (whale) AppStartupAppearance.WHALE_LIGHT else AppStartupAppearance.MIFFAN_LIGHT

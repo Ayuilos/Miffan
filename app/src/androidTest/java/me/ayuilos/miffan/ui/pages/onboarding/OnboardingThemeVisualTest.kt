@@ -30,6 +30,8 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.WhaleThemeDiscovery
+import me.ayuilos.miffan.data.model.createWhaleAssistant
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.hooks.rememberUserSettingsState
 import me.ayuilos.miffan.ui.theme.ColorMode
@@ -57,7 +59,8 @@ class OnboardingThemeVisualTest {
             val selected = Assistant(name = "Onboarding selected", systemPrompt = "Keep this prompt")
             val other = Assistant(name = "Untouched", avatar = Avatar.Emoji("🌱"))
             val baseline = original.copy(themeId = PresetThemes.first().id, dynamicColor = true,
-                assistants = original.assistants + selected + other, assistantId = selected.id)
+                assistants = original.assistants + selected + other, assistantId = selected.id,
+                whaleThemeDiscovery = WhaleThemeDiscovery(settingsSeen = true))
             runBlocking { store.update(baseline) }
             var colorMode by mutableStateOf(ColorMode.LIGHT)
             var generation by mutableStateOf(0)
@@ -101,10 +104,10 @@ class OnboardingThemeVisualTest {
                 val persisted = runBlocking { store.settingsFlowRaw.first() }
                 assertEquals(WHALE_THEME_ID, persisted.themeId)
                 assertEquals(false, persisted.dynamicColor)
-                assertEquals(selected.copy(avatar = Avatar.WhaleGirl(), useAssistantAvatar = true),
-                    persisted.assistants.first { it.id == selected.id })
-                assertEquals(baseline.assistants.filter { it.id != selected.id },
-                    persisted.assistants.filter { it.id != selected.id })
+                val whaleId = persisted.whaleThemeDiscovery.dedicatedAssistantId!!
+                assertEquals(whaleId, persisted.assistantId)
+                assertEquals(createWhaleAssistant(whaleId), persisted.assistants.first { it.id == whaleId })
+                assertEquals(baseline.assistants, persisted.assistants.filter { it.id != whaleId })
                 assertEquals(baseline.providers, persisted.providers)
 
                 compose.runOnIdle { generation++ }
@@ -122,7 +125,9 @@ class OnboardingThemeVisualTest {
                 val restored = runBlocking { store.settingsFlowRaw.first() }
                 assertEquals(PresetThemes.first().id, restored.themeId)
                 assertTrue(restored.dynamicColor)
-                assertEquals(Avatar.Miffan(), restored.assistants.first { it.id == selected.id }.avatar)
+                assertEquals(persisted.assistants, restored.assistants)
+                assertEquals(whaleId, restored.assistantId)
+                assertEquals(whaleId, restored.whaleThemeDiscovery.dedicatedAssistantId)
                 save("onboarding-default-${mode.name.lowercase()}.png", capture("onboarding_page"))
             }
         }
