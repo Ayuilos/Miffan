@@ -106,32 +106,42 @@ class WhaleGirlPlaybackTest {
     @Test
     fun packagedMetadataMatchesAllEightTransparentRuntimeClips() {
         val metadata = context.assets.open("whale_motion/metadata.json").bufferedReader().use { JSONObject(it.readText()) }
-        assertEquals(384, metadata.getInt("frameWidth"))
-        assertEquals(384, metadata.getInt("frameHeight"))
-        assertEquals(8, metadata.getInt("columns"))
+        assertEquals(320, metadata.getInt("frameWidth"))
+        assertEquals(WHALE_FRAME_SIZE, metadata.getInt("frameWidth"))
+        assertEquals(WHALE_FRAME_SIZE, metadata.getInt("frameHeight"))
+        assertEquals(10, metadata.getInt("columns"))
+        assertEquals(WHALE_ATLAS_COLUMNS, metadata.getInt("columns"))
+        assertEquals(30, metadata.getInt("fps"))
         val clips = metadata.getJSONObject("clips")
         assertEquals("One shared transparent set replaces the separate light/dark atlases", 8, clips.length())
         assertEquals(8, WhaleGirlClip.entries.size)
         WhaleGirlClip.entries.forEach { clip ->
             val record = clips.getJSONObject(clip.assetStem)
+            assertEquals(30, clip.framesPerSecond)
+            assertEquals(if (clip.looping) 120 else 45, clip.frameCount)
+            assertEquals(if (clip.looping) 4_000L else 1_500L, clip.durationMillis)
             assertEquals(clip.assetStem, clip.frameCount, record.getInt("frameCount"))
             assertEquals(clip.assetStem, clip.durationMillis, record.getLong("durationMs"))
             assertEquals(clip.assetStem, clip.looping, record.getBoolean("loop"))
             assertEquals(clip.assetStem, clip.framesPerSecond, record.getInt("fps"))
             assertEquals(clip.assetPath().substringAfterLast('/'), record.getString("asset"))
-            assertEquals((clip.frameCount + 7) / 8, record.getInt("rows"))
+            assertEquals((clip.frameCount + WHALE_ATLAS_COLUMNS - 1) / WHALE_ATLAS_COLUMNS, record.getInt("rows"))
+            assertNativeSourceWindow(record, clip)
             val bitmap = decodeAtlas(clip)
             try {
                 assertTrue("${clip.assetStem} must retain alpha", bitmap.hasAlpha())
-                assertEquals(384 * 8, bitmap.width)
-                assertEquals(384 * ((clip.frameCount + 7) / 8), bitmap.height)
+                assertEquals(3_200, bitmap.width)
+                assertEquals(if (clip.looping) 3_840 else 1_600, bitmap.height)
+                assertTrue("One decoded $clip atlas must fit the cache budget",
+                    bitmap.allocationByteCount <= WHALE_ATLAS_CACHE_BYTES)
+                assertAdjacentFramesAreAuthoredMotion(bitmap, clip)
                 repeat(clip.frameCount) { frame ->
-                    val left = frame % 8 * 384
-                    val top = frame / 8 * 384
+                    val left = frame % WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE
+                    val top = frame / WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE
                     var transparent = 0
                     var opaque = 0
-                    for (y in 4 until 384 step 12) {
-                        for (x in 4 until 384 step 12) {
+                    for (y in 4 until WHALE_FRAME_SIZE step 10) {
+                        for (x in 4 until WHALE_FRAME_SIZE step 10) {
                             val alpha = AndroidColor.alpha(bitmap.getPixel(left + x, top + y))
                             if (alpha == 0) transparent++
                             if (alpha >= 250) opaque++
@@ -139,13 +149,54 @@ class WhaleGirlPlaybackTest {
                     }
                     assertTrue("$clip frame $frame must have real transparent background", transparent > 50)
                     assertTrue("$clip frame $frame must preserve the opaque character", opaque > 50)
-                    listOf(0 to 0, 383 to 0, 0 to 383, 383 to 383).forEach { (x, y) ->
+                    listOf(0 to 0, WHALE_FRAME_SIZE - 1 to 0,
+                        0 to WHALE_FRAME_SIZE - 1, WHALE_FRAME_SIZE - 1 to WHALE_FRAME_SIZE - 1).forEach { (x, y) ->
                         assertEquals("$clip frame $frame corner must be transparent", 0,
                             AndroidColor.alpha(bitmap.getPixel(left + x, top + y)))
                     }
                 }
             } finally { bitmap.recycle() }
             preload(clip)
+        }
+    }
+
+    @Test
+    fun whiteHeadbandStaysOpaqueAcrossPreviouslyFlickeringFrames() {
+        data class HeadbandPatch(val clip: WhaleGirlClip, val frames: IntRange,
+            val x: Int, val y: Int)
+        // These 3 × 2 patches are inside the curved white band, away from its black
+        // outlines. In the original 320px source frames every channel is >= 243.
+        // Eating 54/56/57/65 and idle 48 are intact controls; the interleaved frames
+        // had alpha 0–5 after the matte incorrectly treated the band as a hair hole.
+        // Coordinates were checked against headband-investigation/{eating,idle}-headband.png.
+        val patches = listOf(
+            HeadbandPatch(WhaleGirlClip.EATING, 54..65, 151, 60),
+            HeadbandPatch(WhaleGirlClip.IDLE, 48..50, 162, 66),
+            HeadbandPatch(WhaleGirlClip.IDLE, 75..76, 162, 66),
+        )
+        patches.groupBy { it.clip }.forEach { (clip, clipPatches) ->
+            val atlas = decodeAtlas(clip)
+            try {
+                clipPatches.forEach { patch ->
+                    patch.frames.forEach { frame ->
+                        val left = frame % WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE
+                        val top = frame / WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE
+                        for (y in patch.y until patch.y + 2) {
+                            for (x in patch.x until patch.x + 3) {
+                                val pixel = atlas.getPixel(left + x, top + y)
+                                val label = "$clip frame $frame headband ($x, $y)"
+                                assertTrue("$label must remain opaque, alpha=${AndroidColor.alpha(pixel)}",
+                                    AndroidColor.alpha(pixel) >= 245)
+                                assertTrue("$label must preserve the white artwork",
+                                    minOf(AndroidColor.red(pixel), AndroidColor.green(pixel),
+                                        AndroidColor.blue(pixel)) >= 230)
+                            }
+                        }
+                    }
+                }
+            } finally {
+                atlas.recycle()
+            }
         }
     }
 
@@ -170,7 +221,7 @@ class WhaleGirlPlaybackTest {
                     advanceAndDraw(200)
                     val playing = capture("playing")
                     val still = capture("poster")
-                    assertTransparentPixelsRevealBackground(playing, atlas, 384, color, "$next atlas")
+                    assertTransparentPixelsRevealBackground(playing, atlas, WHALE_FRAME_SIZE, color, "$next atlas")
                     assertTransparentPixelsRevealBackground(still, poster, poster.width, color, "$next poster")
                     savePair("whale-girl-alpha-${next.assetStem}-$index.png", playing, still)
                 }
@@ -317,6 +368,68 @@ class WhaleGirlPlaybackTest {
         }
         assertTrue("$label must contain a substantial transparent background", samples > 30)
         assertEquals("$label has opaque background or a second head showing through ($samples samples)", 0, mismatches)
+    }
+
+    private fun assertNativeSourceWindow(record: JSONObject, clip: WhaleGirlClip) {
+        val sourceFps = record.getInt("sourceFps")
+        assertEquals("The original videos are 24 fps, not native 30 fps", 24, sourceFps)
+        assertEquals("native-frame-selection", record.getString("temporalMethod"))
+        val indices = record.getJSONArray("sourceFrameIndices")
+        assertEquals("Each output frame must identify its original source frame", clip.frameCount, indices.length())
+        val sourceCount = record.getInt("sourceFrameCount")
+        val start = record.getDouble("sourceStartSeconds")
+        val end = record.getDouble("sourceEndSeconds")
+        assertEquals(0.0, start, 0.0001)
+        assertEquals(if (clip.looping) 5.125 else 3.0, end, 1.0 / sourceFps)
+        assertTrue("$clip must use a longer authored window to supply distinct 30 fps playback frames",
+            end - start > clip.durationMillis / 1_000.0)
+        assertTrue("$clip source window must contain enough native frames without duplication",
+            (end - start) * sourceFps + 1 >= clip.frameCount)
+        var previous = -1
+        repeat(indices.length()) { frame ->
+            val index = indices.getInt(frame)
+            assertTrue("$clip frame $frame must advance to a fresh native frame", index > previous)
+            assertTrue("$clip frame $frame must exist in the original video", index in 0 until sourceCount)
+            val seconds = index.toDouble() / sourceFps
+            assertTrue("$clip frame $frame must remain in its authored window",
+                seconds >= start - 0.0001 && seconds <= end + 0.0001)
+            previous = index
+        }
+    }
+
+    private fun assertAdjacentFramesAreAuthoredMotion(atlas: Bitmap, clip: WhaleGirlClip) {
+        var previous = IntArray(WHALE_FRAME_SIZE * WHALE_FRAME_SIZE)
+        var current = IntArray(previous.size)
+        var movingPairs = 0
+        repeat(clip.frameCount) { frame ->
+            atlas.getPixels(current, 0, WHALE_FRAME_SIZE,
+                frame % WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE,
+                frame / WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE,
+                WHALE_FRAME_SIZE, WHALE_FRAME_SIZE)
+            if (frame > 0) {
+                var changed = 0
+                // Sample the character, ignoring invisible RGB and tiny compression noise.
+                for (y in 0 until WHALE_FRAME_SIZE step 4) {
+                    for (x in 0 until WHALE_FRAME_SIZE step 4) {
+                        val index = y * WHALE_FRAME_SIZE + x
+                        val before = previous[index]
+                        val after = current[index]
+                        if (minOf(AndroidColor.alpha(before), AndroidColor.alpha(after)) < 128) continue
+                        if (maxOf(abs(AndroidColor.red(before) - AndroidColor.red(after)),
+                                abs(AndroidColor.green(before) - AndroidColor.green(after)),
+                                abs(AndroidColor.blue(before) - AndroidColor.blue(after))) > 4) changed++
+                    }
+                }
+                if (changed >= 8) movingPairs++
+            }
+            val swap = previous
+            previous = current
+            current = swap
+        }
+        // Native source indices separately forbid repeated selections. Pixel sampling also
+        // rejects a stale/static atlas while allowing naturally held expressions in the video.
+        assertTrue("$clip must visibly change in most adjacent frames ($movingPairs/${clip.frameCount - 1})",
+            movingPairs.toDouble() / (clip.frameCount - 1) > 0.5)
     }
 
     private fun decodeAtlas(clip: WhaleGirlClip): Bitmap = context.assets.open(clip.assetPath()).use {

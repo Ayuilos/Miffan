@@ -18,6 +18,9 @@
 - Direct playback tests verify that the illustrated face changes across frames (without
   relying on whole-head movement), reactions stop at their last frame, and lifecycle
   pause does not advance playback. All eight RGBA atlases must decode at declared sizes.
+- The white headband arc stays opaque across adjacent idle/eating frames; review
+  it during head bobbing on dark backgrounds, and retain decoded-pixel regression
+  coverage for the former intermittent background-removal failure.
 - Waiting eats rice, text output chews rice, and only real reasoning becomes dizzy.
   An inactive scene sleeps after the timeout or at night and wakes on interaction/input.
 - Loop boundaries and state changes are reviewed at the 168 dp chat size; no black

@@ -21,46 +21,66 @@ enum class LauncherIcon(
 /** PackageManager persists the choice across app restarts and upgrades. */
 class LauncherIconManager(context: Context) {
     private companion object {
-        // All activities/managers share the same transaction, including API 26–32 rollback.
+        // All entry families change in one transaction, including API 26–32 rollback.
         val selectionLock = Any()
+        val externalFamilies = listOf("ProcessText", "Shortcut", "McpOAuth", "OpenRouterOAuth")
     }
 
-    private val packageManager = context.applicationContext.packageManager
+    private val applicationContext = context.applicationContext
+    private val packageManager = applicationContext.packageManager
     private val packageName = context.packageName
 
-    private fun component(icon: LauncherIcon) = ComponentName(
-        packageName,
-        "me.ayuilos.miffan.launcher.${icon.aliasName}",
+    private data class Entry(val component: ComponentName, val icon: LauncherIcon)
+
+    private fun launcherEntry(icon: LauncherIcon) = Entry(
+        ComponentName(packageName, "me.ayuilos.miffan.launcher.${icon.aliasName}"), icon,
     )
 
-    private fun isEnabled(icon: LauncherIcon, state: Int): Boolean = when (state) {
-        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> icon.enabledByDefault
+    private val launcherEntries get() = LauncherIcon.entries.map(::launcherEntry)
+    private val externalEntries get() = externalFamilies.flatMap { family ->
+        LauncherIcon.entries.map { icon ->
+            Entry(ComponentName(packageName, "me.ayuilos.miffan.external.$family.${icon.aliasName}"), icon)
+        }
+    }
+
+    private fun isEnabled(entry: Entry, state: Int): Boolean = when (state) {
+        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> entry.icon.enabledByDefault
         PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
         else -> false
     }
 
     fun selectedIcon(): LauncherIcon? = synchronized(selectionLock) {
-        LauncherIcon.entries.singleOrNull { icon ->
-            isEnabled(icon, packageManager.getComponentEnabledSetting(component(icon)))
-        }
+        launcherEntries.singleOrNull { entry ->
+            isEnabled(entry, packageManager.getComponentEnabledSetting(entry.component))
+        }?.icon
     }
 
-    /** Never disable RouteActivity: it also handles incoming shares and existing shortcuts. */
+    /** Keep every concrete activity enabled for existing explicit intents and shortcuts. */
     fun select(icon: LauncherIcon): Unit = synchronized(selectionLock) {
-        val previous = LauncherIcon.entries.associateWith {
-            packageManager.getComponentEnabledSetting(component(it))
-        }
-        val desired = LauncherIcon.entries.associateWith {
-            if (it == icon) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        updateEntries(launcherEntries + externalEntries, icon)
+        AppStartupAppearanceController.onLauncherIconChanged(applicationContext)
+    }
+
+    /** New aliases start at manifest defaults after upgrade; preserve the prior launcher choice. */
+    fun reconcileExternalEntries(): Unit = synchronized(selectionLock) {
+        val selected = selectedIcon() ?: return@synchronized
+        updateEntries(externalEntries, selected)
+    }
+
+    private fun updateEntries(entries: List<Entry>, icon: LauncherIcon) {
+        val previous = entries.associateWith { packageManager.getComponentEnabledSetting(it.component) }
+        val desired = entries.associateWith {
+            if (it.icon == icon) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
             else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
         }
-        if (previous == desired) return@synchronized
+        // Manifest defaults already matching the selection need no redundant package writes.
+        if (previous.all { (entry, state) -> isEnabled(entry, state) == (entry.icon == icon) }) return
         try {
             applyStates(desired)
-            check(selectedIcon() == icon) { "Launcher icon selection was not applied" }
+            check(desired.all { (entry, state) ->
+                packageManager.getComponentEnabledSetting(entry.component) == state
+            }) { "App icon selection was not applied to all entry points" }
         } catch (failure: Exception) {
-            // On older Android versions the operation takes several calls. Restore the
-            // enabled entry first, so a failure never intentionally removes every icon.
             try {
                 applyStates(previous)
             } catch (rollbackFailure: Exception) {
@@ -70,19 +90,19 @@ class LauncherIconManager(context: Context) {
         }
     }
 
-    private fun applyStates(states: Map<LauncherIcon, Int>) {
+    private fun applyStates(states: Map<Entry, Int>) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.setComponentEnabledSettings(states.map { (icon, state) ->
+            packageManager.setComponentEnabledSettings(states.map { (entry, state) ->
                 PackageManager.ComponentEnabledSetting(
-                    component(icon), state, PackageManager.DONT_KILL_APP,
+                    entry.component, state, PackageManager.DONT_KILL_APP,
                 )
             })
         } else {
-            // Enable before disabling on API 26–32, which has no atomic batch API.
-            states.entries.sortedBy { (icon, state) -> !isEnabled(icon, state) }
-                .forEach { (icon, state) ->
+            // Enable all replacements before disabling old entries on API 26–32.
+            states.entries.sortedBy { (entry, state) -> !isEnabled(entry, state) }
+                .forEach { (entry, state) ->
                     packageManager.setComponentEnabledSetting(
-                        component(icon), state, PackageManager.DONT_KILL_APP,
+                        entry.component, state, PackageManager.DONT_KILL_APP,
                     )
                 }
         }

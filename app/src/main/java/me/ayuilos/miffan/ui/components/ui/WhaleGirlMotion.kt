@@ -41,7 +41,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 enum class WhaleGirlClip(
@@ -51,14 +50,14 @@ enum class WhaleGirlClip(
     val framesPerSecond: Int,
     val looping: Boolean,
 ) {
-    IDLE("idle", 48, 4_000, 12, true),
-    PETTING("petting", 36, 1_500, 24, false),
-    SUCCESS("success", 36, 1_500, 24, false),
-    SURPRISE("surprise", 36, 1_500, 24, false),
-    EATING("eating", 48, 4_000, 12, true),
-    CHEWING("chewing", 48, 4_000, 12, true),
-    THINKING("thinking", 48, 4_000, 12, true),
-    SLEEPING("sleeping", 48, 4_000, 12, true);
+    IDLE("idle", 120, 4_000, 30, true),
+    PETTING("petting", 45, 1_500, 30, false),
+    SUCCESS("success", 45, 1_500, 30, false),
+    SURPRISE("surprise", 45, 1_500, 30, false),
+    EATING("eating", 120, 4_000, 30, true),
+    CHEWING("chewing", 120, 4_000, 30, true),
+    THINKING("thinking", 120, 4_000, 30, true),
+    SLEEPING("sleeping", 120, 4_000, 30, true);
 
     fun assetPath(): String = "whale_motion/$assetStem.webp"
 }
@@ -68,7 +67,6 @@ internal class WhaleGirlTimeline(
     val clip: WhaleGirlClip,
 ) {
     val durationNanos = clip.durationMillis * 1_000_000L
-    val frameIntervalMillis = ceil(1_000.0 / clip.framesPerSecond).toLong()
     var elapsedNanos: Long = 0L
         private set
     val finished: Boolean get() = !clip.looping && elapsedNanos >= durationNanos
@@ -174,22 +172,15 @@ private fun WhaleAtlasLayer(
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             if (timeline.finished) return@repeatOnLifecycle
             var previousFrame = withFrameNanos { it }
-            val resumeOrigin = previousFrame
-            var previousSampleTick = 0L
             while (currentCoroutineContext().isActive && !timeline.finished) {
                 val now = withFrameNanos { it }
                 timeline.advance(now - previousFrame)
                 previousFrame = now
-                // Sample from an absolute clock origin, not the previous displayed vsync. At
-                // 60 Hz this preserves the alternating 2/3-vsync cadence of a 24 fps clip.
-                // Clock reads alone do not invalidate composition or drawing.
-                val sampleTick = ((now - resumeOrigin).coerceAtLeast(0L).toDouble() *
-                    portrait.clip.framesPerSecond / 1_000_000_000.0).toLong()
-                if (sampleTick > previousSampleTick || timeline.finished) {
-                    previousSampleTick = sampleTick
-                    val nextFrame = timeline.frameIndex
-                    if (frameIndex != nextFrame) frameIndex = nextFrame
-                }
+                // The timeline already selects the authored 30 fps frame. A second sampling
+                // clock would delay frame boundaries after resuming partway through a frame.
+                // Vsync reads do not invalidate drawing until the selected source frame changes.
+                val nextFrame = timeline.frameIndex
+                if (frameIndex != nextFrame) frameIndex = nextFrame
             }
             if (timeline.finished) currentOnFinished()
         }
@@ -202,8 +193,9 @@ private fun WhaleAtlasLayer(
         Canvas(Modifier.fillMaxSize()) {
             drawImage(
                 image = image,
-                srcOffset = IntOffset(frameIndex % ATLAS_COLUMNS * FRAME_SIZE, frameIndex / ATLAS_COLUMNS * FRAME_SIZE),
-                srcSize = IntSize(FRAME_SIZE, FRAME_SIZE),
+                srcOffset = IntOffset(frameIndex % WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE,
+                    frameIndex / WHALE_ATLAS_COLUMNS * WHALE_FRAME_SIZE),
+                srcSize = IntSize(WHALE_FRAME_SIZE, WHALE_FRAME_SIZE),
                 dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
             )
         }
@@ -212,7 +204,7 @@ private fun WhaleAtlasLayer(
 
 /** Shared by all portraits; evicted bitmaps remain valid for any currently displayed layer. */
 private object WhaleAtlasCache {
-    private val images = object : LruCache<String, Bitmap>(32 * 1024 * 1024) {
+    private val images = object : LruCache<String, Bitmap>(WHALE_ATLAS_CACHE_BYTES) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     }
     private val decodeMutex = Mutex()
@@ -227,8 +219,8 @@ private object WhaleAtlasCache {
                 val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
                 val bitmap = assets.open(path).use { BitmapFactory.decodeStream(it, null, options) }
                     ?: return@withLock null
-                val rows = (clip.frameCount + ATLAS_COLUMNS - 1) / ATLAS_COLUMNS
-                if (bitmap.width != FRAME_SIZE * ATLAS_COLUMNS || bitmap.height != FRAME_SIZE * rows) {
+                val rows = (clip.frameCount + WHALE_ATLAS_COLUMNS - 1) / WHALE_ATLAS_COLUMNS
+                if (bitmap.width != WHALE_FRAME_SIZE * WHALE_ATLAS_COLUMNS || bitmap.height != WHALE_FRAME_SIZE * rows) {
                     return@withLock null
                 }
                 images.put(path, bitmap)
@@ -241,5 +233,6 @@ private object WhaleAtlasCache {
     }
 }
 
-private const val FRAME_SIZE = 384
-private const val ATLAS_COLUMNS = 8
+internal const val WHALE_FRAME_SIZE = 320
+internal const val WHALE_ATLAS_COLUMNS = 10
+internal const val WHALE_ATLAS_CACHE_BYTES = 64 * 1024 * 1024

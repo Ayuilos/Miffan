@@ -32,6 +32,18 @@ animation on the neutral positive still with a readable error cue. Historical av
 remain still, and reduced motion preserves the matching expression.
 Launcher choices include the original bowl, the whale girl and a deep-sea background.
 Users can restore the original launcher icon independently of the theme or character.
+The selected icon also identifies the app in share targets, text-processing actions and
+registered link handlers. Each intent resolves to one selected entry. Screens owned by
+other apps that read only the package-level application icon may still show the fixed
+installation icon; that icon is not dynamically replaced by component aliases.
+
+Onboarding offers one switch for the whale collection. It saves the app palette and
+current built-in assistant character together, immediately updating the onboarding
+head, background, connection card and controls. Turning it off restores the default
+appearance. Custom image/emoji avatars and other assistants remain unchanged; the
+switch does not start or cancel authorization or change providers, models or prompts.
+Startup artwork follows the whale theme or independently selected whale launcher icon,
+including the loading state before the full settings are available.
 
 ## Product intent
 

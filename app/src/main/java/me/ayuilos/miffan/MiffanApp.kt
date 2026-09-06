@@ -32,6 +32,7 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.service.WebServerService
+import me.ayuilos.miffan.utils.LauncherIconManager
 import me.ayuilos.miffan.utils.CrashHandler
 import me.ayuilos.miffan.utils.DatabaseUtil
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
@@ -51,6 +52,9 @@ const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 class MiffanApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Bring newly introduced share/deep-link aliases in line with a pre-upgrade choice.
+        runCatching { LauncherIconManager(this).reconcileExternalEntries() }
+            .onFailure { Log.w(TAG, "Unable to synchronize external entry icons", it) }
         startKoin {
             androidLogger()
             androidContext(this@MiffanApp)

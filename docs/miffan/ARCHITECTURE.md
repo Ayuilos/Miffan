@@ -19,15 +19,19 @@ with Compose paths or introduce another manually approximated character.
 
 Eight clips cover Idle, Petting, Success, Surprise, Eating, Chewing, Thinking and
 Sleeping. The first five looping conditions (Idle, Eating, Chewing, Thinking, Sleeping)
-use 48 frames / 4 seconds / 12 fps; the three reactions use 36 frames / 1.5 seconds /
-24 fps. Frames are 384 px in eight-column atlases. No runtime API calls or video
+use 120 frames / 4 seconds / 30 fps; the three reactions use 45 frames / 1.5 seconds /
+30 fps. Frames are 320 px in ten-column atlases (at most 3200×3840), staying within
+4096 px texture dimensions. Native 24 fps source frames are selected without repeats
+from the existing video windows, preserving the authored playback durations. No runtime API calls or video
 decoders are needed. Pages pass semantic generation phase: a real unfinished reasoning
 part selects Thinking, ordinary waiting selects Eating and text streaming selects
 Chewing. Input focus alone never pretends that the model is reasoning.
 
 `WhaleGirlTimeline` counts foreground frame-clock time, wraps loops and holds the final
-reaction frame. State changes crossfade for 160 ms. Atlas loading happens on the IO
-dispatcher with ARGB_8888; the shared cache uses a 32 MiB allocation budget. A poster
+reaction frame. Each display vsync advances the timeline, but drawing is invalidated
+only when its frame index changes; there is no second sample clock to delay frames
+after resume. State changes crossfade for 160 ms. Atlas loading happens on the IO
+dispatcher with ARGB_8888; the shared cache uses a 64 MiB allocation budget. A poster
 is visible only while its atlas is unavailable, never underneath transparent frames.
 Eviction does not recycle a bitmap another portrait may still display. Missing assets
 fall back to the transparent poster.
@@ -40,16 +44,37 @@ and submission inputs are preserved. `characterReplyHoldMillis` gives the whale'
 their previous reply-feedback duration.
 
 The current generation records and transparency pipeline are in
-`output/whale-girl-motion-v2/`; earlier opaque samples remain in
+`output/whale-girl-motion-v2/`; native-frame extraction and the 30 fps rebuild are in
+`output/whale-girl-motion-v3/`. Earlier opaque samples remain in
 `output/whale-girl-motion/` as historical references. Background removal must preserve
 white headband frills, rice, bowl, fine hair and the sleep bubble. Source windows and
 frame counts are recorded in metadata and checked against runtime by device tests.
+Enclosed ahoge-background removal requires a compact pocket (width/height at most
+2 and area/bounding-box area at least 0.30), in addition to background color and
+surrounding blue hair. The thin white headband arc can match those colors and move
+across the vertical cutoff; color and center alone must never remove it. Headband
+regressions check actual decoded white/opaque pixels across the affected frames.
 
 Launcher choice lives in PackageManager component state, not a second settings field.
-Three launcher aliases target the always-enabled `RouteActivity`, preserving incoming
-shares and explicit shortcuts. Android 13+ uses atomic component updates; older APIs
+Three launcher aliases target the always-enabled `RouteActivity` and own both launcher
+and SEND filters. Process-text, camera-shortcut and the two OAuth deep-link families
+each expose matching icon aliases. Concrete targets stay enabled for explicit intents.
+All 15 aliases switch in one transaction; application startup reconciles newly added
+external aliases against the existing launcher choice after an upgrade. Android 13+ uses atomic component updates; older APIs
 enable the selected alias before disabling alternatives and attempt rollback on failure.
 Device launchers control icon refresh timing and existing home-screen placement.
+
+Onboarding writes its collection shortcut through one atomic `SettingsStore.update`:
+palette and the selected built-in character change together. Its content consumes the
+active Material theme; classic colors are used only when the whale collection is off.
+
+`AppStartupAppearanceController` resolves startup identity from the saved whale theme,
+launcher choice and color mode. A small preferences mirror serves the loading view
+before DataStore emits. Android 12+ receives a stable named splash style through
+`SplashScreen.setSplashScreenTheme`, persisted by the OS for subsequent cold starts;
+this does not change launcher aliases. The first launch after an upgrade may precede
+the initial settings sync; the manifest fallback uses the selected component icon.
+Startup uses a static portrait and never decodes animation atlases.
 
 ## Model boundary
 

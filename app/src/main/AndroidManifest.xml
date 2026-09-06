@@ -71,20 +71,12 @@
       android:importantForAutofill="noExcludeDescendants"
       android:theme="@style/Theme.Miffan"
       android:windowSoftInputMode="adjustResize">
-      <intent-filter>
-        <action android:name="android.intent.action.SEND" />
-
-        <category android:name="android.intent.category.DEFAULT" />
-
-        <data android:mimeType="text/plain" />
-      </intent-filter>
-
       <meta-data
         android:name="android.app.shortcuts"
         android:resource="@xml/shortcuts" />
     </activity>
-    <!-- Keep RouteActivity enabled for sharing and existing explicit shortcuts.
-         Only these aliases participate in launcher icon switching. -->
+    <!-- Concrete activities stay enabled for existing explicit intents.
+         Implicit entry points follow the selected icon through aliases. -->
     <activity-alias
       android:name=".launcher.Miffan"
       android:targetActivity=".RouteActivity"
@@ -97,6 +89,13 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
       <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data android:mimeType="text/plain" />
+      </intent-filter>
     </activity-alias>
     <activity-alias
       android:name=".launcher.WhaleGirl"
@@ -110,6 +109,13 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
       <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data android:mimeType="text/plain" />
+      </intent-filter>
     </activity-alias>
     <activity-alias
       android:name=".launcher.WhaleGirlDeepSea"
@@ -123,6 +129,13 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
       <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data android:mimeType="text/plain" />
+      </intent-filter>
     </activity-alias>
     <activity
       android:name=".ui.activity.ProcessTextTranslatorActivity"
@@ -131,6 +144,14 @@
       android:label="@string/process_text_translate_label"
       android:theme="@style/Theme.Miffan.ProcessText"
       android:windowSoftInputMode="adjustResize">
+    </activity>
+    <activity-alias
+      android:name=".external.ProcessText.Miffan"
+      android:targetActivity=".ui.activity.ProcessTextTranslatorActivity"
+      android:enabled="true"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher"
+      android:label="@string/process_text_translate_label">
       <intent-filter android:priority="100">
         <action android:name="android.intent.action.PROCESS_TEXT" />
 
@@ -138,11 +159,49 @@
 
         <data android:mimeType="text/plain" />
       </intent-filter>
-    </activity>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.ProcessText.WhaleGirl"
+      android:targetActivity=".ui.activity.ProcessTextTranslatorActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl"
+      android:label="@string/process_text_translate_label">
+      <intent-filter android:priority="100">
+        <action android:name="android.intent.action.PROCESS_TEXT" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data android:mimeType="text/plain" />
+      </intent-filter>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.ProcessText.WhaleGirlDeepSea"
+      android:targetActivity=".ui.activity.ProcessTextTranslatorActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:label="@string/process_text_translate_label">
+      <intent-filter android:priority="100">
+        <action android:name="android.intent.action.PROCESS_TEXT" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data android:mimeType="text/plain" />
+      </intent-filter>
+    </activity-alias>
     <activity
       android:name=".ui.activity.ShortcutHandlerActivity"
       android:exported="true"
       android:theme="@android:style/Theme.Translucent.NoTitleBar">
+    </activity>
+    <activity-alias
+      android:name=".external.Shortcut.Miffan"
+      android:targetActivity=".ui.activity.ShortcutHandlerActivity"
+      android:enabled="true"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher"
+      android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
 
@@ -152,12 +211,54 @@
           android:host="shortcut"
           android:scheme="miffan" />
       </intent-filter>
-    </activity>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.Shortcut.WhaleGirl"
+      android:targetActivity=".ui.activity.ShortcutHandlerActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl"
+      android:label="@string/app_name">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data
+          android:host="shortcut"
+          android:scheme="miffan" />
+      </intent-filter>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.Shortcut.WhaleGirlDeepSea"
+      android:targetActivity=".ui.activity.ShortcutHandlerActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:label="@string/app_name">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+
+        <data
+          android:host="shortcut"
+          android:scheme="miffan" />
+      </intent-filter>
+    </activity-alias>
     <activity
       android:name=".ui.activity.McpOAuthCallbackActivity"
       android:exported="true"
       android:launchMode="singleTask"
       android:theme="@android:style/Theme.Translucent.NoTitleBar">
+    </activity>
+    <activity-alias
+      android:name=".external.McpOAuth.Miffan"
+      android:targetActivity=".ui.activity.McpOAuthCallbackActivity"
+      android:enabled="true"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher"
+      android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
 
@@ -168,12 +269,56 @@
           android:host="mcp-oauth-callback"
           android:scheme="miffan" />
       </intent-filter>
-    </activity>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.McpOAuth.WhaleGirl"
+      android:targetActivity=".ui.activity.McpOAuthCallbackActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl"
+      android:label="@string/app_name">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+
+        <data
+          android:host="mcp-oauth-callback"
+          android:scheme="miffan" />
+      </intent-filter>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.McpOAuth.WhaleGirlDeepSea"
+      android:targetActivity=".ui.activity.McpOAuthCallbackActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:label="@string/app_name">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+
+        <data
+          android:host="mcp-oauth-callback"
+          android:scheme="miffan" />
+      </intent-filter>
+    </activity-alias>
     <activity
       android:name=".ui.activity.OpenRouterOAuthCallbackActivity"
       android:exported="true"
       android:launchMode="singleTask"
       android:theme="@android:style/Theme.Translucent.NoTitleBar">
+    </activity>
+    <activity-alias
+      android:name=".external.OpenRouterOAuth.Miffan"
+      android:targetActivity=".ui.activity.OpenRouterOAuthCallbackActivity"
+      android:enabled="true"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher"
+      android:label="@string/app_name">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
 
@@ -184,7 +329,43 @@
           android:host="openrouter-oauth-callback"
           android:scheme="miffan" />
       </intent-filter>
-    </activity>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.OpenRouterOAuth.WhaleGirl"
+      android:targetActivity=".ui.activity.OpenRouterOAuthCallbackActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl"
+      android:label="@string/app_name">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+
+        <data
+          android:host="openrouter-oauth-callback"
+          android:scheme="miffan" />
+      </intent-filter>
+    </activity-alias>
+    <activity-alias
+      android:name=".external.OpenRouterOAuth.WhaleGirlDeepSea"
+      android:targetActivity=".ui.activity.OpenRouterOAuthCallbackActivity"
+      android:enabled="false"
+      android:exported="true"
+      android:icon="@mipmap/ic_launcher_whale_girl_deep_sea"
+      android:label="@string/app_name">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+
+        <data
+          android:host="openrouter-oauth-callback"
+          android:scheme="miffan" />
+      </intent-filter>
+    </activity-alias>
     <activity
       android:name="com.yalantis.ucrop.UCropActivity"
       android:theme="@style/Theme.AppCompat.Light.NoActionBar" />

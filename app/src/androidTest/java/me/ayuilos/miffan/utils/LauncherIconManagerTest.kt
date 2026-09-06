@@ -3,6 +3,7 @@ package me.ayuilos.miffan.utils
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -30,62 +31,156 @@ class LauncherIconManagerTest {
 
     @Suppress("DEPRECATION")
     @Test
-    fun switchingEveryIconKeepsOneLauncherAndTheShareEntryPoint() {
+    fun switchingEveryIconKeepsOneLauncherAndMatchingExternalEntryPoints() {
         val manager = LauncherIconManager(context)
         val packageManager = context.packageManager
         val originalSelection = manager.selectedIcon() ?: LauncherIcon.MIFFAN
-        val route = ComponentName(context.packageName, "me.ayuilos.miffan.RouteActivity")
-        val originalRouteState = packageManager.getComponentEnabledSetting(route)
-        val launcherIntent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setPackage(context.packageName)
-        val shareIntent = Intent(Intent.ACTION_SEND)
-            .setType("text/plain")
-            .setPackage(context.packageName)
+        val concreteComponents = externalIntents().map { component(it.target) }.distinct()
+        val originalStates = concreteComponents.associateWith(packageManager::getComponentEnabledSetting)
 
         try {
-            // Switch away from the current choice first, and exercise restoring Miffan too.
+            // Switch away first; a new manager must recover every choice from PackageManager.
             val choices = LauncherIcon.entries.filter { it != originalSelection } + originalSelection
             choices.forEach { icon ->
                 manager.select(icon)
-                // A new manager must recover the selection from Android without app preferences.
                 assertEquals(icon, LauncherIconManager(context).selectedIcon())
+                assertLauncher(icon)
+                externalIntents().forEach { assertExternalEntry(it, icon) }
+                concreteComponents.forEach { target ->
+                    assertEquals(originalStates.getValue(target), packageManager.getComponentEnabledSetting(target))
+                    val info = packageManager.getActivityInfo(target, 0)
+                    assertTrue("Explicit target ${target.className} must remain enabled", info.enabled)
+                    assertTrue("Explicit target ${target.className} must remain exported", info.exported)
+                    assertNotNull(packageManager.resolveActivity(Intent().setComponent(target), 0))
+                }
 
-                val launchers = packageManager.queryIntentActivities(
-                    launcherIntent, PackageManager.GET_META_DATA,
-                )
-                assertEquals("Exactly one launcher should resolve for $icon", 1, launchers.size)
-                val launcher = launchers.single().activityInfo
-                assertEquals("me.ayuilos.miffan.launcher.${icon.aliasName}", launcher.name)
-                assertEquals("me.ayuilos.miffan.RouteActivity", launcher.targetActivity)
-                // ComponentInfo.enabled reflects the manifest default; runtime overrides
-                // are queried separately (whale aliases are disabled in the manifest).
-                assertEquals(
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    packageManager.getComponentEnabledSetting(ComponentName(context.packageName, launcher.name)),
-                )
-                assertEquals(R.xml.shortcuts, launcher.metaData.getInt("android.app.shortcuts"))
-
-                assertEquals(originalRouteState, packageManager.getComponentEnabledSetting(route))
-                assertTrue(packageManager.getActivityInfo(route, 0).enabled)
-                assertNotNull(packageManager.resolveActivity(Intent().setComponent(route), 0))
-                val shareTargets = packageManager.queryIntentActivities(
-                    shareIntent, PackageManager.MATCH_DEFAULT_ONLY,
-                )
-                assertTrue(
-                    "Sharing text must still resolve RouteActivity after selecting $icon",
-                    shareTargets.any { it.activityInfo.name == route.className },
-                )
-
-                // Selecting the active option again must be harmless.
+                // Re-selecting a working choice should not rewrite any alias overrides.
+                val states = allAliases().associateWith(packageManager::getComponentEnabledSetting)
                 manager.select(icon)
-                assertEquals(1, packageManager.queryIntentActivities(launcherIntent, 0).size)
+                assertEquals(states, allAliases().associateWith(packageManager::getComponentEnabledSetting))
+                assertLauncher(icon)
+                externalIntents().forEach { assertExternalEntry(it, icon) }
             }
         } finally {
             manager.select(originalSelection)
         }
         assertEquals(originalSelection, manager.selectedIcon())
     }
+
+    @Test
+    fun reconcileRepairsUpgradeDefaultsWithoutChangingTheSelectedLauncher() {
+        val manager = LauncherIconManager(context)
+        val packageManager = context.packageManager
+        val originalSelection = manager.selectedIcon() ?: LauncherIcon.MIFFAN
+        try {
+            listOf(LauncherIcon.WHALE_GIRL, LauncherIcon.WHALE_GIRL_DEEP_SEA).forEach { icon ->
+                manager.select(icon)
+                val launcherStates = LauncherIcon.entries.associate { choice ->
+                    val alias = component("me.ayuilos.miffan.launcher.${choice.aliasName}")
+                    alias to packageManager.getComponentEnabledSetting(alias)
+                }
+                // Newly added external aliases have manifest defaults on an upgraded install.
+                externalIntents().filter { it.family != null }.forEach { entry ->
+                    LauncherIcon.entries.forEach { choice ->
+                        packageManager.setComponentEnabledSetting(
+                            component(entry.alias(choice)),
+                            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                            PackageManager.DONT_KILL_APP,
+                        )
+                    }
+                    assertExternalEntry(entry, LauncherIcon.MIFFAN)
+                }
+                assertLauncher(icon)
+                manager.reconcileExternalEntries()
+                assertEquals(icon, LauncherIconManager(context).selectedIcon())
+                launcherStates.forEach { (alias, previous) ->
+                    assertEquals("Reconciliation must preserve launcher overrides", previous,
+                        packageManager.getComponentEnabledSetting(alias))
+                }
+                assertLauncher(icon)
+                externalIntents().forEach { assertExternalEntry(it, icon) }
+                val repairedStates = allAliases().associateWith(packageManager::getComponentEnabledSetting)
+                manager.reconcileExternalEntries()
+                assertEquals("Already repaired entries must be a no-op", repairedStates,
+                    allAliases().associateWith(packageManager::getComponentEnabledSetting))
+            }
+        } finally {
+            manager.select(originalSelection)
+        }
+    }
+
+    private data class ExternalEntry(val family: String?, val intent: Intent, val target: String) {
+        fun alias(icon: LauncherIcon): String = if (family == null) {
+            "me.ayuilos.miffan.launcher.${icon.aliasName}"
+        } else {
+            "me.ayuilos.miffan.external.$family.${icon.aliasName}"
+        }
+    }
+
+    private fun externalIntents(): List<ExternalEntry> = listOf(
+        ExternalEntry(null, Intent(Intent.ACTION_SEND).setType("text/plain"),
+            "me.ayuilos.miffan.RouteActivity"),
+        ExternalEntry("ProcessText", Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain"),
+            "me.ayuilos.miffan.ui.activity.ProcessTextTranslatorActivity"),
+        ExternalEntry("Shortcut", Intent(Intent.ACTION_VIEW, Uri.parse("miffan://shortcut/new_chat")),
+            "me.ayuilos.miffan.ui.activity.ShortcutHandlerActivity"),
+        ExternalEntry("McpOAuth", Intent(Intent.ACTION_VIEW, Uri.parse("miffan://mcp-oauth-callback"))
+            .addCategory(Intent.CATEGORY_BROWSABLE), "me.ayuilos.miffan.ui.activity.McpOAuthCallbackActivity"),
+        ExternalEntry("OpenRouterOAuth", Intent(Intent.ACTION_VIEW, Uri.parse("miffan://openrouter-oauth-callback"))
+            .addCategory(Intent.CATEGORY_BROWSABLE), "me.ayuilos.miffan.ui.activity.OpenRouterOAuthCallbackActivity"),
+    )
+
+    private fun component(className: String) = ComponentName(context.packageName, className)
+
+    private fun allAliases(): List<ComponentName> = externalIntents().flatMap { entry ->
+        LauncherIcon.entries.map { component(entry.alias(it)) }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun assertLauncher(icon: LauncherIcon) {
+        val launchers = context.packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(context.packageName),
+            PackageManager.GET_META_DATA,
+        )
+        assertEquals("Exactly one launcher should resolve for $icon", 1, launchers.size)
+        val launcher = launchers.single().activityInfo
+        assertEquals("me.ayuilos.miffan.launcher.${icon.aliasName}", launcher.name)
+        assertEquals("me.ayuilos.miffan.RouteActivity", launcher.targetActivity)
+        assertEquals(R.xml.shortcuts, launcher.metaData.getInt("android.app.shortcuts"))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun assertExternalEntry(entry: ExternalEntry, icon: LauncherIcon) {
+        val packageManager = context.packageManager
+        val matches = packageManager.queryIntentActivities(
+            Intent(entry.intent).setPackage(context.packageName), PackageManager.MATCH_DEFAULT_ONLY,
+        )
+        val description = "${entry.family ?: "SEND"} with $icon"
+        assertEquals("Exactly one external entry should resolve for $description", 1, matches.size)
+        val resolved = matches.single()
+        assertEquals(entry.alias(icon), resolved.activityInfo.name)
+        assertEquals(entry.target, resolved.activityInfo.targetActivity)
+        assertEquals("Chooser must use the selected icon resource for $description", icon.preview,
+            resolved.iconResource)
+        assertTrue("External alias must stay exported", resolved.activityInfo.exported)
+        val rawState = packageManager.getComponentEnabledSetting(component(resolved.activityInfo.name))
+        assertTrue("Resolved alias must be effectively enabled", rawState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
+            (rawState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon.enabledByDefault))
+        val expected = renderIcon(requireNotNull(ContextCompat.getDrawable(context, icon.preview)))
+        val actual = renderIcon(resolved.loadIcon(packageManager))
+        try {
+            assertTrue("ResolveInfo.loadIcon must draw the selected artwork for $description", expected.sameAs(actual))
+        } finally {
+            expected.recycle()
+            actual.recycle()
+        }
+    }
+
+    private fun renderIcon(drawable: Drawable): Bitmap =
+        Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888).also { bitmap ->
+            drawable.setBounds(0, 0, bitmap.width, bitmap.height)
+            drawable.draw(Canvas(bitmap))
+        }
 
     @Test
     fun launcherResourcesInflateAndRenderWithOriginalIconMonochromeOnly() {

@@ -98,7 +98,7 @@ fun LauncherIconPicker() {
                                         try {
                                             withContext(Dispatchers.IO) { manager.select(icon) }
                                             selected = manager.selectedIcon()
-                                            message = "已切换为${icon.label}，桌面可能需要片刻刷新。"
+                                            message = "已切换为${icon.label}，桌面和分享列表可能需要片刻刷新。"
                                             hasError = false
                                         } catch (_: Exception) {
                                             selected = runCatching { manager.selectedIcon() }.getOrNull()
@@ -124,7 +124,7 @@ fun LauncherIconPicker() {
             }
         }
         Text(
-            text = message ?: "可以单独切换桌面图标，也可以随时恢复原版饭碗。",
+            text = message ?: "桌面、分享和链接入口使用同一图标，也可以随时恢复原版饭碗。",
             modifier = Modifier.padding(horizontal = 8.dp),
             style = MaterialTheme.typography.bodySmall,
             color = if (hasError) MaterialTheme.colorScheme.error
