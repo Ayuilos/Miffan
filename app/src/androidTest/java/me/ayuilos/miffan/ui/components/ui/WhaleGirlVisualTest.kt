@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.components.ui
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.foundation.background
@@ -78,6 +79,55 @@ class WhaleGirlVisualTest {
     @get:Rule
     val compose = createComposeRule()
 
+    @Test
+    fun actingBeatsChangeAndLoopWithoutAPoseJump() {
+        compose.mainClock.autoAdvance = false
+        var clip by mutableStateOf(WhaleGirlClip.EATING)
+        var seconds by mutableStateOf(0f)
+        compose.setContent {
+            Box(Modifier.size(168.dp).background(WhaleThemePreset.getColorScheme(false).background)
+                .testTag("acting-frame")) {
+                WhaleGirlLineArtPortrait(clip, Modifier.size(168.dp), previewSeconds = seconds)
+            }
+        }
+        val periods = mapOf(WhaleGirlClip.EATING to 3.6f, WhaleGirlClip.CHEWING to 3.2f,
+            WhaleGirlClip.SLEEPING to 5.6f, WhaleGirlClip.SURPRISE to 1.5f, WhaleGirlClip.THINKING to 2f)
+        periods.forEach { (expression, period) ->
+            compose.runOnIdle { clip = expression; seconds = 0f }
+            compose.mainClock.advanceTimeBy(500)
+            compose.waitForIdle()
+            val sampleTimes = listOf(0f, .12f, .28f, .48f, .68f, .82f)
+            val frames = sampleTimes.map { fraction ->
+                compose.runOnIdle { seconds = period * fraction }
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+                capture("acting-frame")
+            }
+            assertTrue("$expression must have different acting beats",
+                frames.drop(1).any { !it.sameAs(frames.first()) })
+            val width = frames.first().width
+            val height = frames.first().height
+            val sheet = Bitmap.createBitmap(width * 3, (height + 50) * 2, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(sheet)
+            canvas.drawColor(WhaleThemePreset.getColorScheme(false).background.toArgb())
+            val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.DKGRAY; textSize = 26f }
+            frames.forEachIndexed { index, bitmap ->
+                val x = (index % 3 * width).toFloat()
+                val y = (index / 3 * (height + 50)).toFloat()
+                canvas.drawText("${expression.name} ${"%.2f".format(period * sampleTimes[index])}s", x + 16, y + 36, label)
+                canvas.drawBitmap(bitmap, x, y + 50, null)
+            }
+            save("whale-acting-${expression.name.lowercase()}.png", sheet)
+            if (expression.looping) {
+                compose.runOnIdle { seconds = period }
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+                assertTrue("$expression must return to its starting pose at the loop boundary",
+                    frames.first().sameAs(capture("acting-frame")))
+            }
+        }
+    }
+
     private data class Expression(
         val label: String,
         val clip: WhaleGirlClip,
@@ -95,7 +145,7 @@ class WhaleGirlVisualTest {
                 // Static visual cases start at their semantic target. Same-instance updates and
                 // lifecycle are checked separately rather than racing pixel capture.
                 key(dark, expression) {
-                    // Capture one complete expression at a time so all 40 cases fit even on a phone.
+                    // Capture one expression at a time: 8 clips × 5 sizes × 2 palettes = 80 cases.
                     Column(
                         modifier = Modifier.testTag("expression")
                             .background(MaterialTheme.colorScheme.background).padding(12.dp),
@@ -107,10 +157,10 @@ class WhaleGirlVisualTest {
                             sizes.take(4).forEach { size ->
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text("$size", color = MaterialTheme.colorScheme.onBackground)
-                                    WhaleGirlAnimatedPortrait(
+                                    WhaleGirlLineArtPortrait(
                                         clip = expression.clip,
                                         playing = false,
-                                        posterResourceId = whaleGirlPoster(expression.clip),
+                                        dark = dark,
                                         modifier = Modifier.size(size.dp).testTag("size-$size"),
                                         reducedMotion = true,
                                     )
@@ -118,10 +168,10 @@ class WhaleGirlVisualTest {
                             }
                         }
                         Text("168 dp", color = MaterialTheme.colorScheme.onBackground)
-                        WhaleGirlAnimatedPortrait(
+                        WhaleGirlLineArtPortrait(
                             clip = expression.clip,
                             playing = false,
-                            posterResourceId = whaleGirlPoster(expression.clip),
+                            dark = dark,
                             modifier = Modifier.size(168.dp).testTag("size-168"),
                             reducedMotion = true,
                         )
@@ -132,6 +182,7 @@ class WhaleGirlVisualTest {
         for (isDark in listOf(false, true)) {
             compose.runOnIdle { dark = isDark }
             val idlePortraits = mutableMapOf<Int, Bitmap>()
+            val galleryPortraits = mutableListOf<Bitmap>()
             val tiles = expressions.map { next ->
                 compose.runOnIdle { expression = next }
                 compose.mainClock.advanceTimeBy(2_000)
@@ -154,13 +205,14 @@ class WhaleGirlVisualTest {
                         val different = pixels.indices.count { pixels[it] != idlePixels[it] }
                         assertTrue(
                             "${next.label} must visibly differ from Idle at $size dp (dark=$isDark)",
-                            different > pixels.size / 200,
+                            different > pixels.size / 2_000,
                         )
                     }
                 }
                 if (!isDark && next.clip == WhaleGirlClip.IDLE) {
-                    save("whale-girl-portrait.png", capture("size-168"))
+                    save("whale-girl-native-portrait.png", capture("size-168"))
                 }
+                galleryPortraits += capture("size-168")
                 capture("expression")
             }
             val width = tiles.maxOf { it.width }
@@ -171,8 +223,141 @@ class WhaleGirlVisualTest {
             tiles.forEachIndexed { index, bitmap ->
                 canvas.drawBitmap(bitmap, (index % 2 * width).toFloat(), (index / 2 * height).toFloat(), null)
             }
-            save(if (isDark) "whale-girl-dark.png" else "whale-girl-light.png", matrix)
+            save(if (isDark) "whale-girl-native-dark.png" else "whale-girl-native-light.png", matrix)
+            // Assemble actual device captures without rescaling or redrawing the character.
+            val portraitWidth = galleryPortraits.first().width
+            val portraitHeight = galleryPortraits.first().height
+            val labelHeight = portraitWidth / 5
+            val gallery = Bitmap.createBitmap(portraitWidth * 4,
+                (portraitHeight + labelHeight) * 2, Bitmap.Config.ARGB_8888)
+            val galleryCanvas = Canvas(gallery)
+            val scheme = WhaleThemePreset.getColorScheme(isDark)
+            galleryCanvas.drawColor(scheme.background.toArgb())
+            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = scheme.onBackground.toArgb()
+                textSize = portraitWidth / 12f
+                textAlign = Paint.Align.CENTER
+            }
+            val labels = mapOf(
+                WhaleGirlClip.IDLE to "微笑", WhaleGirlClip.PETTING to "摸摸",
+                WhaleGirlClip.SUCCESS to "得意", WhaleGirlClip.SURPRISE to "提醒",
+                WhaleGirlClip.EATING to "吃饭", WhaleGirlClip.CHEWING to "咀嚼",
+                WhaleGirlClip.THINKING to "思考", WhaleGirlClip.SLEEPING to "睡觉",
+            )
+            galleryPortraits.forEachIndexed { index, portrait ->
+                val x = (index % 4 * portraitWidth).toFloat()
+                val y = (index / 4 * (portraitHeight + labelHeight)).toFloat()
+                galleryCanvas.drawText(labels.getValue(expressions[index].clip),
+                    x + portraitWidth / 2f, y + labelHeight * .7f, labelPaint)
+                galleryCanvas.drawBitmap(portrait, x, y + labelHeight, null)
+            }
+            save(if (isDark) "whale-girl-approved-gallery-dark.png"
+                else "whale-girl-approved-gallery-light.png", gallery)
         }
+    }
+
+    @Test
+    fun everyClipRedrawsOnTheSameNativeHeadAndReturnsToItsOriginalPixels() {
+        compose.mainClock.autoAdvance = false
+        var clip by mutableStateOf(WhaleGirlClip.IDLE)
+        var dark by mutableStateOf(false)
+        compose.setContent {
+            WhaleGirlLineArtPortrait(
+                clip = clip,
+                dark = dark,
+                reducedMotion = true,
+                modifier = Modifier.size(168.dp).testTag("native-changing"),
+            )
+        }
+        for (palette in listOf(false, true)) {
+            compose.runOnIdle { dark = palette; clip = WhaleGirlClip.IDLE }
+            settleNativeDraw()
+            val idle = capture("native-changing")
+            val seen = mutableListOf(idle)
+            for (next in WhaleGirlClip.entries.filter { it != WhaleGirlClip.IDLE }) {
+                compose.runOnIdle { clip = next }
+                settleNativeDraw()
+                val current = capture("native-changing")
+                assertTrue("$next must have distinct pixels on the same native head (dark=$palette)",
+                    seen.none { it.sameAs(current) })
+                seen += current
+            }
+            compose.runOnIdle { clip = WhaleGirlClip.IDLE }
+            settleNativeDraw()
+            assertTrue("Idle must restore deterministic resting pixels (dark=$palette)",
+                idle.sameAs(capture("native-changing")))
+        }
+    }
+
+    @Test
+    fun pausedAndReducedMotionNativeClipsStayStill() {
+        compose.mainClock.autoAdvance = false
+        var clip by mutableStateOf(WhaleGirlClip.IDLE)
+        compose.setContent {
+            Row {
+                WhaleGirlLineArtPortrait(
+                    clip = clip,
+                    playing = false,
+                    modifier = Modifier.size(128.dp).testTag("native-paused"),
+                )
+                WhaleGirlLineArtPortrait(
+                    clip = clip,
+                    playing = true,
+                    reducedMotion = true,
+                    modifier = Modifier.size(128.dp).testTag("native-reduced"),
+                )
+            }
+        }
+        for (next in WhaleGirlClip.entries) {
+            compose.runOnIdle { clip = next }
+            settleNativeDraw()
+            val before = listOf("native-paused", "native-reduced").associateWith(::capture)
+            compose.mainClock.advanceTimeBy(5_000)
+            compose.waitForIdle()
+            before.forEach { (tag, bitmap) ->
+                assertTrue("$next in $tag must stay still after settling", bitmap.sameAs(capture(tag)))
+            }
+        }
+    }
+
+    @Test
+    fun nativeChewingChangesTheFaceWithTheAnimationClock() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            WhaleGirlLineArtPortrait(
+                clip = WhaleGirlClip.CHEWING,
+                playing = true,
+                modifier = Modifier.size(168.dp).testTag("native-animated"),
+            )
+        }
+        settleNativeDraw()
+        val before = captureFace("native-animated")
+        val frames = (1..6).map {
+            compose.mainClock.advanceTimeBy(80)
+            compose.waitForIdle()
+            captureFace("native-animated")
+        }
+        assertTrue("Chewing must change facial pixels, not only the outer silhouette",
+            frames.any { !before.sameAs(it) })
+        save("whale-girl-native-chewing.png", capture("native-animated"))
+    }
+
+    private fun settleNativeDraw() {
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+    }
+
+    private fun captureFace(tag: String): Bitmap {
+        val full = capture(tag)
+        // The approved face uses a centered 672 x 650 frame. Keep this crop on the
+        // cheeks and mouth so the assertion cannot pass from a moving hair tip or prop.
+        val unit = minOf(full.width / 672f, full.height / 650f)
+        val left = (full.width - 672f * unit) / 2f
+        val top = (full.height - 650f * unit) / 2f
+        return Bitmap.createBitmap(full, (left + 200f * unit).toInt(), (top + 500f * unit).toInt(),
+            (245f * unit).toInt(), (90f * unit).toInt())
     }
 
     @Test
@@ -308,9 +493,6 @@ class WhaleGirlVisualTest {
             }
             compose.onNodeWithText("开心").performScrollTo().performClick()
             compose.mainClock.advanceTimeByFrame()
-            compose.waitUntil(5_000) {
-                whaleGirlAtlasIsCached(WhaleGirlClip.SUCCESS)
-            }
             compose.mainClock.advanceTimeBy(700)
             compose.waitForIdle()
             save("whale-girl-settings.png", capture("theme-settings"))

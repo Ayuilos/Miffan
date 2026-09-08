@@ -15,12 +15,12 @@
   intentional adaptive backgrounds and must have no mismatched background seams.
 - Check idle, thinking, focus, typing, success and error at 28/32/40/80/168 dp in light and dark themes.
 - Historical idle avatars remain pixel-stable as time advances; reduced motion preserves meaningful expressions.
-- Direct playback tests verify that the illustrated face changes across frames (without
-  relying on whole-head movement), reactions stop at their last frame, and lifecycle
-  pause does not advance playback. All eight RGBA atlases must decode at declared sizes.
-- The white headband arc stays opaque across adjacent idle/eating frames; review
-  it during head bobbing on dark backgrounds, and retain decoded-pixel regression
-  coverage for the former intermittent background-removal failure.
+- Native playback tests verify facial change, one-shot completion/replay and lifecycle
+  pause without background catch-up; no runtime atlas/poster decoding occurs.
+- Flat blue hair, deeper fins/bow, pale face and white frills remain distinct on both palettes.
+- Review approach/bite/withdrawal, alternating chewing/swallowing, breathing/nodding and
+  exaggerated reminder beats. Looped poses meet at the boundary without a jump.
+  Reference images and SVG geometry previews are not Android device evidence.
 - Waiting eats rice, text output chews rice, and only real reasoning becomes dizzy.
   An inactive scene sleeps after the timeout or at night and wakes on interaction/input.
 - Loop boundaries and state changes are reviewed at the 168 dp chat size; no black

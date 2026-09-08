@@ -3,19 +3,20 @@
 ## Whale girl theme V1
 
 The optional 蓝色大肥鱼 collection introduces a separate head-only whale girl identity.
-It retains indigo-to-light-blue hair, a curved center fringe and ahoge, a white scalloped
-headband, two lateral whale fins, a blue side bow, blue eyes and round cheeks. There is
+The approved native revision uses a juvenile round face and oversized head, curved
+fringe and ahoge, frilled headband, two lateral whale fins and a single side bow.
+Eyes use one solid shape and one cutout highlight. There is
 no body or full-body illustration. This is a new character family, not a bowl variant;
 the bowl recognition rules below continue to apply to every Miffan inhabitant.
 
 Users can select the whale girl per assistant in its basic settings or avatar picker.
 Appearance settings preview the light and dark whale theme, apply its colors, select
 the whale avatar for the current assistant, and independently choose a launcher icon.
-Applying colors disables dynamic color explicitly. The character keeps its identifying
-blue colors in other themes. Existing assistants and custom avatars are not migrated.
-The illustration preserves the reference's detailed anime face and hair. In-app heads
-and animations have transparent backgrounds: one set works on both light and dark
-surfaces without a colored square or rounded portrait tile. The whale girl has one
+Applying colors disables dynamic color explicitly. The character uses a compact flat blue palette: blue hair, deeper fins and bow,
+a pale face, and white frills. Night colors keep these regions distinct. Existing assistants and custom avatars are not migrated.
+The native renderer preserves the approved reference silhouette with simplified
+eyes. Space outside the head is transparent; shape interiors use the palette paper
+color, with no rectangular portrait tile. The whale girl has one
 optimistic, food-loving, occasionally dizzy personality; there is no whale personality
 or motion-profile selector. Choosing an avatar or theme never changes a model, system
 prompt or conversation history.
@@ -26,7 +27,10 @@ M (dizzy spiral-eye thinking), and O (exaggerated dozing with a sleep bubble). E
 may include the small rice bowl and chopsticks, but never introduces a body or hands.
 Ordinary waiting uses eating; text output uses chewing; only an actual unfinished
 reasoning part uses dizzy thinking. The default face is positive and never tearful.
-Petting, success and reminders are short reactions. An inactive scene may doze at night
+Reminder reactions use widened eyes, an open mouth and a large exclamation mark.
+Eating has approach, bite and withdrawal beats; chewing alternates cheek volume with
+a swallow pause. Sleeping coordinates slow breathing, a small nod and a nose-anchored
+bubble. Petting, success and reminders are short reactions. An inactive scene may doze at night
 or after prolonged inactivity, and wakes for input or interaction. Errors stop the
 animation on the neutral positive still with a readable error cue. Historical avatars
 remain still, and reduced motion preserves the matching expression.

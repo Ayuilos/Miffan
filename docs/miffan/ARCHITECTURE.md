@@ -10,50 +10,39 @@ is the shared identity policy; `isMiffanAvatar` retains its bowl-only meaning.
 `MiffanMascot`. The existing handoff host and successful-reply feedback remain shared.
 Assistant pages use the adapter and never draw a character themselves.
 
-`WhaleGirlMascot` renders transparent stills and H3 Max footage processed into RGBA
-frame atlases. The same assets work on every app surface, with no light/dark portrait
-variant or rounded background tile. Launcher icons also use the positive transparent
-idle head on one adaptive icon background; legacy deep-sea aliases remain declared for upgrade compatibility and migrate to the canonical whale selection.
-Source illustrations and prompts are in `whale-girl/ASSETS.md`; do not redraw the face
-with Compose paths or introduce another manually approximated character.
+`WhaleGirlMascot` now delegates through `WhaleGirlAnimatedPortrait` to the native
+`WhaleGirlLineArtPortrait`. This supersedes the earlier atlas-only art restriction:
+the user approved the juvenile two-color design on 2026-09-08. Cached Compose paths
+share the subsequently approved static face contour; cached eye/mouth/jaw regions,
+eye closure, cheeks and semantic mouth details supply eight expressions. Small avatars
+receive optical line weight without changing the large reference geometry.
+Flat color regions are traced inside the approved contours and cached as Compose paths.
+Hair, fins, bow, face and frills keep distinct roles in both palettes, selected by
+Material background luminance independently of time-of-day sleeping behavior.
+`WhaleGirlActing` samples eased acting beats from the existing foreground clock; it
+coordinates food reach, jaw volume, swallowing, breathing and head movement without
+creating another timer.
+The area outside the head remains transparent. Launcher and platform splash resources
+are separate assets and are not changed by this renderer migration.
 
-Eight clips cover Idle, Petting, Success, Surprise, Eating, Chewing, Thinking and
-Sleeping. The first five looping conditions (Idle, Eating, Chewing, Thinking, Sleeping)
-use 120 frames / 4 seconds / 30 fps; the three reactions use 45 frames / 1.5 seconds /
-30 fps. Frames are 320 px in ten-column atlases (at most 3200×3840), staying within
-4096 px texture dimensions. Native 24 fps source frames are selected without repeats
-from the existing video windows, preserving the authored playback durations. No runtime API calls or video
-decoders are needed. Pages pass semantic generation phase: a real unfinished reasoning
-part selects Thinking, ordinary waiting selects Eating and text streaming selects
-Chewing. Input focus alone never pretends that the model is reasoning.
+Pages continue to pass semantic generation phases: unfinished reasoning selects
+Thinking, ordinary waiting selects Eating, and text streaming selects Chewing.
+Input focus alone never pretends that the model is reasoning. Confirmed reply success
+selects the brief proud expression. Errors retain the semantic error badge.
 
-`WhaleGirlTimeline` counts foreground frame-clock time, wraps loops and holds the final
-reaction frame. Each display vsync advances the timeline, but drawing is invalidated
-only when its frame index changes; there is no second sample clock to delay frames
-after resume. State changes crossfade for 160 ms. Atlas loading happens on the IO
-dispatcher with ARGB_8888; the shared cache uses a 64 MiB allocation budget. A poster
-is visible only while its atlas is unavailable, never underneath transparent frames.
-Eviction does not recycle a bitmap another portrait may still display. Missing assets
-fall back to the transparent poster.
+A foreground frame clock pauses below RESUMED without catching up on resume.
+Clip/replay changes reset reaction time while eye and cheek parameters transition in
+place. Petting completes once per replay, including with reduced motion. Reduced
+motion and historical portraits stop ambient clocks and draw meaningful stills;
+only an outstanding finite reaction callback needs a clock in reduced motion.
+The compatibility entry point retains poster arguments but never loads posters or
+RGBA atlases. Existing source footage stays as historical material.
 
-Historical idle avatars and reduced-motion previews render only the appropriate still
-and never enter atlas loading or playback. Playback pauses below RESUMED and resumes
-without catching up background time. The existing semantic handoff and one-shot tap
-and submission inputs are preserved. `characterReplyHoldMillis` gives the whale's
-1.5-second authored celebration a fixed 1.7-second display window; other avatars keep
-their previous reply-feedback duration.
-
-The current generation records and transparency pipeline are in
-`output/whale-girl-motion-v2/`; native-frame extraction and the 30 fps rebuild are in
-`output/whale-girl-motion-v3/`. Earlier opaque samples remain in
-`output/whale-girl-motion/` as historical references. Background removal must preserve
-white headband frills, rice, bowl, fine hair and the sleep bubble. Source windows and
-frame counts are recorded in metadata and checked against runtime by device tests.
-Enclosed ahoge-background removal requires a compact pocket (width/height at most
-2 and area/bounding-box area at least 0.30), in addition to background color and
-surrounding blue hair. The thin white headband arc can match those colors and move
-across the vertical cutoff; color and center alone must never remove it. Headband
-regressions check actual decoded white/opaque pixels across the affected frames.
+Native visual and playback tests cover the eight expressions, five avatar sizes,
+day/night palettes, same-instance transitions, foreground time and replay behavior.
+Production Idle is also pixel-compared with the approved static renderer at multiple
+sizes in both palettes, and all expressions retain transparent exterior corners.
+See `whale-girl/line-art/README.md` for current validation evidence and limitations.
 
 Launcher choice lives in PackageManager component state, not a second settings field.
 Three launcher aliases target the always-enabled `RouteActivity` and own both launcher

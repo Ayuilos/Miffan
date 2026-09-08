@@ -27,7 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -102,13 +102,13 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
             )
         }
     ) { contentPadding ->
-        val state = rememberPagerState { 4 }
+        val state = rememberPagerState { 5 }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding)
         ) {
-            SecondaryTabRow(
+            SecondaryScrollableTabRow(
                 selectedTabIndex = state.currentPage,
             ) {
                 Tab(
@@ -152,8 +152,13 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                         }
                     },
                     text = {
-                        Text("Logging")
+                        Text("蓝色大肥鱼")
                     }
+                )
+                Tab(
+                    selected = state.currentPage == 4,
+                    onClick = { scope.launch { state.animateScrollToPage(4) } },
+                    text = { Text("Logging") },
                 )
             }
             HorizontalPager(
@@ -166,7 +171,8 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                     0 -> MainPage(vm)
                     1 -> ColorsPage()
                     2 -> MiffanLabPage()
-                    3 -> Box {}
+                    3 -> WhaleGirlLabPage(active = state.currentPage == 3)
+                    4 -> Box {}
                 }
             }
         }

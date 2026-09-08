@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
@@ -27,7 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.delay
 import me.ayuilos.miffan.R
 
-/** One personality and one transparent character set, independent of the app color scheme. */
+/** Semantic adapter for the native two-color character. */
 @Composable
 fun WhaleGirlMascot(
     state: MiffanMascotState,
@@ -46,7 +47,6 @@ fun WhaleGirlMascot(
     val motionReduced = reducedMotion || systemReduced
     var pokeId by remember { mutableIntStateOf(0) }
     var petting by remember { mutableStateOf(false) }
-    var pettingUnavailable by remember(pokeId) { mutableStateOf(false) }
     var sleeping by remember { mutableStateOf(false) }
     var hasBeenActive by remember { mutableStateOf(false) }
 
@@ -62,14 +62,6 @@ fun WhaleGirlMascot(
         if (state == MiffanMascotState.Thinking || state == MiffanMascotState.Happy ||
             state == MiffanMascotState.Error) petting = false
     }
-    LaunchedEffect(petting, pokeId, motionReduced, pettingUnavailable) {
-        // Only static fallbacks use a timer. Normal playback starts its own clock after loading
-        // and pauses with the lifecycle, so a click-time deadline would cut it short.
-        if (petting && (motionReduced || pettingUnavailable)) {
-            delay(WhaleGirlClip.PETTING.durationMillis)
-            petting = false
-        }
-    }
     LaunchedEffect(state, inputState, pokeId, attentionId, submitId, presentation, dayPhase) {
         sleeping = false
         if (state != MiffanMascotState.Idle || inputState != MiffanMascotInputState.Inactive ||
@@ -82,7 +74,7 @@ fun WhaleGirlMascot(
     }
 
     val clip = resolveWhaleGirlClip(state, generationPhase, inputState, petting, sleeping)
-    val playing = !motionReduced && state != MiffanMascotState.Error &&
+    val playing = state != MiffanMascotState.Error &&
         (presentation == MiffanPresentation.Scene || state != MiffanMascotState.Idle || petting ||
             inputState != MiffanMascotInputState.Inactive)
     val description = if (state == MiffanMascotState.Error) "蓝色大肥鱼，遇到了问题" else when (clip) {
@@ -98,7 +90,8 @@ fun WhaleGirlMascot(
     val touch = if (interactive) Modifier.pointerInput(Unit) {
         detectTapGestures { pokeId++ }
     } else Modifier
-    val colors = MaterialTheme.colorScheme
+    val colors = if (MaterialTheme.colorScheme.background.luminance() < .5f)
+        WhaleLinePalette.Night else WhaleLinePalette.Day
     Box(modifier.then(touch).semantics {
         contentDescription = description
         if (interactive) {
@@ -113,7 +106,6 @@ fun WhaleGirlMascot(
             reducedMotion = motionReduced,
             replayId = if (clip == WhaleGirlClip.PETTING) pokeId else 0,
             onPlaybackFinished = { if (clip == WhaleGirlClip.PETTING) petting = false },
-            onPlaybackUnavailable = { if (clip == WhaleGirlClip.PETTING) pettingUnavailable = true },
             modifier = Modifier.align(Alignment.Center).aspectRatio(1f).fillMaxSize(),
         )
         if (state == MiffanMascotState.Error) {
@@ -124,9 +116,10 @@ fun WhaleGirlMascot(
                     scale(unit, unit, Offset.Zero)
                 }) {
                     val center = Offset(108f, 106f)
-                    drawCircle(colors.errorContainer, 13f, center)
-                    drawLine(colors.onErrorContainer, center + Offset(0f, -6f), center + Offset(0f, 1f), 2.8f, StrokeCap.Round)
-                    drawCircle(colors.onErrorContainer, 1.6f, center + Offset(0f, 6f))
+                    drawCircle(colors.paper, 13f, center)
+                    drawCircle(colors.ink, 13f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(1.3f))
+                    drawLine(colors.ink, center + Offset(0f, -6f), center + Offset(0f, 1f), 2.8f, StrokeCap.Round)
+                    drawCircle(colors.ink, 1.6f, center + Offset(0f, 6f))
                 }
             }
         }

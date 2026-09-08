@@ -106,10 +106,4 @@ class WhaleGirlTimelineTest {
         }
         assertEquals(900L, Avatar.Miffan().characterReplyHoldMillis())
     }
-
-    @Test
-    fun aSingleTransparentAssetServesEveryTheme() {
-        assertEquals("whale_motion/thinking.webp", WhaleGirlClip.THINKING.assetPath())
-        assertEquals(8, WhaleGirlClip.entries.map { it.assetPath() }.distinct().size)
-    }
 }
