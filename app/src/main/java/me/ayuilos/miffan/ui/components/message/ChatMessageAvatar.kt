@@ -18,15 +18,16 @@ import me.rerere.ai.ui.isEmptyUIMessage
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
-import me.ayuilos.miffan.data.model.isMiffanAvatar
+import me.ayuilos.miffan.data.model.isCharacterAvatar
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
+import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
 import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
 import me.ayuilos.miffan.ui.context.LocalSettings
 
 internal fun shouldUseAssistantIdentity(assistant: Assistant?): Boolean = assistant?.let {
-    it.useAssistantAvatar || it.avatar.isMiffanAvatar()
+    it.useAssistantAvatar || it.avatar.isCharacterAvatar()
 } == true
 
 @Composable
@@ -84,6 +85,7 @@ fun ChatMessageAssistantAvatar(
                         value = assistantIdentity.avatar,
                         loading = loading,
                         semanticState = mascotState,
+                        generationPhase = assistantGenerationPhase(message, loading),
                     )
                 }
                 Row(

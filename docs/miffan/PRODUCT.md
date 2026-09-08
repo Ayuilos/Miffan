@@ -1,5 +1,71 @@
 # Miffan Character System
 
+## Whale girl theme V1
+
+The optional 蓝色大肥鱼 collection introduces a separate head-only whale girl identity.
+The approved native revision uses a juvenile round face and oversized head, curved
+fringe and ahoge, frilled headband, two lateral whale fins and a single side bow.
+Eyes use one solid shape and one cutout highlight. There is
+no body or full-body illustration. This is a new character family, not a bowl variant;
+the bowl recognition rules below continue to apply to every Miffan inhabitant.
+
+Users can select the whale girl per assistant in its basic settings or avatar picker.
+Appearance settings preview the light and dark whale theme, apply its colors, select
+the whale avatar for the current assistant, and independently choose a launcher icon.
+Applying colors disables dynamic color explicitly. The character uses a compact flat blue palette: blue hair, deeper fins and bow,
+a pale face, and white frills. Night colors keep these regions distinct. Existing assistants and custom avatars are not migrated.
+The native renderer preserves the approved reference silhouette with simplified
+eyes. Space outside the head is transparent; shape interiors use the palette paper
+color, with no rectangular portrait tile. The whale girl has one
+optimistic, food-loving, occasionally dizzy personality; there is no whale personality
+or motion-profile selector. Choosing an avatar or theme never changes a model, system
+prompt or conversation history.
+
+The selected expressions are A (gentle default smile), C (contented petting), F (smug
+success), I (surprised reminder), K (big-mouth rice eating), L (puffed-cheek chewing),
+M (dizzy spiral-eye thinking), and O (exaggerated dozing with a sleep bubble). Eating
+may include the small rice bowl and chopsticks, but never introduces a body or hands.
+Ordinary waiting uses eating; text output uses chewing; only an actual unfinished
+reasoning part uses dizzy thinking. The default face is positive and never tearful.
+Reminder reactions use widened eyes, an open mouth and a large exclamation mark.
+Eating has approach, bite and withdrawal beats; chewing alternates cheek volume with
+a swallow pause. Sleeping coordinates slow breathing, a small nod and a nose-anchored
+bubble. Petting, success and reminders are short reactions. An inactive scene may doze at night
+or after prolonged inactivity, and wakes for input or interaction. Errors stop the
+animation on the neutral positive still with a readable error cue. Historical avatars
+remain still, and reduced motion preserves the matching expression.
+Launcher choices include the original bowl and one whale girl icon. Legacy deep-sea selections migrate to the same whale icon, independently of light/dark mode.
+Users can restore the original launcher icon independently of the theme or character.
+The selected icon also identifies the app in share targets, text-processing actions and
+registered link handlers. Each intent resolves to one selected entry. Screens owned by
+other apps that read only the package-level application icon may still show the fixed
+installation icon; that icon is not dynamically replaced by component aliases.
+
+Onboarding offers one switch for the whale collection. Turning it on explicitly creates
+or reuses the dedicated assistant and applies the palette, immediately updating the
+onboarding head, background, connection card and controls. Turning it off restores only
+the palette and retains the assistant. Existing assistants remain unchanged; the switch
+does not start or cancel authorization or change global providers/models.
+Startup artwork follows the whale theme or independently selected whale launcher icon,
+including the loading state before the full settings are available.
+
+Existing users discover the collection through a one-time introduction on an ordinary
+chat-home launch. It previews smiling, rice eating and dizzy thinking, offers one-click
+theme/character trial, and leaves changing the launcher icon unchecked by default.
+First installations use onboarding instead. Sharing, translation and other external
+entry flows do not trigger the introduction. "Later" permanently dismisses the card;
+an unseen-theme indicator remains in the drawer/settings route for at most 30 days,
+and clears when appearance settings are visited or the collection is applied.
+Only confirming the trial creates and selects a persistent, independent whale assistant,
+then opens a new chat. Existing assistants and conversations remain unchanged.
+A stored assistant id prevents duplicate creation and preserves renamed/customized versions;
+after deletion, a later confirmed trial may create another. The assistant has one editable
+positive, rice-loving personality, with a complete default system prompt and normal assistant
+configuration. Its reset action confirms replacement of all configuration while preserving
+its id, chat history and saved memory. The preset uses the global model by default.
+Appearance restore only restores the previous palette; it neither deletes nor resets the
+whale assistant. Launcher choice remains independent.
+
 ## Product intent
 
 Miffan turns the app's bowl icon into a persistent assistant identity. When an assistant has no custom image or emoji, the assistant is represented by an animated Miffan everywhere: selection, settings, empty chat, waiting, and message identity.

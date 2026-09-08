@@ -9,6 +9,7 @@ import me.ayuilos.miffan.ui.theme.presets.MinimalThemePreset
 import me.ayuilos.miffan.ui.theme.presets.OceanThemePreset
 import me.ayuilos.miffan.ui.theme.presets.SakuraThemePreset
 import me.ayuilos.miffan.ui.theme.presets.SpringThemePreset
+import me.ayuilos.miffan.ui.theme.presets.WhaleThemePreset
 
 data class PresetTheme(
     val id: String,
@@ -25,6 +26,7 @@ val PresetThemes by lazy {
     listOf(
         SakuraThemePreset,
         OceanThemePreset,
+        WhaleThemePreset,
         SpringThemePreset,
         AutumnThemePreset,
         BlackThemePreset,

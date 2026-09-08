@@ -1,5 +1,37 @@
 # Miffan Acceptance Checklist
 
+## Whale girl collection
+
+- Existing dummy, bowl, image and emoji avatars retain their stored values and rendering.
+- Whale girl avatars survive serialization and restart; legacy motion profiles decode
+  without changing the single whale personality, and its UI offers no profile selector.
+- Avatar selection affects only the selected assistant; theme selection does not change prompts or models.
+- Indigo hair, white headband, lateral fins, blue bow and face remain readable at small sizes.
+- Preserve the selected positive default smile, layered hair, curled ahoge and frilled
+  headband. Sad eyes and tears are not the default expression.
+- In-app heads have real alpha transparency on both light and dark surfaces: no colored
+  rectangle, halo, leftover background in hair curls, missing white frills/rice, or
+  stationary poster visible through moving transparent frames. Launcher icons keep
+  intentional adaptive backgrounds and must have no mismatched background seams.
+- Check idle, thinking, focus, typing, success and error at 28/32/40/80/168 dp in light and dark themes.
+- Historical idle avatars remain pixel-stable as time advances; reduced motion preserves meaningful expressions.
+- Native playback tests verify facial change, one-shot completion/replay and lifecycle
+  pause without background catch-up; no runtime atlas/poster decoding occurs.
+- Flat blue hair, deeper fins/bow, pale face and white frills remain distinct on both palettes.
+- Review approach/bite/withdrawal, alternating chewing/swallowing, breathing/nodding and
+  exaggerated reminder beats. Looped poses meet at the boundary without a jump.
+  Reference images and SVG geometry previews are not Android device evidence.
+- Waiting eats rice, text output chews rice, and only real reasoning becomes dizzy.
+  An inactive scene sleeps after the timeout or at night and wakes on interaction/input.
+- Loop boundaries and state changes are reviewed at the 168 dp chat size; no black
+  loading frame, whole-body fragments or generated emphasis marks may appear.
+- The empty-chat head uses the shared handoff when a response begins.
+- Whale theme previews and applied colors agree, including dynamic-color precedence.
+- Every launcher choice leaves exactly one launcher entry enabled and preserves sharing.
+- All icon drawables inflate, including both adaptive foregrounds; only the original
+  bowl supplies a monochrome layer because the whale portraits have opaque backgrounds.
+- Restore the original icon, restart and upgrade the app, and check launcher refresh/placement on device.
+
 ## Identity and persistence
 
 - A newly created assistant uses Miffan Classic without requiring avatar setup.
@@ -65,6 +97,22 @@
 - Expression and avatar-size screenshots are checked in light, dark, and reduced-motion previews.
 
 ## Regression and delivery
+
+- Existing installations see the whale introduction once on a regular chat launch;
+  fresh installs, external intents and active database migration do not show it.
+- Later/Back/outside-dismiss does not re-prompt after restart. Settings retain the
+  unseen-theme marker for at most 30 days and clear it on viewing appearance.
+- Only confirming trial creates a dedicated assistant and opens a new chat; all existing
+  assistants and global provider/model settings are preserved. Repeated trials reuse its
+  stored id without overwriting edits; deletion permits recreation on later confirmation.
+- Reset remains available after editing the dedicated assistant name/avatar, requires
+  confirmation, restores complete defaults with the same id and leaves history intact.
+- Palette restore preserves all assistants. Rotation and repeated taps cannot overwrite
+  the original backup. Launcher opt-in remains unchecked by default.
+- Only one whale launcher icon is offered. Legacy deep-sea selection migrates without
+  duplicate launcher/external entries and no longer forces dark startup appearance.
+- Introduction actions remain reachable on small/landscape screens, previews pause
+  when backgrounded, and reduced motion keeps the selected still image.
 
 - In a Debug build, Settings > About > long-press Version opens Debug Mode, where the update-reminder preview can deterministically drive the drawer badge, Settings banner, and Miffan update-available state without a real release.
 - Avatar serialization round-trips for all Miffan presets.

@@ -1,5 +1,95 @@
 # Miffan Architecture
 
+## Additional character families
+
+`Avatar.WhaleGirl` serializes as `whale_girl`. Its legacy motion-profile field remains
+readable for compatibility but no longer changes whale behavior or appears in its UI.
+It is independent of `MiffanAppearance` and `MiffanKind`. `isCharacterAvatar`
+is the shared identity policy; `isMiffanAvatar` retains its bowl-only meaning.
+`AssistantCharacterMascot` dispatches semantic scene inputs to `WhaleGirlMascot` or
+`MiffanMascot`. The existing handoff host and successful-reply feedback remain shared.
+Assistant pages use the adapter and never draw a character themselves.
+
+`WhaleGirlMascot` now delegates through `WhaleGirlAnimatedPortrait` to the native
+`WhaleGirlLineArtPortrait`. This supersedes the earlier atlas-only art restriction:
+the user approved the juvenile two-color design on 2026-09-08. Cached Compose paths
+share the subsequently approved static face contour; cached eye/mouth/jaw regions,
+eye closure, cheeks and semantic mouth details supply eight expressions. Small avatars
+receive optical line weight without changing the large reference geometry.
+Flat color regions are traced inside the approved contours and cached as Compose paths.
+Hair, fins, bow, face and frills keep distinct roles in both palettes, selected by
+Material background luminance independently of time-of-day sleeping behavior.
+`WhaleGirlActing` samples eased acting beats from the existing foreground clock; it
+coordinates food reach, jaw volume, swallowing, breathing and head movement without
+creating another timer.
+The area outside the head remains transparent. Launcher and platform splash resources
+are separate assets and are not changed by this renderer migration.
+
+Pages continue to pass semantic generation phases: unfinished reasoning selects
+Thinking, ordinary waiting selects Eating, and text streaming selects Chewing.
+Input focus alone never pretends that the model is reasoning. Confirmed reply success
+selects the brief proud expression. Errors retain the semantic error badge.
+
+A foreground frame clock pauses below RESUMED without catching up on resume.
+Clip/replay changes reset reaction time while eye and cheek parameters transition in
+place. Petting completes once per replay, including with reduced motion. Reduced
+motion and historical portraits stop ambient clocks and draw meaningful stills;
+only an outstanding finite reaction callback needs a clock in reduced motion.
+The compatibility entry point retains poster arguments but never loads posters or
+RGBA atlases. Existing source footage stays as historical material.
+
+Native visual and playback tests cover the eight expressions, five avatar sizes,
+day/night palettes, same-instance transitions, foreground time and replay behavior.
+Production Idle is also pixel-compared with the approved static renderer at multiple
+sizes in both palettes, and all expressions retain transparent exterior corners.
+See `whale-girl/line-art/README.md` for current validation evidence and limitations.
+
+Launcher choice lives in PackageManager component state, not a second settings field.
+Three launcher aliases target the always-enabled `RouteActivity` and own both launcher
+and SEND filters. Process-text, camera-shortcut and the two OAuth deep-link families
+each expose matching icon aliases. Concrete targets stay enabled for explicit intents.
+All 15 aliases switch in one transaction; application startup reconciles newly added
+external aliases against the existing launcher choice after an upgrade. Android 13+ uses atomic component updates; older APIs
+enable the selected alias before disabling alternatives and attempt rollback on failure.
+Device launchers control icon refresh timing and existing home-screen placement.
+PROCESS_TEXT aliases also declare their selected icon and localized translation label
+on the intent filter, exposing both directly through ResolveInfo instead of requiring
+ActivityInfo fallback. Tests cover unscoped browser-style queries with flags 0 as well
+as GET_RESOLVED_FILTER, alongside actual icon pixels for the two choices and legacy alias migration.
+
+Onboarding writes its collection shortcut through one atomic `SettingsStore.update`:
+palette and dedicated assistant creation/selection change together through the shared
+trial helper. Turning it off restores only the palette. Its content consumes the
+active Material theme; classic colors are used only when the whale collection is off.
+
+`AppStartupAppearanceController` resolves startup identity from the saved whale theme,
+launcher choice and color mode. A small preferences mirror serves the loading view
+before DataStore emits. Android 12+ receives a stable named splash style through
+`SplashScreen.setSplashScreenTheme`, persisted by the OS for subsequent cold starts;
+this does not change launcher aliases. The first launch after an upgrade may precede
+the initial settings sync; the manifest fallback uses the selected component icon.
+Startup uses a static portrait and never decodes animation atlases.
+
+`WhaleThemeDiscoveryMigration` initializes the independent `whale_theme_discovery`
+preference once, using an existing launch count or saved provider configuration as
+evidence of an upgrade. Fresh installations are already introduced by onboarding.
+The persisted discovery timestamp prevents subsequent versions from resetting the
+30-day settings badge. `WhaleThemeDiscoveryHost` is mounted only on eligible normal
+chat launches, with saveable dialog state and durable acknowledgement; external
+intents and database migration do not consume the introduction. A single preview
+player cycles clips only while resumed and respects reduced motion.
+Trial/restore use atomic SettingsStore transforms and a saved palette snapshot.
+`dedicatedAssistantId` identifies the independently created assistant; repeated trials reuse
+it without overwriting edits. Missing/deleted ids cause creation only on confirmation.
+`createWhaleAssistant(id)` supplies a complete editable preset and resets all configuration
+using the existing id. Palette restore does not mutate assistants. Legacy avatar backup
+fields remain deserializable but are no longer applied. Successful trial navigation opens
+a fresh chat after persistence, keeping previous conversation ownership unchanged.
+The optional PackageManager change completes in a short non-cancellable operation
+with appearance persistence and rolls back its icon choice if persistence fails.
+The startup launch counter also uses an atomic SettingsStore transform so it cannot
+overwrite a concurrently persisted introduction acknowledgement with stale settings.
+
 ## Model boundary
 
 `Avatar.Miffan` is the persistent assistant-avatar value. It owns a serializable `MiffanAppearance` and a separate `MiffanMotionProfile`. Appearance stores a preset palette plus a palette/theme color-source choice; Character V1 adds a curated Miffan kind; Motion V1 stores Lively, Calm, or Curious.

@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,9 @@ import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.createWhaleAssistant
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.ui.components.ui.AssistantCharacterPicker
 import me.ayuilos.miffan.data.model.isMiffanAvatar
 import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
@@ -64,6 +68,7 @@ import me.ayuilos.miffan.ui.components.ui.Select
 import me.ayuilos.miffan.ui.components.ui.TagsInput
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.hooks.heroAnimation
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.toFixed
@@ -122,7 +127,8 @@ fun AssistantBasicPage(id: String) {
                     )
                 )
             },
-            vm = vm
+            vm = vm,
+            isWhaleAssistant = LocalSettings.current.whaleThemeDiscovery.dedicatedAssistantId == assistant.id,
         )
     }
 }
@@ -136,8 +142,28 @@ internal fun AssistantBasicContent(
     workspaces: List<WorkspaceEntity>,
     onUpdate: (Assistant) -> Unit,
     onOpenWorkspaceScope: (String, String?, String?) -> Unit = { _, _, _ -> },
-    vm: AssistantDetailVM
+    vm: AssistantDetailVM,
+    isWhaleAssistant: Boolean = false,
 ) {
+    var showWhaleReset by rememberSaveable(assistant.id.toString()) { mutableStateOf(false) }
+    if (showWhaleReset && isWhaleAssistant) {
+        AlertDialog(
+            onDismissRequest = { showWhaleReset = false },
+            title = { Text("恢复大肥鱼默认设定？") },
+            text = {
+                Text("将恢复这个助手的名称、头像、性格提示词，以及模型、参数、工具、记忆开关和背景等全部配置。模型将跟随全局默认设置，工作区绑定也会解除。聊天记录和已保存的记忆不会删除，其他助手不受影响。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWhaleReset = false
+                    onUpdate(createWhaleAssistant(assistant.id))
+                }) { Text("恢复默认") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWhaleReset = false }) { Text("取消") }
+            },
+        )
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -168,6 +194,18 @@ internal fun AssistantBasicContent(
                     .size(80.dp)
                     .heroAnimation("assistant_${assistant.id}")
             )
+            AssistantCharacterPicker(
+                avatar = assistant.avatar,
+                onAvatarChange = { onUpdate(assistant.copy(avatar = it)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (assistant.avatar is Avatar.WhaleGirl) {
+                Text(
+                    "蓝色大肥鱼 · 爱吃饭、有点嘴硬，也会认真听你说话。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (assistant.avatar.isMiffanAvatar()) {
                 val appearance = assistant.avatar.miffanAppearanceOrDefault()
                 val motionProfile = assistant.avatar.miffanMotionProfileOrDefault()
@@ -194,6 +232,19 @@ internal fun AssistantBasicContent(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+
+        if (isWhaleAssistant) {
+            Card(colors = CustomColors.cardColorsOnSurfaceContainer) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("大肥鱼专属助手", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "名称、头像和各项配置都可以自由修改；性格与说话方式可在系统提示词中编辑。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = { showWhaleReset = true }) { Text("恢复大肥鱼默认设定") }
+                }
             }
         }
 

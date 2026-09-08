@@ -31,7 +31,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
@@ -66,6 +68,8 @@ import me.ayuilos.miffan.data.event.AppEvent
 import me.ayuilos.miffan.data.event.AppEventBus
 import me.ayuilos.miffan.ui.activity.SafeModeActivity
 import me.ayuilos.miffan.ui.components.ui.TTSController
+import me.ayuilos.miffan.ui.components.ui.AppStartupLoading
+import me.ayuilos.miffan.ui.components.ui.WhaleThemeDiscoveryHost
 import me.ayuilos.miffan.ui.context.LocalASRState
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
@@ -75,6 +79,7 @@ import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.context.Navigator
 import me.ayuilos.miffan.ui.hooks.readBooleanPreference
 import me.ayuilos.miffan.ui.hooks.readStringPreference
+import me.ayuilos.miffan.ui.hooks.rememberCurrentColorMode
 import me.ayuilos.miffan.ui.hooks.rememberCustomAsrState
 import me.ayuilos.miffan.ui.hooks.rememberCustomTtsState
 import me.ayuilos.miffan.ui.pages.assistant.AssistantPage
@@ -130,6 +135,8 @@ import me.ayuilos.miffan.ui.pages.webview.WebViewPage
 import me.ayuilos.miffan.ui.theme.LocalDarkMode
 import me.ayuilos.miffan.ui.theme.MiffanTheme
 import me.ayuilos.miffan.utils.CrashHandler
+import me.ayuilos.miffan.utils.AppStartupAppearance
+import me.ayuilos.miffan.utils.AppStartupAppearanceController
 import me.ayuilos.miffan.utils.openUsageAccessSettings
 import okhttp3.OkHttpClient
 import org.koin.android.ext.android.inject
@@ -139,6 +146,8 @@ import kotlin.uuid.Uuid
 private const val TAG = "RouteActivity"
 
 class RouteActivity : ComponentActivity() {
+    private var startupAppearance by mutableStateOf(AppStartupAppearance.MIFFAN_SYSTEM)
+    private var normalLauncherEntry by mutableStateOf(false)
     private val okHttpClient by inject<OkHttpClient>()
     private val settingsStore by inject<SettingsStore>()
     private var navStack: MutableList<NavKey>? = null
@@ -160,9 +169,13 @@ class RouteActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        normalLauncherEntry = isNormalLauncherEntry(intent)
+        startupAppearance = AppStartupAppearanceController.current(this)
+        setTheme(startupAppearance.themeRes)
         enableEdgeToEdge()
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
+        AppStartupAppearanceController.syncCached(this)
         if (CrashHandler.hasCrashed(this)) {
             startActivity(Intent(this, SafeModeActivity::class.java))
             finish()
@@ -192,6 +205,11 @@ class RouteActivity : ComponentActivity() {
                 AppRoutes()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        startupAppearance = AppStartupAppearanceController.syncCached(this)
     }
 
     private fun disableNavigationBarContrast() {
@@ -229,26 +247,33 @@ class RouteActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        normalLauncherEntry = isNormalLauncherEntry(intent)
         // Navigate to the chat screen if a conversation ID is provided
         intent.getStringExtra("conversationId")?.let { text ->
             navStack?.add(Screen.Chat(text))
         }
     }
 
+    private fun isNormalLauncherEntry(intent: Intent?): Boolean = intent != null &&
+        (intent.action == Intent.ACTION_MAIN || intent.action == null) && intent.data == null &&
+        !intent.hasExtra("conversationId") && !intent.hasExtra(Intent.EXTRA_TEXT) &&
+        !intent.hasExtra(Intent.EXTRA_STREAM)
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Composable
     fun AppRoutes() {
         val toastState = rememberToasterState()
         val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
-        if (settings.init) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
+        val colorMode = rememberCurrentColorMode()
+        LaunchedEffect(settings.init, settings.themeId, settings.dynamicColor, colorMode) {
+            if (!settings.init) {
+                startupAppearance = AppStartupAppearanceController.syncSettings(
+                    this@RouteActivity, settings.themeId, settings.dynamicColor,
+                )
             }
+        }
+        if (settings.init) {
+            AppStartupLoading(startupAppearance)
             return
         }
         val tts = rememberCustomTtsState()
@@ -304,6 +329,14 @@ class RouteActivity : ComponentActivity() {
                     showCloseButton = true,
                 )
                 TTSController()
+                WhaleThemeDiscoveryHost(
+                    settings = settings,
+                    store = settingsStore,
+                    onExperienced = { Navigator(backStack).clearAndNavigate(Screen.Chat(Uuid.random().toString())) },
+                    eligible = migrationState !is MigrationState.Migrating &&
+                        !settings.isNotConfigured() && backStack.lastOrNull() is Screen.Chat &&
+                        normalLauncherEntry,
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

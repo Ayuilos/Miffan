@@ -23,6 +23,13 @@ sealed class Avatar {
         val appearance: MiffanAppearance = MiffanAppearance(),
         val motionProfile: MiffanMotionProfile = MiffanMotionProfile.CURIOUS,
     ) : Avatar()
+
+    /** Head-only whale girl; a separate character family from the Miffan bowls. */
+    @Serializable
+    @SerialName("whale_girl")
+    data class WhaleGirl(
+        val motionProfile: MiffanMotionProfile = MiffanMotionProfile.CURIOUS,
+    ) : Avatar()
 }
 
 @Serializable
@@ -94,6 +101,18 @@ enum class MiffanMotionProfile {
 }
 
 fun Avatar.isMiffanAvatar(): Boolean = this is Avatar.Miffan || this is Avatar.Dummy
+
+fun Avatar.isCharacterAvatar(): Boolean = isMiffanAvatar() || this is Avatar.WhaleGirl
+
+fun Avatar.characterMotionProfileOrDefault(): MiffanMotionProfile = when (this) {
+    is Avatar.WhaleGirl -> motionProfile
+    else -> miffanMotionProfileOrDefault()
+}
+
+fun Avatar.withCharacterMotionProfile(profile: MiffanMotionProfile): Avatar = when (this) {
+    is Avatar.WhaleGirl -> copy(motionProfile = profile)
+    else -> withMiffanMotionProfile(profile)
+}
 
 fun Avatar.miffanAppearanceOrDefault(): MiffanAppearance =
     (this as? Avatar.Miffan)?.appearance ?: MiffanAppearance()

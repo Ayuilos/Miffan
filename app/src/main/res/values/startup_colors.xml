@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="startup_neutral_light">#FAF8F5</color>
+    <color name="startup_neutral_dark">#16181D</color>
+    <color name="startup_neutral_background">@color/startup_neutral_light</color>
+    <color name="startup_whale_background">@color/whale_girl_icon_background</color>
+</resources>

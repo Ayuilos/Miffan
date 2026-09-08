@@ -8,6 +8,11 @@ import org.junit.Test
 
 class AssistantAvatarPolicyTest {
     @Test
+    fun whaleGirlUsesSelectedCharacterEvenWithLegacyPreferenceOff() {
+        assertTrue(shouldUseAssistantIdentity(Assistant(avatar = Avatar.WhaleGirl(), useAssistantAvatar = false)))
+    }
+
+    @Test
     fun miffanAvatarAlwaysUsesAssistantIdentity() {
         val assistant = Assistant(
             avatar = Avatar.Miffan(),

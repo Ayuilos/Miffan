@@ -2,7 +2,6 @@ package me.ayuilos.miffan.ui.components.ui
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Canvas
@@ -35,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -57,9 +57,8 @@ import me.rerere.hugeicons.stroke.Edit03
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Avatar
-import me.ayuilos.miffan.data.model.isMiffanAvatar
-import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
-import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
+import me.ayuilos.miffan.data.model.characterMotionProfileOrDefault
+import me.ayuilos.miffan.data.model.isCharacterAvatar
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.hooks.rememberAvatarShape
 import org.koin.compose.koinInject
@@ -103,6 +102,8 @@ fun UIAvatar(
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     dummyContent: (@Composable () -> Unit)? = null,
+    allowCharacterPicker: Boolean = false,
+    transparentCharacter: Boolean = false,
 ) {
     val filesManager: FilesManager = koinInject()
     val context = LocalContext.current
@@ -132,7 +133,7 @@ fun UIAvatar(
     )
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
+        contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { selectedUri ->
             val tempFile = File(context.appTempFolder, "avatar_pick_${System.currentTimeMillis()}.jpg")
@@ -151,15 +152,16 @@ fun UIAvatar(
     }
 
     Box(modifier = modifier.then(Modifier.size(32.dp))) {
+        val unframed = transparentCharacter || value is Avatar.WhaleGirl
         Surface(
-            shape = rememberAvatarShape(loading),
+            shape = if (unframed) RectangleShape else rememberAvatarShape(loading),
             modifier = Modifier.fillMaxSize(),
             onClick = {
                 onClick?.invoke()
                 if (onUpdate != null) showPickOption = true
             },
-            tonalElevation = 4.dp,
-            color = MaterialTheme.colorScheme.secondaryContainer,
+            tonalElevation = if (unframed) 0.dp else 4.dp,
+            color = if (unframed) Color.Transparent else MaterialTheme.colorScheme.secondaryContainer,
         ) {
             Box(
                 contentAlignment = Alignment.Center,
@@ -199,11 +201,11 @@ fun UIAvatar(
                         }
                     }
 
-                    is Avatar.Miffan -> {
-                        MiffanMascot(
+                    is Avatar.Miffan, is Avatar.WhaleGirl -> {
+                        AssistantCharacterMascot(
+                            avatar = value,
                             state = MiffanMascotState.Idle,
-                            appearance = value.appearance,
-                            motionProfile = value.motionProfile,
+                            presentation = MiffanPresentation.Avatar,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -245,12 +247,19 @@ fun UIAvatar(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    if (allowCharacterPicker) {
+                        Button(
+                            onClick = {
+                                showPickOption = false
+                                onUpdate?.invoke(Avatar.WhaleGirl())
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("蓝色大肥鱼头像") }
+                    }
                     Button(
                         onClick = {
                             showPickOption = false
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                            imagePickerLauncher.launch("image/*")
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -369,13 +378,18 @@ fun AssistantAvatar(
     semanticState: MiffanMascotState = MiffanMascotState.Idle,
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null,
+    generationPhase: AssistantGenerationPhase = AssistantGenerationPhase.None,
 ) {
     val assistantUpdate = onUpdate?.let { update ->
         { avatar: Avatar ->
-            update(if (avatar is Avatar.Dummy) Avatar.Miffan() else avatar)
+            update(when (avatar) {
+                Avatar.Dummy -> Avatar.Miffan()
+                is Avatar.WhaleGirl -> avatar.copy(motionProfile = value.characterMotionProfileOrDefault())
+                else -> avatar
+            })
         }
     }
-    if (!value.isMiffanAvatar()) {
+    if (!value.isCharacterAvatar()) {
         UIAvatar(
             name = name,
             value = value,
@@ -383,13 +397,12 @@ fun AssistantAvatar(
             loading = loading,
             onUpdate = assistantUpdate,
             onClick = onClick,
+            allowCharacterPicker = true,
         )
         return
     }
 
     val dayPhase = rememberMiffanDayPhase()
-    val appearance = value.miffanAppearanceOrDefault()
-    val motionProfile = value.miffanMotionProfileOrDefault()
 
     val mascotState = resolveAssistantMascotState(
         loading = loading,
@@ -403,11 +416,13 @@ fun AssistantAvatar(
         loading = loading,
         onUpdate = assistantUpdate,
         onClick = onClick,
+        allowCharacterPicker = true,
+        transparentCharacter = value is Avatar.WhaleGirl,
         dummyContent = {
-            MiffanMascot(
+            AssistantCharacterMascot(
+                avatar = value,
                 state = mascotState,
-                appearance = appearance,
-                motionProfile = motionProfile,
+                generationPhase = generationPhase,
                 presentation = MiffanPresentation.Avatar,
                 dayPhase = dayPhase,
                 modifier = Modifier.fillMaxSize(),

@@ -21,7 +21,21 @@ Use an API key with OpenAI-compatible, Gemini, or Claude services, or sign in wi
 - **One home for different models.** Mix official APIs, compatible gateways, self-hosted endpoints, and a Codex subscription without rebuilding your workflow around one provider.
 - **Assistants are real workspaces.** Each assistant can have isolated prompts, model parameters, memory, tools, MCP servers, Skills, visual identity, and conversation history.
 - **The phone can do more than display chat.** Miffan can search the web, work with files, run a local Linux workspace, use device capabilities, and expose the same conversations through a browser.
-- **A character system with purpose.** Animated Miffan characters react to time, input, generation, and errors while remaining configurable per assistant.
+- **A character system with purpose.** Choose customizable Miffan bowl characters or the blue whale girl, with expressions that respond to conversation state and time of day.
+
+## Meet the blue whale girl
+
+<p align="center">
+  <img src="docs/assets/branding/miffan-whale-girl.png" alt="The blue whale girl pointing forward from a smiling Miffan rice bowl, with rice grains on her cheeks" width="560" />
+  <br /><em>Miffan and the blue whale girl · character illustration</em>
+</p>
+
+**蓝色大肥鱼** is a cheerful, rice-loving companion alongside the original Miffan bowl characters. Open **Settings → Appearance** to preview the collection and try it with a dedicated assistant.
+
+- **An assistant of her own.** The first trial creates a separate whale-girl assistant and opens a new chat. Later trials reuse it and preserve your edits. Her name, personality prompt, model, and tools remain editable; existing assistants and conversations stay intact.
+- **Expressions that follow the conversation.** She smiles, enjoys petting, looks proud, reacts to updates, eats while waiting, chews during text output, sways with spinning eyes during actual reasoning, and dozes with a breathing nose bubble. Native drawing keeps the background transparent and supports reduced motion.
+- **A coordinated appearance.** Vivid blue hair, fins, and a bow come with light and dark palettes, onboarding previews, and startup artwork. The bowl and whale launcher icons can be selected independently. Restoring the previous palette keeps the dedicated assistant.
+- **Easy to discover.** New installations can choose the collection during onboarding; existing users receive a one-time introduction on the chat home screen. You can also choose the whale avatar for an individual assistant.
 
 ## Screenshots
 
@@ -40,7 +54,7 @@ Use an API key with OpenAI-compatible, Gemini, or Claude services, or sign in wi
 
 ### Selected-text translation
 
-Select text in any Android app and choose **Miffan-Translate** from the text action menu. Miffan shows the translation in a compact floating window without taking you away from the current page.
+Select text in any Android app and choose **Miffan-Translate** from the text action menu (the label follows the app language). Miffan shows the translation in a compact floating window without taking you away from the current page.
 
 <table>
   <tr>
@@ -143,6 +157,12 @@ Useful verification commands:
 ```
 
 `app/google-services.json` is optional. Builds without an authorized configuration keep Firebase analytics and crash reporting disabled. Production signing and release steps are documented in [docs/releasing.md](docs/releasing.md).
+
+### Character animation lab
+
+Open **Settings → About**, long-press the version entry, and select **蓝色大肥鱼** in the debug page. Preview all eight expressions, pause or replay them, switch light/dark colors and reduced motion, test 28–280 dp sizes, or scrub through the action timeline. These controls affect only the preview.
+
+The whale uses native Compose paths and a foreground animation clock. Unused legacy WebP animation atlases have been removed from the APK. See the [character architecture](docs/miffan/ARCHITECTURE.md) and [visual validation notes](docs/miffan/whale-girl/line-art/README.md) for implementation and test evidence.
 
 ### Repository modules
 

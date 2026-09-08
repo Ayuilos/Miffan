@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android persists these style names; do not rename them between releases. -->
+    <style name="Theme.Miffan.Startup.Default" parent="Theme.Miffan">
+        <item name="android:windowBackground">@color/startup_neutral_background</item>
+        <item name="android:windowSplashScreenBackground">@color/startup_neutral_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon_miffan</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+    <style name="Theme.Miffan.Startup.DefaultLight" parent="Theme.Miffan">
+        <item name="android:windowBackground">@color/startup_neutral_light</item>
+        <item name="android:windowSplashScreenBackground">@color/startup_neutral_light</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon_miffan</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+    <style name="Theme.Miffan.Startup.DefaultDark" parent="Theme.Miffan">
+        <item name="android:windowBackground">@color/startup_neutral_dark</item>
+        <item name="android:windowSplashScreenBackground">@color/startup_neutral_dark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon_miffan</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+    <style name="Theme.Miffan.Startup.Whale" parent="Theme.Miffan">
+        <item name="android:windowBackground">@color/startup_whale_background</item>
+        <item name="android:windowSplashScreenBackground">@color/startup_whale_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_startup_whale</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+    <style name="Theme.Miffan.Startup.WhaleLight" parent="Theme.Miffan">
+        <item name="android:windowBackground">@color/whale_girl_icon_background</item>
+        <item name="android:windowSplashScreenBackground">@color/whale_girl_icon_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_startup_whale</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+    <style name="Theme.Miffan.Startup.WhaleDark" parent="Theme.Miffan">
+        <item name="android:windowBackground">@color/whale_girl_deep_sea_icon_background</item>
+        <item name="android:windowSplashScreenBackground">@color/whale_girl_deep_sea_icon_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_startup_whale</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+</resources>

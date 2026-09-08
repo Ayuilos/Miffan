@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.datastore
 
 import android.content.Context
 import android.util.Log
+import androidx.datastore.core.DataMigration
 import androidx.datastore.core.IOException
 import androidx.datastore.preferences.SharedPreferencesMigration
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -10,6 +11,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import io.pebbletemplates.pebble.PebbleEngine
 import kotlinx.coroutines.flow.catch
@@ -44,6 +46,8 @@ import me.ayuilos.miffan.data.model.Lorebook
 import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
 import me.ayuilos.miffan.data.model.Tag
+import me.ayuilos.miffan.data.model.WhaleThemeDiscovery
+import me.ayuilos.miffan.data.model.initialWhaleThemeDiscovery
 import me.ayuilos.miffan.data.sync.s3.S3Config
 import me.ayuilos.miffan.ui.theme.CustomTheme
 import me.ayuilos.miffan.ui.theme.PresetThemes
@@ -64,10 +68,33 @@ private val Context.settingsStore by preferencesDataStore(
         listOf(
             PreferenceStoreV1Migration(),
             PreferenceStoreV2Migration(),
-            PreferenceStoreV3Migration()
+            PreferenceStoreV3Migration(),
+            WhaleThemeDiscoveryMigration(),
         )
     }
 )
+
+/** The missing-key migration records discovery once, independently of app/data versions. */
+internal class WhaleThemeDiscoveryMigration(
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+) : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+        currentData[SettingsStore.WHALE_THEME_DISCOVERY] == null
+
+    override suspend fun migrate(currentData: Preferences): Preferences = currentData.toMutablePreferences().apply {
+        if (this[SettingsStore.WHALE_THEME_DISCOVERY] == null) {
+            this[SettingsStore.WHALE_THEME_DISCOVERY] = JsonInstant.encodeToString(
+                initialWhaleThemeDiscovery(
+                    this[SettingsStore.LAUNCH_COUNT] ?: 0,
+                    nowMillis(),
+                    hasSavedProviders = this[SettingsStore.PROVIDERS] != null,
+                )
+            )
+        }
+    }
+
+    override suspend fun cleanUp() = Unit
+}
 
 class SettingsStore(
     context: Context,
@@ -80,6 +107,7 @@ class SettingsStore(
         // UI设置
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val THEME_ID = stringPreferencesKey("theme_id")
+        val WHALE_THEME_DISCOVERY = stringPreferencesKey("whale_theme_discovery")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
@@ -205,6 +233,9 @@ class SettingsStore(
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
                 themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
+                whaleThemeDiscovery = preferences[WHALE_THEME_DISCOVERY]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: WhaleThemeDiscovery(settingsSeen = true),
                 customThemes = preferences[CUSTOM_THEMES]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -371,6 +402,7 @@ class SettingsStore(
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
+            preferences[WHALE_THEME_DISCOVERY] = JsonInstant.encodeToString(settings.whaleThemeDiscovery)
             preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
             preferences[DEVELOPER_MODE] = settings.developerMode
             preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(settings.displaySetting)
@@ -546,6 +578,7 @@ data class Settings(
     val init: Boolean = false,
     val dynamicColor: Boolean = true,
     val themeId: String = PresetThemes[0].id,
+    val whaleThemeDiscovery: WhaleThemeDiscovery = WhaleThemeDiscovery(),
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
     val displaySetting: DisplaySetting = DisplaySetting(),

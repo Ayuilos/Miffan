@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same positive transparent head works on the deep-sea adaptive background. -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/whale_girl_idle_poster"
+    android:gravity="fill"
+    android:filter="true"
+    android:antialias="true" />

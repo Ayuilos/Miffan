@@ -112,6 +112,7 @@ import me.ayuilos.miffan.ui.components.ai.SearchMode
 import me.ayuilos.miffan.ui.components.ai.completion.WorkspaceCompletionProvider
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
+import me.ayuilos.miffan.ui.components.ui.characterReplyHoldMillis
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionCamera
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionManager
@@ -172,6 +173,7 @@ fun ChatPage(
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     // Handle back press when drawer is open
     BackHandler(enabled = drawerState.isOpen) {
@@ -180,9 +182,10 @@ fun ChatPage(
         }
     }
 
-    // Hide keyboard when drawer is open
+    // Clear input focus so popup transitions cannot reopen the keyboard.
     LaunchedEffect(drawerState.isOpen) {
         if (drawerState.isOpen) {
+            focusManager.clearFocus(force = true)
             softwareKeyboardController?.hide()
         }
     }
@@ -486,7 +489,7 @@ private fun ChatPageContent(
         conversationId = conversation.id,
         completions = vm.assistantReplyCompleted,
         generationJobs = vm.conversationJob,
-        holdMillis = 900L,
+        holdMillis = assistant.avatar.characterReplyHoldMillis(),
     )
 
     val completionProviders = remember(

@@ -74,6 +74,8 @@ import me.ayuilos.miffan.utils.openUrl
 import me.ayuilos.miffan.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+import me.ayuilos.miffan.data.model.hasNewWhaleTheme
+import me.ayuilos.miffan.ui.components.ui.WhaleThemeNewBadge
 
 @Composable
 fun SettingPage(vm: SettingVM = koinViewModel()) {
@@ -169,6 +171,9 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.Settings03, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences)) },
+                        trailingContent = {
+                            if (settings.hasNewWhaleTheme(System.currentTimeMillis())) WhaleThemeNewBadge()
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Assistant) },
