@@ -533,7 +533,7 @@ private fun ChatListNormal(
                             MiffanHandoffAnchor(
                                 state = handoff,
                                 destination = MiffanHandoffDestination.WaitingReply,
-                                modifier = Modifier.size(48.dp),
+                                modifier = Modifier.size(64.dp),
                             )
                         } else {
                             AssistantAvatar(
