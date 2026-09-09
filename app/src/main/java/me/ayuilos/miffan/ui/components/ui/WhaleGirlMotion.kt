@@ -14,6 +14,9 @@ enum class WhaleGirlClip(
     val looping: Boolean,
 ) {
     IDLE(120, 4_000, 30, true),
+    FOCUSED(120, 4_000, 30, true),
+    TYPING(120, 4_000, 30, true),
+    SUBMITTED(45, 1_500, 30, false),
     PETTING(45, 1_500, 30, false),
     SUCCESS(45, 1_500, 30, false),
     SURPRISE(45, 1_500, 30, false),
@@ -60,6 +63,7 @@ fun WhaleGirlAnimatedPortrait(
     replayId: Int = 0,
     onPlaybackFinished: (() -> Unit)? = null,
     onPlaybackUnavailable: (() -> Unit)? = null,
+    attentionTarget: androidx.compose.ui.geometry.Offset? = null,
 ) {
     WhaleGirlLineArtPortrait(
         clip = clip,
@@ -69,5 +73,6 @@ fun WhaleGirlAnimatedPortrait(
         reducedMotion = reducedMotion,
         replayId = replayId,
         onPlaybackFinished = onPlaybackFinished,
+        attentionTarget = attentionTarget,
     )
 }

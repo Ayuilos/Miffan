@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
@@ -86,7 +88,9 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AiMagic
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.CheckmarkCircle02
 import me.rerere.hugeicons.stroke.FolderOpen
 import me.rerere.hugeicons.stroke.FolderUnknown
 import me.rerere.hugeicons.stroke.GitFork
@@ -476,8 +480,13 @@ private fun ChatPageContent(
     val messagePathCount = remember(conversation.messageNodes) {
         conversation.getMessagePathLeaves().size
     }
-    var mascotInputState by remember(conversation.id) {
-        mutableStateOf(MiffanMascotInputState.Inactive)
+    var inputActivity by remember(conversation.id) {
+        mutableStateOf(ChatInputActivity.Inactive)
+    }
+    val mascotInputState = when (inputActivity) {
+        ChatInputActivity.Inactive -> MiffanMascotInputState.Inactive
+        ChatInputActivity.Focused -> MiffanMascotInputState.Focused
+        ChatInputActivity.Typing -> MiffanMascotInputState.Typing
     }
     var mascotSubmitId by remember(conversation.id) { mutableIntStateOf(0) }
     var observedMascotJob by remember(conversation.id) { mutableStateOf(loadingJob) }
@@ -549,7 +558,8 @@ private fun ChatPageContent(
                     },
                     onUpdateTitle = {
                         vm.updateTitle(it)
-                    }
+                    },
+                    onGenerateTitleCandidate = vm::generateTitleCandidate,
                 )
             },
             bottomBar = {
@@ -642,13 +652,7 @@ private fun ChatPageContent(
                         }
                         inputState.clearInput()
                     },
-                    onActivityChanged = { activity ->
-                        mascotInputState = when (activity) {
-                            ChatInputActivity.Inactive -> MiffanMascotInputState.Inactive
-                            ChatInputActivity.Focused -> MiffanMascotInputState.Focused
-                            ChatInputActivity.Typing -> MiffanMascotInputState.Typing
-                        }
-                    },
+                    onActivityChanged = { inputActivity = it },
                     onUpdateChatModel = {
                         vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
                     },
@@ -683,6 +687,10 @@ private fun ChatPageContent(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 recentConversations = recentConversations,
+                showRecentConversations = shouldShowRecentChatShortcuts(
+                    inputActivity = inputActivity,
+                    inputIsEmpty = inputState.isEmpty(),
+                ),
                 state = chatListState,
                 loading = loadingJob != null,
                 modifier = Modifier.pointerInput(focusManager) {
@@ -784,6 +792,13 @@ private fun ChatPageContent(
             )
         }
     }
+}
+
+internal fun shouldShowRecentChatShortcuts(
+    inputActivity: ChatInputActivity,
+    inputIsEmpty: Boolean,
+): Boolean {
+    return inputActivity == ChatInputActivity.Inactive && inputIsEmpty
 }
 
 @Composable
@@ -1110,12 +1125,24 @@ private fun TopBar(
     onOpenPaths: () -> Unit,
     onNewChat: () -> Unit,
     onOpenWorkspace: (ChatWorkspaceEntry) -> Unit,
-    onUpdateTitle: (String) -> Unit
+    onUpdateTitle: (String) -> Unit,
+    onGenerateTitleCandidate: suspend () -> String?,
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val titleState = useEditState<String> {
         onUpdateTitle(it)
+    }
+    var titleGenerationJob by remember { mutableStateOf<Job?>(null) }
+    var generatedTitleCandidate by remember { mutableStateOf<String?>(null) }
+    var useGeneratedTitle by remember { mutableStateOf(false) }
+
+    fun dismissTitleEditor() {
+        titleGenerationJob?.cancel()
+        titleGenerationJob = null
+        generatedTitleCandidate = null
+        useGeneratedTitle = false
+        titleState.dismiss()
     }
 
     Row(
@@ -1145,6 +1172,10 @@ private fun TopBar(
                 modifier = Modifier.weight(1f, fill = false),
                 onClick = {
                     if (conversation.messageNodes.isNotEmpty()) {
+                        titleGenerationJob?.cancel()
+                        titleGenerationJob = null
+                        generatedTitleCandidate = null
+                        useGeneratedTitle = false
                         titleState.open(conversation.title)
                     } else {
                         toaster.show(editTitleWarning, type = ToastType.Warning)
@@ -1226,34 +1257,124 @@ private fun TopBar(
     }
     titleState.EditStateContent { title, onUpdate ->
         AlertDialog(
-            onDismissRequest = {
-                titleState.dismiss()
-            },
+            onDismissRequest = ::dismissTitleEditor,
             title = {
                 Text(stringResource(R.string.chat_page_edit_title))
             },
             text = {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = onUpdate,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
+                Column {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = {
+                            useGeneratedTitle = false
+                            onUpdate(it)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("chat_title_editor"),
+                        singleLine = true,
+                    )
+                    TextButton(
+                        onClick = {
+                            titleGenerationJob = scope.launch {
+                                val candidate = onGenerateTitleCandidate()
+                                if (candidate != null && titleState.isEditing) {
+                                    generatedTitleCandidate = candidate
+                                    useGeneratedTitle = true
+                                }
+                                titleGenerationJob = null
+                            }
+                        },
+                        enabled = titleGenerationJob == null,
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .testTag("chat_title_regenerate"),
+                    ) {
+                        if (titleGenerationJob != null) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = HugeIcons.AiMagic,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.regenerate))
+                    }
+                    generatedTitleCandidate?.let { candidate ->
+                        Text(
+                            text = "AI · ${stringResource(R.string.onboarding_page_recommended_badge)}",
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 6.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Surface(
+                            onClick = { useGeneratedTitle = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("chat_title_candidate"),
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (useGeneratedTitle) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (useGeneratedTitle) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = candidate,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                if (useGeneratedTitle) {
+                                    Spacer(Modifier.width(8.dp))
+                                    Icon(
+                                        imageVector = HugeIcons.CheckmarkCircle02,
+                                        contentDescription = stringResource(R.string.confirm),
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
+                        titleGenerationJob?.cancel()
+                        titleGenerationJob = null
+                        if (useGeneratedTitle) {
+                            generatedTitleCandidate?.let {
+                                titleState.currentState = it
+                            }
+                        }
                         titleState.confirm()
-                    }
+                    },
+                    modifier = Modifier.testTag("chat_title_confirm"),
                 ) {
-                    Text(stringResource(R.string.chat_page_save))
+                    Text(stringResource(R.string.confirm))
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = {
-                        titleState.dismiss()
-                    }
+                    onClick = ::dismissTitleEditor,
                 ) {
                     Text(stringResource(R.string.chat_page_cancel))
                 }

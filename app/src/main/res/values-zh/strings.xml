@@ -1391,4 +1391,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="onboarding_page_openrouter_brief">由独立于 Miffan 的第三方 OpenRouter 提供，无需手动填写 API Key。</string>
   <string name="onboarding_page_details_show">了解 OpenRouter 和免费额度</string>
   <string name="onboarding_page_details_hide">收起详细说明</string>
+  <string name="setting_miffan_help_title">Miffan 帮助</string>
+  <string name="setting_miffan_help_desc">允许助手在回答应用使用问题时加载带版本的 Miffan 官方文档。</string>
+  <string name="assistant_page_miffan_help_desc">控制此助手是否使用官方帮助工具。全局设置：%1$s</string>
+  <string name="assistant_page_miffan_help_global_enabled">开启</string>
+  <string name="assistant_page_miffan_help_global_disabled">关闭</string>
+  <string name="assistant_page_miffan_help_inherit">默认</string>
+  <string name="assistant_page_miffan_help_enabled">开启</string>
+  <string name="assistant_page_miffan_help_disabled">关闭</string>
 </resources>

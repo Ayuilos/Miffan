@@ -31,6 +31,9 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
+import me.ayuilos.miffan.AppScope
+import me.ayuilos.miffan.BuildConfig
+import me.ayuilos.miffan.R
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
@@ -48,21 +51,22 @@ import me.rerere.ai.ui.finishReasoning
 import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.common.android.Logging
-import me.ayuilos.miffan.AppScope
-import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.GenerationChunk
 import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
+import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
-import me.ayuilos.miffan.data.ai.tools.local.LocalTools
-import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
+import me.ayuilos.miffan.data.ai.tools.createMiffanHelpTool
 import me.ayuilos.miffan.data.ai.tools.createSearchTools
 import me.ayuilos.miffan.data.ai.tools.createSkillTools
 import me.ayuilos.miffan.data.ai.tools.createWorkspaceTools
 import me.ayuilos.miffan.data.ai.tools.extensionManagementBuiltInSkill
-import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
+import me.ayuilos.miffan.data.ai.tools.miffanHelpBuiltInSkill
+import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
+import me.ayuilos.miffan.data.ai.tools.local.LocalTools
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.ai.transformers.Base64ImageToLocalFileTransformer
@@ -89,6 +93,7 @@ import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.isMiffanHelpEnabled
 import me.ayuilos.miffan.data.model.replaceRegexes
 import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.repository.ConversationRepository
@@ -99,10 +104,12 @@ import me.ayuilos.miffan.web.BadRequestException
 import me.ayuilos.miffan.web.NotFoundException
 import me.ayuilos.miffan.utils.applyPlaceholders
 import me.rerere.workspace.WorkspaceShellStatus
+import java.io.File
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
+import okhttp3.OkHttpClient
 
 private const val TAG = "ChatService"
 
@@ -124,6 +131,12 @@ internal fun shouldEnableExtensionManagement(assistant: Assistant, model: Model)
     return LocalToolOption.ExtensionManagement in assistant.localTools &&
         ModelAbility.TOOL in model.abilities
 }
+
+internal fun shouldEnableMiffanHelp(
+    assistant: Assistant,
+    model: Model,
+    globalEnabled: Boolean,
+): Boolean = ModelAbility.TOOL in model.abilities && assistant.isMiffanHelpEnabled(globalEnabled)
 
 internal fun Conversation.approvePendingWorkspaceShellTools(): Conversation {
     val currentNodeIds = currentMessageNodes.mapTo(HashSet()) { it.id }
@@ -292,9 +305,14 @@ class ChatService(
     private val extensionManagementService: ExtensionManagementService,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
+    httpClient: OkHttpClient,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
+    private val miffanHelpClient = MiffanHelpClient(
+        httpClient = httpClient,
+        cacheFile = File(context.cacheDir, "miffan_help/resources.json"),
+    )
 
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
@@ -811,6 +829,14 @@ class ChatService(
                 },
                 outputTransformers = outputTransformers,
                 tools = buildList {
+                    val miffanHelpEnabled = shouldEnableMiffanHelp(
+                        assistant = assistant,
+                        model = model,
+                        globalEnabled = settings.miffanHelpEnabled,
+                    )
+                    if (miffanHelpEnabled) {
+                        add(createMiffanHelpTool(miffanHelpClient, BuildConfig.VERSION_NAME))
+                    }
                     if (useExternalWebSearch) {
                         addAll(createSearchTools(settings))
                     }
@@ -822,17 +848,13 @@ class ChatService(
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd))
-                    if (
-                        extensionManagementEnabled ||
-                        availableSkills.isNotEmpty()
-                    ) {
+                    if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(
                                 allSkills = availableSkills,
-                                builtInSkills = if (extensionManagementEnabled) {
-                                    listOf(extensionManagementBuiltInSkill)
-                                } else {
-                                    emptyList()
+                                builtInSkills = buildList {
+                                    if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
+                                    if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
                                 },
                                 workspaceReady = workspaceReady,
                             )
@@ -1009,11 +1031,32 @@ class ChatService(
         }
         if (!shouldGenerate) return@withContext
 
+        val candidate = generateTitleCandidate(conversationId, conversation) ?: return@withContext
+
+        // 生成完，conversation可能不是最新了，因此需要重新获取
+        conversationRepo.getConversationById(conversation.id)?.let {
+            saveConversation(
+                conversationId,
+                it.copy(title = candidate)
+            )
+        }
+    }
+
+    /**
+     * Generate a title without applying it to the conversation.
+     *
+     * This is used by the title editor so the generated text remains a candidate
+     * until the user explicitly confirms it.
+     */
+    suspend fun generateTitleCandidate(
+        conversationId: Uuid,
+        conversation: Conversation,
+    ): String? = withContext(Dispatchers.IO) {
         runCatching {
             val settings = settingsStore.settingsFlow.first()
             val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
-                ?: return@runCatching
-            val provider = model.findProvider(settings.providers) ?: return@runCatching
+                ?: return@runCatching null
+            val provider = model.findProvider(settings.providers) ?: return@runCatching null
 
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
@@ -1035,15 +1078,9 @@ class ChatService(
                     },
                 ),
             )
-
-            // 生成完，conversation可能不是最新了，因此需要重新获取
-            conversationRepo.getConversationById(conversation.id)?.let {
-                saveConversation(
-                    conversationId,
-                    it.copy(title = result.message.toText().trim())
-                )
-            }
+            result.message.toText().trim().takeIf { it.isNotEmpty() }
         }.onFailure {
+            if (it is CancellationException) throw it
             it.printStackTrace()
             addError(
                 error = it,
@@ -1051,7 +1088,7 @@ class ChatService(
                 title = context.getString(R.string.error_title_generate_title),
                 solution = ChatErrorSolution.CheckTitleModelSettings,
             )
-        }
+        }.getOrNull()
     }
 
     // ---- 生成建议 ----

@@ -136,6 +136,7 @@ fun ChatList(
     innerPadding: PaddingValues,
     conversation: Conversation,
     recentConversations: List<Conversation> = emptyList(),
+    showRecentConversations: Boolean = true,
     state: LazyListState,
     loading: Boolean,
     modifier: Modifier = Modifier,
@@ -189,6 +190,7 @@ fun ChatList(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 recentConversations = recentConversations,
+                showRecentConversations = showRecentConversations,
                 state = state,
                 loading = loading,
                 processingStatus = processingStatus,
@@ -227,6 +229,7 @@ private fun ChatListNormal(
     innerPadding: PaddingValues,
     conversation: Conversation,
     recentConversations: List<Conversation>,
+    showRecentConversations: Boolean,
     state: LazyListState,
     loading: Boolean,
     processingStatus: String? = null,
@@ -573,7 +576,7 @@ private fun ChatListNormal(
                 .padding(innerPadding),
             contentAlignment = Alignment.Center,
         ) {
-            val hasRecentChats = recentConversations.isNotEmpty()
+            val hasRecentChats = showRecentConversations && recentConversations.isNotEmpty()
             val mascotSize = minOf(
                 if (hasRecentChats) 132.dp else 168.dp,
                 maxWidth * if (hasRecentChats) 0.4f else 0.52f,

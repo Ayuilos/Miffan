@@ -1391,4 +1391,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="onboarding_page_openrouter_brief">Miffan과 독립적으로 운영되는 타사 OpenRouter에서 제공합니다. API Key를 직접 입력할 필요가 없습니다.</string>
   <string name="onboarding_page_details_show">OpenRouter와 무료 한도 알아보기</string>
   <string name="onboarding_page_details_hide">세부 정보 닫기</string>
+  <string name="setting_miffan_help_title">Miffan 도움말</string>
+  <string name="setting_miffan_help_desc">앱 사용 질문에 답할 때 어시스턴트가 버전이 지정된 Miffan 공식 문서를 불러올 수 있습니다.</string>
+  <string name="assistant_page_miffan_help_desc">이 어시스턴트의 공식 도움말 도구를 제어합니다. 전역 설정: %1$s</string>
+  <string name="assistant_page_miffan_help_global_enabled">켜짐</string>
+  <string name="assistant_page_miffan_help_global_disabled">꺼짐</string>
+  <string name="assistant_page_miffan_help_inherit">기본</string>
+  <string name="assistant_page_miffan_help_enabled">켜짐</string>
+  <string name="assistant_page_miffan_help_disabled">꺼짐</string>
 </resources>

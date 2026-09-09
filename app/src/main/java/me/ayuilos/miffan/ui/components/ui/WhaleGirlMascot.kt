@@ -49,6 +49,19 @@ fun WhaleGirlMascot(
     var petting by remember { mutableStateOf(false) }
     var sleeping by remember { mutableStateOf(false) }
     var hasBeenActive by remember { mutableStateOf(false) }
+    var submitted by remember { mutableStateOf(false) }
+    var previousSubmitId by remember { mutableIntStateOf(submitId) }
+
+    LaunchedEffect(submitId) {
+        if (submitId != previousSubmitId) {
+            previousSubmitId = submitId
+            submitted = submitId != 0
+            petting = false
+        }
+    }
+    LaunchedEffect(state) {
+        if (state == MiffanMascotState.Error || state == MiffanMascotState.Happy) submitted = false
+    }
 
     LaunchedEffect(attentionId) {
         if (attentionId != 0 && attentionTarget != null) pokeId++
@@ -73,12 +86,15 @@ fun WhaleGirlMascot(
         sleeping = true
     }
 
-    val clip = resolveWhaleGirlClip(state, generationPhase, inputState, petting, sleeping)
+    val clip = resolveWhaleGirlClip(state, generationPhase, inputState, petting, sleeping, submitted)
     val playing = state != MiffanMascotState.Error &&
         (presentation == MiffanPresentation.Scene || state != MiffanMascotState.Idle || petting ||
-            inputState != MiffanMascotInputState.Inactive)
+            inputState != MiffanMascotInputState.Inactive || submitted)
     val description = if (state == MiffanMascotState.Error) "蓝色大肥鱼，遇到了问题" else when (clip) {
         WhaleGirlClip.IDLE -> "蓝色大肥鱼"
+        WhaleGirlClip.FOCUSED -> "蓝色大肥鱼，关注输入框"
+        WhaleGirlClip.TYPING -> "蓝色大肥鱼，跟随打字"
+        WhaleGirlClip.SUBMITTED -> "蓝色大肥鱼，收到消息"
         WhaleGirlClip.PETTING -> "蓝色大肥鱼，正在被摸摸"
         WhaleGirlClip.SUCCESS -> "蓝色大肥鱼，开心"
         WhaleGirlClip.SURPRISE -> "蓝色大肥鱼，有可用更新"
@@ -104,8 +120,16 @@ fun WhaleGirlMascot(
             playing = playing,
             posterResourceId = whaleGirlPoster(clip),
             reducedMotion = motionReduced,
-            replayId = if (clip == WhaleGirlClip.PETTING) pokeId else 0,
-            onPlaybackFinished = { if (clip == WhaleGirlClip.PETTING) petting = false },
+            replayId = when (clip) {
+                WhaleGirlClip.PETTING -> pokeId
+                WhaleGirlClip.SUBMITTED -> submitId
+                else -> 0
+            },
+            onPlaybackFinished = {
+                if (clip == WhaleGirlClip.PETTING) petting = false
+                if (clip == WhaleGirlClip.SUBMITTED) submitted = false
+            },
+            attentionTarget = if (petting) attentionTarget else null,
             modifier = Modifier.align(Alignment.Center).aspectRatio(1f).fillMaxSize(),
         )
         if (state == MiffanMascotState.Error) {
@@ -133,23 +157,27 @@ internal fun resolveWhaleGirlClip(
     inputState: MiffanMascotInputState = MiffanMascotInputState.Inactive,
     petting: Boolean = false,
     sleeping: Boolean = false,
+    submitted: Boolean = false,
 ): WhaleGirlClip = when {
     state == MiffanMascotState.Error -> WhaleGirlClip.IDLE
+    state == MiffanMascotState.Happy -> WhaleGirlClip.SUCCESS
+    submitted -> WhaleGirlClip.SUBMITTED
     state == MiffanMascotState.Thinking -> when (generationPhase) {
         AssistantGenerationPhase.Reasoning -> WhaleGirlClip.THINKING
         AssistantGenerationPhase.Responding -> WhaleGirlClip.CHEWING
         else -> WhaleGirlClip.EATING
     }
-    state == MiffanMascotState.Happy -> WhaleGirlClip.SUCCESS
     petting -> WhaleGirlClip.PETTING
-    inputState != MiffanMascotInputState.Inactive -> WhaleGirlClip.IDLE
+    inputState == MiffanMascotInputState.Typing -> WhaleGirlClip.TYPING
+    inputState == MiffanMascotInputState.Focused -> WhaleGirlClip.FOCUSED
     state == MiffanMascotState.UpdateAvailable -> WhaleGirlClip.SURPRISE
     sleeping -> WhaleGirlClip.SLEEPING
     else -> WhaleGirlClip.IDLE
 }
 
 internal fun whaleGirlPoster(clip: WhaleGirlClip): Int = when (clip) {
-    WhaleGirlClip.IDLE -> R.drawable.whale_girl_idle_poster
+    WhaleGirlClip.IDLE, WhaleGirlClip.FOCUSED, WhaleGirlClip.TYPING,
+    WhaleGirlClip.SUBMITTED -> R.drawable.whale_girl_idle_poster
     WhaleGirlClip.PETTING -> R.drawable.whale_girl_petting_poster
     WhaleGirlClip.SUCCESS -> R.drawable.whale_girl_success_poster
     WhaleGirlClip.SURPRISE -> R.drawable.whale_girl_surprise_poster

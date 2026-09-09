@@ -14,6 +14,7 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.MiffanHelpOverride
 import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.rerere.ai.ui.ToolApprovalState
@@ -390,6 +391,41 @@ class ChatServiceTest {
                 Model(abilities = listOf(ModelAbility.TOOL)),
             )
         )
+    }
+
+    @Test
+    fun `miffan help follows the global setting by default`() {
+        val model = Model(abilities = listOf(ModelAbility.TOOL))
+
+        assertTrue(shouldEnableMiffanHelp(Assistant(), model, globalEnabled = true))
+        assertFalse(shouldEnableMiffanHelp(Assistant(), model, globalEnabled = false))
+    }
+
+    @Test
+    fun `assistant can override the global miffan help setting`() {
+        val model = Model(abilities = listOf(ModelAbility.TOOL))
+
+        assertTrue(
+            shouldEnableMiffanHelp(
+                Assistant(miffanHelpOverride = MiffanHelpOverride.ENABLED),
+                model,
+                globalEnabled = false,
+            )
+        )
+        assertFalse(
+            shouldEnableMiffanHelp(
+                Assistant(miffanHelpOverride = MiffanHelpOverride.DISABLED),
+                model,
+                globalEnabled = true,
+            )
+        )
+    }
+
+    @Test
+    fun `miffan help always requires model tool ability`() {
+        val forcedOn = Assistant(miffanHelpOverride = MiffanHelpOverride.ENABLED)
+
+        assertFalse(shouldEnableMiffanHelp(forcedOn, Model(), globalEnabled = true))
     }
 
     @Test

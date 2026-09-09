@@ -30,6 +30,13 @@ Thinking, ordinary waiting selects Eating, and text streaming selects Chewing.
 Input focus alone never pretends that the model is reasoning. Confirmed reply success
 selects the brief proud expression. Errors retain the semantic error badge.
 
+Focused and Typing resolve to dedicated native clips with downward gaze and restrained
+tracking. A changed submitId plays a finite Submitted nod, using the existing foreground
+clock and completion callback (also with reduced motion); initial composition does not
+replay a historical submission. Error and completion interrupt it. After acknowledgement,
+the latest generation phase resumes. Attention targets are clamped normalized coordinates
+and interpolated inside the renderer. The Lab exposes all eleven clips.
+
 A foreground frame clock pauses below RESUMED without catching up on resume.
 Clip/replay changes reset reaction time while eye and cheek parameters transition in
 place. Petting completes once per replay, including with reduced motion. Reduced

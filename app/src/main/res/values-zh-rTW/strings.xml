@@ -1389,4 +1389,12 @@
   <string name="onboarding_page_openrouter_brief">由獨立於 Miffan 的第三方 OpenRouter 提供，無需手動填寫 API Key。</string>
   <string name="onboarding_page_details_show">瞭解 OpenRouter 和免費額度</string>
   <string name="onboarding_page_details_hide">收起詳細說明</string>
+  <string name="setting_miffan_help_title">Miffan 說明</string>
+  <string name="setting_miffan_help_desc">允許助手在回答應用程式使用問題時載入帶版本的 Miffan 官方文件。</string>
+  <string name="assistant_page_miffan_help_desc">控制此助手是否使用官方說明工具。全域設定：%1$s</string>
+  <string name="assistant_page_miffan_help_global_enabled">開啟</string>
+  <string name="assistant_page_miffan_help_global_disabled">關閉</string>
+  <string name="assistant_page_miffan_help_inherit">預設</string>
+  <string name="assistant_page_miffan_help_enabled">開啟</string>
+  <string name="assistant_page_miffan_help_disabled">關閉</string>
 </resources>

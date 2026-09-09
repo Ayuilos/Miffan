@@ -22,6 +22,10 @@
   exaggerated reminder beats. Looped poses meet at the boundary without a jump.
   Reference images and SVG geometry previews are not Android device evidence.
 - Waiting eats rice, text output chews rice, and only real reasoning becomes dizzy.
+- Focus lowers the gaze; typing tracks with a restrained head rhythm. Active send nods
+  once and returns to the current generation phase; error/success interrupts the nod.
+  Repeated sends replay it, queued sends do not, and reduced motion still completes it.
+  Scene attention leans toward the supplied direction and returns after petting.
   An inactive scene sleeps after the timeout or at night and wakes on interaction/input.
 - Loop boundaries and state changes are reviewed at the 168 dp chat size; no black
   loading frame, whole-body fragments or generated emphasis marks may appear.

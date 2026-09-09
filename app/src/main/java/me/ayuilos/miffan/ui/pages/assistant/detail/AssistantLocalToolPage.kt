@@ -5,12 +5,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -26,8 +30,10 @@ import com.dokar.sonner.ToastType
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.MiffanHelpOverride
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
+import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionInfo
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionManager
 import me.ayuilos.miffan.ui.components.ui.permission.rememberPermissionState
@@ -80,6 +86,7 @@ private fun AssistantLocalToolContent(
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
+    val globalMiffanHelpEnabled = LocalSettings.current.miffanHelpEnabled
     val permissionRequiredText =
         stringResource(R.string.assistant_page_local_tools_screen_time_permission_required)
 
@@ -127,6 +134,47 @@ private fun AssistantLocalToolContent(
             .imePadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        CardGroup {
+            item(
+                headlineContent = {
+                    Text(stringResource(R.string.setting_miffan_help_title))
+                },
+                supportingContent = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(
+                                R.string.assistant_page_miffan_help_desc,
+                                stringResource(
+                                    if (globalMiffanHelpEnabled) {
+                                        R.string.assistant_page_miffan_help_global_enabled
+                                    } else {
+                                        R.string.assistant_page_miffan_help_global_disabled
+                                    }
+                                )
+                            )
+                        )
+                        val options = listOf(
+                            MiffanHelpOverride.INHERIT to R.string.assistant_page_miffan_help_inherit,
+                            MiffanHelpOverride.ENABLED to R.string.assistant_page_miffan_help_enabled,
+                            MiffanHelpOverride.DISABLED to R.string.assistant_page_miffan_help_disabled,
+                        )
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            options.forEachIndexed { index, (option, label) ->
+                                SegmentedButton(
+                                    selected = assistant.miffanHelpOverride == option,
+                                    onClick = {
+                                        onUpdate(assistant.copy(miffanHelpOverride = option))
+                                    },
+                                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                                ) {
+                                    Text(stringResource(label))
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        }
         CardGroup {
             item(
                 headlineContent = {

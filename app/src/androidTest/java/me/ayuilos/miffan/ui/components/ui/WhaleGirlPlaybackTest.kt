@@ -35,6 +35,47 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class WhaleGirlPlaybackTest {
+    @Test
+    fun semanticInputAndSubmitReplayReturnToLatestGenerationIncludingReducedMotion() {
+        compose.mainClock.autoAdvance = false
+        val owner = newPausedOwner()
+        var input by mutableStateOf(MiffanMascotInputState.Focused)
+        var state by mutableStateOf(MiffanMascotState.Idle)
+        var submit by mutableIntStateOf(0)
+        var reduced by mutableStateOf(false)
+        compose.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                MaterialTheme {
+                    WhaleGirlMascot(state, Modifier.size(168.dp), inputState = input,
+                        submitId = submit, reducedMotion = reduced,
+                        generationPhase = AssistantGenerationPhase.Responding)
+                }
+            }
+        }
+        resume(owner)
+        advanceAndDraw(300)
+        compose.onNodeWithContentDescription("蓝色大肥鱼，关注输入框").assertExists()
+        compose.runOnIdle { input = MiffanMascotInputState.Typing }
+        advanceAndDraw(300)
+        compose.onNodeWithContentDescription("蓝色大肥鱼，跟随打字").assertExists()
+        for (quiet in listOf(false, true)) {
+            compose.runOnIdle { reduced = quiet; state = MiffanMascotState.Thinking; submit++ }
+            advanceAndDraw(300)
+            compose.onNodeWithContentDescription("蓝色大肥鱼，收到消息").assertExists()
+            compose.runOnIdle { submit++ }
+            advanceAndDraw(1_300)
+            compose.onNodeWithContentDescription("蓝色大肥鱼，收到消息").assertExists()
+            advanceAndDraw(400)
+            compose.onNodeWithContentDescription("蓝色大肥鱼，正在回复").assertExists()
+        }
+        compose.runOnIdle { submit++ }
+        advanceAndDraw(200)
+        compose.runOnIdle { state = MiffanMascotState.Error }
+        advanceAndDraw(200)
+        compose.onNodeWithContentDescription("蓝色大肥鱼，遇到了问题").assertExists()
+        pause(owner)
+    }
+
     @get:Rule
     val compose = createComposeRule()
 

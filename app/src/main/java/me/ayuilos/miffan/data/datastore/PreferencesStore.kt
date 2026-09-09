@@ -139,6 +139,7 @@ class SettingsStore(
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
         val ASSISTANTS = stringPreferencesKey("assistants")
         val ASSISTANT_TAGS = stringPreferencesKey("assistant_tags")
+        val MIFFAN_HELP_ENABLED = booleanPreferencesKey("miffan_help_enabled")
 
         // 搜索
         val SEARCH_SERVICES = stringPreferencesKey("search_services")
@@ -227,6 +228,7 @@ class SettingsStore(
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
+                miffanHelpEnabled = preferences[MIFFAN_HELP_ENABLED] != false,
                 providers = JsonInstant
                     .decodeFromString<List<ProviderSetting>>(preferences[PROVIDERS] ?: "[]")
                     .transformProviderSecrets(providerSecretCipher::decrypt),
@@ -437,6 +439,7 @@ class SettingsStore(
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
             preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
             preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+            preferences[MIFFAN_HELP_ENABLED] = settings.miffanHelpEnabled
 
             preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
             preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
@@ -604,6 +607,7 @@ data class Settings(
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     val assistantTags: List<Tag> = emptyList(),
+    val miffanHelpEnabled: Boolean = true,
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
     val searchServiceSelected: Int = 0,

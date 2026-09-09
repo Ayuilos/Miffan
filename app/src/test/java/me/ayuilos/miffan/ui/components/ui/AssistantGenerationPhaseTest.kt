@@ -53,7 +53,7 @@ class AssistantGenerationPhaseTest {
         ))
         assertEquals(WhaleGirlClip.SUCCESS, resolveWhaleGirlClip(MiffanMascotState.Happy, sleeping = true))
         assertEquals(WhaleGirlClip.PETTING, resolveWhaleGirlClip(MiffanMascotState.Idle, petting = true, sleeping = true))
-        assertEquals(WhaleGirlClip.IDLE, resolveWhaleGirlClip(
+        assertEquals(WhaleGirlClip.TYPING, resolveWhaleGirlClip(
             MiffanMascotState.Idle, inputState = MiffanMascotInputState.Typing, sleeping = true,
         ))
         assertEquals(WhaleGirlClip.SLEEPING, resolveWhaleGirlClip(MiffanMascotState.Idle, sleeping = true))

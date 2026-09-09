@@ -145,6 +145,9 @@ private fun WhaleThemePreview(dark: Boolean, clip: WhaleGirlClip, replayId: Int,
 
 private fun WhaleGirlClip.previewName(): String = when (this) {
     WhaleGirlClip.IDLE -> "微笑"
+    WhaleGirlClip.FOCUSED -> "聚焦"
+    WhaleGirlClip.TYPING -> "打字"
+    WhaleGirlClip.SUBMITTED -> "收到"
     WhaleGirlClip.PETTING -> "摸摸"
     WhaleGirlClip.SUCCESS -> "开心"
     WhaleGirlClip.SURPRISE -> "提醒"

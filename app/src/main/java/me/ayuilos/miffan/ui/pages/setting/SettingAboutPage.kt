@@ -157,9 +157,9 @@ fun SettingAboutPage() {
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) {
                         item(
-                            onClick = { context.openUrl("https://github.com/Ayuilos/Miffan/releases") },
+                            onClick = { context.openUrl("https://miffan.ayuilos.me") },
                             leadingContent = { Icon(HugeIcons.Earth, null) },
-                            supportingContent = { Text("github.com/Ayuilos/Miffan/releases") },
+                            supportingContent = { Text("miffan.ayuilos.me") },
                             headlineContent = { Text(stringResource(R.string.about_page_website)) },
                         )
                         item(
