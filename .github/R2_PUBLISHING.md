@@ -32,8 +32,8 @@ The local Wrangler OAuth session cannot provide unattended GitHub Actions authen
 
 ## Normal release flow
 
-1. Use the existing **Prepare Production Release** workflow and its production approval/signing checks.
-2. Review and publish the draft as a **stable** release; mark the intended version as GitHub's latest.
+1. Prepare a locally built, production-signed ARM64 APK and its `.apk.sha256` companion, or optionally use **Prepare Production Release** to build them on GitHub. See [the release process](../docs/releasing.md).
+2. Upload both assets and publish a **stable** release; mark the intended version as GitHub's latest. No prior PR CI, hosted APK build, or GitHub attestation is required for the owner's direct release.
 3. The mirror runs automatically. Draft, RC, nightly and other prerelease builds never replace the website's stable download.
 
 The current production workflow only creates a draft; its protected production Environment and signing keys are unchanged. If a future workflow publishes releases with `GITHUB_TOKEN`, that publish event will not trigger another workflow. It must explicitly dispatch `publish-r2.yml` after publication instead. A normal dashboard publish or the user's authenticated GitHub CLI publish triggers this workflow.

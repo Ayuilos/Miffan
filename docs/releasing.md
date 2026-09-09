@@ -15,7 +15,7 @@ The release channels are intentionally isolated:
 
 | Channel | Gradle build type | Application ID | Signing | Distribution |
 | --- | --- | --- | --- | --- |
-| Official / release candidate | `release` | `me.ayuilos.miffan.app` | Miffan production certificate | Verified draft GitHub Release, then explicit publication approval |
+| Official / release candidate | `release` | `me.ayuilos.miffan.app` | Miffan production certificate | Owner direct publication or optional hosted draft |
 | Nightly | `nightly` | `me.ayuilos.miffan.app.nightly` | Ephemeral CI debug certificate | Disposable GitHub Actions artifact only |
 | Local debug | `debug` | `me.ayuilos.miffan.app.debug` | Android debug certificate | Local or CI artifact |
 
@@ -107,16 +107,37 @@ When these four entries are absent, `assembleRelease` may produce unsigned verif
 
 ## Prepare a release
 
-1. Start from an up-to-date, clean `master` and create a dedicated release branch.
+1. Start from an up-to-date, clean `master`. The repository owner may push release preparation directly; other contributors use a dedicated branch and PR.
 2. Select and record the exact target commit. Do not silently build a moving branch head.
 3. Set an independent SemVer `versionName` and a strictly increasing `versionCode` in `app/build.gradle.kts`.
 4. Add bilingual notes at `docs/releases/<version>.md` using [the template](releases/TEMPLATE.md). Keep Miffan-owned changes separate from improvements incorporated from RikkaHub.
-5. Require the pull-request CI workflow to pass `test`, `lint`, and `assembleDebug` before merging the target commit. CI does not repeat the same full verification after the protected PR is merged to `master`; it can still be started manually when needed.
+5. For contributions through a PR, require CI to pass `test`, `lint`, and `assembleDebug`. The owner may publish directly without a PR or a successful GitHub CI run, choosing local verification appropriate to the changes.
 6. Review the in-place upgrade acceptance below for any release that shares the official package name.
 
 No upstream tag is a Miffan release trigger. Do not fetch-and-push, mirror, or automatically propagate upstream tags.
 
-## Build a verified draft Release
+## Owner direct release (no hosted build required)
+
+The repository owner may publish a locally built, production-signed APK using GitHub or an authenticated `gh` CLI. A merged PR, successful Actions run, hosted APK build, and GitHub build attestation are not prerequisites. An explicit request to publish authorizes publication; do not add another approval solely because the hosted workflow was not used.
+
+1. Record the exact commit and push it to `origin/master`. The `Protect master` ruleset must allow repository administrators to bypass **always**, including direct pushes.
+2. Build locally with the existing production signing configuration, or use the APK already built from that exact commit. Verify its package, version, ARM64 ABI and certificate against the values below. Keep `versionCode` increasing.
+3. Stage `Miffan-<version>-arm64-v8a.apk` and generate its checksum in the same directory with `shasum -a 256 "Miffan-<version>-arm64-v8a.apk" > "Miffan-<version>-arm64-v8a.apk.sha256"`.
+4. Verify the version tag and Release do not already exist, then create the Release at the recorded commit, attaching the APK and checksum and using `docs/releases/<version>.md` as its body. Use `--prerelease` for an RC; use `--latest` for the intended stable release.
+5. Verify the published tag resolves to the recorded commit and both assets are present. Stable publication automatically starts the R2 mirror, which copies the uploaded APK without rebuilding it.
+
+For example, after assigning the verified `version`, `commit`, and `staging_dir` values:
+
+```bash
+gh release create "$version" --repo Ayuilos/Miffan --target "$commit" \
+  --title "$version" --notes-file "docs/releases/$version.md" --latest \
+  "$staging_dir/Miffan-$version-arm64-v8a.apk" \
+  "$staging_dir/Miffan-$version-arm64-v8a.apk.sha256"
+```
+
+Pushing a tag alone does not build an APK or publish a Release. If the owner has already pushed the tag, verify that it resolves to the recorded commit and use `--verify-tag` in place of `--target`; never move or replace it. Release tag protection continues to prohibit updates and deletion.
+
+## Optional hosted build of a verified draft Release
 
 Run `.github/workflows/release.yml` manually and provide all three explicit inputs:
 
@@ -124,7 +145,7 @@ Run `.github/workflows/release.yml` manually and provide all three explicit inpu
 - the exact SemVer `versionName`;
 - the exact Android `versionCode`.
 
-The workflow is gated by the `production` Environment. It verifies that the requested commit is the merge commit of a PR into `master`, and that the source PR head has a successful run of `.github/workflows/ci.yml`. It also verifies that the source version and notes agree, refuses to replace an existing tag, builds the production release without repeating the PR's full tests and debug lint, and checks:
+The workflow uses signing secrets from the `production` Environment, where the owner can approve their own run or use the existing administrator bypass. Owner dispatches do not require a merged PR or prior CI. Other actors must target the merge commit of a PR into `master` whose source head has a successful run of `.github/workflows/ci.yml`. Authorization uses the original `github.actor`, so an owner rerunning another actor’s dispatch does not elevate it. All hosted builds require the target commit to be reachable from `origin/master`. It also verifies that the source version and notes agree, refuses to replace an existing tag, builds the production release without repeating the PR's full tests and debug lint, and checks:
 
 - application ID is `me.ayuilos.miffan.app`;
 - `versionName` and `versionCode` match the approved inputs;
@@ -132,7 +153,7 @@ The workflow is gated by the `production` Environment. It verifies that the requ
 - the signer SHA-256 matches the Miffan production trust anchor;
 - the asset name follows the official convention.
 
-`assembleRelease` still performs R8 optimization, packaging, and signing. Lint remains a required pull-request check, and the workflow never skips the artifact, signer, ABI, checksum, or provenance checks.
+`assembleRelease` still performs R8 optimization, packaging, and signing. Lint remains a required check for non-owner pull requests, and the hosted workflow never skips the artifact, signer, ABI, checksum, or provenance checks.
 
 It then computes SHA-256, creates GitHub build provenance for the verified APK with `actions/attest@v4`, uploads the verified APK/checksum as a workflow artifact, and prepares a draft GitHub Release at the requested commit. A version containing a prerelease component is marked as a prerelease. The workflow does not make the draft public; publication remains a separate approval.
 
@@ -142,9 +163,9 @@ Download the APK and verify its build provenance before publication:
 gh attestation verify <apk> -R Ayuilos/Miffan
 ```
 
-Treat the signer verification, SHA-256 checksum, and build-provenance verification as separate required checks.
+For hosted artifacts, verify build provenance separately from the signer and checksum. Local releases require signer and checksum verification but do not require GitHub provenance.
 
-For local verification without publication:
+For a fresh local build (choose tests and lint appropriate to the changes):
 
 ```bash
 ./gradlew test
@@ -173,16 +194,16 @@ This release migration does not change the app's data ownership, database compat
 
 Also verify a fresh install, coexistence with RikkaHub, deep links, and Android 8.0 minimum support. Any certificate mismatch or data loss blocks publication.
 
-## Publish after explicit approval
+## Publication authorization
 
-Review the draft's target commit, bilingual notes, signer, APK, and checksum. Only after explicit authorization should the draft be published. Use the version as the title and tag without a `v` prefix. Do not move, replace, delete, or reuse an existing release tag.
+Review the target commit, bilingual notes, signer, APK, and checksum. A direct owner release request is sufficient authorization; hosted drafts may also be reviewed and published separately. Use the version as the title and tag without a `v` prefix. Do not move, replace, delete, or reuse an existing release tag.
 
 ## Repository settings requiring manual administration
 
 These GitHub settings are deliberately outside the source change and require a repository administrator:
 
-- add a `master` ruleset requiring pull requests and the `CI / verify` status check;
-- add a tag ruleset for independent Miffan SemVer tags and restrict tag creation/deletion;
+- keep the `master` ruleset requiring pull requests and the `CI / verify` status check for contributors, with **Repository admin → Always allow** bypass for owner direct pushes and merges;
+- keep the release tag ruleset blocking updates and deletion of existing tags; do not restrict owner creation of new release tags;
 - enable Release immutability and decide how to handle the existing non-immutable Releases;
 - create or review the `production` Environment, copy or migrate `KEY_BASE64` and `SIGNING_CONFIG` there, verify the workflow can access the Environment copies, delete the repository-level secrets with those same names, and require authorized reviewers;
 - verify Actions permissions allow the production workflow to prepare drafts only when explicitly dispatched.

@@ -66,7 +66,6 @@ jobs:
             echo "Requested commit must be reachable from origin/master" >&2
             exit 1
           fi
-          bash .github/scripts/verify_release_pr.sh
 
           semver_regex='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           if [[ ! "$EXPECTED_VERSION" =~ $semver_regex ]]; then
@@ -139,6 +138,15 @@ jobs:
               ;;
           esac
 
+      # Use the original actor: an owner's rerun must not elevate another user's dispatch.
+      - name: Verify source PR and CI for non-owner releases
+        if: github.actor != github.repository_owner
+        run: bash .github/scripts/verify_release_pr.sh
+
+      - name: Record owner release authorization
+        if: github.actor == github.repository_owner
+        run: echo 'Repository owner dispatch; source PR and prior CI are not required.' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up JDK
         uses: actions/setup-java@v6
         with:
@@ -201,8 +209,8 @@ jobs:
           fi
 
       - name: Build production release from verified commit
-        # Tests and lint already passed on the source PR. This step keeps the
-        # release-only optimization, packaging, and signing work.
+        # Non-owner dispatches require PR CI; the owner chooses their own verification.
+        # This optional hosted build performs optimization, packaging, and signing.
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Verify package, version, ABI, and production signature
