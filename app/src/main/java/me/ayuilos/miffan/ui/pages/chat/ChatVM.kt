@@ -320,6 +320,10 @@ class ChatVM(
         }
     }
 
+    suspend fun generateTitleCandidate(): String? {
+        return chatService.generateTitleCandidate(_conversationId, conversation.value)
+    }
+
     fun deleteConversation(conversation: Conversation): Job =
         viewModelScope.launch {
             chatService.deleteConversation(conversation)

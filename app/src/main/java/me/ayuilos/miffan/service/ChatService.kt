@@ -1009,11 +1009,32 @@ class ChatService(
         }
         if (!shouldGenerate) return@withContext
 
+        val candidate = generateTitleCandidate(conversationId, conversation) ?: return@withContext
+
+        // 生成完，conversation可能不是最新了，因此需要重新获取
+        conversationRepo.getConversationById(conversation.id)?.let {
+            saveConversation(
+                conversationId,
+                it.copy(title = candidate)
+            )
+        }
+    }
+
+    /**
+     * Generate a title without applying it to the conversation.
+     *
+     * This is used by the title editor so the generated text remains a candidate
+     * until the user explicitly confirms it.
+     */
+    suspend fun generateTitleCandidate(
+        conversationId: Uuid,
+        conversation: Conversation,
+    ): String? = withContext(Dispatchers.IO) {
         runCatching {
             val settings = settingsStore.settingsFlow.first()
             val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
-                ?: return@runCatching
-            val provider = model.findProvider(settings.providers) ?: return@runCatching
+                ?: return@runCatching null
+            val provider = model.findProvider(settings.providers) ?: return@runCatching null
 
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
@@ -1035,15 +1056,9 @@ class ChatService(
                     },
                 ),
             )
-
-            // 生成完，conversation可能不是最新了，因此需要重新获取
-            conversationRepo.getConversationById(conversation.id)?.let {
-                saveConversation(
-                    conversationId,
-                    it.copy(title = result.message.toText().trim())
-                )
-            }
+            result.message.toText().trim().takeIf { it.isNotEmpty() }
         }.onFailure {
+            if (it is CancellationException) throw it
             it.printStackTrace()
             addError(
                 error = it,
@@ -1051,7 +1066,7 @@ class ChatService(
                 title = context.getString(R.string.error_title_generate_title),
                 solution = ChatErrorSolution.CheckTitleModelSettings,
             )
-        }
+        }.getOrNull()
     }
 
     // ---- 生成建议 ----
