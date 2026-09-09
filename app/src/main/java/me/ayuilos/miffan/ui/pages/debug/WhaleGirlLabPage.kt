@@ -133,7 +133,7 @@ internal fun WhaleGirlLabPage(active: Boolean) {
             }
         }
         Text(
-            "等待回复 → 吃饭；输出正文 → 咀嚼；实际推理 → 思考。摸摸、得意、提醒为单次动作，其余循环。",
+            "聚焦 → 低头关注；打字 → 视线跟随；发送 → 点头收到。等待回复 → 吃饭；输出正文 → 咀嚼；实际推理 → 思考。收到、摸摸、得意、提醒为单次动作。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -150,6 +150,9 @@ private fun LabSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean
 
 private fun WhaleGirlClip.labName(): String = when (this) {
     WhaleGirlClip.IDLE -> "微笑"
+    WhaleGirlClip.FOCUSED -> "聚焦"
+    WhaleGirlClip.TYPING -> "打字"
+    WhaleGirlClip.SUBMITTED -> "收到"
     WhaleGirlClip.PETTING -> "摸摸"
     WhaleGirlClip.SUCCESS -> "得意"
     WhaleGirlClip.SURPRISE -> "提醒"

@@ -21,6 +21,10 @@ optimistic, food-loving, occasionally dizzy personality; there is no whale perso
 or motion-profile selector. Choosing an avatar or theme never changes a model, system
 prompt or conversation history.
 
+Input focus lowers the gaze toward the composer; typing adds restrained eye tracking
+and head movement. An active submission briefly nods in acknowledgement before the
+current generation expression resumes. Scene attention turns toward the supplied
+direction during petting. These native gestures extend the original expression set.
 The selected expressions are A (gentle default smile), C (contented petting), F (smug
 success), I (surprised reminder), K (big-mouth rice eating), L (puffed-cheek chewing),
 M (dizzy spiral-eye thinking), and O (exaggerated dozing with a sleep bubble). Eating

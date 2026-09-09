@@ -229,7 +229,7 @@ class WhaleGirlVisualTest {
             val portraitHeight = galleryPortraits.first().height
             val labelHeight = portraitWidth / 5
             val gallery = Bitmap.createBitmap(portraitWidth * 4,
-                (portraitHeight + labelHeight) * 2, Bitmap.Config.ARGB_8888)
+                (portraitHeight + labelHeight) * ((galleryPortraits.size + 3) / 4), Bitmap.Config.ARGB_8888)
             val galleryCanvas = Canvas(gallery)
             val scheme = WhaleThemePreset.getColorScheme(isDark)
             galleryCanvas.drawColor(scheme.background.toArgb())
@@ -239,6 +239,8 @@ class WhaleGirlVisualTest {
                 textAlign = Paint.Align.CENTER
             }
             val labels = mapOf(
+                WhaleGirlClip.FOCUSED to "聚焦", WhaleGirlClip.TYPING to "打字",
+                WhaleGirlClip.SUBMITTED to "收到",
                 WhaleGirlClip.IDLE to "微笑", WhaleGirlClip.PETTING to "摸摸",
                 WhaleGirlClip.SUCCESS to "得意", WhaleGirlClip.SURPRISE to "提醒",
                 WhaleGirlClip.EATING to "吃饭", WhaleGirlClip.CHEWING to "咀嚼",

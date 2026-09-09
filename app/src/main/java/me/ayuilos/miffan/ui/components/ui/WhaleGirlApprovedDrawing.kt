@@ -45,6 +45,7 @@ internal fun DrawScope.drawApprovedWhaleHead(
     sleepy: Float,
     time: Double,
     unit: Float,
+    gaze: Offset = Offset.Zero,
 ) {
     val ink = palette.ink
     val paper = palette.paper
@@ -56,7 +57,7 @@ internal fun DrawScope.drawApprovedWhaleHead(
     val blink = if (blinkPhase > 3.9) sin((blinkPhase - 3.9) / .3 * PI).toFloat().coerceIn(0f, 1f) else 0f
     val openness = 1f - maxOf(closed, blink)
     // Preserve the approved contours exactly at rest, including after an interrupted reaction.
-    if (clip == WhaleGirlClip.IDLE && openness >= .999f && puff < .001f) {
+    if (clip == WhaleGirlClip.IDLE && openness >= .999f && puff < .001f && gaze == Offset.Zero) {
         StaticWhaleContours.paths.forEach { drawWhaleContour(it, ink, unit) }
         return
     }
@@ -105,7 +106,9 @@ internal fun DrawScope.drawApprovedWhaleHead(
             drawPath(spiral, ink, style = Stroke(maxOf(4.6f, line), cap = StrokeCap.Round))
         } else {
             if (openness > .02f) {
-                withTransform({ scale(if (clip == WhaleGirlClip.SURPRISE) 1.1f else 1f,
+                withTransform({
+                    translate(gaze.x, gaze.y)
+                    scale(if (clip == WhaleGirlClip.SURPRISE) 1.1f else 1f,
                     openness * if (clip == WhaleGirlClip.SURPRISE) 1.12f else 1f, Offset(cx, cy)) }) {
                     drawWhaleContour(original, ink, unit, (openness * 3).coerceAtMost(1f))
                 }
@@ -118,7 +121,8 @@ internal fun DrawScope.drawApprovedWhaleHead(
     eye(ApprovedWhaleParts.rightEye, ApprovedWhaleParts.rightLash, 392f, 462f)
 
     when (clip) {
-        WhaleGirlClip.IDLE -> drawPath(ApprovedWhaleParts.mouth, ink)
+        WhaleGirlClip.IDLE, WhaleGirlClip.FOCUSED, WhaleGirlClip.TYPING -> drawPath(ApprovedWhaleParts.mouth, ink)
+        WhaleGirlClip.SUBMITTED -> drawOval(ink, Offset(314f, 528f), Size(16f, 18f), style = stroke)
         WhaleGirlClip.PETTING -> {
             val smile = Path().apply {
                 moveTo(304f, 533f)

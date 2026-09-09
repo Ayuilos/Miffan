@@ -35,6 +35,17 @@ private fun cyclePhase(seconds: Double, period: Double): Float {
 }
 
 internal fun whaleActing(clip: WhaleGirlClip, seconds: Double): WhaleActing = when (clip) {
+    WhaleGirlClip.FOCUSED -> WhaleActing(lift = -4f, tilt = -2f)
+    WhaleGirlClip.TYPING -> {
+        val t = cyclePhase(seconds, 2.0)
+        WhaleActing(lift = -4f + sin(t * PI * 4).toFloat() * 2f,
+            tilt = -2f + sin(t * PI * 2).toFloat() * 1.5f)
+    }
+    WhaleGirlClip.SUBMITTED -> {
+        val t = (seconds / 1.5).toFloat().coerceIn(0f, 1f)
+        WhaleActing(lift = beat(t, 0f to 0f, .2f to -9f, .48f to 6f, 1f to 0f),
+            tilt = beat(t, 0f to 0f, .2f to -3f, .48f to 2f, 1f to 0f))
+    }
     WhaleGirlClip.EATING -> {
         val t = cyclePhase(seconds, 3.6)
         val reach = beat(t, 0f to 0f, .1f to 0f, .34f to 1f, .45f to 1f, .66f to 0f, 1f to 0f)

@@ -53,6 +53,7 @@ internal fun WhaleGirlLineArtPortrait(
     previewSeconds: Float? = null,
     replayId: Int = 0,
     onPlaybackFinished: (() -> Unit)? = null,
+    attentionTarget: Offset? = null,
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var seconds by remember(clip, replayId) { mutableDoubleStateOf(0.0) }
@@ -83,6 +84,7 @@ internal fun WhaleGirlLineArtPortrait(
         when (clip) {
             WhaleGirlClip.PETTING, WhaleGirlClip.SLEEPING -> 1f
             WhaleGirlClip.SUCCESS -> .55f
+            WhaleGirlClip.TYPING -> .15f
             else -> 0f
         },
         reducedMotion, 180,
@@ -96,6 +98,10 @@ internal fun WhaleGirlLineArtPortrait(
         reducedMotion, 180,
     )
     val palette = if (dark) WhaleLinePalette.Night else WhaleLinePalette.Day
+    val watchingInput = clip == WhaleGirlClip.FOCUSED || clip == WhaleGirlClip.TYPING
+    val gazeX by whaleShapeState(attentionTarget?.x?.coerceIn(-1f, 1f)?.times(7f) ?: 0f, reducedMotion, 160)
+    val gazeY by whaleShapeState(if (watchingInput) 9f else
+        attentionTarget?.y?.coerceIn(-1f, 1f)?.times(5f) ?: 0f, reducedMotion, 160)
     Canvas(modifier) {
         val unit = minOf(size.width / 672f, size.height / 650f)
         val time = if (reducedMotion) 0.0 else previewSeconds?.toDouble() ?: seconds
@@ -106,10 +112,13 @@ internal fun WhaleGirlLineArtPortrait(
             val acting = whaleActing(clip, time)
             withTransform({
                 translate(0f, -acting.lift)
-                rotate(acting.tilt, Offset(330f, 440f))
+                rotate(acting.tilt + gazeX * .4f, Offset(330f, 440f))
                 scale(1f + acting.breath * .006f, 1f + acting.breath * .009f, Offset(330f, 560f))
             }) {
-                drawApprovedWhaleHead(clip, palette, closed, puff, sleepy, time, unit)
+                val tracking = if (clip == WhaleGirlClip.TYPING)
+                    kotlin.math.sin(time * kotlin.math.PI).toFloat() * 5f else 0f
+                drawApprovedWhaleHead(clip, palette, closed, puff, sleepy, time, unit,
+                    Offset(gazeX + tracking, gazeY))
             }
         }
     }
