@@ -92,7 +92,8 @@ val appModule = module {
             skillManager = get(),
             extensionManagementService = get(),
             workspaceRepository = get(),
-            folderRepository = get()
+            folderRepository = get(),
+            httpClient = get(),
         )
     }
 

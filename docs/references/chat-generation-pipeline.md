@@ -139,19 +139,21 @@ onSuccess
 
 `handleMessageComplete()` 中按如下顺序构建工具列表：
 
-1. **Search Tools**（`createSearchTools`）— 当 `settings.enableWebSearch = true` 时
-2. **Local Tools**（`localTools.getTools(assistant.localTools)`）— 按助手配置启用：
+1. **Miffan Help Tool**（`createMiffanHelpTool`）— 模型支持客户端工具时注入；用户查询仅在设备上匹配官网 manifest，按需读取一个版本化帮助主题
+2. **Search Tools**（`createSearchTools`）— 助手启用外部搜索且当前模型不使用原生搜索工具时
+3. **Local Tools**（`localTools.getTools(assistant.localTools)`）— 按助手配置启用：
   - `JavascriptEngine`：执行 JS 代码片段
   - `TimeInfo`：获取当前时间
   - `Clipboard`：读写剪贴板
   - `Tts`：文字转语音
   - `AskUser`：向用户提问（需审批）
   - `ScreenTime`：获取屏幕使用时间
-3. **Conversation Tools**（`createConversationTools`）— `enableRecentChatsReference = true` 时，查询历史对话
-4. **Workspace Tools**（`createWorkspaceToolsIfReady`）— Workspace Shell 就绪时注入，含 `workspace_shell`
-5. **Skill Tools**（`createSkillTools`）— 仅加载绑定工作区中自动发现的 `.miffan/skills`；依赖工作区环境的 Skill 仅在 Shell 就绪时可用
-6. **MCP Tools** — 所有已连接 MCP 服务器的工具，命名格式 `mcp__{serverName}__{toolName}`
-7. **Memory Tools**（`buildMemoryTools`，内置于 GenerationHandler）— `enableMemory = true` 时，支持记忆的增删改
+4. **Extension-management Tools**（`createExtensionManagementTools`）— 助手显式启用 AI 扩展管理且模型支持工具时
+5. **Conversation Tools**（`createConversationTools`）— `enableRecentChatsReference = true` 时，查询历史对话
+6. **Workspace Tools**（`createWorkspaceToolsIfReady`）— Workspace Shell 就绪时注入，含 `workspace_shell`
+7. **Skill Tool**（`createSkillTools`）— 提供轻量内置 Skill，以及绑定工作区中自动发现的 `.miffan/skills`；依赖工作区环境的 Skill 仅在 Shell 就绪时可用
+8. **MCP Tools** — 所有已连接 MCP 服务器的工具，命名格式 `mcp__{serverName}__{toolName}`
+9. **Memory Tools**（`buildMemoryTools`，内置于 GenerationHandler）— `enableMemory = true` 时，支持记忆的增删改
 
 ### 工具审批状态机
 

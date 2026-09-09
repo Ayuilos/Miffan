@@ -31,6 +31,9 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
+import me.ayuilos.miffan.AppScope
+import me.ayuilos.miffan.BuildConfig
+import me.ayuilos.miffan.R
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
@@ -48,21 +51,22 @@ import me.rerere.ai.ui.finishReasoning
 import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.common.android.Logging
-import me.ayuilos.miffan.AppScope
-import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.GenerationChunk
 import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
+import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
-import me.ayuilos.miffan.data.ai.tools.local.LocalTools
-import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
+import me.ayuilos.miffan.data.ai.tools.createMiffanHelpTool
 import me.ayuilos.miffan.data.ai.tools.createSearchTools
 import me.ayuilos.miffan.data.ai.tools.createSkillTools
 import me.ayuilos.miffan.data.ai.tools.createWorkspaceTools
 import me.ayuilos.miffan.data.ai.tools.extensionManagementBuiltInSkill
-import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
+import me.ayuilos.miffan.data.ai.tools.miffanHelpBuiltInSkill
+import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
+import me.ayuilos.miffan.data.ai.tools.local.LocalTools
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.ai.transformers.Base64ImageToLocalFileTransformer
@@ -99,10 +103,12 @@ import me.ayuilos.miffan.web.BadRequestException
 import me.ayuilos.miffan.web.NotFoundException
 import me.ayuilos.miffan.utils.applyPlaceholders
 import me.rerere.workspace.WorkspaceShellStatus
+import java.io.File
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
+import okhttp3.OkHttpClient
 
 private const val TAG = "ChatService"
 
@@ -292,9 +298,14 @@ class ChatService(
     private val extensionManagementService: ExtensionManagementService,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
+    httpClient: OkHttpClient,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
+    private val miffanHelpClient = MiffanHelpClient(
+        httpClient = httpClient,
+        cacheFile = File(context.cacheDir, "miffan_help/resources.json"),
+    )
 
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
@@ -811,6 +822,10 @@ class ChatService(
                 },
                 outputTransformers = outputTransformers,
                 tools = buildList {
+                    val miffanHelpEnabled = ModelAbility.TOOL in model.abilities
+                    if (miffanHelpEnabled) {
+                        add(createMiffanHelpTool(miffanHelpClient, BuildConfig.VERSION_NAME))
+                    }
                     if (useExternalWebSearch) {
                         addAll(createSearchTools(settings))
                     }
@@ -822,17 +837,13 @@ class ChatService(
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd))
-                    if (
-                        extensionManagementEnabled ||
-                        availableSkills.isNotEmpty()
-                    ) {
+                    if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(
                                 allSkills = availableSkills,
-                                builtInSkills = if (extensionManagementEnabled) {
-                                    listOf(extensionManagementBuiltInSkill)
-                                } else {
-                                    emptyList()
+                                builtInSkills = buildList {
+                                    if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
+                                    if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
                                 },
                                 workspaceReady = workspaceReady,
                             )
