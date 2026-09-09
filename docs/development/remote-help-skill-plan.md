@@ -40,7 +40,8 @@ result. This keeps the behavior provider-neutral and avoids adding a local model
 
 ### Android
 
-- Add the always-available `miffan-help` built-in Skill definition.
+- Add the `miffan-help` built-in Skill definition for tool-capable models, controlled by a global
+  default and an Assistant-level inherit/on/off override.
 - Add a provider-neutral `miffan_help` Tool with a narrow input schema.
 - Fetch only from the configured Miffan website origin.
 - Select locale using exact locale, language match, then the manifest default.
@@ -147,9 +148,10 @@ place; corrections publish a new Skill version and update the manifest.
 ### Milestone 1: static Chinese MVP
 
 - One root manifest and one `zh-CN` topic set on the existing Cloudflare-hosted website.
-- Built-in Skill and Tool enabled for tool-capable models.
+- Built-in Skill and Tool enabled by default for tool-capable models, with global and per-Assistant
+  controls that remove both registrations when disabled.
 - Deterministic topic/keyword routing, disk cache, integrity checks, and unit tests.
-- No settings screen and no embeddings.
+- No embeddings.
 
 ### Milestone 2: product context and localization
 

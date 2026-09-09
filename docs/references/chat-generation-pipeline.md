@@ -139,7 +139,7 @@ onSuccess
 
 `handleMessageComplete()` 中按如下顺序构建工具列表：
 
-1. **Miffan Help Tool**（`createMiffanHelpTool`）— 模型支持客户端工具时注入；用户查询仅在设备上匹配官网 manifest，按需读取一个版本化帮助主题
+1. **Miffan Help Tool**（`createMiffanHelpTool`）— 模型支持客户端工具，且全局默认与助手“跟随全局/开启/关闭”覆盖结果为开启时注入；用户查询仅在设备上匹配官网 manifest，按需读取一个版本化帮助主题
 2. **Search Tools**（`createSearchTools`）— 助手启用外部搜索且当前模型不使用原生搜索工具时
 3. **Local Tools**（`localTools.getTools(assistant.localTools)`）— 按助手配置启用：
   - `JavascriptEngine`：执行 JS 代码片段

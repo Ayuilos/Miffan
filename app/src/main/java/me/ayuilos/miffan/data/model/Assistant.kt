@@ -40,6 +40,7 @@ data class Assistant(
     val customBodies: List<CustomBody> = emptyList(),
     val mcpServers: Set<Uuid> = emptySet(),
     val localTools: List<LocalToolOption> = listOf(LocalToolOption.TimeInfo),
+    val miffanHelpOverride: MiffanHelpOverride = MiffanHelpOverride.INHERIT,
     val enableWebSearch: Boolean = false, // 网络搜索开关(每个助手独立)
     val workspaceId: Uuid? = null,
     /** Null is the explicit legacy whole-workspace compatibility mode. */
@@ -62,6 +63,24 @@ data class Assistant(
             "A private Workspace scope must use the stable Assistant id"
         }
     }
+}
+
+@Serializable
+enum class MiffanHelpOverride {
+    @SerialName("inherit")
+    INHERIT,
+
+    @SerialName("enabled")
+    ENABLED,
+
+    @SerialName("disabled")
+    DISABLED,
+}
+
+fun Assistant.isMiffanHelpEnabled(globalEnabled: Boolean): Boolean = when (miffanHelpOverride) {
+    MiffanHelpOverride.INHERIT -> globalEnabled
+    MiffanHelpOverride.ENABLED -> true
+    MiffanHelpOverride.DISABLED -> false
 }
 
 fun Assistant.workspaceScope(): WorkspaceScope =

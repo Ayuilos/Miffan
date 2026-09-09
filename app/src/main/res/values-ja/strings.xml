@@ -1391,4 +1391,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="onboarding_page_openrouter_brief">Miffan とは独立した第三者サービス OpenRouter が提供します。API キーを手動で入力する必要はありません。</string>
   <string name="onboarding_page_details_show">OpenRouter と無料枠について</string>
   <string name="onboarding_page_details_hide">詳細を閉じる</string>
+  <string name="setting_miffan_help_title">Miffan ヘルプ</string>
+  <string name="setting_miffan_help_desc">アプリの使い方に関する質問に回答するとき、バージョン管理された Miffan 公式ドキュメントをアシスタントが読み込めるようにします。</string>
+  <string name="assistant_page_miffan_help_desc">このアシスタントの公式ヘルプツールを制御します。グローバル設定：%1$s</string>
+  <string name="assistant_page_miffan_help_global_enabled">オン</string>
+  <string name="assistant_page_miffan_help_global_disabled">オフ</string>
+  <string name="assistant_page_miffan_help_inherit">既定</string>
+  <string name="assistant_page_miffan_help_enabled">オン</string>
+  <string name="assistant_page_miffan_help_disabled">オフ</string>
 </resources>

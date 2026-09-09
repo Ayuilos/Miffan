@@ -93,6 +93,7 @@ import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.isMiffanHelpEnabled
 import me.ayuilos.miffan.data.model.replaceRegexes
 import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.repository.ConversationRepository
@@ -130,6 +131,12 @@ internal fun shouldEnableExtensionManagement(assistant: Assistant, model: Model)
     return LocalToolOption.ExtensionManagement in assistant.localTools &&
         ModelAbility.TOOL in model.abilities
 }
+
+internal fun shouldEnableMiffanHelp(
+    assistant: Assistant,
+    model: Model,
+    globalEnabled: Boolean,
+): Boolean = ModelAbility.TOOL in model.abilities && assistant.isMiffanHelpEnabled(globalEnabled)
 
 internal fun Conversation.approvePendingWorkspaceShellTools(): Conversation {
     val currentNodeIds = currentMessageNodes.mapTo(HashSet()) { it.id }
@@ -822,7 +829,11 @@ class ChatService(
                 },
                 outputTransformers = outputTransformers,
                 tools = buildList {
-                    val miffanHelpEnabled = ModelAbility.TOOL in model.abilities
+                    val miffanHelpEnabled = shouldEnableMiffanHelp(
+                        assistant = assistant,
+                        model = model,
+                        globalEnabled = settings.miffanHelpEnabled,
+                    )
                     if (miffanHelpEnabled) {
                         add(createMiffanHelpTool(miffanHelpClient, BuildConfig.VERSION_NAME))
                     }

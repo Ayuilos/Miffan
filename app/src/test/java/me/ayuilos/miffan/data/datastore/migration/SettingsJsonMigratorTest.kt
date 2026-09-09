@@ -4,6 +4,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.MiffanHelpOverride
 import me.ayuilos.miffan.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -11,6 +13,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsJsonMigratorTest {
+    @Test
+    fun `old settings default miffan help to enabled and assistant override to inherit`() {
+        val settings = JsonInstant.decodeFromString<Settings>("{}")
+
+        assertTrue(settings.miffanHelpEnabled)
+        assertEquals(MiffanHelpOverride.INHERIT, settings.assistants.first().miffanHelpOverride)
+    }
+
+    @Test
+    fun `miffan help settings survive backup serialization`() {
+        val configured = Settings(
+            miffanHelpEnabled = false,
+            assistants = listOf(
+                Assistant(
+                    miffanHelpOverride = MiffanHelpOverride.ENABLED,
+                )
+            ),
+        )
+
+        val restored = JsonInstant.decodeFromString<Settings>(JsonInstant.encodeToString(configured))
+
+        assertFalse(restored.miffanHelpEnabled)
+        assertEquals(MiffanHelpOverride.ENABLED, restored.assistants.single().miffanHelpOverride)
+    }
+
     @Test
     fun `migrates RikkaHub and first Miffan avatar type names`() {
         val backupJson = """

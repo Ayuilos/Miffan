@@ -81,6 +81,18 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                     modifier = Modifier.padding(horizontal = 8.dp),
                 ) {
                     item(
+                        headlineContent = { Text(stringResource(R.string.setting_miffan_help_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_miffan_help_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.miffanHelpEnabled,
+                                onCheckedChange = {
+                                    vm.updateSettings(settings.copy(miffanHelpEnabled = it))
+                                }
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_create_new_conversation_on_start_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_create_new_conversation_on_start_desc)) },
                         trailingContent = {

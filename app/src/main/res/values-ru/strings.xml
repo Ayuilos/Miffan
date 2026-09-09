@@ -1391,4 +1391,12 @@
   <string name="onboarding_page_openrouter_brief">Сервис предоставляется сторонней платформой OpenRouter, которая работает независимо от Miffan. Вводить API-ключ вручную не нужно.</string>
   <string name="onboarding_page_details_show">Об OpenRouter и бесплатных лимитах</string>
   <string name="onboarding_page_details_hide">Скрыть подробности</string>
+  <string name="setting_miffan_help_title">Справка Miffan</string>
+  <string name="setting_miffan_help_desc">Разрешить ассистентам загружать официальную документацию Miffan с учётом версии при ответах на вопросы об использовании приложения.</string>
+  <string name="assistant_page_miffan_help_desc">Управляет официальным инструментом справки для этого ассистента. Глобальная настройка: %1$s</string>
+  <string name="assistant_page_miffan_help_global_enabled">Вкл.</string>
+  <string name="assistant_page_miffan_help_global_disabled">Выкл.</string>
+  <string name="assistant_page_miffan_help_inherit">Общее</string>
+  <string name="assistant_page_miffan_help_enabled">Вкл.</string>
+  <string name="assistant_page_miffan_help_disabled">Выкл.</string>
 </resources>

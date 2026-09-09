@@ -1389,4 +1389,12 @@
   <string name="onboarding_page_openrouter_brief">Provided by third-party OpenRouter, which operates independently from Miffan. No manual API key entry needed.</string>
   <string name="onboarding_page_details_show">About OpenRouter and free limits</string>
   <string name="onboarding_page_details_hide">Hide details</string>
+  <string name="setting_miffan_help_title">Miffan Help</string>
+  <string name="setting_miffan_help_desc">Allow assistants to load versioned official Miffan documentation when answering app usage questions.</string>
+  <string name="assistant_page_miffan_help_desc">Controls the official help tool for this assistant. Global setting: %1$s</string>
+  <string name="assistant_page_miffan_help_global_enabled">On</string>
+  <string name="assistant_page_miffan_help_global_disabled">Off</string>
+  <string name="assistant_page_miffan_help_inherit">Default</string>
+  <string name="assistant_page_miffan_help_enabled">On</string>
+  <string name="assistant_page_miffan_help_disabled">Off</string>
 </resources>
