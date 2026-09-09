@@ -2,7 +2,10 @@ package me.ayuilos.miffan.ui.pages.chat
 
 import java.time.Instant
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.ui.components.ai.ChatInputActivity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
 
@@ -19,6 +22,34 @@ class RecentChatShortcutsTest {
             .toRecentChatShortcuts(current.id)
 
         assertEquals(listOf(newest.id, second.id, third.id), shortcuts.map { it.id })
+    }
+
+    @Test
+    fun `shortcuts show only when input is inactive and empty`() {
+        assertTrue(
+            shouldShowRecentChatShortcuts(
+                inputActivity = ChatInputActivity.Inactive,
+                inputIsEmpty = true,
+            )
+        )
+        assertFalse(
+            shouldShowRecentChatShortcuts(
+                inputActivity = ChatInputActivity.Focused,
+                inputIsEmpty = true,
+            )
+        )
+        assertFalse(
+            shouldShowRecentChatShortcuts(
+                inputActivity = ChatInputActivity.Typing,
+                inputIsEmpty = false,
+            )
+        )
+        assertFalse(
+            shouldShowRecentChatShortcuts(
+                inputActivity = ChatInputActivity.Inactive,
+                inputIsEmpty = false,
+            )
+        )
     }
 
     private fun conversation(updateAt: String) = Conversation(

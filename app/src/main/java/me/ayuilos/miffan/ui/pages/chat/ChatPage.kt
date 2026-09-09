@@ -480,8 +480,13 @@ private fun ChatPageContent(
     val messagePathCount = remember(conversation.messageNodes) {
         conversation.getMessagePathLeaves().size
     }
-    var mascotInputState by remember(conversation.id) {
-        mutableStateOf(MiffanMascotInputState.Inactive)
+    var inputActivity by remember(conversation.id) {
+        mutableStateOf(ChatInputActivity.Inactive)
+    }
+    val mascotInputState = when (inputActivity) {
+        ChatInputActivity.Inactive -> MiffanMascotInputState.Inactive
+        ChatInputActivity.Focused -> MiffanMascotInputState.Focused
+        ChatInputActivity.Typing -> MiffanMascotInputState.Typing
     }
     var mascotSubmitId by remember(conversation.id) { mutableIntStateOf(0) }
     var observedMascotJob by remember(conversation.id) { mutableStateOf(loadingJob) }
@@ -647,13 +652,7 @@ private fun ChatPageContent(
                         }
                         inputState.clearInput()
                     },
-                    onActivityChanged = { activity ->
-                        mascotInputState = when (activity) {
-                            ChatInputActivity.Inactive -> MiffanMascotInputState.Inactive
-                            ChatInputActivity.Focused -> MiffanMascotInputState.Focused
-                            ChatInputActivity.Typing -> MiffanMascotInputState.Typing
-                        }
-                    },
+                    onActivityChanged = { inputActivity = it },
                     onUpdateChatModel = {
                         vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
                     },
@@ -688,6 +687,10 @@ private fun ChatPageContent(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 recentConversations = recentConversations,
+                showRecentConversations = shouldShowRecentChatShortcuts(
+                    inputActivity = inputActivity,
+                    inputIsEmpty = inputState.isEmpty(),
+                ),
                 state = chatListState,
                 loading = loadingJob != null,
                 modifier = Modifier.pointerInput(focusManager) {
@@ -789,6 +792,13 @@ private fun ChatPageContent(
             )
         }
     }
+}
+
+internal fun shouldShowRecentChatShortcuts(
+    inputActivity: ChatInputActivity,
+    inputIsEmpty: Boolean,
+): Boolean {
+    return inputActivity == ChatInputActivity.Inactive && inputIsEmpty
 }
 
 @Composable
