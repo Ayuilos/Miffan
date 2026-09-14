@@ -259,7 +259,7 @@ private fun ProviderConfigureOpenAI(
 
     OutlinedTextField(
         value = provider.name,
-        onValueChange = { onEdit(provider.copy(name = it.trim())) },
+        onValueChange = { onEdit(provider.copy(name = it)) },
         label = { Text(stringResource(R.string.setting_provider_page_name)) },
         modifier = Modifier.fillMaxWidth(),
     )
@@ -518,7 +518,7 @@ private fun ProviderConfigureClaude(
 
     OutlinedTextField(
         value = provider.name,
-        onValueChange = { onEdit(provider.copy(name = it.trim())) },
+        onValueChange = { onEdit(provider.copy(name = it)) },
         label = { Text(stringResource(R.string.setting_provider_page_name)) },
         modifier = Modifier.fillMaxWidth(),
         maxLines = 3,
@@ -630,7 +630,7 @@ private fun ProviderConfigureGoogle(
 
     OutlinedTextField(
         value = provider.name,
-        onValueChange = { onEdit(provider.copy(name = it.trim())) },
+        onValueChange = { onEdit(provider.copy(name = it)) },
         label = { Text(stringResource(R.string.setting_provider_page_name)) },
         modifier = Modifier.fillMaxWidth(),
     )
