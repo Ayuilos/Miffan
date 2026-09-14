@@ -68,13 +68,16 @@ data class MessageDayCount(val day: String, val count: Int)
 
 data class MessageNodeRevision(val id: String, val revision: Long)
 
+// Validate inside the expression: SQL WHERE evaluation order cannot guard json_extract.
+private const val VALID_MESSAGE_JSON = "CASE WHEN json_valid(message) THEN message ELSE '{}' END"
+
 // Each row stores one message, so stats avoid expanding a JSON array.
 private val TOKEN_STATS_SQL = SimpleSQLiteQuery(
     "SELECT COUNT(*) AS totalMessages, " +
-        "COALESCE(SUM(CAST(json_extract(message, '$.usage.promptTokens') AS INTEGER)), 0) AS promptTokens, " +
-        "COALESCE(SUM(CAST(json_extract(message, '$.usage.completionTokens') AS INTEGER)), 0) AS completionTokens, " +
-        "COALESCE(SUM(CAST(json_extract(message, '$.usage.cachedTokens') AS INTEGER)), 0) AS cachedTokens " +
-        "FROM message_node"
+        "COALESCE(SUM(CAST(json_extract($VALID_MESSAGE_JSON, '$.usage.promptTokens') AS INTEGER)), 0) AS promptTokens, " +
+        "COALESCE(SUM(CAST(json_extract($VALID_MESSAGE_JSON, '$.usage.completionTokens') AS INTEGER)), 0) AS completionTokens, " +
+        "COALESCE(SUM(CAST(json_extract($VALID_MESSAGE_JSON, '$.usage.cachedTokens') AS INTEGER)), 0) AS cachedTokens " +
+        "FROM message_node WHERE json_valid(message)"
 )
 
 suspend fun MessageNodeDAO.getTokenStats(): MessageTokenStats = getTokenStatsRaw(TOKEN_STATS_SQL)
@@ -83,11 +86,11 @@ suspend fun MessageNodeDAO.getTokenStats(): MessageTokenStats = getTokenStatsRaw
 suspend fun MessageNodeDAO.getMessageCountPerDay(startDate: String): List<MessageDayCount> =
     getMessageCountPerDayRaw(
         SimpleSQLiteQuery(
-            "SELECT substr(json_extract(message, '$.createdAt'), 1, 10) AS day, " +
+            "SELECT substr(json_extract($VALID_MESSAGE_JSON, '$.createdAt'), 1, 10) AS day, " +
                 "COUNT(*) AS count " +
                 "FROM message_node " +
-                "WHERE json_extract(message, '$.role') = 'user' " +
-                "AND json_extract(message, '$.createdAt') >= ? " +
+                "WHERE json_extract($VALID_MESSAGE_JSON, '$.role') = 'user' " +
+                "AND json_extract($VALID_MESSAGE_JSON, '$.createdAt') >= ? " +
                 "GROUP BY day",
             arrayOf(startDate)
         )
