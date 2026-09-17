@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
@@ -15,6 +17,7 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.files.SkillMetadata
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
@@ -23,17 +26,26 @@ import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceStorageArea
+import me.rerere.workspace.RemoteHostKey
 
 class WorkspaceDetailVM(
     private val args: WorkspaceDetailArgs,
     private val repository: WorkspaceRepository,
     private val skillManager: SkillManager,
 ) : ViewModel() {
+    val remoteHostStates = repository.remoteHostStates
+    val remoteWorkspaceStates = repository.remoteWorkspaceStates
     private val id = args.id
     private val scopeId = args.scopeId
     private var filesLoadJob: Job? = null
+    private var filesLoadGeneration = 0L
 
-    private val _state = MutableStateFlow(WorkspaceDetailState())
+    private val _state = MutableStateFlow(WorkspaceDetailState(
+        area = args.initialArea,
+        path = args.initialPath.trim('/'),
+        scopeId = args.scopeId,
+        scopeName = args.scopeName,
+    ))
     val state = _state.asStateFlow()
 
     private val _terminalState = MutableStateFlow(WorkspaceTerminalState())
@@ -46,10 +58,11 @@ class WorkspaceDetailVM(
     val installError = _installError.asStateFlow()
 
     init {
-        refresh()
+        if (args.loadFilesInitially) refresh() else reloadMetadataOnly()
     }
 
     fun selectArea(area: WorkspaceStorageArea) {
+        if (state.value.workspace?.isRemote == true && area != WorkspaceStorageArea.FILES) return
         _state.update {
             it.copy(
                 area = area,
@@ -62,10 +75,13 @@ class WorkspaceDetailVM(
     }
 
     fun navigateTo(area: WorkspaceStorageArea, path: String) {
+        val targetArea = resolveDetailArea(area, state.value.workspace?.isRemote == true)
+        val targetPath = path.trim('/')
+        if (state.value.area == targetArea && state.value.path == targetPath) return
         _state.update {
             it.copy(
-                area = area,
-                path = path.trim('/'),
+                area = targetArea,
+                path = targetPath,
                 entries = emptyList(),
                 error = null,
             )
@@ -93,27 +109,40 @@ class WorkspaceDetailVM(
     }
 
     fun refresh() {
-        loadWorkspace()
+        val generation = ++filesLoadGeneration
         val area = state.value.area
         val path = state.value.path
         filesLoadJob?.cancel()
+        _state.update { it.copy(loading = true, error = null) }
         filesLoadJob = viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
             try {
+                val metadata = fetchWorkspaceMetadata()
+                currentCoroutineContext().ensureActive()
+                if (generation != filesLoadGeneration) return@launch
+                val effectiveArea = resolveDetailArea(area, metadata.workspace?.isRemote == true)
+                _state.update { current ->
+                    if (generation != filesLoadGeneration || current.area != area || current.path != path) current
+                    else current.withMetadata(metadata).copy(area = effectiveArea)
+                }
+                if (generation != filesLoadGeneration) return@launch
                 val entries = repository.listFiles(
                     id = id,
-                    area = area,
+                    area = effectiveArea,
                     path = path,
                     scopeId = scopeId,
                 )
-                if (state.value.area == area && state.value.path == path) {
-                    _state.update { it.copy(entries = entries, loading = false) }
+                currentCoroutineContext().ensureActive()
+                _state.update { current ->
+                    if (generation != filesLoadGeneration || current.area != effectiveArea || current.path != path) current
+                    else current.copy(entries = entries, loading = false, error = null)
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                _state.update {
-                    it.copy(
+                currentCoroutineContext().ensureActive()
+                _state.update { current ->
+                    if (generation != filesLoadGeneration || current.path != path) current
+                    else current.copy(
                         entries = emptyList(),
                         loading = false,
                         error = error.message ?: "加载工作区文件失败",
@@ -217,8 +246,43 @@ class WorkspaceDetailVM(
     fun setToolApproval(toolName: String, needsApproval: Boolean) {
         viewModelScope.launch {
             val workspace = state.value.workspace ?: return@launch
-            repository.setToolApproval(workspace.id, toolName, needsApproval)
-            loadWorkspace()
+            try {
+                repository.setToolApproval(workspace.id, toolName, needsApproval)
+                refreshMetadata()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _state.update { it.copy(error = error.message ?: "更新工具审批失败") }
+            }
+        }
+    }
+
+    fun discoverHostKey(onResult: (Result<RemoteHostKey>) -> Unit) {
+        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException("主机配置不可用")))
+        runRemoteCheck({ repository.discoverHostKey(hostId) }, onResult)
+    }
+
+    fun trustHostKey(fingerprint: String, onResult: (Result<Boolean>) -> Unit) {
+        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException("主机配置不可用")))
+        runRemoteCheck({ repository.trustHostKey(hostId, fingerprint) }, onResult)
+    }
+
+    fun testHost(onResult: (Result<Boolean>) -> Unit) {
+        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException("主机配置不可用")))
+        runRemoteCheck({ repository.testHost(hostId) }, onResult)
+    }
+
+    private fun <T> runRemoteCheck(block: suspend () -> T, onResult: (Result<T>) -> Unit) {
+        viewModelScope.launch {
+            val result = try {
+                Result.success(block())
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
+            onResult(result)
+            if (result.isSuccess) refreshMetadata()
         }
     }
 
@@ -226,6 +290,7 @@ class WorkspaceDetailVM(
         viewModelScope.launch {
             _installError.value = null
             val workspace = state.value.workspace ?: return@launch
+            if (workspace.isRemote) return@launch
             _installProgress.value = RootfsInstallProgress(stage = RootfsInstallStage.DOWNLOADING)
             try {
                 repository.installRootfs(workspace.id) { progress ->
@@ -291,34 +356,72 @@ class WorkspaceDetailVM(
         _terminalState.update { it.copy(history = emptyList()) }
     }
 
-    private fun loadWorkspace() {
-        viewModelScope.launch {
-            val workspace = repository.getById(id)
-            val skills = if (workspace == null) {
-                emptyList()
-            } else {
-                withContext(Dispatchers.IO) {
-                    skillManager.listWorkspaceSkills(
-                        workspaceId = workspace.id,
-                        workspaceRoot = workspace.root,
-                        scopeId = scopeId,
-                    )
-                }
-            }
-            _state.update {
-                it.copy(
-                    workspace = workspace,
-                    skills = skills,
+    private suspend fun fetchWorkspaceMetadata(): WorkspaceDetailMetadata {
+        val workspace = repository.getById(id)
+        val remoteHost = workspace?.remoteHostId?.let { repository.getHostById(it) }
+        val skills = if (workspace == null || workspace.isRemote) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.IO) {
+                skillManager.listWorkspaceSkills(
+                    workspaceId = workspace.id,
+                    workspaceRoot = workspace.root,
                     scopeId = scopeId,
-                    scopeName = args.scopeName,
                 )
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return WorkspaceDetailMetadata(workspace, remoteHost, skills)
+    }
+
+    private suspend fun refreshMetadata() {
+        try {
+            val metadata = fetchWorkspaceMetadata()
+            currentCoroutineContext().ensureActive()
+            _state.update { it.withMetadata(metadata) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            currentCoroutineContext().ensureActive()
+            _state.update { it.copy(error = error.message ?: "加载工作区信息失败") }
+        }
+    }
+
+    fun reloadMetadataOnly() {
+        _state.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val metadata = fetchWorkspaceMetadata()
+                currentCoroutineContext().ensureActive()
+                _state.update { it.withMetadata(metadata).copy(loading = false, error = null) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
+                _state.update { it.copy(loading = false, error = error.message ?: "加载工作区信息失败") }
             }
         }
     }
 }
 
+private data class WorkspaceDetailMetadata(
+    val workspace: WorkspaceEntity?,
+    val remoteHost: RemoteHostEntity?,
+    val skills: List<SkillMetadata>,
+)
+
+private fun WorkspaceDetailState.withMetadata(metadata: WorkspaceDetailMetadata): WorkspaceDetailState = copy(
+    workspace = metadata.workspace,
+    remoteHost = metadata.remoteHost,
+    skills = metadata.skills,
+)
+
+internal fun resolveDetailArea(requested: WorkspaceStorageArea, isRemote: Boolean): WorkspaceStorageArea =
+    if (isRemote) WorkspaceStorageArea.FILES else requested
+
 data class WorkspaceDetailState(
     val workspace: WorkspaceEntity? = null,
+    val remoteHost: RemoteHostEntity? = null,
     val area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
     val path: String = "",
     val entries: List<WorkspaceFileEntry> = emptyList(),
@@ -333,6 +436,9 @@ data class WorkspaceDetailArgs(
     val id: String,
     val scopeId: String? = null,
     val scopeName: String? = null,
+    val initialArea: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
+    val initialPath: String = "",
+    val loadFilesInitially: Boolean = true,
 )
 
 data class WorkspaceTerminalState(

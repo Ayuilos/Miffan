@@ -178,6 +178,13 @@ awaits generation cleanup before deleting history. REST sends retain their immed
 
 ## Workspace ownership and Assistant scopes
 
+The Rootfs and private-scope rules below apply to `LOCAL` workspaces. `REMOTE`
+workspaces connect directly from Android through native SSH/SFTP; their configured
+project directory is shared by bound assistants and does not inherit local scope
+isolation. Host records and encrypted credentials are separate from workspace
+records. See [Remote workspace behavior](../REMOTE_WORKSPACE.md) and
+[development plan](../REMOTE_WORKSPACE_PLAN.md).
+
 A Workspace owns one Rootfs and one process/session coordination domain. Multiple Assistants may
 bind that Workspace; package installation and changes under `/bin`, `/usr`, `/etc`, and the rest of
 the Rootfs are intentionally shared. The session registry remains keyed by Workspace, with one

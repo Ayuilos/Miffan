@@ -33,7 +33,11 @@ dependencies {
     implementation(libs.material)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.xz)
+    api(libs.jsch)
+    implementation(libs.bouncycastle)
     testImplementation(libs.junit)
+    testImplementation(libs.apache.sshd.core)
+    testImplementation(libs.apache.sshd.sftp)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

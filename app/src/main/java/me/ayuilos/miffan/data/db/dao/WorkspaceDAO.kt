@@ -21,6 +21,18 @@ interface WorkspaceDAO {
     @Query("SELECT * FROM workspaces")
     suspend fun getAll(): List<WorkspaceEntity>
 
+    @Query("SELECT COUNT(*) FROM workspaces WHERE remote_host_id = :hostId")
+    suspend fun countByRemoteHostId(hostId: String): Int
+
+    @Query("SELECT * FROM workspaces WHERE remote_host_id = :hostId")
+    suspend fun getByRemoteHostId(hostId: String): List<WorkspaceEntity>
+
+    @Query("UPDATE workspaces SET shell_status = :status, updated_at = :updatedAt WHERE remote_host_id = :hostId")
+    suspend fun updateShellStatusByHostId(hostId: String, status: String, updatedAt: Long): Int
+
+    @Query("UPDATE workspaces SET tool_approvals = '{}' WHERE remote_host_id = :hostId")
+    suspend fun clearToolApprovalsByHostId(hostId: String): Int
+
     @Query("UPDATE workspaces SET shell_status = :shellStatus, updated_at = :updatedAt WHERE id = :id")
     suspend fun updateShellStatus(id: String, shellStatus: String, updatedAt: Long): Int
 

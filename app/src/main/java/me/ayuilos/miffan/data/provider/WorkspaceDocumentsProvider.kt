@@ -38,7 +38,10 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
 
     private fun dao(): WorkspaceDAO = GlobalContext.get().get()
 
-    private fun allWorkspaces(): List<WorkspaceEntity> = runBlocking { dao().getAll() }
+    // This provider exposes local files through file descriptors. Remote files are managed by
+    // the in-app repository, not mirrored into an empty local directory with the same id.
+    private fun allWorkspaces(): List<WorkspaceEntity> =
+        runBlocking { dao().getAll().filterNot { it.isRemote } }
 
     private fun workspaceName(root: String): String =
         allWorkspaces().firstOrNull { it.root == root }?.name ?: root
@@ -130,7 +133,6 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
     ): String {
         val parent = parseDocId(parentDocumentId)
         require(!parent.isRoot) { "Cannot create document at root" }
-        manager().ensureWorkspace(parent.root)
         val parentDir = resolveFile(parent.root, parent.relPath)
         require(parentDir.isDirectory) { "Parent is not a directory" }
         val target = uniqueChild(parentDir, displayName)
@@ -281,6 +283,7 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
 
     /** 解析 documentId 指向的实际文件，并校验路径不逃逸 workspace files 目录 */
     private fun resolveFile(root: String, relPath: String): File {
+        require(allWorkspaces().any { it.root == root }) { "Local workspace not found" }
         val base = manager().filesDir(root).canonicalFile
         base.mkdirs()
         val normalized = relPath.trim().trimStart('/')

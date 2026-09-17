@@ -104,6 +104,7 @@ import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 import me.ayuilos.miffan.data.datastore.getCurrentChatModel
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
@@ -114,6 +115,8 @@ import me.ayuilos.miffan.ui.components.ai.ChatInputActivity
 import me.ayuilos.miffan.ui.components.ai.FilesPicker
 import me.ayuilos.miffan.ui.components.ai.SearchMode
 import me.ayuilos.miffan.ui.components.ai.completion.WorkspaceCompletionProvider
+import me.ayuilos.miffan.ui.components.ai.workspaceKindIcon
+import me.ayuilos.miffan.ui.pages.extensions.workspace.remoteWorkspaceStatusLabel
 import me.ayuilos.miffan.ui.components.ai.useCropLauncher
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotInputState
 import me.ayuilos.miffan.ui.components.ui.characterReplyHoldMillis
@@ -377,6 +380,11 @@ internal data class ChatWorkspaceEntry(
     val scopeId: String?,
     val scopeName: String?,
     val warning: Boolean,
+    val isRemote: Boolean = false,
+    val remoteHostName: String? = null,
+    val remoteHostLabel: String? = null,
+    val remoteRoot: String? = null,
+    val runtimeStatus: String? = null,
 )
 
 internal fun resolveChatWorkspaceEntry(
@@ -384,6 +392,8 @@ internal fun resolveChatWorkspaceEntry(
     workspace: WorkspaceEntity?,
     scopeId: String? = null,
     scopeName: String? = null,
+    remoteHost: RemoteHostEntity? = null,
+    runtimeStatus: String? = null,
 ): ChatWorkspaceEntry? {
     val id = boundWorkspaceId ?: return null
     val matchingWorkspace = workspace?.takeIf { it.id == id }
@@ -395,6 +405,11 @@ internal fun resolveChatWorkspaceEntry(
         name = matchingWorkspace?.name?.takeIf { it.isNotBlank() },
         scopeId = scopeId,
         scopeName = scopeName,
+        isRemote = matchingWorkspace?.isRemote == true,
+        remoteHostName = remoteHost?.name,
+        remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" },
+        remoteRoot = matchingWorkspace?.remotePath,
+        runtimeStatus = runtimeStatus,
         warning = matchingWorkspace == null ||
             shellStatus == null ||
             shellStatus == WorkspaceShellStatus.BROKEN,
@@ -469,11 +484,23 @@ private fun ChatPageContent(
     val messageQueue by vm.messageQueue.collectAsStateWithLifecycle()
     val workspaceId = assistant.workspaceId?.toString()
     val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(initialValue = emptyList())
+    val remoteHosts by workspaceRepository.listHostsFlow().collectAsStateWithLifecycle(initialValue = emptyList())
+    val remoteHostStates by workspaceRepository.remoteHostStates.collectAsStateWithLifecycle()
+    val remoteWorkspaceStates by workspaceRepository.remoteWorkspaceStates.collectAsStateWithLifecycle()
+    val selectedWorkspace = workspaces.find { it.id == workspaceId }
     val workspaceEntry = resolveChatWorkspaceEntry(
         boundWorkspaceId = workspaceId,
-        workspace = workspaces.find { it.id == workspaceId },
+        workspace = selectedWorkspace,
         scopeId = assistant.workspaceScopeId?.toString(),
         scopeName = assistant.name.takeIf { it.isNotBlank() },
+        remoteHost = remoteHosts.find { it.id == selectedWorkspace?.remoteHostId },
+        runtimeStatus = selectedWorkspace?.takeIf { it.isRemote }?.let { workspace ->
+            remoteWorkspaceStatusLabel(
+                workspace,
+                workspace.remoteHostId?.let(remoteHostStates::get),
+                remoteWorkspaceStates[workspace.id],
+            )
+        },
     )
     var showFilesSheet by remember { mutableStateOf(false) }
     var showPathOverview by remember { mutableStateOf(false) }
@@ -1016,7 +1043,9 @@ private fun WorkspaceTopBarAction(
     val workspaceLabel = stringResource(R.string.extensions_page_workspace)
     val filesLabel = stringResource(R.string.workspace_detail_tab_files)
     val errorLabel = stringResource(R.string.workspace_detail_shell_broken)
-    val scopeLabel = if (entry.scopeId == null) {
+    val scopeLabel = if (entry.isRemote) {
+        "远程共享目录"
+    } else if (entry.scopeId == null) {
         stringResource(R.string.workspace_scope_legacy)
     } else {
         stringResource(
@@ -1024,11 +1053,22 @@ private fun WorkspaceTopBarAction(
             entry.scopeName ?: entry.scopeId.take(8),
         )
     }
-    val displayName = "${entry.name ?: workspaceLabel} · $scopeLabel"
+    val displayName = "${if (entry.isRemote) "远程" else "本地"} · ${entry.name ?: workspaceLabel} · $scopeLabel"
     val actionLabel = buildString {
         append(workspaceLabel)
         append(' ')
         append(filesLabel)
+        append("：")
+        append(if (entry.isRemote) "远程服务器" else "本地设备")
+        if (entry.isRemote) {
+            append("，主机 ")
+            append(entry.remoteHostName ?: "主机不可用")
+            append("，账户 ")
+            append(entry.remoteHostLabel ?: "未知")
+            append("，目录 ")
+            append(entry.remoteRoot ?: "未知")
+            entry.runtimeStatus?.let { append("，"); append(it) }
+        }
         if (!showName) {
             append(": ")
             append(displayName)
@@ -1043,7 +1083,8 @@ private fun WorkspaceTopBarAction(
     } else {
         LocalContentColor.current
     }
-    val icon = if (entry.warning) HugeIcons.FolderUnknown else HugeIcons.FolderOpen
+    val icon = if (entry.isRemote) workspaceKindIcon(true)
+        else if (entry.warning) HugeIcons.FolderUnknown else workspaceKindIcon(false)
 
     if (showName) {
         TextButton(

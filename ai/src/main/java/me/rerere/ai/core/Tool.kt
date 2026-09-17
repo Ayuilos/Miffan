@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 
 @Serializable
 data class Tool(
@@ -15,6 +16,7 @@ data class Tool(
     val parameters: () -> InputSchema? = { null },
     val systemPrompt: (model: Model, messages: List<UIMessage>) -> String = { _, _ -> "" },
     val needsApproval: (JsonElement) -> Boolean = { false },
+    val workspaceTarget: WorkspaceToolTargetSnapshot? = null,
     val execute: suspend (JsonElement) -> List<UIMessagePart>
 )
 

@@ -85,6 +85,9 @@ data class WorkspaceCatalogEntry(
     val id: String,
     val name: String,
     val shellStatus: String,
+    val kind: String = "LOCAL",
+    val remoteHostId: String? = null,
+    val remotePath: String? = null,
 )
 
 @Serializable

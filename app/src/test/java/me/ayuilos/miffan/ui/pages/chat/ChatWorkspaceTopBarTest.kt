@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.pages.chat
 
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import org.junit.Assert.assertEquals
@@ -10,6 +11,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatWorkspaceTopBarTest {
+    @Test
+    fun remoteWorkspaceDoesNotClaimLocalAssistantIsolation() {
+        val entry = resolveChatWorkspaceEntry(
+            boundWorkspaceId = "workspace-id",
+            workspace = workspace(WorkspaceShellStatus.READY.name).copy(
+                kind = WorkspaceEntity.KIND_REMOTE,
+                remoteHostId = "host-id",
+                remotePath = "/srv/project",
+            ),
+            scopeId = "assistant-a",
+            remoteHost = RemoteHostEntity(
+                id = "host-id", name = "Build server", host = "server.internal",
+                port = 2222, username = "builder", authType = "PASSWORD",
+                trustedHostKeySha256 = "fingerprint", createdAt = 1, updatedAt = 1,
+            ),
+            runtimeStatus = "按需连接 · 本次启动尚未检查",
+        )
+
+        assertTrue(entry?.isRemote == true)
+        assertFalse(entry?.warning ?: true)
+        assertEquals("Build server", entry?.remoteHostName)
+        assertEquals("builder@server.internal:2222", entry?.remoteHostLabel)
+        assertEquals("/srv/project", entry?.remoteRoot)
+        assertTrue(entry?.runtimeStatus.orEmpty().contains("按需连接"))
+    }
+
     @Test
     fun unboundAssistantHasNoWorkspaceEntry() {
         assertNull(resolveChatWorkspaceEntry(boundWorkspaceId = null, workspace = null))

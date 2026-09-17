@@ -77,6 +77,32 @@ class LocalWorkspaceCreatorTest {
 
         override suspend fun getAll(): List<WorkspaceEntity> = workspaces.value
 
+        override suspend fun countByRemoteHostId(hostId: String): Int =
+            workspaces.value.count { it.remoteHostId == hostId }
+
+        override suspend fun getByRemoteHostId(hostId: String): List<WorkspaceEntity> =
+            workspaces.value.filter { it.remoteHostId == hostId }
+
+        override suspend fun updateShellStatusByHostId(
+            hostId: String,
+            status: String,
+            updatedAt: Long,
+        ): Int {
+            val count = countByRemoteHostId(hostId)
+            workspaces.value = workspaces.value.map {
+                if (it.remoteHostId == hostId) it.copy(shellStatus = status, updatedAt = updatedAt) else it
+            }
+            return count
+        }
+
+        override suspend fun clearToolApprovalsByHostId(hostId: String): Int {
+            val count = countByRemoteHostId(hostId)
+            workspaces.value = workspaces.value.map {
+                if (it.remoteHostId == hostId) it.copy(toolApprovals = "{}") else it
+            }
+            return count
+        }
+
         override suspend fun updateShellStatus(
             id: String,
             shellStatus: String,

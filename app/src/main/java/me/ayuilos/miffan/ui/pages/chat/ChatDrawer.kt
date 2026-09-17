@@ -741,6 +741,26 @@ private fun DrawerActions(navController: Navigator) {
             }
         }
 
+        Surface(
+            onClick = { navController.navigate(Screen.Workspaces) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(HugeIcons.Folder01, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(
+                    text = stringResource(R.string.extensions_page_workspace),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
         // 历史记录入口
         Surface(
             onClick = { navController.navigate(Screen.History) },

@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.JsonObject
@@ -45,6 +46,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Cancel01
@@ -53,6 +55,7 @@ import me.rerere.hugeicons.stroke.Tools
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIRegistry
+import me.ayuilos.miffan.ui.components.message.tools.getStringContent
 import me.ayuilos.miffan.ui.components.richtext.ZoomableAsyncImage
 import me.ayuilos.miffan.ui.components.ui.ChainOfThoughtScope
 import me.ayuilos.miffan.ui.components.ui.DotLoading
@@ -60,6 +63,34 @@ import me.ayuilos.miffan.ui.modifier.shimmer
 import me.ayuilos.miffan.utils.JsonInstant
 
 private const val ASK_USER_TOOL_NAME = "ask_user"
+
+internal fun workspaceToolTargetLines(target: WorkspaceToolTargetSnapshot?): List<String> = when {
+    target == null -> listOf("旧调用缺少目标记录，无法执行")
+    target.kind.equals("REMOTE", ignoreCase = true) -> listOf(
+        "原始目标：远程服务器 · ${target.workspaceName}",
+        "主机：${target.remoteHostName ?: "未命名"} · ${target.remoteHostLabel ?: "未知账户"}",
+        "目录：${target.remoteRoot ?: "未知目录"}",
+    )
+    target.kind.equals("LOCAL", ignoreCase = true) -> buildList {
+        add("原始目标：本地设备 · ${target.workspaceName}")
+        add("目录：${target.localRoot ?: "未知目录"}")
+        target.scopeId?.let { add("助手文件范围：$it") }
+    }
+    else -> listOf("原始目标：未知工作空间类型，无法执行")
+}
+
+@Composable
+private fun WorkspaceToolTargetText(target: WorkspaceToolTargetSnapshot?) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        workspaceToolTargetLines(target).forEach { line ->
+            Text(
+                text = line,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (target == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
 @Composable
 fun ChainOfThoughtScope.ChatMessageServerToolStep(tool: UIMessagePart.ServerTool) {
@@ -129,7 +160,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val images = tool.output.filterIsInstance<UIMessagePart.Image>()
 
     // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用
-    val hasExtraContent = renderer.hasSummary(context) || isDenied || images.isNotEmpty()
+    val isWorkspaceTool = tool.toolName.startsWith("workspace_")
+    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || images.isNotEmpty()
 
     ControlledChainOfThoughtStep(
         expanded = expanded,
@@ -176,6 +208,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     FilledTonalIconButton(
                         onClick = { onToolApproval(tool.toolCallId, true, "") },
                         modifier = Modifier.size(28.dp),
+                        enabled = !isWorkspaceTool || tool.workspaceTarget != null,
                     ) {
                         Icon(
                             imageVector = HugeIcons.Tick01,
@@ -192,6 +225,17 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         content = if (hasExtraContent) {
             {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (isWorkspaceTool) WorkspaceToolTargetText(tool.workspaceTarget)
+                    if (isPending && tool.toolName == "workspace_shell") {
+                        Text("完整命令：", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            text = context.arguments.getStringContent("command").orEmpty(),
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        )
+                        context.arguments.getStringContent("cwd")?.let { cwd ->
+                            Text("命令目录：$cwd", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
                     renderer.Summary(context)
                     if (images.isNotEmpty()) {
                         LazyRow(
@@ -243,6 +287,11 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             ),
             onDismissRequest = { showResult = false },
             content = {
+                if (isWorkspaceTool) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        WorkspaceToolTargetText(tool.workspaceTarget)
+                    }
+                }
                 renderer.Preview(
                     context = context,
                     onDismissRequest = { showResult = false },

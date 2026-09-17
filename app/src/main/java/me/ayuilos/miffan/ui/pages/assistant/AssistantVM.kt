@@ -77,6 +77,8 @@ class AssistantVM(
                 avatar = if (assistant.avatar is Avatar.Image) Avatar.Miffan() else assistant.avatar,
                 workspaceScopeId = assistant.workspaceId?.let { copiedId },
                 workspaceShellApprovalRequired = true,
+                workspaceShellApprovalTarget = null,
+                workspacePermissionRevision = kotlin.uuid.Uuid.random().toString(),
             )
             settingsStore.update(
                 settings.copy(

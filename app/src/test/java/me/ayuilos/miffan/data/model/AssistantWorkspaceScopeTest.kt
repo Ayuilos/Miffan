@@ -26,7 +26,7 @@ class AssistantWorkspaceScopeTest {
         )
         val oldJson = JsonObject(
             JsonInstant.parseToJsonElement(encoded).jsonObject.filterKeys {
-                it != "workspaceScopeId" && it != "workspaceShellApprovalRequired"
+                it != "workspaceScopeId" && it != "workspaceShellApprovalRequired" && it != "workspaceShellEnabled"
             }
         ).toString()
 
@@ -36,6 +36,7 @@ class AssistantWorkspaceScopeTest {
         assertNull(restored.workspaceScopeId)
         assertTrue(restored.workspaceScope().isLegacyWholeWorkspace)
         assertTrue(restored.workspaceShellApprovalRequired)
+        assertTrue(restored.workspaceShellEnabled)
     }
 
     @Test
@@ -73,6 +74,19 @@ class AssistantWorkspaceScopeTest {
 
         assertEquals(assistant.id, rebound.workspaceScopeId)
         assertTrue(rebound.workspaceShellApprovalRequired)
+    }
+
+    @Test
+    fun `changing targets preserves explicit shell prohibition`() {
+        val assistant = Assistant(
+            workspaceId = Uuid.random(),
+            workspaceShellEnabled = false,
+            workspaceShellApprovalRequired = false,
+        )
+        val rebound = assistant.withWorkspaceBinding(Uuid.random())
+        assertFalse(rebound.workspaceShellEnabled)
+        assertTrue(rebound.workspaceShellApprovalRequired)
+        assertFalse(JsonInstant.decodeFromString<Assistant>(JsonInstant.encodeToString(rebound)).workspaceShellEnabled)
     }
 
     @Test

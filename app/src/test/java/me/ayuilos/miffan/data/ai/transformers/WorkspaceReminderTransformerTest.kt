@@ -96,6 +96,49 @@ class WorkspaceReminderTransformerTest {
         assertTrue(prompt.contains("create a separate copy under `/workspace`"))
     }
 
+    @Test
+    fun `remote workspace prompt identifies remote host paths and retry semantics`() {
+        val remote = workspace.copy(
+            kind = WorkspaceEntity.KIND_REMOTE,
+            remoteHostId = "host-id",
+            remotePath = "/home/dev/project",
+        )
+        val prompt = buildWorkspacePrompt(
+            workspace = remote,
+            cwd = "/workspace/src",
+            scopeId = scopeId,
+            assistantName = "Test assistant",
+            conversationId = conversationId,
+            remoteHostLabel = "dev@100.64.0.2:22",
+        )
+
+        assertTrue(prompt.contains("dev@100.64.0.2:22"))
+        assertTrue(prompt.contains("starting in `/home/dev/project`"))
+        assertTrue(prompt.contains("`/workspace`"))
+        assertTrue(prompt.contains("`/home/dev/project/conversations/$conversationId/`"))
+        assertTrue(prompt.contains("does not guarantee that an already started remote process has stopped"))
+        assertTrue(prompt.contains("do not automatically repeat"))
+        assertFalse(prompt.contains("PRoot inside the Miffan Android application"))
+        assertFalse(prompt.contains("Only this scope is mounted"))
+    }
+
+    @Test
+    fun `disabled shell prompt retains remote file identity without advertising commands`() {
+        val prompt = buildWorkspacePrompt(
+            workspace = workspace.copy(kind = WorkspaceEntity.KIND_REMOTE, remoteHostId = "host", remotePath = "/srv/project"),
+            scopeId = scopeId,
+            assistantName = "Assistant",
+            conversationId = conversationId,
+            remoteHostLabel = "dev@server:22",
+            shellEnabled = false,
+        )
+        assertTrue(prompt.contains("AI Shell execution is disabled"))
+        assertTrue(prompt.contains("dev@server:22"))
+        assertTrue(prompt.contains("/srv/project"))
+        assertFalse(prompt.contains("`workspace_shell`"))
+        assertFalse(prompt.contains("mkdir -p"))
+    }
+
     private fun prompt(
         conversationId: Uuid? = this.conversationId,
         scopeId: String? = this.scopeId,

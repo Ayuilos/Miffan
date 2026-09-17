@@ -8,17 +8,24 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -26,13 +33,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Codesandbox
 import me.rerere.hugeicons.stroke.Tick02
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.pages.extensions.workspace.toShellStatusLabel
+import me.ayuilos.miffan.ui.pages.extensions.workspace.remoteWorkspaceStatusLabel
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import org.koin.compose.koinInject
 
 @Composable
 internal fun WorkspaceSelectSheet(
@@ -42,6 +52,14 @@ internal fun WorkspaceSelectSheet(
     onManage: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var query by remember { mutableStateOf("") }
+    val workspaceRepository: WorkspaceRepository = koinInject()
+    val hosts by workspaceRepository.listHostsFlow().collectAsStateWithLifecycle(initialValue = emptyList())
+    val hostStates by workspaceRepository.remoteHostStates.collectAsStateWithLifecycle()
+    val workspaceStates by workspaceRepository.remoteWorkspaceStates.collectAsStateWithLifecycle()
+    val visibleWorkspaces = workspaces.filter { workspace ->
+        workspaceMatchesSelectionQuery(workspace, hosts.find { it.id == workspace.remoteHostId }, query)
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberBottomSheetState(
@@ -61,6 +79,13 @@ internal fun WorkspaceSelectSheet(
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 modifier = Modifier.padding(vertical = 8.dp),
             )
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("搜索工作空间") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             Column(
                 modifier = Modifier
@@ -71,55 +96,74 @@ internal fun WorkspaceSelectSheet(
                 // 不绑定
                 WorkspaceSelectRow(
                     title = stringResource(R.string.workspace_no_binding),
+                    rowTag = "workspace-select-none",
                     selected = assistant.workspaceId == null,
                     onClick = { onSelect(null) },
                 )
-                workspaces.forEach { workspace ->
-                    WorkspaceSelectRow(
-                        title = workspace.name,
-                        status = workspace.shellStatus.toShellStatusLabel(),
-                        selected = workspace.id == assistant.workspaceId?.toString(),
-                        onClick = { onSelect(workspace.id) },
+                listOf(false, true).forEach { isRemote ->
+                    val group = visibleWorkspaces.filter { it.isRemote == isRemote }
+                    if (group.isNotEmpty()) Text(
+                        if (isRemote) "远程" else "本地",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, start = 16.dp),
+                    )
+                    group.forEach { workspace ->
+                        val host = hosts.find { it.id == workspace.remoteHostId }
+                        WorkspaceSelectRow(
+                            title = workspace.name,
+                            rowTag = "workspace-select-${workspace.id}",
+                            isRemote = isRemote,
+                            statusLines = if (isRemote) listOf(
+                                "远程服务器 · ${host?.name ?: "主机不可用"}",
+                                when {
+                                    host == null -> "主机配置不可用"
+                                    host.trustedHostKeySha256 == null -> "主机指纹待确认"
+                                    else -> remoteWorkspaceStatusLabel(
+                                        workspace,
+                                        workspace.remoteHostId?.let(hostStates::get),
+                                        workspaceStates[workspace.id],
+                                    )
+                                },
+                            ) else listOf("本地设备", workspace.shellStatus.toShellStatusLabel()),
+                            selected = workspace.id == assistant.workspaceId?.toString(),
+                            onClick = { onSelect(workspace.id) },
+                        )
+                    }
+                }
+                if (visibleWorkspaces.isEmpty()) {
+                    Text(
+                        if (query.isBlank()) "还没有工作空间，可前往管理页创建" else "没有匹配的工作空间",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp),
                     )
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-            // 管理工作区
-            ListItem(
-                leadingContent = {
-                    Icon(HugeIcons.Codesandbox, contentDescription = null)
-                },
-                headlineContent = {
-                    Text(stringResource(R.string.workspace_manage))
-                },
-                trailingContent = {
-                    Icon(
-                        imageVector = HugeIcons.ArrowRight01,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                modifier = Modifier
-                    .clip(MaterialTheme.shapes.large)
-                    .clickable { onManage() },
-            )
+            OutlinedButton(onClick = onManage, modifier = Modifier.fillMaxWidth()) {
+                Icon(HugeIcons.Codesandbox, contentDescription = null)
+                Text(stringResource(R.string.workspace_manage), modifier = Modifier.padding(start = 8.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun WorkspaceSelectRow(
+internal fun WorkspaceSelectRow(
     title: String,
+    rowTag: String,
     selected: Boolean,
     onClick: () -> Unit,
-    status: String? = null,
+    isRemote: Boolean? = null,
+    statusLines: List<String> = emptyList(),
 ) {
     ListItem(
         leadingContent = {
-            Icon(HugeIcons.Codesandbox, contentDescription = null)
+            Icon(
+                if (isRemote == null) HugeIcons.Codesandbox else workspaceKindIcon(isRemote),
+                contentDescription = isRemote?.let(::workspaceKindLabel),
+            )
         },
         headlineContent = {
             Text(
@@ -128,15 +172,19 @@ private fun WorkspaceSelectRow(
                 overflow = TextOverflow.Ellipsis,
             )
         },
-        supportingContent = status?.let {
+        supportingContent = statusLines.takeIf { it.isNotEmpty() }?.let { lines ->
             {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    lines.forEach { line ->
+                        Text(
+                            text = line,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         },
         trailingContent = if (selected) {
@@ -157,6 +205,23 @@ private fun WorkspaceSelectRow(
         ),
         modifier = Modifier
             .clip(MaterialTheme.shapes.large)
+            .testTag(rowTag)
             .clickable { onClick() },
     )
+}
+
+internal fun workspaceMatchesSelectionQuery(
+    workspace: WorkspaceEntity,
+    host: RemoteHostEntity?,
+    query: String,
+): Boolean {
+    val normalized = query.trim()
+    if (normalized.isEmpty()) return true
+    return listOfNotNull(
+        workspace.name,
+        workspace.remotePath,
+        host?.name,
+        host?.host,
+        host?.username,
+    ).any { it.contains(normalized, ignoreCase = true) }
 }

@@ -20,6 +20,7 @@ import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -114,17 +115,18 @@ class ChatServiceTest {
 
     @Test
     fun `always allow approves pending shell tools on selected branches only`() {
+        val target = shellTarget()
         val selectedMessage = UIMessage(
             role = MessageRole.ASSISTANT,
             parts = listOf(
-                tool("shell-1", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending),
+                tool("shell-1", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending, target),
                 tool("other", "ask_user", ToolApprovalState.Pending),
-                tool("shell-auto", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Auto),
+                tool("shell-auto", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Auto, target),
             ),
         )
         val unselectedMessage = UIMessage(
             role = MessageRole.ASSISTANT,
-            parts = listOf(tool("shell-old", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending)),
+            parts = listOf(tool("shell-old", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending, target)),
         )
         val conversation = Conversation(
             assistantId = Uuid.random(),
@@ -136,7 +138,7 @@ class ChatServiceTest {
         )
         val selectedConversation = conversation.selectNode(conversation.messageNodes[1].id)
 
-        val updated = selectedConversation.approvePendingWorkspaceShellTools()
+        val updated = selectedConversation.approvePendingWorkspaceShellTools(target, shellEnabled = true)
         val selectedTools = updated.getMessageNodeByMessageId(selectedMessage.id)!!.message.parts
             .filterIsInstance<UIMessagePart.Tool>()
 
@@ -153,6 +155,7 @@ class ChatServiceTest {
 
     @Test
     fun `always allow resolves the whole pending shell batch`() {
+        val target = shellTarget()
         val conversation = Conversation(
             assistantId = Uuid.random(),
             messageNodes = listOf(
@@ -160,14 +163,14 @@ class ChatServiceTest {
                     UIMessage(
                         role = MessageRole.ASSISTANT,
                         parts = (1..4).map { index ->
-                            tool("shell-$index", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending)
+                            tool("shell-$index", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending, target)
                         },
                     )
                 )
             ),
         )
 
-        val updated = conversation.approvePendingWorkspaceShellTools()
+        val updated = conversation.approvePendingWorkspaceShellTools(target, shellEnabled = true)
 
         assertFalse(updated.hasPendingToolApprovals())
         assertFalse(updated.hasPendingWorkspaceShellTools())
@@ -176,6 +179,29 @@ class ChatServiceTest {
                 .filterIsInstance<UIMessagePart.Tool>()
                 .all { it.approvalState is ToolApprovalState.Approved }
         )
+    }
+
+    @Test
+    fun `always allow invalidates stale and targetless pending shell calls`() {
+        val target = shellTarget()
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = listOf(MessageNode.of(UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = listOf(
+                    tool("valid", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending, target),
+                    tool("stale", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending,
+                        target.copy(hostConnectionRevision = "changed")),
+                    tool("legacy", WORKSPACE_SHELL_TOOL_NAME, ToolApprovalState.Pending),
+                ),
+            ))),
+        )
+
+        val tools = conversation.approvePendingWorkspaceShellTools(target, shellEnabled = true)
+            .messageNodes.single().currentMessage.parts.filterIsInstance<UIMessagePart.Tool>()
+        assertEquals(ToolApprovalState.Approved, tools[0].approvalState)
+        assertTrue(tools[1].approvalState is ToolApprovalState.Denied)
+        assertTrue(tools[2].approvalState is ToolApprovalState.Denied)
     }
 
     @Test
@@ -306,12 +332,25 @@ class ChatServiceTest {
         id: String,
         name: String,
         state: ToolApprovalState,
+        target: WorkspaceToolTargetSnapshot? = null,
     ) = UIMessagePart.Tool(
         toolCallId = id,
         toolName = name,
         input = "{}",
         approvalState = state,
+        workspaceTarget = target,
     )
+
+    private fun shellTarget(assistant: Assistant = Assistant()): WorkspaceToolTargetSnapshot =
+        WorkspaceToolTargetSnapshot(
+            assistantId = assistant.id.toString(),
+            workspacePermissionRevision = assistant.workspacePermissionRevision,
+            workspaceId = assistant.workspaceId?.toString() ?: Uuid.random().toString(),
+            scopeId = assistant.workspaceScopeId?.toString(),
+            kind = "LOCAL",
+            localRoot = "/rootfs",
+            workspaceName = "Local",
+        )
 
     @Test
     fun `background generation params include model custom request configuration`() {
@@ -433,8 +472,9 @@ class ChatServiceTest {
         val workspaceId = Uuid.random()
         val first = Assistant().withWorkspaceBinding(workspaceId)
         val second = Assistant().withWorkspaceBinding(workspaceId)
+        val target = shellTarget(first)
         val updated = Settings(assistants = listOf(first, second))
-            .withWorkspaceShellAllowedFor(first)
+            .withWorkspaceShellAllowedFor(first, target)
 
         assertFalse(updated.assistants[0].workspaceShellApprovalRequired)
         assertTrue(updated.assistants[1].workspaceShellApprovalRequired)
@@ -445,7 +485,7 @@ class ChatServiceTest {
         val assistant = Assistant().withWorkspaceBinding(Uuid.random())
         val rebound = assistant.withWorkspaceBinding(Uuid.random())
         val updated = Settings(assistants = listOf(rebound))
-            .withWorkspaceShellAllowedFor(assistant)
+            .withWorkspaceShellAllowedFor(assistant, shellTarget(assistant))
 
         assertTrue(updated.assistants.single().workspaceShellApprovalRequired)
     }

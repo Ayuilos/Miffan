@@ -11,18 +11,29 @@ import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.DiffMetadata
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import me.rerere.ai.ui.toMetadata
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.utils.generateUnifiedDiff
 import me.rerere.workspace.GuestPath
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceShellStatus
 import org.koin.java.KoinJavaComponent.getKoin
 import java.io.ByteArrayOutputStream
 
 private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
 private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
 const val WORKSPACE_SHELL_TOOL_NAME = "workspace_shell"
+val WORKSPACE_TOOL_NAMES = setOf(
+    "workspace_read_file",
+    "workspace_write_file",
+    "workspace_edit_file",
+    "workspace_fetch_url",
+    "workspace_publish_files",
+    WORKSPACE_SHELL_TOOL_NAME,
+)
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_read_file" to false,
@@ -36,30 +47,55 @@ fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>):
     overrides[name] ?: WorkspaceToolDefaultApprovals[name] ?: false
 
 suspend fun createWorkspaceTools(
+    assistantId: String,
     workspaceId: String?,
     scopeId: String?,
+    shellEnabled: Boolean,
     shellApprovalRequired: Boolean,
+    shellApprovalTarget: WorkspaceToolTargetSnapshot?,
     workspaceRepository: WorkspaceRepository,
     cwd: String? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
-    val approvalOverrides = workspaceRepository.getById(workspaceId)?.toolApprovalOverrides().orEmpty()
+    val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
+    val approvalOverrides = workspace.toolApprovalOverrides()
+    val remoteHost = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }
+    if (workspace.isRemote && (remoteHost?.trustedHostKeySha256 == null || workspace.shellStatus != WorkspaceShellStatus.READY.name)) return emptyList()
+    val snapshot = workspaceRepository.currentWorkspaceToolTarget(assistantId, workspaceId, scopeId)
+        ?: return emptyList()
+    val remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" }
+    val target = WorkspaceToolTarget(workspace, remoteHostLabel, snapshot)
     fun needsApproval(name: String) = if (name == WORKSPACE_SHELL_TOOL_NAME) {
-        shellApprovalRequired
+        shellApprovalRequired || shellApprovalTarget?.sameTarget(snapshot) != true
     } else {
         resolveWorkspaceToolApproval(name, approvalOverrides)
     }
 
-    val shellCwd = cwd?.toWorkspaceRelativeCwd()
+    val shellCwd = if (workspace.isRemote) cwd else cwd?.toWorkspaceRelativeCwd()
 
-    return listOf(
-        createReadFileTool(workspaceId, scopeId, ::needsApproval, workspaceRepository),
-        createWriteFileTool(workspaceId, scopeId, ::needsApproval, workspaceRepository),
-        createEditFileTool(workspaceId, scopeId, ::needsApproval, workspaceRepository),
-        createFetchUrlTool(workspaceId, scopeId, workspaceRepository),
-        createPublishFilesTool(workspaceId, scopeId, workspaceRepository),
-        createShellTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, shellCwd),
-    )
+    return buildList {
+        add(createReadFileTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, target))
+        add(createWriteFileTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, target))
+        add(createEditFileTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, target))
+        add(createFetchUrlTool(workspaceId, scopeId, workspaceRepository, target))
+        add(createPublishFilesTool(workspaceId, scopeId, workspaceRepository, target))
+        if (shellEnabled) {
+            add(createShellTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, shellCwd, target))
+        }
+    }
+}
+
+private data class WorkspaceToolTarget(
+    val workspace: WorkspaceEntity,
+    val remoteHostLabel: String?,
+    val snapshot: WorkspaceToolTargetSnapshot,
+) {
+    val root: String get() = workspace.remotePath.orEmpty()
+    val fileDescription: String get() = if (workspace.isRemote) {
+        "Remote SSH files on ${remoteHostLabel ?: "the configured host"}. /workspace maps to the remote directory $root; file paths must be absolute."
+    } else {
+        "Files inside the assistant's bound local Rootfs. Paths must be absolute; /workspace is the workspace files area."
+    }
 }
 
 private val IMAGE_EXTENSIONS = setOf(
@@ -70,12 +106,14 @@ private fun createFetchUrlTool(
     workspaceId: String,
     scopeId: String?,
     workspaceRepository: WorkspaceRepository,
+    target: WorkspaceToolTarget,
 ) = Tool(
     name = "workspace_fetch_url",
-    description = "Download one public HTTPS URL through the approved host broker into /workspace. " +
+    workspaceTarget = target.snapshot,
+    description = "Download one public HTTPS URL through the approved Android app broker into /workspace" +
+        (if (target.workspace.isRemote) " (uploaded into remote directory '${target.root}' over SFTP). " else ". ") +
         "Private/local addresses, cross-host redirects, non-standard ports, and responses larger than " +
-        "8 MiB are rejected. Shell commands share Miffan's network permission and can access the " +
-        "network directly after shell approval.",
+        "8 MiB are rejected. Shell commands may separately use their execution environment's network permissions after shell approval.",
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
@@ -97,7 +135,9 @@ private fun createFetchUrlTool(
         val params = it.jsonObject
         val url = params.string("url") ?: error("url is required")
         val destination = params.guestPath("destination_path")
-        val entry = workspaceRepository.fetchUrl(workspaceId, url, destination.value, scopeId)
+        val entry = workspaceRepository.fetchUrl(
+            workspaceId, url, destination.value, scopeId, expectedTarget = target.snapshot,
+        )
         val artifact = entry.toWorkspaceArtifact(
             workspaceId,
             scopeId,
@@ -115,17 +155,18 @@ private fun createReadFileTool(
     scopeId: String?,
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
+    target: WorkspaceToolTarget,
 ) = Tool(
     name = "workspace_read_file",
+    workspaceTarget = target.snapshot,
     description = """
-        Read a file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
-        Use /workspace for the workspace files area.
+        Read a file. ${target.fileDescription}
         Supports UTF-8 text files and image files (png, jpg, jpeg, gif, webp, bmp, svg, heic, heif, avif, ico).
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
-                putPathProperty(required = true)
+                putPathProperty(required = true, target = target)
             },
             required = listOf("path"),
         )
@@ -134,9 +175,9 @@ private fun createReadFileTool(
     execute = {
         val path = it.jsonObject.guestPath("path")
         if (path.value.isImagePath()) {
-            workspaceRepository.readImageInRootfs(workspaceId, scopeId, path.value)
+            workspaceRepository.readImageInRootfs(workspaceId, scopeId, path.value, target.snapshot)
         } else {
-            val text = workspaceRepository.readTextInRootfs(workspaceId, scopeId, path.value)
+            val text = workspaceRepository.readTextInRootfs(workspaceId, scopeId, path.value, target.snapshot)
             listOf(
                 UIMessagePart.Text(
                     buildJsonObject {
@@ -154,16 +195,17 @@ private fun createWriteFileTool(
     scopeId: String?,
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
+    target: WorkspaceToolTarget,
 ) = Tool(
     name = "workspace_write_file",
+    workspaceTarget = target.snapshot,
     description = """
-        Write a UTF-8 text file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
-        Use /workspace for the workspace files area.
+        Write a UTF-8 text file. ${target.fileDescription}
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
-                putPathProperty(required = true)
+                putPathProperty(required = true, target = target)
                 put("text", buildJsonObject {
                     put("type", "string")
                     put("description", "UTF-8 text content to write")
@@ -190,6 +232,7 @@ private fun createWriteFileTool(
             text,
             overwrite,
             scopeId,
+            expectedTarget = target.snapshot,
         )
         listOf(
             UIMessagePart.Text(entry.toWorkspaceArtifact(workspaceId, scopeId).toJson().toString())
@@ -202,18 +245,19 @@ private fun createEditFileTool(
     scopeId: String?,
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
+    target: WorkspaceToolTarget,
 ) = Tool(
     name = "workspace_edit_file",
+    workspaceTarget = target.snapshot,
     description = """
-        Edit a UTF-8 text file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
-        Use /workspace for the workspace files area.
+        Edit a UTF-8 text file. ${target.fileDescription}
         Provide old_text and new_text. By default old_text must occur exactly once; set replace_all=true to replace every occurrence.
         If no exact match is found, whitespace-tolerant line matching is attempted automatically.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
-                putPathProperty(required = true)
+                putPathProperty(required = true, target = target)
                 put("old_text", buildJsonObject {
                     put("type", "string")
                     put("description", "Exact text to replace")
@@ -239,7 +283,7 @@ private fun createEditFileTool(
         val replaceAll = params["replace_all"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
         require(oldText.isNotEmpty()) { "old_text must not be empty" }
 
-        val original = workspaceRepository.readTextInRootfs(workspaceId, scopeId, path.value)
+        val original = workspaceRepository.readTextInRootfs(workspaceId, scopeId, path.value, target.snapshot)
         // 逐级尝试 exact -> line_trimmed -> block_anchor 替换器, 见 TextReplacers.kt
         val result = try {
             replaceText(original, oldText, newText, replaceAll)
@@ -252,6 +296,7 @@ private fun createEditFileTool(
             result.updated,
             overwrite = true,
             scopeId = scopeId,
+            expectedTarget = target.snapshot,
         )
         val diff = generateUnifiedDiff(original, result.updated, entry.path)
         listOf(
@@ -281,16 +326,28 @@ private fun createShellTool(
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
     defaultCwd: String? = null,
+    target: WorkspaceToolTarget,
 ) = Tool(
     name = WORKSPACE_SHELL_TOOL_NAME,
+    workspaceTarget = target.snapshot,
     description = buildString {
-        append("Run a shell command in the assistant's bound Workspace Rootfs. Only this Assistant's file scope is mounted at /workspace. ")
-        append("Its HOME (/root) and temporary directories are private to the scope. The Rootfs system environment (/bin, /usr, /etc and installed packages) is shared by every Assistant bound to this Workspace, so system-level changes affect all of them. ")
-        append("Use cwd for a path relative to the workspace files root. ")
+        if (target.workspace.isRemote) {
+            append("Run a command over SSH on ${target.remoteHostLabel ?: "the configured remote host"}, starting in remote directory '${target.root}'. ")
+            append("Use cwd relative to that remote directory. The remote shell has no /workspace mount; use real remote paths or relative paths in command text. ")
+            append("This directory and remote machine are shared according to the remote host's permissions. ")
+        } else {
+            append("Run a shell command in the assistant's bound Workspace Rootfs. Only this Assistant's file scope is mounted at /workspace. ")
+            append("Its HOME (/root) and temporary directories are private to the scope. The Rootfs system environment (/bin, /usr, /etc and installed packages) is shared by every Assistant bound to this Workspace, so system-level changes affect all of them. ")
+            append("Use cwd for a path relative to the workspace files root. ")
+        }
         if (!defaultCwd.isNullOrBlank()) {
             append("Defaults to '$defaultCwd'. ")
         }
-        append("Requires Rootfs to be installed and ready. Commands share Miffan's app UID and permissions; PRoot is not a security sandbox.")
+        if (target.workspace.isRemote) {
+            append("Requires a trusted SSH host key and a previously successful connection test. Commands use the remote account's permissions. Timeout or cancellation does not guarantee a started remote process stopped; check state before retrying mutating commands.")
+        } else {
+            append("Requires Rootfs to be installed and ready. Commands share Miffan's app UID and permissions; PRoot is not a security sandbox.")
+        }
     },
     parameters = {
         InputSchema.Obj(
@@ -303,7 +360,9 @@ private fun createShellTool(
                     put("type", "string")
                     put(
                         "description",
-                        if (!defaultCwd.isNullOrBlank()) {
+                        if (target.workspace.isRemote) {
+                            "Remote working directory relative to '${target.root}', a virtual /workspace path, or a real absolute path inside that directory. Defaults to '${defaultCwd ?: target.root}'."
+                        } else if (!defaultCwd.isNullOrBlank()) {
                             "Working directory relative to the workspace files root. Defaults to '$defaultCwd'."
                         } else {
                             "Working directory relative to the workspace files root. Defaults to root."
@@ -325,7 +384,8 @@ private fun createShellTool(
     execute = {
         val params = it.jsonObject
         val command = params.string("command") ?: error("command is required")
-        val cwd = (params.string("cwd") ?: defaultCwd.orEmpty()).toWorkspaceRelativeCwd()
+        val requestedCwd = params.string("cwd") ?: defaultCwd.orEmpty()
+        val cwd = if (target.workspace.isRemote) requestedCwd else requestedCwd.toWorkspaceRelativeCwd()
         val timeoutMillis = params.string("timeout")?.toLongOrNull()
             ?.coerceIn(1L, SHELL_TIMEOUT_MAX_SECONDS)
             ?.times(1_000L)
@@ -336,6 +396,7 @@ private fun createShellTool(
             cwd,
             timeoutMillis,
             scopeId = scopeId,
+            expectedTarget = target.snapshot,
         )
         listOf(
             UIMessagePart.Text(
@@ -359,7 +420,8 @@ private suspend fun WorkspaceRepository.readTextInRootfs(
     workspaceId: String,
     scopeId: String?,
     path: String,
-): String = readRootfsBuffer(workspaceId, scopeId, path).toString(Charsets.UTF_8.name())
+    expectedTarget: WorkspaceToolTargetSnapshot,
+): String = readRootfsBuffer(workspaceId, scopeId, path, expectedTarget).toString(Charsets.UTF_8.name())
 
 /**
  * 按 Rootfs 内绝对路径读入内存。路径映射交给 WorkspaceManager, 由它统一处理
@@ -369,13 +431,14 @@ private suspend fun WorkspaceRepository.readRootfsBuffer(
     workspaceId: String,
     scopeId: String?,
     path: String,
+    expectedTarget: WorkspaceToolTargetSnapshot,
 ): ByteArrayOutputStream {
-    val size = rootfsFileSize(workspaceId, path, scopeId)
+    val size = rootfsFileSize(workspaceId, path, scopeId, expectedTarget = expectedTarget)
     require(size <= MAX_READ_FILE_BYTES) {
         "File is too large to read: $path (${size / 1024 / 1024}MB, max ${MAX_READ_FILE_BYTES / 1024 / 1024}MB). Shell commands can inspect parts only when the path is mounted in workspace_shell."
     }
     return ByteArrayOutputStream(size.toInt()).also {
-        exportRootfsFile(workspaceId, path, it, scopeId)
+        exportRootfsFile(workspaceId, path, it, scopeId, expectedTarget = expectedTarget)
     }
 }
 
@@ -383,8 +446,9 @@ private suspend fun WorkspaceRepository.readImageInRootfs(
     workspaceId: String,
     scopeId: String?,
     path: String,
+    expectedTarget: WorkspaceToolTargetSnapshot,
 ): List<UIMessagePart> {
-    val bytes = readRootfsBuffer(workspaceId, scopeId, path).toByteArray()
+    val bytes = readRootfsBuffer(workspaceId, scopeId, path, expectedTarget).toByteArray()
 
     val filesManager = getKoin().get<FilesManager>()
     val uris = filesManager.createChatFilesByByteArrays(listOf(bytes))
@@ -407,18 +471,23 @@ private fun createPublishFilesTool(
     workspaceId: String,
     scopeId: String?,
     workspaceRepository: WorkspaceRepository,
+    target: WorkspaceToolTarget,
 ) = Tool(
     name = "workspace_publish_files",
+    workspaceTarget = target.snapshot,
     description = "Publish one or more existing user-facing files so the app can show them as " +
         "previewable artifacts below the response. Use this after workspace_shell creates files " +
         "such as reports, text/code, images, PDFs, documents, archives, audio, or video. " +
-        "Paths must be absolute Rootfs paths.",
+        if (target.workspace.isRemote) "Paths must be absolute /workspace paths or real paths under '${target.root}' on the remote host."
+        else "Paths must be absolute Rootfs paths.",
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
                 put("paths", buildJsonObject {
                     put("type", "array")
-                    put("description", "Absolute Rootfs paths of user-facing output files")
+                    put("description", if (target.workspace.isRemote) {
+                        "Absolute /workspace paths or real paths below '${target.root}' on the remote host"
+                    } else "Absolute Rootfs paths of user-facing output files")
                     put("items", buildJsonObject {
                         put("type", "string")
                     })
@@ -438,7 +507,9 @@ private fun createPublishFilesTool(
             "Too many artifacts: ${paths.size}, max $MAX_PUBLISHED_ARTIFACTS"
         }
         val artifacts = paths.map { path ->
-            val size = workspaceRepository.rootfsFileSize(workspaceId, path.value, scopeId)
+            val size = workspaceRepository.rootfsFileSize(
+                workspaceId, path.value, scopeId, expectedTarget = target.snapshot,
+            )
             WorkspaceArtifact(
                 workspaceId = workspaceId,
                 scopeId = scopeId,
@@ -476,12 +547,14 @@ internal fun String.toWorkspaceRelativeCwd(): String = when {
     else -> this
 }
 
-private fun JsonObjectBuilder.putPathProperty(required: Boolean) {
+private fun JsonObjectBuilder.putPathProperty(required: Boolean, target: WorkspaceToolTarget? = null) {
     put("path", buildJsonObject {
         put("type", "string")
         put(
             "description",
-            if (required) {
+            if (target?.workspace?.isRemote == true) {
+                "Absolute virtual /workspace path mapped to remote directory '${target.root}', or an absolute real path within that directory."
+            } else if (required) {
                 "Absolute path inside Rootfs. Use /workspace for the workspace files area."
             } else {
                 "Optional absolute path inside Rootfs. Use /workspace for the workspace files area."

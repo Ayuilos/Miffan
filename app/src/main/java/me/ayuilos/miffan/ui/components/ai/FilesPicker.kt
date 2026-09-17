@@ -354,7 +354,9 @@ private fun WorkspacePickerListItem(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (assistant.workspaceScopeId == null) {
+                        text = if (boundWorkspace.isRemote) {
+                            "远程共享目录 · ${boundWorkspace.remotePath.orEmpty()}"
+                        } else if (assistant.workspaceScopeId == null) {
                             stringResource(R.string.workspace_scope_legacy)
                         } else {
                             stringResource(
@@ -389,7 +391,7 @@ private fun WorkspacePickerListItem(
                             contentDescription = stringResource(R.string.workspace_detail),
                         )
                     }
-                    if (boundWorkspace.shellStatus != WorkspaceShellStatus.DISABLED.name) {
+                    if (!boundWorkspace.isRemote && boundWorkspace.shellStatus != WorkspaceShellStatus.DISABLED.name) {
                         IconButton(
                             onClick = {
                                 onNavigateToTerminal(

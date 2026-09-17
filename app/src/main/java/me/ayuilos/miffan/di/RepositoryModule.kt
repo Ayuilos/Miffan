@@ -13,11 +13,14 @@ import me.ayuilos.miffan.data.repository.GenMediaRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.WorkspaceNetworkBroker
+import me.ayuilos.miffan.data.repository.RemoteHostCredentialStore
+import me.ayuilos.miffan.data.repository.SshKeyCredentialStore
 import me.rerere.workspace.AndroidPageSize
 import me.rerere.workspace.ProotShellRunner
 import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceBindMount
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.NativeSshWorkspaceTransport
 import org.koin.dsl.module
 import java.io.File
 
@@ -83,8 +86,14 @@ val repositoryModule = module {
 
     single { WorkspaceNetworkBroker() }
 
+    single { RemoteHostCredentialStore(get()) }
+
+    single { SshKeyCredentialStore(get()) }
+
+    single { NativeSshWorkspaceTransport }
+
     single {
-        WorkspaceRepository(get(), get(), get(), get(), get())
+        WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
     }
 
     single {

@@ -14,6 +14,8 @@ import me.ayuilos.miffan.data.db.dao.ManagedFileDAO
 import me.ayuilos.miffan.data.db.dao.MemoryDAO
 import me.ayuilos.miffan.data.db.dao.MessageNodeDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
+import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
+import me.ayuilos.miffan.data.db.dao.SshKeyDAO
 import me.ayuilos.miffan.data.db.entity.ConversationEntity
 import me.ayuilos.miffan.data.db.entity.FavoriteEntity
 import me.ayuilos.miffan.data.db.entity.FolderEntity
@@ -22,6 +24,8 @@ import me.ayuilos.miffan.data.db.entity.ManagedFileEntity
 import me.ayuilos.miffan.data.db.entity.MemoryEntity
 import me.ayuilos.miffan.data.db.entity.MessageNodeEntity
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.db.migrations.Migration_16_17
 import me.ayuilos.miffan.data.db.migrations.Migration_22_23
 import me.ayuilos.miffan.data.db.migrations.Migration_8_9
@@ -36,9 +40,11 @@ import me.ayuilos.miffan.utils.JsonInstant
         ManagedFileEntity::class,
         FavoriteEntity::class,
         WorkspaceEntity::class,
+        RemoteHostEntity::class,
+        SshKeyEntity::class,
         FolderEntity::class,
     ],
-    version = 25,
+    version = 28,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -75,6 +81,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun favoriteDao(): FavoriteDAO
 
     abstract fun workspaceDao(): WorkspaceDAO
+
+    abstract fun remoteHostDao(): RemoteHostDAO
+
+    abstract fun sshKeyDao(): SshKeyDAO
 
     abstract fun folderDao(): FolderDAO
 }

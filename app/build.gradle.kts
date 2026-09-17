@@ -165,6 +165,11 @@ kotlin {
     }
 }
 
+// JVM tests (including MockK) must not initialize an Android Log-backed SLF4J provider.
+configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+    exclude(group = "uk.uuid.slf4j", module = "slf4j-android")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -324,6 +329,8 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("net.sf.kxml:kxml2:2.3.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

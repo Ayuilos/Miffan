@@ -34,6 +34,9 @@ import me.ayuilos.miffan.data.db.migrations.Migration_13_14
 import me.ayuilos.miffan.data.db.migrations.Migration_14_15
 import me.ayuilos.miffan.data.db.migrations.Migration_15_16
 import me.ayuilos.miffan.data.db.migrations.Migration_24_25
+import me.ayuilos.miffan.data.db.migrations.Migration_25_26
+import me.ayuilos.miffan.data.db.migrations.Migration_26_27
+import me.ayuilos.miffan.data.db.migrations.Migration_27_28
 import me.ayuilos.miffan.data.ai.mcp.McpManager
 import me.ayuilos.miffan.data.network.SettingsProxyAuthenticator
 import me.ayuilos.miffan.data.network.SettingsProxySelector
@@ -67,6 +70,9 @@ val dataSourceModule = module {
                 Migration_14_15,
                 Migration_15_16,
                 Migration_24_25,
+                Migration_25_26,
+                Migration_26_27,
+                Migration_27_28,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
@@ -155,6 +161,14 @@ val dataSourceModule = module {
 
     single {
         get<AppDatabase>().workspaceDao()
+    }
+
+    single {
+        get<AppDatabase>().remoteHostDao()
+    }
+
+    single {
+        get<AppDatabase>().sshKeyDao()
     }
 
     single {

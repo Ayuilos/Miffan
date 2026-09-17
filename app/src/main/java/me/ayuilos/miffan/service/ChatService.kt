@@ -57,6 +57,7 @@ import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
 import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
+import me.ayuilos.miffan.data.ai.tools.workspaceToolTargetError
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
 import me.ayuilos.miffan.data.ai.tools.createMiffanHelpTool
@@ -65,6 +66,8 @@ import me.ayuilos.miffan.data.ai.tools.createSkillTools
 import me.ayuilos.miffan.data.ai.tools.createWorkspaceTools
 import me.ayuilos.miffan.data.ai.tools.extensionManagementBuiltInSkill
 import me.ayuilos.miffan.data.ai.tools.miffanHelpBuiltInSkill
+import me.ayuilos.miffan.data.model.withWorkspaceShellApproval
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.ai.tools.local.LocalTools
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
@@ -138,7 +141,10 @@ internal fun shouldEnableMiffanHelp(
     globalEnabled: Boolean,
 ): Boolean = ModelAbility.TOOL in model.abilities && assistant.isMiffanHelpEnabled(globalEnabled)
 
-internal fun Conversation.approvePendingWorkspaceShellTools(): Conversation {
+internal fun Conversation.approvePendingWorkspaceShellTools(
+    currentTarget: WorkspaceToolTargetSnapshot?,
+    shellEnabled: Boolean,
+): Conversation {
     val currentNodeIds = currentMessageNodes.mapTo(HashSet()) { it.id }
     return copy(
         messageNodes = messageNodes.map { node ->
@@ -151,7 +157,12 @@ internal fun Conversation.approvePendingWorkspaceShellTools(): Conversation {
                             part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
                             part.isPending
                         ) {
-                            part.copy(approvalState = ToolApprovalState.Approved)
+                            val error = if (!shellEnabled) {
+                                "Workspace Shell was disabled after this call was created. Please request it again."
+                            } else workspaceToolTargetError(part, currentTarget)
+                            part.copy(approvalState = if (error == null) {
+                                ToolApprovalState.Approved
+                            } else ToolApprovalState.Denied(error))
                         } else {
                             part
                         }
@@ -660,6 +671,11 @@ class ChatService(
                     approved -> ToolApprovalState.Approved
                     else -> ToolApprovalState.Denied(reason)
                 }
+                val currentAssistant = settingsStore.settingsFlow.first()
+                    .getAssistantById(conversation.assistantId)
+                val currentTarget = if (approved || answer != null) {
+                    currentAssistant?.let { currentWorkspaceToolTargetFor(it) }
+                } else null
 
                 // Update the tool approval state
                 val updatedNodes = conversation.messageNodes.map { node ->
@@ -668,7 +684,15 @@ class ChatService(
                             parts = node.message.parts.map { part ->
                                 when {
                                     part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
-                                        part.copy(approvalState = newApprovalState)
+                                        val staleReason = if (approved || answer != null) {
+                                            if (part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
+                                                currentAssistant?.workspaceShellEnabled != true
+                                            ) {
+                                                "Workspace Shell was disabled after this call was created. Please request it again."
+                                            } else workspaceToolTargetError(part, currentTarget)
+                                        } else null
+                                        part.copy(approvalState = staleReason?.let { ToolApprovalState.Denied(it) }
+                                            ?: newApprovalState)
                                     }
 
                                     else -> part
@@ -711,11 +735,21 @@ class ChatService(
                 val assistant = settings.getAssistantById(conversation.assistantId)
                     ?: error("Assistant not found")
                 assistant.workspaceId ?: error("Assistant has no bound workspace")
-                settingsStore.update { current ->
-                    current.withWorkspaceShellAllowedFor(assistant)
+                val target = currentWorkspaceToolTargetFor(assistant)
+                val pendingShells = conversation.currentMessageNodes.flatMap { node ->
+                    node.currentMessage.parts.filterIsInstance<UIMessagePart.Tool>()
+                        .filter { it.toolName == WORKSPACE_SHELL_TOOL_NAME && it.isPending }
+                }
+                val allCurrent = assistant.workspaceShellEnabled && target != null &&
+                    pendingShells.all { workspaceToolTargetError(it, target) == null }
+                if (allCurrent && target != null) settingsStore.update { current ->
+                    current.withWorkspaceShellAllowedFor(assistant, target)
                 }
 
-                val updatedConversation = conversation.approvePendingWorkspaceShellTools()
+                val updatedConversation = conversation.approvePendingWorkspaceShellTools(
+                    currentTarget = target,
+                    shellEnabled = assistant.workspaceShellEnabled,
+                )
                 saveConversation(conversationId, updatedConversation)
 
                 if (!updatedConversation.hasPendingToolApprovals()) {
@@ -779,9 +813,15 @@ class ChatService(
             val boundWorkspace = assistant.workspaceId
                 ?.toString()
                 ?.let { workspaceRepository.getById(it) }
-            val workspaceReady = boundWorkspace?.shellStatus == WorkspaceShellStatus.READY.name
+            val workspaceReady = if (boundWorkspace?.isRemote == true) {
+                boundWorkspace.shellStatus == WorkspaceShellStatus.READY.name &&
+                    boundWorkspace.remoteHostId?.let { workspaceRepository.getHostById(it) }
+                        ?.trustedHostKeySha256 != null
+            } else {
+                boundWorkspace?.shellStatus == WorkspaceShellStatus.READY.name
+            }
             val availableSkills = buildList {
-                if (boundWorkspace != null) {
+                if (boundWorkspace != null && !boundWorkspace.isRemote) {
                     if (assistant.enabledSkills.isNotEmpty()) {
                         skillManager.migrateLegacySkillsToWorkspace(
                             assistant = assistant,
@@ -817,6 +857,7 @@ class ChatService(
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
+                localToolOutputRoot = boundWorkspace?.takeUnless { it.isRemote }?.root,
                 memories = if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
                 } else {
@@ -856,7 +897,7 @@ class ChatService(
                                     if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
                                     if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
                                 },
-                                workspaceReady = workspaceReady,
+                                workspaceReady = workspaceReady && assistant.workspaceShellEnabled,
                             )
                         )
                     }
@@ -958,6 +999,17 @@ class ChatService(
         }
     }
 
+    private suspend fun currentWorkspaceToolTargetFor(
+        assistant: Assistant,
+    ): WorkspaceToolTargetSnapshot? {
+        val workspaceId = assistant.workspaceId?.toString() ?: return null
+        return workspaceRepository.currentWorkspaceToolTarget(
+            assistantId = assistant.id.toString(),
+            workspaceId = workspaceId,
+            scopeId = assistant.workspaceScopeId?.toString(),
+        )
+    }
+
     private suspend fun createWorkspaceToolsIfReady(
         assistant: Assistant,
         cwd: String? = null,
@@ -965,7 +1017,14 @@ class ChatService(
         val workspaceId = assistant.workspaceId?.toString()
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
-        if (workspace.shellStatus != WorkspaceShellStatus.READY.name) {
+        val ready = if (workspace.isRemote) {
+            workspace.shellStatus == WorkspaceShellStatus.READY.name &&
+                workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }
+                    ?.trustedHostKeySha256 != null
+        } else {
+            workspace.shellStatus == WorkspaceShellStatus.READY.name
+        }
+        if (!ready) {
             Log.d(
                 TAG,
                 "createWorkspaceToolsIfReady: skip workspace tools, workspace=$workspaceId, status=${workspace.shellStatus}"
@@ -973,9 +1032,12 @@ class ChatService(
             return emptyList()
         }
         return createWorkspaceTools(
+            assistantId = assistant.id.toString(),
             workspaceId = workspaceId,
             scopeId = assistant.workspaceScopeId?.toString(),
+            shellEnabled = assistant.workspaceShellEnabled,
             shellApprovalRequired = assistant.workspaceShellApprovalRequired,
+            shellApprovalTarget = assistant.workspaceShellApprovalTarget,
             workspaceRepository = workspaceRepository,
             cwd = cwd,
         )
@@ -1537,13 +1599,22 @@ class ChatService(
 }
 
 /** Applies a persistent Shell approval only when the Assistant's binding is still unchanged. */
-internal fun Settings.withWorkspaceShellAllowedFor(binding: Assistant): Settings = copy(
+internal fun Settings.withWorkspaceShellAllowedFor(
+    binding: Assistant,
+    target: WorkspaceToolTargetSnapshot,
+): Settings = copy(
     assistants = assistants.map { candidate ->
         if (candidate.id == binding.id &&
             candidate.workspaceId == binding.workspaceId &&
-            candidate.workspaceScopeId == binding.workspaceScopeId
+            candidate.workspaceScopeId == binding.workspaceScopeId &&
+            candidate.workspacePermissionRevision == binding.workspacePermissionRevision &&
+            candidate.workspaceShellEnabled &&
+            target.assistantId == candidate.id.toString() &&
+            target.workspacePermissionRevision == candidate.workspacePermissionRevision &&
+            target.workspaceId == candidate.workspaceId?.toString() &&
+            target.scopeId == candidate.workspaceScopeId?.toString()
         ) {
-            candidate.copy(workspaceShellApprovalRequired = false)
+            candidate.withWorkspaceShellApproval(required = false, target = target)
         } else {
             candidate
         }

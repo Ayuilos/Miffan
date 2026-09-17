@@ -66,7 +66,8 @@ class SkillManager(
         assistant: Assistant,
         workspace: WorkspaceEntity,
     ): Set<String> = withContext(Dispatchers.IO) {
-        if (assistant.enabledSkills.isEmpty() ||
+        // Remote workspaces must never trigger a local Rootfs/Skill installation as a side effect.
+        if (workspace.isRemote || assistant.enabledSkills.isEmpty() ||
             assistant.workspaceId?.toString() != workspace.id
         ) {
             return@withContext emptySet()

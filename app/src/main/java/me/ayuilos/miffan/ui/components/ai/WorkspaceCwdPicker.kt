@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,6 +55,8 @@ fun WorkspaceCwdPickerSheet(
     onDismiss: () -> Unit,
 ) {
     val workspaceRepository: WorkspaceRepository = koinInject()
+    val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(initialValue = emptyList())
+    val workspace = workspaces.find { it.id == workspaceId }
 
     var browsePath by remember { mutableStateOf(fromAbsolutePath(currentCwd)) }
     var entries by remember { mutableStateOf<List<WorkspaceFileEntry>>(emptyList()) }
@@ -97,6 +100,13 @@ fun WorkspaceCwdPickerSheet(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (workspace?.isRemote == true) {
+                Text(
+                    text = "远程目录：${workspace.remotePath}. /workspace 对应该目录；命令在远程主机运行。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

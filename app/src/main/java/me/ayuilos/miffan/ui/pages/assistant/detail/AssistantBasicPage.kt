@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
@@ -48,7 +50,9 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.model.createWhaleAssistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.ui.components.ui.AssistantCharacterPicker
@@ -58,6 +62,9 @@ import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
 import me.ayuilos.miffan.data.model.withMiffanAppearance
 import me.ayuilos.miffan.data.model.withMiffanMotionProfile
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
+import me.ayuilos.miffan.data.model.withWorkspaceShellApproval
+import me.ayuilos.miffan.data.model.withWorkspaceShellEnabled
+import me.ayuilos.miffan.ui.components.message.workspaceToolTargetLines
 import me.ayuilos.miffan.ui.components.ai.ModelSelector
 import me.ayuilos.miffan.ui.components.ai.ReasoningButton
 import me.ayuilos.miffan.ui.components.nav.BackButton
@@ -73,10 +80,14 @@ import me.ayuilos.miffan.ui.hooks.heroAnimation
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.toFixed
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import me.rerere.workspace.WorkspaceStorageArea
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import me.ayuilos.miffan.data.model.Tag as DataTag
 
 @Composable
@@ -91,6 +102,12 @@ fun AssistantBasicPage(id: String) {
     val providers by vm.providers.collectAsStateWithLifecycle()
     val tags by vm.tags.collectAsStateWithLifecycle()
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val workspaceRepository: WorkspaceRepository = koinInject()
+    val remoteHosts by workspaceRepository.listHostsFlow().collectAsStateWithLifecycle(initialValue = emptyList())
+    val scope = rememberCoroutineScope()
+    var pendingSkipApprovalTarget by remember { mutableStateOf<WorkspaceToolTargetSnapshot?>(null) }
+    var approvalChangeBusy by remember { mutableStateOf(false) }
+    var approvalChangeError by remember { mutableStateOf<String?>(null) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -115,7 +132,32 @@ fun AssistantBasicPage(id: String) {
             providers = providers,
             tags = tags,
             workspaces = workspaces,
+            remoteHosts = remoteHosts,
             onUpdate = { vm.update(it) },
+            onDisableShellApproval = { requestedAssistant ->
+                if (!approvalChangeBusy) {
+                    approvalChangeBusy = true
+                    scope.launch {
+                        try {
+                            val workspaceId = requestedAssistant.workspaceId?.toString()
+                                ?: error("未绑定工作空间")
+                            val target = workspaceRepository.currentWorkspaceToolTarget(
+                                requestedAssistant.id.toString(), workspaceId,
+                                requestedAssistant.workspaceScopeId?.toString(),
+                            ) ?: error("目标工作空间当前不可用")
+                            if (vm.assistant.value.workspacePermissionRevision == requestedAssistant.workspacePermissionRevision) {
+                                pendingSkipApprovalTarget = target
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            approvalChangeError = "无法确认当前执行目标，请检查工作空间后重试"
+                        } finally {
+                            approvalChangeBusy = false
+                        }
+                    }
+                }
+            },
             onOpenWorkspaceScope = { workspaceId, scopeId, scopeName ->
                 navController.navigate(
                     Screen.WorkspaceDetail(
@@ -131,6 +173,54 @@ fun AssistantBasicPage(id: String) {
             isWhaleAssistant = LocalSettings.current.whaleThemeDiscovery.dedicatedAssistantId == assistant.id,
         )
     }
+    pendingSkipApprovalTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!approvalChangeBusy) pendingSkipApprovalTarget = null },
+            title = { Text("关闭 Shell 逐次审批？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("此后 AI 可在以下目标执行 Shell 命令，无需每条再次询问。")
+                    workspaceToolTargetLines(target).forEach { Text(it) }
+                    if (target.kind.equals("REMOTE", ignoreCase = true)) {
+                        Text("使用所示 SSH 账户权限；工作目录不是安全沙箱。")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !approvalChangeBusy, onClick = {
+                    approvalChangeBusy = true
+                    scope.launch {
+                        try {
+                            val current = vm.assistant.value
+                            val latestTarget = workspaceRepository.currentWorkspaceToolTarget(
+                                current.id.toString(), current.workspaceId?.toString().orEmpty(),
+                                current.workspaceScopeId?.toString(),
+                            )
+                            if (!target.sameTarget(latestTarget)) error("执行目标已变化")
+                            vm.update(current.withWorkspaceShellApproval(false, target))
+                            pendingSkipApprovalTarget = null
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            pendingSkipApprovalTarget = null
+                            approvalChangeError = "执行目标已变化或不可用，请重新确认"
+                        } finally {
+                            approvalChangeBusy = false
+                        }
+                    }
+                }) { Text("确认关闭逐次审批") }
+            },
+            dismissButton = { TextButton(enabled = !approvalChangeBusy, onClick = { pendingSkipApprovalTarget = null }) { Text("取消") } },
+        )
+    }
+    approvalChangeError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { approvalChangeError = null },
+            title = { Text("无法更改 Shell 审批") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { approvalChangeError = null }) { Text("知道了") } },
+        )
+    }
 }
 
 @Composable
@@ -140,7 +230,9 @@ internal fun AssistantBasicContent(
     providers: List<me.rerere.ai.provider.ProviderSetting>,
     tags: List<DataTag>,
     workspaces: List<WorkspaceEntity>,
+    remoteHosts: List<RemoteHostEntity> = emptyList(),
     onUpdate: (Assistant) -> Unit,
+    onDisableShellApproval: (Assistant) -> Unit = {},
     onOpenWorkspaceScope: (String, String?, String?) -> Unit = { _, _, _ -> },
     vm: AssistantDetailVM,
     isWhaleAssistant: Boolean = false,
@@ -309,10 +401,23 @@ internal fun AssistantBasicContent(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         optionToString = { workspace ->
-                            workspace?.name ?: stringResource(R.string.workspace_no_binding)
+                            workspace?.let { "${it.name} · ${if (it.isRemote) "远程服务器" else "本地设备"}" }
+                                ?: stringResource(R.string.workspace_no_binding)
                         },
                     )
                     if (selectedWorkspace != null) {
+                        if (selectedWorkspace.isRemote) {
+                            val remoteHost = remoteHosts.find { it.id == selectedWorkspace.remoteHostId }
+                            Text(
+                                "远程服务器 · ${remoteHost?.name ?: "主机不可用"}\n" +
+                                    "账户 ${remoteHost?.username ?: "?"}@${remoteHost?.host ?: "?"}:${remoteHost?.port ?: 22}\n" +
+                                    "目录 ${selectedWorkspace.remotePath.orEmpty()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Text("本地设备 · 本地", style = MaterialTheme.typography.bodySmall)
+                        }
                         TextButton(
                             onClick = {
                                 onOpenWorkspaceScope(
@@ -324,7 +429,9 @@ internal fun AssistantBasicContent(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
-                                if (assistant.workspaceScopeId == null) {
+                                if (selectedWorkspace.isRemote) {
+                                    "远程共享目录 · ${selectedWorkspace.remotePath.orEmpty()}"
+                                } else if (assistant.workspaceScopeId == null) {
                                     stringResource(R.string.workspace_scope_legacy)
                                 } else {
                                     stringResource(
@@ -341,23 +448,15 @@ internal fun AssistantBasicContent(
             if (assistant.workspaceId != null) {
                 HorizontalDivider()
 
-                FormItem(
-                    modifier = Modifier.padding(8.dp),
-                    label = {
-                        Text(stringResource(R.string.assistant_page_workspace_shell_approval))
-                    },
-                    description = {
-                        Text(stringResource(R.string.assistant_page_workspace_shell_approval_desc))
-                    },
-                    tail = {
-                        Switch(
-                            checked = assistant.workspaceShellApprovalRequired,
-                            onCheckedChange = { required ->
-                                onUpdate(
-                                    assistant.copy(workspaceShellApprovalRequired = required)
-                                )
-                            },
-                        )
+                val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
+                WorkspaceShellPermissionControls(
+                    shellEnabled = assistant.workspaceShellEnabled,
+                    approvalRequired = assistant.workspaceShellApprovalRequired,
+                    isRemote = selectedWorkspace?.isRemote == true,
+                    onShellEnabledChange = { onUpdate(assistant.withWorkspaceShellEnabled(it)) },
+                    onApprovalRequiredChange = { required ->
+                        if (required) onUpdate(assistant.withWorkspaceShellApproval(true))
+                        else onDisableShellApproval(assistant)
                     },
                 )
             }
@@ -791,6 +890,50 @@ internal fun AssistantBasicContent(
             }
         }
     }
+}
+
+@Composable
+internal fun WorkspaceShellPermissionControls(
+    shellEnabled: Boolean,
+    approvalRequired: Boolean,
+    isRemote: Boolean,
+    onShellEnabledChange: (Boolean) -> Unit,
+    onApprovalRequiredChange: (Boolean) -> Unit,
+) {
+    FormItem(
+        modifier = Modifier.padding(8.dp),
+        label = { Text("允许 AI 使用 Shell") },
+        description = {
+            Text(if (isRemote) {
+                "在所选远程服务器上，以配置的 SSH 账户权限执行命令。工作目录不是安全沙箱。关闭后仍可使用文件工具。"
+            } else {
+                "允许 AI 在本地工作空间执行命令。关闭后仍可使用文件工具。"
+            })
+        },
+        tail = {
+            Switch(
+                checked = shellEnabled,
+                onCheckedChange = onShellEnabledChange,
+                modifier = Modifier.testTag("workspace-shell-capability"),
+            )
+        },
+    )
+    HorizontalDivider()
+    FormItem(
+        modifier = Modifier.padding(8.dp),
+        label = { Text("Shell 每次执行前询问") },
+        description = {
+            Text("启用后，每条 AI Shell 命令执行前都需单独批准。批准界面会显示当时的目标设备、账户和目录。")
+        },
+        tail = {
+            Switch(
+                checked = approvalRequired,
+                enabled = shellEnabled,
+                onCheckedChange = onApprovalRequiredChange,
+                modifier = Modifier.testTag("workspace-shell-each-approval"),
+            )
+        },
+    )
 }
 
 /**

@@ -63,6 +63,10 @@ class WorkspaceCompletionProvider(
             return cachedEntries
         }
 
+        // A remote listing opens an SSH connection. Keep completion to the selected directory
+        // and project root rather than recursively scanning a server while the user types.
+        val remote = workspaceId?.let { repository.getById(it)?.isRemote } == true
+
         val result = mutableListOf<WorkspaceFileEntry>()
         val queue = ArrayDeque<String>()
         val seenDirs = mutableSetOf<String>()
@@ -79,7 +83,7 @@ class WorkspaceCompletionProvider(
         while (queue.isNotEmpty() && result.size < MAX_INDEXED_ENTRIES && visitedDirs < MAX_INDEXED_DIRS) {
             val path = queue.removeFirst()
             visitedDirs++
-            val ignoreMatcher = matcherForDirectory(path, matcherCache)
+            val ignoreMatcher = if (remote) WorkspaceIgnoreMatcher() else matcherForDirectory(path, matcherCache)
             val entries = try {
                 repository.listFiles(
                     id = workspaceId ?: return emptyList(),
@@ -98,7 +102,7 @@ class WorkspaceCompletionProvider(
                 if (seenEntries.add(entry.path)) {
                     result += entry
                 }
-                if (entry.isDirectory && queue.size < MAX_INDEXED_DIRS && seenDirs.add(entry.path)) {
+                if (!remote && entry.isDirectory && queue.size < MAX_INDEXED_DIRS && seenDirs.add(entry.path)) {
                     queue.add(entry.path)
                 }
             }

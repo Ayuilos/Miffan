@@ -33,7 +33,16 @@ data class WorkspaceEntity(
     // 工具审批的用户覆盖项 (toolName -> needsApproval)，未覆盖的工具沿用默认值
     @ColumnInfo("tool_approvals", defaultValue = "{}")
     val toolApprovals: String = "{}",
+    @ColumnInfo("kind", defaultValue = "LOCAL")
+    val kind: String = KIND_LOCAL,
+    @ColumnInfo("remote_host_id")
+    val remoteHostId: String? = null,
+    @ColumnInfo("remote_path")
+    val remotePath: String? = null,
 ) {
+    // Fail closed for unknown future kinds: never send them to the local PRoot manager.
+    val isRemote: Boolean get() = kind != KIND_LOCAL
+
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)
     }.getOrDefault(emptyMap())
@@ -48,4 +57,9 @@ data class WorkspaceEntity(
         updatedAt = updatedAt,
         lastAccessAt = lastAccessAt,
     )
+
+    companion object {
+        const val KIND_LOCAL = "LOCAL"
+        const val KIND_REMOTE = "REMOTE"
+    }
 }

@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -73,12 +75,43 @@ fun WorkspaceTerminalPage(
 ) {
     val vm: WorkspaceDetailVM = koinViewModel(
         parameters = {
-            parametersOf(WorkspaceDetailArgs(id = id, scopeId = scopeId, scopeName = scopeName))
+            parametersOf(WorkspaceDetailArgs(
+                id = id, scopeId = scopeId, scopeName = scopeName, loadFilesInitially = false,
+            ))
         }
     )
-    val workspaceManager = koinInject<WorkspaceManager>()
     val navController = LocalNavController.current
     val state by vm.state.collectAsStateWithLifecycle()
+    val workspace = state.workspace
+    if (workspace == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.workspace_terminal_title)) },
+                    navigationIcon = { BackButton() },
+                )
+            },
+        ) { padding ->
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(state.error ?: if (state.loading) "正在读取工作空间…" else "工作空间不存在")
+                if (!state.loading) TextButton(onClick = vm::reloadMetadataOnly) { Text("重试") }
+            }
+        }
+        return
+    }
+    if (workspace.isRemote) {
+        RemoteWorkspaceTerminalPage(
+            workspace = workspace,
+            host = state.remoteHost,
+            onBack = { navController.popBackStack() },
+        )
+        return
+    }
+    val workspaceManager = koinInject<WorkspaceManager>()
     var showCloseConfirm by remember(id, scopeId) { mutableStateOf(false) }
 
     BackHandler {

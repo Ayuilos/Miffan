@@ -39,6 +39,8 @@ import me.ayuilos.miffan.data.ai.transformers.onGenerationFinish
 import me.ayuilos.miffan.data.ai.transformers.transforms
 import me.ayuilos.miffan.data.ai.transformers.visualTransforms
 import me.ayuilos.miffan.data.ai.tools.buildMemoryTools
+import me.ayuilos.miffan.data.ai.tools.captureWorkspaceToolTarget
+import me.ayuilos.miffan.data.ai.tools.executeToolWithTargetGuard
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.files.FileFolders
@@ -92,6 +94,7 @@ class GenerationHandler(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
+        localToolOutputRoot: String? = assistant.workspaceId?.toString(),
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -202,20 +205,21 @@ class GenerationHandler(
                 var hasPendingApproval = false
                 val updatedTools = tools.map { tool ->
                     val toolDef = toolsInternal.find { it.name == tool.toolName }
+                    val captured = captureWorkspaceToolTarget(tool, toolDef)
                     when {
                         // Tool needs approval and state is Auto -> set to Pending
-                        toolDef?.needsApproval(tool.inputAsJson()) == true &&
-                            tool.approvalState is ToolApprovalState.Auto -> {
+                        toolDef?.needsApproval(captured.inputAsJson()) == true &&
+                            captured.approvalState is ToolApprovalState.Auto -> {
                             hasPendingApproval = true
-                            tool.copy(approvalState = ToolApprovalState.Pending)
+                            captured.copy(approvalState = ToolApprovalState.Pending)
                         }
                         // State is Pending -> keep waiting
-                        tool.approvalState is ToolApprovalState.Pending -> {
+                        captured.approvalState is ToolApprovalState.Pending -> {
                             hasPendingApproval = true
-                            tool
+                            captured
                         }
 
-                        else -> tool
+                        else -> captured
                     }
                 }
 
@@ -287,20 +291,19 @@ class GenerationHandler(
                         // Auto or Approved - execute the tool
                         runCatching {
                             val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
-                                ?: error("Tool ${tool.toolName} not found")
                             val args = runCatching {
                                 json.parseToJsonElement(tool.input.ifBlank { "{}" })
                             }.getOrElse {
                                 error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}")
                             }
-                            Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                            val result = toolDef.execute(args)
+                            Log.i(TAG, "generateText: executing tool ${tool.toolName} with args: $args")
+                            val result = executeToolWithTargetGuard(tool, toolDef, args)
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
                             executedTools += tool.copy(
                                 output = maybeTruncateToolOutput(
                                     output = result,
                                     hasShellAccess = hasShellAccess,
-                                    workspaceRoot = assistant.workspaceId?.toString(),
+                                    workspaceRoot = localToolOutputRoot,
                                 )
                             )
                         }.onFailure {
@@ -598,8 +601,9 @@ class GenerationHandler(
                         appendLine("`/tool_outputs` is intentionally not mounted into `workspace_shell`.")
                     } else {
                         appendLine(
-                            "Full output was not persisted because the workspace resource policy rejected it: " +
-                                (saved?.exceptionOrNull()?.message ?: "workspace unavailable")
+                            "Full output was not persisted: " +
+                                (saved?.exceptionOrNull()?.message
+                                    ?: "this workspace has no local tool-output store; narrow the command output or save it to a project file")
                         )
                     }
                     appendLine()

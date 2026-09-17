@@ -531,6 +531,9 @@ internal fun buildExtensionCatalog(
             id = workspace.id,
             name = workspace.name,
             shellStatus = workspace.shellStatus,
+            kind = workspace.kind,
+            remoteHostId = workspace.remoteHostId,
+            remotePath = workspace.remotePath,
         )
     },
 )

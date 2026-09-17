@@ -30,6 +30,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -70,11 +71,16 @@ import me.rerere.hugeicons.stroke.Share08
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.tools.resolveWorkspaceToolApproval
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.repository.RemoteHostRuntimeState
+import me.ayuilos.miffan.data.repository.RemoteWorkspaceRuntimeState
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.files.SkillMetadata
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.nav.BackButton
+import me.ayuilos.miffan.ui.components.ai.workspaceKindIcon
+import me.ayuilos.miffan.ui.components.ai.workspaceKindLabel
 import me.ayuilos.miffan.ui.components.ui.MiffanConfirmDialog
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.theme.CustomColors
@@ -88,6 +94,17 @@ import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
+internal const val FILES_PAGE = 0
+private const val SETTINGS_PAGE = 1
+private const val SKILLS_PAGE = 2
+
+internal fun workspaceDetailInitialLocation(
+    area: String?,
+    path: String?,
+): Pair<WorkspaceStorageArea, String> =
+    runCatching { WorkspaceStorageArea.valueOf(area.orEmpty()) }
+        .getOrDefault(WorkspaceStorageArea.FILES) to path.orEmpty().trim('/')
+
 @Composable
 fun WorkspaceDetailPage(
     id: String,
@@ -98,18 +115,28 @@ fun WorkspaceDetailPage(
     scopeName: String? = null,
 ) {
     val navController = LocalNavController.current
+    val (requestedArea, requestedPath) = workspaceDetailInitialLocation(initialArea, initialPath)
     val vm: WorkspaceDetailVM = koinViewModel(
         parameters = {
-            parametersOf(WorkspaceDetailArgs(id = id, scopeId = scopeId, scopeName = scopeName))
+            parametersOf(WorkspaceDetailArgs(
+                id = id,
+                scopeId = scopeId,
+                scopeName = scopeName,
+                initialArea = requestedArea,
+                initialPath = requestedPath,
+            ))
         }
     )
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState { 3 }
+    val remoteHostStates by vm.remoteHostStates.collectAsStateWithLifecycle()
+    val remoteWorkspaceStates by vm.remoteWorkspaceStates.collectAsStateWithLifecycle()
+    val pagerState = rememberPagerState(initialPage = FILES_PAGE) { if (state.workspace?.isRemote == true) 2 else 3 }
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
+    var showHostVerification by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -136,14 +163,14 @@ fun WorkspaceDetailPage(
 
     LaunchedEffect(id, initialArea, initialPath, openFiles, scopeId) {
         if (initialArea != null || initialPath != null) {
-            val area = runCatching { WorkspaceStorageArea.valueOf(initialArea.orEmpty()) }
-                .getOrDefault(WorkspaceStorageArea.FILES)
-            vm.navigateTo(area, initialPath.orEmpty())
+            // The first request already starts at this destination inside the VM. This only
+            // handles a new deep link delivered to an existing detail instance.
+            vm.navigateTo(requestedArea, requestedPath)
         }
-        if (openFiles) pagerState.scrollToPage(1)
+        if (openFiles || initialArea != null || initialPath != null) pagerState.scrollToPage(FILES_PAGE)
     }
 
-    BackHandler(enabled = pagerState.currentPage == 1 && state.path.isNotBlank()) {
+    BackHandler(enabled = pagerState.currentPage == FILES_PAGE && state.path.isNotBlank()) {
         vm.goUp()
     }
 
@@ -151,23 +178,45 @@ fun WorkspaceDetailPage(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = state.workspace?.name?.let { workspaceName ->
-                            if (state.scopeId == null) {
-                                workspaceName
-                            } else {
-                                val scopeLabel = state.scopeName?.takeIf { it.isNotBlank() }
-                                    ?: requireNotNull(state.scopeId).take(8)
-                                "$workspaceName · $scopeLabel"
-                            }
-                        } ?: stringResource(R.string.workspace_detail_title),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column {
+                        Text(
+                            text = state.workspace?.name?.let { name ->
+                                val scopeLabel = state.scopeId?.let { scopeId ->
+                                    state.scopeName?.takeIf(String::isNotBlank) ?: scopeId.take(8)
+                                }
+                                if (scopeLabel == null) name else "$name · $scopeLabel"
+                            } ?: stringResource(R.string.workspace_detail_title),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        state.workspace?.let { workspace ->
+                            val identity = if (workspace.isRemote) {
+                                "远程 · ${state.remoteHost?.name ?: "主机不可用"}"
+                            } else "本地设备"
+                            val status = if (workspace.isRemote) {
+                                when {
+                                    state.remoteHost == null -> "主机配置不可用"
+                                    state.remoteHost?.trustedHostKeySha256 == null -> "主机指纹待确认"
+                                    else -> remoteWorkspaceStatusLabel(
+                                        workspace,
+                                        workspace.remoteHostId?.let(remoteHostStates::get),
+                                        remoteWorkspaceStates[id],
+                                    )
+                                }
+                            } else workspace.shellStatus.toShellStatusLabel()
+                            Text(
+                                "$identity · $status",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 },
                 navigationIcon = { BackButton() },
                 actions = {
-                    if (pagerState.currentPage == 1) {
+                    if (pagerState.currentPage == FILES_PAGE) {
                         IconButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
                             Icon(
                                 HugeIcons.FileImport,
@@ -176,9 +225,9 @@ fun WorkspaceDetailPage(
                         }
                     }
                     IconButton(onClick = { vm.refresh() }) {
-                        Icon(HugeIcons.Refresh01, contentDescription = null)
+                        Icon(HugeIcons.Refresh01, contentDescription = "刷新工作空间")
                     }
-                    if (state.workspace?.shellStatus != WorkspaceShellStatus.DISABLED.name) {
+                    if (state.workspace?.let { it.isRemote || it.shellStatus != WorkspaceShellStatus.DISABLED.name } == true) {
                         IconButton(
                             onClick = {
                                 navController.navigate(
@@ -190,7 +239,10 @@ fun WorkspaceDetailPage(
                                 )
                             }
                         ) {
-                            Icon(HugeIcons.ComputerTerminal01, contentDescription = null)
+                            Icon(
+                                HugeIcons.ComputerTerminal01,
+                                contentDescription = if (state.workspace?.isRemote == true) "打开远程终端" else "打开本地终端",
+                            )
                         }
                     }
                 },
@@ -200,23 +252,25 @@ fun WorkspaceDetailPage(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = pagerState.currentPage == 0,
-                    label = { Text(stringResource(R.string.workspace_detail_tab_basic)) },
-                    icon = { Icon(HugeIcons.Settings03, contentDescription = null) },
-                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                )
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 1,
+                    selected = pagerState.currentPage == FILES_PAGE,
                     label = { Text(stringResource(R.string.workspace_detail_tab_files)) },
                     icon = { Icon(HugeIcons.File02, contentDescription = null) },
-                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                    onClick = { scope.launch { pagerState.animateScrollToPage(FILES_PAGE) } },
                 )
                 NavigationBarItem(
-                    selected = pagerState.currentPage == 2,
-                    label = { Text(stringResource(R.string.workspace_detail_tab_skills)) },
-                    icon = { Icon(HugeIcons.Puzzle, contentDescription = null) },
-                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                    selected = pagerState.currentPage == SETTINGS_PAGE,
+                    label = { Text("设置") },
+                    icon = { Icon(HugeIcons.Settings03, contentDescription = null) },
+                    onClick = { scope.launch { pagerState.animateScrollToPage(SETTINGS_PAGE) } },
                 )
+                if (state.workspace?.isRemote != true) {
+                    NavigationBarItem(
+                        selected = pagerState.currentPage == SKILLS_PAGE,
+                        label = { Text(stringResource(R.string.workspace_detail_tab_skills)) },
+                        icon = { Icon(HugeIcons.Puzzle, contentDescription = null) },
+                        onClick = { scope.launch { pagerState.animateScrollToPage(SKILLS_PAGE) } },
+                    )
+                }
             }
         },
         containerColor = CustomColors.topBarColors.containerColor,
@@ -228,19 +282,25 @@ fun WorkspaceDetailPage(
                 .fillMaxSize(),
         ) { page ->
             when (page) {
-                0 -> WorkspaceBasicPage(
+                SETTINGS_PAGE -> WorkspaceBasicPage(
                     workspace = state.workspace,
+                    remoteHost = state.remoteHost,
+                    remoteHostState = state.workspace?.remoteHostId?.let(remoteHostStates::get),
+                    remoteWorkspaceState = remoteWorkspaceStates[id],
                     scopeId = state.scopeId,
                     scopeName = state.scopeName,
                     installProgress = installProgress,
                     onInstallRootfs = { showInstallDialog = true },
+                    onCheckHost = { showHostVerification = true },
                     onToolApprovalChange = vm::setToolApproval,
                 )
 
-                1 -> WorkspaceFilesPage(
+                FILES_PAGE -> WorkspaceFilesPage(
                     state = state,
                     contentPadding = PaddingValues(),
                     onSelectArea = vm::selectArea,
+                    onRetry = vm::refresh,
+                    onCheckHost = { showHostVerification = true },
                     onGoUp = vm::goUp,
                     onOpen = { entry ->
                         when {
@@ -282,12 +342,12 @@ fun WorkspaceDetailPage(
                     },
                 )
 
-                2 -> WorkspaceSkillsPage(
+                SKILLS_PAGE -> WorkspaceSkillsPage(
                     skills = state.skills,
                     shellReady = state.workspace?.shellStatus == WorkspaceShellStatus.READY.name,
                     onOpenSkill = { skill ->
                         vm.openWorkspaceSkill(skill)
-                        scope.launch { pagerState.animateScrollToPage(1) }
+                        scope.launch { pagerState.animateScrollToPage(FILES_PAGE) }
                     },
                 )
             }
@@ -303,6 +363,18 @@ fun WorkspaceDetailPage(
                     vm.installRootfs()
                     showInstallDialog = false
                 },
+            )
+        }
+    }
+
+    if (showHostVerification) {
+        state.remoteHost?.let { host ->
+            RemoteHostVerificationDialog(
+                host = host,
+                discover = vm::discoverHostKey,
+                trust = vm::trustHostKey,
+                test = vm::testHost,
+                onDismiss = { showHostVerification = false; vm.refresh() },
             )
         }
     }
@@ -445,14 +517,20 @@ private fun WorkspaceSkillsPage(
 }
 
 @Composable
-private fun WorkspaceBasicPage(
+internal fun WorkspaceBasicPage(
     workspace: WorkspaceEntity?,
+    remoteHost: RemoteHostEntity?,
+    remoteHostState: RemoteHostRuntimeState?,
+    remoteWorkspaceState: RemoteWorkspaceRuntimeState?,
     scopeId: String?,
     scopeName: String?,
     installProgress: RootfsInstallProgress?,
     onInstallRootfs: () -> Unit,
+    onCheckHost: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
 ) {
+    var showDetails by remember(workspace?.id) { mutableStateOf(false) }
+    var showApprovals by remember(workspace?.id) { mutableStateOf(false) }
     val shellStatus = workspace?.shellStatus
     val installing = installProgress != null || shellStatus == WorkspaceShellStatus.INSTALLING.name
     val rootfsReady = shellStatus == WorkspaceShellStatus.READY.name
@@ -476,71 +554,99 @@ private fun WorkspaceBasicPage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.workspace_detail_workspace_info),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    WorkspaceInfoRow(stringResource(R.string.workspace_detail_name), workspace?.name ?: stringResource(R.string.workspace_detail_loading))
-                    WorkspaceInfoRow(stringResource(R.string.workspace_detail_shell_status), workspace?.shellStatus?.toShellStatusLabel() ?: "-")
-                    WorkspaceInfoRow(
-                        stringResource(R.string.workspace_scope),
-                        if (scopeId == null) {
-                            stringResource(R.string.workspace_scope_legacy)
-                        } else {
-                            stringResource(
-                                R.string.workspace_scope_private,
-                                scopeName?.takeIf { it.isNotBlank() } ?: scopeId,
-                            )
-                        },
-                    )
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CustomColors.cardColorsOnSurfaceContainer,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.workspace_detail_enable_shell),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = stringResource(R.string.workspace_detail_enable_shell_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    Button(
-                        onClick = onInstallRootfs,
-                        enabled = workspace != null && !installing,
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(HugeIcons.Bash, contentDescription = null)
+                        Icon(
+                            workspaceKindIcon(workspace?.isRemote == true),
+                            contentDescription = workspaceKindLabel(workspace?.isRemote == true),
+                            modifier = Modifier.size(20.dp),
+                        )
                         Text(
-                            text = installButtonText,
-                            modifier = Modifier.padding(start = 8.dp),
+                            text = if (workspace?.isRemote == true) {
+                                "远程服务器 · ${remoteHost?.name ?: "主机不可用"}"
+                            } else "本地设备",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-
-                    installProgress?.let { progress ->
-                        RootfsProgress(progress)
+                    if (workspace?.isRemote == true) {
+                        Text(
+                            when {
+                                remoteHost == null -> "主机配置不可用"
+                                remoteHost.trustedHostKeySha256 == null -> "主机指纹待确认"
+                                else -> remoteWorkspaceStatusLabel(workspace, remoteHostState, remoteWorkspaceState)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "AI Shell 按 SSH 账户权限执行，可能访问所选目录之外；命令审批在助手设置中控制。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedButton(onClick = onCheckHost, enabled = remoteHost != null) {
+                            Text(if (remoteHost?.trustedHostKeySha256 == null) "确认主机指纹并测试" else "检查主机并测试")
+                        }
+                    } else {
+                        Text(
+                            workspace?.shellStatus?.toShellStatusLabel() ?: stringResource(R.string.workspace_detail_loading),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (!rootfsReady) {
+                            Button(
+                                onClick = onInstallRootfs,
+                                enabled = workspace != null && !installing,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(HugeIcons.Bash, contentDescription = null)
+                                Text(installButtonText, modifier = Modifier.padding(start = 8.dp))
+                            }
+                        }
+                        installProgress?.let { RootfsProgress(it) }
+                    }
+                    TextButton(onClick = { showDetails = !showDetails }) {
+                        Text(if (showDetails) "收起详细信息" else "查看工作区与连接详情")
+                    }
+                    if (showDetails) {
+                        if (workspace?.isRemote == true) {
+                            WorkspaceInfoRow("登录目标", remoteHost?.let { "${it.username}@${it.host}:${it.port}" } ?: "主机配置不可用")
+                            WorkspaceInfoRow("远程目录", workspace.remotePath.orEmpty())
+                            WorkspaceInfoRow("主机身份", if (remoteHost?.trustedHostKeySha256 != null) "已确认指纹" else "未确认指纹")
+                            (remoteWorkspaceState?.lastDirectoryCheck?.reason ?: remoteHostState?.lastConnection?.reason)
+                                ?.let { WorkspaceInfoRow("最近故障", it) }
+                            remoteWorkspaceLastOperationLabel(remoteWorkspaceState)?.let { WorkspaceInfoRow("操作记录", it) }
+                            remoteHostState?.configurationReason?.let { WorkspaceInfoRow("需要处理", it) }
+                            Text("SSH 按需连接，不保持在线。所选目录是工作目录，不是 Shell 的安全边界。文件区对应远程目录。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            WorkspaceInfoRow(
+                                stringResource(R.string.workspace_scope),
+                                if (scopeId == null) stringResource(R.string.workspace_scope_legacy)
+                                else stringResource(R.string.workspace_scope_private, scopeName?.takeIf { it.isNotBlank() } ?: scopeId),
+                            )
+                            Text(stringResource(R.string.workspace_detail_enable_shell_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (rootfsReady) {
+                                OutlinedButton(onClick = onInstallRootfs, enabled = !installing) {
+                                    Text(installButtonText)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
         item {
-            WorkspaceToolApprovalCard(
+            TextButton(onClick = { showApprovals = !showApprovals }) {
+                Text(if (showApprovals) "收起文件工具审批设置" else "文件工具审批设置")
+            }
+            if (showApprovals) WorkspaceToolApprovalCard(
                 workspace = workspace,
                 onToolApprovalChange = onToolApprovalChange,
             )
@@ -571,7 +677,11 @@ private fun WorkspaceToolApprovalCard(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = stringResource(R.string.workspace_detail_tool_approval_desc),
+                    text = if (workspace?.isRemote == true) {
+                        "这里设置远程文件工具的逐次审批。AI Shell 能力和命令逐次审批在助手设置中单独控制；Shell 可按 SSH 账户权限读写或访问所选目录之外的位置。"
+                    } else {
+                        stringResource(R.string.workspace_detail_tool_approval_desc)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -639,7 +749,7 @@ private fun WorkspaceInfoRow(
             text = value,
             modifier = Modifier.weight(0.65f),
             style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
+            maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -727,6 +837,8 @@ private fun WorkspaceFilesPage(
     state: WorkspaceDetailState,
     contentPadding: PaddingValues,
     onSelectArea: (WorkspaceStorageArea) -> Unit,
+    onRetry: () -> Unit,
+    onCheckHost: () -> Unit,
     onGoUp: () -> Unit,
     onOpen: (WorkspaceFileEntry) -> Unit,
     onDelete: (WorkspaceFileEntry) -> Unit,
@@ -738,16 +850,28 @@ private fun WorkspaceFilesPage(
         contentPadding = contentPadding + PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            WorkspaceAreaSelector(
-                selected = state.area,
-                onSelected = onSelectArea,
-            )
+        if (state.workspace?.isRemote == false) {
+            item {
+                WorkspaceAreaSelector(selected = state.area, onSelected = onSelectArea)
+            }
+        }
+
+        if (state.loading) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(
+                    "正在加载文件…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         item {
             WorkspacePathBar(
-                path = state.path,
+                path = if (state.workspace?.isRemote == true) {
+                    state.workspace?.remotePath.orEmpty().trimEnd('/') + state.path.takeIf(String::isNotBlank)?.let { "/$it" }.orEmpty()
+                } else state.path,
                 canGoUp = state.path.isNotBlank(),
                 onGoUp = onGoUp,
             )
@@ -755,7 +879,7 @@ private fun WorkspaceFilesPage(
 
         state.error?.let { error ->
             item {
-                ErrorCard(error)
+                ErrorCard(error, onRetry, onCheckHost.takeIf { state.workspace?.isRemote == true && state.remoteHost != null })
             }
         }
 
@@ -972,17 +1096,18 @@ private fun EmptyDirectoryState() {
 }
 
 @Composable
-private fun ErrorCard(message: String) {
+private fun ErrorCard(message: String, onRetry: () -> Unit, onCheckHost: (() -> Unit)?) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CustomColors.cardColorsOnSurfaceContainer,
     ) {
-        Text(
-            text = message,
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-        )
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text = message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onRetry) { Text("重试") }
+                onCheckHost?.let { action -> TextButton(onClick = action) { Text("检查主机") } }
+            }
+        }
     }
 }
 

@@ -10,6 +10,7 @@ import me.rerere.ai.core.ReasoningLevel
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.utils.SimpleCache
 import me.rerere.workspace.WorkspaceScope
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import java.util.concurrent.TimeUnit
 import kotlin.uuid.Uuid
 
@@ -45,8 +46,14 @@ data class Assistant(
     val workspaceId: Uuid? = null,
     /** Null is the explicit legacy whole-workspace compatibility mode. */
     val workspaceScopeId: Uuid? = null,
+    /** Whether AI may execute Shell commands; file tools remain independently available. */
+    val workspaceShellEnabled: Boolean = true,
     /** Shell approval is isolated per Assistant instead of inherited from a shared Workspace. */
     val workspaceShellApprovalRequired: Boolean = true,
+    /** Revoked whenever the workspace binding or Shell capability changes. */
+    val workspacePermissionRevision: String = "legacy",
+    /** The exact target for which persistent Shell confirmation was disabled. */
+    val workspaceShellApprovalTarget: WorkspaceToolTargetSnapshot? = null,
     val background: String? = null, // 聊天页背景图地址(本地文件 URI 或网络 URL), 为 null 时无背景
     val backgroundOpacity: Float = 1.0f, // 背景图不透明度(0~1)
     val useGradientBackground: Boolean = false, // 开启后聊天页使用动态渐变背景
@@ -96,8 +103,39 @@ fun Assistant.withWorkspaceBinding(newWorkspaceId: Uuid?): Assistant {
         workspaceId = newWorkspaceId,
         workspaceScopeId = newWorkspaceId?.let { this.id },
         workspaceShellApprovalRequired = true,
+        workspaceShellApprovalTarget = null,
+        workspacePermissionRevision = Uuid.random().toString(),
     )
 }
+
+fun Assistant.withWorkspaceShellEnabled(enabled: Boolean): Assistant =
+    if (enabled == workspaceShellEnabled) this else copy(
+        workspaceShellEnabled = enabled,
+        workspaceShellApprovalRequired = true,
+        workspaceShellApprovalTarget = null,
+        workspacePermissionRevision = Uuid.random().toString(),
+    )
+
+fun Assistant.withWorkspaceShellApproval(
+    required: Boolean,
+    target: WorkspaceToolTargetSnapshot? = null,
+): Assistant {
+    if (required) return if (workspaceShellApprovalRequired) this else copy(
+        workspaceShellApprovalRequired = true,
+        workspaceShellApprovalTarget = null,
+        workspacePermissionRevision = Uuid.random().toString(),
+    )
+    require(workspaceShellEnabled && target != null &&
+        target.assistantId == id.toString() &&
+        target.workspaceId == workspaceId?.toString() &&
+        target.scopeId == workspaceScopeId?.toString() &&
+        target.workspacePermissionRevision == workspacePermissionRevision
+    ) { "A current Workspace target is required to skip Shell approval" }
+    return copy(workspaceShellApprovalRequired = false, workspaceShellApprovalTarget = target)
+}
+
+fun Assistant.requiresWorkspaceShellApproval(target: WorkspaceToolTargetSnapshot?): Boolean =
+    workspaceShellApprovalRequired || workspaceShellApprovalTarget?.sameTarget(target) != true
 
 @Serializable
 data class QuickMessage(
