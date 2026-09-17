@@ -39,6 +39,9 @@ class Migration_24_25_Test {
         val selectedAnswer = UIMessage.assistant("Selected legacy answer")
         val unselectedQuestion = UIMessage.user("Unselected question")
         val unselectedAnswer = UIMessage.assistant("Unselected answer")
+        val tablesBefore = mutableSetOf<String>()
+        val tableNamesQuery = "SELECT name FROM sqlite_master WHERE type = 'table' " +
+            "AND name NOT LIKE 'sqlite_%' AND name NOT IN ('room_master_table', 'android_metadata')"
 
         helper.createDatabase(databaseName, 24).apply {
             execSQL(
@@ -97,10 +100,21 @@ class Migration_24_25_Test {
                     put("updated_at", 1L)
                 },
             )
+            query(tableNamesQuery).use { cursor ->
+                while (cursor.moveToNext()) tablesBefore += cursor.getString(0)
+            }
             close()
         }
 
-        val db = helper.runMigrationsAndValidate(databaseName, 25, true, Migration_24_25)
+        // message_fts is maintained outside Room's schema. Validate Room's tables normally,
+        // then check the complete table set ourselves so the retained search index is allowed.
+        val db = helper.runMigrationsAndValidate(databaseName, 25, false, Migration_24_25)
+        db.query(tableNamesQuery).use { cursor ->
+            val tablesAfter = buildSet {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+            assertEquals(tablesBefore, tablesAfter)
+        }
 
         db.query(
             "SELECT title, update_at, is_pinned, selected_root_id FROM ConversationEntity WHERE id = ?",
