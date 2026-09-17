@@ -70,6 +70,8 @@ import me.ayuilos.miffan.ui.activity.SafeModeActivity
 import me.ayuilos.miffan.ui.components.ui.TTSController
 import me.ayuilos.miffan.ui.components.ui.AppStartupLoading
 import me.ayuilos.miffan.ui.components.ui.WhaleThemeDiscoveryHost
+import me.ayuilos.miffan.ui.components.ui.WorkspaceDiscoveryHost
+import androidx.compose.runtime.saveable.rememberSaveable
 import me.ayuilos.miffan.ui.context.LocalASRState
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
@@ -308,6 +310,9 @@ class RouteActivity : ComponentActivity() {
         }
 
         val backStack = rememberNavBackStack(startScreen)
+        // Reserve this launch for the workspace introduction, even after it is dismissed.
+        // A user skipping several versions should not receive two promotional dialogs in a row.
+        val workspaceIntroductionLaunch = rememberSaveable { !settings.remoteWorkspaceIntroSeen }
         SideEffect { this@RouteActivity.navStack = backStack }
 
         ShareHandler(backStack)
@@ -329,11 +334,19 @@ class RouteActivity : ComponentActivity() {
                     showCloseButton = true,
                 )
                 TTSController()
+                WorkspaceDiscoveryHost(
+                    seen = settings.remoteWorkspaceIntroSeen,
+                    eligible = migrationState !is MigrationState.Migrating &&
+                        !settings.isNotConfigured() && backStack.lastOrNull() is Screen.Chat &&
+                        normalLauncherEntry,
+                    markSeen = { settingsStore.update { it.copy(remoteWorkspaceIntroSeen = true) } },
+                    onOpenWorkspaces = { Navigator(backStack).navigate(Screen.Workspaces) },
+                )
                 WhaleThemeDiscoveryHost(
                     settings = settings,
                     store = settingsStore,
                     onExperienced = { Navigator(backStack).clearAndNavigate(Screen.Chat(Uuid.random().toString())) },
-                    eligible = migrationState !is MigrationState.Migrating &&
+                    eligible = !workspaceIntroductionLaunch && migrationState !is MigrationState.Migrating &&
                         !settings.isNotConfigured() && backStack.lastOrNull() is Screen.Chat &&
                         normalLauncherEntry,
                 )

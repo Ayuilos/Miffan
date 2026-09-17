@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan 應用程式圖示" width="120" />
   <h1>Miffan</h1>
-  <p>把模型、助理、工具與本機工作區帶進手機的原生 Android AI 用戶端。</p>
+  <p>把模型、助理、工具與本機、遠端工作空間帶進手機的原生 Android AI 用戶端。</p>
 
   <p>
     <a href="https://github.com/Ayuilos/Miffan/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Ayuilos/Miffan?display_name=tag&sort=semver" /></a>
@@ -20,8 +20,36 @@ Miffan 是為 Android 打造的開源 AI 工作空間。你可以連接自己正
 
 - **不同模型，一個入口。** 官方 API、相容閘道、自行部署的端點和 Codex 訂閱可以共存，不必把工作流程綁定在單一供應商上。
 - **助理不只是提示詞。** 每個助理都能擁有獨立的模型參數、記憶、工具、MCP、Skills、視覺形象與對話記錄。
-- **手機不只是聊天視窗。** Miffan 可以搜尋網頁、處理檔案、執行本機 Linux 工作區、使用裝置能力，還能透過瀏覽器存取同一套對話。
+- **手機不只是聊天視窗。** Miffan 可以搜尋網頁、處理檔案、執行本機 Linux 工作區、透過 SSH 連接遠端伺服器、使用裝置能力，還能透過瀏覽器存取同一套對話。
 - **有意義的角色系統。** 可選擇自訂 Miffan 碗角色或藍色大肥魚，讓動作神態回應聊天狀態與晝夜變化。
+
+## 遠端工作空間 · 3.4 新功能
+
+透過 SSH 連接自己的伺服器，讓助理在指定專案目錄中處理任務。本機專案與遠端機器可以在同一個 APP 中管理，清楚區分位置與連線狀態。
+
+- **多主機、多專案。** 統一管理 SSH 主機、驗證資訊與專案目錄，也可連接手機已經接入的 Tailscale 私有網路機器。
+- **檔案與互動式終端機。** 瀏覽、預覽、編輯、匯入匯出遠端檔案，或開啟持續連線的終端機手動執行命令；預覽返回後保留目前目錄。
+- **讓 AI 在檔案所在的位置工作。** 為助理綁定工作空間後，即可使用檔案與 Shell 工具。本機與遠端目標分別管理 AI Shell 權限和執行確認。
+- **SSH 金鑰管理。** 支援產生和匯入金鑰、複製公鑰、檢視與匯出私鑰；備份時可選擇密碼加密。
+
+從**工作空間 → 新建 → 遠端**選擇主機與專案目錄，再到助理設定中綁定工作空間。首次顯示的新功能介紹視窗也可直接開啟工作空間管理頁。
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/miffan-remote-workspaces.png" alt="含搜尋、類型篩選與連線狀態的本機和遠端工作空間清單" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/miffan-remote-hosts.png" alt="顯示驗證方式與連線狀態的 SSH 主機管理" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/miffan-workspace-introduction.png" alt="介紹遠端工作空間並提供直接體驗入口的新功能視窗" width="300" /></td>
+  </tr>
+  <tr>
+    <td align="center">本機與遠端專案</td>
+    <td align="center">SSH 主機管理</td>
+    <td align="center">新功能介紹與入口</td>
+  </tr>
+</table>
+
+截圖使用示範主機與專案資料，畫面語言為簡體中文。
+
+目前支援 Linux/Unix SSH/SFTP 主機。APP 使用既有網路連線，不負責設定 Tailscale，也不提供手機離線後的自主工作託管。設定步驟與目前限制請參閱[遠端工作空間說明](docs/REMOTE_WORKSPACE.md)。
 
 ## 認識藍色大肥魚
 
@@ -100,7 +128,7 @@ Miffan 是為 Android 打造的開源 AI 工作空間。你可以連接自己正
 - 可從檔案、GitHub 儲存庫和 Skill.sh 目錄安裝並管理 Skills，並對安裝目標進行約束
 - 可連接 Bing、Tavily、Exa、SearXNG、Brave、Perplexity、Firecrawl、Jina、Grok 等搜尋服務，也支援自訂 JavaScript 搜尋介面卡
 - 選用的本機工具包括時間、剪貼簿、JavaScript、文字轉語音、向使用者提問、螢幕使用時間與行事曆事件
-- 隔離的本機 Linux 工作區，包含檔案管理、編輯器、終端機、工作目錄上下文與 AI 檔案/命令工具
+- 本機 Linux 與遠端 SSH 工作空間，包含檔案管理、編輯器、互動式終端機、工作目錄上下文與 AI 檔案/命令工具
 
 ### 語音、翻譯與瀏覽器存取
 
@@ -173,7 +201,7 @@ cd Miffan
 | `search` | 網頁搜尋與頁面內容服務整合 |
 | `speech` | 語音辨識、合成與播放 |
 | `document` | PDF、DOCX、PPTX 與 EPUB 文字擷取 |
-| `workspace` | 隔離的本機檔案系統與 Shell 環境 |
+| `workspace` | 本機檔案系統/Linux 環境與原生 SSH/SFTP 遠端工作空間 |
 | `web` / `web-ui` | 內建伺服器與瀏覽器用戶端 |
 | `highlight`、`material3`、`common` | 呈現與共用基礎設施 |
 

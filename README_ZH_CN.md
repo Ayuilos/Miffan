@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan 应用图标" width="120" />
   <h1>Miffan</h1>
-  <p>把模型、助手、工具与本地工作区装进手机的原生 Android AI 客户端。</p>
+  <p>把模型、助手、工具与本地、远程工作空间装进手机的原生 Android AI 客户端。</p>
 
   <p>
     <a href="https://github.com/Ayuilos/Miffan/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Ayuilos/Miffan?display_name=tag&sort=semver" /></a>
@@ -20,8 +20,36 @@ Miffan 是为 Android 打造的开源 AI 工作空间。你可以连接自己正
 
 - **不同模型，一个入口。** 官方 API、兼容网关、自部署端点和 Codex 订阅可以共存，不必把工作流绑定在单一供应商上。
 - **助手不只是提示词。** 每个助手都能拥有独立的模型参数、记忆、工具、MCP、Skills、视觉形象与对话历史。
-- **手机不只是聊天窗口。** Miffan 可以搜索网页、处理文件、运行本地 Linux 工作区、使用设备能力，还能通过浏览器访问同一套对话。
+- **手机不只是聊天窗口。** Miffan 可以搜索网页、处理文件、运行本地 Linux 工作区、通过 SSH 连接远程服务器、使用设备能力，还能通过浏览器访问同一套对话。
 - **有意义的角色系统。** 可选择定制化 Miffan 碗角色或蓝色大肥鱼，让动作神态响应聊天状态与昼夜变化。
+
+## 远程工作空间 · 3.4 新功能
+
+通过 SSH 连接自己的服务器，让助手在指定项目目录中处理任务。本地项目与远程机器可以在同一个 APP 中管理，清楚区分位置与连接状态。
+
+- **多主机、多项目。** 统一管理 SSH 主机、认证信息与项目目录，也可连接手机已经接入的 Tailscale 私网机器。
+- **文件与交互式终端。** 浏览、预览、编辑、导入导出远程文件，或打开持续会话的终端手动执行命令；预览返回后保留当前目录。
+- **让 AI 在文件所在的位置工作。** 为助手绑定工作空间后，即可使用文件与 Shell 工具。本地与远程目标分别管理 AI Shell 权限和执行确认。
+- **SSH 密钥管理。** 支持生成和导入密钥、复制公钥、查看与导出私钥；备份时可选择口令加密。
+
+从**工作空间 → 新建 → 远程**选择主机与项目目录，再到助手设置中绑定工作空间。首次展示的新功能弹窗也可直接打开工作空间管理页。
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/miffan-remote-workspaces.png" alt="带搜索、类型筛选与连接状态的本地和远程工作空间列表" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/miffan-remote-hosts.png" alt="显示认证方式与连接状态的 SSH 主机管理" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/miffan-workspace-introduction.png" alt="介绍远程工作空间并提供直接体验入口的新功能弹窗" width="300" /></td>
+  </tr>
+  <tr>
+    <td align="center">本地与远程项目</td>
+    <td align="center">SSH 主机管理</td>
+    <td align="center">新功能介绍与入口</td>
+  </tr>
+</table>
+
+截图使用演示主机与项目数据。
+
+目前支持 Linux/Unix SSH/SFTP 主机。APP 使用已有网络连接，不负责配置 Tailscale，也不提供手机离线后的自主任务托管。配置步骤与当前限制见[远程工作空间说明](docs/REMOTE_WORKSPACE.md)。
 
 ## 认识蓝色大肥鱼
 
@@ -100,7 +128,7 @@ Miffan 是为 Android 打造的开源 AI 工作空间。你可以连接自己正
 - 可从文件、GitHub 仓库和 Skill.sh 目录安装并管理 Skills，并对安装目标进行约束
 - 可接入 Bing、Tavily、Exa、SearXNG、Brave、Perplexity、Firecrawl、Jina、Grok 等搜索服务，也支持自定义 JavaScript 搜索适配器
 - 可选本地工具包括时间、剪贴板、JavaScript、文字转语音、向用户提问、屏幕使用时间与日历事件
-- 隔离的本地 Linux 工作区，包含文件管理、编辑器、终端、工作目录上下文与 AI 文件/命令工具
+- 本地 Linux 与远程 SSH 工作空间，包含文件管理、编辑器、交互式终端、工作目录上下文与 AI 文件/命令工具
 
 ### 语音、翻译与浏览器访问
 
@@ -173,7 +201,7 @@ cd Miffan
 | `search` | 网页搜索与页面内容服务集成 |
 | `speech` | 语音识别、合成与播放 |
 | `document` | PDF、DOCX、PPTX 与 EPUB 文本提取 |
-| `workspace` | 隔离的本地文件系统与 Shell 环境 |
+| `workspace` | 本地文件系统/Linux 环境与原生 SSH/SFTP 远程工作空间 |
 | `web` / `web-ui` | 内置服务器与浏览器客户端 |
 | `highlight`、`material3`、`common` | 渲染与共享基础设施 |
 
