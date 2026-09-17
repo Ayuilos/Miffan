@@ -108,6 +108,7 @@ class SettingsStore(
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val THEME_ID = stringPreferencesKey("theme_id")
         val WHALE_THEME_DISCOVERY = stringPreferencesKey("whale_theme_discovery")
+        val REMOTE_WORKSPACE_INTRO_SEEN = booleanPreferencesKey("remote_workspace_intro_seen")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
@@ -235,6 +236,7 @@ class SettingsStore(
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
                 themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
+                remoteWorkspaceIntroSeen = preferences[REMOTE_WORKSPACE_INTRO_SEEN] == true,
                 whaleThemeDiscovery = preferences[WHALE_THEME_DISCOVERY]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: WhaleThemeDiscovery(settingsSeen = true),
@@ -404,6 +406,7 @@ class SettingsStore(
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
+            preferences[REMOTE_WORKSPACE_INTRO_SEEN] = settings.remoteWorkspaceIntroSeen
             preferences[WHALE_THEME_DISCOVERY] = JsonInstant.encodeToString(settings.whaleThemeDiscovery)
             preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
             preferences[DEVELOPER_MODE] = settings.developerMode
@@ -581,6 +584,7 @@ data class Settings(
     val init: Boolean = false,
     val dynamicColor: Boolean = true,
     val themeId: String = PresetThemes[0].id,
+    val remoteWorkspaceIntroSeen: Boolean = false,
     val whaleThemeDiscovery: WhaleThemeDiscovery = WhaleThemeDiscovery(),
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
