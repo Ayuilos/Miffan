@@ -162,11 +162,9 @@ fun WorkspaceDetailPage(
     }
 
     LaunchedEffect(id, initialArea, initialPath, openFiles, scopeId) {
-        if (initialArea != null || initialPath != null) {
-            // The first request already starts at this destination inside the VM. This only
-            // handles a new deep link delivered to an existing detail instance.
-            vm.navigateTo(requestedArea, requestedPath)
-        }
+        // The navigation entry's VM consumes the initial location in its constructor.
+        // This effect runs again after preview/editor/terminal pages are popped; replaying
+        // the route here would overwrite the directory the user has since navigated to.
         if (openFiles || initialArea != null || initialPath != null) pagerState.scrollToPage(FILES_PAGE)
     }
 
