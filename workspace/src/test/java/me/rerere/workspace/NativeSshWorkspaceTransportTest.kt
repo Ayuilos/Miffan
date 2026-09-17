@@ -14,6 +14,9 @@ import org.apache.sshd.server.channel.ChannelSessionFactory
 import org.apache.sshd.server.Environment
 import org.apache.sshd.server.ExitCallback
 import org.apache.sshd.server.keyprovider.SimpleGeneratorHostKeyProvider
+import org.apache.sshd.sftp.server.FileHandle
+import org.apache.sshd.sftp.server.SftpEventListener
+import org.apache.sshd.server.session.ServerSession
 import org.apache.sshd.sftp.server.SftpSubsystemFactory
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,6 +42,10 @@ class NativeSshWorkspaceTransportTest {
     private lateinit var server: SshServer
     private lateinit var directory: Path
     private lateinit var root: Path
+    private val fileReadDelayMillis = AtomicInteger()
+    private val stallNextSftpRequest = AtomicBoolean(false)
+    private val sftpRequestStalled = CountDownLatch(1)
+    private val releaseSftpRequest = CountDownLatch(1)
     private val delayNextChannelOpen = AtomicBoolean(false)
     private val channelOpenRequested = CountDownLatch(1)
     private val releaseChannelOpen = CountDownLatch(1)
@@ -55,7 +62,23 @@ class NativeSshWorkspaceTransportTest {
             port = 0
             keyPairProvider = SimpleGeneratorHostKeyProvider(directory.resolve("hostkey.ser"))
             passwordAuthenticator = { username, password, _ -> username == "test" && password == "secret" }
-            subsystemFactories = listOf(SftpSubsystemFactory.Builder().build())
+            subsystemFactories = listOf(SftpSubsystemFactory.Builder().build().apply {
+                addSftpEventListener(object : SftpEventListener {
+                    override fun reading(
+                        session: ServerSession, remoteHandle: String, localHandle: FileHandle,
+                        offset: Long, data: ByteArray, dataOffset: Int, dataLen: Int,
+                    ) {
+                        val delay = fileReadDelayMillis.get()
+                        if (delay > 0 && offset < Files.size(localHandle.file)) Thread.sleep(delay.toLong())
+                    }
+                    override fun received(session: ServerSession, type: Int, id: Int) {
+                        if (stallNextSftpRequest.compareAndSet(true, false)) {
+                            sftpRequestStalled.countDown()
+                            releaseSftpRequest.await(10, TimeUnit.SECONDS)
+                        }
+                    }
+                })
+            })
             channelFactories = listOf(object : ChannelSessionFactory() {
                 override fun createChannel(session: Session): Channel = object : ChannelSession() {
                     override fun open(
@@ -140,9 +163,47 @@ class NativeSshWorkspaceTransportTest {
 
     @After fun stopServer() {
         releaseChannelOpen.countDown()
+        releaseSftpRequest.countDown()
         server.stop(true)
         Files.walk(directory).use { files ->
             files.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+        }
+    }
+
+    @Test fun slowDownloadKeepsConnectionWhileBytesContinueToArrive() {
+        val bytes = ByteArray(256 * 1024) { (it % 251).toByte() }
+        Files.write(root.resolve("slow.bin"), bytes)
+        val key = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        NativeSshWorkspaceTransport.open(config(key.sha256Fingerprint), sftpIdleTimeoutMillis = 500).use {
+            fileReadDelayMillis.set(100)
+            val started = System.nanoTime()
+            assertTrue(bytes.contentEquals(it.readBytes("slow.bin")))
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) > 500)
+            assertTrue(it.isConnected)
+        }
+    }
+
+    @Test fun stalledFileRequestTimesOutEvenWhileSshIsAliveAndFreshConnectionWorks() {
+        val key = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        val workspace = NativeSshWorkspaceTransport.open(config(key.sha256Fingerprint), sftpIdleTimeoutMillis = 500)
+        val failure = AtomicReference<Throwable?>()
+        stallNextSftpRequest.set(true)
+        val reader = Thread {
+            try { workspace.list() } catch (error: Throwable) { failure.set(error) }
+        }.apply { isDaemon = true; start() }
+        try {
+            assertTrue(sftpRequestStalled.await(2, TimeUnit.SECONDS))
+            reader.join(3_000)
+            assertFalse("Stalled SFTP must not leave a blocked reader", reader.isAlive)
+            assertTrue("Expected timeout, got ${failure.get()}", failure.get() is RemoteFileTimeoutException)
+            assertFalse(workspace.isConnected)
+        } finally {
+            workspace.close()
+            releaseSftpRequest.countDown()
+            reader.join(2_000)
+        }
+        NativeSshWorkspaceTransport.open(config(key.sha256Fingerprint)).use {
+            assertTrue(it.list().isEmpty())
         }
     }
 

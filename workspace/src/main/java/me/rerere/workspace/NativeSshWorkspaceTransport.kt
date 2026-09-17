@@ -83,7 +83,12 @@ object NativeSshWorkspaceTransport {
         return requireNotNull(repository.seenKey) { "Server did not present an SSH host key" }
     }
 
-    fun open(config: RemoteHostConfig, timeoutMillis: Int = 10_000): RemoteWorkspaceSession {
+    fun open(
+        config: RemoteHostConfig,
+        timeoutMillis: Int = 10_000,
+        sftpIdleTimeoutMillis: Long = 60_000,
+    ): RemoteWorkspaceSession {
+        require(sftpIdleTimeoutMillis > 0)
         require(timeoutMillis > 0)
         val jsch = JSch().apply {
             hostKeyRepository = FingerprintHostKeyRepository(config.trustedHostKeySha256)
@@ -121,7 +126,7 @@ object NativeSshWorkspaceTransport {
             throw error
         }
         return try {
-            RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis)
+            RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis)
                 .also { workspace ->
                     try {
                         workspace.verifyRoot()
@@ -145,13 +150,14 @@ class RemoteWorkspaceSession internal constructor(
     private val session: Session,
     private var paths: RemoteWorkspacePath,
     private val channelTimeoutMillis: Int,
+    private val sftpIdleTimeoutMillis: Long,
 ) : Closeable {
     private val closed = AtomicBoolean(false)
 
     val isConnected: Boolean get() = !closed.get() && session.isConnected
     val resolvedRoot: String get() = paths.root
 
-    internal fun verifyRoot() = withSftp { sftp ->
+    internal fun verifyRoot() = withSftp { sftp, _ ->
         // A selected root may itself be reached through a host symlink (for example macOS /var).
         // Resolve it once; all subsequent file paths still reject links below the selected root.
         paths = RemoteWorkspacePath(resolveSelectedRoot(sftp, paths.root), aliasRoot = paths.root)
@@ -203,7 +209,7 @@ class RemoteWorkspaceSession internal constructor(
     ): WorkspaceCommandResult {
         require(timeoutMillis > 0 && maxOutputBytes > 0)
         val directory = paths.absolute(workingDirectory, allowRoot = true)
-        withSftp { requireDirectoryPath(it, directory) }
+        withSftp { sftp, _ -> requireDirectoryPath(sftp, directory) }
         checkOpen()
         val budget = AtomicInteger(maxOutputBytes)
         val stdout = LimitedOutputStream(budget)
@@ -245,7 +251,7 @@ class RemoteWorkspaceSession internal constructor(
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
         var channel: ChannelExec? = null
         try {
-            withSftp { requireDirectoryPath(it, paths.root) }
+            withSftp { sftp, _ -> requireDirectoryPath(sftp, paths.root) }
             checkOpen()
             channel = session.openChannel("exec") as ChannelExec
             channel.setPty(true)
@@ -266,7 +272,7 @@ class RemoteWorkspaceSession internal constructor(
     }
 
     @Synchronized
-    fun list(path: String = ""): List<WorkspaceFileEntry> = withSftp { sftp ->
+    fun list(path: String = ""): List<WorkspaceFileEntry> = withSftp { sftp, _ ->
         val directory = paths.absolute(path, allowRoot = true)
         requireDirectoryPath(sftp, directory)
         val entries = ArrayList<ChannelSftp.LsEntry>(MAX_LIST_ENTRIES)
@@ -287,7 +293,7 @@ class RemoteWorkspaceSession internal constructor(
     }
 
     @Synchronized
-    fun fileSize(path: String): Long = withSftp { sftp ->
+    fun fileSize(path: String): Long = withSftp { sftp, _ ->
         val attrs = requireSafePath(sftp, paths.absolute(path), expectFile = true)
         attrs.size
     }
@@ -306,11 +312,11 @@ class RemoteWorkspaceSession internal constructor(
     @Synchronized
     fun exportFile(path: String, out: OutputStream, maxBytes: Long = Long.MAX_VALUE) {
         require(maxBytes >= 0)
-        withSftp { sftp ->
+        withSftp { sftp, progress ->
             val absolute = paths.absolute(path)
             val attrs = requireSafePath(sftp, absolute, expectFile = true)
             require(attrs.size <= maxBytes) { "Remote file exceeds read limit" }
-            sftp.get(absolute).use { input -> copyBounded(input, out, maxBytes) }
+            sftp.get(absolute, progress).use { input -> copyBounded(input, out, maxBytes) }
         }
     }
 
@@ -328,7 +334,7 @@ class RemoteWorkspaceSession internal constructor(
         input: InputStream,
         overwrite: Boolean = true,
         maxBytes: Long = 32L * 1024 * 1024,
-    ): WorkspaceFileEntry = withSftp { sftp ->
+    ): WorkspaceFileEntry = withSftp { sftp, progress ->
         require(maxBytes >= 0)
         val relative = paths.relative(path)
         val absolute = paths.absolute(path)
@@ -341,7 +347,7 @@ class RemoteWorkspaceSession internal constructor(
         val backup = "$absolute.miffan-backup-${UUID.randomUUID()}"
         var previousMoved = false
         try {
-            sftp.put(BoundedInputStream(input, maxBytes), staging, ChannelSftp.OVERWRITE)
+            sftp.put(BoundedInputStream(input, maxBytes), staging, progress, ChannelSftp.OVERWRITE)
             requireSafePath(sftp, staging, expectFile = true)
             if (existing != null) {
                 sftp.chmod(existing.permissions and 0x1FF, staging)
@@ -362,13 +368,13 @@ class RemoteWorkspaceSession internal constructor(
     }
 
     @Synchronized
-    fun mkdir(path: String) = withSftp { sftp ->
+    fun mkdir(path: String) = withSftp { sftp, _ ->
         val absolute = paths.absolute(path)
         ensureDirectory(sftp, absolute)
     }
 
     @Synchronized
-    fun delete(path: String, recursive: Boolean = false): Boolean = withSftp { sftp ->
+    fun delete(path: String, recursive: Boolean = false): Boolean = withSftp { sftp, _ ->
         val absolute = paths.absolute(path)
         val attrs = optionalAttrs(sftp, absolute) ?: return@withSftp false
         requireSafePath(sftp, absolute)
@@ -377,7 +383,7 @@ class RemoteWorkspaceSession internal constructor(
     }
 
     @Synchronized
-    fun move(from: String, to: String, overwrite: Boolean = false): WorkspaceFileEntry = withSftp { sftp ->
+    fun move(from: String, to: String, overwrite: Boolean = false): WorkspaceFileEntry = withSftp { sftp, _ ->
         val source = paths.absolute(from)
         val destination = paths.absolute(to)
         require(source != destination) { "Source and destination are the same" }
@@ -407,14 +413,17 @@ class RemoteWorkspaceSession internal constructor(
 
     private fun checkOpen() = check(isConnected) { "Remote workspace is disconnected" }
 
-    private inline fun <T> withSftp(block: (ChannelSftp) -> T): T {
+    private fun <T> withSftp(block: (ChannelSftp, SftpIdleGuard) -> T): T {
         checkOpen()
         val channel = session.openChannel("sftp") as ChannelSftp
-        try {
-            channel.connect(channelTimeoutMillis)
-            return block(channel)
-        } finally {
-            channel.disconnect()
+        return SftpIdleGuard(sftpIdleTimeoutMillis, ::close).run { progress ->
+            try {
+                channel.connect(channelTimeoutMillis)
+                progress.touch()
+                block(channel, progress)
+            } finally {
+                channel.disconnect()
+            }
         }
     }
 

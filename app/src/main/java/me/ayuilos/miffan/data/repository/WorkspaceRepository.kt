@@ -38,6 +38,7 @@ import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RemoteTerminalSession
 import me.rerere.workspace.RemoteWorkspaceSession
 import me.rerere.workspace.RemoteWorkspaceDirectoryException
+import me.rerere.workspace.RemoteFileTimeoutException
 import me.rerere.workspace.SshKeyCodec
 import me.rerere.workspace.SshKeyMaterial
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
@@ -669,9 +670,10 @@ class WorkspaceRepository(
                     reason = shortConnectionReason(error), revision = revision)
                 stage = RemoteConnectionStage.FINISHED
             } else if (stage == RemoteConnectionStage.OPERATING) {
-                val transportLost = error is JSchException ||
+                val transportLost = error is JSchException || error is RemoteFileTimeoutException ||
                     (error is SftpException && session?.isConnected == false)
-                if (transportLost) remoteRuntime.connectionLost(hostId, "SSH 连接已中断", revision)
+                if (transportLost) remoteRuntime.connectionLost(hostId,
+                    if (error is RemoteFileTimeoutException) "远程文件操作超时" else "SSH 连接已中断", revision)
                 if (recordOperation) remoteRuntime.operation(workspace.id,
                     if (transportLost) RemoteOperationOutcome.OUTCOME_UNKNOWN
                     else RemoteOperationOutcome.FILE_FAILED,
@@ -778,6 +780,7 @@ class WorkspaceRepository(
     }
 
     private fun shortConnectionReason(error: Exception): String = when {
+        error is RemoteFileTimeoutException -> "远程文件服务无响应"
         error is JSchException && error.message?.contains("auth", ignoreCase = true) == true ->
             "SSH 认证失败"
         error is JSchException && error.message?.contains("timeout", ignoreCase = true) == true ->
