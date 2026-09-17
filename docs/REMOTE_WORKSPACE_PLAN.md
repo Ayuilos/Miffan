@@ -106,3 +106,22 @@ ARM64 测试包：`app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`。
 2. 已补 SFTP 操作的无进展超时与断连回归测试；后续按需完善连接复用、取消和远程路径表示。
 3. 增加远程 Skill 安装与发现。交互式远程终端已通过原生 SSH PTY 接入。
 4. 需要离线自主执行时，再增加远程常驻任务服务、任务状态持久化与重新连接后的状态恢复。
+
+### RC 私钥导入回归：必须验证 Release
+
+RC.1 的 R8 产物缺少 JSch 通过算法名称动态加载的实现（包括 Ed25519 签名、密钥生成、SHA-256 和 bcrypt），因此 Debug 私钥导出/导入测试通过不能证明正式包可用。workspace 的 consumer rules 需保留 SSH 动态实现，并排除未使用的桌面专用扩展。
+
+后续发布前须在配置正式签名的环境执行：
+
+```sh
+./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest -PtestRelease
+adb install -r app/build/outputs/apk/release/app-arm64-v8a-release.apk
+adb install -r -t app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+adb shell am instrument -w -r me.ayuilos.miffan.app.test/me.ayuilos.miffan.data.repository.SshReleaseTestRunner
+```
+
+测试使用由 Debug SshKeyCodec 生成、从未授权到任何服务器的合成密钥，覆盖无加密备份跨构建导入、加密/无加密导出回导、密钥生成及运行时算法加载。不需要读取用户私钥。
+
+Release 使用独立的轻量 JUnit 运行器，避免 AndroidJUnitRunner 依赖已被正式构建裁剪的 AndroidX tracing 类；普通 Debug 测试保持原运行器。验收须看到 `Tests run: 3, failures: 0` 和 `INSTRUMENTATION_CODE: -1`，不能只依据 adb 命令退出码判断。x86_64 模拟器请安装对应 ABI 的 APK。
+
+2026-09-17 已在 Android 35 模拟器完成对照：原已发布 RC.1 的合成 Debug 私钥导入复现“无法导入私钥，请检查私钥格式和口令”，且算法加载报 `ClassNotFoundException`；修复后的正式签名、R8 优化 APK 同一组 3 项测试全部通过。导入用例反射调用 APK 中实际的 `SshKeyCodec.importPrivateKey`（兼容 R8 静态化），密钥生成及加密/无加密回导用例直接验证 APK 中的 JSch 实现。测试未访问用户私钥，也未连接用户远程主机。

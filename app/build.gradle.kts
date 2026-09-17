@@ -40,17 +40,23 @@ if (hasGoogleServicesConfig) {
 android {
     namespace = "me.ayuilos.miffan"
     compileSdk = 37
+    // Opt in to testing the optimized, production-signed app rather than only Debug.
+    testBuildType = if (providers.gradleProperty("testRelease").isPresent) "release" else "debug"
 
     defaultConfig {
         applicationId = "me.ayuilos.miffan.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 178016
-        versionName = "3.4.0-rc.1"
+        versionCode = 178017
+        versionName = "3.4.0-rc.2"
 
         buildConfigField("boolean", "FIREBASE_ENABLED", hasGoogleServicesConfig.toString())
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = if (providers.gradleProperty("testRelease").isPresent) {
+            "me.ayuilos.miffan.data.repository.SshReleaseTestRunner"
+        } else {
+            "androidx.test.runner.AndroidJUnitRunner"
+        }
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
