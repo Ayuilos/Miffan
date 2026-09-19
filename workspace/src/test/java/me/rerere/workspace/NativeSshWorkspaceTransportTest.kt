@@ -183,7 +183,7 @@ class NativeSshWorkspaceTransportTest {
         }
     }
 
-    @Test fun stalledFileRequestTimesOutEvenWhileSshIsAliveAndFreshConnectionWorks() {
+    @Test fun stalledFileRequestTimesOutWithoutClosingOtherSshChannels() {
         val key = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
         val workspace = NativeSshWorkspaceTransport.open(config(key.sha256Fingerprint), sftpIdleTimeoutMillis = 500)
         val failure = AtomicReference<Throwable?>()
@@ -196,7 +196,7 @@ class NativeSshWorkspaceTransportTest {
             reader.join(3_000)
             assertFalse("Stalled SFTP must not leave a blocked reader", reader.isAlive)
             assertTrue("Expected timeout, got ${failure.get()}", failure.get() is RemoteFileTimeoutException)
-            assertFalse(workspace.isConnected)
+            assertTrue(workspace.isConnected)
         } finally {
             workspace.close()
             releaseSftpRequest.countDown()
@@ -204,6 +204,33 @@ class NativeSshWorkspaceTransportTest {
         }
         NativeSshWorkspaceTransport.open(config(key.sha256Fingerprint)).use {
             assertTrue(it.list().isEmpty())
+        }
+    }
+
+    @Test fun cancellingOneSftpChannelKeepsConcurrentExecAlive() {
+        val key = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        val workspace = NativeSshWorkspaceTransport.open(config(key.sha256Fingerprint),
+            sftpIdleTimeoutMillis = 30_000)
+        val failure = AtomicReference<Throwable?>()
+        val operation = workspace.newOperation()
+        stallNextSftpRequest.set(true)
+        val reader = Thread {
+            try { workspace.withOperation(operation) { workspace.list() } }
+            catch (error: Throwable) { failure.set(error) }
+        }.apply { isDaemon = true; start() }
+        try {
+            assertTrue(sftpRequestStalled.await(2, TimeUnit.SECONDS))
+            val result = workspace.execute("printf alive")
+            assertEquals("alive", result.stdout)
+            operation.cancel()
+            reader.join(3_000)
+            assertFalse(reader.isAlive)
+            assertTrue(workspace.isConnected)
+            assertTrue(failure.get() != null)
+        } finally {
+            releaseSftpRequest.countDown()
+            reader.join(2_000)
+            workspace.close()
         }
     }
 
@@ -315,7 +342,7 @@ class NativeSshWorkspaceTransportTest {
         }
     }
 
-    @Test fun interactivePtyKeepsShellOpenAcrossCommandsAndClosesSession() {
+    @Test fun interactivePtyKeepsShellOpenAcrossCommandsAndClosesOnlyItsChannel() {
         val fingerprint = NativeSshWorkspaceTransport
             .discoverHostKey("127.0.0.1", server.port).sha256Fingerprint
         Files.createDirectory(root.resolve("nested"))
@@ -369,10 +396,11 @@ class NativeSshWorkspaceTransportTest {
         }
         assertFalse("Closing the terminal must unblock its output reader", reader.isAlive)
         assertFalse(terminal.isConnected)
-        assertFalse(workspace.isConnected)
+        assertTrue(workspace.isConnected)
+        workspace.close()
     }
 
-    @Test fun failedTerminalStartupClosesOwningSshSession() {
+    @Test fun failedTerminalStartupKeepsParentSshSession() {
         val fingerprint = NativeSshWorkspaceTransport
             .discoverHostKey("127.0.0.1", server.port).sha256Fingerprint
         val workspace = NativeSshWorkspaceTransport.open(config(fingerprint))
@@ -392,7 +420,7 @@ class NativeSshWorkspaceTransportTest {
             worker.join(5_000)
             assertFalse("terminal startup did not finish", worker.isAlive)
             assertTrue("expected a channel-open failure, got ${failure.get()}", failure.get() is JSchException)
-            assertFalse("failed terminal startup leaked the SSH session", workspace.isConnected)
+            assertTrue("failed terminal startup must not close other channels", workspace.isConnected)
         } finally {
             releaseChannelOpen.countDown()
             worker.join(5_000)
