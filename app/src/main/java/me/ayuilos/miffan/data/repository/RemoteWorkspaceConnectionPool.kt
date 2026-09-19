@@ -42,6 +42,7 @@ internal class RemoteWorkspaceConnectionPool<T : Closeable>(
         var references = 0
         var openJob: Job? = null
         var idleJob: Job? = null
+        var idleGeneration = 0L
     }
 
     private val lock = Any()
@@ -122,6 +123,7 @@ internal class RemoteWorkspaceConnectionPool<T : Closeable>(
                 }
             }
             entry.idleJob?.cancel()
+            entry.idleGeneration++
             entry.idleJob = null
             entry.references++
         }
@@ -182,6 +184,7 @@ internal class RemoteWorkspaceConnectionPool<T : Closeable>(
 
     private fun scheduleIdle(entry: Entry<T>) {
         entry.idleJob?.cancel()
+        val generation = ++entry.idleGeneration
         val deadline = nowNanos() + TimeUnit.MILLISECONDS.toNanos(idleMillis)
         entry.idleJob = scope.launch {
             while (true) {
@@ -190,7 +193,8 @@ internal class RemoteWorkspaceConnectionPool<T : Closeable>(
                 sleep(TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1))
             }
             synchronized(lock) {
-                if (entries[entry.identity.workspaceId] === entry && entry.references == 0) {
+                if (entries[entry.identity.workspaceId] === entry && entry.references == 0 &&
+                    entry.idleGeneration == generation) {
                     evict(entry, RemoteConnectionStatus.DISCONNECTED)
                 }
             }

@@ -1020,11 +1020,11 @@ internal fun workspaceCardRemoteStatus(workspaceStrings: Resources,
     connectionStatus: RemoteConnectionStatus? = null,
 ): String {
     if (host == null) return workspaceStrings.getString(R.string.workspace_host_config_unavailable)
-    if (connectionStatus != null) return remoteWorkspaceStatusLabel(workspaceStrings,
-        workspace, hostState, workspaceState, connectionStatus)
     if (workspaceState?.lastOperation?.outcome == RemoteOperationOutcome.OUTCOME_UNKNOWN) {
         return workspaceStrings.getString(R.string.workspace_last_outcome_unknown)
     }
+    if (connectionStatus != null) return remoteWorkspaceStatusLabel(workspaceStrings,
+        workspace, hostState, workspaceState, connectionStatus)
     // Select compact status from structured state, never by matching translated text.
     if (workspaceState?.activity == RemoteConnectionActivity.CONNECTING ||
         workspaceState?.activity == RemoteConnectionActivity.OPERATING ||

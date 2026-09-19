@@ -81,7 +81,7 @@ fun RemoteWorkspaceTerminalPage(
     }
     var showCloseConfirm by remember(workspace.id) { mutableStateOf(false) }
 
-    BackHandler { showCloseConfirm = true }
+    BackHandler(onBack = onBack)
     LaunchedEffect(workspace.id, identity, targetChanged) {
         if (targetChanged) {
             RemoteTerminalRegistry.close(workspace.id)
@@ -124,7 +124,12 @@ fun RemoteWorkspaceTerminalPage(
                             )
                         }
                     },
-                    navigationIcon = { BackButton(onClick = { showCloseConfirm = true }) },
+                    navigationIcon = { BackButton(onClick = onBack) },
+                    actions = {
+                        TextButton(onClick = { showCloseConfirm = true }) {
+                            Text(stringResource(R.string.workspace_connection_disconnect))
+                        }
+                    },
                 )
             },
         ) { padding ->

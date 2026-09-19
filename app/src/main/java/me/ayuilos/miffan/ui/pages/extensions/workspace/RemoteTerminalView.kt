@@ -94,6 +94,9 @@ internal class RemoteTerminalView(context: Context) : View(context) {
         set(value) {
             field.detach(this)
             field = value
+            value.emulator.resize(columns, rows)
+            topRow = 0
+            scrollRemainder = 0f
             value.attach(this)
             invalidate()
         }

@@ -122,4 +122,54 @@ class RemoteWorkspaceConnectionPoolTest {
         assertEquals(RemoteConnectionStatus.CONNECTED, pool.states.value[identity.workspaceId])
         replacement.close()
     }
+    @Test(timeout = 10_000) fun cancelledIdleTimerCannotEvictRenewedIdlePeriod() = runBlocking {
+        val clock = java.util.concurrent.atomic.AtomicLong(0)
+        val sleeps = AtomicInteger()
+        val oldTimerStarted = CompletableDeferred<Unit>()
+        val oldTimerResume = CompletableDeferred<Unit>()
+        val newTimerStarted = CompletableDeferred<Unit>()
+        val newTimerResume = CompletableDeferred<Unit>()
+        val owner = SupervisorJob()
+        val pool = RemoteWorkspaceConnectionPool<FakeConnection>(
+            connected = { it.open }, idleMillis = 100,
+            nowNanos = clock::get,
+            sleep = {
+                // Model an already-dispatched timer callback racing lease renewal.
+                withContext(NonCancellable) {
+                    if (sleeps.incrementAndGet() == 1) {
+                        oldTimerStarted.complete(Unit)
+                        oldTimerResume.await()
+                    } else {
+                        newTimerStarted.complete(Unit)
+                        newTimerResume.await()
+                    }
+                }
+            },
+            scope = CoroutineScope(owner + Dispatchers.Default),
+        )
+        try {
+            val first = pool.acquire(identity) { FakeConnection() }
+            first.close()
+            oldTimerStarted.await()
+            clock.set(90_000_000)
+            val renewed = pool.acquire(identity) { error("Must reuse connection") }
+            renewed.close()
+            newTimerStarted.await()
+            clock.set(110_000_000)
+            oldTimerResume.complete(Unit)
+            delay(50)
+            assertTrue("Old idle callback must not close renewed session", renewed.session.open)
+            clock.set(200_000_000)
+            newTimerResume.complete(Unit)
+            kotlinx.coroutines.withTimeout(1_000) {
+                while (renewed.session.open) delay(1)
+            }
+        } finally {
+            oldTimerResume.complete(Unit)
+            newTimerResume.complete(Unit)
+            pool.forget(identity.workspaceId)
+            owner.cancel()
+        }
+    }
+
 }

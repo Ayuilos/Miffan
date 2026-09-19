@@ -55,6 +55,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
@@ -141,14 +144,17 @@ fun WorkspaceDetailPage(
     val remoteWorkspaceStates by vm.remoteWorkspaceStates.collectAsStateWithLifecycle()
     val remoteConnectionStates by vm.remoteConnectionStates.collectAsStateWithLifecycle()
     val repository: WorkspaceRepository = koinInject()
+    val lifecycleOwner = LocalLifecycleOwner.current
     var connectionGeneration by remember(id) { mutableIntStateOf(0) }
     val pagerState = rememberPagerState(initialPage = FILES_PAGE) { if (state.workspace?.isRemote == true) 2 else 3 }
     val scope = rememberCoroutineScope()
     LaunchedEffect(id, state.workspace?.remotePath, state.remoteHost?.connectionRevision,
-        connectionGeneration) {
+        connectionGeneration, lifecycleOwner) {
         if (state.workspace?.isRemote != true || state.remoteHost == null) return@LaunchedEffect
-        val lease = runCatching { repository.retainRemoteWorkspace(id) }.getOrNull()
-        try { awaitCancellation() } finally { lease?.close() }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val lease = runCatching { repository.retainRemoteWorkspace(id) }.getOrNull()
+            try { awaitCancellation() } finally { lease?.close() }
+        }
     }
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
