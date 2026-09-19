@@ -136,11 +136,8 @@ class WorkspaceRepository(
 
     private suspend fun <T> runRemoteOperation(session: RemoteWorkspaceSession, block: () -> T): T {
         val operation = session.newOperation()
-        return try {
-            runRemoteInterruptible { session.withOperation(operation, block) }
-        } catch (error: CancellationException) {
-            operation.cancel()
-            throw error
+        return runCancellableRemoteOperation(operation) {
+            session.withOperation(operation, block)
         }
     }
 
