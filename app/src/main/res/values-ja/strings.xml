@@ -1447,7 +1447,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_recent_failure">最近のエラー</string>
   <string name="workspace_operation_history">操作履歴</string>
   <string name="workspace_action_required">対応が必要です</string>
-  <string name="workspace_ssh_on_demand_explanation">SSH は必要なときに接続し、接続を維持しません。選択したディレクトリは作業ディレクトリであり、Shell のセキュリティ境界ではありません。ファイルはリモートディレクトリに対応します。</string>
+  <string name="workspace_ssh_on_demand_explanation">このワークスペースの使用中は SSH 接続を再利用し、アイドル状態が続くと切断します。選択したディレクトリは作業ディレクトリであり、Shell のセキュリティ境界ではありません。ファイルはリモートディレクトリに対応します。</string>
   <string name="workspace_collapse_file_approvals">ファイルツールの承認設定を閉じる</string>
   <string name="workspace_file_approval_settings">ファイルツールの承認設定</string>
   <string name="workspace_file_shell_approval_explanation">リモートファイルツールを呼び出すたびの承認をここで設定します。AI Shell の利用とコマンドごとの承認は、アシスタントの設定で別々に管理します。Shell は SSH アカウントの権限で、選択したディレクトリの外部にもアクセスできます。</string>
@@ -1621,8 +1621,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_remote_host_config_unavailable">リモートホストの設定を利用できません</string>
   <string name="workspace_reconnect">再接続</string>
   <string name="workspace_close_terminal_title">リモートターミナルを閉じますか？</string>
-  <string name="workspace_close_terminal_message">現在の SSH セッションを切断します。切断してもサーバー上のプロセスが停止するとは限りません。</string>
-  <string name="workspace_disconnect_back">切断して戻る</string>
+  <string name="workspace_close_terminal_message">現在のターミナルセッションを閉じます。サーバー上のプロセスは実行を続ける場合があります。</string>
+  <string name="workspace_disconnect_back">ターミナルを閉じて戻る</string>
   <string name="workspace_keep_using">使用を続ける</string>
   <string name="workspace_keyboard">キーボード</string>
   <string name="workspace_paste">貼り付け</string>
@@ -1744,4 +1744,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_rootfs_source">固定ソース：Ubuntu Base 24.04.4（HTTPS + SHA-256 検証済み、端末のアーキテクチャに合わせて選択）</string>
   <string name="workspace_resource_check_failed">ワークスペースのリソースを確認できません</string>
   <string name="workspace_terminal_start_failed">ターミナルを起動できません</string>
+  <string name="workspace_connection_connected">接続済み</string>
+  <string name="workspace_connection_reconnecting">再接続中</string>
+  <string name="workspace_connection_connect">接続</string>
+  <string name="workspace_connection_disconnect">切断</string>
 </resources>

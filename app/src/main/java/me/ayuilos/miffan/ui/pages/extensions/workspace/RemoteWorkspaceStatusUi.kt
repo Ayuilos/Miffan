@@ -8,17 +8,27 @@ import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.repository.RemoteConfigurationState
 import me.ayuilos.miffan.data.repository.RemoteConnectionActivity
+import me.ayuilos.miffan.data.repository.RemoteConnectionStatus
 import me.ayuilos.miffan.data.repository.RemoteHostRuntimeState
 import me.ayuilos.miffan.data.repository.RemoteOperationOutcome
 import me.ayuilos.miffan.data.repository.RemoteWorkspaceRuntimeState
 import me.rerere.workspace.WorkspaceShellStatus
 
-/** Remote SSH is connected only during an operation; a successful old test never means online. */
+/** Live connection state comes from the session owner, never a historical test result. */
 internal fun remoteWorkspaceStatusLabel(workspaceStrings: Resources,
     workspace: WorkspaceEntity,
     host: RemoteHostRuntimeState?,
     runtime: RemoteWorkspaceRuntimeState?,
+    connection: RemoteConnectionStatus? = null,
 ): String {
+    when (connection) {
+        RemoteConnectionStatus.CONNECTED -> return workspaceStrings.getString(R.string.workspace_connection_connected)
+        RemoteConnectionStatus.CONNECTING -> return workspaceStrings.getString(R.string.workspace_connecting_remote_server)
+        RemoteConnectionStatus.RECONNECTING -> return workspaceStrings.getString(R.string.workspace_connection_reconnecting)
+        RemoteConnectionStatus.FAILED -> return workspaceStrings.getString(R.string.workspace_connection_failed_retry)
+        RemoteConnectionStatus.DISCONNECTED -> return workspaceStrings.getString(R.string.workspace_disconnected)
+        null -> Unit
+    }
     val activity = runtime?.activity
     if (activity == RemoteConnectionActivity.CONNECTING) return workspaceStrings.getString(R.string.workspace_connecting_remote_server)
     if (activity == RemoteConnectionActivity.OPERATING) return workspaceStrings.getString(R.string.workspace_remote_operation_running)

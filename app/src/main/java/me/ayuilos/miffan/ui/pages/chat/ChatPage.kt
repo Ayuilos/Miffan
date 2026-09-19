@@ -488,6 +488,7 @@ private fun ChatPageContent(
     val remoteHosts by workspaceRepository.listHostsFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     val remoteHostStates by workspaceRepository.remoteHostStates.collectAsStateWithLifecycle()
     val remoteWorkspaceStates by workspaceRepository.remoteWorkspaceStates.collectAsStateWithLifecycle()
+    val remoteConnectionStates by workspaceRepository.remoteConnectionStates.collectAsStateWithLifecycle()
     val selectedWorkspace = workspaces.find { it.id == workspaceId }
     val workspaceEntry = resolveChatWorkspaceEntry(
         boundWorkspaceId = workspaceId,
@@ -500,6 +501,7 @@ private fun ChatPageContent(
                 workspace,
                 workspace.remoteHostId?.let(remoteHostStates::get),
                 remoteWorkspaceStates[workspace.id],
+                remoteConnectionStates[workspace.id],
             )
         },
     )

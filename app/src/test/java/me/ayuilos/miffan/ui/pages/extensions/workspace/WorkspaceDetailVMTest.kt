@@ -42,6 +42,7 @@ class WorkspaceDetailVMTest {
     private fun repository(): WorkspaceRepository = mockk<WorkspaceRepository>().also { repository ->
         every { repository.remoteHostStates } returns MutableStateFlow<Map<String, RemoteHostRuntimeState>>(emptyMap())
         every { repository.remoteWorkspaceStates } returns MutableStateFlow<Map<String, RemoteWorkspaceRuntimeState>>(emptyMap())
+        every { repository.remoteConnectionStates } returns MutableStateFlow(emptyMap())
         coEvery { repository.getById("ws") } returns workspace
         coEvery { repository.getHostById("host") } returns host
     }
