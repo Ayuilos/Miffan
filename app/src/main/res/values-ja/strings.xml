@@ -1615,7 +1615,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_terminal_connection_failed">リモートターミナルに接続できませんでした</string>
   <string name="workspace_connecting_host">%1$s に接続中…</string>
   <string name="workspace_remote_host">リモートホスト</string>
-  <string name="workspace_connection_ended_exit">接続終了 · 終了コード %1$s</string>
+  <string name="workspace_connection_ended_exit">接続終了 · 終了コード %1$d</string>
   <string name="workspace_disconnected">切断されました</string>
   <string name="workspace_terminal_target_changed">接続設定が変更されました。戻ってターミナルを開き直してください。</string>
   <string name="workspace_remote_host_config_unavailable">リモートホストの設定を利用できません</string>
@@ -1642,12 +1642,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_open_workspaces">ワークスペースを開く</string>
   <string name="workspace_later">あとで</string>
   <string name="workspace_directory_check_timeout">ディレクトリの確認がタイムアウトしました。リモート側の結果は不明です</string>
-  <string name="workspace_directory_check_exit">ディレクトリ確認コマンドの終了コード：%1$s</string>
+  <string name="workspace_directory_check_exit">ディレクトリ確認コマンドの終了コード：%1$d</string>
   <string name="workspace_cancelled_outcome_unknown">操作をキャンセルしました。リモート側の結果は不明です</string>
   <string name="workspace_remote_directory_unavailable">リモートディレクトリにアクセスできません</string>
   <string name="workspace_remote_directory_changed">リモートディレクトリの参照先が変更されました</string>
   <string name="workspace_command_timeout_unknown">コマンドがタイムアウトしました。リモート側の結果は不明です</string>
-  <string name="workspace_command_exit_code">コマンドの終了コード：%1$s</string>
+  <string name="workspace_command_exit_code">コマンドの終了コード：%1$d</string>
   <string name="workspace_remote_file_timeout">リモートファイル操作がタイムアウトしました</string>
   <string name="workspace_ssh_interrupted">SSH 接続が中断されました</string>
   <string name="workspace_connection_lost_unknown">接続が切れました。リモート側の結果は不明です</string>
@@ -1661,8 +1661,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_ssh_auth_failed">SSH 認証に失敗しました</string>
   <string name="workspace_ssh_timeout">SSH 接続がタイムアウトしました</string>
   <string name="workspace_ssh_failed">SSH 接続に失敗しました</string>
-  <string name="workspace_file_preview_too_large">ファイルが大きすぎてプレビューできません（%1$s バイト）</string>
-  <string name="workspace_file_in_app_preview_too_large">ファイルが大きすぎてアプリ内でプレビューできません（%1$s バイト）</string>
+  <string name="workspace_file_preview_too_large">ファイルが大きすぎてプレビューできません（%1$d バイト）</string>
+  <string name="workspace_file_in_app_preview_too_large">ファイルが大きすぎてアプリ内でプレビューできません（%1$d バイト）</string>
   <string name="workspace_not_bound">ワークスペースが関連付けられていません</string>
   <string name="workspace_target_unavailable">対象のワークスペースは現在利用できません</string>
   <string name="workspace_cannot_confirm_target">実行先を確認できませんでした。ワークスペースを確認して再試行してください。</string>
@@ -1675,7 +1675,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_change_shell_approval_failed">Shell の承認設定を変更できませんでした</string>
   <string name="workspace_understood">了解</string>
   <string name="workspace_remote_server_line">リモートサーバー · %1$s\n</string>
-  <string name="workspace_account_line">アカウント %1$s@%2$s:%3$s\n</string>
+  <string name="workspace_account_line">アカウント %1$s@%2$s:%3$d\n</string>
   <string name="workspace_directory_label">ディレクトリ %1$s</string>
   <string name="workspace_local_device_local">ローカルデバイス · ローカル</string>
   <string name="workspace_remote_shared_directory_path">リモート共有ディレクトリ · %1$s</string>

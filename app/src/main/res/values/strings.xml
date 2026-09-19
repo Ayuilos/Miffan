@@ -1613,7 +1613,7 @@
   <string name="workspace_terminal_connection_failed">Could not connect to remote terminal</string>
   <string name="workspace_connecting_host">Connecting to %1$s…</string>
   <string name="workspace_remote_host">Remote host</string>
-  <string name="workspace_connection_ended_exit">Connection ended · Exit code %1$s</string>
+  <string name="workspace_connection_ended_exit">Connection ended · Exit code %1$d</string>
   <string name="workspace_disconnected">Disconnected</string>
   <string name="workspace_terminal_target_changed">Connection settings changed. Go back and reopen the terminal.</string>
   <string name="workspace_remote_host_config_unavailable">Remote host configuration unavailable</string>
@@ -1640,12 +1640,12 @@
   <string name="workspace_open_workspaces">Open workspaces</string>
   <string name="workspace_later">Later</string>
   <string name="workspace_directory_check_timeout">Directory check timed out; remote outcome unknown</string>
-  <string name="workspace_directory_check_exit">Directory check command exited with code %1$s</string>
+  <string name="workspace_directory_check_exit">Directory check command exited with code %1$d</string>
   <string name="workspace_cancelled_outcome_unknown">Operation cancelled; remote outcome unknown</string>
   <string name="workspace_remote_directory_unavailable">Remote directory inaccessible</string>
   <string name="workspace_remote_directory_changed">Remote directory target changed</string>
   <string name="workspace_command_timeout_unknown">Command timed out; remote outcome unknown</string>
-  <string name="workspace_command_exit_code">Command exited with code %1$s</string>
+  <string name="workspace_command_exit_code">Command exited with code %1$d</string>
   <string name="workspace_remote_file_timeout">Remote file operation timed out</string>
   <string name="workspace_ssh_interrupted">SSH connection interrupted</string>
   <string name="workspace_connection_lost_unknown">Connection lost; remote outcome unknown</string>
@@ -1659,8 +1659,8 @@
   <string name="workspace_ssh_auth_failed">SSH authentication failed</string>
   <string name="workspace_ssh_timeout">SSH connection timed out</string>
   <string name="workspace_ssh_failed">SSH connection failed</string>
-  <string name="workspace_file_preview_too_large">File too large to preview (%1$s bytes)</string>
-  <string name="workspace_file_in_app_preview_too_large">File too large for in-app preview (%1$s bytes)</string>
+  <string name="workspace_file_preview_too_large">File too large to preview (%1$d bytes)</string>
+  <string name="workspace_file_in_app_preview_too_large">File too large for in-app preview (%1$d bytes)</string>
   <string name="workspace_not_bound">No workspace linked</string>
   <string name="workspace_target_unavailable">Target workspace is currently unavailable</string>
   <string name="workspace_cannot_confirm_target">Could not confirm the execution target. Check the workspace and retry.</string>
@@ -1673,7 +1673,7 @@
   <string name="workspace_change_shell_approval_failed">Could not change Shell approval</string>
   <string name="workspace_understood">Got it</string>
   <string name="workspace_remote_server_line">Remote server · %1$s\n</string>
-  <string name="workspace_account_line">Account %1$s@%2$s:%3$s\n</string>
+  <string name="workspace_account_line">Account %1$s@%2$s:%3$d\n</string>
   <string name="workspace_directory_label">Directory %1$s</string>
   <string name="workspace_local_device_local">Local device · Local</string>
   <string name="workspace_remote_shared_directory_path">Remote shared directory · %1$s</string>

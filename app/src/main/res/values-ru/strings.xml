@@ -1615,7 +1615,7 @@
   <string name="workspace_terminal_connection_failed">Не удалось подключиться к удалённому терминалу</string>
   <string name="workspace_connecting_host">Подключение к %1$s…</string>
   <string name="workspace_remote_host">Удалённый хост</string>
-  <string name="workspace_connection_ended_exit">Соединение завершено · Код выхода %1$s</string>
+  <string name="workspace_connection_ended_exit">Соединение завершено · Код выхода %1$d</string>
   <string name="workspace_disconnected">Отключено</string>
   <string name="workspace_terminal_target_changed">Настройки подключения изменились. Вернитесь и откройте терминал заново.</string>
   <string name="workspace_remote_host_config_unavailable">Настройки удалённого хоста недоступны</string>
@@ -1642,12 +1642,12 @@
   <string name="workspace_open_workspaces">Открыть рабочие пространства</string>
   <string name="workspace_later">Позже</string>
   <string name="workspace_directory_check_timeout">Время проверки каталога истекло; результат на удалённой стороне неизвестен</string>
-  <string name="workspace_directory_check_exit">Команда проверки каталога завершилась с кодом %1$s</string>
+  <string name="workspace_directory_check_exit">Команда проверки каталога завершилась с кодом %1$d</string>
   <string name="workspace_cancelled_outcome_unknown">Операция отменена; результат на удалённой стороне неизвестен</string>
   <string name="workspace_remote_directory_unavailable">Удалённый каталог недоступен</string>
   <string name="workspace_remote_directory_changed">Целевой удалённый каталог изменился</string>
   <string name="workspace_command_timeout_unknown">Время выполнения команды истекло; результат на удалённой стороне неизвестен</string>
-  <string name="workspace_command_exit_code">Команда завершилась с кодом %1$s</string>
+  <string name="workspace_command_exit_code">Команда завершилась с кодом %1$d</string>
   <string name="workspace_remote_file_timeout">Время удалённой файловой операции истекло</string>
   <string name="workspace_ssh_interrupted">Соединение SSH прервано</string>
   <string name="workspace_connection_lost_unknown">Соединение потеряно; результат на удалённой стороне неизвестен</string>
@@ -1661,8 +1661,8 @@
   <string name="workspace_ssh_auth_failed">Ошибка аутентификации SSH</string>
   <string name="workspace_ssh_timeout">Время подключения SSH истекло</string>
   <string name="workspace_ssh_failed">Не удалось подключиться по SSH</string>
-  <string name="workspace_file_preview_too_large">Файл слишком велик для предпросмотра (%1$s байт)</string>
-  <string name="workspace_file_in_app_preview_too_large">Файл слишком велик для предпросмотра в приложении (%1$s байт)</string>
+  <string name="workspace_file_preview_too_large">Файл слишком велик для предпросмотра (%1$d байт)</string>
+  <string name="workspace_file_in_app_preview_too_large">Файл слишком велик для предпросмотра в приложении (%1$d байт)</string>
   <string name="workspace_not_bound">Рабочее пространство не привязано</string>
   <string name="workspace_target_unavailable">Целевое рабочее пространство сейчас недоступно</string>
   <string name="workspace_cannot_confirm_target">Не удалось подтвердить цель выполнения. Проверьте рабочее пространство и повторите попытку.</string>
@@ -1675,7 +1675,7 @@
   <string name="workspace_change_shell_approval_failed">Не удалось изменить подтверждение Shell</string>
   <string name="workspace_understood">Понятно</string>
   <string name="workspace_remote_server_line">Удалённый сервер · %1$s\n</string>
-  <string name="workspace_account_line">Учётная запись %1$s@%2$s:%3$s\n</string>
+  <string name="workspace_account_line">Учётная запись %1$s@%2$s:%3$d\n</string>
   <string name="workspace_directory_label">Каталог %1$s</string>
   <string name="workspace_local_device_local">Локальное устройство · Локально</string>
   <string name="workspace_remote_shared_directory_path">Общий удалённый каталог · %1$s</string>

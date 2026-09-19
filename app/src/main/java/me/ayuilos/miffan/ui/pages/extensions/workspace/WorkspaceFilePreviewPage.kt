@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +96,7 @@ fun WorkspaceFilePreviewPage(
     val repository = koinInject<WorkspaceRepository>()
     val navController = LocalNavController.current
     val context = LocalContext.current
+    val workspaceStrings = LocalResources.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     val artifact = remember(id, path) {
@@ -115,7 +117,7 @@ fun WorkspaceFilePreviewPage(
     suspend fun cachedFile(): File = repository.exportArtifactToCache(context, artifact)
 
     fun reportFailure(error: Throwable) {
-        toaster.show(error.workspaceErrorMessage(context.resources) ?: context.getString(R.string.workspace_open_file_failed), type = ToastType.Error)
+        toaster.show(error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_open_file_failed), type = ToastType.Error)
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -131,7 +133,7 @@ fun WorkspaceFilePreviewPage(
                         output,
                         artifact.scopeId,
                     )
-                } ?: error(context.getString(R.string.workspace_export_destination_failed))
+                } ?: error(workspaceStrings.getString(R.string.workspace_export_destination_failed))
             }.onFailure(::reportFailure)
         }
     }
@@ -157,7 +159,7 @@ fun WorkspaceFilePreviewPage(
                             "docx" -> DocxParser.parse(file)
                             "pptx" -> PptxParser.parse(file)
                             "epub" -> EpubParser.parse(file)
-                            else -> error(context.getString(R.string.workspace_unsupported_document))
+                            else -> error(workspaceStrings.getString(R.string.workspace_unsupported_document))
                         }
                         WorkspacePreviewContent.DocumentText(file, text)
                     }
@@ -166,7 +168,7 @@ fun WorkspaceFilePreviewPage(
                         val file = repository.exportArtifactToCache(context, artifact)
                         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                             PdfRenderer(descriptor).use { renderer ->
-                                require(renderer.pageCount > 0) { context.getString(R.string.workspace_empty_pdf) }
+                                require(renderer.pageCount > 0) { workspaceStrings.getString(R.string.workspace_empty_pdf) }
                             }
                         }
                         WorkspacePreviewContent.File(file)
@@ -178,7 +180,7 @@ fun WorkspaceFilePreviewPage(
                 }
             }
         }.onSuccess { preview = it }
-            .onFailure { loadError = it.workspaceErrorMessage(context.resources) ?: context.getString(R.string.workspace_preview_failed) }
+            .onFailure { loadError = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_preview_failed) }
     }
 
     Scaffold(

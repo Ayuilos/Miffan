@@ -1615,7 +1615,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_terminal_connection_failed">无法连接远程终端</string>
   <string name="workspace_connecting_host">正在连接 %1$s…</string>
   <string name="workspace_remote_host">远程主机</string>
-  <string name="workspace_connection_ended_exit">连接已结束 · 退出码 %1$s</string>
+  <string name="workspace_connection_ended_exit">连接已结束 · 退出码 %1$d</string>
   <string name="workspace_disconnected">连接已断开</string>
   <string name="workspace_terminal_target_changed">连接配置已变化，请返回后重新打开终端</string>
   <string name="workspace_remote_host_config_unavailable">远程主机配置不可用</string>
@@ -1642,12 +1642,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_open_workspaces">打开工作空间</string>
   <string name="workspace_later">稍后再说</string>
   <string name="workspace_directory_check_timeout">目录检查超时，远程结果不确定</string>
-  <string name="workspace_directory_check_exit">目录检查命令退出码 %1$s</string>
+  <string name="workspace_directory_check_exit">目录检查命令退出码 %1$d</string>
   <string name="workspace_cancelled_outcome_unknown">操作已取消，远程结果不确定</string>
   <string name="workspace_remote_directory_unavailable">远程目录不可访问</string>
   <string name="workspace_remote_directory_changed">远程目录目标已改变</string>
   <string name="workspace_command_timeout_unknown">命令超时，远程结果不确定</string>
-  <string name="workspace_command_exit_code">命令退出码 %1$s</string>
+  <string name="workspace_command_exit_code">命令退出码 %1$d</string>
   <string name="workspace_remote_file_timeout">远程文件操作超时</string>
   <string name="workspace_ssh_interrupted">SSH 连接已中断</string>
   <string name="workspace_connection_lost_unknown">连接中断，远程结果不确定</string>
@@ -1661,8 +1661,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_ssh_auth_failed">SSH 认证失败</string>
   <string name="workspace_ssh_timeout">SSH 连接超时</string>
   <string name="workspace_ssh_failed">SSH 连接失败</string>
-  <string name="workspace_file_preview_too_large">文件过大, 无法预览 (%1$s bytes)</string>
-  <string name="workspace_file_in_app_preview_too_large">文件过大, 无法在应用内预览 (%1$s bytes)</string>
+  <string name="workspace_file_preview_too_large">文件过大, 无法预览 (%1$d bytes)</string>
+  <string name="workspace_file_in_app_preview_too_large">文件过大, 无法在应用内预览 (%1$d bytes)</string>
   <string name="workspace_not_bound">未绑定工作空间</string>
   <string name="workspace_target_unavailable">目标工作空间当前不可用</string>
   <string name="workspace_cannot_confirm_target">无法确认当前执行目标，请检查工作空间后重试</string>
@@ -1675,7 +1675,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_change_shell_approval_failed">无法更改 Shell 审批</string>
   <string name="workspace_understood">知道了</string>
   <string name="workspace_remote_server_line">远程服务器 · %1$s\n</string>
-  <string name="workspace_account_line">账户 %1$s@%2$s:%3$s\n</string>
+  <string name="workspace_account_line">账户 %1$s@%2$s:%3$d\n</string>
   <string name="workspace_directory_label">目录 %1$s</string>
   <string name="workspace_local_device_local">本地设备 · 本地</string>
   <string name="workspace_remote_shared_directory_path">远程共享目录 · %1$s</string>

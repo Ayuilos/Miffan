@@ -1613,7 +1613,7 @@
   <string name="workspace_terminal_connection_failed">無法連線至遠端終端機</string>
   <string name="workspace_connecting_host">正在連線至 %1$s…</string>
   <string name="workspace_remote_host">遠端主機</string>
-  <string name="workspace_connection_ended_exit">連線已結束 · 結束代碼 %1$s</string>
+  <string name="workspace_connection_ended_exit">連線已結束 · 結束代碼 %1$d</string>
   <string name="workspace_disconnected">連線已中斷</string>
   <string name="workspace_terminal_target_changed">連線設定已變更。請返回並重新開啟終端機。</string>
   <string name="workspace_remote_host_config_unavailable">無法取得遠端主機設定</string>
@@ -1640,12 +1640,12 @@
   <string name="workspace_open_workspaces">開啟工作區</string>
   <string name="workspace_later">稍後再說</string>
   <string name="workspace_directory_check_timeout">目錄檢查逾時；遠端結果未知</string>
-  <string name="workspace_directory_check_exit">目錄檢查命令的結束代碼：%1$s</string>
+  <string name="workspace_directory_check_exit">目錄檢查命令的結束代碼：%1$d</string>
   <string name="workspace_cancelled_outcome_unknown">操作已取消；遠端結果未知</string>
   <string name="workspace_remote_directory_unavailable">遠端目錄不可存取</string>
   <string name="workspace_remote_directory_changed">遠端目錄的目標已變更</string>
   <string name="workspace_command_timeout_unknown">命令執行逾時；遠端結果未知</string>
-  <string name="workspace_command_exit_code">命令結束代碼：%1$s</string>
+  <string name="workspace_command_exit_code">命令結束代碼：%1$d</string>
   <string name="workspace_remote_file_timeout">遠端檔案操作逾時</string>
   <string name="workspace_ssh_interrupted">SSH 連線已中斷</string>
   <string name="workspace_connection_lost_unknown">連線中斷；遠端結果未知</string>
@@ -1659,8 +1659,8 @@
   <string name="workspace_ssh_auth_failed">SSH 驗證失敗</string>
   <string name="workspace_ssh_timeout">SSH 連線逾時</string>
   <string name="workspace_ssh_failed">SSH 連線失敗</string>
-  <string name="workspace_file_preview_too_large">檔案過大，無法預覽（%1$s bytes）</string>
-  <string name="workspace_file_in_app_preview_too_large">檔案過大，無法在應用程式內預覽（%1$s bytes）</string>
+  <string name="workspace_file_preview_too_large">檔案過大，無法預覽（%1$d bytes）</string>
+  <string name="workspace_file_in_app_preview_too_large">檔案過大，無法在應用程式內預覽（%1$d bytes）</string>
   <string name="workspace_not_bound">未綁定工作區</string>
   <string name="workspace_target_unavailable">目標工作區目前不可用</string>
   <string name="workspace_cannot_confirm_target">無法確認執行目標。請檢查工作區後重試。</string>
@@ -1673,7 +1673,7 @@
   <string name="workspace_change_shell_approval_failed">無法變更 Shell 核准設定</string>
   <string name="workspace_understood">知道了</string>
   <string name="workspace_remote_server_line">遠端伺服器 · %1$s\n</string>
-  <string name="workspace_account_line">帳戶 %1$s@%2$s:%3$s\n</string>
+  <string name="workspace_account_line">帳戶 %1$s@%2$s:%3$d\n</string>
   <string name="workspace_directory_label">目錄 %1$s</string>
   <string name="workspace_local_device_local">本機裝置 · 本機</string>
   <string name="workspace_remote_shared_directory_path">遠端共享目錄 · %1$s</string>
