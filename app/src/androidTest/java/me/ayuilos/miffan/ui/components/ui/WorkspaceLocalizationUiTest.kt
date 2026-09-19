@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
@@ -38,7 +39,11 @@ class WorkspaceLocalizationUiTest {
                 }
             }
             val context = remember(language.value) { base.createConfigurationContext(config) }
-            CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides config) {
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalConfiguration provides config,
+                LocalResources provides context.resources,
+            ) {
                 MaterialTheme { WorkspaceIntroduction(onDismiss = {}, onOpenWorkspaces = {}) }
             }
         }
