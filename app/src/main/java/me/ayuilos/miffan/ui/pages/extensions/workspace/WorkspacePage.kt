@@ -82,6 +82,7 @@ import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.repository.RemoteHostRuntimeState
 import me.ayuilos.miffan.data.repository.RemoteWorkspaceRuntimeState
+import me.ayuilos.miffan.data.repository.RemoteConnectionStatus
 import me.ayuilos.miffan.data.repository.RemoteOperationOutcome
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
@@ -152,6 +153,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
     val keyMaterialStatus by vm.keyMaterialStatus.collectAsStateWithLifecycle()
     val remoteHostStates by vm.remoteHostStates.collectAsStateWithLifecycle()
     val remoteWorkspaceStates by vm.remoteWorkspaceStates.collectAsStateWithLifecycle()
+    val remoteConnectionStates by vm.remoteConnectionStates.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
     val deviceSecure = keyguard.isDeviceSecure
@@ -337,6 +339,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             keyMaterialStatus = keyMaterialStatus,
             remoteHostStates = remoteHostStates,
             remoteWorkspaceStates = remoteWorkspaceStates,
+            remoteConnectionStates = remoteConnectionStates,
             homeTab = selectedHomeTab,
             connectionTab = selectedConnectionTab,
             query = workspaceQuery,
@@ -700,6 +703,7 @@ internal fun WorkspaceHomeContent(
     keyMaterialStatus: Map<String, Boolean>,
     remoteHostStates: Map<String, RemoteHostRuntimeState>,
     remoteWorkspaceStates: Map<String, RemoteWorkspaceRuntimeState>,
+    remoteConnectionStates: Map<String, RemoteConnectionStatus> = emptyMap(),
     homeTab: WorkspaceHomeTab,
     connectionTab: WorkspaceConnectionTab,
     query: String,
@@ -814,6 +818,7 @@ internal fun WorkspaceHomeContent(
                                 host = hosts.find { it.id == workspace.remoteHostId },
                                 hostState = workspace.remoteHostId?.let(remoteHostStates::get),
                                 workspaceState = remoteWorkspaceStates[workspace.id],
+                                connectionStatus = remoteConnectionStates[workspace.id],
                                 onRename = { actions.renameWorkspace(workspace) },
                                 onDelete = { actions.deleteWorkspace(workspace) },
                                 onOpen = { actions.openWorkspace(workspace) },
@@ -916,6 +921,7 @@ internal fun WorkspaceCard(
     host: RemoteHostEntity?,
     hostState: RemoteHostRuntimeState?,
     workspaceState: RemoteWorkspaceRuntimeState?,
+    connectionStatus: RemoteConnectionStatus? = null,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onOpen: () -> Unit,
@@ -961,7 +967,8 @@ internal fun WorkspaceCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (workspace.isRemote) Text(
-                        text = workspaceCardRemoteStatus(workspaceStrings, host, workspace, hostState, workspaceState),
+                        text = workspaceCardRemoteStatus(workspaceStrings, host, workspace, hostState,
+                            workspaceState, connectionStatus),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -1010,11 +1017,14 @@ internal fun workspaceCardRemoteStatus(workspaceStrings: Resources,
     workspace: WorkspaceEntity,
     hostState: RemoteHostRuntimeState?,
     workspaceState: RemoteWorkspaceRuntimeState?,
+    connectionStatus: RemoteConnectionStatus? = null,
 ): String {
     if (host == null) return workspaceStrings.getString(R.string.workspace_host_config_unavailable)
     if (workspaceState?.lastOperation?.outcome == RemoteOperationOutcome.OUTCOME_UNKNOWN) {
         return workspaceStrings.getString(R.string.workspace_last_outcome_unknown)
     }
+    if (connectionStatus != null) return remoteWorkspaceStatusLabel(workspaceStrings,
+        workspace, hostState, workspaceState, connectionStatus)
     // Select compact status from structured state, never by matching translated text.
     if (workspaceState?.activity == RemoteConnectionActivity.CONNECTING ||
         workspaceState?.activity == RemoteConnectionActivity.OPERATING ||

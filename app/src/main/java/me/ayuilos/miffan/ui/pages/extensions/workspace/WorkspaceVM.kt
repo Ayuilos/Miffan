@@ -28,6 +28,7 @@ class WorkspaceVM(
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     val remoteHostStates = repository.remoteHostStates
     val remoteWorkspaceStates = repository.remoteWorkspaceStates
+    val remoteConnectionStates = repository.remoteConnectionStates
     private val _keyMaterialStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val keyMaterialStatus = _keyMaterialStatus.asStateFlow()
 

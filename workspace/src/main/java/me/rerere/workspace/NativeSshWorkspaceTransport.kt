@@ -1,6 +1,7 @@
 package me.rerere.workspace
 
 import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.Channel
 import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
@@ -21,6 +22,7 @@ import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
 
 /** Credentials are supplied by the caller when a session opens; do not persist them in this module. */
 sealed interface RemoteAuthentication {
@@ -153,6 +155,38 @@ class RemoteWorkspaceSession internal constructor(
     private val sftpIdleTimeoutMillis: Long,
 ) : Closeable {
     private val closed = AtomicBoolean(false)
+    private val activeChannels = ConcurrentHashMap<Thread, Channel>()
+    private val operation = ThreadLocal<OperationHandle?>()
+
+    class OperationHandle internal constructor() {
+        private val lock = Any()
+        private var channel: Channel? = null
+        private var cancelled = false
+
+        internal fun install(next: Channel) = synchronized(lock) {
+            if (cancelled) {
+                next.disconnect()
+                throw java.io.InterruptedIOException("Remote operation cancelled")
+            }
+            channel = next
+        }
+
+        internal fun release(current: Channel) = synchronized(lock) {
+            if (channel === current) channel = null
+        }
+
+        fun cancel() = synchronized(lock) {
+            cancelled = true
+            channel?.disconnect()
+        }
+    }
+
+    fun newOperation(): OperationHandle = OperationHandle()
+
+    fun <T> withOperation(handle: OperationHandle, block: () -> T): T {
+        operation.set(handle)
+        try { return block() } finally { operation.remove() }
+    }
 
     val isConnected: Boolean get() = !closed.get() && session.isConnected
     val resolvedRoot: String get() = paths.root
@@ -199,7 +233,6 @@ class RemoteWorkspaceSession internal constructor(
      * Executes in the selected remote directory. A timeout closes the SSH channel; SSH does not
      * guarantee that the remote process is terminated when its channel is closed.
      */
-    @Synchronized
     fun execute(
         command: String,
         workingDirectory: String = "",
@@ -215,12 +248,13 @@ class RemoteWorkspaceSession internal constructor(
         val stdout = LimitedOutputStream(budget)
         val stderr = LimitedOutputStream(budget)
         val channel = session.openChannel("exec") as ChannelExec
-        channel.setCommand("cd ${shellQuote(directory)} || exit 1\n$command")
-        channel.setOutputStream(stdout)
-        channel.setErrStream(stderr)
-        if (stdin != null) channel.setInputStream(stdin) else channel.setInputStream(null)
+        register(channel)
         var timedOut = false
         try {
+            channel.setCommand("cd ${shellQuote(directory)} || exit 1\n$command")
+            channel.setOutputStream(stdout)
+            channel.setErrStream(stderr)
+            if (stdin != null) channel.setInputStream(stdin) else channel.setInputStream(null)
             channel.connect(channelTimeoutMillis)
             val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
             while (!channel.isClosed) {
@@ -239,14 +273,14 @@ class RemoteWorkspaceSession internal constructor(
             )
         } finally {
             channel.disconnect()
+            unregister(channel)
         }
     }
 
     /**
      * Opens a persistent interactive SSH PTY in the selected remote directory. The returned
-     * terminal owns this SSH session: closing either object ends the terminal connection.
+     * terminal owns only its PTY channel; the caller owns the parent SSH session.
      */
-    @Synchronized
     fun openTerminal(columns: Int = 80, rows: Int = 24): RemoteTerminalSession {
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
         var channel: ChannelExec? = null
@@ -254,6 +288,7 @@ class RemoteWorkspaceSession internal constructor(
             withSftp { sftp, _ -> requireDirectoryPath(sftp, paths.root) }
             checkOpen()
             channel = session.openChannel("exec") as ChannelExec
+            register(channel)
             channel.setPty(true)
             channel.setPtyType("xterm-256color", columns, rows, 0, 0)
             channel.setEnv("TERM", "xterm-256color")
@@ -263,15 +298,15 @@ class RemoteWorkspaceSession internal constructor(
             val input = channel.inputStream
             val output = channel.outputStream
             channel.connect(channelTimeoutMillis)
+            unregister(channel)
             return RemoteTerminalSession(this, channel, input, output)
         } catch (error: Throwable) {
             runCatching { channel?.disconnect() }
-            runCatching { close() }
+            channel?.let(::unregister)
             throw error
         }
     }
 
-    @Synchronized
     fun list(path: String = ""): List<WorkspaceFileEntry> = withSftp { sftp, _ ->
         val directory = paths.absolute(path, allowRoot = true)
         requireDirectoryPath(sftp, directory)
@@ -292,24 +327,20 @@ class RemoteWorkspaceSession internal constructor(
             .toList()
     }
 
-    @Synchronized
     fun fileSize(path: String): Long = withSftp { sftp, _ ->
         val attrs = requireSafePath(sftp, paths.absolute(path), expectFile = true)
         attrs.size
     }
 
-    @Synchronized
     fun readText(path: String, maxBytes: Long = 512 * 1024): String =
         String(readBytes(path, maxBytes), StandardCharsets.UTF_8)
 
-    @Synchronized
     fun readBytes(path: String, maxBytes: Long = 512 * 1024): ByteArray {
         val output = ByteArrayOutputStream()
         exportFile(path, output, maxBytes)
         return output.toByteArray()
     }
 
-    @Synchronized
     fun exportFile(path: String, out: OutputStream, maxBytes: Long = Long.MAX_VALUE) {
         require(maxBytes >= 0)
         withSftp { sftp, progress ->
@@ -320,15 +351,12 @@ class RemoteWorkspaceSession internal constructor(
         }
     }
 
-    @Synchronized
     fun writeText(path: String, text: String, overwrite: Boolean = true): WorkspaceFileEntry =
         writeBytes(path, text.toByteArray(StandardCharsets.UTF_8), overwrite)
 
-    @Synchronized
     fun writeBytes(path: String, bytes: ByteArray, overwrite: Boolean = true): WorkspaceFileEntry =
         importFile(path, ByteArrayInputStream(bytes), overwrite, bytes.size.toLong())
 
-    @Synchronized
     fun importFile(
         path: String,
         input: InputStream,
@@ -367,13 +395,11 @@ class RemoteWorkspaceSession internal constructor(
         }
     }
 
-    @Synchronized
     fun mkdir(path: String) = withSftp { sftp, _ ->
         val absolute = paths.absolute(path)
         ensureDirectory(sftp, absolute)
     }
 
-    @Synchronized
     fun delete(path: String, recursive: Boolean = false): Boolean = withSftp { sftp, _ ->
         val absolute = paths.absolute(path)
         val attrs = optionalAttrs(sftp, absolute) ?: return@withSftp false
@@ -382,7 +408,6 @@ class RemoteWorkspaceSession internal constructor(
         true
     }
 
-    @Synchronized
     fun move(from: String, to: String, overwrite: Boolean = false): WorkspaceFileEntry = withSftp { sftp, _ ->
         val source = paths.absolute(from)
         val destination = paths.absolute(to)
@@ -408,7 +433,26 @@ class RemoteWorkspaceSession internal constructor(
     }
 
     override fun close() {
-        if (closed.compareAndSet(false, true)) session.disconnect()
+        if (closed.compareAndSet(false, true)) {
+            activeChannels.values.forEach { runCatching { it.disconnect() } }
+            session.disconnect()
+        }
+    }
+
+    private fun register(channel: Channel) {
+        checkOpen()
+        operation.get()?.install(channel)
+        activeChannels[Thread.currentThread()] = channel
+        if (!isConnected) {
+            unregister(channel)
+            channel.disconnect()
+            checkOpen()
+        }
+    }
+
+    private fun unregister(channel: Channel) {
+        operation.get()?.release(channel)
+        activeChannels.remove(Thread.currentThread(), channel)
     }
 
     private fun checkOpen() = check(isConnected) { "Remote workspace is disconnected" }
@@ -416,13 +460,15 @@ class RemoteWorkspaceSession internal constructor(
     private fun <T> withSftp(block: (ChannelSftp, SftpIdleGuard) -> T): T {
         checkOpen()
         val channel = session.openChannel("sftp") as ChannelSftp
-        return SftpIdleGuard(sftpIdleTimeoutMillis, ::close).run { progress ->
+        register(channel)
+        return SftpIdleGuard(sftpIdleTimeoutMillis, channel::disconnect).run { progress ->
             try {
                 channel.connect(channelTimeoutMillis)
                 progress.touch()
                 block(channel, progress)
             } finally {
                 channel.disconnect()
+                unregister(channel)
             }
         }
     }
@@ -539,7 +585,6 @@ class RemoteTerminalSession internal constructor(
             } finally {
                 runCatching { input.close() }
                 runCatching { output.close() }
-                owner.close()
             }
         }
     }

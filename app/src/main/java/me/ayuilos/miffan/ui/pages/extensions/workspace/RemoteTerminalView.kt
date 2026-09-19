@@ -23,14 +23,19 @@ import com.termux.terminal.TerminalOutput
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalRenderer
+import java.lang.ref.WeakReference
 import kotlin.math.roundToInt
 
-/** A Termux ANSI screen with a byte sink supplied by the SSH PTY owner. All screen calls run on UI. */
-internal class RemoteTerminalView(context: Context) : View(context) {
-    private val renderer = TerminalRenderer(
-        (13f * resources.displayMetrics.scaledDensity).roundToInt().coerceAtLeast(12),
-        Typeface.MONOSPACE,
-    )
+/** Process-owned emulator. Only a weak reference points at an attached Android view. */
+internal class RemoteTerminalScreen {
+    var sendBytes: (ByteArray) -> Unit = {}
+    private var attached: WeakReference<RemoteTerminalView>? = null
+    fun attach(view: RemoteTerminalView) { attached = WeakReference(view); view.invalidate() }
+    fun detach(view: RemoteTerminalView) {
+        if (attached?.get() === view) attached = null
+    }
+    private fun view(): RemoteTerminalView? = attached?.get()
+
     private val output = object : TerminalOutput() {
         override fun write(data: ByteArray, offset: Int, count: Int) {
             if (count > 0) sendBytes(data.copyOfRange(offset, offset + count))
@@ -39,23 +44,22 @@ internal class RemoteTerminalView(context: Context) : View(context) {
         override fun titleChanged(oldTitle: String?, newTitle: String?) = Unit
 
         override fun onCopyTextToClipboard(text: String) {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("terminal", text))
+            view()?.copyToClipboard(text)
         }
 
-        override fun onPasteTextFromClipboard() = pasteFromClipboard()
+        override fun onPasteTextFromClipboard() { view()?.pasteFromClipboard() }
         override fun onBell() = Unit
-        override fun onColorsChanged() = invalidate()
+        override fun onColorsChanged() { view()?.invalidate() }
     }
     private val sessionClient = object : TerminalSessionClient {
-        override fun onTextChanged(changedSession: TerminalSession) = invalidate()
+        override fun onTextChanged(changedSession: TerminalSession) { view()?.invalidate() }
         override fun onTitleChanged(changedSession: TerminalSession) = Unit
         override fun onSessionFinished(finishedSession: TerminalSession) = Unit
         override fun onCopyTextToClipboard(session: TerminalSession, text: String) = output.onCopyTextToClipboard(text)
-        override fun onPasteTextFromClipboard(session: TerminalSession) = pasteFromClipboard()
+        override fun onPasteTextFromClipboard(session: TerminalSession) { view()?.pasteFromClipboard() }
         override fun onBell(session: TerminalSession) = Unit
-        override fun onColorsChanged(session: TerminalSession) = invalidate()
-        override fun onTerminalCursorStateChange(state: Boolean) = invalidate()
+        override fun onColorsChanged(session: TerminalSession) { view()?.invalidate() }
+        override fun onTerminalCursorStateChange(state: Boolean) { view()?.invalidate() }
         override fun getTerminalCursorStyle(): Int = TerminalEmulator.DEFAULT_TERMINAL_CURSOR_STYLE
         override fun logError(tag: String, message: String) = Log.e(tag, message).let { Unit }
         override fun logWarn(tag: String, message: String) = Log.w(tag, message).let { Unit }
@@ -66,7 +70,37 @@ internal class RemoteTerminalView(context: Context) : View(context) {
             Log.e(tag, message, e).let { Unit }
         override fun logStackTrace(tag: String, e: Exception) = Log.e(tag, "Terminal error", e).let { Unit }
     }
-    private var emulator = TerminalEmulator(output, 80, 24, 2_000, sessionClient)
+    var emulator = TerminalEmulator(output, 80, 24, 2_000, sessionClient)
+        private set
+
+    fun appendOutput(bytes: ByteArray, count: Int = bytes.size) {
+        if (count > 0) emulator.append(bytes, count)
+        view()?.invalidate()
+    }
+
+    fun reset(columns: Int, rows: Int) {
+        emulator = TerminalEmulator(output, columns, rows, 2_000, sessionClient)
+        view()?.invalidate()
+    }
+}
+
+/** A view can reattach to the same emulator after navigation or configuration changes. */
+internal class RemoteTerminalView(context: Context) : View(context) {
+    private val renderer = TerminalRenderer(
+        (13f * resources.displayMetrics.scaledDensity).roundToInt().coerceAtLeast(12),
+        Typeface.MONOSPACE,
+    )
+    var screen = RemoteTerminalScreen()
+        set(value) {
+            field.detach(this)
+            field = value
+            value.emulator.resize(columns, rows)
+            topRow = 0
+            scrollRemainder = 0f
+            value.attach(this)
+            invalidate()
+        }
+    private val emulator get() = screen.emulator
     private var topRow = 0
     private var scrollRemainder = 0f
     var columns: Int = 80
@@ -101,6 +135,7 @@ internal class RemoteTerminalView(context: Context) : View(context) {
     })
 
     init {
+        screen.attach(this)
         isFocusable = true
         isFocusableInTouchMode = true
         setBackgroundColor(Color.BLACK)
@@ -108,7 +143,7 @@ internal class RemoteTerminalView(context: Context) : View(context) {
 
     fun appendOutput(bytes: ByteArray, count: Int = bytes.size) {
         if (count <= 0) return
-        emulator.append(bytes, count)
+        screen.appendOutput(bytes, count)
         if (topRow < 0) {
             topRow = (topRow - emulator.scrollCounter).coerceAtLeast(-emulator.screen.activeTranscriptRows)
         }
@@ -117,7 +152,7 @@ internal class RemoteTerminalView(context: Context) : View(context) {
     }
 
     fun resetScreen() {
-        emulator = TerminalEmulator(output, columns, rows, 2_000, sessionClient)
+        screen.reset(columns, rows)
         topRow = 0
         scrollRemainder = 0f
         invalidate()
@@ -147,6 +182,13 @@ internal class RemoteTerminalView(context: Context) : View(context) {
         // Bracketed paste is generated by the emulator when the remote program requested it.
         emulator.paste(text.take(MAX_PASTE_CHARS))
     }
+
+    internal fun copyToClipboard(text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("terminal", text))
+    }
+
+    fun detachScreen() { screen.detach(this) }
 
     fun showKeyboard() {
         requestFocus()

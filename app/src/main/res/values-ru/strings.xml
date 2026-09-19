@@ -1447,7 +1447,7 @@
   <string name="workspace_recent_failure">Недавняя ошибка</string>
   <string name="workspace_operation_history">История операций</string>
   <string name="workspace_action_required">Требуется действие</string>
-  <string name="workspace_ssh_on_demand_explanation">SSH подключается по запросу и не остаётся в сети. Выбранный каталог служит рабочим каталогом, а не границей безопасности Shell. Файлы соответствуют удалённому каталогу.</string>
+  <string name="workspace_ssh_on_demand_explanation">SSH-соединение используется повторно во время работы с этим пространством и закрывается после простоя. Выбранный каталог служит рабочим каталогом, а не границей безопасности Shell. Файлы соответствуют удалённому каталогу.</string>
   <string name="workspace_collapse_file_approvals">Скрыть настройки подтверждения файловых инструментов</string>
   <string name="workspace_file_approval_settings">Подтверждение файловых инструментов</string>
   <string name="workspace_file_shell_approval_explanation">Здесь настраивается подтверждение каждого вызова удалённых файловых инструментов. Доступ к AI Shell и подтверждение каждой команды отдельно настраиваются в параметрах ассистента. Shell может обращаться к путям за пределами выбранного каталога с правами учётной записи SSH.</string>
@@ -1621,8 +1621,8 @@
   <string name="workspace_remote_host_config_unavailable">Настройки удалённого хоста недоступны</string>
   <string name="workspace_reconnect">Подключиться снова</string>
   <string name="workspace_close_terminal_title">Закрыть удалённый терминал?</string>
-  <string name="workspace_close_terminal_message">Текущий сеанс SSH будет отключён. Отключение не гарантирует остановку процессов на сервере.</string>
-  <string name="workspace_disconnect_back">Отключиться и вернуться</string>
+  <string name="workspace_close_terminal_message">Текущий сеанс терминала будет закрыт. Процессы на сервере могут продолжить работу.</string>
+  <string name="workspace_disconnect_back">Закрыть терминал и вернуться</string>
   <string name="workspace_keep_using">Продолжить работу</string>
   <string name="workspace_keyboard">Клавиатура</string>
   <string name="workspace_paste">Вставить</string>
@@ -1744,4 +1744,8 @@
   <string name="workspace_rootfs_source">Источник: Ubuntu Base 24.04.4 (проверка HTTPS + SHA-256, выбор по архитектуре устройства)</string>
   <string name="workspace_resource_check_failed">Не удалось проверить ресурсы рабочего пространства</string>
   <string name="workspace_terminal_start_failed">Не удалось запустить терминал</string>
+  <string name="workspace_connection_connected">Подключено</string>
+  <string name="workspace_connection_reconnecting">Повторное подключение</string>
+  <string name="workspace_connection_connect">Подключить</string>
+  <string name="workspace_connection_disconnect">Отключить</string>
 </resources>

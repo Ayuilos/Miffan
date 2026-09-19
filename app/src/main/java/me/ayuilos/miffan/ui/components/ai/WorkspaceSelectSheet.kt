@@ -59,6 +59,7 @@ internal fun WorkspaceSelectSheet(
     val hosts by workspaceRepository.listHostsFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     val hostStates by workspaceRepository.remoteHostStates.collectAsStateWithLifecycle()
     val workspaceStates by workspaceRepository.remoteWorkspaceStates.collectAsStateWithLifecycle()
+    val connectionStates by workspaceRepository.remoteConnectionStates.collectAsStateWithLifecycle()
     val visibleWorkspaces = workspaces.filter { workspace ->
         workspaceMatchesSelectionQuery(workspace, hosts.find { it.id == workspace.remoteHostId }, query)
     }
@@ -125,6 +126,7 @@ internal fun WorkspaceSelectSheet(
                                         workspace,
                                         workspace.remoteHostId?.let(hostStates::get),
                                         workspaceStates[workspace.id],
+                                        connectionStates[workspace.id],
                                     )
                                 },
                             ) else listOf(workspaceStrings.getString(R.string.workspace_local_device), workspace.shellStatus.toShellStatusLabel()),

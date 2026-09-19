@@ -1445,7 +1445,7 @@
   <string name="workspace_recent_failure">最近的失敗記錄</string>
   <string name="workspace_operation_history">操作記錄</string>
   <string name="workspace_action_required">需要處理</string>
-  <string name="workspace_ssh_on_demand_explanation">SSH 只在需要時連線，不會保持連線。所選目錄是工作目錄，並非 Shell 的安全邊界。檔案區顯示遠端目錄的內容。</string>
+  <string name="workspace_ssh_on_demand_explanation">使用此工作區期間會重複使用 SSH 連線，閒置後自動中斷。所選目錄是工作目錄，並非 Shell 的安全邊界。檔案區顯示遠端目錄的內容。</string>
   <string name="workspace_collapse_file_approvals">隱藏檔案工具核准設定</string>
   <string name="workspace_file_approval_settings">檔案工具核准設定</string>
   <string name="workspace_file_shell_approval_explanation">在這裡設定遠端檔案工具的每次呼叫核准。AI Shell 存取權與每條命令的核准，請在助理設定中分別管理。Shell 可能以 SSH 帳戶權限存取所選目錄以外的路徑。</string>
@@ -1619,8 +1619,8 @@
   <string name="workspace_remote_host_config_unavailable">無法取得遠端主機設定</string>
   <string name="workspace_reconnect">重新連線</string>
   <string name="workspace_close_terminal_title">要關閉遠端終端機嗎？</string>
-  <string name="workspace_close_terminal_message">這會中斷目前的 SSH 工作階段。中斷連線不代表伺服器上的程序已停止。</string>
-  <string name="workspace_disconnect_back">中斷連線並返回</string>
+  <string name="workspace_close_terminal_message">這會關閉目前的終端工作階段。伺服器上的程序可能繼續執行。</string>
+  <string name="workspace_disconnect_back">關閉終端並返回</string>
   <string name="workspace_keep_using">繼續使用</string>
   <string name="workspace_keyboard">鍵盤</string>
   <string name="workspace_paste">貼上</string>
@@ -1742,4 +1742,8 @@
   <string name="workspace_rootfs_source">固定來源：Ubuntu Base 24.04.4（HTTPS + SHA-256 驗證，依裝置架構選擇）</string>
   <string name="workspace_resource_check_failed">工作區資源檢查失敗</string>
   <string name="workspace_terminal_start_failed">終端啟動失敗</string>
+  <string name="workspace_connection_connected">已連線</string>
+  <string name="workspace_connection_reconnecting">正在重新連線</string>
+  <string name="workspace_connection_connect">連線</string>
+  <string name="workspace_connection_disconnect">中斷連線</string>
 </resources>

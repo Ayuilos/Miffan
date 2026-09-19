@@ -22,6 +22,29 @@ class RemoteTerminalViewTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
+    fun screenRetainsOutputWhileViewIsDetachedAndReattached() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        compose.runOnIdle {
+            val shared = RemoteTerminalScreen()
+            val first = RemoteTerminalView(context).apply { screen = shared }
+            first.appendOutput("BEFORE\r\n".toByteArray())
+            first.detachScreen()
+            shared.appendOutput("AFTER\r\n".toByteArray())
+
+            val returned = RemoteTerminalView(context).apply {
+                // Attach after the new view was already laid out (e.g. a rotated page).
+                layout(0, 0, 720, 1000)
+                screen = shared
+            }
+            assertEquals(returned.columns, shared.emulator.mColumns)
+            assertEquals(returned.rows, shared.emulator.mRows)
+            assertTrue(returned.visibleText().contains("BEFORE"))
+            assertTrue(returned.visibleText().contains("AFTER"))
+            returned.detachScreen()
+        }
+    }
+
+    @Test
     fun rendersAnsiAndForwardsImeAndSpecialKeys() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val writes = mutableListOf<ByteArray>()

@@ -76,4 +76,20 @@ class RemoteWorkspaceStatusUiTest {
         assertTrue(remoteWorkspaceStatusLabel(resources, workspace, sameCheckHostSuccess, directoryFailure)
             .contains("目录上次检查失败"))
     }
+    @Test fun liveConnectionDoesNotHideUnknownCommandOutcome() {
+        val host = me.ayuilos.miffan.data.db.entity.RemoteHostEntity(
+            id = "host", name = "Server", host = "example.invalid", port = 22,
+            username = "test", authType = "PASSWORD", trustedHostKeySha256 = "test",
+            createdAt = 1, updatedAt = 1,
+        )
+        val runtime = RemoteWorkspaceRuntimeState(lastOperation = RemoteOperationRecord(
+            2_000, RemoteOperationOutcome.OUTCOME_UNKNOWN,
+        ))
+        org.junit.Assert.assertEquals(
+            resources.getString(me.ayuilos.miffan.R.string.workspace_last_outcome_unknown),
+            workspaceCardRemoteStatus(resources, host, workspace, null, runtime,
+                me.ayuilos.miffan.data.repository.RemoteConnectionStatus.CONNECTED),
+        )
+    }
+
 }

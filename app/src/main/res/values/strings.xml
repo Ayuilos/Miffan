@@ -1445,7 +1445,7 @@
   <string name="workspace_recent_failure">Recent failure</string>
   <string name="workspace_operation_history">Operation history</string>
   <string name="workspace_action_required">Action required</string>
-  <string name="workspace_ssh_on_demand_explanation">SSH connects on demand; it does not stay online. The selected directory is the working directory, not a Shell security boundary. Files correspond to the remote directory.</string>
+  <string name="workspace_ssh_on_demand_explanation">SSH connections are reused while this workspace is in use and close after inactivity. The selected directory is the working directory, not a Shell security boundary. Files correspond to the remote directory.</string>
   <string name="workspace_collapse_file_approvals">Hide file tool approval settings</string>
   <string name="workspace_file_approval_settings">File tool approval settings</string>
   <string name="workspace_file_shell_approval_explanation">Manage per-call approval for remote file tools here. AI Shell access and per-command approval are managed separately in assistant settings. Shell can access paths outside the selected directory with the SSH account permissions.</string>
@@ -1619,8 +1619,8 @@
   <string name="workspace_remote_host_config_unavailable">Remote host configuration unavailable</string>
   <string name="workspace_reconnect">Reconnect</string>
   <string name="workspace_close_terminal_title">Close remote terminal?</string>
-  <string name="workspace_close_terminal_message">This disconnects the current SSH session. Disconnecting does not guarantee that processes on the server have stopped.</string>
-  <string name="workspace_disconnect_back">Disconnect and go back</string>
+  <string name="workspace_close_terminal_message">This closes the current terminal session. Processes on the server may continue running.</string>
+  <string name="workspace_disconnect_back">Close terminal and go back</string>
   <string name="workspace_keep_using">Keep using</string>
   <string name="workspace_keyboard">Keyboard</string>
   <string name="workspace_paste">Paste</string>
@@ -1742,4 +1742,8 @@
   <string name="workspace_rootfs_source">Pinned source: Ubuntu Base 24.04.4 (HTTPS + SHA-256 verified, selected for this device architecture)</string>
   <string name="workspace_resource_check_failed">Workspace resource check failed</string>
   <string name="workspace_terminal_start_failed">Failed to start terminal</string>
+  <string name="workspace_connection_connected">Connected</string>
+  <string name="workspace_connection_reconnecting">Reconnecting</string>
+  <string name="workspace_connection_connect">Connect</string>
+  <string name="workspace_connection_disconnect">Disconnect</string>
 </resources>

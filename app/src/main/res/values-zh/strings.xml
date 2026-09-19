@@ -1447,7 +1447,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_recent_failure">最近故障</string>
   <string name="workspace_operation_history">操作记录</string>
   <string name="workspace_action_required">需要处理</string>
-  <string name="workspace_ssh_on_demand_explanation">SSH 按需连接，不保持在线。所选目录是工作目录，不是 Shell 的安全边界。文件区对应远程目录。</string>
+  <string name="workspace_ssh_on_demand_explanation">使用此工作区期间会复用 SSH 连接，空闲后自动断开。所选目录是工作目录，不是 Shell 的安全边界。文件区对应远程目录。</string>
   <string name="workspace_collapse_file_approvals">收起文件工具审批设置</string>
   <string name="workspace_file_approval_settings">文件工具审批设置</string>
   <string name="workspace_file_shell_approval_explanation">这里设置远程文件工具的逐次审批。AI Shell 能力和命令逐次审批在助手设置中单独控制；Shell 可按 SSH 账户权限读写或访问所选目录之外的位置。</string>
@@ -1621,8 +1621,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_remote_host_config_unavailable">远程主机配置不可用</string>
   <string name="workspace_reconnect">重新连接</string>
   <string name="workspace_close_terminal_title">关闭远程终端？</string>
-  <string name="workspace_close_terminal_message">将断开当前 SSH 会话。断开连接不能保证服务器上的进程已经终止。</string>
-  <string name="workspace_disconnect_back">断开并返回</string>
+  <string name="workspace_close_terminal_message">这会关闭当前终端会话。服务器上的进程可能继续运行。</string>
+  <string name="workspace_disconnect_back">关闭终端并返回</string>
   <string name="workspace_keep_using">继续使用</string>
   <string name="workspace_keyboard">键盘</string>
   <string name="workspace_paste">粘贴</string>
@@ -1744,4 +1744,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_rootfs_source">固定来源：Ubuntu Base 24.04.4（HTTPS + SHA-256 校验，按设备架构选择）</string>
   <string name="workspace_resource_check_failed">工作区资源检查失败</string>
   <string name="workspace_terminal_start_failed">终端启动失败</string>
+  <string name="workspace_connection_connected">已连接</string>
+  <string name="workspace_connection_reconnecting">正在重新连接</string>
+  <string name="workspace_connection_connect">连接</string>
+  <string name="workspace_connection_disconnect">断开连接</string>
 </resources>

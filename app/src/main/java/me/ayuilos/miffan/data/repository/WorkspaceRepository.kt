@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -49,7 +50,12 @@ import com.jcraft.jsch.SftpException
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.Closeable
 import java.util.UUID
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class WorkspaceRepository(
     private val dao: WorkspaceDAO,
@@ -66,9 +72,102 @@ class WorkspaceRepository(
 ) {
     private val localWorkspaceCreator = LocalWorkspaceCreator(dao, manager)
     private val remoteRuntime = RemoteWorkspaceRuntimeTracker()
+    private val remoteConnections = RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>(
+        connected = { it.isConnected },
+    )
+    private val terminalLock = Any()
+    private val activeTerminals = mutableMapOf<String, MutableSet<RemoteTerminalConnection>>()
 
     val remoteHostStates: StateFlow<Map<String, RemoteHostRuntimeState>> = remoteRuntime.hostStates
     val remoteWorkspaceStates: StateFlow<Map<String, RemoteWorkspaceRuntimeState>> = remoteRuntime.workspaceStates
+    val remoteConnectionStates: StateFlow<Map<String, RemoteConnectionStatus>> = remoteConnections.states
+
+    private fun remoteIdentity(workspace: WorkspaceEntity, host: RemoteHostEntity) =
+        RemoteConnectionIdentity(workspace.id, host.id, host.connectionRevision,
+            requireNotNull(workspace.remotePath))
+
+    private suspend fun openLeasedConnection(
+        identity: RemoteConnectionIdentity,
+        config: RemoteHostConfig,
+        verifyPath: Boolean = true,
+        explicit: Boolean = true,
+    ): RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>.Lease =
+        remoteConnections.acquire(identity, explicit = explicit) {
+            var attempt = 0
+            while (true) {
+                val opened = AtomicReference<RemoteWorkspaceSession?>()
+                val disposed = AtomicBoolean(false)
+                try {
+                    val result = runRemoteInterruptible {
+                        remoteTransport.open(config).also { session ->
+                            if (disposed.get()) session.close()
+                            else {
+                                opened.set(session)
+                                if (disposed.get()) opened.getAndSet(null)?.close()
+                            }
+                        }
+                    }
+                    currentCoroutineContext().ensureActive()
+                    if (verifyPath && result.resolvedRoot != identity.remotePath) {
+                        throw WorkspaceToolTargetChangedException()
+                    }
+                    opened.compareAndSet(result, null)
+                    return@acquire result
+                } catch (error: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    if (attempt++ > 0 || !error.retryableConnectionFailure()) throw error
+                    delay(250)
+                } finally {
+                    disposed.set(true)
+                    opened.getAndSet(null)?.close()
+                }
+            }
+            @Suppress("UNREACHABLE_CODE")
+            error("Unreachable SSH connection retry state")
+        }
+
+    /** Only the initial handshake is retried, never a dispatched file or shell operation. */
+    private fun Throwable.retryableConnectionFailure(): Boolean =
+        this is SocketTimeoutException || this is ConnectException ||
+            (this is JSchException &&
+                (cause?.retryableConnectionFailure() == true ||
+                    message?.contains("timeout", ignoreCase = true) == true ||
+                    message?.contains("connection refused", ignoreCase = true) == true))
+
+    private suspend fun <T> runRemoteOperation(session: RemoteWorkspaceSession, block: () -> T): T {
+        val operation = session.newOperation()
+        return runCancellableRemoteOperation(operation) {
+            session.withOperation(operation, block)
+        }
+    }
+
+    /** Holds a connection while a configured workspace is on screen. */
+    suspend fun retainRemoteWorkspace(id: String): Closeable? {
+        if (!remoteConnections.mayPreconnect(id)) return null
+        val workspace = dao.getById(id)?.takeIf { it.isRemote } ?: return null
+        val host = hostDao.getById(workspace.remoteHostId ?: return null) ?: return null
+        val config = host.config(requireNotNull(workspace.remotePath))
+        return openLeasedConnection(remoteIdentity(workspace, host), config, explicit = false)
+    }
+
+    suspend fun connectRemoteWorkspace(id: String) {
+        val workspace = dao.getById(id)?.takeIf { it.isRemote }
+            ?: error(workspaceStrings.getString(R.string.workspace_not_found))
+        val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
+            ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
+        openLeasedConnection(remoteIdentity(workspace, host),
+            host.config(requireNotNull(workspace.remotePath))).close()
+    }
+
+    fun disconnectRemoteWorkspace(id: String) {
+        closeRemoteTerminals(id)
+        remoteConnections.disconnect(id)
+    }
+
+    private fun closeRemoteTerminals(id: String) {
+        val terminals = synchronized(terminalLock) { activeTerminals[id]?.toList().orEmpty() }
+        terminals.forEach { runCatching { it.close() } }
+    }
 
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
@@ -430,7 +529,7 @@ class WorkspaceRepository(
         val revision = host.connectionRevision
         remoteRuntime.begin(hostId, workspaceId, revision)
         var stage = RemoteConnectionStage.CONNECTING
-        var session: RemoteWorkspaceSession? = null
+        var lease: RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>.Lease? = null
         val resolvedPath = try {
             val config = try {
                 host.config(remoteRoot = path)
@@ -443,13 +542,13 @@ class WorkspaceRepository(
                 stage = RemoteConnectionStage.FINISHED
                 throw error
             }
-            val opened = runRemoteInterruptible {
-                // Own the connection before returning across a cancellable dispatcher boundary.
-                remoteTransport.open(config).also { session = it }
-            }
+            val opened = openLeasedConnection(
+                RemoteConnectionIdentity(workspaceId, hostId, revision, path), config,
+                verifyPath = false,
+            ).also { lease = it }.session
             stage = RemoteConnectionStage.OPERATING
             remoteRuntime.connected(hostId, workspaceId, revision)
-            val result = runRemoteInterruptible {
+            val result = runRemoteOperation(opened) {
                 opened.execute("pwd", timeoutMillis = 15_000)
             }
             when {
@@ -489,7 +588,7 @@ class WorkspaceRepository(
             remoteRuntime.forgetWorkspace(workspaceId)
             throw error
         } finally {
-            withContext(NonCancellable + Dispatchers.IO) { runCatching { session?.close() } }
+            withContext(NonCancellable + Dispatchers.IO) { runCatching { lease?.close() } }
             when (stage) {
                 RemoteConnectionStage.CONNECTING -> remoteRuntime.abandoned(hostId, workspaceId, revision)
                 RemoteConnectionStage.OPERATING -> remoteRuntime.completed(hostId, workspaceId, revision)
@@ -514,7 +613,10 @@ class WorkspaceRepository(
             kind = WorkspaceEntity.KIND_REMOTE,
             remoteHostId = hostId,
             remotePath = resolvedPath,
-        ).also { dao.upsert(it) }
+        ).also {
+            dao.upsert(it)
+            if (it.remotePath != path) remoteConnections.invalidate(workspaceId)
+        }
     }
 
     private fun authType(authentication: RemoteAuthentication): String = when (authentication) {
@@ -547,6 +649,10 @@ class WorkspaceRepository(
 
     private suspend fun invalidateRemoteHostWorkspaces(hostId: String) {
         val workspaceIds = dao.getByRemoteHostId(hostId).mapTo(mutableSetOf()) { it.id }
+        workspaceIds.forEach { id ->
+            closeRemoteTerminals(id)
+            remoteConnections.invalidate(id)
+        }
         hostDao.getById(hostId)?.let { host ->
             remoteRuntime.revisionChanged(hostId, host.connectionRevision, workspaceIds)
             remoteRuntime.configuration(hostId,
@@ -598,7 +704,7 @@ class WorkspaceRepository(
         val revision = host.connectionRevision
         remoteRuntime.begin(hostId, workspace.id, revision)
         var stage = RemoteConnectionStage.CONNECTING
-        var session: RemoteWorkspaceSession? = null
+        var lease: RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>.Lease? = null
         try {
             if (expectedTarget != null && host.connectionRevision != expectedTarget.hostConnectionRevision) {
                 throw WorkspaceToolTargetChangedException()
@@ -620,10 +726,9 @@ class WorkspaceRepository(
                 stage = RemoteConnectionStage.FINISHED
                 throw error
             }
-            val opened = runRemoteInterruptible {
-                // Own the connection before returning across a cancellable dispatcher boundary.
-                remoteTransport.open(config).also { session = it }
-            }
+            val opened = openLeasedConnection(remoteIdentity(workspace, host), config,
+                verifyPath = false)
+                .also { lease = it }.session
             if (opened.resolvedRoot != workspace.remotePath) {
                 remoteRuntime.directoryFailed(hostId, workspace.id, workspaceStrings.getString(R.string.workspace_remote_directory_changed), revision)
                 stage = RemoteConnectionStage.FINISHED
@@ -631,8 +736,12 @@ class WorkspaceRepository(
             }
             stage = RemoteConnectionStage.OPERATING
             remoteRuntime.connected(hostId, workspace.id, revision)
+            if (hostDao.getById(hostId)?.connectionRevision != revision ||
+                dao.getById(workspace.id)?.let {
+                    it.isRemote && it.remoteHostId == hostId && it.remotePath == workspace.remotePath
+                } != true) throw WorkspaceToolTargetChangedException()
             validateWorkspaceToolTarget(expectedTarget, workspace.id)
-            val result = runRemoteInterruptible { block(opened) }
+            val result = runRemoteOperation(opened) { block(opened) }
             if (!recordOperation) {
                 return result
             }
@@ -666,6 +775,7 @@ class WorkspaceRepository(
             }
             throw error
         } catch (error: WorkspaceToolTargetChangedException) {
+            remoteConnections.invalidate(workspace.id)
             throw error
         } catch (error: Exception) {
             if (stage == RemoteConnectionStage.CONNECTING) {
@@ -673,19 +783,28 @@ class WorkspaceRepository(
                     reason = shortConnectionReason(error), revision = revision)
                 stage = RemoteConnectionStage.FINISHED
             } else if (stage == RemoteConnectionStage.OPERATING) {
-                val transportLost = error is JSchException || error is RemoteFileTimeoutException ||
-                    (error is SftpException && session?.isConnected == false)
-                if (transportLost) remoteRuntime.connectionLost(hostId,
-                    if (error is RemoteFileTimeoutException) workspaceStrings.getString(R.string.workspace_remote_file_timeout) else workspaceStrings.getString(R.string.workspace_ssh_interrupted), revision)
+                val transportLost = lease?.session?.isConnected == false
+                val outcomeUnknown = transportLost || error is JSchException ||
+                    error is SftpException || error is RemoteFileTimeoutException
+                if (transportLost) {
+                    lease?.session?.let { remoteConnections.connectionLost(workspace.id, it) }
+                    remoteRuntime.connectionLost(hostId,
+                        workspaceStrings.getString(R.string.workspace_ssh_interrupted), revision)
+                }
                 if (recordOperation) remoteRuntime.operation(workspace.id,
-                    if (transportLost) RemoteOperationOutcome.OUTCOME_UNKNOWN
+                    if (outcomeUnknown) RemoteOperationOutcome.OUTCOME_UNKNOWN
                     else RemoteOperationOutcome.FILE_FAILED,
-                    reason = if (transportLost) workspaceStrings.getString(R.string.workspace_connection_lost_unknown) else workspaceStrings.getString(R.string.workspace_file_or_command_failed),
+                    reason = when {
+                        transportLost -> workspaceStrings.getString(R.string.workspace_connection_lost_unknown)
+                        error is RemoteFileTimeoutException -> workspaceStrings.getString(R.string.workspace_remote_file_timeout)
+                        outcomeUnknown -> workspaceStrings.getString(R.string.workspace_connection_lost_unknown)
+                        else -> workspaceStrings.getString(R.string.workspace_file_or_command_failed)
+                    },
                     revision = revision)
             }
             throw error
         } finally {
-            withContext(NonCancellable + Dispatchers.IO) { runCatching { session?.close() } }
+            withContext(NonCancellable + Dispatchers.IO) { runCatching { lease?.close() } }
             when (stage) {
                 RemoteConnectionStage.CONNECTING -> remoteRuntime.abandoned(hostId, workspace.id, revision)
                 RemoteConnectionStage.OPERATING -> remoteRuntime.completed(hostId, workspace.id, revision)
@@ -714,7 +833,7 @@ class WorkspaceRepository(
             (expectedRemoteRoot != null && expectedRemoteRoot != workspace.remotePath)
         ) throw WorkspaceToolTargetChangedException()
         remoteRuntime.begin(hostId, id, revision)
-        var session: RemoteWorkspaceSession? = null
+        var lease: RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>.Lease? = null
         var terminal: RemoteTerminalSession? = null
         var handedOff = false
         var classified = false
@@ -730,12 +849,14 @@ class WorkspaceRepository(
                 classified = true
                 throw error
             }
-            val opened = runRemoteInterruptible { remoteTransport.open(config).also { session = it } }
+            val opened = openLeasedConnection(remoteIdentity(workspace, host), config,
+                verifyPath = false)
+                .also { lease = it }.session
             if (opened.resolvedRoot != workspace.remotePath ||
                 hostDao.getById(hostId)?.connectionRevision != revision ||
                 dao.getById(id)?.let { it.isRemote && it.remoteHostId == hostId && it.remotePath == workspace.remotePath } != true
             ) throw WorkspaceToolTargetChangedException()
-            val pty = runRemoteInterruptible {
+            val pty = runRemoteOperation(opened) {
                 opened.openTerminal(columns, rows).also { terminal = it }
             }
             currentCoroutineContext().ensureActive()
@@ -744,12 +865,21 @@ class WorkspaceRepository(
                 dao.getById(id)?.let { it.isRemote && it.remoteHostId == hostId && it.remotePath == workspace.remotePath } != true
             ) throw WorkspaceToolTargetChangedException()
             remoteRuntime.connected(hostId, id, revision)
-            return RemoteTerminalConnection(pty) {
-                remoteRuntime.completed(hostId, id, revision)
-            }.also { handedOff = true }
+            lateinit var connection: RemoteTerminalConnection
+            connection = RemoteTerminalConnection(pty) {
+                synchronized(terminalLock) {
+                    activeTerminals[id]?.remove(connection)
+                    if (activeTerminals[id].isNullOrEmpty()) activeTerminals.remove(id)
+                }
+                try { lease?.close() } finally { remoteRuntime.completed(hostId, id, revision) }
+            }
+            synchronized(terminalLock) { activeTerminals.getOrPut(id, ::mutableSetOf) += connection }
+            handedOff = true
+            return connection
         } catch (error: CancellationException) {
             throw error
         } catch (error: WorkspaceToolTargetChangedException) {
+            remoteConnections.invalidate(id)
             throw error
         } catch (error: RemoteWorkspaceDirectoryException) {
             remoteRuntime.directoryFailed(hostId, id, workspaceStrings.getString(R.string.workspace_remote_directory_unavailable), revision)
@@ -766,7 +896,7 @@ class WorkspaceRepository(
             if (!handedOff) {
                 withContext(NonCancellable + Dispatchers.IO) {
                     runCatching { terminal?.close() }
-                    runCatching { session?.close() }
+                    runCatching { lease?.close() }
                 }
                 if (!classified) remoteRuntime.abandoned(hostId, id, revision)
             }
@@ -1266,6 +1396,10 @@ class WorkspaceRepository(
 
     suspend fun delete(id: String): Boolean {
         val workspace = dao.getById(id) ?: return false
+        if (workspace.isRemote) {
+            closeRemoteTerminals(id)
+            remoteConnections.forget(id)
+        }
         dao.deleteById(id)
         if (!workspace.isRemote) withContext(Dispatchers.IO) {
             manager.deleteWorkspace(workspace.root)
