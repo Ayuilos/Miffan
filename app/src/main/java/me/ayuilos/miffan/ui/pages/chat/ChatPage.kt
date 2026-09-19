@@ -474,6 +474,7 @@ private fun ChatPageContent(
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val focusManager = LocalFocusManager.current
@@ -495,7 +496,7 @@ private fun ChatPageContent(
         scopeName = assistant.name.takeIf { it.isNotBlank() },
         remoteHost = remoteHosts.find { it.id == selectedWorkspace?.remoteHostId },
         runtimeStatus = selectedWorkspace?.takeIf { it.isRemote }?.let { workspace ->
-            remoteWorkspaceStatusLabel(
+            remoteWorkspaceStatusLabel(workspaceStrings,
                 workspace,
                 workspace.remoteHostId?.let(remoteHostStates::get),
                 remoteWorkspaceStates[workspace.id],
@@ -1040,11 +1041,12 @@ private fun WorkspaceTopBarAction(
     showName: Boolean,
     onClick: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val workspaceLabel = stringResource(R.string.extensions_page_workspace)
     val filesLabel = stringResource(R.string.workspace_detail_tab_files)
     val errorLabel = stringResource(R.string.workspace_detail_shell_broken)
     val scopeLabel = if (entry.isRemote) {
-        "远程共享目录"
+        workspaceStrings.getString(R.string.workspace_remote_shared_directory)
     } else if (entry.scopeId == null) {
         stringResource(R.string.workspace_scope_legacy)
     } else {
@@ -1053,20 +1055,20 @@ private fun WorkspaceTopBarAction(
             entry.scopeName ?: entry.scopeId.take(8),
         )
     }
-    val displayName = "${if (entry.isRemote) "远程" else "本地"} · ${entry.name ?: workspaceLabel} · $scopeLabel"
+    val displayName = "${if (entry.isRemote) workspaceStrings.getString(R.string.workspace_filter_remote) else workspaceStrings.getString(R.string.workspace_filter_local)} · ${entry.name ?: workspaceLabel} · $scopeLabel"
     val actionLabel = buildString {
         append(workspaceLabel)
         append(' ')
         append(filesLabel)
         append("：")
-        append(if (entry.isRemote) "远程服务器" else "本地设备")
+        append(if (entry.isRemote) workspaceStrings.getString(R.string.workspace_remote_server) else workspaceStrings.getString(R.string.workspace_local_device))
         if (entry.isRemote) {
-            append("，主机 ")
-            append(entry.remoteHostName ?: "主机不可用")
-            append("，账户 ")
-            append(entry.remoteHostLabel ?: "未知")
-            append("，目录 ")
-            append(entry.remoteRoot ?: "未知")
+            append(workspaceStrings.getString(R.string.workspace_a11y_host_fragment))
+            append(entry.remoteHostName ?: workspaceStrings.getString(R.string.workspace_host_unavailable))
+            append(workspaceStrings.getString(R.string.workspace_a11y_account_fragment))
+            append(entry.remoteHostLabel ?: workspaceStrings.getString(R.string.workspace_unknown))
+            append(workspaceStrings.getString(R.string.workspace_a11y_directory_fragment))
+            append(entry.remoteRoot ?: workspaceStrings.getString(R.string.workspace_unknown))
             entry.runtimeStatus?.let { append("，"); append(it) }
         }
         if (!showName) {

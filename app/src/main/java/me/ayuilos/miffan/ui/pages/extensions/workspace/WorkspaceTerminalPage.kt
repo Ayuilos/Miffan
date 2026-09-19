@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import androidx.compose.ui.platform.LocalResources
 import android.graphics.Typeface
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
@@ -73,6 +74,7 @@ fun WorkspaceTerminalPage(
     scopeId: String? = null,
     scopeName: String? = null,
 ) {
+    val workspaceStrings = LocalResources.current
     val vm: WorkspaceDetailVM = koinViewModel(
         parameters = {
             parametersOf(WorkspaceDetailArgs(
@@ -97,8 +99,8 @@ fun WorkspaceTerminalPage(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                Text(state.error ?: if (state.loading) "正在读取工作空间…" else "工作空间不存在")
-                if (!state.loading) TextButton(onClick = vm::reloadMetadataOnly) { Text("重试") }
+                Text(state.error ?: if (state.loading) workspaceStrings.getString(R.string.workspace_loading_workspace) else workspaceStrings.getString(R.string.workspace_not_found))
+                if (!state.loading) TextButton(onClick = vm::reloadMetadataOnly) { Text(stringResource(R.string.onboarding_page_retry)) }
             }
         }
         return
@@ -174,6 +176,7 @@ private fun WorkspaceTerminalContent(
     workspaceManager: WorkspaceManager,
 ) {
     val context = LocalContext.current
+    val workspaceStrings = LocalResources.current
     val terminalTextSizePx = with(LocalDensity.current) { 12.sp.roundToPx() }
     val scope = rememberCoroutineScope()
     val terminalTypeface = remember(context) {
@@ -198,7 +201,7 @@ private fun WorkspaceTerminalContent(
                     }
                 }
                 if (error != null) {
-                    resourceError = error.message ?: "Workspace resource limit exceeded"
+                    resourceError = error.message ?: workspaceStrings.getString(R.string.workspace_terminal_resource_limit)
                 }
                 finishedRegistration?.close()
                 if (activeProcessRegistration === finishedRegistration) {
@@ -237,7 +240,7 @@ private fun WorkspaceTerminalContent(
                 workspaceManager.tryAcquireInteractiveSession(current)
             }
         } catch (error: Throwable) {
-            value = TerminalSessionUiState.Failed(error.message ?: "Workspace resource check failed")
+            value = TerminalSessionUiState.Failed(error.message ?: workspaceStrings.getString(R.string.workspace_resource_check_failed))
             return@produceState
         }
         if (lease == null) {
@@ -307,7 +310,7 @@ private fun WorkspaceTerminalContent(
             activeProcessRegistration = null
             lease.close()
             activeLease = null
-            value = TerminalSessionUiState.Failed(error.message ?: "Failed to start terminal")
+            value = TerminalSessionUiState.Failed(error.message ?: workspaceStrings.getString(R.string.workspace_terminal_start_failed))
         }
     }
 
@@ -354,7 +357,7 @@ private fun WorkspaceTerminalContent(
                 runCatching { resourceGuard.check() }.exceptionOrNull()
             }
             if (error != null) {
-                resourceError = error.message ?: "Workspace resource limit exceeded"
+                resourceError = error.message ?: workspaceStrings.getString(R.string.workspace_terminal_resource_limit)
                 session.finishWorkspaceProcessGroup(activeProcessRegistration)
                 break
             }

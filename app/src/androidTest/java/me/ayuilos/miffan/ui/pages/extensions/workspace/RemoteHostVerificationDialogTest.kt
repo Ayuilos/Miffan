@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.testutils.workspaceUiText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -59,10 +61,10 @@ class RemoteHostVerificationDialogTest {
             }
         }
 
-        compose.onNodeWithText("主机密钥已变化。请先通过可信渠道核对新指纹，确认后才更新信任记录。")
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_host_key_changed))
             .assertIsDisplayed()
         compose.onNodeWithText(newFingerprint).assertIsDisplayed()
-        compose.onNodeWithText("原已信任：$oldFingerprint").assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_previously_trusted, oldFingerprint)).assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(null, trustedFingerprint)
             assertFalse(tested)
@@ -74,8 +76,8 @@ class RemoteHostVerificationDialogTest {
         screenshot.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
 
-        compose.onNodeWithText("更新信任并测试").performClick()
-        compose.onNodeWithText("主机可连接").assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_update_trust_test)).performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_host_reachable)).assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(newFingerprint, trustedFingerprint)
             assertTrue(tested)
@@ -104,15 +106,15 @@ class RemoteHostVerificationDialogTest {
             }
         }
 
-        compose.onNodeWithText("测试连接").performClick()
-        compose.onNodeWithText("正在测试连接…").assertIsDisplayed()
-        compose.onNodeWithText("关闭").assertIsNotEnabled()
-        compose.onNodeWithText("测试连接").assertIsNotEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.setting_provider_page_test_connection)).performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_testing_connection)).assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_close)).assertIsNotEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.setting_provider_page_test_connection)).assertIsNotEnabled()
         compose.runOnIdle { testCallback?.invoke(Result.failure(IllegalStateException("连接失败"))) }
-        compose.onNodeWithText("关闭").assertIsEnabled()
-        compose.onNodeWithText("测试连接").assertIsEnabled().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_close)).assertIsEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.setting_provider_page_test_connection)).assertIsEnabled().performClick()
         compose.runOnIdle { testCallback?.invoke(Result.success(true)) }
-        compose.onNodeWithText("主机可连接").assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_host_reachable)).assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(0, trustCalls)
             assertEquals(2, testCalls)
@@ -139,16 +141,16 @@ class RemoteHostVerificationDialogTest {
             }
         }
 
-        compose.onNodeWithText("正在读取主机指纹…").assertIsDisplayed()
-        compose.onNodeWithText("关闭").assertIsNotEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_reading_fingerprint)).assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_close)).assertIsNotEnabled()
         compose.runOnIdle { discoverCallback?.invoke(Result.failure(IllegalStateException("读取失败"))) }
-        compose.onNodeWithText("重新读取指纹").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_reread_fingerprint)).performClick()
         compose.runOnIdle {
             assertEquals(2, discoverCalls)
             discoverCallback?.invoke(Result.success(RemoteHostKey("ssh-ed25519", fingerprint)))
         }
         compose.onNodeWithText(fingerprint).assertIsDisplayed()
-        compose.onNodeWithText("关闭").assertIsEnabled().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_close)).assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(1, dismissCalls) }
     }
 }

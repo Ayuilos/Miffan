@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.components.ai
 
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -328,6 +329,7 @@ private fun WorkspacePickerListItem(
     onNavigateToTerminal: (String, String?, String?) -> Unit,
     onNavigateToManage: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var showSheet by remember { mutableStateOf(false) }
     val boundWorkspace = remember(workspaces, assistant.workspaceId) {
         workspaces.find { it.id == assistant.workspaceId?.toString() }
@@ -355,7 +357,7 @@ private fun WorkspacePickerListItem(
                     )
                     Text(
                         text = if (boundWorkspace.isRemote) {
-                            "远程共享目录 · ${boundWorkspace.remotePath.orEmpty()}"
+                            workspaceStrings.getString(R.string.workspace_remote_shared_directory_path, boundWorkspace.remotePath.orEmpty())
                         } else if (assistant.workspaceScopeId == null) {
                             stringResource(R.string.workspace_scope_legacy)
                         } else {

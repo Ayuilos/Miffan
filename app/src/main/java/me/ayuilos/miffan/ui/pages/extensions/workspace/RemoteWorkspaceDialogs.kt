@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.utils.workspaceErrorMessage
+import me.ayuilos.miffan.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
@@ -62,11 +66,12 @@ internal fun RemoteHostCard(
     onVerify: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var menuExpanded by remember { mutableStateOf(false) }
     val authentication = when {
-        host.sshKeyId != null -> "SSH 密钥 · ${keyName ?: "密钥不可用"}"
-        host.authType == "PRIVATE_KEY" -> "粘贴私钥"
-        else -> "密码"
+        host.sshKeyId != null -> workspaceStrings.getString(R.string.workspace_ssh_key_name_label, keyName ?: workspaceStrings.getString(R.string.workspace_key_unavailable))
+        host.authType == "PRIVATE_KEY" -> workspaceStrings.getString(R.string.workspace_paste_private_key)
+        else -> workspaceStrings.getString(R.string.search_detail_password)
     }
     Row(
         modifier = Modifier.fillMaxWidth()
@@ -100,7 +105,7 @@ internal fun RemoteHostCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${remoteHostStatusLabel(host, runtime).replace("本次启动尚未检查", "待检查")} · $authentication",
+                "${remoteHostStatusLabel(workspaceStrings, host, runtime)} · $authentication",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (host.trustedHostKeySha256 == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -109,12 +114,12 @@ internal fun RemoteHostCard(
         }
         Box(modifier = Modifier.size(48.dp)) {
             IconButton(onClick = { menuExpanded = true }, modifier = Modifier.fillMaxSize()) {
-                Icon(HugeIcons.MoreVertical, contentDescription = "主机操作")
+                Icon(HugeIcons.MoreVertical, contentDescription = workspaceStrings.getString(R.string.workspace_host_actions))
             }
             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                DropdownMenuItem(text = { Text("编辑主机") }, onClick = { menuExpanded = false; onEdit() })
-                DropdownMenuItem(text = { Text("确认指纹并测试") }, onClick = { menuExpanded = false; onVerify() })
-                DropdownMenuItem(text = { Text("删除主机") }, onClick = { menuExpanded = false; onDelete() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_edit_host)) }, onClick = { menuExpanded = false; onEdit() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_confirm_fingerprint_test)) }, onClick = { menuExpanded = false; onVerify() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_delete_host)) }, onClick = { menuExpanded = false; onDelete() })
             }
         }
     }
@@ -132,6 +137,7 @@ internal fun RemoteHostEditorDialog(
     onCreate: (String, String, Int, String, RemoteAuthentication?, String?, (Result<RemoteHostEntity>) -> Unit) -> Unit,
     onUpdate: (String, String, String, Int, String, RemoteAuthentication?, String?, (Result<Boolean>) -> Unit) -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val name = draft.name
     val hostname = draft.hostname
     val port = draft.port
@@ -157,17 +163,17 @@ internal fun RemoteHostEditorDialog(
 
     AlertDialog(
         onDismissRequest = { if (!submitting) onDismiss() },
-        title = { Text(if (host == null) "添加远程主机" else "编辑远程主机") },
+        title = { Text(if (host == null) workspaceStrings.getString(R.string.workspace_add_remote_host) else workspaceStrings.getString(R.string.workspace_edit_remote_host)) },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("通过 APP 内置 SSH 连接。Tailscale 地址或私网地址都可以填写在主机地址中。", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(name, { onDraftChange(draft.copy(name = it)); error = null }, label = { Text("显示名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(hostname, { onDraftChange(draft.copy(hostname = it)); error = null }, label = { Text("主机地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(port, { onDraftChange(draft.copy(port = it)); error = null }, label = { Text("SSH 端口") }, singleLine = true, modifier = Modifier.fillMaxWidth(), isError = port.isNotBlank() && validPort == null)
-                OutlinedTextField(username, { onDraftChange(draft.copy(username = it)); error = null }, label = { Text("用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.workspace_host_address_help), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(name, { onDraftChange(draft.copy(name = it)); error = null }, label = { Text(stringResource(R.string.workspace_display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(hostname, { onDraftChange(draft.copy(hostname = it)); error = null }, label = { Text(stringResource(R.string.workspace_host_address)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(port, { onDraftChange(draft.copy(port = it)); error = null }, label = { Text(stringResource(R.string.workspace_ssh_port)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), isError = port.isNotBlank() && validPort == null)
+                OutlinedTextField(username, { onDraftChange(draft.copy(username = it)); error = null }, label = { Text(stringResource(R.string.search_detail_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 RemoteHostAuthSelector(mode = authMode, onModeChange = {
                     if (it != authMode) {
                         onDraftChange(draft.copy(authMode = it, credential = "", passphrase = ""))
@@ -177,7 +183,7 @@ internal fun RemoteHostEditorDialog(
                 if (authMode == HostAuthMode.SAVED_KEY) {
                     val selectedKey = sshKeys.find { it.id == selectedKeyId }
                     OutlinedButton(onClick = { keyMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(selectedKey?.let { "${it.name} · ${it.fingerprint}" } ?: "选择 SSH 密钥", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(selectedKey?.let { "${it.name} · ${it.fingerprint}" } ?: workspaceStrings.getString(R.string.workspace_select_ssh_key), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     DropdownMenu(expanded = keyMenu, onDismissRequest = { keyMenu = false }) {
                         sshKeys.forEach { key ->
@@ -185,21 +191,21 @@ internal fun RemoteHostEditorDialog(
                         }
                     }
                     if (selectedKey != null && keyMaterialStatus[selectedKey.id] == false) {
-                        Text("此密钥缺少私钥，请先在密钥列表中恢复。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.workspace_key_material_missing), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
-                    TextButton(onClick = onManageKeys) { Text(if (sshKeys.isEmpty()) "先创建 SSH 密钥" else "管理 SSH 密钥") }
+                    TextButton(onClick = onManageKeys) { Text(if (sshKeys.isEmpty()) workspaceStrings.getString(R.string.workspace_create_ssh_key_first) else workspaceStrings.getString(R.string.workspace_manage_ssh_keys)) }
                 } else {
                     OutlinedTextField(
                         credential,
                         { onDraftChange(draft.copy(credential = it)); error = null },
-                        label = { Text(if (authMode == HostAuthMode.PASSWORD) "密码" else "OpenSSH / PEM 私钥内容") },
-                        supportingText = if (host != null && !changedAuthentication) ({ Text("留空则保留现有凭据") }) else null,
+                        label = { Text(if (authMode == HostAuthMode.PASSWORD) workspaceStrings.getString(R.string.search_detail_password) else workspaceStrings.getString(R.string.workspace_private_key_content)) },
+                        supportingText = if (host != null && !changedAuthentication) ({ Text(stringResource(R.string.workspace_keep_existing_credentials)) }) else null,
                         visualTransformation = if (authMode == HostAuthMode.PASSWORD) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                         minLines = if (authMode == HostAuthMode.PASTED_KEY) 4 else 1,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (authMode == HostAuthMode.PASTED_KEY) {
-                        OutlinedTextField(passphrase, { onDraftChange(draft.copy(passphrase = it)) }, label = { Text("私钥口令（可选）") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(passphrase, { onDraftChange(draft.copy(passphrase = it)) }, label = { Text(stringResource(R.string.workspace_private_key_passphrase_optional)) }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                     }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -218,28 +224,28 @@ internal fun RemoteHostEditorDialog(
                     onCreate(name.trim(), hostname.trim(), parsedPort, username.trim(), authentication, selectedKeyId.takeIf { authMode == HostAuthMode.SAVED_KEY }) { result ->
                         if (!active) return@onCreate
                         submitting = false
-                        result.fold(onSuccess = { onDismiss() }, onFailure = { error = it.localizedMessage ?: "保存失败" })
+                        result.fold(onSuccess = { onDismiss() }, onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_save_failed) })
                     }
                 } else {
                     onUpdate(host.id, name.trim(), hostname.trim(), parsedPort, username.trim(), authentication, sshKeyId) { result ->
                         if (!active) return@onUpdate
                         submitting = false
                         result.fold(
-                            onSuccess = { if (it) onDismiss() else error = "未能更新主机" },
-                            onFailure = { error = it.localizedMessage ?: "保存失败" },
+                            onSuccess = { if (it) onDismiss() else error = workspaceStrings.getString(R.string.workspace_update_host_failed) },
+                            onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_save_failed) },
                         )
                     }
                 }
-            }) { Text("保存") }
+            }) { Text(stringResource(R.string.common_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
-internal enum class HostAuthMode(val label: String) {
-    PASSWORD("密码"),
-    SAVED_KEY("SSH 密钥"),
-    PASTED_KEY("粘贴私钥"),
+internal enum class HostAuthMode(@androidx.annotation.StringRes val labelRes: Int) {
+    PASSWORD(R.string.search_detail_password),
+    SAVED_KEY(R.string.workspace_ssh_key),
+    PASTED_KEY(R.string.workspace_paste_private_key),
 }
 
 internal data class HostEditorDraft(
@@ -270,8 +276,9 @@ internal data class HostEditorDraft(
 
 @Composable
 internal fun RemoteHostAuthSelector(mode: HostAuthMode, onModeChange: (HostAuthMode) -> Unit) {
+    val workspaceStrings = LocalResources.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("认证方式", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.setting_provider_page_auth_method), style = MaterialTheme.typography.titleSmall)
         HostAuthMode.entries.forEach { option ->
             Row(
                 modifier = Modifier
@@ -283,7 +290,7 @@ internal fun RemoteHostAuthSelector(mode: HostAuthMode, onModeChange: (HostAuthM
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 RadioButton(selected = mode == option, onClick = null)
-                Text(option.label)
+                Text(stringResource(option.labelRes))
             }
         }
     }
@@ -297,6 +304,7 @@ internal fun RemoteHostVerificationDialog(
     test: ((Result<Boolean>) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var key by remember(host.id, host.connectionRevision) { mutableStateOf<RemoteHostKey?>(null) }
     var error by remember(host.id, host.connectionRevision) { mutableStateOf<String?>(null) }
     var success by remember(host.id, host.connectionRevision) { mutableStateOf(false) }
@@ -320,35 +328,35 @@ internal fun RemoteHostVerificationDialog(
         discover { result ->
             if (!active) return@discover
             phase = VerificationPhase.IDLE
-            result.fold(onSuccess = { key = it }, onFailure = { error = it.localizedMessage ?: "无法读取主机指纹" })
+            result.fold(onSuccess = { key = it }, onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_read_host_fingerprint_failed) })
         }
     }
     LaunchedEffect(host.id, host.connectionRevision) { runDiscovery() }
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("确认主机身份") },
+        title = { Text(stringResource(R.string.workspace_confirm_host_identity)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("${host.username}@${host.host}:${host.port}")
-                Text("请与目标机器上可信渠道显示的 SSH 主机指纹核对，确认后才会保存并连接。", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.workspace_verify_host_fingerprint_help), style = MaterialTheme.typography.bodySmall)
                 key?.let {
                     Text(it.algorithm, style = MaterialTheme.typography.labelSmall)
                     Text(it.sha256Fingerprint, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
-                trustedFingerprint?.let { Text("原已信任：$it", style = MaterialTheme.typography.bodySmall) }
+                trustedFingerprint?.let { Text(stringResource(R.string.workspace_previously_trusted, it), style = MaterialTheme.typography.bodySmall) }
                 if (keyChanged) {
-                    Text("主机密钥已变化。请先通过可信渠道核对新指纹，确认后才更新信任记录。", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.workspace_host_key_changed), color = MaterialTheme.colorScheme.error)
                 }
                 when (phase) {
-                    VerificationPhase.DISCOVERING -> Text("正在读取主机指纹…", style = MaterialTheme.typography.bodySmall)
-                    VerificationPhase.TRUSTING -> Text("正在确认主机指纹…", style = MaterialTheme.typography.bodySmall)
-                    VerificationPhase.TESTING -> Text("正在测试连接…", style = MaterialTheme.typography.bodySmall)
+                    VerificationPhase.DISCOVERING -> Text(stringResource(R.string.workspace_reading_fingerprint), style = MaterialTheme.typography.bodySmall)
+                    VerificationPhase.TRUSTING -> Text(stringResource(R.string.workspace_confirming_fingerprint), style = MaterialTheme.typography.bodySmall)
+                    VerificationPhase.TESTING -> Text(stringResource(R.string.workspace_testing_connection), style = MaterialTheme.typography.bodySmall)
                     VerificationPhase.IDLE -> Unit
                 }
-                if (success) Text("主机可连接", color = MaterialTheme.colorScheme.primary)
+                if (success) Text(stringResource(R.string.workspace_host_reachable), color = MaterialTheme.colorScheme.primary)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (!busy) TextButton(onClick = ::runDiscovery) { Text("重新读取指纹") }
+                if (!busy) TextButton(onClick = ::runDiscovery) { Text(stringResource(R.string.workspace_reread_fingerprint)) }
             }
         },
         confirmButton = {
@@ -363,8 +371,8 @@ internal fun RemoteHostVerificationDialog(
                         if (!active) return@test
                         phase = VerificationPhase.IDLE
                         testResult.fold(
-                            onSuccess = { connected -> success = connected; if (!connected) error = "连接失败，请重试" },
-                            onFailure = { error = it.localizedMessage ?: "连接失败，请重试" },
+                            onSuccess = { connected -> success = connected; if (!connected) error = workspaceStrings.getString(R.string.workspace_connection_failed_retry) },
+                            onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_connection_failed_retry) },
                         )
                     }
                 }
@@ -378,7 +386,7 @@ internal fun RemoteHostVerificationDialog(
                             onSuccess = { trusted ->
                                 if (!trusted) {
                                     phase = VerificationPhase.IDLE
-                                    error = "指纹已变化，请重新读取并核对"
+                                    error = workspaceStrings.getString(R.string.workspace_fingerprint_changed_reread)
                                 } else {
                                     trustedFingerprint = fingerprint
                                     runTest()
@@ -386,15 +394,15 @@ internal fun RemoteHostVerificationDialog(
                             },
                             onFailure = {
                                 phase = VerificationPhase.IDLE
-                                error = it.localizedMessage ?: "无法确认主机指纹"
+                                error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_confirm_fingerprint_failed)
                             },
                         )
                     }
                 }
-            }) { Text(if (keyChanged) "更新信任并测试" else if (trustedFingerprint == key?.sha256Fingerprint) "测试连接" else "信任并测试") }
+            }) { Text(if (keyChanged) workspaceStrings.getString(R.string.workspace_update_trust_test) else if (trustedFingerprint == key?.sha256Fingerprint) workspaceStrings.getString(R.string.setting_provider_page_test_connection) else workspaceStrings.getString(R.string.workspace_trust_test)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text("关闭") }
+            TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.workspace_close)) }
         },
     )
 }
@@ -418,6 +426,7 @@ internal fun RemoteWorkspaceDialog(
     onVerifyHost: (RemoteHostEntity) -> Unit,
     onCreate: (String, String, String, (Result<WorkspaceEntity>) -> Unit) -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var active by remember { mutableStateOf(true) }
@@ -432,14 +441,14 @@ internal fun RemoteWorkspaceDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("新建远程工作空间") },
+        title = { Text(stringResource(R.string.workspace_new_remote_workspace)) },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                OutlinedTextField(name, { onDraftChange(draft.copy(name = it)); error = null }, label = { Text("工作空间名称") }, modifier = Modifier.fillMaxWidth().testTag("remote_workspace_name"), isError = name.trim() in existingNames)
-                Text("选择远程主机", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(name, { onDraftChange(draft.copy(name = it)); error = null }, label = { Text(stringResource(R.string.workspace_workspace_name)) }, modifier = Modifier.fillMaxWidth().testTag("remote_workspace_name"), isError = name.trim() in existingNames)
+                Text(stringResource(R.string.workspace_select_remote_host), style = MaterialTheme.typography.titleSmall)
                 Column(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)
                         .verticalScroll(rememberScrollState()).selectableGroup(),
@@ -467,14 +476,14 @@ internal fun RemoteWorkspaceDialog(
                         }
                     }
                 }
-                if (hosts.isEmpty()) Text("还没有远程主机。", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = onAddHost, enabled = !busy) { Text("添加远程主机") }
-                OutlinedTextField(directory, { onDraftChange(draft.copy(directory = it)); error = null }, label = { Text("远程绝对目录") }, supportingText = { Text("已存在的目录，例如 /home/user/project") }, modifier = Modifier.fillMaxWidth().testTag("remote_workspace_directory"))
+                if (hosts.isEmpty()) Text(stringResource(R.string.workspace_no_remote_hosts_message), style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = onAddHost, enabled = !busy) { Text(stringResource(R.string.workspace_add_remote_host)) }
+                OutlinedTextField(directory, { onDraftChange(draft.copy(directory = it)); error = null }, label = { Text(stringResource(R.string.workspace_remote_absolute_directory)) }, supportingText = { Text(stringResource(R.string.workspace_existing_directory_hint)) }, modifier = Modifier.fillMaxWidth().testTag("remote_workspace_directory"))
                 if (selected != null && selected.trustedHostKeySha256 == null) {
-                    Text("使用前需确认主机指纹。", style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { onVerifyHost(selected) }, enabled = !busy) { Text("确认指纹并测试") }
+                    Text(stringResource(R.string.workspace_confirm_before_use), style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = { onVerifyHost(selected) }, enabled = !busy) { Text(stringResource(R.string.workspace_confirm_fingerprint_test)) }
                 }
-                if (busy) Text("正在创建工作空间…", style = MaterialTheme.typography.bodySmall)
+                if (busy) Text(stringResource(R.string.workspace_creating_workspace), style = MaterialTheme.typography.bodySmall)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -485,11 +494,11 @@ internal fun RemoteWorkspaceDialog(
                 onCreate(name.trim(), requireNotNull(selected).id, directory.trimEnd('/').ifBlank { "/" }) { result ->
                     if (!active) return@onCreate
                     busy = false
-                    result.fold(onSuccess = { onDismiss() }, onFailure = { error = it.localizedMessage ?: "创建失败" })
+                    result.fold(onSuccess = { onDismiss() }, onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_create_failed) })
                 }
-            }) { Text("创建") }
+            }) { Text(stringResource(R.string.skill_detail_page_create)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -499,16 +508,17 @@ internal fun RemoteHostDeleteDialog(
     onDelete: ((Result<Boolean>) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var active by remember { mutableStateOf(true) }
     DisposableEffect(Unit) { onDispose { active = false } }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("删除远程主机") },
+        title = { Text(stringResource(R.string.workspace_delete_remote_host)) },
         text = {
             Column {
-                Text("删除 ${host.name} 的连接配置？关联的工作空间需要先删除。")
+                Text(stringResource(R.string.workspace_delete_host_confirmation, host.name))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -519,12 +529,12 @@ internal fun RemoteHostDeleteDialog(
                     if (!active) return@onDelete
                     busy = false
                     result.fold(
-                        onSuccess = { if (it) onDismiss() else error = "请先删除关联的工作空间" },
-                        onFailure = { error = it.localizedMessage ?: "删除失败" },
+                        onSuccess = { if (it) onDismiss() else error = workspaceStrings.getString(R.string.workspace_delete_linked_workspaces_first) },
+                        onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.skill_detail_page_delete_failed) },
                     )
                 }
-            }) { Text("删除") }
+            }) { Text(stringResource(R.string.common_delete)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

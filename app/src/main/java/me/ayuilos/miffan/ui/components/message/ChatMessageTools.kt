@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.components.message
 
+import androidx.compose.ui.platform.LocalResources
+import android.content.res.Resources
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -64,25 +66,26 @@ import me.ayuilos.miffan.utils.JsonInstant
 
 private const val ASK_USER_TOOL_NAME = "ask_user"
 
-internal fun workspaceToolTargetLines(target: WorkspaceToolTargetSnapshot?): List<String> = when {
-    target == null -> listOf("旧调用缺少目标记录，无法执行")
+internal fun workspaceToolTargetLines(workspaceStrings: Resources, target: WorkspaceToolTargetSnapshot?): List<String> = when {
+    target == null -> listOf(workspaceStrings.getString(R.string.workspace_legacy_target_missing))
     target.kind.equals("REMOTE", ignoreCase = true) -> listOf(
-        "原始目标：远程服务器 · ${target.workspaceName}",
-        "主机：${target.remoteHostName ?: "未命名"} · ${target.remoteHostLabel ?: "未知账户"}",
-        "目录：${target.remoteRoot ?: "未知目录"}",
+        workspaceStrings.getString(R.string.workspace_original_remote_target, target.workspaceName),
+        workspaceStrings.getString(R.string.workspace_host_identity_line, target.remoteHostName ?: workspaceStrings.getString(R.string.prompt_page_unnamed), target.remoteHostLabel ?: workspaceStrings.getString(R.string.workspace_unknown_account)),
+        workspaceStrings.getString(R.string.workspace_directory_identity_line, target.remoteRoot ?: workspaceStrings.getString(R.string.workspace_unknown_directory)),
     )
     target.kind.equals("LOCAL", ignoreCase = true) -> buildList {
-        add("原始目标：本地设备 · ${target.workspaceName}")
-        add("目录：${target.localRoot ?: "未知目录"}")
-        target.scopeId?.let { add("助手文件范围：$it") }
+        add(workspaceStrings.getString(R.string.workspace_original_local_target, target.workspaceName))
+        add(workspaceStrings.getString(R.string.workspace_directory_identity_line, target.localRoot ?: workspaceStrings.getString(R.string.workspace_unknown_directory)))
+        target.scopeId?.let { add(workspaceStrings.getString(R.string.workspace_assistant_file_scope, it)) }
     }
-    else -> listOf("原始目标：未知工作空间类型，无法执行")
+    else -> listOf(workspaceStrings.getString(R.string.workspace_unknown_target_kind))
 }
 
 @Composable
 private fun WorkspaceToolTargetText(target: WorkspaceToolTargetSnapshot?) {
+    val workspaceStrings = LocalResources.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        workspaceToolTargetLines(target).forEach { line ->
+        workspaceToolTargetLines(workspaceStrings, target).forEach { line ->
             Text(
                 text = line,
                 style = MaterialTheme.typography.labelSmall,
@@ -128,6 +131,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
 ) {
+    val workspaceStrings = LocalResources.current
     // ask_user 是交互式问答流程, 不走注册式渲染框架
     if (tool.toolName == ASK_USER_TOOL_NAME) {
         AskUserToolStep(tool = tool, loading = loading, onToolAnswer = onToolAnswer)
@@ -227,13 +231,13 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (isWorkspaceTool) WorkspaceToolTargetText(tool.workspaceTarget)
                     if (isPending && tool.toolName == "workspace_shell") {
-                        Text("完整命令：", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.workspace_full_command_label), style = MaterialTheme.typography.labelSmall)
                         Text(
                             text = context.arguments.getStringContent("command").orEmpty(),
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         )
                         context.arguments.getStringContent("cwd")?.let { cwd ->
-                            Text("命令目录：$cwd", style = MaterialTheme.typography.labelSmall)
+                            Text(stringResource(R.string.workspace_command_directory, cwd), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                     renderer.Summary(context)

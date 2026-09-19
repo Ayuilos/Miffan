@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import androidx.compose.ui.platform.LocalResources
+import me.ayuilos.miffan.R
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -49,6 +51,7 @@ fun WorkspaceFileEditorPage(
     path: String,
     scopeId: String? = null,
 ) {
+    val workspaceStrings = LocalResources.current
     val repository = koinInject<WorkspaceRepository>()
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
@@ -69,7 +72,7 @@ fun WorkspaceFileEditorPage(
             textState.setTextAndPlaceCursorAtEnd(content)
             loading = false
         }.onFailure {
-            loadError = it.message ?: "读取文件失败"
+            loadError = it.message ?: workspaceStrings.getString(R.string.workspace_read_file_failed)
             loading = false
         }
     }
@@ -101,9 +104,9 @@ fun WorkspaceFileEditorPage(
                                             scopeId = scopeId,
                                         )
                                     }.onSuccess {
-                                        toaster.show("已保存", type = ToastType.Success)
+                                        toaster.show(workspaceStrings.getString(R.string.workspace_saved), type = ToastType.Success)
                                     }.onFailure {
-                                        toaster.show(it.message ?: "保存失败", type = ToastType.Error)
+                                        toaster.show(it.message ?: workspaceStrings.getString(R.string.workspace_save_failed), type = ToastType.Error)
                                     }
                                     saving = false
                                 }

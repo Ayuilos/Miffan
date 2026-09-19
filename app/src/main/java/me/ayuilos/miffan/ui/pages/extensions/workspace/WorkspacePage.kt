@@ -1,5 +1,11 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import androidx.compose.ui.platform.LocalResources
+import android.content.res.Resources
+import me.ayuilos.miffan.data.repository.RemoteConnectionActivity
+import me.ayuilos.miffan.data.repository.RemoteConfigurationState
+import me.rerere.workspace.WorkspaceShellStatus
+import me.ayuilos.miffan.utils.workspaceErrorMessage
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -138,6 +144,7 @@ internal class WorkspaceHomeActions(
 
 @Composable
 fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
+    val workspaceStrings = LocalResources.current
     val navController = LocalNavController.current
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val hosts by vm.hosts.collectAsStateWithLifecycle()
@@ -227,13 +234,13 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                         }
                         if (privateKeyTarget?.id == request.keyId && privateExportToken == request.token) {
                             privateExportBusy = false
-                            Toast.makeText(context, if (saved) "私钥已导出" else "私钥导出失败，请重试", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, if (saved) workspaceStrings.getString(R.string.workspace_private_key_exported) else workspaceStrings.getString(R.string.workspace_private_key_export_failed), Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
                 onFailure = {
                     privateExportBusy = false
-                    Toast.makeText(context, "私钥导出失败，请重试", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, workspaceStrings.getString(R.string.workspace_private_key_export_failed), Toast.LENGTH_SHORT).show()
                 },
             )
         }
@@ -249,9 +256,9 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             privateKeyTarget = key
             return
         }
-        val intent = keyguard.createConfirmDeviceCredentialIntent("查看 SSH 私钥", "验证设备身份后可查看或导出私钥")
+        val intent = keyguard.createConfirmDeviceCredentialIntent(workspaceStrings.getString(R.string.workspace_view_ssh_private_key), workspaceStrings.getString(R.string.workspace_verify_device_for_key))
         if (intent == null) {
-            Toast.makeText(context, "无法启动设备身份验证", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, workspaceStrings.getString(R.string.workspace_device_auth_unavailable), Toast.LENGTH_SHORT).show()
             return
         }
         pendingKeyguardTarget = key
@@ -265,13 +272,13 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
         runCatching {
             context.contentResolver.openOutputStream(uri)?.use { output ->
                 output.write((key.publicKey.trimEnd() + "\n").toByteArray(Charsets.UTF_8))
-            } ?: error("无法创建公钥文件")
-        }.onFailure { Toast.makeText(context, it.localizedMessage ?: "导出失败", Toast.LENGTH_SHORT).show() }
+            } ?: error(workspaceStrings.getString(R.string.workspace_create_public_key_file_failed))
+        }.onFailure { Toast.makeText(context, it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.mermaid_export_failed), Toast.LENGTH_SHORT).show() }
     }
     val copyPublicKey: (String) -> Unit = { publicKey ->
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("SSH public key", publicKey))
-        Toast.makeText(context, "已复制完整公钥", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, workspaceStrings.getString(R.string.workspace_public_key_copied), Toast.LENGTH_SHORT).show()
     }
     val exportPublicKey: (SshKeyEntity) -> Unit = { key ->
         exportKeyTarget = key
@@ -502,7 +509,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                                     hostToVerify = current
                                     callback(result)
                                 } else {
-                                    callback(Result.failure(IllegalStateException("主机已保存但无法读取最新配置，请从主机列表重试验证")))
+                                    callback(Result.failure(IllegalStateException(workspaceStrings.getString(R.string.workspace_saved_host_reload_failed))))
                                 }
                             }
                         }
@@ -561,7 +568,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                             showAddDialog = false
                         },
                         onFailure = { error ->
-                            createError = error.localizedMessage?.takeIf(String::isNotBlank)
+                            createError = error.workspaceErrorMessage(workspaceStrings)?.takeIf(String::isNotBlank)
                                 ?: operationFailed
                         },
                     )
@@ -605,9 +612,10 @@ internal fun WorkspaceHomeToolbar(
     onBack: () -> Unit,
     actions: WorkspaceHomeActions,
 ) {
+    val workspaceStrings = LocalResources.current
     TopAppBar(
-        title = { Text("工作空间", style = MaterialTheme.typography.titleLarge) },
-        navigationIcon = { IconButton(onClick = onBack) { Icon(HugeIcons.ArrowLeft01, contentDescription = "返回") } },
+        title = { Text(stringResource(R.string.workspace_title), style = MaterialTheme.typography.titleLarge) },
+        navigationIcon = { IconButton(onClick = onBack) { Icon(HugeIcons.ArrowLeft01, contentDescription = workspaceStrings.getString(R.string.back)) } },
         actions = {
             TextButton(
                 onClick = when {
@@ -619,7 +627,7 @@ internal fun WorkspaceHomeToolbar(
                 modifier = Modifier.padding(end = 8.dp).testTag("workspace-primary-action"),
             ) {
                 Icon(HugeIcons.Add01, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(if (homeTab == WorkspaceHomeTab.WORKSPACES) "新建" else "添加", modifier = Modifier.padding(start = 6.dp))
+                Text(if (homeTab == WorkspaceHomeTab.WORKSPACES) workspaceStrings.getString(R.string.chat_page_folder_add) else workspaceStrings.getString(R.string.setting_tts_page_add), modifier = Modifier.padding(start = 6.dp))
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -645,26 +653,28 @@ private fun WorkspaceNavigationItem(label: String, selected: Boolean, tag: Strin
 
 @Composable
 private fun WorkspaceTypeMark(remote: Boolean) {
+    val workspaceStrings = LocalResources.current
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp)) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(workspaceKindIcon(remote), contentDescription = workspaceKindLabel(remote), modifier = Modifier.size(20.dp))
+            Icon(workspaceKindIcon(remote), contentDescription = workspaceKindLabel(workspaceStrings, remote), modifier = Modifier.size(20.dp))
         }
     }
 }
 
 @Composable
 internal fun WorkspaceCreateSheet(onDismiss: () -> Unit, onLocal: () -> Unit, onRemote: () -> Unit) {
+    val workspaceStrings = LocalResources.current
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 32.dp)) {
-            Text("新建工作空间", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.workspace_new_workspace), style = MaterialTheme.typography.headlineSmall)
             Text(
-                "选择文件与任务运行的位置",
+                workspaceStrings.getString(R.string.workspace_choose_location),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
             )
-            WorkspaceCreateOption(false, "本地空间", "使用本机文件与运行环境", onLocal)
-            WorkspaceCreateOption(true, "远程空间", "连接服务器或另一台电脑", onRemote)
+            WorkspaceCreateOption(false, workspaceStrings.getString(R.string.workspace_local_workspace), workspaceStrings.getString(R.string.workspace_local_workspace_description), onLocal)
+            WorkspaceCreateOption(true, workspaceStrings.getString(R.string.workspace_remote_workspace), workspaceStrings.getString(R.string.workspace_remote_workspace_description), onRemote)
         }
     }
 }
@@ -701,20 +711,21 @@ internal fun WorkspaceHomeContent(
     actions: WorkspaceHomeActions,
     modifier: Modifier = Modifier,
 ) {
+    val workspaceStrings = LocalResources.current
     val visibleWorkspaces = filterWorkspaceList(workspaces, hosts, query, filter)
     Column(modifier = modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            WorkspaceNavigationItem("空间", homeTab == WorkspaceHomeTab.WORKSPACES, "workspace-tab-workspaces") {
+            WorkspaceNavigationItem(workspaceStrings.getString(R.string.workspace_spaces_tab), homeTab == WorkspaceHomeTab.WORKSPACES, "workspace-tab-workspaces") {
                 onHomeTabChange(WorkspaceHomeTab.WORKSPACES)
             }
-            WorkspaceNavigationItem("主机", homeTab == WorkspaceHomeTab.CONNECTIONS && connectionTab == WorkspaceConnectionTab.HOSTS, "workspace-tab-hosts") {
+            WorkspaceNavigationItem(workspaceStrings.getString(R.string.workspace_hosts_tab), homeTab == WorkspaceHomeTab.CONNECTIONS && connectionTab == WorkspaceConnectionTab.HOSTS, "workspace-tab-hosts") {
                 onHomeTabChange(WorkspaceHomeTab.CONNECTIONS)
                 onConnectionTabChange(WorkspaceConnectionTab.HOSTS)
             }
-            WorkspaceNavigationItem("密钥", homeTab == WorkspaceHomeTab.CONNECTIONS && connectionTab == WorkspaceConnectionTab.KEYS, "workspace-tab-keys") {
+            WorkspaceNavigationItem(workspaceStrings.getString(R.string.workspace_keys_tab), homeTab == WorkspaceHomeTab.CONNECTIONS && connectionTab == WorkspaceConnectionTab.KEYS, "workspace-tab-keys") {
                 onHomeTabChange(WorkspaceHomeTab.CONNECTIONS)
                 onConnectionTabChange(WorkspaceConnectionTab.KEYS)
             }
@@ -730,7 +741,7 @@ internal fun WorkspaceHomeContent(
                         TextField(
                             value = query,
                             onValueChange = onQueryChange,
-                            placeholder = { Text("搜索空间", style = MaterialTheme.typography.bodyMedium) },
+                            placeholder = { Text(stringResource(R.string.workspace_search_spaces), style = MaterialTheme.typography.bodyMedium) },
                             leadingIcon = { Icon(HugeIcons.Search01, contentDescription = null, modifier = Modifier.size(20.dp)) },
                             shape = RoundedCornerShape(16.dp),
                             colors = TextFieldDefaults.colors(
@@ -741,7 +752,7 @@ internal fun WorkspaceHomeContent(
                             ),
                             singleLine = true,
                             trailingIcon = if (query.isBlank()) null else {
-                                { TextButton(onClick = { onQueryChange("") }) { Text("清除") } }
+                                { TextButton(onClick = { onQueryChange("") }) { Text(stringResource(R.string.chat_page_conversation_system_prompt_clear)) } }
                             },
                             modifier = Modifier.fillMaxWidth().testTag("workspace-search"),
                         )
@@ -752,9 +763,9 @@ internal fun WorkspaceHomeContent(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             listOf(
-                                WorkspaceListFilter.ALL to "全部",
-                                WorkspaceListFilter.LOCAL to "本地",
-                                WorkspaceListFilter.REMOTE to "远程",
+                                WorkspaceListFilter.ALL to workspaceStrings.getString(R.string.workspace_filter_all),
+                                WorkspaceListFilter.LOCAL to workspaceStrings.getString(R.string.workspace_filter_local),
+                                WorkspaceListFilter.REMOTE to workspaceStrings.getString(R.string.workspace_filter_remote),
                             ).forEach { (option, label) ->
                                 WorkspaceNavigationItem(
                                     label = label,
@@ -776,19 +787,19 @@ internal fun WorkspaceHomeContent(
                             }
                             WorkspaceEmptyState(
                                 title = when {
-                                    hasQuery -> "没有匹配的工作空间"
-                                    !hasAny -> "还没有工作空间"
-                                    filter == WorkspaceListFilter.REMOTE -> "还没有远程工作空间"
-                                    else -> "还没有本地工作空间"
+                                    hasQuery -> workspaceStrings.getString(R.string.workspace_no_matches)
+                                    !hasAny -> workspaceStrings.getString(R.string.workspace_empty_workspaces)
+                                    filter == WorkspaceListFilter.REMOTE -> workspaceStrings.getString(R.string.workspace_empty_remote_workspaces)
+                                    else -> workspaceStrings.getString(R.string.workspace_empty_local_workspaces)
                                 },
                                 description = when {
-                                    hasQuery -> "试试其他名称、主机或路径。"
-                                    !hasAny -> "创建一个空间，集中查看文件并交给 AI 使用。"
-                                    else -> "可以创建新空间，或切换上方筛选。"
+                                    hasQuery -> workspaceStrings.getString(R.string.workspace_search_hint)
+                                    !hasAny -> workspaceStrings.getString(R.string.workspace_empty_workspaces_help)
+                                    else -> workspaceStrings.getString(R.string.workspace_empty_filter_help)
                                 },
-                                actionLabel = if (hasQuery) "清除搜索和筛选"
-                                    else if (filter == WorkspaceListFilter.REMOTE) "新建远程工作空间"
-                                    else "新建工作空间",
+                                actionLabel = if (hasQuery) workspaceStrings.getString(R.string.workspace_clear_filters)
+                                    else if (filter == WorkspaceListFilter.REMOTE) workspaceStrings.getString(R.string.workspace_new_remote_workspace)
+                                    else workspaceStrings.getString(R.string.workspace_new_workspace),
                                 onAction = when {
                                     hasQuery -> clearFilters
                                     filter == WorkspaceListFilter.REMOTE -> actions.createRemoteWorkspace
@@ -814,9 +825,9 @@ internal fun WorkspaceHomeContent(
                     WorkspaceConnectionTab.HOSTS -> {
                         if (hosts.isEmpty()) item {
                             WorkspaceEmptyState(
-                                title = "还没有远程主机",
-                                description = "添加一台可通过 SSH 访问的设备。",
-                                actionLabel = "添加主机",
+                                title = workspaceStrings.getString(R.string.workspace_empty_hosts),
+                                description = workspaceStrings.getString(R.string.workspace_empty_hosts_help),
+                                actionLabel = workspaceStrings.getString(R.string.workspace_add_host),
                                 onAction = actions.addHost,
                             )
                         }
@@ -834,9 +845,9 @@ internal fun WorkspaceHomeContent(
                     WorkspaceConnectionTab.KEYS -> {
                         if (sshKeys.isEmpty()) item {
                             WorkspaceEmptyState(
-                                title = "还没有 SSH 密钥",
-                                description = "可先生成密钥并把公钥安装到服务器。",
-                                actionLabel = "生成 / 导入密钥",
+                                title = workspaceStrings.getString(R.string.workspace_empty_keys),
+                                description = workspaceStrings.getString(R.string.workspace_empty_keys_help),
+                                actionLabel = workspaceStrings.getString(R.string.workspace_generate_import_key),
                                 onAction = actions.keyActions,
                             )
                         }
@@ -909,6 +920,7 @@ internal fun WorkspaceCard(
     onDelete: () -> Unit,
     onOpen: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var menuExpanded by remember { mutableStateOf(false) }
 
     Card(
@@ -942,14 +954,14 @@ internal fun WorkspaceCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (workspace.isRemote) "远程 · ${host?.name ?: "主机不可用"}" else "本地 · 本设备",
+                        text = if (workspace.isRemote) workspaceStrings.getString(R.string.workspace_remote_name, host?.name ?: workspaceStrings.getString(R.string.workspace_host_unavailable)) else workspaceStrings.getString(R.string.workspace_local_this_device),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (workspace.isRemote) Text(
-                        text = workspaceCardRemoteStatus(host, workspace, hostState, workspaceState),
+                        text = workspaceCardRemoteStatus(workspaceStrings, host, workspace, hostState, workspaceState),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -958,7 +970,7 @@ internal fun WorkspaceCard(
                 }
                 Box {
                     IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(48.dp)) {
-                        Icon(HugeIcons.MoreVertical, contentDescription = "工作空间操作")
+                        Icon(HugeIcons.MoreVertical, contentDescription = workspaceStrings.getString(R.string.workspace_actions))
                     }
                     DropdownMenu(
                         expanded = menuExpanded,
@@ -993,26 +1005,34 @@ internal fun WorkspaceCard(
     }
 }
 
-internal fun workspaceCardRemoteStatus(
+internal fun workspaceCardRemoteStatus(workspaceStrings: Resources,
     host: RemoteHostEntity?,
     workspace: WorkspaceEntity,
     hostState: RemoteHostRuntimeState?,
     workspaceState: RemoteWorkspaceRuntimeState?,
 ): String {
-    if (host == null) return "主机配置不可用"
+    if (host == null) return workspaceStrings.getString(R.string.workspace_host_config_unavailable)
     if (workspaceState?.lastOperation?.outcome == RemoteOperationOutcome.OUTCOME_UNKNOWN) {
-        return "上次操作结果未知 · 请核查"
+        return workspaceStrings.getString(R.string.workspace_last_outcome_unknown)
     }
-    val detail = remoteWorkspaceStatusLabel(workspace, hostState, workspaceState)
-    return when {
-        detail.startsWith("正在") -> detail
-        detail.contains("主机上次连接失败") -> "上次连接失败"
-        detail.contains("目录上次检查失败") -> "目录检查失败"
-        detail.contains("目录上次检查通过") -> "按需连接 · 上次目录检查通过"
-        detail.contains("主机上次连接通过") -> "按需连接 · 上次主机检查通过"
-        detail.contains("已配置") -> "按需连接 · 待检查"
-        else -> detail
+    // Select compact status from structured state, never by matching translated text.
+    if (workspaceState?.activity == RemoteConnectionActivity.CONNECTING ||
+        workspaceState?.activity == RemoteConnectionActivity.OPERATING ||
+        hostState?.configuration == RemoteConfigurationState.HOST_KEY_UNTRUSTED ||
+        hostState?.configuration == RemoteConfigurationState.CREDENTIAL_MISSING ||
+        hostState?.configuration == RemoteConfigurationState.INVALID
+    ) return remoteWorkspaceStatusLabel(workspaceStrings, workspace, hostState, workspaceState)
+    val directory = workspaceState?.lastDirectoryCheck
+    val connection = hostState?.lastConnection
+    val label = when {
+        connection?.success == false && (directory == null || connection.timestampMillis >= directory.timestampMillis) -> R.string.workspace_last_connection_failed
+        directory?.success == false -> R.string.workspace_directory_check_failed
+        directory?.success == true -> R.string.workspace_on_demand_directory_passed
+        connection?.success == true -> R.string.workspace_on_demand_host_passed
+        workspace.shellStatus == WorkspaceShellStatus.READY.name -> R.string.workspace_on_demand_pending
+        else -> return remoteWorkspaceStatusLabel(workspaceStrings, workspace, hostState, workspaceState)
     }
+    return workspaceStrings.getString(label)
 }
 
 @Composable

@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.utils.workspaceErrorMessage
+import me.ayuilos.miffan.R
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -137,6 +141,7 @@ fun RemoteWorkspaceTerminalPage(
     host: RemoteHostEntity?,
     onBack: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val repository: WorkspaceRepository = koinInject()
     val context = LocalContext.current
     val terminalView = remember(workspace.id) { RemoteTerminalView(context) }
@@ -224,7 +229,7 @@ fun RemoteWorkspaceTerminalPage(
                 } catch (error: Exception) {
                     withContext(Dispatchers.Main.immediate) {
                         if (owner.isCurrent(attempt)) {
-                            state = RemoteTerminalUiState.Failed(error.localizedMessage ?: "终端连接已中断")
+                            state = RemoteTerminalUiState.Failed(error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_terminal_disconnected))
                         }
                     }
                     runCatching { connection.close() }
@@ -253,7 +258,7 @@ fun RemoteWorkspaceTerminalPage(
             if (owner.isCurrent(attempt)) state = RemoteTerminalUiState.TargetChanged
         } catch (error: Exception) {
             if (owner.isCurrent(attempt)) {
-                state = RemoteTerminalUiState.Failed(error.localizedMessage ?: "无法连接远程终端")
+                state = RemoteTerminalUiState.Failed(error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_terminal_connection_failed))
             }
         } finally {
             if (owner.isCurrent(attempt)) {
@@ -277,7 +282,7 @@ fun RemoteWorkspaceTerminalPage(
                         Column {
                             Text(workspace.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                identity?.endpoint ?: "主机配置不可用",
+                                identity?.endpoint ?: workspaceStrings.getString(R.string.workspace_host_config_unavailable),
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -306,7 +311,7 @@ fun RemoteWorkspaceTerminalPage(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     CircularProgressIndicator()
-                                    Text("正在连接 ${identity?.hostName ?: "远程主机"}…")
+                                    Text(stringResource(R.string.workspace_connecting_host, identity?.hostName ?: workspaceStrings.getString(R.string.workspace_remote_host)))
                                 }
                             }
                             RemoteTerminalUiState.Connected -> Unit
@@ -321,16 +326,16 @@ fun RemoteWorkspaceTerminalPage(
                                     Text(
                                         text = when (current) {
                                             is RemoteTerminalUiState.Disconnected ->
-                                                if (current.exitStatus >= 0) "连接已结束 · 退出码 ${current.exitStatus}" else "连接已断开"
+                                                if (current.exitStatus >= 0) workspaceStrings.getString(R.string.workspace_connection_ended_exit, current.exitStatus) else workspaceStrings.getString(R.string.workspace_disconnected)
                                             is RemoteTerminalUiState.Failed -> current.message
-                                            RemoteTerminalUiState.TargetChanged -> "连接配置已变化，请返回后重新打开终端"
-                                            RemoteTerminalUiState.HostMissing -> "远程主机配置不可用"
-                                            else -> "连接已断开"
+                                            RemoteTerminalUiState.TargetChanged -> workspaceStrings.getString(R.string.workspace_terminal_target_changed)
+                                            RemoteTerminalUiState.HostMissing -> workspaceStrings.getString(R.string.workspace_remote_host_config_unavailable)
+                                            else -> workspaceStrings.getString(R.string.workspace_disconnected)
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                     if (current is RemoteTerminalUiState.Disconnected || current is RemoteTerminalUiState.Failed) {
-                                        TextButton(onClick = { reconnectAttempt++ }) { Text("重新连接") }
+                                        TextButton(onClick = { reconnectAttempt++ }) { Text(stringResource(R.string.workspace_reconnect)) }
                                     }
                                 }
                             }
@@ -346,10 +351,10 @@ fun RemoteWorkspaceTerminalPage(
         if (showCloseConfirm) {
             AlertDialog(
                 onDismissRequest = { showCloseConfirm = false },
-                title = { Text("关闭远程终端？") },
-                text = { Text("将断开当前 SSH 会话。断开连接不能保证服务器上的进程已经终止。") },
-                confirmButton = { TextButton(onClick = { showCloseConfirm = false; onBack() }) { Text("断开并返回") } },
-                dismissButton = { TextButton(onClick = { showCloseConfirm = false }) { Text("继续使用") } },
+                title = { Text(stringResource(R.string.workspace_close_terminal_title)) },
+                text = { Text(stringResource(R.string.workspace_close_terminal_message)) },
+                confirmButton = { TextButton(onClick = { showCloseConfirm = false; onBack() }) { Text(stringResource(R.string.workspace_disconnect_back)) } },
+                dismissButton = { TextButton(onClick = { showCloseConfirm = false }) { Text(stringResource(R.string.workspace_keep_using)) } },
             )
         }
     }
@@ -357,13 +362,14 @@ fun RemoteWorkspaceTerminalPage(
 
 @Composable
 private fun RemoteTerminalKeyBar(enabled: Boolean, view: RemoteTerminalView) {
+    val workspaceStrings = LocalResources.current
     Row(
         modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
             .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RemoteTerminalKey("键盘", enabled) { view.showKeyboard() }
+        RemoteTerminalKey(workspaceStrings.getString(R.string.workspace_keyboard), enabled) { view.showKeyboard() }
         RemoteTerminalKey("ESC", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_ESCAPE) }
         RemoteTerminalKey("TAB", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_TAB) }
         RemoteTerminalKey("↑", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_DPAD_UP) }
@@ -371,7 +377,7 @@ private fun RemoteTerminalKeyBar(enabled: Boolean, view: RemoteTerminalView) {
         RemoteTerminalKey("←", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_DPAD_LEFT) }
         RemoteTerminalKey("→", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_DPAD_RIGHT) }
         RemoteTerminalKey("Ctrl-C", enabled) { view.sendBytes(byteArrayOf(3)) }
-        RemoteTerminalKey("粘贴", enabled) { view.pasteFromClipboard() }
+        RemoteTerminalKey(workspaceStrings.getString(R.string.workspace_paste), enabled) { view.pasteFromClipboard() }
     }
 }
 

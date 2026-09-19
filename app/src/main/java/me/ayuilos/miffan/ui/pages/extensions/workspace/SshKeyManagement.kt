@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.utils.workspaceErrorMessage
+import me.ayuilos.miffan.R
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -69,11 +73,11 @@ private suspend fun readPrivateKeyFile(context: android.content.Context, uri: Ur
         while (true) {
             val count = input.read(chunk)
             if (count < 0) break
-            require(output.size() + count <= MAX_PRIVATE_KEY_FILE_BYTES) { "私钥文件超过 1 MiB" }
+            require(output.size() + count <= MAX_PRIVATE_KEY_FILE_BYTES) { context.getString(R.string.workspace_private_key_file_too_large) }
             output.write(chunk, 0, count)
         }
         output.toString(Charsets.UTF_8.name())
-    } ?: error("无法读取私钥文件")
+    } ?: error(context.getString(R.string.workspace_read_private_key_file_failed))
 }
 
 @Composable
@@ -87,6 +91,7 @@ internal fun SshKeyCard(
     onRestorePrivateKey: () -> Unit,
     onPrivateKey: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var menuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth()
@@ -119,7 +124,7 @@ internal fun SshKeyCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (hasPrivateMaterial == false) "私钥待恢复 · ${key.fingerprint}" else key.fingerprint,
+                if (hasPrivateMaterial == false) workspaceStrings.getString(R.string.workspace_private_key_restore_pending, key.fingerprint) else key.fingerprint,
                 style = MaterialTheme.typography.labelSmall,
                 color = if (hasPrivateMaterial == false) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -128,19 +133,19 @@ internal fun SshKeyCard(
         }
         Box(modifier = Modifier.size(48.dp)) {
             IconButton(onClick = { menuExpanded = true }, modifier = Modifier.fillMaxSize()) {
-                Icon(HugeIcons.MoreVertical, contentDescription = "SSH 密钥操作")
+                Icon(HugeIcons.MoreVertical, contentDescription = workspaceStrings.getString(R.string.workspace_ssh_key_actions))
             }
             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                DropdownMenuItem(text = { Text("复制公钥") }, onClick = { menuExpanded = false; onCopyPublicKey(key.publicKey) })
-                DropdownMenuItem(text = { Text("导出 .pub") }, onClick = { menuExpanded = false; onExportPublicKey(key) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_copy_public_key)) }, onClick = { menuExpanded = false; onCopyPublicKey(key.publicKey) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_export_public_key)) }, onClick = { menuExpanded = false; onExportPublicKey(key) })
                 if (hasPrivateMaterial != false) {
-                    DropdownMenuItem(text = { Text("查看 / 备份私钥") }, onClick = { menuExpanded = false; onPrivateKey() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.workspace_view_backup_private_key)) }, onClick = { menuExpanded = false; onPrivateKey() })
                 }
-                DropdownMenuItem(text = { Text("重命名") }, onClick = { menuExpanded = false; onRename() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.chat_page_rename)) }, onClick = { menuExpanded = false; onRename() })
                 if (hasPrivateMaterial == false) {
-                    DropdownMenuItem(text = { Text("恢复私钥") }, onClick = { menuExpanded = false; onRestorePrivateKey() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.workspace_restore_private_key)) }, onClick = { menuExpanded = false; onRestorePrivateKey() })
                 }
-                DropdownMenuItem(text = { Text("删除密钥") }, onClick = { menuExpanded = false; onDelete() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_delete_key)) }, onClick = { menuExpanded = false; onDelete() })
             }
         }
     }
@@ -152,15 +157,16 @@ internal fun SshKeyActionsDialog(
     onImport: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("SSH 密钥") },
-        text = { Text("可以先生成密钥、复制公钥并安装到服务器，再创建远程主机。") },
-        confirmButton = { TextButton(onClick = onGenerate) { Text("生成密钥") } },
+        title = { Text(stringResource(R.string.workspace_ssh_key)) },
+        text = { Text(stringResource(R.string.workspace_key_setup_help)) },
+        confirmButton = { TextButton(onClick = onGenerate) { Text(stringResource(R.string.workspace_generate_key)) } },
         dismissButton = {
             Row {
-                TextButton(onClick = onImport) { Text("导入私钥") }
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                TextButton(onClick = onImport) { Text(stringResource(R.string.workspace_import_private_key)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.workspace_close)) }
             }
         },
     )
@@ -173,19 +179,20 @@ internal fun SshKeyGenerateDialog(
     onCreated: (SshKeyEntity) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var name by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val trimmed = name.trim()
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("生成 SSH 密钥") },
+        title = { Text(stringResource(R.string.workspace_generate_ssh_key)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("生成 Ed25519 密钥。私钥保存在本设备的 APP 中，不包含在自动备份里；生成后可手动导出口令加密备份。公钥可安装到目标机器的 authorized_keys。", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(name, { name = it; error = null }, label = { Text("密钥名称") }, modifier = Modifier.fillMaxWidth().testTag("ssh_key_name"), isError = trimmed in existingNames)
-                if (trimmed in existingNames) Text("名称已存在", color = MaterialTheme.colorScheme.error)
-                if (busy) Text("正在生成…")
+                Text(stringResource(R.string.workspace_generate_ssh_key_help), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(name, { name = it; error = null }, label = { Text(stringResource(R.string.workspace_key_name)) }, modifier = Modifier.fillMaxWidth().testTag("ssh_key_name"), isError = trimmed in existingNames)
+                if (trimmed in existingNames) Text(stringResource(R.string.workspace_page_name_duplicate), color = MaterialTheme.colorScheme.error)
+                if (busy) Text(stringResource(R.string.workspace_generating))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -196,12 +203,12 @@ internal fun SshKeyGenerateDialog(
                     busy = false
                     result.fold(
                         onSuccess = { onCreated(it); onDismiss() },
-                        onFailure = { error = it.localizedMessage ?: "生成失败" },
+                        onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_generation_failed) },
                     )
                 }
-            }) { Text("生成") }
+            }) { Text(stringResource(R.string.workspace_generate)) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -212,6 +219,7 @@ internal fun SshKeyImportDialog(
     onCreated: (SshKeyEntity) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
@@ -228,21 +236,21 @@ internal fun SshKeyImportDialog(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = failure.localizedMessage ?: "读取私钥失败"
+                error = failure.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_read_private_key_failed)
             }
         }
     }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("导入 SSH 私钥") },
+        title = { Text(stringResource(R.string.workspace_import_ssh_private_key)) },
         text = {
             Column(modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it; error = null }, label = { Text("密钥名称") }, modifier = Modifier.fillMaxWidth(), isError = trimmed in existingNames)
-                TextButton(onClick = { filePicker.launch(arrayOf("*/*")) }) { Text("选择私钥文件") }
-                OutlinedTextField(privateKey, { privateKey = it; error = null }, label = { Text("OpenSSH / PEM 私钥内容") }, minLines = 5, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(passphrase, { passphrase = it }, label = { Text("私钥口令（可选）") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                Text("私钥仅用于连接；列表和复制操作只展示公钥。", style = MaterialTheme.typography.bodySmall)
-                if (busy) Text("正在导入…")
+                OutlinedTextField(name, { name = it; error = null }, label = { Text(stringResource(R.string.workspace_key_name)) }, modifier = Modifier.fillMaxWidth(), isError = trimmed in existingNames)
+                TextButton(onClick = { filePicker.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.workspace_choose_private_key_file)) }
+                OutlinedTextField(privateKey, { privateKey = it; error = null }, label = { Text(stringResource(R.string.workspace_private_key_content)) }, minLines = 5, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(passphrase, { passphrase = it }, label = { Text(stringResource(R.string.workspace_private_key_passphrase_optional)) }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.workspace_private_key_usage_help), style = MaterialTheme.typography.bodySmall)
+                if (busy) Text(stringResource(R.string.workspace_importing))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -253,12 +261,12 @@ internal fun SshKeyImportDialog(
                     busy = false
                     result.fold(
                         onSuccess = { onCreated(it); onDismiss() },
-                        onFailure = { error = it.localizedMessage ?: "导入失败" },
+                        onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.assistant_importer_import_failed) },
                     )
                 }
-            }) { Text("导入") }
+            }) { Text(stringResource(R.string.setting_theme_page_import_theme)) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -269,23 +277,24 @@ internal fun SshKeyPublicKeyDialog(
     onExport: (SshKeyEntity) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("${key.name} 的公钥") },
+        title = { Text(stringResource(R.string.workspace_public_key_for, key.name)) },
         text = {
             Column(modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("将完整公钥添加到目标账户的 ~/.ssh/authorized_keys。", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.workspace_install_public_key_help), style = MaterialTheme.typography.bodySmall)
                 SelectionContainer {
                     Text(key.publicKey, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(key.fingerprint, style = MaterialTheme.typography.labelSmall)
             }
         },
-        confirmButton = { TextButton(onClick = { onCopy(key.publicKey) }) { Text("复制公钥") } },
+        confirmButton = { TextButton(onClick = { onCopy(key.publicKey) }) { Text(stringResource(R.string.workspace_copy_public_key)) } },
         dismissButton = {
             Row {
-                TextButton(onClick = { onExport(key) }) { Text("导出 .pub") }
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                TextButton(onClick = { onExport(key) }) { Text(stringResource(R.string.workspace_export_public_key)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.workspace_close)) }
             }
         },
     )
@@ -298,16 +307,17 @@ internal fun SshKeyRenameDialog(
     onRename: (String, (Result<Boolean>) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var name by remember(key.id) { mutableStateOf(key.name) }
     var error by remember(key.id) { mutableStateOf<String?>(null) }
     var busy by remember(key.id) { mutableStateOf(false) }
     val trimmed = name.trim()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("重命名 SSH 密钥") },
+        title = { Text(stringResource(R.string.workspace_rename_ssh_key)) },
         text = {
             Column {
-                OutlinedTextField(name, { name = it; error = null }, label = { Text("密钥名称") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it; error = null }, label = { Text(stringResource(R.string.workspace_key_name)) }, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -317,13 +327,13 @@ internal fun SshKeyRenameDialog(
                 onRename(trimmed) { result ->
                     busy = false
                     result.fold(
-                        onSuccess = { if (it) onDismiss() else error = "重命名失败" },
-                        onFailure = { error = it.localizedMessage ?: "重命名失败" },
+                        onSuccess = { if (it) onDismiss() else error = workspaceStrings.getString(R.string.workspace_rename_failed) },
+                        onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_rename_failed) },
                     )
                 }
-            }) { Text("保存") }
+            }) { Text(stringResource(R.string.common_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -333,14 +343,15 @@ internal fun SshKeyDeleteDialog(
     onDelete: ((Result<Boolean>) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var error by remember(key.id) { mutableStateOf<String?>(null) }
     var busy by remember(key.id) { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除 SSH 密钥") },
+        title = { Text(stringResource(R.string.workspace_delete_ssh_key)) },
         text = {
             Column {
-                Text("删除 ${key.name}？正在被主机使用的密钥须先解除绑定。")
+                Text(stringResource(R.string.workspace_delete_key_confirmation, key.name))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -350,13 +361,13 @@ internal fun SshKeyDeleteDialog(
                 onDelete { result ->
                     busy = false
                     result.fold(
-                        onSuccess = { if (it) onDismiss() else error = "删除失败" },
-                        onFailure = { error = it.localizedMessage ?: "删除失败；请先解除主机绑定" },
+                        onSuccess = { if (it) onDismiss() else error = workspaceStrings.getString(R.string.skill_detail_page_delete_failed) },
+                        onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_delete_key_linked_failed) },
                     )
                 }
-            }) { Text("删除") }
+            }) { Text(stringResource(R.string.common_delete)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -367,6 +378,7 @@ internal fun SshKeyRestoreDialog(
     onRestored: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var privateKey by remember(key.id) { mutableStateOf("") }
@@ -381,19 +393,19 @@ internal fun SshKeyRestoreDialog(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = failure.localizedMessage ?: "读取私钥失败"
+                error = failure.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_read_private_key_failed)
             }
         }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("恢复 ${key.name} 的私钥") },
+        title = { Text(stringResource(R.string.workspace_restore_private_key_for, key.name)) },
         text = {
             Column(modifier = Modifier.heightIn(max = 450.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("导入与此公钥匹配的私钥，才能继续使用已绑定的主机。", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { filePicker.launch(arrayOf("*/*")) }) { Text("选择私钥文件") }
-                OutlinedTextField(privateKey, { privateKey = it; error = null }, label = { Text("OpenSSH / PEM 私钥内容") }, minLines = 5, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(passphrase, { passphrase = it }, label = { Text("私钥口令（可选）") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.workspace_restore_private_key_help), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { filePicker.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.workspace_choose_private_key_file)) }
+                OutlinedTextField(privateKey, { privateKey = it; error = null }, label = { Text(stringResource(R.string.workspace_private_key_content)) }, minLines = 5, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(passphrase, { passphrase = it }, label = { Text(stringResource(R.string.workspace_private_key_passphrase_optional)) }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -403,13 +415,13 @@ internal fun SshKeyRestoreDialog(
                 onRestore(privateKey, passphrase.takeIf(String::isNotBlank)) { result ->
                     busy = false
                     result.fold(
-                        onSuccess = { if (it) { onRestored(); onDismiss() } else error = "私钥与公钥不匹配" },
-                        onFailure = { error = it.localizedMessage ?: "恢复失败" },
+                        onSuccess = { if (it) { onRestored(); onDismiss() } else error = workspaceStrings.getString(R.string.workspace_key_mismatch) },
+                        onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_restore_failed) },
                     )
                 }
-            }) { Text("恢复") }
+            }) { Text(stringResource(R.string.workspace_restore)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -422,6 +434,7 @@ internal fun SshKeyPrivateKeyDialog(
     onExport: (String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var revealedPrivateKey by remember(key.id) { mutableStateOf<String?>(null) }
     var viewBusy by remember(key.id) { mutableStateOf(false) }
@@ -461,19 +474,19 @@ internal fun SshKeyPrivateKeyDialog(
 
     AlertDialog(
         onDismissRequest = { if (!exportBusy) close() },
-        title = { Text("${key.name} 的私钥") },
+        title = { Text(stringResource(R.string.workspace_private_key_for, key.name)) },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (!deviceSecure) {
-                    Text("此设备未设置屏幕锁。仍可查看和导出私钥，请确保周围无人窥视并妥善保管备份。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.workspace_no_screen_lock_warning), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text("已通过设备身份验证。私钥仅在主动查看时显示。", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.workspace_device_verified), style = MaterialTheme.typography.bodySmall)
                 }
                 if (revealedPrivateKey == null) {
-                    Text("私钥已隐藏。", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.workspace_private_key_hidden), style = MaterialTheme.typography.bodyMedium)
                     TextButton(enabled = !viewBusy, onClick = {
                         viewBusy = true
                         error = null
@@ -484,10 +497,10 @@ internal fun SshKeyPrivateKeyDialog(
                             viewBusy = false
                             result.fold(
                                 onSuccess = { revealedPrivateKey = it },
-                                onFailure = { error = "无法查看私钥，请重试" },
+                                onFailure = { error = workspaceStrings.getString(R.string.workspace_view_private_key_failed) },
                             )
                         }
-                    }) { Text(if (viewBusy) "正在读取…" else "查看私钥") }
+                    }) { Text(if (viewBusy) workspaceStrings.getString(R.string.workspace_reading) else workspaceStrings.getString(R.string.workspace_view_private_key)) }
                 } else {
                     SelectionContainer {
                         Text(
@@ -496,42 +509,42 @@ internal fun SshKeyPrivateKeyDialog(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    TextButton(onClick = { revealedPrivateKey = null }) { Text("隐藏私钥") }
+                    TextButton(onClick = { revealedPrivateKey = null }) { Text(stringResource(R.string.workspace_hide_private_key)) }
                 }
 
-                Text("导出备份", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.workspace_export_backup), style = MaterialTheme.typography.titleSmall)
                 Row(
                     modifier = Modifier.fillMaxWidth().selectable(selected = encryptedBackup, role = Role.RadioButton) { encryptedBackup = true },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(selected = encryptedBackup, onClick = null)
-                    Text("口令加密 OpenSSH（推荐）")
+                    Text(stringResource(R.string.workspace_encrypted_openssh_recommended))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth().selectable(selected = !encryptedBackup, role = Role.RadioButton) { encryptedBackup = false },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(selected = !encryptedBackup, onClick = null)
-                    Text("无口令备份")
+                    Text(stringResource(R.string.workspace_unencrypted_backup))
                 }
                 if (encryptedBackup) {
                     OutlinedTextField(
                         value = passphrase,
                         onValueChange = { passphrase = it; error = null },
-                        label = { Text("备份口令") },
+                        label = { Text(stringResource(R.string.workspace_backup_passphrase)) },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth().testTag("private_backup_passphrase"),
                     )
                     OutlinedTextField(
                         value = confirmation,
                         onValueChange = { confirmation = it; error = null },
-                        label = { Text("确认备份口令") },
+                        label = { Text(stringResource(R.string.workspace_confirm_backup_passphrase)) },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth().testTag("private_backup_confirm"),
                         isError = confirmation.isNotEmpty() && passphrase != confirmation,
                     )
                 } else {
-                    Text("无口令备份的私钥可被任何取得文件的人直接使用。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.workspace_unencrypted_backup_warning), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -543,9 +556,9 @@ internal fun SshKeyPrivateKeyDialog(
                 onExport(chosenPassphrase)
                 passphrase = ""
                 confirmation = ""
-            }) { Text(if (exportBusy) "正在导出…" else "导出私钥") }
+            }) { Text(if (exportBusy) workspaceStrings.getString(R.string.workspace_exporting) else workspaceStrings.getString(R.string.workspace_export_private_key)) }
         },
-        dismissButton = { TextButton(enabled = !exportBusy, onClick = ::close) { Text("关闭") } },
+        dismissButton = { TextButton(enabled = !exportBusy, onClick = ::close) { Text(stringResource(R.string.workspace_close)) } },
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
     )
 }

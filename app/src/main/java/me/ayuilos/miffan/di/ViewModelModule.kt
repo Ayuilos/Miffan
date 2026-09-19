@@ -67,6 +67,7 @@ val viewModelModule = module {
             args = it.get(),
             repository = get(),
             skillManager = get(),
+            workspaceStrings = get<android.content.Context>().resources,
         )
     }
     viewModelOf(::FavoriteVM)

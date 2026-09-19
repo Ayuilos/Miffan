@@ -59,7 +59,7 @@ class WorkspaceDetailVMTest {
             coEvery { repository.listFiles("ws", WorkspaceStorageArea.FILES, "nested", null) } returns listOf(entry("nested/report.txt"))
             val vm = WorkspaceDetailVM(
                 WorkspaceDetailArgs("ws", initialArea = WorkspaceStorageArea.LINUX, initialPath = "/nested/"),
-                repository, mockk<SkillManager>(),
+                repository, mockk<SkillManager>(), mockk(relaxed = true),
             )
             runCurrent()
 
@@ -85,7 +85,7 @@ class WorkspaceDetailVMTest {
                 releaseConnection.await()
                 listOf(entry("nested/report.txt"))
             }
-            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws", initialPath = "nested"), repository, mockk<SkillManager>())
+            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws", initialPath = "nested"), repository, mockk<SkillManager>(), mockk(relaxed = true))
             runCurrent()
             assertTrue(vm.state.value.loading)
             vm.navigateTo(WorkspaceStorageArea.FILES, "nested")
@@ -113,7 +113,7 @@ class WorkspaceDetailVMTest {
                 throw IOException("stale SSH failure")
             }
             coEvery { repository.listFiles("ws", WorkspaceStorageArea.FILES, "new", null) } returns listOf(entry("new/current.txt"))
-            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws", initialPath = "old"), repository, mockk<SkillManager>())
+            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws", initialPath = "old"), repository, mockk<SkillManager>(), mockk(relaxed = true))
             runCurrent()
             assertTrue(vm.state.value.loading)
 
@@ -141,7 +141,7 @@ class WorkspaceDetailVMTest {
                 listOf(entry("old/stale.txt"))
             }
             coEvery { repository.listFiles("ws", WorkspaceStorageArea.FILES, "new", null) } returns listOf(entry("new/current.txt"))
-            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws", initialPath = "old"), repository, mockk<SkillManager>())
+            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws", initialPath = "old"), repository, mockk<SkillManager>(), mockk(relaxed = true))
             runCurrent()
 
             vm.navigateTo(WorkspaceStorageArea.FILES, "new")
@@ -161,7 +161,7 @@ class WorkspaceDetailVMTest {
         try {
             val repository = repository()
             coEvery { repository.getById("ws") } throws IOException("metadata unavailable")
-            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws"), repository, mockk<SkillManager>())
+            val vm = WorkspaceDetailVM(WorkspaceDetailArgs("ws"), repository, mockk<SkillManager>(), mockk(relaxed = true))
             runCurrent()
 
             assertFalse(vm.state.value.loading)
@@ -179,7 +179,7 @@ class WorkspaceDetailVMTest {
             val repository = repository()
             val vm = WorkspaceDetailVM(
                 WorkspaceDetailArgs("ws", loadFilesInitially = false),
-                repository, mockk<SkillManager>(),
+                repository, mockk<SkillManager>(), mockk(relaxed = true),
             )
             runCurrent()
 
@@ -205,7 +205,7 @@ class WorkspaceDetailVMTest {
             }
             val vm = WorkspaceDetailVM(
                 WorkspaceDetailArgs("ws", loadFilesInitially = false),
-                repository, mockk<SkillManager>(),
+                repository, mockk<SkillManager>(), mockk(relaxed = true),
             )
             runCurrent()
             assertFalse(vm.state.value.loading)

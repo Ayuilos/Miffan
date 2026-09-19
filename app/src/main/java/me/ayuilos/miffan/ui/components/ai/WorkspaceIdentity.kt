@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.components.ai
 
+import androidx.compose.ui.platform.LocalResources
+import android.content.res.Resources
+import me.ayuilos.miffan.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Icon
@@ -14,19 +17,20 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Folder01
 
-internal fun workspaceKindLabel(isRemote: Boolean): String = if (isRemote) "远程服务器" else "本地设备"
+internal fun workspaceKindLabel(workspaceStrings: Resources, isRemote: Boolean): String = if (isRemote) workspaceStrings.getString(R.string.workspace_remote_server) else workspaceStrings.getString(R.string.workspace_local_device)
 
 internal fun workspaceKindIcon(isRemote: Boolean): ImageVector =
     if (isRemote) HugeIcons.ComputerTerminal01 else HugeIcons.Folder01
 
 @Composable
 internal fun WorkspaceKindLabel(isRemote: Boolean, modifier: Modifier = Modifier) {
+    val workspaceStrings = LocalResources.current
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(workspaceKindIcon(isRemote), contentDescription = null)
-        Text(workspaceKindLabel(isRemote), style = MaterialTheme.typography.labelSmall)
+        Text(workspaceKindLabel(workspaceStrings, isRemote), style = MaterialTheme.typography.labelSmall)
     }
 }

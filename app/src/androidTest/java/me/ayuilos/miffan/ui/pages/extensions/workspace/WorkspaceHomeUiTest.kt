@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.testutils.workspaceUiText
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -130,7 +132,7 @@ class WorkspaceHomeUiTest {
         compose.onNodeWithTag("workspace-card-remote-1").assertExists()
         compose.onNodeWithTag("workspace-card-local-1").assertDoesNotExist()
         compose.onNodeWithTag("workspace-filter-local").performClick()
-        compose.onNodeWithText("没有匹配的工作空间").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_no_matches)).assertExists()
         compose.onNodeWithTag("workspace-empty-action").performClick()
         compose.onNodeWithTag("workspace-card-local-1").assertExists()
         compose.onNodeWithTag("workspace-filter-remote").performClick()
@@ -159,19 +161,19 @@ class WorkspaceHomeUiTest {
                 keyActions = { keyCount++ },
             ),
         )
-        compose.onNodeWithText("还没有工作空间").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_empty_workspaces)).assertExists()
         screenshot("workspace-home-empty-dark.png")
         compose.onNodeWithTag("workspace-empty-action").performClick()
         compose.runOnIdle { assertEquals(1, createCount) }
 
         compose.onNodeWithTag("workspace-tab-hosts").performClick()
-        compose.onNodeWithText("还没有远程主机").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_empty_hosts)).assertExists()
         screenshot("workspace-home-hosts-empty-dark.png")
         compose.onNodeWithTag("workspace-empty-action").performClick()
         compose.runOnIdle { assertEquals(1, hostCount) }
 
         compose.onNodeWithTag("workspace-tab-keys").performClick()
-        compose.onNodeWithText("还没有 SSH 密钥").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_empty_keys)).assertExists()
         compose.onNodeWithTag("workspace-empty-action").performClick()
         compose.runOnIdle { assertEquals(1, keyCount) }
     }
@@ -184,11 +186,11 @@ class WorkspaceHomeUiTest {
                 WorkspaceCreateSheet({}, { localCount++ }, { remoteCount++ })
             }
         }
-        compose.onNodeWithText("本地空间").assertExists()
-        compose.onNodeWithText("远程空间").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_local_workspace)).assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_remote_workspace)).assertExists()
         screenshot("workspace-create-sheet.png")
-        compose.onNodeWithText("本地空间").performClick()
-        compose.onNodeWithText("远程空间").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_local_workspace)).performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_remote_workspace)).performClick()
         compose.runOnIdle {
             assertEquals(1, localCount)
             assertEquals(1, remoteCount)
