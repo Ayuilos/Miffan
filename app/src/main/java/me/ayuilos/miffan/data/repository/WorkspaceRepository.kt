@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.repository
 
+import android.content.res.Resources
+import me.ayuilos.miffan.R
 import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -60,6 +62,7 @@ class WorkspaceRepository(
     private val remoteTransport: NativeSshWorkspaceTransport,
     private val sshKeyDao: SshKeyDAO,
     private val sshKeyCredentialStore: SshKeyCredentialStore,
+    private val workspaceStrings: Resources,
 ) {
     private val localWorkspaceCreator = LocalWorkspaceCreator(dao, manager)
     private val remoteRuntime = RemoteWorkspaceRuntimeTracker()
@@ -168,7 +171,7 @@ class WorkspaceRepository(
         }
         require(material.algorithm == key.algorithm && material.fingerprint == key.fingerprint &&
             material.publicKey == key.publicKey
-        ) { "The private key does not match the saved public key" }
+        ) { workspaceStrings.getString(R.string.workspace_key_mismatch) }
         withContext(Dispatchers.IO) { sshKeyCredentialStore.save(id, material.privateKeyPem) }
         sshKeyDao.update(key.copy(updatedAt = System.currentTimeMillis()))
         hostDao.listFlow().first().filter { it.sshKeyId == id }.forEach { host ->
@@ -183,21 +186,21 @@ class WorkspaceRepository(
 
     suspend fun renameSshKey(id: String, name: String): Boolean {
         val key = sshKeyDao.getById(id) ?: return false
-        val finalName = name.trim().also { require(it.isNotEmpty()) { "SSH key name is required" } }
+        val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_key_name_required) } }
         sshKeyDao.update(key.copy(name = finalName, updatedAt = System.currentTimeMillis()))
         return true
     }
 
     suspend fun deleteSshKey(id: String): Boolean {
         if (sshKeyDao.getById(id) == null) return false
-        require(hostDao.countBySshKeyId(id) == 0) { "Remove this SSH key from hosts before deleting it" }
+        require(hostDao.countBySshKeyId(id) == 0) { workspaceStrings.getString(R.string.workspace_error_key_linked) }
         sshKeyDao.deleteById(id)
         withContext(Dispatchers.IO) { sshKeyCredentialStore.delete(id) }
         return true
     }
 
     private suspend fun addSshKey(name: String, material: SshKeyMaterial): SshKeyEntity {
-        val finalName = name.trim().also { require(it.isNotEmpty()) { "SSH key name is required" } }
+        val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_key_name_required) } }
         val now = System.currentTimeMillis()
         val key = SshKeyEntity(
             id = UUID.randomUUID().toString(),
@@ -227,13 +230,13 @@ class WorkspaceRepository(
         sshKeyId: String? = null,
     ): RemoteHostEntity {
         require((authentication != null) != (sshKeyId != null)) {
-            "Select either an SSH key or password/private-key authentication"
+            workspaceStrings.getString(R.string.workspace_error_auth_selection)
         }
         if (sshKeyId != null) requireUsableSshKey(sshKeyId)
-        val finalName = name.trim().also { require(it.isNotEmpty()) { "Host name is required" } }
-        val finalHost = host.trim().also { require(it.isNotEmpty()) { "Host address is required" } }
-        val finalUser = username.trim().also { require(it.isNotEmpty()) { "Username is required" } }
-        require(port in 1..65535) { "Invalid SSH port" }
+        val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_name_required) } }
+        val finalHost = host.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_address_required) } }
+        val finalUser = username.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_username_required) } }
+        require(port in 1..65535) { workspaceStrings.getString(R.string.workspace_error_port_invalid) }
         val now = System.currentTimeMillis()
         val result = RemoteHostEntity(
             id = UUID.randomUUID().toString(),
@@ -274,14 +277,14 @@ class WorkspaceRepository(
         sshKeyId: String? = null,
     ): Boolean {
         require(authentication == null || sshKeyId == null) {
-            "Select either an SSH key or password/private-key authentication"
+            workspaceStrings.getString(R.string.workspace_error_auth_selection)
         }
         if (sshKeyId != null) requireUsableSshKey(sshKeyId)
         val previous = hostDao.getById(id) ?: return false
-        val finalName = name.trim().also { require(it.isNotEmpty()) { "Host name is required" } }
-        val finalHost = host.trim().also { require(it.isNotEmpty()) { "Host address is required" } }
-        val finalUser = username.trim().also { require(it.isNotEmpty()) { "Username is required" } }
-        require(port in 1..65535) { "Invalid SSH port" }
+        val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_name_required) } }
+        val finalHost = host.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_address_required) } }
+        val finalUser = username.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_username_required) } }
+        require(port in 1..65535) { workspaceStrings.getString(R.string.workspace_error_port_invalid) }
         val changedEndpoint = previous.host != finalHost || previous.port != port
         val changedConnection = changedEndpoint || previous.username != finalUser ||
             authentication != null || (sshKeyId != null && sshKeyId != previous.sshKeyId)
@@ -324,19 +327,19 @@ class WorkspaceRepository(
 
     /** Discover without authentication; the UI must display and explicitly confirm this key. */
     suspend fun discoverHostKey(id: String): RemoteHostKey {
-        val host = hostDao.getById(id) ?: error("Remote host not found: $id")
+        val host = hostDao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, id))
         return runRemoteInterruptible { remoteTransport.discoverHostKey(host.host, host.port) }
     }
 
     /** Re-check the presented key at trust time to avoid pinning a stale fingerprint. */
     suspend fun trustHostKey(id: String, fingerprintSha256: String): Boolean {
         val host = hostDao.getById(id) ?: return false
-        require(fingerprintSha256.isNotBlank()) { "Host key fingerprint is required" }
+        require(fingerprintSha256.isNotBlank()) { workspaceStrings.getString(R.string.workspace_error_fingerprint_required) }
         val liveKey = runRemoteInterruptible {
             remoteTransport.discoverHostKey(host.host, host.port)
         }
         require(liveKey.sha256Fingerprint == fingerprintSha256) {
-            "The SSH host key changed before it could be trusted"
+            workspaceStrings.getString(R.string.workspace_error_host_key_changed)
         }
         hostDao.update(host.copy(
             trustedHostKeySha256 = fingerprintSha256,
@@ -400,7 +403,7 @@ class WorkspaceRepository(
 
     suspend fun deleteHost(id: String): Boolean {
         if (hostDao.getById(id) == null) return false
-        require(dao.countByRemoteHostId(id) == 0) { "Delete remote workspaces before deleting their host" }
+        require(dao.countByRemoteHostId(id) == 0) { workspaceStrings.getString(R.string.workspace_delete_linked_workspaces_first) }
         hostDao.deleteById(id)
         withContext(Dispatchers.IO) { credentialStore.delete(id) }
         remoteRuntime.forgetHost(id)
@@ -408,21 +411,21 @@ class WorkspaceRepository(
     }
 
     suspend fun createRemoteWorkspace(name: String, hostId: String, remoteRoot: String): WorkspaceEntity {
-        val host = hostDao.getById(hostId) ?: error("Remote host not found: $hostId")
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, hostId))
         if (host.trustedHostKeySha256 == null) {
             remoteRuntime.configuration(hostId, RemoteConfigurationState.HOST_KEY_UNTRUSTED,
                 host.connectionRevision)
-            error("Trust the SSH host key first")
+            error(workspaceStrings.getString(R.string.workspace_fingerprint_not_confirmed))
         }
         val path = remoteRoot.trim().trimEnd('/').ifEmpty { "/" }
         require(path.startsWith('/') && !path.contains('\u0000') && path.split('/').none { it == ".." || it == "." }) {
-            "Remote workspace path must be an absolute normalized path"
+            workspaceStrings.getString(R.string.workspace_error_absolute_path)
         }
         require(path != "/") {
-            "Select a project directory below /; /workspace file paths are ambiguous when the remote root is /"
+            workspaceStrings.getString(R.string.workspace_error_root_path)
         }
-        val finalName = name.trim().also { require(it.isNotEmpty()) { "Workspace name is required" } }
-        require(!isNameTaken(finalName, null)) { "Workspace name already exists: $finalName" }
+        val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_name_required) } }
+        require(!isNameTaken(finalName, null)) { workspaceStrings.getString(R.string.workspace_error_name_duplicate, finalName) }
         val workspaceId = UUID.randomUUID().toString()
         val revision = host.connectionRevision
         remoteRuntime.begin(hostId, workspaceId, revision)
@@ -452,13 +455,13 @@ class WorkspaceRepository(
             when {
                 result.timedOut -> {
                     remoteRuntime.operation(workspaceId, RemoteOperationOutcome.OUTCOME_UNKNOWN,
-                        "目录检查超时，远程结果不确定", revision = revision)
-                    error("Remote workspace path check timed out")
+                        workspaceStrings.getString(R.string.workspace_directory_check_timeout), revision = revision)
+                    error(workspaceStrings.getString(R.string.workspace_error_path_timeout))
                 }
                 result.exitCode != 0 -> {
                     remoteRuntime.operation(workspaceId, RemoteOperationOutcome.COMMAND_FAILED,
-                        "目录检查命令退出码 ${result.exitCode}", result.exitCode, revision)
-                    error("Remote workspace path is not accessible")
+                        workspaceStrings.getString(R.string.workspace_directory_check_exit, result.exitCode), result.exitCode, revision)
+                    error(workspaceStrings.getString(R.string.workspace_remote_directory_unavailable))
                 }
                 else -> remoteRuntime.operation(workspaceId, RemoteOperationOutcome.SUCCESS,
                     revision = revision)
@@ -466,13 +469,13 @@ class WorkspaceRepository(
             opened.resolvedRoot
         } catch (error: CancellationException) {
             if (stage == RemoteConnectionStage.OPERATING) remoteRuntime.operation(workspaceId,
-                RemoteOperationOutcome.OUTCOME_UNKNOWN, "操作已取消，远程结果不确定",
+                RemoteOperationOutcome.OUTCOME_UNKNOWN, workspaceStrings.getString(R.string.workspace_cancelled_outcome_unknown),
                 revision = revision)
             remoteRuntime.forgetWorkspace(workspaceId)
             throw error
         } catch (error: RemoteWorkspaceDirectoryException) {
             if (stage == RemoteConnectionStage.CONNECTING) {
-                remoteRuntime.directoryFailed(hostId, workspaceId, "远程目录不可访问", revision)
+                remoteRuntime.directoryFailed(hostId, workspaceId, workspaceStrings.getString(R.string.workspace_remote_directory_unavailable), revision)
                 stage = RemoteConnectionStage.FINISHED
             }
             remoteRuntime.forgetWorkspace(workspaceId)
@@ -494,7 +497,7 @@ class WorkspaceRepository(
             }
         }
         require(resolvedPath != "/") {
-            "Select a project directory below /; the selected path resolves to /"
+            workspaceStrings.getString(R.string.workspace_error_root_path)
         }
         if (hostDao.getById(hostId)?.connectionRevision != revision) {
             remoteRuntime.forgetWorkspace(workspaceId)
@@ -526,19 +529,19 @@ class WorkspaceRepository(
 
     private suspend fun requireUsableSshKey(id: String) {
         require(hasSshKeyMaterial(id)) {
-            "Managed SSH key material is missing or invalid; import the private key again"
+            workspaceStrings.getString(R.string.workspace_error_key_material_missing)
         }
     }
 
     private suspend fun loadVerifiedSshKey(id: String): RemoteAuthentication.PrivateKey {
-        val key = sshKeyDao.getById(id) ?: error("Managed SSH key not found")
+        val key = sshKeyDao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_key_not_found))
         val stored = withContext(Dispatchers.IO) { sshKeyCredentialStore.load(id) }
         val material = withContext(Dispatchers.Default) {
             SshKeyCodec.importPrivateKey(stored.pem)
         }
         require(material.algorithm == key.algorithm && material.fingerprint == key.fingerprint &&
             material.publicKey == key.publicKey
-        ) { "Managed SSH key does not match its public metadata" }
+        ) { workspaceStrings.getString(R.string.workspace_error_key_metadata_mismatch) }
         return stored
     }
 
@@ -569,7 +572,7 @@ class WorkspaceRepository(
 
     private suspend fun RemoteHostEntity.config(remoteRoot: String = "/"): RemoteHostConfig {
         val authentication = if (authType == AUTH_MANAGED_KEY) {
-            val keyId = requireNotNull(sshKeyId) { "Managed SSH key is not selected" }
+            val keyId = requireNotNull(sshKeyId) { workspaceStrings.getString(R.string.workspace_error_key_not_selected) }
             loadVerifiedSshKey(keyId)
         } else withContext(Dispatchers.IO) { credentialStore.load(id) }
         return RemoteHostConfig(
@@ -577,7 +580,7 @@ class WorkspaceRepository(
             port = port,
             username = username,
             authentication = authentication,
-            trustedHostKeySha256 = requireNotNull(trustedHostKeySha256) { "Trust the SSH host key first" },
+            trustedHostKeySha256 = requireNotNull(trustedHostKeySha256) { workspaceStrings.getString(R.string.workspace_fingerprint_not_confirmed) },
             remoteRoot = remoteRoot,
         )
     }
@@ -591,7 +594,7 @@ class WorkspaceRepository(
         validateLoadedWorkspace(expectedTarget, workspace)
         val hostId = requireNotNull(workspace.remoteHostId)
         val host = hostDao.getById(hostId)
-            ?: error("Remote host is missing for workspace ${workspace.id}")
+            ?: error(workspaceStrings.getString(R.string.workspace_error_host_missing, workspace.id))
         val revision = host.connectionRevision
         remoteRuntime.begin(hostId, workspace.id, revision)
         var stage = RemoteConnectionStage.CONNECTING
@@ -622,7 +625,7 @@ class WorkspaceRepository(
                 remoteTransport.open(config).also { session = it }
             }
             if (opened.resolvedRoot != workspace.remotePath) {
-                remoteRuntime.directoryFailed(hostId, workspace.id, "远程目录目标已改变", revision)
+                remoteRuntime.directoryFailed(hostId, workspace.id, workspaceStrings.getString(R.string.workspace_remote_directory_changed), revision)
                 stage = RemoteConnectionStage.FINISHED
                 throw WorkspaceToolTargetChangedException()
             }
@@ -641,8 +644,8 @@ class WorkspaceRepository(
                 }
                 remoteRuntime.operation(workspace.id, outcome,
                     reason = when (outcome) {
-                        RemoteOperationOutcome.OUTCOME_UNKNOWN -> "命令超时，远程结果不确定"
-                        RemoteOperationOutcome.COMMAND_FAILED -> "命令退出码 ${result.exitCode}"
+                        RemoteOperationOutcome.OUTCOME_UNKNOWN -> workspaceStrings.getString(R.string.workspace_command_timeout_unknown)
+                        RemoteOperationOutcome.COMMAND_FAILED -> workspaceStrings.getString(R.string.workspace_command_exit_code, result.exitCode)
                         else -> null
                     }, exitCode = result.exitCode, revision = revision)
             } else {
@@ -653,12 +656,12 @@ class WorkspaceRepository(
         } catch (error: CancellationException) {
             if (stage == RemoteConnectionStage.OPERATING && recordOperation) {
                 remoteRuntime.operation(workspace.id, RemoteOperationOutcome.OUTCOME_UNKNOWN,
-                    "操作已取消，远程结果不确定", revision = revision)
+                    workspaceStrings.getString(R.string.workspace_cancelled_outcome_unknown), revision = revision)
             }
             throw error
         } catch (error: RemoteWorkspaceDirectoryException) {
             if (stage == RemoteConnectionStage.CONNECTING) {
-                remoteRuntime.directoryFailed(hostId, workspace.id, "远程目录不可访问", revision)
+                remoteRuntime.directoryFailed(hostId, workspace.id, workspaceStrings.getString(R.string.workspace_remote_directory_unavailable), revision)
                 stage = RemoteConnectionStage.FINISHED
             }
             throw error
@@ -673,11 +676,11 @@ class WorkspaceRepository(
                 val transportLost = error is JSchException || error is RemoteFileTimeoutException ||
                     (error is SftpException && session?.isConnected == false)
                 if (transportLost) remoteRuntime.connectionLost(hostId,
-                    if (error is RemoteFileTimeoutException) "远程文件操作超时" else "SSH 连接已中断", revision)
+                    if (error is RemoteFileTimeoutException) workspaceStrings.getString(R.string.workspace_remote_file_timeout) else workspaceStrings.getString(R.string.workspace_ssh_interrupted), revision)
                 if (recordOperation) remoteRuntime.operation(workspace.id,
                     if (transportLost) RemoteOperationOutcome.OUTCOME_UNKNOWN
                     else RemoteOperationOutcome.FILE_FAILED,
-                    reason = if (transportLost) "连接中断，远程结果不确定" else "文件或命令操作失败",
+                    reason = if (transportLost) workspaceStrings.getString(R.string.workspace_connection_lost_unknown) else workspaceStrings.getString(R.string.workspace_file_or_command_failed),
                     revision = revision)
             }
             throw error
@@ -700,11 +703,11 @@ class WorkspaceRepository(
         expectedHostRevision: String? = null,
         expectedRemoteRoot: String? = null,
     ): RemoteTerminalConnection {
-        require(columns in 1..1000 && rows in 1..1000) { "Invalid terminal size" }
-        val workspace = dao.getById(id) ?: error("工作空间不存在")
-        require(workspace.isRemote) { "需要远程工作空间" }
+        require(columns in 1..1000 && rows in 1..1000) { workspaceStrings.getString(R.string.workspace_error_terminal_size) }
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_not_found))
+        require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
         val hostId = requireNotNull(workspace.remoteHostId)
-        val host = hostDao.getById(hostId) ?: error("远程主机不存在")
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
         val revision = host.connectionRevision
         if ((expectedHostId != null && expectedHostId != hostId) ||
             (expectedHostRevision != null && expectedHostRevision != revision) ||
@@ -749,7 +752,7 @@ class WorkspaceRepository(
         } catch (error: WorkspaceToolTargetChangedException) {
             throw error
         } catch (error: RemoteWorkspaceDirectoryException) {
-            remoteRuntime.directoryFailed(hostId, id, "远程目录不可访问", revision)
+            remoteRuntime.directoryFailed(hostId, id, workspaceStrings.getString(R.string.workspace_remote_directory_unavailable), revision)
             classified = true
             throw error
         } catch (error: Exception) {
@@ -773,24 +776,24 @@ class WorkspaceRepository(
     private enum class RemoteConnectionStage { CONNECTING, OPERATING, FINISHED }
 
     private fun RemoteConfigurationState.shortReason(): String = when (this) {
-        RemoteConfigurationState.HOST_KEY_UNTRUSTED -> "尚未确认主机指纹"
-        RemoteConfigurationState.CREDENTIAL_MISSING -> "SSH 凭据不可用"
-        RemoteConfigurationState.INVALID -> "连接配置无效"
+        RemoteConfigurationState.HOST_KEY_UNTRUSTED -> workspaceStrings.getString(R.string.workspace_fingerprint_not_confirmed)
+        RemoteConfigurationState.CREDENTIAL_MISSING -> workspaceStrings.getString(R.string.workspace_ssh_credentials_unavailable)
+        RemoteConfigurationState.INVALID -> workspaceStrings.getString(R.string.workspace_connection_config_invalid)
         else -> ""
     }
 
     private fun shortConnectionReason(error: Exception): String = when {
-        error is RemoteFileTimeoutException -> "远程文件服务无响应"
+        error is RemoteFileTimeoutException -> workspaceStrings.getString(R.string.workspace_remote_file_unresponsive)
         error is JSchException && error.message?.contains("auth", ignoreCase = true) == true ->
-            "SSH 认证失败"
+            workspaceStrings.getString(R.string.workspace_ssh_auth_failed)
         error is JSchException && error.message?.contains("timeout", ignoreCase = true) == true ->
-            "SSH 连接超时"
-        else -> "SSH 连接失败"
+            workspaceStrings.getString(R.string.workspace_ssh_timeout)
+        else -> workspaceStrings.getString(R.string.workspace_ssh_failed)
     }
 
     private fun requireRemoteFilesArea(area: WorkspaceStorageArea) {
         require(area == WorkspaceStorageArea.FILES) {
-            "Remote workspaces expose their selected project directory in Files"
+            workspaceStrings.getString(R.string.workspace_error_remote_files_area)
         }
     }
 
@@ -830,7 +833,7 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: return false
         val finalName = name.trim().ifBlank { workspace.name }
         require(!isNameTaken(finalName, excludeId = id)) {
-            "Workspace name already exists: $finalName"
+            workspaceStrings.getString(R.string.workspace_error_name_duplicate, finalName)
         }
         dao.upsert(
             workspace.copy(
@@ -864,7 +867,7 @@ class WorkspaceRepository(
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ): Boolean {
         val workspace = dao.getById(id) ?: return false
-        require(!workspace.isRemote) { "Remote workspaces do not use a local Rootfs" }
+        require(!workspace.isRemote) { workspaceStrings.getString(R.string.workspace_error_remote_rootfs) }
         updateShellState(workspace, WorkspaceShellStatus.INSTALLING.name)
         try {
             // runInterruptible 让协程取消转成线程中断, 打断 install 内阻塞的下载/解压循环
@@ -918,7 +921,7 @@ class WorkspaceRepository(
         path: String,
         scopeId: String? = null,
     ): String = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace) { it.readText(path) }
         val scope = WorkspaceScope.fromNullableId(scopeId)
         manager.ensureScope(workspace.root, scope)
@@ -932,7 +935,7 @@ class WorkspaceRepository(
         overwrite: Boolean,
         scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace) {
             it.writeText(path, text, overwrite)
         }
@@ -952,7 +955,7 @@ class WorkspaceRepository(
         path: String,
         scopeId: String? = null,
     ): String = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) {
             requireRemoteFilesArea(area)
             return@withContext withRemoteWorkspace(workspace) { it.readText(path, MAX_PREVIEW_BYTES) }
@@ -968,7 +971,7 @@ class WorkspaceRepository(
                 -> {
                 val size = manager.fileSize(workspace.root, path, area, scope)
                 require(size <= MAX_PREVIEW_BYTES) {
-                    "文件过大, 无法预览 (${size} bytes)"
+                    workspaceStrings.getString(R.string.workspace_file_preview_too_large, size)
                 }
                 ByteArrayOutputStream().use { out ->
                     manager.exportFile(workspace.root, path, area, out, scope = scope)
@@ -984,7 +987,7 @@ class WorkspaceRepository(
         path: String,
         scopeId: String? = null,
     ): String = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace) {
             it.readText(remotePath(workspace, path), MAX_PREVIEW_BYTES)
         }
@@ -992,7 +995,7 @@ class WorkspaceRepository(
         manager.ensureScope(workspace.root, scope)
         val size = manager.rootfsFileSize(workspace.root, path, scope)
         require(size <= MAX_PREVIEW_BYTES) {
-            "文件过大, 无法在应用内预览 (${size} bytes)"
+            workspaceStrings.getString(R.string.workspace_file_in_app_preview_too_large, size)
         }
         ByteArrayOutputStream(size.toInt()).use { out ->
             manager.exportRootfsFile(workspace.root, path, out, scope = scope)
@@ -1008,7 +1011,7 @@ class WorkspaceRepository(
         inputStream: InputStream,
         scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) {
             requireRemoteFilesArea(area)
             val target = if (destinationPath.isBlank()) fileName else "${destinationPath.trimEnd('/')}/$fileName"
@@ -1027,7 +1030,7 @@ class WorkspaceRepository(
         path: String,
         scopeId: String? = null,
     ): Long = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) {
             requireRemoteFilesArea(area)
             return@withContext withRemoteWorkspace(workspace) { it.fileSize(path) }
@@ -1042,7 +1045,7 @@ class WorkspaceRepository(
         outputStream: OutputStream,
         scopeId: String? = null,
     ) = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) {
             requireRemoteFilesArea(area)
             return@withContext withRemoteWorkspace(workspace) { it.exportFile(path, outputStream) }
@@ -1063,7 +1066,7 @@ class WorkspaceRepository(
         scopeId: String? = null,
         expectedTarget: WorkspaceToolTargetSnapshot? = null,
     ): Long = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         validateLoadedWorkspace(expectedTarget, workspace)
         validateWorkspaceToolTarget(expectedTarget, id)
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace, expectedTarget) {
@@ -1083,7 +1086,7 @@ class WorkspaceRepository(
         scopeId: String? = null,
         expectedTarget: WorkspaceToolTargetSnapshot? = null,
     ) = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         validateLoadedWorkspace(expectedTarget, workspace)
         validateWorkspaceToolTarget(expectedTarget, id)
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace, expectedTarget) {
@@ -1102,7 +1105,7 @@ class WorkspaceRepository(
         outputStream: OutputStream,
         scopeId: String? = null,
     ) = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace) {
             it.exportFile(remotePath(workspace, path), outputStream)
         }
@@ -1126,7 +1129,7 @@ class WorkspaceRepository(
         scopeId: String? = null,
         expectedTarget: WorkspaceToolTargetSnapshot? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         validateLoadedWorkspace(expectedTarget, workspace)
         validateWorkspaceToolTarget(expectedTarget, id)
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace, expectedTarget) {
@@ -1169,7 +1172,7 @@ class WorkspaceRepository(
         overwrite: Boolean,
         scopeId: String? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) return@withContext withRemoteWorkspace(workspace) {
             it.move(source, target, overwrite)
         }
@@ -1190,7 +1193,7 @@ class WorkspaceRepository(
         scopeId: String? = null,
         expectedTarget: WorkspaceToolTargetSnapshot? = null,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         validateLoadedWorkspace(expectedTarget, workspace)
         validateWorkspaceToolTarget(expectedTarget, id)
         // An AI-approved download may spend time on the network. Revalidate the target after
@@ -1212,7 +1215,7 @@ class WorkspaceRepository(
         val guestPath = me.rerere.workspace.GuestPath.parse(destinationPath, "destination_path")
         require(guestPath.isWithin(WorkspaceManager.ROOTFS_WORKSPACE_PATH) &&
             guestPath != WorkspaceManager.ROOTFS_WORKSPACE_PATH
-        ) { "Network downloads must target a file below /workspace" }
+        ) { workspaceStrings.getString(R.string.workspace_error_download_path) }
         val relative = guestPath.relativeTo(WorkspaceManager.ROOTFS_WORKSPACE_PATH)
         val parent = relative.substringBeforeLast('/', "")
         val fileName = relative.substringAfterLast('/')
@@ -1241,7 +1244,7 @@ class WorkspaceRepository(
         scopeId: String? = null,
         expectedTarget: WorkspaceToolTargetSnapshot? = null,
     ): WorkspaceCommandResult {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         validateLoadedWorkspace(expectedTarget, workspace)
         validateWorkspaceToolTarget(expectedTarget, id, requireShell = true)
         if (workspace.isRemote) return withRemoteWorkspace(workspace, expectedTarget) { session ->

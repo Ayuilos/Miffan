@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.components.ai
 
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -52,6 +53,7 @@ internal fun WorkspaceSelectSheet(
     onManage: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var query by remember { mutableStateOf("") }
     val workspaceRepository: WorkspaceRepository = koinInject()
     val hosts by workspaceRepository.listHostsFlow().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -82,7 +84,7 @@ internal fun WorkspaceSelectSheet(
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                label = { Text("搜索工作空间") },
+                label = { Text(stringResource(R.string.workspace_search_workspaces)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -103,7 +105,7 @@ internal fun WorkspaceSelectSheet(
                 listOf(false, true).forEach { isRemote ->
                     val group = visibleWorkspaces.filter { it.isRemote == isRemote }
                     if (group.isNotEmpty()) Text(
-                        if (isRemote) "远程" else "本地",
+                        if (isRemote) workspaceStrings.getString(R.string.workspace_filter_remote) else workspaceStrings.getString(R.string.workspace_filter_local),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp, start = 16.dp),
@@ -115,17 +117,17 @@ internal fun WorkspaceSelectSheet(
                             rowTag = "workspace-select-${workspace.id}",
                             isRemote = isRemote,
                             statusLines = if (isRemote) listOf(
-                                "远程服务器 · ${host?.name ?: "主机不可用"}",
+                                workspaceStrings.getString(R.string.workspace_remote_server_name, host?.name ?: workspaceStrings.getString(R.string.workspace_host_unavailable)),
                                 when {
-                                    host == null -> "主机配置不可用"
-                                    host.trustedHostKeySha256 == null -> "主机指纹待确认"
-                                    else -> remoteWorkspaceStatusLabel(
+                                    host == null -> workspaceStrings.getString(R.string.workspace_host_config_unavailable)
+                                    host.trustedHostKeySha256 == null -> workspaceStrings.getString(R.string.workspace_host_fingerprint_pending)
+                                    else -> remoteWorkspaceStatusLabel(workspaceStrings,
                                         workspace,
                                         workspace.remoteHostId?.let(hostStates::get),
                                         workspaceStates[workspace.id],
                                     )
                                 },
-                            ) else listOf("本地设备", workspace.shellStatus.toShellStatusLabel()),
+                            ) else listOf(workspaceStrings.getString(R.string.workspace_local_device), workspace.shellStatus.toShellStatusLabel()),
                             selected = workspace.id == assistant.workspaceId?.toString(),
                             onClick = { onSelect(workspace.id) },
                         )
@@ -133,7 +135,7 @@ internal fun WorkspaceSelectSheet(
                 }
                 if (visibleWorkspaces.isEmpty()) {
                     Text(
-                        if (query.isBlank()) "还没有工作空间，可前往管理页创建" else "没有匹配的工作空间",
+                        if (query.isBlank()) workspaceStrings.getString(R.string.workspace_empty_picker) else workspaceStrings.getString(R.string.workspace_no_matches),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
@@ -158,11 +160,12 @@ internal fun WorkspaceSelectRow(
     isRemote: Boolean? = null,
     statusLines: List<String> = emptyList(),
 ) {
+    val workspaceStrings = LocalResources.current
     ListItem(
         leadingContent = {
             Icon(
                 if (isRemote == null) HugeIcons.Codesandbox else workspaceKindIcon(isRemote),
-                contentDescription = isRemote?.let(::workspaceKindLabel),
+                contentDescription = isRemote?.let { workspaceKindLabel(workspaceStrings, it) },
             )
         },
         headlineContent = {

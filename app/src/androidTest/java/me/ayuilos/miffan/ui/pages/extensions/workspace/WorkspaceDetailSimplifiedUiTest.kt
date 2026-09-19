@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.testutils.workspaceUiText
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -53,13 +55,13 @@ class WorkspaceDetailSimplifiedUiTest {
             }
         }
 
-        compose.onNodeWithText("确认主机指纹并测试").assertExists().performClick()
-        compose.onNodeWithText("主机指纹待确认").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_confirm_host_test)).assertExists().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_host_fingerprint_pending)).assertExists()
         compose.runOnIdle { org.junit.Assert.assertEquals(1, checks.value) }
-        compose.onNodeWithText("远程目录").assertDoesNotExist()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_remote_directory)).assertDoesNotExist()
         capture("workspace-detail-settings-narrow.png")
-        compose.onNodeWithText("查看工作区与连接详情").performClick()
-        compose.onNodeWithText("远程目录").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_view_connection_details)).performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_remote_directory)).assertExists()
     }
 
     private fun capture(name: String) {

@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.components.ai
 
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ fun WorkspaceCwdPickerSheet(
     onSelectCwd: (String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val workspaceRepository: WorkspaceRepository = koinInject()
     val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     val workspace = workspaces.find { it.id == workspaceId }
@@ -102,7 +104,7 @@ fun WorkspaceCwdPickerSheet(
             )
             if (workspace?.isRemote == true) {
                 Text(
-                    text = "远程目录：${workspace.remotePath}. /workspace 对应该目录；命令在远程主机运行。",
+                    text = workspaceStrings.getString(R.string.workspace_remote_directory_mapping, workspace.remotePath),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

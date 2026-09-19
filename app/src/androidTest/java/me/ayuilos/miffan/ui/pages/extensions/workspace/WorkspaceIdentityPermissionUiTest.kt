@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.testutils.workspaceUiText
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -83,10 +85,10 @@ class WorkspaceIdentityPermissionUiTest {
         }
 
         compose.onNodeWithTag("workspace-card-remote-workspace").assertExists()
-        compose.onNodeWithText("远程 · Build server", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText("按需连接 · 上次目录检查通过", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_remote_name, "Build server"), useUnmergedTree = true).assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_on_demand_directory_passed), useUnmergedTree = true).assertExists()
         compose.onNodeWithText("builder@server.internal:2222", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithText("工作目录不是安全沙箱", substring = true).assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_remote_shell_access_help), substring = true).assertExists()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
         File(instrumentation.targetContext.cacheDir, "remote-identity-permissions.png").outputStream().use {

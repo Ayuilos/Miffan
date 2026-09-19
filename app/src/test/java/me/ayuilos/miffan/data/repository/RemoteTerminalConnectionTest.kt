@@ -43,7 +43,7 @@ class RemoteTerminalConnectionTest {
         every { session.resolvedRoot } returns "/srv/project"
         every { session.openTerminal(any(), any()) } returns terminal
         return WorkspaceRepository(dao, mockk(), mockk(), mockk(), mockk(), hostDao,
-            credentials, transport, mockk(), mockk())
+            credentials, transport, mockk(), mockk(), mockk(relaxed = true))
     }
 
     @Test fun manualTerminalStaysActiveUntilClosedAndClosesOnlyOnce() = runBlocking {

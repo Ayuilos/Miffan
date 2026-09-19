@@ -93,7 +93,7 @@ val repositoryModule = module {
     single { NativeSshWorkspaceTransport }
 
     single {
-        WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources)
     }
 
     single {

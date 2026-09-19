@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.testutils.workspaceUiText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,13 +75,13 @@ class RemoteWorkspaceDialogTest {
 
         compose.onNodeWithTag("remote_workspace_name").performTextInput("项目 A")
         compose.onNodeWithTag("remote_workspace_directory").performScrollTo().performTextInput("/home/dev/project")
-        compose.onNodeWithText("添加远程主机").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_add_remote_host)).performClick()
         compose.onNodeWithTag("remote_workspace_name").assertTextContains("项目 A")
         compose.onNodeWithTag("remote_workspace_directory").assertTextContains("/home/dev/project")
         compose.onNodeWithTag("remote_workspace_host_host-id").assertIsSelected()
-        compose.onNodeWithText("创建").assertIsNotEnabled()
-        compose.onNodeWithText("确认指纹并测试").performScrollTo().performClick()
-        compose.onNodeWithText("创建").assertIsEnabled().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.skill_detail_page_create)).assertIsNotEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_confirm_fingerprint_test)).performScrollTo().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.skill_detail_page_create)).assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals(1, addCalls)
             assertEquals(host.id, verifiedHostId)
@@ -113,10 +115,10 @@ class RemoteWorkspaceDialogTest {
             }
         }
 
-        compose.onNodeWithText("创建").performClick()
-        compose.onNodeWithText("正在创建工作空间…").assertExists()
-        compose.onNodeWithText("创建").assertIsNotEnabled()
-        compose.onNodeWithText("取消").assertIsNotEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.skill_detail_page_create)).performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_creating_workspace)).assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.skill_detail_page_create)).assertIsNotEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.common_cancel)).assertIsNotEnabled()
         compose.runOnIdle {
             assertEquals(1, createCalls)
             assertEquals(0, dismissCalls)
@@ -124,7 +126,7 @@ class RemoteWorkspaceDialogTest {
         }
         compose.onNodeWithText("目录不可访问").assertExists()
         compose.onNodeWithTag("remote_workspace_name").assertTextContains("项目 B")
-        compose.onNodeWithText("创建").assertIsEnabled().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.skill_detail_page_create)).assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(2, createCalls) }
     }
 }

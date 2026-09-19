@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 
 /** A file operation stopped making progress; writes may already have reached the server. */
 class RemoteFileTimeoutException(cause: Throwable? = null) :
-    IOException("远程文件操作长时间无响应，连接已关闭。请检查远程状态后重试。", cause)
+    IOException("Remote file operation timed out; check remote state before retrying", cause)
 
 /** Metadata has a deadline; active uploads/downloads extend it whenever bytes move. */
 internal class SftpIdleGuard(

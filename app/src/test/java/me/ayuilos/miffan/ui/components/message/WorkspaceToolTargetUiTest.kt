@@ -1,11 +1,14 @@
 package me.ayuilos.miffan.ui.components.message
 
+import me.ayuilos.miffan.testutils.workspaceTestResources
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkspaceToolTargetUiTest {
+    private val resources = workspaceTestResources()
+
     @Test
     fun remoteApprovalAndHistoryUseCapturedHostAccountAndDirectory() {
         val target = WorkspaceToolTargetSnapshot(
@@ -28,12 +31,12 @@ class WorkspaceToolTargetUiTest {
                 "主机：Original server · operator@old.example:2222",
                 "目录：/srv/original",
             ),
-            workspaceToolTargetLines(target),
+            workspaceToolTargetLines(resources, target),
         )
     }
 
     @Test
     fun oldCallWithoutCapturedTargetIsMarkedUnexecutable() {
-        assertTrue(workspaceToolTargetLines(null).single().contains("无法执行"))
+        assertTrue(workspaceToolTargetLines(resources, null).single().contains("无法执行"))
     }
 }

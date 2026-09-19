@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.testutils.workspaceUiText
 import android.graphics.Bitmap
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
@@ -55,7 +57,7 @@ class SshKeyManagementUiTest {
             MaterialTheme { RemoteHostAuthSelector(mode) { mode = it } }
         }
 
-        compose.onNodeWithText("认证方式").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.setting_provider_page_auth_method)).assertExists()
         compose.onNodeWithTag("auth_mode_password").assertIsSelected()
         compose.onNodeWithTag("auth_mode_saved_key").assertIsNotSelected().performClick().assertIsSelected()
         compose.waitForIdle()
@@ -85,7 +87,7 @@ class SshKeyManagementUiTest {
         compose.onNodeWithTag("ssh_key_name").performTextInput("Phone key")
         compose.waitForIdle()
         screenshot("ssh-key-generate.png")
-        compose.onNodeWithText("生成").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_generate)).performClick()
         compose.runOnIdle {
             assertEquals("Phone key", requestedName)
             assertEquals(key, created)
@@ -104,7 +106,7 @@ class SshKeyManagementUiTest {
         }
         compose.waitForIdle()
         screenshot("ssh-public-key-dialog.png")
-        compose.onNodeWithText("复制公钥").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_copy_public_key)).performClick()
         compose.runOnIdle { assertEquals(key.publicKey, copied) }
     }
 
@@ -125,17 +127,17 @@ class SshKeyManagementUiTest {
             }
         }
 
-        compose.onNodeWithText("私钥已隐藏。").assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_private_key_hidden)).assertExists()
         compose.onNodeWithText(privatePem).assertDoesNotExist()
-        compose.onNodeWithText("此设备未设置屏幕锁。仍可查看和导出私钥，请确保周围无人窥视并妥善保管备份。").assertExists()
-        compose.onNodeWithText("导出私钥").assertIsNotEnabled()
-        compose.onNodeWithText("查看私钥").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_no_screen_lock_warning)).assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_export_private_key)).assertIsNotEnabled()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_view_private_key)).performClick()
         compose.onNodeWithText(privatePem).assertExists()
-        compose.onNodeWithText("隐藏私钥").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_hide_private_key)).performClick()
         compose.onNodeWithText(privatePem).assertDoesNotExist()
         compose.onNodeWithTag("private_backup_passphrase").performScrollTo().performTextInput("backup-secret")
         compose.onNodeWithTag("private_backup_confirm").performScrollTo().performTextInput("backup-secret")
-        compose.onNodeWithText("导出私钥").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_export_private_key)).performClick()
         compose.runOnIdle { assertEquals("backup-secret", exportedPassphrase) }
     }
 
@@ -158,15 +160,15 @@ class SshKeyManagementUiTest {
             }
         }
 
-        compose.onNodeWithText("无口令备份").performClick()
-        compose.onNodeWithText("无口令备份的私钥可被任何取得文件的人直接使用。").assertExists()
-        compose.onNodeWithText("导出私钥").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_unencrypted_backup)).performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_unencrypted_backup_warning)).assertExists()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_export_private_key)).performClick()
         compose.runOnIdle {
             assertTrue(exported)
             assertEquals(null, exportedPassphrase)
         }
-        compose.onNodeWithText("查看私钥").performClick()
-        compose.onNodeWithText("关闭").performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_view_private_key)).performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_close)).performClick()
         compose.runOnIdle { viewCallback?.invoke(Result.success("late-private-key")) }
         compose.onNodeWithText("late-private-key").assertDoesNotExist()
     }

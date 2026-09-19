@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.components.ui
 
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.testutils.workspaceUiText
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.compose.material3.MaterialTheme
@@ -45,13 +47,13 @@ class WorkspaceIntroductionTest {
                 }
             }
         }
-        compose.onNodeWithText("远程工作空间").assertDoesNotExist()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_intro_title)).assertDoesNotExist()
         compose.runOnIdle { eligible.value = true }
-        compose.onNodeWithText("远程工作空间").assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_intro_title)).assertIsDisplayed()
         capture("workspace-introduction-light.png")
-        compose.onNodeWithText("稍后再说").performScrollTo().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_later)).performScrollTo().performClick()
         compose.runOnIdle { launch.value++ }
-        compose.onNodeWithText("远程工作空间").assertDoesNotExist()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_intro_title)).assertDoesNotExist()
         compose.runOnIdle { assertEquals(1, acknowledgements) }
     }
 
@@ -68,12 +70,12 @@ class WorkspaceIntroductionTest {
                 }, { opens++ })
             }
         }
-        compose.onNodeWithText("远程工作空间").assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_intro_title)).assertIsDisplayed()
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("远程工作空间").assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_intro_title)).assertIsDisplayed()
         capture("workspace-introduction-dark.png")
-        compose.onNodeWithText("打开工作空间").performScrollTo().performClick()
-        compose.onNodeWithText("远程工作空间").assertDoesNotExist()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_open_workspaces)).performScrollTo().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_intro_title)).assertDoesNotExist()
         compose.runOnIdle {
             assertEquals(1, acknowledgements)
             assertEquals(1, opens)
@@ -90,8 +92,8 @@ class WorkspaceIntroductionTest {
                 }
             }
         }
-        compose.onNodeWithText("打开工作空间").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("稍后再说").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_open_workspaces)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(workspaceUiText(R.string.workspace_later)).performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, dismissed) }
     }
 

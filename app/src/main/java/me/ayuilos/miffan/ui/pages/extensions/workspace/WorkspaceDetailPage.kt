@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import androidx.compose.ui.platform.LocalResources
 import android.content.Intent
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
@@ -114,6 +115,7 @@ fun WorkspaceDetailPage(
     scopeId: String? = null,
     scopeName: String? = null,
 ) {
+    val workspaceStrings = LocalResources.current
     val navController = LocalNavController.current
     val (requestedArea, requestedPath) = workspaceDetailInitialLocation(initialArea, initialPath)
     val vm: WorkspaceDetailVM = koinViewModel(
@@ -189,13 +191,13 @@ fun WorkspaceDetailPage(
                         )
                         state.workspace?.let { workspace ->
                             val identity = if (workspace.isRemote) {
-                                "远程 · ${state.remoteHost?.name ?: "主机不可用"}"
-                            } else "本地设备"
+                                workspaceStrings.getString(R.string.workspace_remote_name, state.remoteHost?.name ?: workspaceStrings.getString(R.string.workspace_host_unavailable))
+                            } else workspaceStrings.getString(R.string.workspace_local_device)
                             val status = if (workspace.isRemote) {
                                 when {
-                                    state.remoteHost == null -> "主机配置不可用"
-                                    state.remoteHost?.trustedHostKeySha256 == null -> "主机指纹待确认"
-                                    else -> remoteWorkspaceStatusLabel(
+                                    state.remoteHost == null -> workspaceStrings.getString(R.string.workspace_host_config_unavailable)
+                                    state.remoteHost?.trustedHostKeySha256 == null -> workspaceStrings.getString(R.string.workspace_host_fingerprint_pending)
+                                    else -> remoteWorkspaceStatusLabel(workspaceStrings,
                                         workspace,
                                         workspace.remoteHostId?.let(remoteHostStates::get),
                                         remoteWorkspaceStates[id],
@@ -223,7 +225,7 @@ fun WorkspaceDetailPage(
                         }
                     }
                     IconButton(onClick = { vm.refresh() }) {
-                        Icon(HugeIcons.Refresh01, contentDescription = "刷新工作空间")
+                        Icon(HugeIcons.Refresh01, contentDescription = workspaceStrings.getString(R.string.workspace_refresh))
                     }
                     if (state.workspace?.let { it.isRemote || it.shellStatus != WorkspaceShellStatus.DISABLED.name } == true) {
                         IconButton(
@@ -239,7 +241,7 @@ fun WorkspaceDetailPage(
                         ) {
                             Icon(
                                 HugeIcons.ComputerTerminal01,
-                                contentDescription = if (state.workspace?.isRemote == true) "打开远程终端" else "打开本地终端",
+                                contentDescription = if (state.workspace?.isRemote == true) workspaceStrings.getString(R.string.workspace_open_remote_terminal) else workspaceStrings.getString(R.string.workspace_open_local_terminal),
                             )
                         }
                     }
@@ -257,7 +259,7 @@ fun WorkspaceDetailPage(
                 )
                 NavigationBarItem(
                     selected = pagerState.currentPage == SETTINGS_PAGE,
-                    label = { Text("设置") },
+                    label = { Text(stringResource(R.string.settings)) },
                     icon = { Icon(HugeIcons.Settings03, contentDescription = null) },
                     onClick = { scope.launch { pagerState.animateScrollToPage(SETTINGS_PAGE) } },
                 )
@@ -527,6 +529,7 @@ internal fun WorkspaceBasicPage(
     onCheckHost: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     var showDetails by remember(workspace?.id) { mutableStateOf(false) }
     var showApprovals by remember(workspace?.id) { mutableStateOf(false) }
     val shellStatus = workspace?.shellStatus
@@ -560,13 +563,13 @@ internal fun WorkspaceBasicPage(
                     ) {
                         Icon(
                             workspaceKindIcon(workspace?.isRemote == true),
-                            contentDescription = workspaceKindLabel(workspace?.isRemote == true),
+                            contentDescription = workspaceKindLabel(workspaceStrings, workspace?.isRemote == true),
                             modifier = Modifier.size(20.dp),
                         )
                         Text(
                             text = if (workspace?.isRemote == true) {
-                                "远程服务器 · ${remoteHost?.name ?: "主机不可用"}"
-                            } else "本地设备",
+                                workspaceStrings.getString(R.string.workspace_remote_server_name, remoteHost?.name ?: workspaceStrings.getString(R.string.workspace_host_unavailable))
+                            } else workspaceStrings.getString(R.string.workspace_local_device),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
@@ -576,20 +579,20 @@ internal fun WorkspaceBasicPage(
                     if (workspace?.isRemote == true) {
                         Text(
                             when {
-                                remoteHost == null -> "主机配置不可用"
-                                remoteHost.trustedHostKeySha256 == null -> "主机指纹待确认"
-                                else -> remoteWorkspaceStatusLabel(workspace, remoteHostState, remoteWorkspaceState)
+                                remoteHost == null -> workspaceStrings.getString(R.string.workspace_host_config_unavailable)
+                                remoteHost.trustedHostKeySha256 == null -> workspaceStrings.getString(R.string.workspace_host_fingerprint_pending)
+                                else -> remoteWorkspaceStatusLabel(workspaceStrings, workspace, remoteHostState, remoteWorkspaceState)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            "AI Shell 按 SSH 账户权限执行，可能访问所选目录之外；命令审批在助手设置中控制。",
+                            workspaceStrings.getString(R.string.workspace_ssh_shell_permissions),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         OutlinedButton(onClick = onCheckHost, enabled = remoteHost != null) {
-                            Text(if (remoteHost?.trustedHostKeySha256 == null) "确认主机指纹并测试" else "检查主机并测试")
+                            Text(if (remoteHost?.trustedHostKeySha256 == null) workspaceStrings.getString(R.string.workspace_confirm_host_test) else workspaceStrings.getString(R.string.workspace_check_host_test))
                         }
                     } else {
                         Text(
@@ -610,18 +613,18 @@ internal fun WorkspaceBasicPage(
                         installProgress?.let { RootfsProgress(it) }
                     }
                     TextButton(onClick = { showDetails = !showDetails }) {
-                        Text(if (showDetails) "收起详细信息" else "查看工作区与连接详情")
+                        Text(if (showDetails) workspaceStrings.getString(R.string.workspace_collapse_details) else workspaceStrings.getString(R.string.workspace_view_connection_details))
                     }
                     if (showDetails) {
                         if (workspace?.isRemote == true) {
-                            WorkspaceInfoRow("登录目标", remoteHost?.let { "${it.username}@${it.host}:${it.port}" } ?: "主机配置不可用")
-                            WorkspaceInfoRow("远程目录", workspace.remotePath.orEmpty())
-                            WorkspaceInfoRow("主机身份", if (remoteHost?.trustedHostKeySha256 != null) "已确认指纹" else "未确认指纹")
+                            WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_login_target), remoteHost?.let { "${it.username}@${it.host}:${it.port}" } ?: workspaceStrings.getString(R.string.workspace_host_config_unavailable))
+                            WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_remote_directory), workspace.remotePath.orEmpty())
+                            WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_host_identity), if (remoteHost?.trustedHostKeySha256 != null) workspaceStrings.getString(R.string.workspace_fingerprint_confirmed) else workspaceStrings.getString(R.string.workspace_fingerprint_unconfirmed))
                             (remoteWorkspaceState?.lastDirectoryCheck?.reason ?: remoteHostState?.lastConnection?.reason)
-                                ?.let { WorkspaceInfoRow("最近故障", it) }
-                            remoteWorkspaceLastOperationLabel(remoteWorkspaceState)?.let { WorkspaceInfoRow("操作记录", it) }
-                            remoteHostState?.configurationReason?.let { WorkspaceInfoRow("需要处理", it) }
-                            Text("SSH 按需连接，不保持在线。所选目录是工作目录，不是 Shell 的安全边界。文件区对应远程目录。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                ?.let { WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_recent_failure), it) }
+                            remoteWorkspaceLastOperationLabel(workspaceStrings, remoteWorkspaceState)?.let { WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_operation_history), it) }
+                            remoteHostState?.configurationReason?.let { WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_action_required), it) }
+                            Text(stringResource(R.string.workspace_ssh_on_demand_explanation), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             WorkspaceInfoRow(
                                 stringResource(R.string.workspace_scope),
@@ -642,7 +645,7 @@ internal fun WorkspaceBasicPage(
 
         item {
             TextButton(onClick = { showApprovals = !showApprovals }) {
-                Text(if (showApprovals) "收起文件工具审批设置" else "文件工具审批设置")
+                Text(if (showApprovals) workspaceStrings.getString(R.string.workspace_collapse_file_approvals) else workspaceStrings.getString(R.string.workspace_file_approval_settings))
             }
             if (showApprovals) WorkspaceToolApprovalCard(
                 workspace = workspace,
@@ -657,6 +660,7 @@ private fun WorkspaceToolApprovalCard(
     workspace: WorkspaceEntity?,
     onToolApprovalChange: (String, Boolean) -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     val overrides = workspace?.toolApprovalOverrides().orEmpty()
 
     Card(
@@ -676,7 +680,7 @@ private fun WorkspaceToolApprovalCard(
                 )
                 Text(
                     text = if (workspace?.isRemote == true) {
-                        "这里设置远程文件工具的逐次审批。AI Shell 能力和命令逐次审批在助手设置中单独控制；Shell 可按 SSH 账户权限读写或访问所选目录之外的位置。"
+                        workspaceStrings.getString(R.string.workspace_file_shell_approval_explanation)
                     } else {
                         stringResource(R.string.workspace_detail_tool_approval_desc)
                     },
@@ -809,7 +813,7 @@ private fun InstallRootfsDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "Pinned source: Ubuntu Base 24.04.4 (HTTPS + SHA-256 verified, selected for this device architecture)",
+                    text = stringResource(R.string.workspace_rootfs_source),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -843,6 +847,7 @@ private fun WorkspaceFilesPage(
     onExport: (WorkspaceFileEntry) -> Unit,
     onShare: (WorkspaceFileEntry) -> Unit,
 ) {
+    val workspaceStrings = LocalResources.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding + PaddingValues(16.dp),
@@ -858,7 +863,7 @@ private fun WorkspaceFilesPage(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Text(
-                    "正在加载文件…",
+                    workspaceStrings.getString(R.string.workspace_loading_files),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1095,6 +1100,7 @@ private fun EmptyDirectoryState() {
 
 @Composable
 private fun ErrorCard(message: String, onRetry: () -> Unit, onCheckHost: (() -> Unit)?) {
+    val workspaceStrings = LocalResources.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CustomColors.cardColorsOnSurfaceContainer,
@@ -1102,8 +1108,8 @@ private fun ErrorCard(message: String, onRetry: () -> Unit, onCheckHost: (() -> 
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onRetry) { Text("重试") }
-                onCheckHost?.let { action -> TextButton(onClick = action) { Text("检查主机") } }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.onboarding_page_retry)) }
+                onCheckHost?.let { action -> TextButton(onClick = action) { Text(stringResource(R.string.workspace_check_host)) } }
             }
         }
     }

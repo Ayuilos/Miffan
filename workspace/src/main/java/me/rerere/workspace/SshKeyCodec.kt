@@ -23,7 +23,7 @@ object SshKeyCodec {
 
     /** Exports normalized stored material, optionally protected with an OpenSSH passphrase. */
     fun exportPrivateKey(privateKeyPem: String, passphrase: String? = null): String {
-        require(passphrase == null || passphrase.isNotEmpty()) { "加密导出口令不能为空" }
+        if (passphrase != null && passphrase.isEmpty()) throw SshKeyException(SshKeyException.Reason.EMPTY_PASSPHRASE)
         val normalized = importPrivateKey(privateKeyPem)
         val bytes = normalized.privateKeyPem.toByteArray(Charsets.UTF_8)
         val password = passphrase?.toByteArray(Charsets.UTF_8)
@@ -38,7 +38,7 @@ object SshKeyCodec {
                 pair.dispose()
             }
         } catch (_: Exception) {
-            throw IllegalArgumentException("无法导出 SSH 私钥")
+            throw SshKeyException(SshKeyException.Reason.EXPORT_FAILED)
         } finally {
             bytes.fill(0)
             password?.fill(0)
@@ -55,8 +55,8 @@ object SshKeyCodec {
     }
 
     fun importPrivateKey(privateKeyPem: String, passphrase: String? = null): SshKeyMaterial {
-        require(privateKeyPem.isNotBlank() && privateKeyPem.length <= MAX_PRIVATE_KEY_CHARS) {
-            "私钥为空或超过 1 MiB 限制"
+        if (privateKeyPem.isBlank() || privateKeyPem.length > MAX_PRIVATE_KEY_CHARS) {
+            throw SshKeyException(SshKeyException.Reason.INVALID_SIZE)
         }
         val bytes = privateKeyPem.trim().toByteArray(Charsets.UTF_8)
         val password = passphrase?.toByteArray(Charsets.UTF_8)
@@ -70,7 +70,7 @@ object SshKeyCodec {
             }
         } catch (_: Exception) {
             // Provider parsing exceptions can contain input. Never expose their cause or text.
-            throw IllegalArgumentException("无法导入私钥，请检查私钥格式和口令（支持 Ed25519、RSA、ECDSA）")
+            throw SshKeyException(SshKeyException.Reason.IMPORT_FAILED)
         } finally {
             bytes.fill(0)
             password?.fill(0)

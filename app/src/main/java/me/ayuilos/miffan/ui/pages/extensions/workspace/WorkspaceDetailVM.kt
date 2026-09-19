@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import android.content.res.Resources
+import me.ayuilos.miffan.utils.workspaceErrorMessage
+import me.ayuilos.miffan.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -32,6 +35,7 @@ class WorkspaceDetailVM(
     private val args: WorkspaceDetailArgs,
     private val repository: WorkspaceRepository,
     private val skillManager: SkillManager,
+    private val workspaceStrings: Resources,
 ) : ViewModel() {
     val remoteHostStates = repository.remoteHostStates
     val remoteWorkspaceStates = repository.remoteWorkspaceStates
@@ -145,7 +149,7 @@ class WorkspaceDetailVM(
                     else current.copy(
                         entries = emptyList(),
                         loading = false,
-                        error = error.message ?: "加载工作区文件失败",
+                        error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_load_files_failed),
                     )
                 }
             }
@@ -178,7 +182,7 @@ class WorkspaceDetailVM(
             }.onSuccess {
                 refresh()
             }.onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "删除失败") }
+                _state.update { it.copy(error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.skill_detail_page_delete_failed)) }
             }
         }
     }
@@ -197,7 +201,7 @@ class WorkspaceDetailVM(
             }.onSuccess {
                 refresh()
             }.onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "导入文件失败") }
+                _state.update { it.copy(error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.text_area_import_failed)) }
             }
         }
     }
@@ -213,7 +217,7 @@ class WorkspaceDetailVM(
                     scopeId = scopeId,
                 )
             }.onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "导出文件失败") }
+                _state.update { it.copy(error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_export_files_failed)) }
             }
         }
     }
@@ -238,7 +242,7 @@ class WorkspaceDetailVM(
                 }
                 file
             }.onSuccess(onReady).onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "导出文件失败") }
+                _state.update { it.copy(error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_export_files_failed)) }
             }
         }
     }
@@ -252,23 +256,23 @@ class WorkspaceDetailVM(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                _state.update { it.copy(error = error.message ?: "更新工具审批失败") }
+                _state.update { it.copy(error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_update_approval_failed)) }
             }
         }
     }
 
     fun discoverHostKey(onResult: (Result<RemoteHostKey>) -> Unit) {
-        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException("主机配置不可用")))
+        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException(workspaceStrings.getString(R.string.workspace_host_config_unavailable))))
         runRemoteCheck({ repository.discoverHostKey(hostId) }, onResult)
     }
 
     fun trustHostKey(fingerprint: String, onResult: (Result<Boolean>) -> Unit) {
-        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException("主机配置不可用")))
+        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException(workspaceStrings.getString(R.string.workspace_host_config_unavailable))))
         runRemoteCheck({ repository.trustHostKey(hostId, fingerprint) }, onResult)
     }
 
     fun testHost(onResult: (Result<Boolean>) -> Unit) {
-        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException("主机配置不可用")))
+        val hostId = state.value.remoteHost?.id ?: return onResult(Result.failure(IllegalStateException(workspaceStrings.getString(R.string.workspace_host_config_unavailable))))
         runRemoteCheck({ repository.testHost(hostId) }, onResult)
     }
 
@@ -300,7 +304,7 @@ class WorkspaceDetailVM(
             } catch (e: CancellationException) {
                 throw e
             } catch (error: Throwable) {
-                _installError.value = error.message ?: "Rootfs 安装失败"
+                _installError.value = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_detail_rootfs_install_failed)
             } finally {
                 _installProgress.value = null
             }
@@ -341,7 +345,7 @@ class WorkspaceDetailVM(
                 _terminalState.update {
                     it.copy(
                         running = false,
-                        history = it.history + WorkspaceTerminalEntry.Error(error.message ?: "命令执行失败"),
+                        history = it.history + WorkspaceTerminalEntry.Error(error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_command_execution_failed)),
                     )
                 }
             }
@@ -383,7 +387,7 @@ class WorkspaceDetailVM(
             throw error
         } catch (error: Throwable) {
             currentCoroutineContext().ensureActive()
-            _state.update { it.copy(error = error.message ?: "加载工作区信息失败") }
+            _state.update { it.copy(error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_load_info_failed)) }
         }
     }
 
@@ -398,7 +402,7 @@ class WorkspaceDetailVM(
                 throw error
             } catch (error: Throwable) {
                 currentCoroutineContext().ensureActive()
-                _state.update { it.copy(loading = false, error = error.message ?: "加载工作区信息失败") }
+                _state.update { it.copy(loading = false, error = error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_load_info_failed)) }
             }
         }
     }
