@@ -1689,7 +1689,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_a11y_account_fragment">"，账户 "</string>
   <string name="workspace_unknown">未知</string>
   <string name="workspace_a11y_directory_fragment">"，目录 "</string>
-  <string name="workspace_legacy_target_missing">旧调用缺少目标记录，无法执行</string>
+  <string name="workspace_legacy_target_missing">此调用未记录执行目标，无法执行。请重新发起请求。</string>
   <string name="workspace_original_remote_target">原始目标：远程服务器 · %1$s</string>
   <string name="workspace_host_identity_line">主机：%1$s · %2$s</string>
   <string name="workspace_unknown_account">未知账户</string>
@@ -1748,4 +1748,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_connection_reconnecting">正在重新连接</string>
   <string name="workspace_connection_connect">连接</string>
   <string name="workspace_connection_disconnect">断开连接</string>
+  <string name="workspace_target_preparing">正在准备工作区目标…</string>
+  <string name="workspace_target_unrecorded_result">此已完成调用未记录执行目标</string>
 </resources>

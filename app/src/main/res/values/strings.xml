@@ -1687,7 +1687,7 @@
   <string name="workspace_a11y_account_fragment">", account "</string>
   <string name="workspace_unknown">Unknown</string>
   <string name="workspace_a11y_directory_fragment">", directory "</string>
-  <string name="workspace_legacy_target_missing">This older call has no target record and cannot run</string>
+  <string name="workspace_legacy_target_missing">No execution target was recorded for this call. Request it again to run it.</string>
   <string name="workspace_original_remote_target">Original target: remote server · %1$s</string>
   <string name="workspace_host_identity_line">Host: %1$s · %2$s</string>
   <string name="workspace_unknown_account">Unknown account</string>
@@ -1746,4 +1746,6 @@
   <string name="workspace_connection_reconnecting">Reconnecting</string>
   <string name="workspace_connection_connect">Connect</string>
   <string name="workspace_connection_disconnect">Disconnect</string>
+  <string name="workspace_target_preparing">Preparing Workspace target…</string>
+  <string name="workspace_target_unrecorded_result">Execution target was not recorded for this completed call</string>
 </resources>
