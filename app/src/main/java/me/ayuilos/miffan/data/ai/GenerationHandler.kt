@@ -39,7 +39,7 @@ import me.ayuilos.miffan.data.ai.transformers.onGenerationFinish
 import me.ayuilos.miffan.data.ai.transformers.transforms
 import me.ayuilos.miffan.data.ai.transformers.visualTransforms
 import me.ayuilos.miffan.data.ai.tools.buildMemoryTools
-import me.ayuilos.miffan.data.ai.tools.captureWorkspaceToolTarget
+import me.ayuilos.miffan.data.ai.tools.WorkspaceToolTargetBinder
 import me.ayuilos.miffan.data.ai.tools.executeToolWithTargetGuard
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.findProvider
@@ -127,6 +127,7 @@ class GenerationHandler(
                 }
                 addAll(tools)
             }
+            val targetBinder = WorkspaceToolTargetBinder(messages, toolsInternal)
 
             // Check if we have tool calls ready to continue after user interaction.
             val pendingTools = messages.lastOrNull()?.getTools()?.filter {
@@ -142,7 +143,7 @@ class GenerationHandler(
                     settings = settings,
                     messages = messages,
                     onUpdateMessages = {
-                        messages = it.transforms(
+                        messages = targetBinder.bind(it).transforms(
                             transformers = outputTransformers,
                             context = context,
                             model = model,
@@ -174,6 +175,7 @@ class GenerationHandler(
                     conversationModeInjectionIds = conversationModeInjectionIds,
                     conversationLorebookIds = conversationLorebookIds,
                     workspaceCwd = workspaceCwd,
+                    targetBinder = targetBinder,
                 )
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
@@ -195,7 +197,7 @@ class GenerationHandler(
                 )
                 emit(GenerationChunk.Messages(messages))
 
-                val tools = messages.last().getTools().filter { !it.isExecuted }
+                val tools = targetBinder.newTools(messages).filter { !it.isExecuted }
                 if (tools.isEmpty()) {
                     // no tool calls, break
                     break
@@ -205,29 +207,29 @@ class GenerationHandler(
                 var hasPendingApproval = false
                 val updatedTools = tools.map { tool ->
                     val toolDef = toolsInternal.find { it.name == tool.toolName }
-                    val captured = captureWorkspaceToolTarget(tool, toolDef)
                     when {
                         // Tool needs approval and state is Auto -> set to Pending
-                        toolDef?.needsApproval(captured.inputAsJson()) == true &&
-                            captured.approvalState is ToolApprovalState.Auto -> {
+                        toolDef?.needsApproval(tool.inputAsJson()) == true &&
+                            tool.approvalState is ToolApprovalState.Auto -> {
                             hasPendingApproval = true
-                            captured.copy(approvalState = ToolApprovalState.Pending)
+                            tool.copy(approvalState = ToolApprovalState.Pending)
                         }
                         // State is Pending -> keep waiting
-                        captured.approvalState is ToolApprovalState.Pending -> {
+                        tool.approvalState is ToolApprovalState.Pending -> {
                             hasPendingApproval = true
-                            captured
+                            tool
                         }
 
-                        else -> captured
+                        else -> tool
                     }
                 }
 
                 // If any tools were updated to Pending, update the message and break
                 if (updatedTools != tools) {
                     val lastMessage = messages.last()
-                    val updatedParts = lastMessage.parts.map { part ->
-                        if (part is UIMessagePart.Tool) {
+                    val newToolIndexes = targetBinder.newToolPartIndexes(lastMessage)
+                    val updatedParts = lastMessage.parts.mapIndexed { index, part ->
+                        if (index in newToolIndexes && part is UIMessagePart.Tool) {
                             updatedTools.find { it.toolCallId == part.toolCallId } ?: part
                         } else {
                             part
@@ -339,8 +341,13 @@ class GenerationHandler(
 
             // Update last message with executed tools (NOT create TOOL message)
             val lastMessage = messages.last()
-            val updatedParts = lastMessage.parts.map { part ->
-                if (part is UIMessagePart.Tool) {
+            val newToolIndexes = if (pendingTools.isEmpty()) {
+                targetBinder.newToolPartIndexes(lastMessage)
+            } else {
+                lastMessage.parts.indices.toSet()
+            }
+            val updatedParts = lastMessage.parts.mapIndexed { index, part ->
+                if (index in newToolIndexes && part is UIMessagePart.Tool) {
                     executedTools.find { it.toolCallId == part.toolCallId } ?: part
                 } else part
             }
@@ -378,6 +385,7 @@ class GenerationHandler(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
+        targetBinder: WorkspaceToolTargetBinder,
     ) {
         val internalMessages = buildList {
             val system = buildString {
@@ -455,6 +463,7 @@ class GenerationHandler(
                 var retryCount = 0
 
                 while (true) {
+                    targetBinder.beginAttempt()
                     val streamChunkHandler = StreamChunkHandler(model)
                     var attemptMessages = responseBaseMessages
                     try {
@@ -467,7 +476,7 @@ class GenerationHandler(
                                 if (retryCount > 0) {
                                     processingStatus.value = null
                                 }
-                                attemptMessages = streamChunkHandler.handle(attemptMessages, chunk)
+                                attemptMessages = targetBinder.bind(streamChunkHandler.handle(attemptMessages, chunk))
                                 onUpdateMessages(attemptMessages)
                             } catch (error: CancellationException) {
                                 throw error
@@ -501,7 +510,7 @@ class GenerationHandler(
                         params = params,
                     )
                 }
-                messages = messages.handleTextGenerationResult(result = result, model = model)
+                messages = targetBinder.bind(messages.handleTextGenerationResult(result = result, model = model))
                 onUpdateMessages(messages)
             }
         } finally {
