@@ -68,7 +68,9 @@ internal fun useCropLauncher(
             setAllowedGestures(
                 UCropActivity.SCALE, UCropActivity.ROTATE, UCropActivity.NONE
             )
-            setCompressionFormat(Bitmap.CompressFormat.PNG)
+            // The output file is a JPEG; encoding large images as PNG slows confirmation.
+            setCompressionFormat(Bitmap.CompressFormat.JPEG)
+            setCompressionQuality(90)
         }).withMaxResultSize(4096, 4096)
         aspectRatio?.let { (x, y) ->
             crop = crop.withAspectRatio(x, y)
