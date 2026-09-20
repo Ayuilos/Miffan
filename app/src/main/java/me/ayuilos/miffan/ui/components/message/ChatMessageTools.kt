@@ -55,6 +55,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.Tools
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TOOL_NAMES
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIRegistry
 import me.ayuilos.miffan.ui.components.message.tools.getStringContent
@@ -66,7 +67,14 @@ import me.ayuilos.miffan.utils.JsonInstant
 
 private const val ASK_USER_TOOL_NAME = "ask_user"
 
-internal fun workspaceToolTargetLines(workspaceStrings: Resources, target: WorkspaceToolTargetSnapshot?): List<String> = when {
+internal fun workspaceToolTargetLines(
+    workspaceStrings: Resources,
+    target: WorkspaceToolTargetSnapshot?,
+    preparing: Boolean = false,
+    hasResult: Boolean = false,
+): List<String> = when {
+    target == null && hasResult -> listOf(workspaceStrings.getString(R.string.workspace_target_unrecorded_result))
+    target == null && preparing -> listOf(workspaceStrings.getString(R.string.workspace_target_preparing))
     target == null -> listOf(workspaceStrings.getString(R.string.workspace_legacy_target_missing))
     target.kind.equals("REMOTE", ignoreCase = true) -> listOf(
         workspaceStrings.getString(R.string.workspace_original_remote_target, target.workspaceName),
@@ -82,14 +90,16 @@ internal fun workspaceToolTargetLines(workspaceStrings: Resources, target: Works
 }
 
 @Composable
-private fun WorkspaceToolTargetText(target: WorkspaceToolTargetSnapshot?) {
+private fun WorkspaceToolTargetText(tool: UIMessagePart.Tool, preparing: Boolean) {
     val workspaceStrings = LocalResources.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        workspaceToolTargetLines(workspaceStrings, target).forEach { line ->
+        workspaceToolTargetLines(workspaceStrings, tool.workspaceTarget, preparing, tool.isExecuted).forEach { line ->
             Text(
                 text = line,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (target == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (tool.workspaceTarget == null && !preparing && !tool.isExecuted) {
+                    MaterialTheme.colorScheme.error
+                } else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -165,6 +175,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
 
     // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用
     val isWorkspaceTool = tool.toolName.startsWith("workspace_")
+    val isPreparingWorkspaceTarget = loading && tool.approvalState is ToolApprovalState.Auto &&
+        tool.toolName !in WORKSPACE_TOOL_NAMES
     val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || images.isNotEmpty()
 
     ControlledChainOfThoughtStep(
@@ -212,7 +224,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     FilledTonalIconButton(
                         onClick = { onToolApproval(tool.toolCallId, true, "") },
                         modifier = Modifier.size(28.dp),
-                        enabled = !isWorkspaceTool || tool.workspaceTarget != null,
+                        enabled = !isWorkspaceTool ||
+                            (!loading && tool.toolName in WORKSPACE_TOOL_NAMES && tool.workspaceTarget != null),
                     ) {
                         Icon(
                             imageVector = HugeIcons.Tick01,
@@ -229,7 +242,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         content = if (hasExtraContent) {
             {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (isWorkspaceTool) WorkspaceToolTargetText(tool.workspaceTarget)
+                    if (isWorkspaceTool) WorkspaceToolTargetText(tool, isPreparingWorkspaceTarget)
                     if (isPending && tool.toolName == "workspace_shell") {
                         Text(stringResource(R.string.workspace_full_command_label), style = MaterialTheme.typography.labelSmall)
                         Text(
@@ -293,7 +306,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             content = {
                 if (isWorkspaceTool) {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        WorkspaceToolTargetText(tool.workspaceTarget)
+                        WorkspaceToolTargetText(tool, isPreparingWorkspaceTarget)
                     }
                 }
                 renderer.Preview(

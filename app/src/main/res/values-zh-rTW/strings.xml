@@ -1687,7 +1687,7 @@
   <string name="workspace_a11y_account_fragment">"，帳戶 "</string>
   <string name="workspace_unknown">未知</string>
   <string name="workspace_a11y_directory_fragment">"，目錄 "</string>
-  <string name="workspace_legacy_target_missing">此舊版呼叫沒有目標記錄，無法執行</string>
+  <string name="workspace_legacy_target_missing">此呼叫未記錄執行目標，無法執行。請重新提出請求。</string>
   <string name="workspace_original_remote_target">原始目標：遠端伺服器 · %1$s</string>
   <string name="workspace_host_identity_line">主機：%1$s · %2$s</string>
   <string name="workspace_unknown_account">未知帳戶</string>
@@ -1746,4 +1746,6 @@
   <string name="workspace_connection_reconnecting">正在重新連線</string>
   <string name="workspace_connection_connect">連線</string>
   <string name="workspace_connection_disconnect">中斷連線</string>
+  <string name="workspace_target_preparing">正在準備工作區目標…</string>
+  <string name="workspace_target_unrecorded_result">此已完成呼叫未記錄執行目標</string>
 </resources>

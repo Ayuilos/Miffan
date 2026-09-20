@@ -39,4 +39,14 @@ class WorkspaceToolTargetUiTest {
     fun oldCallWithoutCapturedTargetIsMarkedUnexecutable() {
         assertTrue(workspaceToolTargetLines(resources, null).single().contains("无法执行"))
     }
+
+    @Test
+    fun streamingCallWithoutTargetIsPreparing() {
+        assertEquals("正在准备工作区目标…", workspaceToolTargetLines(resources, null, preparing = true).single())
+    }
+
+    @Test
+    fun completedHistoricalCallWithoutTargetDoesNotClaimItCannotRun() {
+        assertEquals("此已完成调用未记录执行目标", workspaceToolTargetLines(resources, null, hasResult = true).single())
+    }
 }

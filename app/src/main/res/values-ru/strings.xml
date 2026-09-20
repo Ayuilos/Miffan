@@ -1689,7 +1689,7 @@
   <string name="workspace_a11y_account_fragment">", учётная запись "</string>
   <string name="workspace_unknown">Неизвестно</string>
   <string name="workspace_a11y_directory_fragment">", каталог "</string>
-  <string name="workspace_legacy_target_missing">В этом старом вызове не записана цель выполнения; запустить его нельзя</string>
+  <string name="workspace_legacy_target_missing">Для этого вызова не сохранена цель выполнения, поэтому его нельзя запустить. Повторите запрос.</string>
   <string name="workspace_original_remote_target">Исходная цель: удалённый сервер · %1$s</string>
   <string name="workspace_host_identity_line">Хост: %1$s · %2$s</string>
   <string name="workspace_unknown_account">Неизвестная учётная запись</string>
@@ -1748,4 +1748,6 @@
   <string name="workspace_connection_reconnecting">Повторное подключение</string>
   <string name="workspace_connection_connect">Подключить</string>
   <string name="workspace_connection_disconnect">Отключить</string>
+  <string name="workspace_target_preparing">Подготовка цели рабочего пространства…</string>
+  <string name="workspace_target_unrecorded_result">Для этого завершённого вызова цель выполнения не сохранена</string>
 </resources>

@@ -1689,7 +1689,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_a11y_account_fragment">"、アカウント "</string>
   <string name="workspace_unknown">不明</string>
   <string name="workspace_a11y_directory_fragment">"、ディレクトリ "</string>
-  <string name="workspace_legacy_target_missing">以前の呼び出しには実行先の記録がないため、実行できません</string>
+  <string name="workspace_legacy_target_missing">この呼び出しには実行先が記録されていないため、実行できません。もう一度依頼してください。</string>
   <string name="workspace_original_remote_target">元の実行先：リモートサーバー · %1$s</string>
   <string name="workspace_host_identity_line">ホスト：%1$s · %2$s</string>
   <string name="workspace_unknown_account">不明なアカウント</string>
@@ -1748,4 +1748,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_connection_reconnecting">再接続中</string>
   <string name="workspace_connection_connect">接続</string>
   <string name="workspace_connection_disconnect">切断</string>
+  <string name="workspace_target_preparing">ワークスペースの実行先を準備中…</string>
+  <string name="workspace_target_unrecorded_result">完了したこの呼び出しには実行先が記録されていません</string>
 </resources>
