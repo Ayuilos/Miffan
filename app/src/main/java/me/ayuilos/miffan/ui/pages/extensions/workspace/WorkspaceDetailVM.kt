@@ -39,6 +39,7 @@ class WorkspaceDetailVM(
 ) : ViewModel() {
     val remoteHostStates = repository.remoteHostStates
     val remoteWorkspaceStates = repository.remoteWorkspaceStates
+    val remoteConnectionStates = repository.remoteConnectionStates
     private val id = args.id
     private val scopeId = args.scopeId
     private var filesLoadJob: Job? = null

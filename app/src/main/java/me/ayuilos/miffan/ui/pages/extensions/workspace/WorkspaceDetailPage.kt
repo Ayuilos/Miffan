@@ -43,6 +43,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,6 +55,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
@@ -75,6 +79,10 @@ import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.repository.RemoteHostRuntimeState
 import me.ayuilos.miffan.data.repository.RemoteWorkspaceRuntimeState
+import me.ayuilos.miffan.data.repository.RemoteConnectionStatus
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import kotlinx.coroutines.awaitCancellation
+import org.koin.compose.koinInject
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.files.SkillMetadata
 import androidx.compose.ui.res.stringResource
@@ -134,8 +142,20 @@ fun WorkspaceDetailPage(
     val installError by vm.installError.collectAsStateWithLifecycle()
     val remoteHostStates by vm.remoteHostStates.collectAsStateWithLifecycle()
     val remoteWorkspaceStates by vm.remoteWorkspaceStates.collectAsStateWithLifecycle()
+    val remoteConnectionStates by vm.remoteConnectionStates.collectAsStateWithLifecycle()
+    val repository: WorkspaceRepository = koinInject()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var connectionGeneration by remember(id) { mutableIntStateOf(0) }
     val pagerState = rememberPagerState(initialPage = FILES_PAGE) { if (state.workspace?.isRemote == true) 2 else 3 }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(id, state.workspace?.remotePath, state.remoteHost?.connectionRevision,
+        connectionGeneration, lifecycleOwner) {
+        if (state.workspace?.isRemote != true || state.remoteHost == null) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val lease = runCatching { repository.retainRemoteWorkspace(id) }.getOrNull()
+            try { awaitCancellation() } finally { lease?.close() }
+        }
+    }
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
     var showHostVerification by remember { mutableStateOf(false) }
@@ -201,6 +221,7 @@ fun WorkspaceDetailPage(
                                         workspace,
                                         workspace.remoteHostId?.let(remoteHostStates::get),
                                         remoteWorkspaceStates[id],
+                                        remoteConnectionStates[id],
                                     )
                                 }
                             } else workspace.shellStatus.toShellStatusLabel()
@@ -287,11 +308,26 @@ fun WorkspaceDetailPage(
                     remoteHost = state.remoteHost,
                     remoteHostState = state.workspace?.remoteHostId?.let(remoteHostStates::get),
                     remoteWorkspaceState = remoteWorkspaceStates[id],
+                    remoteConnectionStatus = remoteConnectionStates[id],
                     scopeId = state.scopeId,
                     scopeName = state.scopeName,
                     installProgress = installProgress,
                     onInstallRootfs = { showInstallDialog = true },
                     onCheckHost = { showHostVerification = true },
+                    onConnect = { scope.launch {
+                        try {
+                            repository.connectRemoteWorkspace(id)
+                            connectionGeneration++
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // The connection owner publishes FAILED for the status and retry button.
+                        }
+                    } },
+                    onDisconnect = {
+                        RemoteTerminalRegistry.close(id)
+                        repository.disconnectRemoteWorkspace(id)
+                    },
                     onToolApprovalChange = vm::setToolApproval,
                 )
 
@@ -522,12 +558,15 @@ internal fun WorkspaceBasicPage(
     remoteHost: RemoteHostEntity?,
     remoteHostState: RemoteHostRuntimeState?,
     remoteWorkspaceState: RemoteWorkspaceRuntimeState?,
+    remoteConnectionStatus: RemoteConnectionStatus? = null,
     scopeId: String?,
     scopeName: String?,
     installProgress: RootfsInstallProgress?,
     onInstallRootfs: () -> Unit,
     onCheckHost: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
+    onConnect: () -> Unit = {},
+    onDisconnect: () -> Unit = {},
 ) {
     val workspaceStrings = LocalResources.current
     var showDetails by remember(workspace?.id) { mutableStateOf(false) }
@@ -581,7 +620,8 @@ internal fun WorkspaceBasicPage(
                             when {
                                 remoteHost == null -> workspaceStrings.getString(R.string.workspace_host_config_unavailable)
                                 remoteHost.trustedHostKeySha256 == null -> workspaceStrings.getString(R.string.workspace_host_fingerprint_pending)
-                                else -> remoteWorkspaceStatusLabel(workspaceStrings, workspace, remoteHostState, remoteWorkspaceState)
+                                else -> remoteWorkspaceStatusLabel(workspaceStrings, workspace,
+                                    remoteHostState, remoteWorkspaceState, remoteConnectionStatus)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -593,6 +633,15 @@ internal fun WorkspaceBasicPage(
                         )
                         OutlinedButton(onClick = onCheckHost, enabled = remoteHost != null) {
                             Text(if (remoteHost?.trustedHostKeySha256 == null) workspaceStrings.getString(R.string.workspace_confirm_host_test) else workspaceStrings.getString(R.string.workspace_check_host_test))
+                        }
+                        if (remoteHost?.trustedHostKeySha256 != null) {
+                            val connected = remoteConnectionStatus == RemoteConnectionStatus.CONNECTED
+                            OutlinedButton(onClick = if (connected) onDisconnect else onConnect) {
+                                Text(stringResource(if (connected) R.string.workspace_connection_disconnect
+                                    else if (remoteConnectionStatus == RemoteConnectionStatus.FAILED)
+                                        R.string.workspace_reconnect
+                                    else R.string.workspace_connection_connect))
+                            }
                         }
                     } else {
                         Text(

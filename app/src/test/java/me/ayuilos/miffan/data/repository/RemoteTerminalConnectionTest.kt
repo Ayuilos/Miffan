@@ -1,9 +1,15 @@
 package me.ayuilos.miffan.data.repository
 
+import com.jcraft.jsch.JSchException
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
@@ -41,6 +47,8 @@ class RemoteTerminalConnectionTest {
         every { credentials.load("host") } returns RemoteAuthentication.Password("test")
         every { transport.open(any(), any(), any()) } returns session
         every { session.resolvedRoot } returns "/srv/project"
+        every { session.isConnected } returns true
+        every { session.withOperation<Any?>(any(), any()) } answers { secondArg<() -> Any?>().invoke() }
         every { session.openTerminal(any(), any()) } returns terminal
         return WorkspaceRepository(dao, mockk(), mockk(), mockk(), mockk(), hostDao,
             credentials, transport, mockk(), mockk(), mockk(relaxed = true))
@@ -55,19 +63,33 @@ class RemoteTerminalConnectionTest {
         connection.close()
         connection.close()
         verify(exactly = 1) { terminal.close() }
+        verify(exactly = 0) { session.close() }
+        repo.disconnectRemoteWorkspace("ws")
+        verify(exactly = 1) { session.close() }
         assertEquals(RemoteConnectionActivity.IDLE, repo.remoteHostStates.value.getValue("host").activity)
     }
 
-    @Test fun timedOutWriteReportsUnknownOutcomeAndClosesConnection() = runBlocking {
+    @Test fun timedOutWriteReportsUnknownOutcomeWithoutClosingSharedConnection() = runBlocking {
         val repo = repository()
         every { session.writeText(any(), any(), any()) } throws RemoteFileTimeoutException()
         val failure = runCatching { repo.writeText("ws", "file.txt", "data", true) }.exceptionOrNull()
         assertTrue(failure is RemoteFileTimeoutException)
-        assertEquals(false, repo.remoteHostStates.value.getValue("host").lastConnection?.success)
+        assertEquals(true, repo.remoteHostStates.value.getValue("host").lastConnection?.success)
         assertEquals(RemoteOperationOutcome.OUTCOME_UNKNOWN,
             repo.remoteWorkspaceStates.value.getValue("ws").lastOperation?.outcome)
-        verify(exactly = 1) { session.close() }
+        verify(exactly = 0) { session.close() }
         verify(exactly = 1) { session.writeText(any(), any(), any()) }
+    }
+
+    @Test fun interruptedWriteKeepsUnknownOutcomeEvenIfParentSshIsConnected() = runBlocking {
+        val repo = repository()
+        every { session.writeText(any(), any(), any()) } throws JSchException("channel is closed")
+        val failure = runCatching { repo.writeText("ws", "file.txt", "data", true) }.exceptionOrNull()
+        assertTrue(failure is JSchException)
+        assertEquals(RemoteOperationOutcome.OUTCOME_UNKNOWN,
+            repo.remoteWorkspaceStates.value.getValue("ws").lastOperation?.outcome)
+        assertEquals(true, repo.remoteHostStates.value.getValue("host").lastConnection?.success)
+        verify(exactly = 0) { session.close() }
     }
 
     @Test fun reconnectCannotUseAnotherHostWithMatchingRevision() = runBlocking {
@@ -106,5 +128,27 @@ class RemoteTerminalConnectionTest {
         assertTrue(runCatching { repo.openRemoteTerminal("ws") }.isFailure)
         verify(exactly = 0) { transport.open(any(), any(), any()) }
         assertEquals(RemoteConfigurationState.HOST_KEY_UNTRUSTED, repo.remoteHostStates.value.getValue("host").configuration)
+    }
+
+    @Test(timeout = 10_000) fun cancelledHandshakeClosesSessionReturnedLate() = runBlocking {
+        val repo = repository()
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        every { transport.open(any(), any(), any()) } answers {
+            started.countDown()
+            while (true) {
+                try {
+                    if (release.await(50, TimeUnit.MILLISECONDS)) break
+                } catch (_: InterruptedException) {
+                    // Simulate a transport that ignores interruption and completes late.
+                }
+            }
+            session
+        }
+        val connecting = launch(Dispatchers.Default) { repo.connectRemoteWorkspace("ws") }
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+        connecting.cancelAndJoin()
+        release.countDown()
+        verify(timeout = 2_000, exactly = 1) { session.close() }
     }
 }

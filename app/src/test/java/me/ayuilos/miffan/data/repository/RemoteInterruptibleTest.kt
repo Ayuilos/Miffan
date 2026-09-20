@@ -1,6 +1,8 @@
 package me.ayuilos.miffan.data.repository
 
 import com.jcraft.jsch.JSchException
+import io.mockk.mockk
+import io.mockk.verify
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -9,11 +11,41 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import me.rerere.workspace.RemoteWorkspaceSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RemoteInterruptibleTest {
+    @Test fun cancellationClosesOperationEvenWhenBlockingReadIgnoresInterrupt() = runBlocking {
+        val operation = mockk<RemoteWorkspaceSession.OperationHandle>(relaxed = true)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val job = launch(Dispatchers.Default) {
+            runCancellableRemoteOperation(operation) {
+                entered.countDown()
+                while (true) {
+                    try {
+                        release.await()
+                        break
+                    } catch (_: InterruptedException) {
+                        // A JSch read may continue waiting after interruption.
+                    }
+                }
+            }
+        }
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            job.cancel()
+            // The blocking read is still waiting; the cancel hook must run now.
+            verify(timeout = 1_000, exactly = 1) { operation.cancel() }
+        } finally {
+            release.countDown()
+            withTimeout(5_000) { job.join() }
+        }
+        verify(exactly = 1) { operation.cancel() }
+    }
+
     @Test fun cancelledChannelHandshakeDoesNotBecomeConnectionFailure() = runBlocking {
         val entered = CountDownLatch(1)
         val failure = AtomicReference<Exception?>()

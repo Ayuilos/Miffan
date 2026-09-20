@@ -26,10 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,99 +41,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.KeyEvent
-import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
-import me.ayuilos.miffan.data.repository.RemoteTerminalConnection
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
-import me.ayuilos.miffan.data.repository.WorkspaceToolTargetChangedException
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.theme.ColorMode
 import me.ayuilos.miffan.ui.theme.MiffanTheme
 import org.koin.compose.koinInject
-
-private data class RemoteTerminalIdentity(
-    val hostId: String,
-    val revision: String,
-    val hostName: String,
-    val endpoint: String,
-    val remoteRoot: String,
-)
-
-private sealed interface RemoteTerminalUiState {
-    data object Connecting : RemoteTerminalUiState
-    data object Connected : RemoteTerminalUiState
-    data class Disconnected(val exitStatus: Int) : RemoteTerminalUiState
-    data class Failed(val message: String) : RemoteTerminalUiState
-    data object TargetChanged : RemoteTerminalUiState
-    data object HostMissing : RemoteTerminalUiState
-}
-
-private sealed interface RemoteTerminalCommand {
-    data class Write(val bytes: ByteArray) : RemoteTerminalCommand
-    data class Resize(val columns: Int, val rows: Int) : RemoteTerminalCommand
-}
-
-/** Owns one SSH session at a time and closes sockets independently of a blocked read coroutine. */
-private class RemoteTerminalOwner {
-    private val lock = Any()
-    private val generation = AtomicInteger(0)
-    private val closeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var disposed = false
-    private var active: RemoteTerminalConnection? = null
-
-    fun begin(): Int {
-        val old: RemoteTerminalConnection?
-        val attempt: Int
-        synchronized(lock) {
-            attempt = generation.incrementAndGet()
-            old = active
-            active = null
-        }
-        old?.let(::closeAsync)
-        return attempt
-    }
-
-    fun install(attempt: Int, connection: RemoteTerminalConnection): Boolean = synchronized(lock) {
-        if (disposed || generation.get() != attempt) false else {
-            active = connection
-            true
-        }
-    }
-
-    fun isCurrent(attempt: Int): Boolean = synchronized(lock) {
-        !disposed && generation.get() == attempt
-    }
-
-    fun forget(connection: RemoteTerminalConnection) = synchronized(lock) {
-        if (active === connection) active = null
-    }
-
-    fun dispose() {
-        val old: RemoteTerminalConnection?
-        synchronized(lock) {
-            disposed = true
-            generation.incrementAndGet()
-            old = active
-            active = null
-        }
-        old?.let(::closeAsync)
-    }
-
-    private fun closeAsync(connection: RemoteTerminalConnection) {
-        closeScope.launch { runCatching { connection.close() } }
-    }
-}
 
 @Composable
 fun RemoteWorkspaceTerminalPage(
@@ -145,135 +59,56 @@ fun RemoteWorkspaceTerminalPage(
     val repository: WorkspaceRepository = koinInject()
     val context = LocalContext.current
     val terminalView = remember(workspace.id) { RemoteTerminalView(context) }
-    val owner = remember(workspace.id) { RemoteTerminalOwner() }
-    val identity = remember(workspace.id) {
-        host?.let {
-            RemoteTerminalIdentity(
-                hostId = it.id,
-                revision = it.connectionRevision,
-                hostName = it.name,
-                endpoint = "${it.username}@${it.host}:${it.port}",
-                remoteRoot = workspace.remotePath.orEmpty(),
-            )
-        }
+    val identity = remember(workspace.id, host?.id) { host?.let {
+        RemoteTerminalIdentity(
+            hostId = it.id,
+            revision = it.connectionRevision,
+            hostName = it.name,
+            endpoint = "${it.username}@${it.host}:${it.port}",
+            remoteRoot = workspace.remotePath.orEmpty(),
+        )
+    } }
+    val targetChanged = identity != null && (host?.id != identity.hostId ||
+        host.connectionRevision != identity.revision || workspace.remotePath != identity.remoteRoot)
+    var session by remember(workspace.id) { mutableStateOf<RemoteTerminalRegistry.Session?>(null) }
+    val observedState by (session?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow<RemoteTerminalUiState>(
+        RemoteTerminalUiState.Connecting,
+    ) }).collectAsState()
+    val state = when {
+        targetChanged -> RemoteTerminalUiState.TargetChanged
+        identity == null -> RemoteTerminalUiState.HostMissing
+        else -> observedState
     }
-    val targetChanged = identity != null && (host?.connectionRevision != identity.revision ||
-        host?.id != identity.hostId || workspace.remotePath != identity.remoteRoot)
-    var reconnectAttempt by remember(workspace.id) { mutableIntStateOf(0) }
-    var state by remember(workspace.id) { mutableStateOf<RemoteTerminalUiState>(RemoteTerminalUiState.Connecting) }
     var showCloseConfirm by remember(workspace.id) { mutableStateOf(false) }
 
-    BackHandler { showCloseConfirm = true }
-    DisposableEffect(owner) {
+    BackHandler(onBack = onBack)
+    LaunchedEffect(workspace.id, identity, targetChanged) {
+        if (targetChanged) {
+            RemoteTerminalRegistry.close(workspace.id)
+            session = null
+            return@LaunchedEffect
+        }
+        if (identity == null) {
+            session = null
+            return@LaunchedEffect
+        }
+        session = RemoteTerminalRegistry.getOrOpen(workspace.id, identity, repository,
+            terminalView.columns, terminalView.rows)
+    }
+    DisposableEffect(terminalView, session) {
+        val active = session
+        if (active != null) {
+            terminalView.screen = active.screen
+            terminalView.sendBytes = active::write
+            terminalView.onSizeInCellsChanged = active::resize
+            active.resize(terminalView.columns, terminalView.rows)
+        }
         onDispose {
             terminalView.sendBytes = {}
             terminalView.onSizeInCellsChanged = { _, _ -> }
-            owner.dispose()
+            terminalView.detachScreen()
         }
     }
-
-    LaunchedEffect(workspace.id, identity, targetChanged, reconnectAttempt) {
-        if (identity == null) {
-            state = RemoteTerminalUiState.HostMissing
-            return@LaunchedEffect
-        }
-        if (targetChanged) {
-            owner.dispose()
-            state = RemoteTerminalUiState.TargetChanged
-            return@LaunchedEffect
-        }
-        val attempt = owner.begin()
-        var opened: RemoteTerminalConnection? = null
-        var commands: Channel<RemoteTerminalCommand>? = null
-        var writer: Job? = null
-        try {
-            state = RemoteTerminalUiState.Connecting
-            terminalView.resetScreen()
-            val columns = terminalView.columns
-            val rows = terminalView.rows
-            val connection = withContext(Dispatchers.IO) {
-                repository.openRemoteTerminal(
-                    id = workspace.id,
-                    columns = columns,
-                    rows = rows,
-                    expectedHostId = identity.hostId,
-                    expectedHostRevision = identity.revision,
-                    expectedRemoteRoot = identity.remoteRoot,
-                ).also { opened = it }
-            }
-            if (!isActive || !owner.install(attempt, connection)) return@LaunchedEffect
-            val queue = Channel<RemoteTerminalCommand>(Channel.UNLIMITED)
-            commands = queue
-            terminalView.sendBytes = { bytes ->
-                if (owner.isCurrent(attempt)) queue.trySend(RemoteTerminalCommand.Write(bytes))
-            }
-            terminalView.onSizeInCellsChanged = { columns, rows ->
-                if (owner.isCurrent(attempt)) queue.trySend(RemoteTerminalCommand.Resize(columns, rows))
-            }
-            queue.trySend(RemoteTerminalCommand.Resize(terminalView.columns, terminalView.rows))
-            state = RemoteTerminalUiState.Connected
-
-            writer = launch(Dispatchers.IO) {
-                try {
-                    for (command in queue) {
-                        when (command) {
-                            is RemoteTerminalCommand.Write -> {
-                                connection.output.write(command.bytes)
-                                connection.output.flush()
-                            }
-                            is RemoteTerminalCommand.Resize -> connection.resize(command.columns, command.rows)
-                        }
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    withContext(Dispatchers.Main.immediate) {
-                        if (owner.isCurrent(attempt)) {
-                            state = RemoteTerminalUiState.Failed(error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_terminal_disconnected))
-                        }
-                    }
-                    runCatching { connection.close() }
-                }
-            }
-
-            withContext(Dispatchers.IO) {
-                val buffer = ByteArray(8192)
-                while (isActive && owner.isCurrent(attempt)) {
-                    val count = connection.input.read(buffer)
-                    if (count < 0) break
-                    if (count > 0) {
-                        val bytes = buffer.copyOf(count)
-                        withContext(Dispatchers.Main.immediate) {
-                            if (owner.isCurrent(attempt)) terminalView.appendOutput(bytes)
-                        }
-                    }
-                }
-            }
-            if (owner.isCurrent(attempt) && state is RemoteTerminalUiState.Connected) {
-                state = RemoteTerminalUiState.Disconnected(connection.exitStatus)
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: WorkspaceToolTargetChangedException) {
-            if (owner.isCurrent(attempt)) state = RemoteTerminalUiState.TargetChanged
-        } catch (error: Exception) {
-            if (owner.isCurrent(attempt)) {
-                state = RemoteTerminalUiState.Failed(error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_terminal_connection_failed))
-            }
-        } finally {
-            if (owner.isCurrent(attempt)) {
-                terminalView.sendBytes = {}
-                terminalView.onSizeInCellsChanged = { _, _ -> }
-            }
-            commands?.close()
-            writer?.cancel()
-            withContext(NonCancellable + Dispatchers.IO) {
-                runCatching { opened?.close() }
-            }
-            opened?.let(owner::forget)
-        }
-    }
-
     MiffanTheme(colorMode = ColorMode.DARK) {
         Scaffold(
             topBar = {
@@ -289,7 +124,12 @@ fun RemoteWorkspaceTerminalPage(
                             )
                         }
                     },
-                    navigationIcon = { BackButton(onClick = { showCloseConfirm = true }) },
+                    navigationIcon = { BackButton(onClick = onBack) },
+                    actions = {
+                        TextButton(onClick = { showCloseConfirm = true }) {
+                            Text(stringResource(R.string.workspace_connection_disconnect))
+                        }
+                    },
                 )
             },
         ) { padding ->
@@ -327,7 +167,7 @@ fun RemoteWorkspaceTerminalPage(
                                         text = when (current) {
                                             is RemoteTerminalUiState.Disconnected ->
                                                 if (current.exitStatus >= 0) workspaceStrings.getString(R.string.workspace_connection_ended_exit, current.exitStatus) else workspaceStrings.getString(R.string.workspace_disconnected)
-                                            is RemoteTerminalUiState.Failed -> current.message
+                                            is RemoteTerminalUiState.Failed -> current.error.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_terminal_connection_failed)
                                             RemoteTerminalUiState.TargetChanged -> workspaceStrings.getString(R.string.workspace_terminal_target_changed)
                                             RemoteTerminalUiState.HostMissing -> workspaceStrings.getString(R.string.workspace_remote_host_config_unavailable)
                                             else -> workspaceStrings.getString(R.string.workspace_disconnected)
@@ -335,7 +175,7 @@ fun RemoteWorkspaceTerminalPage(
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                     if (current is RemoteTerminalUiState.Disconnected || current is RemoteTerminalUiState.Failed) {
-                                        TextButton(onClick = { reconnectAttempt++ }) { Text(stringResource(R.string.workspace_reconnect)) }
+                                        TextButton(onClick = { identity?.let { session = RemoteTerminalRegistry.restart(workspace.id, it, repository, terminalView.columns, terminalView.rows) } }) { Text(stringResource(R.string.workspace_reconnect)) }
                                     }
                                 }
                             }
@@ -353,7 +193,7 @@ fun RemoteWorkspaceTerminalPage(
                 onDismissRequest = { showCloseConfirm = false },
                 title = { Text(stringResource(R.string.workspace_close_terminal_title)) },
                 text = { Text(stringResource(R.string.workspace_close_terminal_message)) },
-                confirmButton = { TextButton(onClick = { showCloseConfirm = false; onBack() }) { Text(stringResource(R.string.workspace_disconnect_back)) } },
+                confirmButton = { TextButton(onClick = { showCloseConfirm = false; RemoteTerminalRegistry.close(workspace.id); onBack() }) { Text(stringResource(R.string.workspace_disconnect_back)) } },
                 dismissButton = { TextButton(onClick = { showCloseConfirm = false }) { Text(stringResource(R.string.workspace_keep_using)) } },
             )
         }

@@ -1447,7 +1447,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_recent_failure">최근 오류</string>
   <string name="workspace_operation_history">작업 기록</string>
   <string name="workspace_action_required">조치 필요</string>
-  <string name="workspace_ssh_on_demand_explanation">SSH는 필요할 때 연결하며 연결 상태를 유지하지 않습니다. 선택한 디렉터리는 작업 디렉터리이며 Shell의 보안 경계가 아닙니다. 파일은 원격 디렉터리에 대응합니다.</string>
+  <string name="workspace_ssh_on_demand_explanation">이 작업 공간을 사용하는 동안 SSH 연결을 재사용하고, 유휴 상태가 지속되면 연결을 끊습니다. 선택한 디렉터리는 작업 디렉터리이며 Shell의 보안 경계가 아닙니다. 파일은 원격 디렉터리에 대응합니다.</string>
   <string name="workspace_collapse_file_approvals">파일 도구 승인 설정 숨기기</string>
   <string name="workspace_file_approval_settings">파일 도구 승인 설정</string>
   <string name="workspace_file_shell_approval_explanation">여기에서 원격 파일 도구의 호출별 승인을 관리합니다. AI Shell 접근과 명령별 승인은 어시스턴트 설정에서 별도로 관리합니다. Shell은 SSH 계정 권한으로 선택한 디렉터리 밖의 경로에 접근할 수 있습니다.</string>
@@ -1621,8 +1621,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_remote_host_config_unavailable">원격 호스트 설정을 사용할 수 없습니다</string>
   <string name="workspace_reconnect">다시 연결</string>
   <string name="workspace_close_terminal_title">원격 터미널을 닫을까요?</string>
-  <string name="workspace_close_terminal_message">현재 SSH 세션의 연결이 끊어집니다. 연결을 끊어도 서버의 프로세스가 종료된다는 보장은 없습니다.</string>
-  <string name="workspace_disconnect_back">연결을 끊고 돌아가기</string>
+  <string name="workspace_close_terminal_message">현재 터미널 세션을 닫습니다. 서버의 프로세스는 계속 실행될 수 있습니다.</string>
+  <string name="workspace_disconnect_back">터미널 닫고 돌아가기</string>
   <string name="workspace_keep_using">계속 사용</string>
   <string name="workspace_keyboard">키보드</string>
   <string name="workspace_paste">붙여넣기</string>
@@ -1744,4 +1744,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_rootfs_source">고정 소스: Ubuntu Base 24.04.4 (HTTPS + SHA-256 검증, 기기 아키텍처에 맞게 선택)</string>
   <string name="workspace_resource_check_failed">작업 공간 리소스를 확인하지 못했습니다</string>
   <string name="workspace_terminal_start_failed">터미널을 시작하지 못했습니다</string>
+  <string name="workspace_connection_connected">연결됨</string>
+  <string name="workspace_connection_reconnecting">다시 연결 중</string>
+  <string name="workspace_connection_connect">연결</string>
+  <string name="workspace_connection_disconnect">연결 끊기</string>
 </resources>
