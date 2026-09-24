@@ -61,13 +61,26 @@ availability, and scraping behavior differ by service.
 | Capability | Support | Notes |
 | --- | --- | --- |
 | Isolated assistant configuration | ✓ | Model, prompt, memory, parameters, history, tools, visual identity, and injections |
-| MCP | ✓ | SSE and Streamable HTTP, OAuth, and per-assistant server selection |
+| MCP | ✓ | SSE and Streamable HTTP, custom request headers, OAuth, and per-assistant server selection |
 | Skills | ✓ | Workspace-owned Skills under `/workspace/.miffan/skills` are discovered automatically; legacy global bindings migrate one-way on use |
 | Built-in local tools | ✓ | Time, clipboard, JavaScript, TTS, user questions, screen time, calendar, and extension management |
 | Local Linux workspace | ✓ | Per-workspace files, editor, terminal, and AI file/shell tools; PRoot is not a security container |
 | Remote SSH workspaces | ✓ | Multiple hosts/project roots, SFTP files, persistent interactive terminals, assistant file/shell tools, and target-specific execution approvals; requires an existing network connection |
 | SSH key management | ✓ | Generate/import keys, copy public keys, view/export private keys, and optional passphrase-encrypted backups |
 | Web access to conversations | ✓ | Optional embedded server, localhost/LAN modes, password authentication, and mDNS |
+
+For an MCP service that requires a static bearer key, add its URL under **Settings → MCP** and
+enter `Authorization` as the custom header name and `Bearer <remote-tool-key>` as its value. Replace
+`<remote-tool-key>` with the key issued by that MCP service; it is separate from a model API key.
+The Android header field sends the entered value literally and does not expand `${VAR}` placeholders.
+An explicit `Authorization` header is used as entered, so Miffan does not add a second OAuth bearer
+token. For services that use OAuth instead, follow their OAuth sign-in flow.
+
+Enable the server and bind it to an assistant as described in the [extension help](https://miffan.ayuilos.me/skills/miffan-help/1.1.2/zh-CN/extensions-workspaces.md).
+Check which tools were discovered, whether each tool is enabled, and any approval prompt before a
+call. Tool discovery and client approval do not establish server-side permission or waive service
+charges. Settings and backups may contain credentials; see [PRIVACY.md](../PRIVACY.md) and do not
+share real keys, private conversations, or unsanitized logs when asking for help.
 
 ## Storage and portability
 
