@@ -36,7 +36,7 @@ internal data class WhaleLinePalette(
 ) {
     companion object {
         val Day = WhaleLinePalette(Color(0xFF163D78), Color(0xFFFFF8EE))
-        val Night = WhaleLinePalette(Color(0xFF152E58), Color(0xFFDFEAF8),
+        val Night = WhaleLinePalette(Color(0xFF152E58), Color(0xFFF5E3D9),
             Color(0xFF4F98EA), Color(0xFF327DD3), Color(0xFF8DCCFF), Color(0xFFEDF5FF))
     }
 }
