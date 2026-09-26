@@ -70,7 +70,11 @@ internal fun buildWorkspacePrompt(
             appendLine("You are bound to local workspace \"${workspace.name}\". `/workspace` refers to ${if (scopeId == null) "the legacy whole-workspace files" else "this assistant's private file scope"}.")
         }
         appendLine("AI Shell execution is disabled. Use only the available workspace file tools under their approval rules. Do not request or bypass disabled Shell execution through another tool.")
-        conversationId?.let { appendLine("Save new artifacts under `/workspace/conversations/$it/` unless the user specifies otherwise; publish user-facing files with `workspace_publish_files`.") }
+        conversationId?.let {
+            val directory = if (workspace.isRemote) "/workspace/.miffan/conversations/$it/" else "/workspace/conversations/$it/"
+            appendLine("Save new artifacts under `$directory` unless the user specifies otherwise; publish user-facing files with `workspace_publish_files`.")
+            if (workspace.isRemote) appendLine("Previously saved files under `/workspace/conversations/$it/` remain available at their original paths; revise them in place when requested.")
+        }
         if (!cwd.isNullOrBlank()) appendLine("Current file-tool working directory: `$cwd`.")
         append("</workspace>")
         return@buildString
@@ -132,9 +136,10 @@ private fun StringBuilder.appendRemoteWorkspacePrompt(
     remoteHostLabel: String?,
 ) {
     val root = requireNotNull(workspace.remotePath) { "Remote workspace requires remotePath" }.trimEnd('/').ifBlank { "/" }
-    val artifactRelative = conversationId?.let { "conversations/$it" }
+    val artifactRelative = conversationId?.let { ".miffan/conversations/$it" }
     val artifactVirtual = artifactRelative?.let { "/workspace/$it" }
     val artifactRemote = artifactRelative?.let { if (root == "/") "/$it" else "$root/$it" }
+    val legacyRemote = conversationId?.let { if (root == "/") "/conversations/$it" else "$root/conversations/$it" }
     appendLine("<workspace>")
     appendLine("The assistant is bound to remote SSH workspace \"${workspace.name}\" on ${remoteHostLabel ?: "the configured remote host"}.")
     appendLine("- Commands in `workspace_shell` run on that remote machine over SSH, starting in `$root`. They do not run in Miffan's local Android PRoot environment.")
@@ -146,6 +151,7 @@ private fun StringBuilder.appendRemoteWorkspacePrompt(
     if (artifactVirtual != null && artifactRemote != null) {
         appendLine("- Conversation artifact directory: `$artifactVirtual/` for file tools, corresponding to `$artifactRemote/` in shell commands. Create it before saving files and reuse it across this conversation.")
         appendLine("- Save new user-facing output and related task files there unless the user specifies another directory or asks you to edit existing project files in place.")
+        appendLine("- Files previously saved under `$legacyRemote/` remain there. When asked to revise one of those files, use its existing path; do not move it automatically.")
     }
     if (!cwd.isNullOrBlank()) {
         appendLine("- Current working directory: `$cwd` in file-tool paths. For shell commands, use its path relative to `/workspace` under `$root`.")

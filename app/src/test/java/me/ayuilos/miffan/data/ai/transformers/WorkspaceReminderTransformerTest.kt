@@ -115,7 +115,9 @@ class WorkspaceReminderTransformerTest {
         assertTrue(prompt.contains("dev@100.64.0.2:22"))
         assertTrue(prompt.contains("starting in `/home/dev/project`"))
         assertTrue(prompt.contains("`/workspace`"))
-        assertTrue(prompt.contains("`/home/dev/project/conversations/$conversationId/`"))
+        assertTrue(prompt.contains("`/workspace/.miffan/conversations/$conversationId/`"))
+        assertTrue(prompt.contains("`/home/dev/project/.miffan/conversations/$conversationId/`"))
+        assertTrue(prompt.contains("Files previously saved under `/home/dev/project/conversations/$conversationId/` remain there"))
         assertTrue(prompt.contains("does not guarantee that an already started remote process has stopped"))
         assertTrue(prompt.contains("do not automatically repeat"))
         assertFalse(prompt.contains("PRoot inside the Miffan Android application"))
@@ -135,8 +137,24 @@ class WorkspaceReminderTransformerTest {
         assertTrue(prompt.contains("AI Shell execution is disabled"))
         assertTrue(prompt.contains("dev@server:22"))
         assertTrue(prompt.contains("/srv/project"))
+        assertTrue(prompt.contains("/workspace/.miffan/conversations/$conversationId/"))
+        assertTrue(prompt.contains("Previously saved files under `/workspace/conversations/$conversationId/` remain available"))
         assertFalse(prompt.contains("`workspace_shell`"))
         assertFalse(prompt.contains("mkdir -p"))
+    }
+
+    @Test
+    fun `remote workspace rooted at slash uses absolute artifact paths`() {
+        val prompt = buildWorkspacePrompt(
+            workspace = workspace.copy(kind = WorkspaceEntity.KIND_REMOTE, remoteHostId = "host", remotePath = "/"),
+            scopeId = scopeId,
+            assistantName = "Assistant",
+            conversationId = conversationId,
+        )
+
+        assertTrue(prompt.contains("corresponding to `/.miffan/conversations/$conversationId/`"))
+        assertTrue(prompt.contains("Files previously saved under `/conversations/$conversationId/`"))
+        assertFalse(prompt.contains("//conversations/"))
     }
 
     private fun prompt(
