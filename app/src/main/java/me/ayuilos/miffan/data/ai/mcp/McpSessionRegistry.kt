@@ -486,7 +486,7 @@ private fun hasSameConnectionParameters(
 ): Boolean = left != null && right != null && left.connectionKey() == right.connectionKey()
 
 private fun McpServerConfig.resolvedHeaders(): List<Pair<String, String>> {
-    val base = commonOptions.headers
+    val base = commonOptions.headers.filter { it.first.isNotBlank() }
     val token = commonOptions.oauth?.takeIf { it.enabled }?.accessToken
     val hasAuthorization = base.any { it.first.equals("Authorization", ignoreCase = true) }
     return if (!token.isNullOrBlank() && !hasAuthorization) {
