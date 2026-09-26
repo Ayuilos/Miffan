@@ -206,6 +206,11 @@ explicitly requests another location or an in-place project edit. `workspaceCwd`
 and project context. This adds no filesystem enforcement, automatic directory creation, or legacy
 file migration; existing scope boundaries, tool approvals, and artifact publishing are unchanged.
 
+Remote workspaces use the same prompt-level convention under the configured project directory,
+with new artifacts at `.miffan/conversations/<conversation-id>/`. Earlier remote artifacts under
+`conversations/<conversation-id>/` stay at their saved paths and are not migrated. Neither
+directory stores the conversation history, which remains in the app database.
+
 Missing `workspaceScopeId` is an explicit legacy whole-workspace mode. It continues to expose the
 historical `files/` directory without moving data. Re-selecting the same binding keeps this mode.
 Artifacts created after this architecture persist scope identity; historical Artifacts without it
