@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalTextStyle
@@ -58,7 +58,8 @@ fun WorkspaceFileEditorPage(
     val editable = area == WorkspaceStorageArea.FILES
     val fileName = path.substringAfterLast('/').ifBlank { path }
 
-    val textState = rememberTextFieldState()
+    // The file is reloaded below, so its full text must not enter the saved state Bundle.
+    val textState = remember(id, area, path, scopeId) { TextFieldState() }
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
