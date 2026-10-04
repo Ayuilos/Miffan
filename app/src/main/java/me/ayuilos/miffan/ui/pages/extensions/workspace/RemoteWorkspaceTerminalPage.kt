@@ -201,7 +201,7 @@ fun RemoteWorkspaceTerminalPage(
 }
 
 @Composable
-private fun RemoteTerminalKeyBar(enabled: Boolean, view: RemoteTerminalView) {
+internal fun RemoteTerminalKeyBar(enabled: Boolean, view: RemoteTerminalView) {
     val workspaceStrings = LocalResources.current
     Row(
         modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
@@ -210,6 +210,7 @@ private fun RemoteTerminalKeyBar(enabled: Boolean, view: RemoteTerminalView) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RemoteTerminalKey(workspaceStrings.getString(R.string.workspace_keyboard), enabled) { view.showKeyboard() }
+        RemoteTerminalKey("Enter", enabled) { view.sendBytes(byteArrayOf(13)) }
         RemoteTerminalKey("ESC", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_ESCAPE) }
         RemoteTerminalKey("TAB", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_TAB) }
         RemoteTerminalKey("↑", enabled) { view.sendSpecialKey(KeyEvent.KEYCODE_DPAD_UP) }

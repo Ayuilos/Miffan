@@ -212,7 +212,12 @@ class GenerationHandler(
                         toolDef?.needsApproval(tool.inputAsJson()) == true &&
                             tool.approvalState is ToolApprovalState.Auto -> {
                             hasPendingApproval = true
-                            tool.copy(approvalState = ToolApprovalState.Pending)
+                            tool.copy(
+                                approvalState = ToolApprovalState.Pending,
+                                terminalRequestId = if (tool.toolName == "workspace_terminal") {
+                                    java.util.UUID.randomUUID().toString()
+                                } else null,
+                            )
                         }
                         // State is Pending -> keep waiting
                         tool.approvalState is ToolApprovalState.Pending -> {

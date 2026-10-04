@@ -26,6 +26,7 @@ import java.io.ByteArrayOutputStream
 private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
 private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
 const val WORKSPACE_SHELL_TOOL_NAME = "workspace_shell"
+const val WORKSPACE_TERMINAL_TOOL_NAME = "workspace_terminal"
 val WORKSPACE_TOOL_NAMES = setOf(
     "workspace_read_file",
     "workspace_write_file",
@@ -33,6 +34,7 @@ val WORKSPACE_TOOL_NAMES = setOf(
     "workspace_fetch_url",
     "workspace_publish_files",
     WORKSPACE_SHELL_TOOL_NAME,
+    WORKSPACE_TERMINAL_TOOL_NAME,
 )
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
@@ -55,6 +57,7 @@ suspend fun createWorkspaceTools(
     shellApprovalTarget: WorkspaceToolTargetSnapshot?,
     workspaceRepository: WorkspaceRepository,
     cwd: String? = null,
+    conversationId: String? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
     val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
@@ -62,7 +65,7 @@ suspend fun createWorkspaceTools(
     val remoteHost = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }
     if (workspace.isRemote && (remoteHost?.trustedHostKeySha256 == null || workspace.shellStatus != WorkspaceShellStatus.READY.name)) return emptyList()
     val snapshot = workspaceRepository.currentWorkspaceToolTarget(assistantId, workspaceId, scopeId)
-        ?: return emptyList()
+        ?.copy(conversationId = conversationId, conversationCwd = cwd) ?: return emptyList()
     val remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" }
     val target = WorkspaceToolTarget(workspace, remoteHostLabel, snapshot)
     fun needsApproval(name: String) = if (name == WORKSPACE_SHELL_TOOL_NAME) {
@@ -81,9 +84,40 @@ suspend fun createWorkspaceTools(
         add(createPublishFilesTool(workspaceId, scopeId, workspaceRepository, target))
         if (shellEnabled) {
             add(createShellTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, shellCwd, target))
+            if (workspace.isRemote && conversationId != null) add(createTerminalTool(snapshot, shellCwd))
         }
     }
 }
+
+internal fun createTerminalTool(snapshot: WorkspaceToolTargetSnapshot, defaultCwd: String?) = Tool(
+    name = WORKSPACE_TERMINAL_TOOL_NAME,
+    workspaceTarget = snapshot,
+    description = "Hand a remote command to the user in an interactive SSH terminal, for sudo/password prompts or other manual interaction. " +
+        "The user reviews the command and presses Enter to start; passwords are entered only in the terminal. " +
+        "Wait for the tool result (merged terminal output and exit status) before continuing. Never request passwords in chat. " +
+        "This chat shares one persistent POSIX shell/PTY with workspace_shell; cwd, exports and sudo authentication persist while it stays connected. " +
+        "Use sudo -v here to authenticate, then sudo -n commands in workspace_shell. sudo -v does not change the shell user and expires per host policy. " +
+        "Do not start nested shells (sudo -i, su, exec); execute finite commands instead. Do not automatically retry interrupted commands. " +
+        "Target: ${snapshot.remoteHostLabel}, root: ${snapshot.remoteRoot}. Current directory: ${defaultCwd ?: snapshot.remoteRoot}.",
+    parameters = {
+        InputSchema.Obj(properties = buildJsonObject {
+            put("command", buildJsonObject {
+                put("type", "string")
+                put("description", "Shell command or script for the user to run. Use real remote paths, not the virtual /workspace mount.")
+            })
+            put("reason", buildJsonObject {
+                put("type", "string")
+                put("description", "Briefly explain the purpose and why user interaction is needed.")
+            })
+            put("cwd", buildJsonObject {
+                put("type", "string")
+                put("description", "Optional working directory relative to the remote root, a virtual /workspace path, or an absolute path inside the root. Omit or leave empty to keep the session current directory; a new session starts in ${defaultCwd ?: snapshot.remoteRoot}.")
+            })
+        }, required = listOf("command", "reason"))
+    },
+    needsApproval = { true },
+    execute = { error("workspace_terminal must be completed through the user terminal flow") },
+)
 
 private data class WorkspaceToolTarget(
     val workspace: WorkspaceEntity,
@@ -333,7 +367,9 @@ private fun createShellTool(
     description = buildString {
         if (target.workspace.isRemote) {
             append("Run a command over SSH on ${target.remoteHostLabel ?: "the configured remote host"}, starting in remote directory '${target.root}'. ")
-            append("Use cwd relative to that remote directory. The remote shell has no /workspace mount; use real remote paths or relative paths in command text. ")
+            append("Commands share this chat's persistent POSIX shell and PTY with workspace_terminal. Omit cwd to preserve the current directory; exports and shell state persist. A new session starts at the configured directory. ")
+            append("For sudo authentication, request sudo -v through workspace_terminal, then use sudo -n here. If credentials expire, request user authentication again. Never send passwords. Do not start nested interactive shells or background interactive commands. ")
+            append("PTY stdout includes stderr. Timeout, disconnect, exit or exec ends the session; an unknown outcome must not be retried automatically. Use real remote paths or relative paths in command text. ")
             append("This directory and remote machine are shared according to the remote host's permissions. ")
         } else {
             append("Run a shell command in the assistant's bound Workspace Rootfs. Only this Assistant's file scope is mounted at /workspace. ")
@@ -361,7 +397,7 @@ private fun createShellTool(
                     put(
                         "description",
                         if (target.workspace.isRemote) {
-                            "Remote working directory relative to '${target.root}', a virtual /workspace path, or a real absolute path inside that directory. Defaults to '${defaultCwd ?: target.root}'."
+                            "Optional remote working directory relative to '${target.root}', a virtual /workspace path, or a real absolute path inside that directory. Omit or leave empty to preserve the current directory. New sessions start at '${defaultCwd ?: target.root}'."
                         } else if (!defaultCwd.isNullOrBlank()) {
                             "Working directory relative to the workspace files root. Defaults to '$defaultCwd'."
                         } else {
@@ -390,17 +426,26 @@ private fun createShellTool(
             ?.coerceIn(1L, SHELL_TIMEOUT_MAX_SECONDS)
             ?.times(1_000L)
             ?: WorkspaceManager.DEFAULT_COMMAND_TIMEOUT_MS
-        val result = workspaceRepository.executeCommand(
-            workspaceId,
-            command,
-            cwd,
-            timeoutMillis,
-            scopeId = scopeId,
+        val persistent = if (target.workspace.isRemote && target.snapshot.conversationId != null) {
+            workspaceRepository.executeInConversationTerminal(
+                target = target.snapshot, command = command,
+                cwd = params.string("cwd")?.takeIf { it.isNotBlank() },
+                defaultCwd = defaultCwd, timeoutMillis = timeoutMillis,
+            )
+        } else null
+        val result = persistent?.result ?: workspaceRepository.executeCommand(
+            workspaceId, command, cwd, timeoutMillis, scopeId = scopeId,
             expectedTarget = target.snapshot,
         )
         listOf(
             UIMessagePart.Text(
                 buildJsonObject {
+                    persistent?.let { session ->
+                        put("sessionId", session.sessionId)
+                        put("sessionReused", session.reused)
+                        put("sessionOpen", session.sessionOpen)
+                        put("outputType", "merged_pty_output")
+                    }
                     put("exitCode", result.exitCode)
                     put("stdout", result.stdout)
                     put("stderr", result.stderr)

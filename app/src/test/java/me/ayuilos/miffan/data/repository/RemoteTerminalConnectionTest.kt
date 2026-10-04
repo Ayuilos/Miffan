@@ -8,12 +8,17 @@ import io.mockk.verify
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
+import me.rerere.workspace.RemoteTerminalCommandSpec
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.rerere.workspace.NativeSshWorkspaceTransport
 import me.rerere.workspace.RemoteAuthentication
@@ -41,7 +46,7 @@ class RemoteTerminalConnectionTest {
     private val session = mockk<RemoteWorkspaceSession>(relaxed = true)
     private val terminal = mockk<RemoteTerminalSession>(relaxed = true)
 
-    private fun repository(): WorkspaceRepository {
+    private fun repository(settingsStore: SettingsStore = mockk()): WorkspaceRepository {
         coEvery { dao.getById("ws") } returns workspace
         coEvery { hostDao.getById("host") } answers { host }
         every { credentials.load("host") } returns RemoteAuthentication.Password("test")
@@ -50,8 +55,24 @@ class RemoteTerminalConnectionTest {
         every { session.isConnected } returns true
         every { session.withOperation<Any?>(any(), any()) } answers { secondArg<() -> Any?>().invoke() }
         every { session.openTerminal(any(), any()) } returns terminal
-        return WorkspaceRepository(dao, mockk(), mockk(), mockk(), mockk(), hostDao,
+        return WorkspaceRepository(dao, mockk(), mockk(), mockk(), settingsStore, hostDao,
             credentials, transport, mockk(), mockk(), mockk(relaxed = true))
+    }
+
+    @Test fun commandCannotOpenWithoutItsSavedTargetOrAfterAssistantRemoval() = runBlocking {
+        val settings = mockk<Settings>()
+        every { settings.assistants } returns emptyList()
+        val settingsStore = mockk<SettingsStore>()
+        every { settingsStore.settingsFlow } returns MutableStateFlow(settings)
+        val repo = repository(settingsStore)
+        val command = RemoteTerminalCommandSpec("sudo example", "")
+        val missing = runCatching { repo.openRemoteTerminal("ws", command = command) }.exceptionOrNull()
+        assertTrue(missing is IllegalArgumentException)
+        val original = WorkspaceToolTargetSnapshot("removed-assistant", "v1", "ws", null,
+            "REMOTE", remoteHostId = "host", remoteRoot = "/srv/project", hostConnectionRevision = "v1", workspaceName = "Remote")
+        val stale = runCatching { repo.openRemoteTerminal("ws", command = command, expectedTarget = original) }.exceptionOrNull()
+        assertTrue(stale is WorkspaceToolTargetChangedException)
+        verify(exactly = 0) { transport.open(any(), any(), any()) }
     }
 
     @Test fun manualTerminalStaysActiveUntilClosedAndClosesOnlyOnce() = runBlocking {

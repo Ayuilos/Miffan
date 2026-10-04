@@ -595,6 +595,17 @@ private fun ChatPageContent(
             bottomBar = {
                 ChatInput(
                     state = inputState,
+                    statusContent = {
+                        ChatTerminalStatusContent(
+                            conversation = conversation,
+                            repository = workspaceRepository,
+                            onLocate = { nodeId ->
+                                previewMode = false
+                                onNavigateToNode(nodeId)
+                            },
+                            onError = { toaster.show(it, type = ToastType.Error) },
+                        )
+                    },
                     loading = loadingJob != null,
                     messageQueue = messageQueue,
                     onRemoveQueuedMessage = vm::removeQueuedMessage,
@@ -790,8 +801,9 @@ private fun ChatPageContent(
                 onToolApproval = { toolCallId, approved, reason ->
                     vm.handleToolApproval(toolCallId, approved, reason)
                 },
-                onToolAnswer = { toolCallId, answer ->
-                    vm.handleToolAnswer(toolCallId, answer)
+                onToolAnswer = remember(conversation.id, vm) {
+                    val answerConversationId = conversation.id
+                    { toolCallId, answer -> vm.handleToolAnswer(toolCallId, answer, answerConversationId) }
                 },
                 onAlwaysAllowWorkspaceShell = vm::alwaysAllowWorkspaceShell,
                 onToggleFavorite = { node ->

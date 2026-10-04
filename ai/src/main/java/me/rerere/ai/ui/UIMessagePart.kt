@@ -188,6 +188,8 @@ sealed class UIMessagePart {
         val output: List<UIMessagePart> = emptyList(),
         val approvalState: ToolApprovalState = ToolApprovalState.Auto,
         val workspaceTarget: WorkspaceToolTargetSnapshot? = null,
+        // App-owned receipt for a user-run terminal command; never supplied by the model.
+        val terminalRequestId: String? = null,
         override var metadata: JsonObject? = null
     ) : UIMessagePart() {
         /** Whether the tool has been executed (has output) */

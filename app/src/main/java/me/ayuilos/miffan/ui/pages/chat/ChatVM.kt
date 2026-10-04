@@ -291,9 +291,10 @@ class ChatVM(
     fun handleToolAnswer(
         toolCallId: String,
         answer: String,
+        conversationId: Uuid = _conversationId,
     ) {
         analytics.logEvent("ai_tool_answer")
-        chatService.handleToolApproval(_conversationId, toolCallId, approved = true, answer = answer)
+        chatService.handleToolApproval(conversationId, toolCallId, approved = true, answer = answer)
     }
 
     fun alwaysAllowWorkspaceShell() {

@@ -31,6 +31,8 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.BuildConfig
 import me.ayuilos.miffan.R
@@ -57,6 +59,7 @@ import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
 import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.workspaceToolTargetError
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
@@ -159,7 +162,7 @@ internal fun Conversation.approvePendingWorkspaceShellTools(
                         ) {
                             val error = if (!shellEnabled) {
                                 "Workspace Shell was disabled after this call was created. Please request it again."
-                            } else workspaceToolTargetError(part, currentTarget)
+                            } else workspaceToolTargetError(part, currentTarget?.copy(conversationId = id.toString()))
                             part.copy(approvalState = if (error == null) {
                                 ToolApprovalState.Approved
                             } else ToolApprovalState.Denied(error))
@@ -645,6 +648,8 @@ class ChatService(
 
     // ---- 处理工具调用审批 ----
 
+    private val terminalResultLocks = java.util.concurrent.ConcurrentHashMap<Uuid, kotlinx.coroutines.sync.Mutex>()
+
     fun handleToolApproval(
         conversationId: Uuid,
         toolCallId: String,
@@ -652,7 +657,66 @@ class ChatService(
         reason: String = "",
         answer: String? = null,
     ) {
+        val receiptId = terminalResultReceiptId(answer)
+        if (receiptId != null) {
+            launchWithConversationReference(conversationId) {
+                val session = getOrCreateSession(conversationId)
+                val lock = terminalResultLocks.getOrPut(conversationId) { kotlinx.coroutines.sync.Mutex() }
+                lock.lock()
+                try {
+                    // Multiple terminals can finish together. Do not cancel another result's save
+                    // or a generation the user started while the terminal was open.
+                    session.getJob()?.join()
+                    // Navigation may have released the in-memory chat while the PTY kept running.
+                    // Restore its saved state without changing the user's currently selected assistant.
+                    if (session.state.value.messageNodes.isEmpty()) {
+                        val saved = conversationRepo.getConversationById(conversationId)
+                            ?: return@launchWithConversationReference
+                        updateConversation(conversationId, saved)
+                    }
+                    val call = session.state.value.currentMessageNodes.lastOrNull()?.currentMessage?.getTools()
+                        ?.find { it.toolName == WORKSPACE_TERMINAL_TOOL_NAME && it.toolCallId == toolCallId && it.terminalRequestId == receiptId }
+                    if (call?.isPending != true || call.isExecuted) return@launchWithConversationReference
+                    applyToolApproval(conversationId, toolCallId, approved, reason, answer)?.join()
+                } finally {
+                    lock.unlock()
+                }
+            }
+        } else {
+            applyToolApproval(conversationId, toolCallId, approved, reason, answer)
+        }
+    }
+
+    private fun terminalResultReceiptId(answer: String?): String? = answer?.let {
+        runCatching {
+            kotlinx.serialization.json.Json.parseToJsonElement(it)
+                .jsonObject["terminalRequestId"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
+    }
+
+    private fun applyToolApproval(
+        conversationId: Uuid,
+        toolCallId: String,
+        approved: Boolean,
+        reason: String,
+        answer: String?,
+    ): Job? {
         val session = getOrCreateSession(conversationId)
+        val receiptId = terminalResultReceiptId(answer)
+
+        // A terminal may finish after navigation, branching, cancellation, or result delivery.
+        // Only resume the still-pending call at the current conversation tip.
+        val terminalCall = session.state.value.messageNodes.asSequence()
+            .flatMap { it.message.getTools().asSequence() }
+            .find { it.toolCallId == toolCallId && it.toolName == WORKSPACE_TERMINAL_TOOL_NAME &&
+                (receiptId == null || it.terminalRequestId == receiptId) }
+        if (terminalCall != null) {
+            val currentCall = session.state.value.currentMessageNodes.lastOrNull()?.currentMessage
+                ?.getTools()?.find { it.terminalRequestId == terminalCall.terminalRequestId && it.toolCallId == toolCallId }
+            if (currentCall?.isPending != true || currentCall.isExecuted) return null
+            // Generic approval must never dispatch this interactive command without a terminal.
+            if (approved && answer == null) return null
+        }
 
         val hasOtherPendingTools = session.state.value.currentMessageNodes.any { node ->
             node.currentMessage.parts.any { part ->
@@ -660,7 +724,7 @@ class ChatService(
             }
         }
 
-        launchGenerationJob(
+        return launchGenerationJob(
             conversationId = conversationId,
             keepAliveInBackground = !hasOtherPendingTools,
         ) {
@@ -674,7 +738,7 @@ class ChatService(
                 val currentAssistant = settingsStore.settingsFlow.first()
                     .getAssistantById(conversation.assistantId)
                 val currentTarget = if (approved || answer != null) {
-                    currentAssistant?.let { currentWorkspaceToolTargetFor(it) }
+                    currentAssistant?.let { currentWorkspaceToolTargetFor(it)?.copy(conversationId = conversation.id.toString()) }
                 } else null
 
                 // Update the tool approval state
@@ -683,9 +747,13 @@ class ChatService(
                         node.message.copy(
                             parts = node.message.parts.map { part ->
                                 when {
-                                    part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
-                                        val staleReason = if (approved || answer != null) {
-                                            if (part.toolName == WORKSPACE_SHELL_TOOL_NAME &&
+                                    part is UIMessagePart.Tool && part.toolCallId == toolCallId &&
+                                        (receiptId == null || part.terminalRequestId == receiptId) -> {
+                                        // Terminal results describe an operation already dispatched
+                                        // against its saved target; a later rebind must not erase it.
+                                        val completedTerminal = part.toolName == WORKSPACE_TERMINAL_TOOL_NAME && answer != null
+                                        val staleReason = if ((approved || answer != null) && !completedTerminal) {
+                                            if (part.toolName in setOf(WORKSPACE_SHELL_TOOL_NAME, WORKSPACE_TERMINAL_TOOL_NAME) &&
                                                 currentAssistant?.workspaceShellEnabled != true
                                             ) {
                                                 "Workspace Shell was disabled after this call was created. Please request it again."
@@ -735,7 +803,7 @@ class ChatService(
                 val assistant = settings.getAssistantById(conversation.assistantId)
                     ?: error("Assistant not found")
                 assistant.workspaceId ?: error("Assistant has no bound workspace")
-                val target = currentWorkspaceToolTargetFor(assistant)
+                val target = currentWorkspaceToolTargetFor(assistant)?.copy(conversationId = conversation.id.toString())
                 val pendingShells = conversation.currentMessageNodes.flatMap { node ->
                     node.currentMessage.parts.filterIsInstance<UIMessagePart.Tool>()
                         .filter { it.toolName == WORKSPACE_SHELL_TOOL_NAME && it.isPending }
@@ -888,7 +956,7 @@ class ChatService(
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
-                    addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd))
+                    addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
                     if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(
@@ -1013,6 +1081,7 @@ class ChatService(
     private suspend fun createWorkspaceToolsIfReady(
         assistant: Assistant,
         cwd: String? = null,
+        conversationId: String,
     ): List<Tool> {
         val workspaceId = assistant.workspaceId?.toString()
         if (workspaceId.isNullOrBlank()) return emptyList()
@@ -1040,6 +1109,7 @@ class ChatService(
             shellApprovalTarget = assistant.workspaceShellApprovalTarget,
             workspaceRepository = workspaceRepository,
             cwd = cwd,
+            conversationId = conversationId,
         )
     }
 
@@ -1578,11 +1648,13 @@ class ChatService(
 
     /** Deleting a conversation also discards its unsent messages and stops its turn chain. */
     suspend fun deleteConversation(conversation: Conversation) {
+        workspaceRepository.closeConversationTerminal(conversation.id.toString())
         discardSession(conversation.id)
         conversationRepo.deleteConversation(conversation)
     }
 
     suspend fun deleteConversationsOfAssistant(assistantId: Uuid) {
+        workspaceRepository.closeAssistantTerminals(assistantId.toString())
         sessions.values.filter { it.state.value.assistantId == assistantId }.forEach {
             discardSession(it.id)
         }

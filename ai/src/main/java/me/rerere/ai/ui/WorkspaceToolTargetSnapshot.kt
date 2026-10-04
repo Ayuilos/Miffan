@@ -18,6 +18,9 @@ data class WorkspaceToolTargetSnapshot(
     val workspaceName: String,
     val remoteHostName: String? = null,
     val remoteHostLabel: String? = null,
+    // Execution context only. Persistent approval still applies to the target, not a chat.
+    val conversationId: String? = null,
+    val conversationCwd: String? = null,
 ) {
     fun sameTarget(other: WorkspaceToolTargetSnapshot?): Boolean = other != null &&
         assistantId == other.assistantId &&
