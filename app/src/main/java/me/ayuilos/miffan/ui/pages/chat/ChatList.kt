@@ -56,6 +56,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.surfaceColorAtElevation
+import androidx.compose.runtime.CompositionLocalProvider
+import me.ayuilos.miffan.ui.components.message.LocalTerminalConversationId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -465,53 +467,55 @@ private fun ChatListNormal(
                         selectedKeys = selectedItems,
                         enabled = selecting,
                     ) {
-                        ChatMessage(
-                            node = node,
-                            branchIndex = conversation.getSiblings(node.id).indexOfFirst { it.id == node.id },
-                            branchCount = conversation.getSiblings(node.id).size,
-                            model = node.currentMessage.modelId?.let(modelById::get),
-                            assistant = assistant,
-                            loading = loading && index == lastMessageIndex,
-                            mascotState = if (index == lastMessageIndex) {
-                                resolveChatMascotState(
-                                    hasErrors = hasMascotErrors,
-                                    semanticState = MiffanMascotState.Idle,
-                                    loading = loading,
-                                    showingCompletion = node.currentMessage.id == completedMascotReplyId,
-                                )
-                            } else MiffanMascotState.Idle,
-                            onRegenerate = {
-                                onRegenerate(node.currentMessage)
-                            },
-                            onEdit = {
-                                onEdit(node.currentMessage)
-                            },
-                            onFork = {
-                                onForkMessage(node.currentMessage)
-                            },
-                            onDelete = {
-                                onDelete(node.currentMessage)
-                            },
-                            onShare = {
-                                selecting = true  // 使用 CoroutineScope 延迟状态更新
-                                selectedItems.clear()
-                                selectedItems.addAll(currentNodes.map { it.id }
-                                    .subList(0, currentNodes.indexOf(node) + 1))
-                            },
-                            onSelectBranch = { branchIndex ->
-                                onSelectMessageBranch(node.id, branchIndex)
-                            },
-                            isFavorite = node.isFavorite,
-                            onToggleFavorite = {
-                                onToggleFavorite?.invoke(node)
-                            },
-                            onTranslate = onTranslate,
-                            onClearTranslation = onClearTranslation,
-                            onToolApproval = onToolApproval,
-                            onToolAnswer = onToolAnswer,
-                            onAlwaysAllowWorkspaceShell = onAlwaysAllowWorkspaceShell,
-                            lastMessage = index == lastMessageIndex,
-                        )
+                        CompositionLocalProvider(LocalTerminalConversationId provides conversation.id.toString()) {
+                            ChatMessage(
+                                node = node,
+                                branchIndex = conversation.getSiblings(node.id).indexOfFirst { it.id == node.id },
+                                branchCount = conversation.getSiblings(node.id).size,
+                                model = node.currentMessage.modelId?.let(modelById::get),
+                                assistant = assistant,
+                                loading = loading && index == lastMessageIndex,
+                                mascotState = if (index == lastMessageIndex) {
+                                    resolveChatMascotState(
+                                        hasErrors = hasMascotErrors,
+                                        semanticState = MiffanMascotState.Idle,
+                                        loading = loading,
+                                        showingCompletion = node.currentMessage.id == completedMascotReplyId,
+                                    )
+                                } else MiffanMascotState.Idle,
+                                onRegenerate = {
+                                    onRegenerate(node.currentMessage)
+                                },
+                                onEdit = {
+                                    onEdit(node.currentMessage)
+                                },
+                                onFork = {
+                                    onForkMessage(node.currentMessage)
+                                },
+                                onDelete = {
+                                    onDelete(node.currentMessage)
+                                },
+                                onShare = {
+                                    selecting = true  // 使用 CoroutineScope 延迟状态更新
+                                    selectedItems.clear()
+                                    selectedItems.addAll(currentNodes.map { it.id }
+                                        .subList(0, currentNodes.indexOf(node) + 1))
+                                },
+                                onSelectBranch = { branchIndex ->
+                                    onSelectMessageBranch(node.id, branchIndex)
+                                },
+                                isFavorite = node.isFavorite,
+                                onToggleFavorite = {
+                                    onToggleFavorite?.invoke(node)
+                                },
+                                onTranslate = onTranslate,
+                                onClearTranslation = onClearTranslation,
+                                onToolApproval = onToolApproval,
+                                onToolAnswer = onToolAnswer,
+                                onAlwaysAllowWorkspaceShell = onAlwaysAllowWorkspaceShell,
+                                lastMessage = index == lastMessageIndex,
+                            )
+                        }
                     }
                 }
             }

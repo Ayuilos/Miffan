@@ -400,6 +400,44 @@ class NativeSshWorkspaceTransportTest {
         workspace.close()
     }
 
+    @Test fun persistentCommandsKeepPidAndVariablesOverSshWithoutClosingChannel() = kotlinx.coroutines.runBlocking {
+        val fingerprint = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port).sha256Fingerprint
+        NativeSshWorkspaceTransport.open(config(fingerprint)).use { workspace ->
+            val terminal = workspace.openTerminal(persistentCommands = true)
+            PersistentRemoteShell(terminal.input, terminal.output, terminal::close).use { shell ->
+                val first = shell.execute("export MARK=shared; printf '%s' \"\$\$\"", timeoutMillis = 5_000)
+                val next = shell.execute("printf '%s|%s|%s' \"\$\$\" \"\$MARK\" \"\$PWD\"", timeoutMillis = 5_000)
+                assertEquals(0, first.exitCode)
+                assertEquals("${first.stdout}|shared|${workspace.resolvedRoot}", next.stdout)
+                assertTrue(terminal.isConnected)
+            }
+            assertFalse(terminal.isConnected)
+            assertTrue(workspace.isConnected)
+        }
+    }
+
+    @Test fun userCommandPtyAcceptsInputAndReturnsItsOwnExitStatus() {
+        val fingerprint = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port).sha256Fingerprint
+        NativeSshWorkspaceTransport.open(config(fingerprint)).use { workspace ->
+            Files.createDirectory(root.resolve("command dir"))
+            workspace.openTerminal(command = RemoteTerminalCommandSpec(
+                "read answer; printf '%s\\n' \"\$PWD\"; printf 'done\\n' >&2; exit 7",
+                "/workspace/command dir",
+            )).use { terminal ->
+                terminal.output.write("private input\n".toByteArray())
+                terminal.output.flush()
+                val output = terminal.input.bufferedReader().readText()
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                while (terminal.exitStatus < 0 && System.nanoTime() < deadline) Thread.sleep(10)
+                assertEquals(7, terminal.exitStatus)
+                assertTrue(output.contains(root.resolve("command dir").toRealPath().toString()))
+                assertTrue(output.contains("done"))
+                assertFalse(output.contains("private input"))
+            }
+            assertTrue("The ordinary workspace connection must survive command completion", workspace.isConnected)
+        }
+    }
+
     @Test fun failedTerminalStartupKeepsParentSshSession() {
         val fingerprint = NativeSshWorkspaceTransport
             .discoverHostKey("127.0.0.1", server.port).sha256Fingerprint

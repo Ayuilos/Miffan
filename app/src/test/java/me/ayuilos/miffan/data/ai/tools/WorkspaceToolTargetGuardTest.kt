@@ -21,6 +21,19 @@ import org.junit.Test
 import kotlin.time.Clock
 
 class WorkspaceToolTargetGuardTest {
+    @Test
+    fun `interactive terminal always requires user interaction and shares target guard`() = runBlocking {
+        val tool = createTerminalTool(original, "/workspace/sub")
+        val call = call(name = WORKSPACE_TERMINAL_TOOL_NAME)
+        assertTrue(tool.needsApproval(JsonObject(emptyMap())))
+        assertEquals(original, captureWorkspaceToolTarget(call.copy(workspaceTarget = null), tool).workspaceTarget)
+        assertNull(workspaceToolTargetError(call, original))
+        assertTrue(workspaceToolTargetError(call, original.copy(hostConnectionRevision = "new")) != null)
+        assertTrue(workspaceToolTargetError(call.copy(workspaceTarget = null), original) != null)
+        val error = runCatching { executeToolWithTargetGuard(call, tool, JsonObject(emptyMap())) }.exceptionOrNull()
+        assertTrue(error?.message.orEmpty().contains("user terminal flow"))
+    }
+
     private val model = Model(modelId = "test-model")
     private val original = WorkspaceToolTargetSnapshot(
         assistantId = "assistant",
@@ -145,6 +158,12 @@ class WorkspaceToolTargetGuardTest {
         val restored = Json.decodeFromString<UIMessagePart.Tool>(Json.encodeToString(pending))
         assertEquals(original, restored.workspaceTarget)
         assertDispatchDenied(restored, original.copy(workspaceId = "B", workspacePermissionRevision = "binding-B"))
+    }
+
+    @Test fun `forked chat cannot reuse a saved persistent command`() = runBlocking {
+        val bound = original.copy(conversationId = "chat-a")
+        assertTrue(bound.sameTarget(bound.copy(conversationId = "chat-b")))
+        assertDispatchDenied(call(target = bound), bound.copy(conversationId = "chat-b"))
     }
 
     private suspend fun assertDispatchDenied(

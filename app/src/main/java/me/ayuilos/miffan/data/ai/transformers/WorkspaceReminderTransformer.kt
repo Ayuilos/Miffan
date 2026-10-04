@@ -157,6 +157,8 @@ private fun StringBuilder.appendRemoteWorkspacePrompt(
         appendLine("- Current working directory: `$cwd` in file-tool paths. For shell commands, use its path relative to `/workspace` under `$root`.")
     }
     appendLine("- Use `workspace_read_file`, `workspace_write_file`, and `workspace_edit_file` for remote files; use `workspace_shell` for remote commands. They all target the bound remote workspace.")
+    appendLine("- Remote workspace_shell and workspace_terminal share a persistent shell/PTY scoped to this conversation. Omit cwd to keep the current directory; cd and exported variables persist. To authorize sudo, use workspace_terminal with sudo -v, then use sudo -n in workspace_shell. Authentication expires under the host policy; it does not turn the shell into root. Closing the session, disconnection, or app restart requires a new session. Never automatically refresh sudo credentials or request passwords in chat. Do not run nested interactive shells (sudo -i, su, exec).")
+    appendLine("- When a command needs sudo authentication or interactive user input, call `workspace_terminal` with command, reason, and optional cwd instead of asking the user to copy commands. The user opens the terminal and presses Enter to execute. Never ask for passwords in chat or include credentials in tool arguments. Wait for its output and exit status, then continue automatically. If interrupted or disconnected, verify remote state before proposing another execution.")
     appendLine("- After shell commands create user-facing files, call `workspace_publish_files` with absolute virtual `/workspace/...` paths or real absolute paths under `$root`.")
     append("</workspace>")
 }

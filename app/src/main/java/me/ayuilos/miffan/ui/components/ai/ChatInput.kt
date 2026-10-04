@@ -149,6 +149,7 @@ fun ChatInput(
     onSendImmediatelyClick: () -> Unit,
     onLongSendClick: () -> Unit,
     onActivityChanged: (ChatInputActivity) -> Unit = {},
+    statusContent: @Composable () -> Unit = {},
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -271,6 +272,7 @@ fun ChatInput(
                 onSendImmediately = onSendQueuedMessageImmediately,
                 onResume = onResumeQueue,
             )
+            statusContent()
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -143,6 +143,10 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
 ) {
     val workspaceStrings = LocalResources.current
     // ask_user 是交互式问答流程, 不走注册式渲染框架
+    if (tool.toolName == me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME) {
+        TerminalCommandToolStep(tool, onToolAnswer, onToolApproval)
+        return
+    }
     if (tool.toolName == ASK_USER_TOOL_NAME) {
         AskUserToolStep(tool = tool, loading = loading, onToolAnswer = onToolAnswer)
         return

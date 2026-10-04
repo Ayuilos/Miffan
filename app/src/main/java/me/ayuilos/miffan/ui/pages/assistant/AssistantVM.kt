@@ -14,12 +14,14 @@ import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
 
 class AssistantVM(
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
     private val conversationRepo: ConversationRepository,
     private val filesManager: FilesManager,
+    private val workspaceRepository: WorkspaceRepository,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
@@ -43,6 +45,7 @@ class AssistantVM(
 
     fun removeAssistant(assistant: Assistant) {
         viewModelScope.launch {
+            workspaceRepository.closeAssistantTerminals(assistant.id.toString())
             cleanupAssistantFiles(assistant)
 
             val settings = settings.value

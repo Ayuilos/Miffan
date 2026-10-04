@@ -281,11 +281,13 @@ class RemoteWorkspaceSession internal constructor(
      * Opens a persistent interactive SSH PTY in the selected remote directory. The returned
      * terminal owns only its PTY channel; the caller owns the parent SSH session.
      */
-    fun openTerminal(columns: Int = 80, rows: Int = 24): RemoteTerminalSession {
+    fun openTerminal(columns: Int = 80, rows: Int = 24, command: RemoteTerminalCommandSpec? = null,
+        persistentCommands: Boolean = false): RemoteTerminalSession {
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
         var channel: ChannelExec? = null
         try {
-            withSftp { sftp, _ -> requireDirectoryPath(sftp, paths.root) }
+            val directory = paths.absolute(command?.cwd.orEmpty(), allowRoot = true)
+            withSftp { sftp, _ -> requireDirectoryPath(sftp, directory) }
             checkOpen()
             channel = session.openChannel("exec") as ChannelExec
             register(channel)
@@ -293,7 +295,10 @@ class RemoteWorkspaceSession internal constructor(
             channel.setPtyType("xterm-256color", columns, rows, 0, 0)
             channel.setEnv("TERM", "xterm-256color")
             channel.setCommand(
-                "cd ${shellQuote(paths.root)} || exit 1\nexec \"\${SHELL:-/bin/sh}\" -i",
+                command?.shellScript(paths.root)
+                    ?: if (persistentCommands) {
+                        "cd ${shellQuote(paths.root)} || exit 1\nstty -echo 2>/dev/null || :\nexec env ENV= PS1= PS2= /bin/sh +i"
+                    } else "cd ${shellQuote(paths.root)} || exit 1\nexec \"\${SHELL:-/bin/sh}\" -i",
             )
             val input = channel.inputStream
             val output = channel.outputStream

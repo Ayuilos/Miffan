@@ -77,6 +77,32 @@ class WorkspaceRepository(
     )
     private val terminalLock = Any()
     private val activeTerminals = mutableMapOf<String, MutableSet<RemoteTerminalConnection>>()
+    private val conversationShells = RemoteConversationShells(
+        open = { target -> openRemoteTerminal(
+            id = target.workspaceId, expectedHostId = target.remoteHostId,
+            expectedHostRevision = target.hostConnectionRevision, expectedRemoteRoot = target.remoteRoot,
+            expectedTarget = target, persistentCommands = true,
+        ) },
+        validate = { target -> validateWorkspaceToolTarget(target, target.workspaceId, requireShell = true) },
+    )
+    val conversationShellStates get() = conversationShells.states
+
+    suspend fun executeInConversationTerminal(
+        target: WorkspaceToolTargetSnapshot,
+        command: String,
+        cwd: String? = null,
+        defaultCwd: String? = null,
+        timeoutMillis: Long? = 30_000,
+        onOutput: suspend (ByteArray) -> Unit = {},
+        onReady: suspend (RemoteConversationShellHandle) -> Unit = {},
+    ): RemoteConversationCommandResult = conversationShells.execute(
+        target, command, cwd, defaultCwd, timeoutMillis, onOutput, onReady,
+    )
+
+    suspend fun closeConversationTerminal(conversationId: String, expectedSessionId: String? = null) =
+        conversationShells.close(conversationId, expectedSessionId)
+
+    suspend fun closeAssistantTerminals(assistantId: String) = conversationShells.closeAssistant(assistantId)
 
     val remoteHostStates: StateFlow<Map<String, RemoteHostRuntimeState>> = remoteRuntime.hostStates
     val remoteWorkspaceStates: StateFlow<Map<String, RemoteWorkspaceRuntimeState>> = remoteRuntime.workspaceStates
@@ -821,7 +847,12 @@ class WorkspaceRepository(
         expectedHostId: String? = null,
         expectedHostRevision: String? = null,
         expectedRemoteRoot: String? = null,
+        command: me.rerere.workspace.RemoteTerminalCommandSpec? = null,
+        expectedTarget: WorkspaceToolTargetSnapshot? = null,
+        persistentCommands: Boolean = false,
     ): RemoteTerminalConnection {
+        if (command != null || persistentCommands) requireNotNull(expectedTarget) { "Terminal command requires a saved tool target" }
+        validateWorkspaceToolTarget(expectedTarget, id, requireShell = command != null || persistentCommands)
         require(columns in 1..1000 && rows in 1..1000) { workspaceStrings.getString(R.string.workspace_error_terminal_size) }
         val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_not_found))
         require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
@@ -856,8 +887,9 @@ class WorkspaceRepository(
                 hostDao.getById(hostId)?.connectionRevision != revision ||
                 dao.getById(id)?.let { it.isRemote && it.remoteHostId == hostId && it.remotePath == workspace.remotePath } != true
             ) throw WorkspaceToolTargetChangedException()
+            validateWorkspaceToolTarget(expectedTarget, id, requireShell = command != null || persistentCommands)
             val pty = runRemoteOperation(opened) {
-                opened.openTerminal(columns, rows).also { terminal = it }
+                opened.openTerminal(columns, rows, command, persistentCommands).also { terminal = it }
             }
             currentCoroutineContext().ensureActive()
             // Metadata may change during the PTY handshake; never hand off an unexpected target.

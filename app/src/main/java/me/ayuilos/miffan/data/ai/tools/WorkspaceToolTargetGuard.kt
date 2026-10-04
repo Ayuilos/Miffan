@@ -81,6 +81,9 @@ internal fun workspaceToolTargetError(
     if (currentTarget == null) {
         return "The original Workspace target or tool capability is no longer available. Please request it again."
     }
+    if (original.conversationId != null && original.conversationId != currentTarget.conversationId) {
+        return "This command belongs to another conversation. Please request it again in this chat."
+    }
     if (!original.sameTarget(currentTarget)) {
         return "The Workspace target or permissions changed after this tool call was created. Please request it again."
     }
