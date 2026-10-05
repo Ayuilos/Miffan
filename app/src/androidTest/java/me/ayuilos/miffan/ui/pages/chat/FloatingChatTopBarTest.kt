@@ -36,7 +36,9 @@ import me.ayuilos.miffan.RouteActivity
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.withInterfaceMode
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.service.ChatService
 import me.ayuilos.miffan.ui.hooks.readBooleanPreference
@@ -91,7 +93,7 @@ class FloatingChatTopBarTest {
                     developerMode = false,
                     assistantId = assistant.id,
                     assistants = it.assistants + assistant,
-                )
+                ).withInterfaceMode(InterfaceMode.PROFESSIONAL)
             }
             context.writeBooleanPreference("create_new_conversation_on_start", false)
             context.writeStringPreference("lastConversationId", conversation.id.toString())

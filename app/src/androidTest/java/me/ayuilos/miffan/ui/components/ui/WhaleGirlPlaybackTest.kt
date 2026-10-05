@@ -27,6 +27,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.appString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -54,25 +56,25 @@ class WhaleGirlPlaybackTest {
         }
         resume(owner)
         advanceAndDraw(300)
-        compose.onNodeWithContentDescription("蓝色大肥鱼，关注输入框").assertExists()
+        compose.onNodeWithContentDescription(appString(R.string.whale_a11y_focused)).assertExists()
         compose.runOnIdle { input = MiffanMascotInputState.Typing }
         advanceAndDraw(300)
-        compose.onNodeWithContentDescription("蓝色大肥鱼，跟随打字").assertExists()
+        compose.onNodeWithContentDescription(appString(R.string.whale_a11y_typing)).assertExists()
         for (quiet in listOf(false, true)) {
             compose.runOnIdle { reduced = quiet; state = MiffanMascotState.Thinking; submit++ }
             advanceAndDraw(300)
-            compose.onNodeWithContentDescription("蓝色大肥鱼，收到消息").assertExists()
+            compose.onNodeWithContentDescription(appString(R.string.whale_a11y_submitted)).assertExists()
             compose.runOnIdle { submit++ }
             advanceAndDraw(1_300)
-            compose.onNodeWithContentDescription("蓝色大肥鱼，收到消息").assertExists()
+            compose.onNodeWithContentDescription(appString(R.string.whale_a11y_submitted)).assertExists()
             advanceAndDraw(400)
-            compose.onNodeWithContentDescription("蓝色大肥鱼，正在回复").assertExists()
+            compose.onNodeWithContentDescription(appString(R.string.whale_a11y_chewing)).assertExists()
         }
         compose.runOnIdle { submit++ }
         advanceAndDraw(200)
         compose.runOnIdle { state = MiffanMascotState.Error }
         advanceAndDraw(200)
-        compose.onNodeWithContentDescription("蓝色大肥鱼，遇到了问题").assertExists()
+        compose.onNodeWithContentDescription(appString(R.string.whale_a11y_error)).assertExists()
         pause(owner)
     }
 
@@ -105,7 +107,7 @@ class WhaleGirlPlaybackTest {
         advanceAndDraw(100)
         compose.onNodeWithTag("mascot").performClick()
         advanceAndDraw(100)
-        val pettingDescription = "蓝色大肥鱼，正在被摸摸"
+        val pettingDescription = appString(R.string.whale_a11y_petting)
         compose.onNodeWithContentDescription(pettingDescription).assertExists()
         // The old click-time deadline expired here, before a single playback frame could run.
         advanceAndDraw(2_500)
@@ -123,7 +125,7 @@ class WhaleGirlPlaybackTest {
         resume(owner)
         advanceAndDraw(1_000)
         compose.onNodeWithContentDescription(pettingDescription).assertDoesNotExist()
-        compose.onNodeWithContentDescription("蓝色大肥鱼").assertExists()
+        compose.onNodeWithContentDescription(appString(R.string.whale_name)).assertExists()
         pause(owner)
     }
 

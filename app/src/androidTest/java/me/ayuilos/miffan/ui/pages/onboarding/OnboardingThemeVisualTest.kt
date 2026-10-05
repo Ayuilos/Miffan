@@ -24,6 +24,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.appString
 import me.ayuilos.miffan.data.ai.openrouter.OpenRouterAuthState
 import me.ayuilos.miffan.data.ai.openrouter.OpenRouterSavedKeyState
 import me.ayuilos.miffan.data.datastore.Settings
@@ -95,7 +97,7 @@ class OnboardingThemeVisualTest {
                 val defaultCard = cardPixel()
 
                 toggle(store, true)
-                compose.onNode(hasContentDescription("蓝色大肥鱼", substring = true)).assertExists()
+                compose.onNode(hasContentDescription(appString(R.string.whale_name), substring = true)).assertExists()
                 val scheme = WhaleThemePreset.getColorScheme(mode == ColorMode.DARK)
                 assertEquals(scheme.background.toArgb(), backgroundPixel())
                 assertEquals(scheme.primaryContainer.toArgb(), cardPixel())
@@ -113,7 +115,7 @@ class OnboardingThemeVisualTest {
                 compose.runOnIdle { generation++ }
                 settle()
                 compose.onNodeWithTag("onboarding_whale_theme").assertIsOn()
-                compose.onNode(hasContentDescription("蓝色大肥鱼", substring = true)).assertExists()
+                compose.onNode(hasContentDescription(appString(R.string.whale_name), substring = true)).assertExists()
                 assertEquals(scheme.background.toArgb(), backgroundPixel())
                 assertEquals(scheme.primaryContainer.toArgb(), cardPixel())
                 save("onboarding-whale-${mode.name.lowercase()}.png", capture("onboarding_page"))
@@ -162,7 +164,7 @@ class OnboardingThemeVisualTest {
             }
             settle()
             toggle(store, true)
-            compose.onNode(hasContentDescription("蓝色大肥鱼", substring = true)).assertExists()
+            compose.onNode(hasContentDescription(appString(R.string.whale_name), substring = true)).assertExists()
             save("onboarding-whale-authorizing.png", capture("onboarding_page"))
             toggle(store, false)
             assertEquals(0, connects.get())

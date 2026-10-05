@@ -2110,4 +2110,5 @@
   <string name="setting_tts_sample_rate_description">取樣率 (Hz)</string>
   <string name="setting_tts_step_instruction_description">全域語境指令, 僅 stepaudio-2.5-tts 生效 (≤200 字元, 留空不下發)</string>
   <string name="setting_tts_step_instruction_placeholder">例如: 語氣溫柔, 語速偏慢</string>
+  <string name="mcp_error_reconnect_exhausted">連線中斷，已達最大重新連線次數</string>
 </resources>

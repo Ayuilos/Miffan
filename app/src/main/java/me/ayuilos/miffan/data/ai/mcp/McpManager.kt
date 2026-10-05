@@ -38,6 +38,7 @@ import kotlin.uuid.Uuid
  * [McpSessionRegistry] 管理，OAuth 协议细节由 [McpOAuthCoordinator] 管理。
  */
 class McpManager(
+    context: Context,
     private val settingsStore: SettingsStore,
     private val appScope: AppScope,
     private val filesManager: FilesManager,
@@ -73,6 +74,7 @@ class McpManager(
         updateStatus = statusStore::update,
     )
     private val sessionRegistry = McpSessionRegistry(
+        context = context,
         settingsStore = settingsStore,
         appScope = appScope,
         httpClient = httpClient,

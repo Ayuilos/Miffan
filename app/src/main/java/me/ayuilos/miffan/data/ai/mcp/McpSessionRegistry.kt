@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.mcp
 
+import android.content.Context
 import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
@@ -35,6 +36,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import me.rerere.ai.core.InputSchema
+import me.ayuilos.miffan.R
 import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import java.util.concurrent.ConcurrentHashMap
@@ -94,6 +96,7 @@ internal class McpStatusStore {
  * Client 只有在 connect 与首次工具同步都成功后才对外可见。
  */
 internal class McpSessionRegistry(
+    private val context: Context,
     private val settingsStore: SettingsStore,
     private val appScope: AppScope,
     private val httpClient: HttpClient,
@@ -365,7 +368,7 @@ internal class McpSessionRegistry(
                     session.client = null
                     session.connectedConfig = null
                     failedClient?.let { closeClient(it, session.config.commonOptions.name) }
-                    statusStore.update(configId, McpStatus.Error("连接断开，已达最大重连次数"))
+                    statusStore.update(configId, McpStatus.Error(context.getString(R.string.mcp_error_reconnect_exhausted)))
                     return@withLock
                 }
 

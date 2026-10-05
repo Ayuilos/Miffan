@@ -29,12 +29,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.ayuilos.miffan.R
 import me.ayuilos.miffan.RouteActivity
+import me.ayuilos.miffan.appString
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.withInterfaceMode
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.service.ChatService
 import me.ayuilos.miffan.ui.hooks.readBooleanPreference
@@ -92,7 +96,8 @@ class ChatTerminalStatusUiTest {
             repository.insertConversation(chat)
             settingsStore.update { it.copy(assistantId = assistant.id, assistants = it.assistants + assistant,
                 providers = it.providers + provider, chatModelId = model.id, remoteWorkspaceIntroSeen = true,
-                whaleThemeDiscovery = it.whaleThemeDiscovery.copy(introPending = false, settingsSeen = true)) }
+                whaleThemeDiscovery = it.whaleThemeDiscovery.copy(introPending = false, settingsSeen = true))
+                .withInterfaceMode(InterfaceMode.PROFESSIONAL) }
             context.writeBooleanPreference("create_new_conversation_on_start", false)
             context.writeStringPreference("lastConversationId", chatId.toString())
             context.writeStringPreference("colorMode", ColorMode.LIGHT.name)
@@ -123,7 +128,7 @@ class ChatTerminalStatusUiTest {
                     compose.onAllNodesWithTag("chat_message_${nodes.first().id}").fetchSemanticsNodes().isNotEmpty()
                 }
                 compose.onNodeWithText("保留这段草稿").assertIsDisplayed()
-                compose.onNodeWithText("收起").performClick()
+                compose.onNodeWithText(appString(R.string.terminal_command_collapse)).performClick()
                 compose.onNodeWithTag("chat_terminal_status").assertDoesNotExist()
                 compose.onNodeWithText("保留这段草稿").assertIsDisplayed()
             }
@@ -171,6 +176,6 @@ class ChatTerminalStatusActionsTest {
         compose.onNodeWithTag("chat_terminal_end").assertDoesNotExist()
         compose.onNodeWithTag("chat_terminal_locate").performClick()
         compose.runOnIdle { assertEquals(1, located) }
-        compose.onNodeWithText("收起").assertIsDisplayed()
+        compose.onNodeWithText(appString(R.string.terminal_command_collapse)).assertIsDisplayed()
     }
 }

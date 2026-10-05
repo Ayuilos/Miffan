@@ -15,6 +15,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.appString
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.isNotConfigured
@@ -64,7 +66,7 @@ class WhaleThemeDiscoveryHostTest {
             restoration.emulateSavedInstanceStateRestore()
             settle()
             compose.onNodeWithText(TITLE).assertExists()
-            compose.onNodeWithText("以后再说").performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_intro_later)).performScrollTo().performClick()
             settle()
             compose.onNodeWithText(TITLE).assertDoesNotExist()
             assertFalse(runBlocking { store.settingsFlowRaw.first() }.whaleThemeDiscovery.settingsSeen)
@@ -121,8 +123,8 @@ class WhaleThemeDiscoveryHostTest {
                 }
             }
             awaitIntroduction(store)
-            compose.onNodeWithText("同时换上大肥鱼图标").assertIsOff()
-            compose.onNodeWithText("立即体验").performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_intro_change_icon)).assertIsOff()
+            compose.onNodeWithText(appString(R.string.whale_intro_try_now)).performScrollTo().performClick()
             compose.waitUntil(5_000) { store.settingsFlow.value.themeId == WHALE_THEME_ID }
             settle()
             val persisted = runBlocking { store.settingsFlowRaw.first() }
@@ -210,6 +212,6 @@ class WhaleThemeDiscoveryHostTest {
     }
 
     private companion object {
-        const val TITLE = "蓝色大肥鱼来啦"
+        val TITLE: String get() = appString(R.string.whale_intro_title)
     }
 }

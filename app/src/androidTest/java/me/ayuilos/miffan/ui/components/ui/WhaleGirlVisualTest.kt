@@ -44,6 +44,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.dokar.sonner.rememberToasterState
 import dev.chrisbanes.haze.rememberHazeState
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.appString
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
@@ -437,7 +439,7 @@ class WhaleGirlVisualTest {
         // Activity wakes the character even at night; she sleeps after the fresh idle interval.
         compose.mainClock.advanceTimeBy(60_500)
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("蓝色大肥鱼，睡着了").assertExists()
+        compose.onNodeWithContentDescription(appString(R.string.whale_a11y_sleeping)).assertExists()
         assertTrue("Nighttime idle must select the sleeping expression",
             portraits.none { it.sameAs(capture("phase-head")) })
     }
@@ -474,12 +476,12 @@ class WhaleGirlVisualTest {
                 }
             }
             compose.mainClock.advanceTimeBy(500)
-            compose.onNodeWithText("应用蓝鱼主题").performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_apply_theme)).performScrollTo().performClick()
             compose.waitUntil(5_000) {
                 store.settingsFlow.value.themeId == WHALE_THEME_ID && !store.settingsFlow.value.dynamicColor
             }
             compose.mainClock.advanceTimeBy(500)
-            compose.onNodeWithText("一键体验蓝鱼主题").performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_try_theme)).performScrollTo().performClick()
             compose.waitUntil(5_000) {
                 store.settingsFlow.value.whaleThemeDiscovery.dedicatedAssistantId != null
             }
@@ -490,10 +492,10 @@ class WhaleGirlVisualTest {
             assertEquals(whaleId, persisted.assistantId)
             assertEquals(original.assistants + assistant + other, persisted.assistants.filter { it.id != whaleId })
             compose.mainClock.advanceTimeBy(500)
-            listOf("微笑", "摸摸", "开心", "提醒", "扒饭", "嚼饭", "推理", "睡觉").forEach { label ->
+            listOf(appString(R.string.whale_clip_idle), appString(R.string.whale_clip_petting), appString(R.string.whale_clip_success), appString(R.string.whale_clip_surprise), appString(R.string.whale_clip_eating), appString(R.string.whale_clip_chewing), appString(R.string.whale_clip_thinking), appString(R.string.whale_clip_sleeping)).forEach { label ->
                 compose.onNodeWithText(label).performScrollTo().assertExists()
             }
-            compose.onNodeWithText("开心").performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_clip_success)).performScrollTo().performClick()
             compose.mainClock.advanceTimeByFrame()
             compose.mainClock.advanceTimeBy(700)
             compose.waitForIdle()
@@ -535,22 +537,22 @@ class WhaleGirlVisualTest {
                 compose.onAllNodesWithText(WHALE_PERSONALITY).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText(WHALE_PERSONALITY).assertExists()
-            compose.onNodeWithText("动作性格").assertDoesNotExist()
+            compose.onNodeWithText(appString(R.string.miffan_character_motion_title)).assertDoesNotExist()
 
-            compose.onNodeWithText("Miffan 饭碗").performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.miffan_character_rice_bowl)).performScrollTo().performClick()
             compose.waitUntil(5_000) {
                 store.settingsFlow.value.assistants.first { it.id == assistant.id }.avatar is Avatar.Miffan
             }
             compose.mainClock.advanceTimeBy(500)
-            compose.onNodeWithText("动作性格").performScrollTo().assertExists()
+            compose.onNodeWithText(appString(R.string.miffan_character_motion_title)).performScrollTo().assertExists()
 
-            compose.onNodeWithText("蓝色大肥鱼").performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_name)).performScrollTo().performClick()
             compose.waitUntil(5_000) {
                 store.settingsFlow.value.assistants.first { it.id == assistant.id }.avatar is Avatar.WhaleGirl
             }
             compose.mainClock.advanceTimeBy(500)
             compose.onNodeWithText(WHALE_PERSONALITY).assertExists()
-            compose.onNodeWithText("动作性格").assertDoesNotExist()
+            compose.onNodeWithText(appString(R.string.miffan_character_motion_title)).assertDoesNotExist()
         } finally {
             runBlocking { store.update(original) }
         }
@@ -648,7 +650,7 @@ class WhaleGirlVisualTest {
     }
 
     private companion object {
-        const val WHALE_DESCRIPTION = "蓝色大肥鱼"
-        const val WHALE_PERSONALITY = "蓝色大肥鱼 · 爱吃饭、有点嘴硬，也会认真听你说话。"
+        val WHALE_DESCRIPTION: String get() = appString(R.string.whale_name)
+        val WHALE_PERSONALITY: String get() = appString(R.string.whale_assistant_tagline)
     }
 }

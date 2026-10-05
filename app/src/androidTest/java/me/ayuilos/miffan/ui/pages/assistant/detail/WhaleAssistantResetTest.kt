@@ -17,6 +17,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.dokar.sonner.rememberToasterState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.appString
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.WhaleThemeDiscovery
@@ -47,7 +49,8 @@ class WhaleAssistantResetTest {
     fun resetSurvivesRenamingAndAvatarEditsRequiresConfirmationAndPreservesIdentity() {
         val store = GlobalContext.get().get<SettingsStore>()
         val original = runBlocking { store.settingsFlowRaw.first() }
-        val preset = createWhaleAssistant()
+        // Reset restores the preset under the name of the current language.
+        val preset = createWhaleAssistant(name = appString(R.string.whale_name))
         val edited = preset.copy(name = "我修改过的名字", avatar = Avatar.Emoji("🌱"),
             systemPrompt = "My edited personality", useAssistantAvatar = false,
             chatModelId = original.chatModelId, temperature = 0.2f, enableMemory = true,
@@ -79,17 +82,17 @@ class WhaleAssistantResetTest {
                 }
             }
             compose.waitUntil(5_000) {
-                compose.onAllNodesWithText("恢复大肥鱼默认设定").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText(appString(R.string.whale_reset_button)).fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("恢复大肥鱼默认设定").performScrollTo().performClick()
-            compose.onNodeWithText("恢复大肥鱼默认设定？").assertExists()
+            compose.onNodeWithText(appString(R.string.whale_reset_button)).performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_reset_title)).assertExists()
             assertEquals(edited, runBlocking { store.settingsFlowRaw.first() }.assistants.first { it.id == edited.id })
-            compose.onNodeWithText("取消").performClick()
-            compose.onNodeWithText("恢复大肥鱼默认设定？").assertDoesNotExist()
+            compose.onNodeWithText(appString(R.string.cancel)).performClick()
+            compose.onNodeWithText(appString(R.string.whale_reset_title)).assertDoesNotExist()
             assertEquals(edited, runBlocking { store.settingsFlowRaw.first() }.assistants.first { it.id == edited.id })
 
-            compose.onNodeWithText("恢复大肥鱼默认设定").performScrollTo().performClick()
-            compose.onNodeWithText("恢复默认").performClick()
+            compose.onNodeWithText(appString(R.string.whale_reset_button)).performScrollTo().performClick()
+            compose.onNodeWithText(appString(R.string.whale_reset_confirm)).performClick()
             compose.waitUntil(5_000) {
                 store.settingsFlow.value.assistants.firstOrNull { it.id == edited.id } == preset
             }
@@ -97,8 +100,8 @@ class WhaleAssistantResetTest {
             assertEquals(preset, saved.assistants.first { it.id == edited.id })
             assertEquals(original.assistants, saved.assistants.filter { it.id != edited.id })
             assertEquals(edited.id, saved.whaleThemeDiscovery.dedicatedAssistantId)
-            compose.onNodeWithText("恢复大肥鱼默认设定？").assertDoesNotExist()
-            compose.onNodeWithText("恢复大肥鱼默认设定").assertExists()
+            compose.onNodeWithText(appString(R.string.whale_reset_title)).assertDoesNotExist()
+            compose.onNodeWithText(appString(R.string.whale_reset_button)).assertExists()
         } finally {
             runBlocking { store.update(original) }
         }

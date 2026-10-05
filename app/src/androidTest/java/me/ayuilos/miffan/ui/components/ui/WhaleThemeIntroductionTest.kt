@@ -27,6 +27,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.appString
 import me.ayuilos.miffan.ui.theme.presets.WhaleThemePreset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -58,14 +60,14 @@ class WhaleThemeIntroductionTest {
             }
         }
         draw()
-        compose.onNodeWithText("同时换上大肥鱼图标").performScrollTo().assertIsOff()
-        compose.onNodeWithText("立即体验").performScrollTo().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_change_icon)).performScrollTo().assertIsOff()
+        compose.onNodeWithText(appString(R.string.whale_intro_try_now)).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(false), choices) }
 
-        compose.onNodeWithText("同时换上大肥鱼图标").performScrollTo().performClick().assertIsOn()
-        compose.onNodeWithText("立即体验").performScrollTo().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_change_icon)).performScrollTo().performClick().assertIsOn()
+        compose.onNodeWithText(appString(R.string.whale_intro_try_now)).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(false, true), choices) }
-        compose.onNodeWithText("以后再说").performScrollTo().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_later)).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, dismissed) }
     }
 
@@ -83,9 +85,9 @@ class WhaleThemeIntroductionTest {
             }
         }
         draw()
-        compose.onNodeWithText("正在应用").performScrollTo().assertIsNotEnabled().performClick()
-        compose.onNodeWithText("以后再说").performScrollTo().assertIsNotEnabled().performClick()
-        compose.onNodeWithText("同时换上大肥鱼图标").performScrollTo()
+        compose.onNodeWithText(appString(R.string.whale_intro_applying)).performScrollTo().assertIsNotEnabled().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_later)).performScrollTo().assertIsNotEnabled().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_change_icon)).performScrollTo()
             .assertIsNotEnabled().performClick().assertIsOff()
         pressBack()
         compose.waitForIdle()
@@ -98,7 +100,7 @@ class WhaleThemeIntroductionTest {
         }
         draw()
         compose.onNodeWithText("主题应用失败，请重试。").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("重试").performScrollTo().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_retry)).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(false), choices) }
     }
 
@@ -113,15 +115,15 @@ class WhaleThemeIntroductionTest {
         }
         draw()
         saveDialog("whale-theme-introduction-light.png")
-        compose.onNodeWithText("吃白饭").performScrollTo().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_rice)).performScrollTo().performClick()
         draw()
-        compose.onNodeWithContentDescription("蓝色大肥鱼，吃白饭").assertExists()
-        compose.onNodeWithText("认真想想").performScrollTo().performClick()
+        compose.onNodeWithContentDescription(appString(R.string.whale_intro_preview_description, appString(R.string.whale_intro_rice))).assertExists()
+        compose.onNodeWithText(appString(R.string.whale_intro_think)).performScrollTo().performClick()
         draw()
-        compose.onNodeWithContentDescription("蓝色大肥鱼，认真想想").assertExists()
+        compose.onNodeWithContentDescription(appString(R.string.whale_intro_preview_description, appString(R.string.whale_intro_think))).assertExists()
         compose.runOnIdle { dark = true }
         draw()
-        compose.onNodeWithText("蓝色大肥鱼来啦").performScrollTo()
+        compose.onNodeWithText(appString(R.string.whale_intro_title)).performScrollTo()
         saveDialog("whale-theme-introduction-dark.png")
     }
 
@@ -145,11 +147,11 @@ class WhaleThemeIntroductionTest {
             }
         }
         draw()
-        compose.onNodeWithText("蓝色大肥鱼来啦").assertIsDisplayed()
+        compose.onNodeWithText(appString(R.string.whale_intro_title)).assertIsDisplayed()
         step("compact scroll to try")
-        compose.onNodeWithText("立即体验").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_try_now)).performScrollTo().assertIsDisplayed().performClick()
         step("compact scroll to dismiss")
-        compose.onNodeWithText("以后再说").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText(appString(R.string.whale_intro_later)).performScrollTo().assertIsDisplayed().performClick()
         step("compact actions clicked")
         compose.runOnIdle {
             assertEquals(listOf(false), choices)

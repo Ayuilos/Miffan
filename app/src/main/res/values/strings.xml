@@ -2120,4 +2120,5 @@
   <string name="setting_tts_sample_rate_description">Sample rate (Hz)</string>
   <string name="setting_tts_step_instruction_description">Global context instruction, only applies to stepaudio-2.5-tts (up to 200 characters, leave empty to omit)</string>
   <string name="setting_tts_step_instruction_placeholder">e.g. gentle tone, slightly slow pace</string>
+  <string name="mcp_error_reconnect_exhausted">Connection lost after the maximum number of reconnect attempts</string>
 </resources>
