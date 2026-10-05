@@ -1,0 +1,78 @@
+package me.ayuilos.miffan.ui.im
+
+import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.repository.MemoryRepository
+import me.ayuilos.miffan.data.revision.*
+
+internal data class ImRevisionChange(val label: Int, val detail: String? = null)
+internal data class ImDiffLine(val text: String, val added: Boolean)
+
+internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRevisionChange> {
+    return when (revision.subject) {
+        RevisionSubject.ASSISTANT -> {
+            val current = AssistantRevisionRecorder.restore(revision.snapshot)
+            val previous = parent?.let { AssistantRevisionRecorder.restore(it.snapshot) }
+            if (previous == null) return listOf(ImRevisionChange(R.string.im_p5_origin_baseline, current.name))
+            buildList {
+                if (current.name != previous.name) add(ImRevisionChange(R.string.im_p5_name))
+                if (current.avatar != previous.avatar) add(ImRevisionChange(R.string.im_p5_profile))
+                if (current.systemPrompt != previous.systemPrompt) add(ImRevisionChange(R.string.im_p5_personality))
+                if (current.learnedPreferences != previous.learnedPreferences) add(ImRevisionChange(R.string.im_p5_preferences))
+                if (current.enableWebSearch != previous.enableWebSearch) add(ImRevisionChange(R.string.im_p5_web))
+                if (current.enableMemory != previous.enableMemory || current.useGlobalMemory != previous.useGlobalMemory) add(ImRevisionChange(R.string.im_p5_remember))
+                if (current.copy(name = previous.name, avatar = previous.avatar, systemPrompt = previous.systemPrompt,
+                        learnedPreferences = previous.learnedPreferences, enableWebSearch = previous.enableWebSearch,
+                        enableMemory = previous.enableMemory, useGlobalMemory = previous.useGlobalMemory) != previous) add(ImRevisionChange(R.string.im_p5_other_settings))
+            }
+        }
+        RevisionSubject.MEMORY -> {
+            val current = MemoryRepository.restore(revision.snapshot).associateBy { it.id }
+            val previous = parent?.let { MemoryRepository.restore(it.snapshot).associateBy { memory -> memory.id } }.orEmpty()
+            buildList {
+                current.values.forEach { memory ->
+                    if (memory.id !in previous) add(ImRevisionChange(R.string.im_p5_memory_added, memory.content))
+                    else if (previous[memory.id]?.content != memory.content) add(ImRevisionChange(R.string.im_p5_memory_changed, memory.content))
+                }
+                previous.values.filter { it.id !in current }.forEach { add(ImRevisionChange(R.string.im_p5_memory_removed, it.content)) }
+            }
+        }
+    }
+}
+
+/** Compare original prompt/preference lines and individual memory entries, retaining repeated lines. */
+internal fun imRevisionDiff(revision: Revision, parent: Revision?): List<ImDiffLine> {
+    return when (revision.subject) {
+        RevisionSubject.ASSISTANT -> {
+            val before = parent?.let { AssistantRevisionRecorder.restore(it.snapshot) }
+            val after = AssistantRevisionRecorder.restore(revision.snapshot)
+            imCompareLines(before?.systemPrompt?.lines().orEmpty(), after.systemPrompt.lines()) +
+                imCompareLines(before?.learnedPreferences?.lines().orEmpty(), after.learnedPreferences.lines())
+        }
+        RevisionSubject.MEMORY -> imCompareLines(
+            parent?.let { MemoryRepository.restore(it.snapshot).map { memory -> "#${memory.id} ${memory.content}" } }.orEmpty(),
+            MemoryRepository.restore(revision.snapshot).map { memory -> "#${memory.id} ${memory.content}" },
+        )
+    }
+}
+
+private fun imCompareLines(before: List<String>, after: List<String>): List<ImDiffLine> {
+    // A bounded LCS avoids excessive UI work with unusually long prompts; the tail is shown verbatim.
+    val a = before.take(500)
+    val b = after.take(500)
+    val lengths = Array(a.size + 1) { IntArray(b.size + 1) }
+    for (i in a.indices.reversed()) for (j in b.indices.reversed()) {
+        lengths[i][j] = if (a[i] == b[j]) lengths[i + 1][j + 1] + 1 else maxOf(lengths[i + 1][j], lengths[i][j + 1])
+    }
+    return buildList {
+        var i = 0; var j = 0
+        while (i < a.size || j < b.size) {
+            when {
+                i < a.size && j < b.size && a[i] == b[j] -> { i++; j++ }
+                i < a.size && (j == b.size || lengths[i + 1][j] >= lengths[i][j + 1]) -> add(ImDiffLine(a[i++], false))
+                else -> add(ImDiffLine(b[j++], true))
+            }
+        }
+        before.drop(500).forEach { add(ImDiffLine(it, false)) }
+        after.drop(500).forEach { add(ImDiffLine(it, true)) }
+    }
+}

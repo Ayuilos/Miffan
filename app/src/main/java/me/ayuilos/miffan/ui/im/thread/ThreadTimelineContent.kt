@@ -93,6 +93,8 @@ internal fun ThreadMessageBubble(
     onFilter: () -> Unit = {},
     onRegenerate: () -> Unit = {},
     onQuote: (MessageRef) -> Unit = {},
+    onToolApproval: (String, Boolean) -> Unit = { _, _ -> },
+    onToolAnswer: (String, String) -> Unit = { _, _ -> },
 ) {
     var menu by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
@@ -152,7 +154,7 @@ internal fun ThreadMessageBubble(
                     }
                     item.message.parts.groupMessageParts().forEach { block ->
                         if (block is MessagePartBlock.ThinkingBlock) {
-                            ThreadToolStatus(block.steps, assistant, item.streaming)
+                            ThreadToolStatus(block.steps, assistant, item.streaming, item.segmentId, onToolApproval, onToolAnswer)
                         } else if (block is MessagePartBlock.ContentBlock) when (val part = block.part) {
                             is UIMessagePart.Text -> MarkdownBlock(part.text, style = MaterialTheme.typography.bodyLarge)
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
