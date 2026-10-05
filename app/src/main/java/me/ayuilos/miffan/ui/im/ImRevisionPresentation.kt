@@ -45,8 +45,8 @@ internal fun imRevisionDiff(revision: Revision, parent: Revision?): List<ImDiffL
         RevisionSubject.ASSISTANT -> {
             val before = parent?.let { AssistantRevisionRecorder.restore(it.snapshot) }
             val after = AssistantRevisionRecorder.restore(revision.snapshot)
-            imCompareLines(before?.systemPrompt?.lines().orEmpty(), after.systemPrompt.lines()) +
-                imCompareLines(before?.learnedPreferences?.lines().orEmpty(), after.learnedPreferences.lines())
+            imCompareLines(before?.systemPrompt.textLines(), after.systemPrompt.textLines()) +
+                imCompareLines(before?.learnedPreferences.textLines(), after.learnedPreferences.textLines())
         }
         RevisionSubject.MEMORY -> imCompareLines(
             parent?.let { MemoryRepository.restore(it.snapshot).map { memory -> "#${memory.id} ${memory.content}" } }.orEmpty(),
@@ -54,6 +54,9 @@ internal fun imRevisionDiff(revision: Revision, parent: Revision?): List<ImDiffL
         )
     }
 }
+
+/** Blank text has no lines, so an empty field never shows as a removed or added blank line. */
+private fun String?.textLines(): List<String> = if (isNullOrBlank()) emptyList() else lines()
 
 private fun imCompareLines(before: List<String>, after: List<String>): List<ImDiffLine> {
     // A bounded LCS avoids excessive UI work with unusually long prompts; the tail is shown verbatim.
