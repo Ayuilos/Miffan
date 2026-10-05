@@ -24,11 +24,8 @@ internal fun ThreadEmptyState(assistant: Assistant?, onSuggestion: (String) -> U
     val name = threadAssistantName(assistant)
     val settings = LocalSettings.current
     val suggestions = settings.quickMessages.filter { it.id in assistant?.quickMessageIds.orEmpty() && it.content.isNotBlank() }.take(3)
-    val introduction = assistant?.systemPrompt.orEmpty().trim()
-        .split(Regex("(?<=[。！？.!?])\\s*|\\n"))
-        .firstOrNull { it.isNotBlank() }
-        ?.take(240)
-        ?: stringResource(R.string.im_thread_intro, name)
+    // System prompts address the model ("You are…"), so the partner greets the user instead.
+    val introduction = stringResource(R.string.im_thread_intro, name)
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 32.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

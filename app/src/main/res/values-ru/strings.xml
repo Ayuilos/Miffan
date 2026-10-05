@@ -1840,5 +1840,7 @@
   <string name="im_thread_loading">Загрузка сообщений…</string>
   <string name="im_thread_missing_message">В загруженной истории этого сообщения нет</string>
   <string name="im_thread_tools_details">Шаги инструментов (%1$d)</string>
+  <string name="im_thread_undo_failed">С тех пор были изменения, отменить уже нельзя</string>
+  <string name="im_thread_notice_memory_forgotten">%1$s забыл(а): %2$s</string>
 </resources>
 

@@ -20,7 +20,11 @@ import me.ayuilos.miffan.data.thread.ThreadNoticeKind
 @Composable
 internal fun ThreadNoticeLine(notice: ThreadNotice, name: String, onView: () -> Unit, onUndo: () -> Unit) {
     val summary = stringResource(
-        if (notice.kind == ThreadNoticeKind.MEMORY) R.string.im_thread_notice_memory else R.string.im_thread_notice_settings,
+        when (notice.kind) {
+            ThreadNoticeKind.SETTINGS -> R.string.im_thread_notice_settings
+            ThreadNoticeKind.MEMORY -> R.string.im_thread_notice_memory
+            ThreadNoticeKind.MEMORY_FORGOTTEN -> R.string.im_thread_notice_memory_forgotten
+        },
         name, notice.summary,
     )
     val view = stringResource(R.string.im_thread_view)

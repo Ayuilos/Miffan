@@ -1840,5 +1840,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_thread_loading">메시지를 불러오는 중…</string>
   <string name="im_thread_missing_message">불러온 기록에서 이 메시지를 찾을 수 없어요</string>
   <string name="im_thread_tools_details">도구 작업 (%1$d)</string>
+  <string name="im_thread_undo_failed">이후 변경 사항이 있어 되돌릴 수 없어요</string>
+  <string name="im_thread_notice_memory_forgotten">%1$s 이(가) 잊었어요: %2$s</string>
 </resources>
 

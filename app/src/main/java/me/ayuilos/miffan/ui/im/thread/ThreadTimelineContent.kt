@@ -198,7 +198,7 @@ internal fun ThreadTyping(assistant: Assistant?) {
 }
 
 @Composable
-internal fun ThreadErrorBubble(error: ChatError, assistant: Assistant?, retry: TimelineItem.Message?, onRetry: (TimelineItem.Message) -> Unit, onDismiss: () -> Unit) {
+internal fun ThreadErrorBubble(error: ChatError, assistant: Assistant?, canRetry: Boolean, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val detail = error.error.message.orEmpty().lowercase(Locale.ROOT)
     val text = when {
         listOf("401", "403", "api key", "unauthorized", "authentication").any { it in detail } -> R.string.im_thread_error_connection
@@ -212,7 +212,7 @@ internal fun ThreadErrorBubble(error: ChatError, assistant: Assistant?, retry: T
             Column(Modifier.padding(12.dp)) {
                 Text(stringResource(text))
                 Row {
-                    if (retry != null) OutlinedButton(onClick = { onRetry(retry) }) { Text(stringResource(R.string.im_thread_retry)) }
+                    if (canRetry) OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.im_thread_retry)) }
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.im_thread_dismiss)) }
                 }
             }

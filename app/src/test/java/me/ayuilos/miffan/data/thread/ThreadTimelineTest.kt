@@ -175,4 +175,36 @@ class ThreadTimelineTest {
         assertEquals(keys.indexOf("msg-${trigger.id}") + 1, keys.indexOf("notice-r1"))
         assertEquals("notice-r2", keys.last())
     }
+
+    @Test
+    fun repliesArePlacedWhenTheyArriveNotWhenTheyStarted() {
+        // All three replies start right after their questions but finish in a different order.
+        fun reply(text: String, started: LocalDateTime, finished: LocalDateTime) =
+            msg(MessageRole.ASSISTANT, text, started).copy(finishedAt = finished)
+        val rain = segment(0, msg(MessageRole.USER, "rain?", at(21, 3, 0)), reply("wet", at(21, 3, 1), at(21, 3, 20)))
+        val cat = segment(1, msg(MessageRole.USER, "cat?", at(21, 3, 10)), reply("Tuanzi", at(21, 3, 11), at(21, 3, 50)))
+        val egg = segment(2, msg(MessageRole.USER, "egg?", at(21, 3, 30)), reply("eggs first", at(21, 3, 31), at(21, 3, 40)))
+
+        val items = ThreadTimeline.build(listOf(rain, cat, egg), zone = utc)
+
+        assertEquals(
+            listOf("rain?", "cat?", "wet", "egg?", "eggs first", "Tuanzi"),
+            items.messages().map { it.message.previewText() },
+        )
+        assertTrue(items.messages().filter { it.message.role == MessageRole.ASSISTANT }.all { it.quote != null })
+    }
+
+    @Test
+    fun aReplyBeingWrittenStaysAtTheBottom() {
+        val streaming = segment(0, msg(MessageRole.USER, "long?", at(9, 0)), msg(MessageRole.ASSISTANT, "partial", at(9, 0, 1)))
+        val other = segment(1, msg(MessageRole.USER, "short?", at(9, 0, 30)), msg(MessageRole.ASSISTANT, "done", at(9, 0, 31)).copy(finishedAt = at(9, 0, 35)))
+        val items = ThreadTimeline.build(
+            listOf(streaming, other),
+            generatingSegmentIds = setOf(streaming.id),
+            zone = utc,
+            now = Instant.parse("2026-10-05T09:01:00Z"),
+        )
+        assertEquals("partial", items.messages().last().message.previewText())
+        assertTrue(items.messages().last().streaming)
+    }
 }

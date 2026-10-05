@@ -97,20 +97,32 @@ object ThreadTimeline {
         generatingSegmentIds: Set<Uuid> = emptySet(),
         filterSegmentId: Uuid? = null,
         zone: ZoneId = ZoneId.systemDefault(),
+        now: Instant = Instant.now(),
     ): List<TimelineItem> {
         val topicIndex = segments.sortedBy { it.createAt }.withIndex().associate { (index, segment) -> segment.id to index }
         val kotlinZone = TimeZone.of(zone.id)
 
         data class Entry(val segment: Conversation, val node: MessageNode, val at: Instant, val order: Int)
 
+        fun kotlinx.datetime.LocalDateTime.toJavaInstant() =
+            Instant.ofEpochMilli(toInstant(kotlinZone).toEpochMilliseconds())
+
         val seenMessages = HashSet<Uuid>()
         var order = 0
         val entries = segments
             .filter { filterSegmentId == null || it.id == filterSegmentId }
             .flatMap { segment ->
+                val newest = segment.currentMessageNodes.lastOrNull()
                 segment.currentMessageNodes.mapNotNull { node ->
                     if (node.role !in visibleRoles || !seenMessages.add(node.message.id)) return@mapNotNull null
-                    val at = Instant.ofEpochMilli(node.message.createdAt.toInstant(kotlinZone).toEpochMilliseconds())
+                    // Replies are placed when they arrive, as in a messenger: a finished reply at its
+                    // finishing time, a reply still being written at the bottom.
+                    val at = when {
+                        node.role != MessageRole.ASSISTANT -> node.message.createdAt.toJavaInstant()
+                        segment.id in generatingSegmentIds && node.id == newest?.id ->
+                            maxOf(now, node.message.createdAt.toJavaInstant())
+                        else -> (node.message.finishedAt ?: node.message.createdAt).toJavaInstant()
+                    }
                     Entry(segment, node, at, order++)
                 }
             }
@@ -155,11 +167,12 @@ object ThreadTimeline {
         }
         closeBatch()
 
-        val newestBySegment = entries.groupBy { it.segment.id }.mapValues { (_, list) -> list.last().node }
+        // "Newest" follows each segment's own message order, independent of display time.
+        val newestBySegment = entries.groupBy { it.segment.id }.mapValues { (_, list) -> list.maxBy { it.order }.node }
         val newestReplyBySegment = entries
             .filter { it.node.role == MessageRole.ASSISTANT }
             .groupBy { it.segment.id }
-            .mapValues { (_, list) -> list.last().node.id }
+            .mapValues { (_, list) -> list.maxBy { it.order }.node.id }
 
         val noticesByTrigger = notices.filter { it.trigger != null && it.trigger.messageId in byMessageId }
             .groupBy { it.trigger!!.messageId }

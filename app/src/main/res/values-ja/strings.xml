@@ -1840,5 +1840,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_thread_loading">メッセージを読み込み中…</string>
   <string name="im_thread_missing_message">読み込んだ履歴にこのメッセージがありません</string>
   <string name="im_thread_tools_details">ツールの作業（%1$d）</string>
+  <string name="im_thread_undo_failed">その後に変更があったため、元に戻せません</string>
+  <string name="im_thread_notice_memory_forgotten">%1$s が忘れました：%2$s</string>
 </resources>
 

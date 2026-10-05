@@ -29,6 +29,7 @@ import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.thread.TimelineItem
 import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.previewText
@@ -41,7 +42,6 @@ fun AgentThreadPage(
     assistantId: Uuid,
     focusMessageId: String? = null,
     vm: AgentThreadVM = koinViewModel { parametersOf(assistantId) },
-    onUndoNotice: (ThreadNotice) -> Unit = {},
 ) {
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val timeline by vm.timeline.collectAsStateWithLifecycle()
@@ -57,6 +57,7 @@ fun AgentThreadPage(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val missingMessage = stringResource(R.string.im_thread_missing_message)
+    val undoFailed = stringResource(R.string.im_thread_undo_failed)
     val fallbackTopic = stringResource(R.string.im_thread_topic)
     val labels = remember(assistantId) { mutableStateMapOf<Uuid, String>() }
     var input by rememberSaveable(assistantId.toString()) { mutableStateOf("") }
@@ -228,12 +229,18 @@ fun AgentThreadPage(
                             onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } })
                         is TimelineItem.Typing -> ThreadTyping(assistant)
                         is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
-                            onView = { viewingNotice = item.notice }, onUndo = { onUndoNotice(item.notice) })
+                            onView = { viewingNotice = item.notice },
+                            onUndo = {
+                                vm.undoNotice(item.notice) { result ->
+                                    if (result != RestoreResult.Restored) scope.launch { snackbar.showSnackbar(undoFailed) }
+                                }
+                            })
                     }
                 }
                 items(visibleErrors, key = { "error-${it.id}" }) { error ->
-                    ThreadErrorBubble(error, assistant, timeline.filterIsInstance<TimelineItem.Message>().lastOrNull { it.canRegenerate },
-                        onRetry = { vm.regenerate(it); vm.dismissError(error) }, onDismiss = { vm.dismissError(error) })
+                    val segmentId = error.conversationId
+                    ThreadErrorBubble(error, assistant, canRetry = segmentId != null,
+                        onRetry = { segmentId?.let(vm::retry); vm.dismissError(error) }, onDismiss = { vm.dismissError(error) })
                 }
             }
             if (!loaded) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

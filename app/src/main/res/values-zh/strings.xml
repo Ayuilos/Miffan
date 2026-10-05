@@ -1750,7 +1750,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_connection_disconnect">断开连接</string>
   <string name="workspace_target_preparing">正在准备工作区目标…</string>
   <string name="workspace_target_unrecorded_result">此已完成调用未记录执行目标</string>
-
   <!-- IM shell -->
   <string name="im_tab_chats">消息</string>
   <string name="im_tab_partners">伙伴</string>
@@ -1842,4 +1841,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_thread_loading">正在加载消息…</string>
   <string name="im_thread_missing_message">当前加载的记录中找不到这条消息</string>
   <string name="im_thread_tools_details">工具步骤（%1$d）</string>
+  <string name="im_thread_undo_failed">之后又有改动，已经无法撤销</string>
+  <string name="im_thread_notice_memory_forgotten">%1$s 忘记了：%2$s</string>
 </resources>
+

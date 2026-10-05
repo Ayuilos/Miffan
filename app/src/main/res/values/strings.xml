@@ -1748,7 +1748,6 @@
   <string name="workspace_connection_disconnect">Disconnect</string>
   <string name="workspace_target_preparing">Preparing Workspace target…</string>
   <string name="workspace_target_unrecorded_result">Execution target was not recorded for this completed call</string>
-
   <!-- IM shell -->
   <string name="im_tab_chats">Chats</string>
   <string name="im_tab_partners">Partners</string>
@@ -1827,7 +1826,7 @@
   <string name="im_thread_voice_stop">Tap to finish</string>
   <string name="im_thread_voice_unavailable">Set up speech recognition first</string>
   <string name="im_thread_attachment_error">Could not add this attachment</string>
-  <string name="im_thread_intro">I am %1$s. Let us chat</string>
+  <string name="im_thread_intro">Hi, I\'m %1$s. What shall we talk about?</string>
   <string name="im_thread_suggestions">Pick a topic to start chatting</string>
   <string name="im_thread_tools_done">Completed steps: %1$d</string>
   <string name="im_thread_tools_web">Checked webpages: %1$d</string>
@@ -1840,4 +1839,7 @@
   <string name="im_thread_loading">Loading messages…</string>
   <string name="im_thread_missing_message">This message is not available in the loaded history</string>
   <string name="im_thread_tools_details">Tool steps (%1$d)</string>
+  <string name="im_thread_undo_failed">It has changed since then, so this can no longer be undone</string>
+  <string name="im_thread_notice_memory_forgotten">%1$s forgot: %2$s</string>
 </resources>
+
