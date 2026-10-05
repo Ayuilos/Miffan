@@ -17,6 +17,12 @@ def test_escape_android_escapes_quotes_once():
     assert catalog.escape_android("Don't") == "Don\\'t"
     assert catalog.escape_android("Don\\'t") == "Don\\'t"
     assert catalog.escape_android('Say "hi"') == 'Say \\"hi\\"'
+    assert catalog.escape_android("Line one\nLine two") == "Line one\\nLine two"
+
+
+def test_placeholders_ignore_a_plain_percent_sign():
+    assert catalog.placeholders("10% off") == []
+    assert catalog.placeholders("%1$s used %2$d%%, %.1f s") == ["%%", "%.1f", "%1$s", "%2$d"]
 
 
 def test_validate_accepts_complete_entries_and_reports_problems():

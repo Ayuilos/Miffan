@@ -12,7 +12,7 @@ from lxml import etree
 
 HAN = re.compile(r"[一-鿿]")
 # Android format placeholders: %s, %d, %1$s, %2$d, %.1f, %%
-PLACEHOLDER = re.compile(r"%(?:\d+\$)?[-#+ 0,(]*\d*(?:\.\d+)?[sdfxXoc%]")
+PLACEHOLDER = re.compile(r"%(?:\d+\$)?[-#+0,(]*\d*(?:\.\d+)?[sdfxXc%]")
 STRING_LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 
 
@@ -22,7 +22,8 @@ def looks_chinese(value: str) -> bool:
 
 
 def escape_android(value: str) -> str:
-    """Escapes apostrophes and double quotes that aapt would otherwise reject or strip."""
+    """Escapes what aapt would otherwise reject or collapse: quotes and real line breaks."""
+    value = value.replace("\n", "\\n").replace("\t", "\\t")
     value = re.sub(r"(?<!\\)'", r"\\'", value)
     return re.sub(r'(?<!\\)"', r'\\"', value)
 
