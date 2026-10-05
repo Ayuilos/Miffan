@@ -42,6 +42,7 @@ import kotlin.uuid.Uuid
 fun AgentThreadPage(
     assistantId: Uuid,
     focusMessageId: String? = null,
+    initialText: String? = null,
     vm: AgentThreadVM = koinViewModel { parametersOf(assistantId) },
 ) {
     LifecycleResumeEffect(vm) {
@@ -65,7 +66,7 @@ fun AgentThreadPage(
     val undoFailed = stringResource(R.string.im_thread_undo_failed)
     val fallbackTopic = stringResource(R.string.im_thread_topic)
     val labels = remember(assistantId) { mutableStateMapOf<Uuid, String>() }
-    var input by rememberSaveable(assistantId.toString()) { mutableStateOf("") }
+    var input by rememberSaveable(assistantId.toString()) { mutableStateOf(initialText.orEmpty()) }
     var overflow by remember { mutableStateOf(false) }
     var viewingNotice by remember { mutableStateOf<ThreadNotice?>(null) }
     var highlighted by remember { mutableStateOf<String?>(null) }

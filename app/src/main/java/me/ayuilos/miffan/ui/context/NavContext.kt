@@ -30,6 +30,15 @@ class Navigator(private val backStack: MutableList<NavKey>) {
         backStack.add(screen)
     }
 
+    /** Replaces the top destination, keeping everything below it. */
+    fun replaceLast(screen: Screen) {
+        backStack.removeLastOrNull()
+        backStack.add(screen)
+    }
+
+    /** True when [screen] is already somewhere in the back stack. */
+    fun contains(screen: Screen): Boolean = screen in backStack
+
     fun popBackStack() {
         if (backStack.size > 1) backStack.removeLastOrNull()
     }

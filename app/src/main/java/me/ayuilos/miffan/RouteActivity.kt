@@ -90,6 +90,7 @@ import me.ayuilos.miffan.ui.im.ImSearchPage
 import me.ayuilos.miffan.ui.im.ImMemoryPage
 import me.ayuilos.miffan.ui.im.ImRevisionHistoryPage
 import me.ayuilos.miffan.ui.im.ImPartnerProfilePage
+import me.ayuilos.miffan.ui.im.ImChatRedirect
 import me.ayuilos.miffan.ui.im.ImHomePage
 import me.ayuilos.miffan.ui.im.InterfaceModeChoiceHost
 import me.ayuilos.miffan.ui.im.navigateHome
@@ -405,6 +406,12 @@ class RouteActivity : ComponentActivity() {
                                 metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
                                     + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
                             ) { key ->
+                                // Notifications, favorites and shares address conversations; the IM
+                                // shell shows them inside the owning partner's thread instead.
+                                if (settings.isImMode) {
+                                    ImChatRedirect(key)
+                                    return@entry
+                                }
                                 ChatPage(
                                     id = Uuid.parse(key.id),
                                     text = key.text,
@@ -427,7 +434,11 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
 
                             entry<Screen.Thread> { key ->
-                                AgentThreadPage(assistantId = Uuid.parse(key.assistantId), focusMessageId = key.focusMessageId)
+                                AgentThreadPage(
+                                    assistantId = Uuid.parse(key.assistantId),
+                                    focusMessageId = key.focusMessageId,
+                                    initialText = key.text,
+                                )
                             }
 
                             entry<Screen.Onboarding>(
@@ -721,7 +732,7 @@ sealed interface Screen : NavKey {
 
     /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
     @Serializable
-    data class Thread(val assistantId: String, val focusMessageId: String? = null) : Screen
+    data class Thread(val assistantId: String, val focusMessageId: String? = null, val text: String? = null) : Screen
 
     @Serializable
     data class Chat(
