@@ -50,3 +50,14 @@ uv run python src/main.py test-connection
 OPENAI_API_KEY=your_api_key
 OPENAI_BASE_URL=https://api.openai.com/v1
 ```
+
+## 由 AI 代理翻译（无需 API Key）
+
+Claude Code 等代理按 `.claude/skills/locale-tui-localization` 自己完成翻译，只用下列命令检查和写入：
+
+```bash
+uv run --directory locale-tui src/main.py missing [-m app] [--json]   # 缺少翻译的 key、英文源仍是中文的 key
+uv run --directory locale-tui src/main.py hardcoded [-m app]          # 源码中含中文的字符串字面量
+uv run --directory locale-tui src/main.py apply strings.json [--dry-run]
+```
+

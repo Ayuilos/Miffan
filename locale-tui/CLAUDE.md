@@ -35,6 +35,13 @@ uv run textual run --dev src/main.py
 - **xml_parser.py**: Android `strings.xml` read/write using lxml
 - **translator.py**: OpenAI-based batch translation with async API
 - **dead_entry_finder.py**: Scans source code to detect unreferenced string keys
+- **catalog.py**: Validation, bulk writes, missing-translation reports and hardcoded-Chinese scans for the agent workflow
+
+### Agent workflow (no API key)
+
+Coding agents translate strings themselves (see `.claude/skills/locale-tui-localization`) and use
+the CLI only to check and write files: `missing`, `hardcoded`, and `apply <json>`. The OpenAI
+translator below is used only by the TUI and by `add` without `--skip-translate`.
 
 ### Key Data Flow
 
@@ -49,7 +56,7 @@ uv run textual run --dev src/main.py
 **config.yml**: Defines modules (res paths, source patterns), languages, translation settings
 
 **Environment variables** (`.env`):
-- `OPENAI_API_KEY`: Required for AI translation
+- `OPENAI_API_KEY`: Required only for the TUI's AI translation and `add` without `--skip-translate`
 - `OPENAI_BASE_URL`: API endpoint (defaults to OpenAI)
 
 ## Key Technologies

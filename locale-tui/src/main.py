@@ -13,6 +13,7 @@ from config import Config
 from app import LocaleTuiApp
 from services.xml_parser import StringsXmlParser
 from services.translator import AITranslator
+from services import catalog
 from models.entry import TranslationEntry
 
 
@@ -31,11 +32,28 @@ def load_config() -> Config:
         click.echo(f"错误：加载配置失败 - {e}", err=True)
         sys.exit(1)
 
-    # Validate configuration
+    return config
+
+
+def require_api_key(config: Config) -> None:
+    """Only the TUI's AI translation and `add` without --skip-translate call the API."""
     if not config.openai_api_key:
         click.echo("警告：未设置 OPENAI_API_KEY。AI 翻译功能将无法使用。", err=True)
 
-    return config
+
+def select_module(config: Config, module: str | None):
+    """Returns the named module, or the first configured one; exits on an unknown name."""
+    if not config.modules:
+        click.echo("错误：配置文件中未定义模块", err=True)
+        sys.exit(1)
+    if module is None:
+        return config.modules[0]
+    selected = next((m for m in config.modules if m.name == module), None)
+    if not selected:
+        click.echo(f"错误：未找到模块 '{module}'", err=True)
+        click.echo(f"可用模块：{', '.join(m.name for m in config.modules)}", err=True)
+        sys.exit(1)
+    return selected
 
 
 @click.group(invoke_without_command=True)
@@ -48,6 +66,7 @@ def cli(ctx):
     if ctx.invoked_subcommand is None:
         # No command provided, launch TUI
         config = load_config()
+        require_api_key(config)
         app = LocaleTuiApp(config)
         app.run()
 
@@ -148,6 +167,7 @@ def add(key: str, value: str, module: str, skip_translate: bool):
 
     # Translate to other languages
     if not skip_translate:
+        require_api_key(config)
         target_languages = [lang.code for lang in config.languages if not lang.is_source]
 
         if not target_languages:
@@ -311,6 +331,114 @@ def list_keys(module: str):
         if len(value) > 60:
             value = value[:57] + "..."
         click.echo(f"  {key:40} {value}")
+
+
+@cli.command()
+@click.argument("json_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--module", "-m", default=None, help="模块名称（默认使用配置文件中的第一个模块）")
+@click.option("--dry-run", is_flag=True, help="只校验，不写入")
+def apply(json_file: Path, module: str, dry_run: bool):
+    """批量写入由 AI 完成的翻译（不调用任何 API）
+
+    \b
+    JSON 格式：{"key": {"values": "English", "values-zh": "中文", ...}, ...}
+    已有的 key 可以只给需要更新的语言；新 key 必须给出全部语言。
+    撇号和双引号会自动转义，占位符必须与英文一致。
+
+    \b
+    示例：
+        locale-tui apply /tmp/strings.json
+        locale-tui apply /tmp/strings.json -m search --dry-run
+    """
+    import json
+
+    config = load_config()
+    selected = select_module(config, module)
+    res_dir = config.project_root / selected.res_path
+    languages = config.get_language_codes()
+    try:
+        raw = json.loads(json_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        click.echo(f"错误：JSON 无效 - {e}", err=True)
+        sys.exit(1)
+
+    entries = {
+        key: {lang: catalog.escape_android(value) for lang, value in values.items()}
+        for key, values in raw.items()
+    }
+    existing = catalog.read_strings(res_dir / "values" / "strings.xml")
+    # Existing keys may update only some languages; new keys must be complete.
+    problems = [
+        p for p in catalog.validate(entries, languages, existing)
+        if not (p.message == "missing" and p.key in existing)
+    ]
+    if problems:
+        click.echo(f"✗ {len(problems)} 个问题，未写入：", err=True)
+        for problem in problems:
+            click.echo(f"  {problem}", err=True)
+        sys.exit(1)
+
+    by_lang: dict[str, dict[str, str]] = {}
+    for key, values in entries.items():
+        for lang, value in values.items():
+            by_lang.setdefault(lang, {})[key] = value
+    for lang, values in by_lang.items():
+        target = res_dir / lang / "strings.xml"
+        if not dry_run:
+            catalog.write_entries(target, values)
+        click.echo(f"{'校验通过' if dry_run else '✓ 已写入'} {target.relative_to(config.project_root)}：{len(values)} 条")
+
+
+@cli.command()
+@click.option("--module", "-m", default=None, help="模块名称（默认使用配置文件中的第一个模块）")
+@click.option("--json", "as_json", is_flag=True, help="以 JSON 输出，便于交给 AI 翻译")
+def missing(module: str, as_json: bool):
+    """列出缺少翻译的 key，以及英文源文本里仍是中文的 key
+
+    \b
+    示例：
+        locale-tui missing
+        locale-tui missing -m search --json
+    """
+    import json
+
+    config = load_config()
+    selected = select_module(config, module)
+    report = catalog.find_missing(config.project_root / selected.res_path, config.get_language_codes())
+    if as_json:
+        click.echo(json.dumps(report, ensure_ascii=False, indent=2))
+        return
+    if not report:
+        click.echo(f"✓ 模块 '{selected.name}' 的翻译完整")
+        return
+    click.echo(f"模块 '{selected.name}' 有 {len(report)} 个 key 需要处理：")
+    for key, issues in report.items():
+        langs = ", ".join(lang for lang in issues if lang != "source")
+        click.echo(f"  {key:40} {langs}")
+
+
+@cli.command()
+@click.option("--module", "-m", default=None, help="模块名称（默认使用配置文件中的第一个模块）")
+def hardcoded(module: str):
+    """扫描源码中含中文的字符串字面量（应改为字符串资源的候选）
+
+    \b
+    示例：
+        locale-tui hardcoded
+        locale-tui hardcoded -m search
+    """
+    config = load_config()
+    selected = select_module(config, module)
+    files = sorted({
+        path
+        for pattern in selected.source_patterns
+        for path in config.project_root.glob(pattern)
+        if path.suffix in (".kt", ".java")
+    })
+    hits = catalog.scan_hardcoded(files, config.project_root)
+    for file, line, literal in hits:
+        click.echo(f"{file}:{line}: \"{literal}\"")
+    click.echo(f"共 {len(hits)} 处")
 
 
 def main():
