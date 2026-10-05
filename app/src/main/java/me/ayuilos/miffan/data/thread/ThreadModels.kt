@@ -1,7 +1,8 @@
 package me.ayuilos.miffan.data.thread
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeoutOrNull
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.findModelById
@@ -17,11 +18,15 @@ import kotlin.uuid.Uuid
 class ThreadModels(
     private val settingsStore: SettingsStore,
     private val providerManager: ProviderManager,
+    private val scope: CoroutineScope,
 ) {
-    /** The fast model's answer to [prompt], or null on timeout, misconfiguration or failure. */
-    suspend fun fast(prompt: String, timeoutMillis: Long): String? {
+    /**
+     * The fast model's answer to [prompt], or null on timeout, misconfiguration or failure.
+     * [reasoningLevel] defaults to the user's fast-model setting; quick decisions pass OFF.
+     */
+    suspend fun fast(prompt: String, timeoutMillis: Long, reasoningLevel: ReasoningLevel? = null): String? {
         val settings = settingsStore.settingsFlow.value
-        return complete(settings.fastModelId, prompt, timeoutMillis, settings.fastModelReasoningLevel)
+        return complete(settings.fastModelId, prompt, timeoutMillis, reasoningLevel ?: settings.fastModelReasoningLevel)
     }
 
     /** The compression model's answer to [prompt], falling back to the fast model. */
@@ -36,19 +41,23 @@ class ThreadModels(
         timeoutMillis: Long,
         reasoningLevel: ReasoningLevel,
         fallback: Uuid? = null,
-    ): String? = withContext(Dispatchers.IO) {
+    ): String? {
         val settings = settingsStore.settingsFlow.value
-        val model = settings.findModelById(modelId, fallback = fallback) ?: return@withContext null
-        val provider = model.findProvider(settings.providers) ?: return@withContext null
-        try {
-            withTimeoutOrNull(timeoutMillis) {
-                providerManager.getProviderByType(provider).generateText(
-                    providerSetting = provider,
-                    messages = listOf(UIMessage.user(prompt)),
-                    params = backgroundTextGenerationParams(model, reasoningLevel),
-                ).message.toText().trim().takeIf { it.isNotEmpty() }
-            }
+        val model = settings.findModelById(modelId, fallback = fallback) ?: return null
+        val provider = model.findProvider(settings.providers) ?: return null
+        // The provider call can block past cancellation, so it runs outside the caller and is
+        // abandoned at the deadline; the caller never waits longer than [timeoutMillis].
+        val request = scope.async(Dispatchers.IO) {
+            providerManager.getProviderByType(provider).generateText(
+                providerSetting = provider,
+                messages = listOf(UIMessage.user(prompt)),
+                params = backgroundTextGenerationParams(model, reasoningLevel),
+            ).message.toText().trim().takeIf { it.isNotEmpty() }
+        }
+        return try {
+            withTimeoutOrNull(timeoutMillis) { request.await() }.also { if (it == null) request.cancel() }
         } catch (e: CancellationException) {
+            request.cancel()
             throw e
         } catch (e: Exception) {
             e.printStackTrace()

@@ -1,6 +1,9 @@
 package me.ayuilos.miffan.data.thread
 
 import android.util.Log
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Conversation
@@ -13,6 +16,9 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ThreadService"
 
+/** How long an unsaved topic stays a routing candidate. */
+private const val RECENT_TOPIC_MILLIS = 10 * 60 * 1000L
+
 /** Sends messages into an assistant's IM thread, choosing the segment for each message. */
 class ThreadService(
     private val chatService: ChatService,
@@ -20,6 +26,14 @@ class ThreadService(
     private val router: SegmentRouter,
     private val summarizer: SegmentSummarizer,
 ) {
+    /** Serializes routing so each decision sees the topics that earlier messages just opened. */
+    private val routeMutex = Mutex()
+
+    /** Topics opened in this process, by segment id, until the stored segments include them. */
+    private val recentTopics = ConcurrentHashMap<Uuid, RecentTopic>()
+
+    private data class RecentTopic(val assistantId: Uuid, val label: String, val at: Instant)
+
     /**
      * Sends [content] and returns the segment that received it. An explicit reply or an active
      * topic filter decides the segment without routing.
@@ -35,22 +49,45 @@ class ThreadService(
         val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId)
             ?: error("Assistant not found: $assistantId")
         val forced = topicSegmentId ?: replyTo?.conversationId
-        val segmentId = if (forced != null) {
-            forced
-        } else {
-            val decision = router.route(RouteRequest(assistant, content, segments, Instant.now()))
-            Log.i(TAG, "route ${assistant.id}: $decision")
-            when (decision) {
-                is RouteDecision.Existing -> decision.segmentId
-                is RouteDecision.New -> {
-                    closeSegments(segments, decision.closeSegmentIds)
-                    Uuid.random()
+        return routeMutex.withLock {
+            val now = Instant.now()
+            val known = segments.mapTo(HashSet()) { it.id }
+            recentTopics.entries.removeAll { (id, topic) -> id in known || now.toEpochMilli() - topic.at.toEpochMilli() > RECENT_TOPIC_MILLIS }
+            // A topic opened moments ago may not be saved yet; offer it as a candidate by its first message.
+            val unsaved = recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
+                Conversation(id = id, assistantId = assistantId, title = topic.label, messageNodes = emptyList(), createAt = topic.at, updateAt = topic.at)
+            }
+            val candidates = (segments + unsaved).sortedByDescending { it.updateAt }
+            val segmentId = if (forced != null) {
+                forced
+            } else {
+                val decision = router.route(RouteRequest(assistant, content, candidates, now))
+                Log.i(TAG, "route ${assistant.id}: $decision")
+                when (decision) {
+                    is RouteDecision.Existing -> decision.segmentId
+                    is RouteDecision.New -> {
+                        closeSegments(segments, decision.closeSegmentIds)
+                        decision.closeSegmentIds.forEach { recentTopics.remove(it) }
+                        Uuid.random()
+                    }
                 }
             }
+            if (segmentId !in known) {
+                val label = recentTopics[segmentId]?.label
+                    ?: content.filterIsInstance<UIMessagePart.Text>().joinToString(" ") { it.text }.take(120)
+                recentTopics[segmentId] = RecentTopic(assistantId, label, now)
+            }
+            deliver(assistantId, segmentId, content, replyTo, messageId)
+            segmentId
         }
+    }
+
+    private suspend fun deliver(assistantId: Uuid, segmentId: Uuid, content: List<UIMessagePart>, replyTo: MessageRef?, messageId: Uuid) {
         chatService.openThreadSegment(segmentId, assistantId)
-        chatService.sendMessage(segmentId, content, replyTo = replyTo, messageId = messageId)
-        return segmentId
+        // Like a messenger, a message to a topic that is still replying waits its turn instead of
+        // cancelling that reply. Sending again also resumes a queue paused by an earlier failure.
+        chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId)
+        chatService.resumeMessageQueue(segmentId)
     }
 
     /** Forces the next message into a new segment ("换个话题"). */

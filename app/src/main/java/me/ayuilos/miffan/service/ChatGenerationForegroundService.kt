@@ -65,12 +65,16 @@ class ChatGenerationForegroundService : Service() {
 
     private val activeGenerations = linkedMapOf<String, String>()
     private var isForeground = false
+
+    /** The newest start request; stopping is skipped while a newer acquire is still pending. */
+    private var latestStartId = 0
     private val appScope: AppScope by inject()
     private val chatService: ChatService by inject()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        latestStartId = startId
         when (intent?.action) {
             ACTION_ACQUIRE -> acquire(intent)
             ACTION_RELEASE -> release(intent)
@@ -139,12 +143,17 @@ class ChatGenerationForegroundService : Service() {
         }
     }
 
+    /**
+     * Rapid sends cancel and restart generations, so an acquire can be queued behind the release
+     * that empties [activeGenerations]. Stopping only for the latest start request keeps the
+     * service alive for that pending acquire, which must still call startForeground in time.
+     */
     private fun stopService() {
         if (isForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             isForeground = false
         }
-        stopSelf()
+        stopSelfResult(latestStartId)
     }
 
     private fun buildNotification(conversationId: String) =

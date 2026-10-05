@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.thread
 
 import kotlinx.serialization.json.Json
+import me.rerere.ai.core.ReasoningLevel
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -89,12 +90,13 @@ class LlmTopicClassifier(
 ) : TopicClassifier {
     override suspend fun classify(message: String, candidates: List<TopicCandidate>): TopicClassification? {
         if (candidates.isEmpty()) return TopicClassification.New(1.0)
-        val answer = models.fast(buildPrompt(message, candidates), timeoutMillis) ?: return null
+        // A routing decision needs no deliberation; reasoning would only add latency.
+        val answer = models.fast(buildPrompt(message, candidates), timeoutMillis, ReasoningLevel.OFF) ?: return null
         return parseClassification(answer, candidates.size)
     }
 
     companion object {
-        const val TIMEOUT_MILLIS = 1_500L
+        const val TIMEOUT_MILLIS = 4_000L
 
         internal fun buildPrompt(message: String, candidates: List<TopicCandidate>): String = buildString {
             appendLine("You route chat messages to conversation topics. Ongoing topics:")

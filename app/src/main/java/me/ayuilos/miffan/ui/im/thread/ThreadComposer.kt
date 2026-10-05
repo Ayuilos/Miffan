@@ -178,11 +178,15 @@ internal fun ThreadComposer(
             FilledTonalIconButton(onClick = { focus.clearFocus(); keyboard?.hide(); panel = !panel }, enabled = loaded && !importing && !asrState.isRecording) {
                 Icon(if (panel) HugeIcons.Cancel01 else HugeIcons.Add01, stringResource(R.string.im_thread_attachments))
             }
-            if (generating || input.isNotBlank() || attachments.messageContent.isNotEmpty()) FilledIconButton(
+            // Messages can be sent while replies are still arriving (parallel topics), so a draft
+            // always shows Send; Stop appears only when there is nothing to send.
+            val hasDraft = input.isNotBlank() || attachments.messageContent.isNotEmpty()
+            val stops = generating && !hasDraft
+            if (generating || hasDraft) FilledIconButton(
                 onClick = {
-                    if (generating) onStop() else sendDraft()
-                }, enabled = loaded && (generating || (!importing && !asrState.isRecording)),
-            ) { Icon(if (generating) HugeIcons.StopCircle else HugeIcons.ArrowUp02, stringResource(if (generating) R.string.im_thread_stop else R.string.im_thread_send)) }
+                    if (stops) onStop() else sendDraft()
+                }, enabled = loaded && (stops || (!importing && !asrState.isRecording)),
+            ) { Icon(if (stops) HugeIcons.StopCircle else HugeIcons.ArrowUp02, stringResource(if (stops) R.string.im_thread_stop else R.string.im_thread_send)) }
         }
         if (importing) Text(stringResource(R.string.im_thread_loading), Modifier.padding(12.dp), style = MaterialTheme.typography.labelMedium)
         if (panel) Surface(color = MaterialTheme.colorScheme.surfaceContainer) {

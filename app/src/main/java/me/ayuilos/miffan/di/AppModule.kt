@@ -106,7 +106,7 @@ val appModule = module {
         )
     }
 
-    single { ThreadModels(settingsStore = get(), providerManager = get()) }
+    single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>()) }
 
     single<SegmentRouter> { SmartSegmentRouter(LlmTopicClassifier(get())) }
 
