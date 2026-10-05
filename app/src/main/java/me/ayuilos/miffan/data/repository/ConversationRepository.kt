@@ -62,6 +62,12 @@ class ConversationRepository(
     fun observeThreadSegmentStamps(assistantId: Uuid, limit: Int): Flow<List<ThreadSegmentStamp>> =
         conversationDAO.observeThreadSegmentStamps(assistantId.toString(), limit)
 
+    /** The newest [limit] stored messages of a conversation, newest first; unreadable rows are skipped. */
+    suspend fun getRecentMessages(conversationId: Uuid, limit: Int): List<UIMessage> =
+        messageNodeDAO.getRecentMessages(conversationId.toString(), limit).mapNotNull {
+            runCatching { JsonInstant.decodeFromString<UIMessage>(it) }.getOrNull()
+        }
+
     suspend fun getThreadDigests(assistantId: Uuid, excludeId: Uuid, limit: Int): List<ThreadSegmentDigest> =
         conversationDAO.getThreadDigests(assistantId.toString(), excludeId.toString(), limit)
 

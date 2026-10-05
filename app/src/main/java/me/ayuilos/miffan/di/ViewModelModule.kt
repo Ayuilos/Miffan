@@ -49,6 +49,7 @@ val viewModelModule = module {
             chatService = get(),
             threadService = get(),
             revisionService = get(),
+            listState = get(),
         )
     }
     viewModelOf(::SettingVM)

@@ -129,7 +129,7 @@ private fun ImChatRow(chat: ImChatItem, onClick: () -> Unit) {
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = imChatTime(chat.updateAt),
+                    text = imChatTime(chat.lastActivity),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

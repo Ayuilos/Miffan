@@ -12,6 +12,10 @@ import me.ayuilos.miffan.data.db.entity.MessageNodeEntity
 
 @Dao
 interface MessageNodeDAO {
+    /** The newest stored messages (JSON) of a conversation, newest first. */
+    @Query("SELECT message FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index DESC LIMIT :limit")
+    suspend fun getRecentMessages(conversationId: String, limit: Int): List<String>
+
     @Query("SELECT * FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC")
     suspend fun getNodesOfConversation(conversationId: String): List<MessageNodeEntity>
 

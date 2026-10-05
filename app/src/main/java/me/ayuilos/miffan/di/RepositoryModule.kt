@@ -12,6 +12,7 @@ import me.ayuilos.miffan.data.repository.FilesRepository
 import me.ayuilos.miffan.data.repository.GenMediaRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadRepository
 import me.ayuilos.miffan.data.db.AppDatabase
 import me.ayuilos.miffan.data.revision.AssistantRevisionRecorder
@@ -40,6 +41,8 @@ val repositoryModule = module {
     }
 
     single { ThreadRepository(get()) }
+
+    single { ThreadListState(get()) }
 
     single {
         MemoryRepository(get(), get())

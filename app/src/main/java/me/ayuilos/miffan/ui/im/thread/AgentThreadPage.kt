@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -43,6 +44,10 @@ fun AgentThreadPage(
     focusMessageId: String? = null,
     vm: AgentThreadVM = koinViewModel { parametersOf(assistantId) },
 ) {
+    LifecycleResumeEffect(vm) {
+        vm.setVisible(true)
+        onPauseOrDispose { vm.setVisible(false) }
+    }
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val timeline by vm.timeline.collectAsStateWithLifecycle()
     val loaded by vm.loaded.collectAsStateWithLifecycle()

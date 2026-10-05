@@ -603,7 +603,7 @@ class ChatService(
                         parts = processedContent,
                     ),
                     replyTo = message.replyTo,
-                )
+                ).copy(updateAt = Instant.now())
                 saveConversation(conversationId, newConversation)
 
                 // 开始补全

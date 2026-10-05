@@ -28,6 +28,7 @@ import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.revision.RevisionService
 import me.ayuilos.miffan.data.thread.ThreadNotice
+import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadNoticeSource
 import me.ayuilos.miffan.data.thread.ThreadRepository
 import me.ayuilos.miffan.data.thread.ThreadService
@@ -57,7 +58,9 @@ class AgentThreadVM(
     private val chatService: ChatService,
     private val threadService: ThreadService,
     private val revisionService: RevisionService,
+    private val listState: ThreadListState,
 ) : ViewModel() {
+    private val visible = MutableStateFlow(false)
     private val segmentLimit = MutableStateFlow(PAGE_SEGMENTS)
 
     private val _topicFilter = MutableStateFlow<Uuid?>(null)
@@ -134,6 +137,12 @@ class AgentThreadVM(
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     init {
+        // Everything shown while the thread is on screen counts as read.
+        viewModelScope.launch {
+            combine(visible, timeline) { shown, _ -> shown }.collect { shown ->
+                if (shown) listState.markRead(assistantId)
+            }
+        }
         // A pending message is released once its segment shows it, so it never flickers.
         viewModelScope.launch {
             segments.collect { list ->
@@ -203,6 +212,16 @@ class AgentThreadVM(
         }
     }
 
+    /** Approves or declines a tool call that waits for the user (for example turning on web search). */
+    fun answerToolApproval(item: TimelineItem.Message, toolCallId: String, approved: Boolean) {
+        chatService.handleToolApproval(item.segmentId, toolCallId, approved)
+    }
+
+    /** Answers a tool call that asks the user a question. */
+    fun answerToolQuestion(item: TimelineItem.Message, toolCallId: String, answer: String) {
+        chatService.handleToolApproval(item.segmentId, toolCallId, approved = true, answer = answer)
+    }
+
     /** Stops every generating segment of this thread. */
     fun stop() {
         viewModelScope.launch {
@@ -213,6 +232,11 @@ class AgentThreadVM(
     /** "换个话题": the next message starts a fresh segment. */
     fun startNewTopic() {
         viewModelScope.launch { threadService.closeAll(storedSegments.value.orEmpty()) }
+    }
+
+    /** Called by the page when it starts or stops being visible. */
+    fun setVisible(shown: Boolean) {
+        visible.value = shown
     }
 
     fun loadMore() {
