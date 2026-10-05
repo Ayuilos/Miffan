@@ -478,7 +478,7 @@ private fun SendActions(
                 onClick = onSendImmediately,
                 modifier = Modifier.testTag("chat_send_immediately_button"),
             ) {
-                Text("立即发送", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.chat_queue_send_now), style = MaterialTheme.typography.labelMedium)
             }
         }
         Surface(
@@ -493,7 +493,7 @@ private fun SendActions(
                     role = Role.Button,
                     onClick = onClick,
                     onLongClick = onLongClick,
-                    onLongClickLabel = if (queueing) "立即发送" else "发送但不生成回复",
+                    onLongClickLabel = if (queueing) stringResource(R.string.chat_queue_send_now) else stringResource(R.string.chat_queue_send_without_reply),
                 ),
         ) {
             Row(
@@ -502,10 +502,10 @@ private fun SendActions(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
             ) {
-                if (queueing) Text("排队", color = contentColor, style = MaterialTheme.typography.labelMedium)
+                if (queueing) Text(stringResource(R.string.chat_queue_add), color = contentColor, style = MaterialTheme.typography.labelMedium)
                 Icon(
                     imageVector = HugeIcons.ArrowUp02,
-                    contentDescription = if (queueing) "加入队列" else stringResource(R.string.send),
+                    contentDescription = if (queueing) stringResource(R.string.chat_queue_add_description) else stringResource(R.string.send),
                     tint = contentColor,
                     modifier = Modifier.size(18.dp),
                 )

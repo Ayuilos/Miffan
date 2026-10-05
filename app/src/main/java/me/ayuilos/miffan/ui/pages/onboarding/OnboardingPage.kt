@@ -92,6 +92,7 @@ fun OnboardingPage(
         }
     }
 
+    val whaleName = stringResource(R.string.whale_name)
     OnboardingContent(
         authState = authState,
         savedKeyState = savedKeyState,
@@ -101,7 +102,7 @@ fun OnboardingPage(
             scope.launch {
                 savingTheme = true
                 try {
-                    settingsStore.update { it.withOnboardingWhaleTheme(enabled) }
+                    settingsStore.update { it.withOnboardingWhaleTheme(enabled, whaleName) }
                 } finally {
                     savingTheme = false
                 }
@@ -231,12 +232,12 @@ internal fun OnboardingContent(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        "蓝色大肥鱼主题",
+                        stringResource(R.string.whale_onboarding_title),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                     Text(
-                        "开启后创建并切换到可编辑的大肥鱼专属助手，同时应用主题。关闭仅恢复配色，助手会保留。",
+                        stringResource(R.string.whale_onboarding_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

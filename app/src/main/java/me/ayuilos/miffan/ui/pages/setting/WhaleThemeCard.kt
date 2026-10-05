@@ -29,6 +29,9 @@ import me.ayuilos.miffan.ui.components.ui.WhaleGirlClip
 import me.ayuilos.miffan.ui.components.ui.whaleGirlPoster
 import me.ayuilos.miffan.ui.components.ui.rememberMiffanReducedMotion
 import me.ayuilos.miffan.ui.theme.presets.WhaleThemePreset
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 
 @Composable
 internal fun WhaleThemeCard(
@@ -46,14 +49,14 @@ internal fun WhaleThemeCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("蓝色大肥鱼", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.whale_name), style = MaterialTheme.typography.titleLarge)
             Text(
-                "只露小脑袋，也会认真陪你聊天",
+                stringResource(R.string.whale_card_tagline),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "爱吃饭、有点嘴硬。她会摸摸、扒饭、嚼饭，也会认真推理和打瞌睡。",
+                stringResource(R.string.whale_card_personality),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -63,7 +66,7 @@ internal fun WhaleThemeCard(
                         FilterChip(
                             selected = previewClip == clip,
                             onClick = { replayId++; previewClip = clip },
-                            label = { Text(clip.previewName()) },
+                            label = { Text(stringResource(clip.previewName())) },
                         )
                     }
                 }
@@ -74,16 +77,16 @@ internal fun WhaleThemeCard(
             }
             onTryTheme?.let { tryTheme ->
                 Button(onClick = tryTheme, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                    Text("一键体验蓝鱼主题")
+                    Text(stringResource(R.string.whale_try_theme))
                 }
                 Text(
-                    "首次体验会创建专属大肥鱼助手，再次体验会打开已有的大肥鱼。名字、性格和配置都可编辑或重置。桌面图标可在下方单独选择。",
+                    stringResource(R.string.whale_try_theme_hint),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
             onRestoreTheme?.let { restoreTheme ->
                 OutlinedButton(onClick = restoreTheme, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                    Text("恢复之前的配色")
+                    Text(stringResource(R.string.whale_restore_colors))
                 }
             }
             Button(
@@ -91,10 +94,10 @@ internal fun WhaleThemeCard(
                 enabled = enabled && !themeApplied,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (themeApplied) "已应用蓝鱼主题" else "应用蓝鱼主题")
+                Text(stringResource(if (themeApplied) R.string.whale_theme_applied else R.string.whale_apply_theme))
             }
             Text(
-                "浅色与深色跟随外观设置，应用后会关闭动态取色。",
+                stringResource(R.string.whale_theme_mode_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -118,7 +121,7 @@ private fun WhaleThemePreview(dark: Boolean, clip: WhaleGirlClip, replayId: Int,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    if (dark) "深海蓝" else "晴空蓝",
+                    stringResource(if (dark) R.string.whale_palette_deep_sea else R.string.whale_palette_clear_sky),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -131,7 +134,7 @@ private fun WhaleThemePreview(dark: Boolean, clip: WhaleGirlClip, replayId: Int,
                     modifier = Modifier.size(80.dp),
                 )
                 Text(
-                    "今天聊点什么？",
+                    stringResource(R.string.whale_preview_greeting),
                     modifier = Modifier
                         .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp))
                         .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -143,16 +146,17 @@ private fun WhaleThemePreview(dark: Boolean, clip: WhaleGirlClip, replayId: Int,
     }
 }
 
-private fun WhaleGirlClip.previewName(): String = when (this) {
-    WhaleGirlClip.IDLE -> "微笑"
-    WhaleGirlClip.FOCUSED -> "聚焦"
-    WhaleGirlClip.TYPING -> "打字"
-    WhaleGirlClip.SUBMITTED -> "收到"
-    WhaleGirlClip.PETTING -> "摸摸"
-    WhaleGirlClip.SUCCESS -> "开心"
-    WhaleGirlClip.SURPRISE -> "提醒"
-    WhaleGirlClip.EATING -> "扒饭"
-    WhaleGirlClip.CHEWING -> "嚼饭"
-    WhaleGirlClip.THINKING -> "推理"
-    WhaleGirlClip.SLEEPING -> "睡觉"
+@StringRes
+private fun WhaleGirlClip.previewName(): Int = when (this) {
+    WhaleGirlClip.IDLE -> R.string.whale_clip_idle
+    WhaleGirlClip.FOCUSED -> R.string.whale_clip_focused
+    WhaleGirlClip.TYPING -> R.string.whale_clip_typing
+    WhaleGirlClip.SUBMITTED -> R.string.whale_clip_submitted
+    WhaleGirlClip.PETTING -> R.string.whale_clip_petting
+    WhaleGirlClip.SUCCESS -> R.string.whale_clip_success
+    WhaleGirlClip.SURPRISE -> R.string.whale_clip_surprise
+    WhaleGirlClip.EATING -> R.string.whale_clip_eating
+    WhaleGirlClip.CHEWING -> R.string.whale_clip_chewing
+    WhaleGirlClip.THINKING -> R.string.whale_clip_thinking
+    WhaleGirlClip.SLEEPING -> R.string.whale_clip_sleeping
 }

@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.components.ui
 
+import me.ayuilos.miffan.R
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -53,7 +55,7 @@ fun ShareSheet(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("共享你的LLM模型", style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.share_sheet_title), style = MaterialTheme.typography.titleLarge)
 
                     IconButton(
                         onClick = {

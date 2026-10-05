@@ -1060,8 +1060,8 @@ private fun FishAudioTTSConfiguration(
 
     // Model (下拉选择框 + 文本输入框，完全同 ElevenLabs 格式)
     val models = listOf(
-        "s2.1-pro" to "S2.1-Pro (推荐)",
-        "s2.1-pro-free" to "S2.1-Pro Free (免费)",
+        "s2.1-pro" to stringResource(R.string.setting_tts_model_recommended, "S2.1-Pro"),
+        "s2.1-pro-free" to stringResource(R.string.setting_tts_model_free, "S2.1-Pro Free"),
         "s2-pro" to "S2-Pro",
         "s1" to "S1"
     )
@@ -1138,7 +1138,7 @@ private fun StepTTSConfiguration(
     // API Key
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_api_key)) },
-        description = { Text("从阶跃星辰官网获取密钥: platform.stepfun.com/interface-key") }
+        description = { Text(stringResource(R.string.setting_tts_step_api_key_description)) }
     ) {
         OutlinedTextField(
             value = setting.apiKey,
@@ -1146,7 +1146,7 @@ private fun StepTTSConfiguration(
                 onValueChange(setting.copy(apiKey = newApiKey))
             },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("从阶跃星辰官网获取密钥") },
+            placeholder = { Text(stringResource(R.string.setting_tts_step_api_key_placeholder)) },
         )
     }
 
@@ -1167,10 +1167,10 @@ private fun StepTTSConfiguration(
 
     // Model
     val models = listOf(
-        "step-tts-mini" to "step-tts-mini (轻量, 便宜)",
-        "step-tts-vivid" to "step-tts-vivid (情感丰富)",
-        "stepaudio-2.5-tts" to "stepaudio-2.5-tts (语境感知, 支持 instruction)",
-        "step-tts-2" to "step-tts-2 (上一代)",
+        "step-tts-mini" to stringResource(R.string.setting_tts_step_model_mini),
+        "step-tts-vivid" to stringResource(R.string.setting_tts_step_model_vivid),
+        "stepaudio-2.5-tts" to stringResource(R.string.setting_tts_step_model_stepaudio),
+        "step-tts-2" to stringResource(R.string.setting_tts_step_model_previous),
     )
 
     FormItem(
@@ -1251,7 +1251,7 @@ private fun StepTTSConfiguration(
 
     FormItem(
         label = { Text("Response Format") },
-        description = { Text("音频编码格式 (注意 StepFun API 字段名为 camelCase)") }
+        description = { Text(stringResource(R.string.setting_tts_step_audio_format_description)) }
     ) {
         SelectTextField(
             value = setting.responseFormat,
@@ -1269,7 +1269,7 @@ private fun StepTTSConfiguration(
     // Speed
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_speed)) },
-        description = { Text("语速 (0.5 - 2.0, 1.0 为正常)") }
+        description = { Text(stringResource(R.string.setting_tts_speed_description)) }
     ) {
         OutlinedNumberInput(
             value = setting.speed,
@@ -1286,7 +1286,7 @@ private fun StepTTSConfiguration(
     // Volume
     FormItem(
         label = { Text("Volume") },
-        description = { Text("音量 (0.1 - 2.0, 1.0 为正常)") }
+        description = { Text(stringResource(R.string.setting_tts_volume_description)) }
     ) {
         OutlinedNumberInput(
             value = setting.volume,
@@ -1305,7 +1305,7 @@ private fun StepTTSConfiguration(
 
     FormItem(
         label = { Text("Sample Rate") },
-        description = { Text("采样率 (Hz)") }
+        description = { Text(stringResource(R.string.setting_tts_sample_rate_description)) }
     ) {
         SelectTextField(
             value = setting.sampleRate.toString(),
@@ -1322,7 +1322,7 @@ private fun StepTTSConfiguration(
     // Instruction (仅 stepaudio-2.5-tts 生效)
     FormItem(
         label = { Text("Instruction") },
-        description = { Text("全局语境指令, 仅 stepaudio-2.5-tts 生效 (≤200 字符, 留空不下发)") }
+        description = { Text(stringResource(R.string.setting_tts_step_instruction_description)) }
     ) {
         OutlinedTextField(
             value = setting.instruction,
@@ -1333,7 +1333,7 @@ private fun StepTTSConfiguration(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("例如: 语气温柔, 语速偏慢") },
+            placeholder = { Text(stringResource(R.string.setting_tts_step_instruction_placeholder)) },
             minLines = 2,
             maxLines = 4,
         )

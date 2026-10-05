@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -23,6 +24,7 @@ import me.ayuilos.miffan.data.model.withWhaleThemeTrial
 import me.ayuilos.miffan.ui.theme.presets.WHALE_THEME_ID
 import me.ayuilos.miffan.utils.LauncherIcon
 import me.ayuilos.miffan.utils.LauncherIconManager
+import me.ayuilos.miffan.R
 
 /** One campaign with durable acknowledgement and a saveable in-progress dialog. */
 @Composable
@@ -32,6 +34,7 @@ internal fun WhaleThemeDiscoveryHost(settings: Settings, store: SettingsStore, e
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(eligible, settings.init) {
         if (!eligible || settings.init || evaluated) return@LaunchedEffect
@@ -85,7 +88,7 @@ internal fun WhaleThemeDiscoveryHost(settings: Settings, store: SettingsStore, e
                                         changedIcon = true
                                     }
                                 }
-                                store.update { it.withWhaleThemeTrial() }
+                                store.update { it.withWhaleThemeTrial(resources.getString(R.string.whale_name)) }
                             } catch (failure: Exception) {
                                 if (failure is CancellationException) throw failure
                                 if (changedIcon) {
@@ -93,7 +96,7 @@ internal fun WhaleThemeDiscoveryHost(settings: Settings, store: SettingsStore, e
                                         withContext(Dispatchers.IO) { manager.select(requireNotNull(previousIcon)) }
                                     }.onFailure { Log.w("WhaleDiscovery", "Unable to restore launcher choice", it) }
                                 }
-                                error = "暂时无法切换，请重试。也可以稍后在外观设置中体验。"
+                                error = resources.getString(R.string.whale_switch_failed)
                             } finally {
                                 busy = false
                             }

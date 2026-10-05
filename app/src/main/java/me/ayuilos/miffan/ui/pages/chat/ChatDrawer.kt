@@ -390,10 +390,10 @@ fun ChatDrawerContent(
 
                 DrawerAction(
                     icon = {
-                        Icon(HugeIcons.ChartColumn, "统计数据")
+                        Icon(HugeIcons.ChartColumn, stringResource(R.string.chat_page_stats))
                     },
                     label = {
-                        Text("统计数据")
+                        Text(stringResource(R.string.chat_page_stats))
                     },
                     onClick = {
                         navController.navigate(Screen.Stats)
@@ -406,7 +406,7 @@ fun ChatDrawerContent(
                     icon = {
                         val contentDescription = availableUpdate?.let { info ->
                             stringResource(R.string.update_card_new_version_found, info.version)
-                        } ?: if (hasNewWhaleTheme) "设置，有新的蓝色大肥鱼主题" else stringResource(R.string.settings)
+                        } ?: if (hasNewWhaleTheme) stringResource(R.string.whale_drawer_settings_new_theme) else stringResource(R.string.settings)
                         Box(
                             modifier = Modifier.size(20.dp),
                             contentAlignment = Alignment.Center,

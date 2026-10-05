@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.pages.chat
 
+import me.ayuilos.miffan.R
+import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,9 +48,10 @@ import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
 
-internal enum class ChatTerminalPhase(val label: String) {
-    WAITING("等待终端操作"), APPROVAL("等待命令确认"), INTERACTIVE("终端交互中"),
-    RUNNING("命令执行中"), CONNECTED("终端已连接"), ENDED("终端已结束"),
+internal enum class ChatTerminalPhase(@StringRes val labelRes: Int) {
+    WAITING(R.string.terminal_command_phase_waiting), APPROVAL(R.string.terminal_command_phase_approval),
+    INTERACTIVE(R.string.terminal_command_phase_interactive), RUNNING(R.string.terminal_command_phase_running),
+    CONNECTED(R.string.terminal_command_phase_connected), ENDED(R.string.terminal_command_phase_ended),
 }
 
 internal data class ChatTerminalStatus(
@@ -123,6 +127,7 @@ internal fun ChatTerminalStatusContent(
     var dismissed by remember(conversation.id) { mutableStateOf<String?>(null) }
     var closing by remember(conversation.id) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val endFailedMessage = stringResource(R.string.terminal_command_end_failed)
     if (status.phase == ChatTerminalPhase.ENDED && dismissed == status.key) return
     ChatTerminalStatusBar(
         status = status,
@@ -137,7 +142,7 @@ internal fun ChatTerminalStatusContent(
                     repository.closeConversationTerminal(conversation.id.toString(), sessionId)
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
-                    onError(error.message ?: "结束终端会话失败")
+                    onError(error.message ?: endFailedMessage)
                 } finally { closing = null }
             }
         },
@@ -170,22 +175,22 @@ internal fun ChatTerminalStatusBar(
             Row(
                 modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                     .clickable(enabled = status.nodeId != null, role = Role.Button,
-                        onClickLabel = "定位终端命令", onClick = onLocate)
+                        onClickLabel = stringResource(R.string.terminal_command_locate), onClick = onLocate)
                     .padding(horizontal = 12.dp).testTag("chat_terminal_locate"),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (busy || closing) CircularProgressIndicator(Modifier.size(12.dp), color = color, strokeWidth = 1.5.dp)
                 else Box(Modifier.size(7.dp).background(color, CircleShape))
-                Text("${if (closing) "正在结束会话" else status.phase.label} · ${status.host}",
+                Text("${if (closing) stringResource(R.string.terminal_command_ending_session) else stringResource(status.phase.labelRes)} · ${status.host}",
                     color = color, style = MaterialTheme.typography.labelMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             when {
                 status.sessionId != null -> TextButton(onClick = onEnd, enabled = !closing,
-                    modifier = Modifier.testTag("chat_terminal_end")) { Text("结束会话") }
-                status.phase == ChatTerminalPhase.ENDED -> TextButton(onClick = onDismiss) { Text("收起") }
-                status.nodeId != null -> TextButton(onClick = onLocate) { Text("去处理") }
+                    modifier = Modifier.testTag("chat_terminal_end")) { Text(stringResource(R.string.terminal_command_end_session)) }
+                status.phase == ChatTerminalPhase.ENDED -> TextButton(onClick = onDismiss) { Text(stringResource(R.string.terminal_command_collapse)) }
+                status.nodeId != null -> TextButton(onClick = onLocate) { Text(stringResource(R.string.terminal_command_handle)) }
             }
         }
     }

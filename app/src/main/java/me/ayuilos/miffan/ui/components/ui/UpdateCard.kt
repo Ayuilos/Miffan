@@ -131,7 +131,7 @@ fun UpdateAvailableBanner(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 } else {
-                    Text("更新日志请查看下方 GitHub Release。")
+                    Text(stringResource(R.string.update_changelog_see_release))
                 }
                 info.downloads.fastForEach { downloadItem ->
                     OutlinedCard(

@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -36,10 +37,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.utils.LauncherIcon
 import me.ayuilos.miffan.utils.LauncherIconManager
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 
 @Composable
 fun LauncherIconPicker() {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val manager = remember(context) { LauncherIconManager(context) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -53,11 +57,11 @@ fun LauncherIconPicker() {
             try {
                 selected = manager.selectedIcon()
                 if (selected == null) {
-                    message = "桌面图标状态异常，请重新选择一个图标。"
+                    message = resources.getString(R.string.launcher_icon_state_invalid)
                     hasError = true
                 }
             } catch (_: Exception) {
-                message = "无法读取桌面图标，请稍后重试。"
+                message = resources.getString(R.string.launcher_icon_read_failed)
                 hasError = true
             }
         }
@@ -74,7 +78,7 @@ fun LauncherIconPicker() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            "桌面图标",
+            stringResource(R.string.launcher_icon_title),
             modifier = Modifier.padding(horizontal = 8.dp),
             style = MaterialTheme.typography.titleMedium,
         )
@@ -98,11 +102,14 @@ fun LauncherIconPicker() {
                                         try {
                                             withContext(Dispatchers.IO) { manager.select(icon) }
                                             selected = manager.selectedIcon()
-                                            message = "已切换为${icon.label}，桌面和分享列表可能需要片刻刷新。"
+                                            message = resources.getString(
+                                                R.string.launcher_icon_switched,
+                                                resources.getString(icon.label),
+                                            )
                                             hasError = false
                                         } catch (_: Exception) {
                                             selected = runCatching { manager.selectedIcon() }.getOrNull()
-                                            message = "图标切换失败，请重试。"
+                                            message = resources.getString(R.string.launcher_icon_switch_failed)
                                             hasError = true
                                         } finally {
                                             switching = false
@@ -117,14 +124,14 @@ fun LauncherIconPicker() {
                         if (preview != null) {
                             Image(preview, contentDescription = null, modifier = Modifier.size(48.dp))
                         }
-                        Text(icon.label, modifier = Modifier.weight(1f))
+                        Text(stringResource(icon.label), modifier = Modifier.weight(1f))
                         RadioButton(selected = selected == icon, onClick = null, enabled = !switching)
                     }
                 }
             }
         }
         Text(
-            text = message ?: "桌面、分享和链接入口使用同一图标，也可以随时恢复原版饭碗。",
+            text = message ?: stringResource(R.string.launcher_icon_hint),
             modifier = Modifier.padding(horizontal = 8.dp),
             style = MaterialTheme.typography.bodySmall,
             color = if (hasError) MaterialTheme.colorScheme.error

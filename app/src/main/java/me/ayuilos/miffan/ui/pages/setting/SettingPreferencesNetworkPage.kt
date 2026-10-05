@@ -267,25 +267,25 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
         AlertDialog(
             onDismissRequest = { downloadSourceDialogVisible = false },
             modifier = Modifier.imePadding(),
-            title = { Text("APK 下载源") },
+            title = { Text(stringResource(R.string.setting_network_download_source)) },
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("优先使用自定义源，失败时依次尝试官方下载源和 GitHub Release。留空使用官方下载源。")
+                    Text(stringResource(R.string.setting_network_download_source_desc))
                     OutlinedTextField(
                         value = downloadSourceDraft,
                         onValueChange = { downloadSourceDraft = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("下载源地址") },
+                        label = { Text(stringResource(R.string.setting_network_download_source_url)) },
                         placeholder = { Text(DEFAULT_UPDATE_DOWNLOAD_BASE_URL) },
                         supportingText = {
                             Text(
                                 if (downloadSourceInvalid) {
-                                    "请输入 HTTPS 目录地址，不含账号密码、查询参数或片段；请勿填写 APK 或 JSON 文件地址。"
+                                    stringResource(R.string.setting_network_download_source_invalid)
                                 } else {
-                                    "需提供 latest.json 和 releases/<版本>/ 下的原始 APK，支持子目录。仅使用你信任的下载源。"
+                                    stringResource(R.string.setting_network_download_source_hint)
                                 }
                             )
                         },
@@ -349,14 +349,14 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
-                    title = { Text("应用更新") },
+                    title = { Text(stringResource(R.string.setting_network_app_update)) },
                 ) {
                     item(
                         onClick = {
                             downloadSourceDraft = settings.networkSetting.updateDownloadBaseUrl
                             downloadSourceDialogVisible = true
                         },
-                        headlineContent = { Text("APK 下载源") },
+                        headlineContent = { Text(stringResource(R.string.setting_network_download_source)) },
                         supportingContent = {
                             Text(
                                 normalizeUpdateDownloadBaseUrl(settings.networkSetting.updateDownloadBaseUrl)

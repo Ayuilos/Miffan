@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.components.richtext
 
+import me.ayuilos.miffan.R
+import androidx.compose.ui.res.stringResource
 import android.content.ClipData
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -913,7 +915,7 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "表格",
+                text = stringResource(R.string.markdown_table_label),
                 fontSize = 12.sp,
                 lineHeight = 12.sp,
                 fontWeight = FontWeight.SemiBold,

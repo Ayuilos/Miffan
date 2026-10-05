@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.components.message.tools
 
+import me.ayuilos.miffan.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
@@ -46,7 +48,7 @@ private object ExtensionsCatalogToolUI : ToolUIRenderer {
     override val toolName: String = "extensions_catalog"
 
     @Composable
-    override fun title(context: ToolUIContext): String = "查看扩展配置"
+    override fun title(context: ToolUIContext): String = stringResource(R.string.extension_management_view_config)
 }
 
 private object ExtensionsPreviewChangesToolUI : ToolUIRenderer {
@@ -55,7 +57,7 @@ private object ExtensionsPreviewChangesToolUI : ToolUIRenderer {
     @Composable
     override fun title(context: ToolUIContext): String {
         val valid = (context.previewPayload()?.get("valid") as? JsonPrimitive)?.booleanOrNull
-        return if (valid == false) "扩展配置变更校验失败" else "预览扩展配置变更"
+        return if (valid == false) stringResource(R.string.extension_management_preview_invalid) else stringResource(R.string.extension_management_preview)
     }
 
     override fun hasSummary(context: ToolUIContext): Boolean = context.summaryLines().isNotEmpty()
@@ -71,9 +73,9 @@ private object ExtensionsApplyChangesToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String {
-        if (!context.tool.isExecuted) return "等待确认扩展配置变更"
+        if (!context.tool.isExecuted) return stringResource(R.string.extension_management_apply_waiting)
         val applied = (context.previewPayload()?.get("applied") as? JsonPrimitive)?.booleanOrNull
-        return if (applied == true) "已应用扩展配置变更" else "扩展配置变更应用失败"
+        return if (applied == true) stringResource(R.string.extension_management_applied) else stringResource(R.string.extension_management_apply_failed)
     }
 
     override fun hasSummary(context: ToolUIContext): Boolean = context.summaryLines().isNotEmpty()
@@ -96,7 +98,7 @@ private fun ChangeSummary(summaries: List<String>) {
         }
         if (summaries.size > 5) {
             Text(
-                text = "另有 ${summaries.size - 5} 项变更",
+                text = stringResource(R.string.extension_management_more_changes, summaries.size - 5),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )

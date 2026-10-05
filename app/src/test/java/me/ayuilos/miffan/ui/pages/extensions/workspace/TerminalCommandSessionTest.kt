@@ -39,6 +39,7 @@ class TerminalCommandSessionTest {
     @Before fun setup() {
         Dispatchers.setMain(Dispatchers.Unconfined)
         every { context.getSharedPreferences(any(), any()) } returns preferences
+        every { context.getString(any()) } returns "Press Enter to run."
         every { preferences.getString(any(), any()) } answers { receipts[firstArg()] }
         every { preferences.edit() } returns editor
         every { editor.putString(any(), any()) } answers {

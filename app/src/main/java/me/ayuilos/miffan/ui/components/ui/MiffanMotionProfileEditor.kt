@@ -22,6 +22,8 @@ import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.withCharacterMotionProfile
 import me.ayuilos.miffan.data.model.MiffanAppearance
 import me.ayuilos.miffan.data.model.MiffanMotionProfile
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 
 @Composable
 fun MiffanMotionProfileEditor(
@@ -36,7 +38,7 @@ fun MiffanMotionProfileEditor(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "动作性格",
+            text = stringResource(R.string.miffan_character_motion_title),
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
@@ -109,15 +111,19 @@ fun MiffanMotionProfileEditor(
 }
 
 val MiffanMotionProfile.displayName: String
-    get() = when (this) {
-        MiffanMotionProfile.LIVELY -> "活泼"
-        MiffanMotionProfile.CALM -> "安静"
-        MiffanMotionProfile.CURIOUS -> "好奇"
-    }
+    @Composable get() = stringResource(
+        when (this) {
+            MiffanMotionProfile.LIVELY -> R.string.miffan_character_motion_lively
+            MiffanMotionProfile.CALM -> R.string.miffan_character_motion_calm
+            MiffanMotionProfile.CURIOUS -> R.string.miffan_character_motion_curious
+        }
+    )
 
 val MiffanMotionProfile.description: String
-    get() = when (this) {
-        MiffanMotionProfile.LIVELY -> "轻快、有弹性"
-        MiffanMotionProfile.CALM -> "缓慢、克制"
-        MiffanMotionProfile.CURIOUS -> "目光先行"
-    }
+    @Composable get() = stringResource(
+        when (this) {
+            MiffanMotionProfile.LIVELY -> R.string.miffan_character_motion_lively_desc
+            MiffanMotionProfile.CALM -> R.string.miffan_character_motion_calm_desc
+            MiffanMotionProfile.CURIOUS -> R.string.miffan_character_motion_curious_desc
+        }
+    )

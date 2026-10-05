@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.characterMotionProfileOrDefault
 import me.ayuilos.miffan.data.model.isMiffanAvatar
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 
 @Composable
 fun AssistantCharacterPicker(
@@ -27,12 +29,12 @@ fun AssistantCharacterPicker(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("角色头像", style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.miffan_character_avatar_title), style = MaterialTheme.typography.labelLarge)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val characters = listOf(
-                Triple("Miffan 饭碗", avatar.isMiffanAvatar(),
+                Triple(stringResource(R.string.miffan_character_rice_bowl), avatar.isMiffanAvatar(),
                     avatar.takeIf { it.isMiffanAvatar() } ?: Avatar.Miffan(motionProfile = avatar.characterMotionProfileOrDefault())),
-                Triple("蓝色大肥鱼", avatar is Avatar.WhaleGirl,
+                Triple(stringResource(R.string.whale_name), avatar is Avatar.WhaleGirl,
                     avatar as? Avatar.WhaleGirl ?: Avatar.WhaleGirl()),
             )
             characters.forEach { (name, isSelected, character) ->

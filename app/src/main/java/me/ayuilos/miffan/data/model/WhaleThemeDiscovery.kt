@@ -51,9 +51,10 @@ fun Settings.hasNewWhaleTheme(nowMillis: Long): Boolean {
         nowMillis >= discovered && nowMillis - discovered < 30L * 24 * 60 * 60 * 1_000
 }
 
-fun Settings.withWhaleThemeTrial(): Settings {
+/** [whaleName] names the dedicated assistant when it is created; an existing one keeps its name. */
+fun Settings.withWhaleThemeTrial(whaleName: String = WHALE_ASSISTANT_DEFAULT_NAME): Settings {
     val existing = assistants.firstOrNull { it.id == whaleThemeDiscovery.dedicatedAssistantId }
-    val whale = existing ?: createWhaleAssistant()
+    val whale = existing ?: createWhaleAssistant(name = whaleName)
     val backup = whaleThemeDiscovery.previousAppearance ?: WhaleThemeAppearanceBackup(
         themeId = themeId,
         dynamicColor = dynamicColor,

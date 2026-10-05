@@ -5,6 +5,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import me.ayuilos.miffan.ui.theme.PresetTheme
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 
 const val WHALE_THEME_ID = "whale_girl"
 
@@ -12,7 +14,7 @@ const val WHALE_THEME_ID = "whale_girl"
 val WhaleThemePreset by lazy {
     PresetTheme(
         id = WHALE_THEME_ID,
-        name = { Text("蓝色大肥鱼") },
+        name = { Text(stringResource(R.string.whale_name)) },
         standardLight = lightColorScheme(
             primary = Color(0xFF285AD5),
             onPrimary = Color.White,

@@ -276,10 +276,10 @@ private fun AssistantLocalToolContent(
             )
             item(
                 headlineContent = {
-                    Text("AI 扩展管理")
+                    Text(stringResource(R.string.extension_management_setting_title))
                 },
                 supportingContent = {
-                    Text("允许 AI 查看扩展配置，并在每次修改前征得你的确认后修改扩展配置。")
+                    Text(stringResource(R.string.extension_management_setting_desc))
                 },
                 trailingContent = {
                     Switch(

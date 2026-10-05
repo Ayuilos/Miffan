@@ -2,10 +2,13 @@ package me.ayuilos.miffan.data.model
 
 import kotlin.uuid.Uuid
 
+/** The character's Chinese name; callers with a Context pass the localized `R.string.whale_name`. */
+const val WHALE_ASSISTANT_DEFAULT_NAME = "蓝色大肥鱼"
+
 /** A complete editable preset. Passing the existing id resets configuration without deleting history. */
-fun createWhaleAssistant(id: Uuid = Uuid.random()): Assistant = Assistant(
+fun createWhaleAssistant(id: Uuid = Uuid.random(), name: String = WHALE_ASSISTANT_DEFAULT_NAME): Assistant = Assistant(
     id = id,
-    name = "蓝色大肥鱼",
+    name = name,
     avatar = Avatar.WhaleGirl(),
     useAssistantAvatar = true,
     systemPrompt = WHALE_ASSISTANT_SYSTEM_PROMPT,

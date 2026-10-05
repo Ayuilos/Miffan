@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import me.ayuilos.miffan.R
 import java.io.IOException
 
 /** Persist the remaining sources so DOWNLOAD_COMPLETE can retry after the UI/process exits. */
@@ -25,7 +26,7 @@ internal object UpdateDownloader {
             manager.enqueue(
                 DownloadManager.Request(candidate.url.toUri()).apply {
                     setTitle(candidate.name)
-                    setDescription("正在下载更新包...")
+                    setDescription(context.getString(R.string.update_downloading))
                     setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                     setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
                     setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, candidate.name)

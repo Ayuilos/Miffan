@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.components.ui
 
+import me.ayuilos.miffan.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -35,6 +37,7 @@ fun ImagePreviewDialog(
     onDismissRequest: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val filesManager: FilesManager = koinInject()
     val state = rememberZoomablePagerState { images.size }
     val toaster = LocalToaster.current
@@ -67,10 +70,10 @@ fun ImagePreviewDialog(
                     onClick = {
                         lifecycleOwner.lifecycleScope.launch {
                             runCatching {
-                                toaster.show("正在保存")
+                                toaster.show(resources.getString(R.string.image_preview_saving))
                                 val imgUrl = images[state.currentPage]
                                 filesManager.saveMessageImage(context, imgUrl)
-                                toaster.show(message = "已保存图片", type = ToastType.Success)
+                                toaster.show(message = resources.getString(R.string.image_preview_saved), type = ToastType.Success)
                             }.onFailure {
                                 it.printStackTrace()
                                 toaster.show(

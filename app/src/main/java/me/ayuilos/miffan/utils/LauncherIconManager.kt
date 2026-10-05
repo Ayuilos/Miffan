@@ -5,18 +5,19 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import me.ayuilos.miffan.R
 
 enum class LauncherIcon(
     val aliasName: String,
-    val label: String,
+    @param:StringRes val label: Int,
     @param:DrawableRes val preview: Int,
     val enabledByDefault: Boolean = false,
 ) {
-    MIFFAN("Miffan", "原版饭碗", R.mipmap.ic_launcher, enabledByDefault = true),
-    WHALE_GIRL("WhaleGirl", "蓝色大肥鱼", R.mipmap.ic_launcher_whale_girl),
+    MIFFAN("Miffan", R.string.launcher_icon_original, R.mipmap.ic_launcher, enabledByDefault = true),
+    WHALE_GIRL("WhaleGirl", R.string.whale_name, R.mipmap.ic_launcher_whale_girl),
     // Retained only to recognize component overrides from older installations.
-    WHALE_GIRL_DEEP_SEA("WhaleGirlDeepSea", "蓝色大肥鱼", R.mipmap.ic_launcher_whale_girl);
+    WHALE_GIRL_DEEP_SEA("WhaleGirlDeepSea", R.string.whale_name, R.mipmap.ic_launcher_whale_girl);
 
     val canonical: LauncherIcon get() = if (this == WHALE_GIRL_DEEP_SEA) WHALE_GIRL else this
 

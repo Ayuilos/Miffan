@@ -28,6 +28,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.BuildConfig
+import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
 import me.rerere.common.http.await
 import okhttp3.OkHttpClient
@@ -129,7 +130,7 @@ class UpdateChecker(
         appScope.launch(Dispatchers.IO) {
             runCatching { UpdateDownloader.enqueue(appContext, download) }.onFailure {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(appContext, "无法启动下载，请使用 GitHub 备用下载", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(appContext, appContext.getString(R.string.update_download_start_failed), Toast.LENGTH_SHORT).show()
                     context.openUrl(download.fallbackUrls.lastOrNull() ?: download.url)
                 }
             }

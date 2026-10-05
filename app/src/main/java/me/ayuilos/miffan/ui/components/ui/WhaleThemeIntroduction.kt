@@ -45,11 +45,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 
 private val introductionClips = listOf(
-    WhaleGirlClip.IDLE to "陪你聊天",
-    WhaleGirlClip.EATING to "吃白饭",
-    WhaleGirlClip.THINKING to "认真想想",
+    WhaleGirlClip.IDLE to R.string.whale_intro_chat,
+    WhaleGirlClip.EATING to R.string.whale_intro_rice,
+    WhaleGirlClip.THINKING to R.string.whale_intro_think,
 )
 
 /** Presentation only: the host owns eligibility, persistence and applying the collection. */
@@ -64,7 +66,8 @@ internal fun WhaleThemeIntroduction(
     var changeLauncherIcon by rememberSaveable { mutableStateOf(false) }
     val reducedMotion = rememberMiffanReducedMotion()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val (clip, previewLabel) = introductionClips[selectedPreview]
+    val (clip, previewLabelRes) = introductionClips[selectedPreview]
+    val previewDescription = stringResource(R.string.whale_intro_preview_description, stringResource(previewLabelRes))
     val maximumHeight = (LocalConfiguration.current.screenHeightDp - 32).coerceAtLeast(160).dp
 
     LaunchedEffect(selectedPreview, reducedMotion, busy, lifecycle) {
@@ -91,9 +94,9 @@ internal fun WhaleThemeIntroduction(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text("蓝色大肥鱼来啦", style = MaterialTheme.typography.headlineSmall,
+                    Text(stringResource(R.string.whale_intro_title), style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center)
-                    Text("陪你聊天，也陪你吃白饭。", style = MaterialTheme.typography.bodyLarge,
+                    Text(stringResource(R.string.whale_intro_subtitle), style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center)
 
                     // A single keyed player releases the outgoing layer before selecting
@@ -105,7 +108,7 @@ internal fun WhaleThemeIntroduction(
                             posterResourceId = whaleGirlPoster(clip),
                             reducedMotion = reducedMotion,
                             modifier = Modifier.size(160.dp).semantics {
-                                contentDescription = "蓝色大肥鱼，$previewLabel"
+                                contentDescription = previewDescription
                             },
                         )
                     }
@@ -115,7 +118,7 @@ internal fun WhaleThemeIntroduction(
                                 selected = selectedPreview == index,
                                 onClick = { selectedPreview = index },
                                 enabled = !busy,
-                                label = { Text(label) },
+                                label = { Text(stringResource(label)) },
                             )
                         }
                     }
@@ -129,10 +132,10 @@ internal fun WhaleThemeIntroduction(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(checked = changeLauncherIcon, onCheckedChange = null, enabled = !busy)
-                        Text("同时换上大肥鱼图标", style = MaterialTheme.typography.bodyMedium,
+                        Text(stringResource(R.string.whale_intro_change_icon), style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(start = 8.dp))
                     }
-                    Text("换上蓝鱼配色，并创建专属大肥鱼助手。已有助手保持原样，新助手的名字、性格和配置都可编辑或重置。",
+                    Text(stringResource(R.string.whale_intro_description),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                     if (!errorMessage.isNullOrBlank()) {
@@ -146,14 +149,14 @@ internal fun WhaleThemeIntroduction(
                             Row(verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Text("正在应用")
+                                Text(stringResource(R.string.whale_intro_applying))
                             }
                         } else {
-                            Text(if (errorMessage.isNullOrBlank()) "立即体验" else "重试")
+                            Text(stringResource(if (errorMessage.isNullOrBlank()) R.string.whale_intro_try_now else R.string.whale_intro_retry))
                         }
                     }
                     TextButton(onClick = { if (!busy) onDismiss() }, enabled = !busy) {
-                        Text("以后再说")
+                        Text(stringResource(R.string.whale_intro_later))
                     }
                 }
             }

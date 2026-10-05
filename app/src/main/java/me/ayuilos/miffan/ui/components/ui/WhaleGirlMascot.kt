@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.delay
 import me.ayuilos.miffan.R
+import androidx.compose.ui.res.stringResource
 
 /** Semantic adapter for the native two-color character. */
 @Composable
@@ -90,19 +91,20 @@ fun WhaleGirlMascot(
     val playing = state != MiffanMascotState.Error &&
         (presentation == MiffanPresentation.Scene || state != MiffanMascotState.Idle || petting ||
             inputState != MiffanMascotInputState.Inactive || submitted)
-    val description = if (state == MiffanMascotState.Error) "蓝色大肥鱼，遇到了问题" else when (clip) {
-        WhaleGirlClip.IDLE -> "蓝色大肥鱼"
-        WhaleGirlClip.FOCUSED -> "蓝色大肥鱼，关注输入框"
-        WhaleGirlClip.TYPING -> "蓝色大肥鱼，跟随打字"
-        WhaleGirlClip.SUBMITTED -> "蓝色大肥鱼，收到消息"
-        WhaleGirlClip.PETTING -> "蓝色大肥鱼，正在被摸摸"
-        WhaleGirlClip.SUCCESS -> "蓝色大肥鱼，开心"
-        WhaleGirlClip.SURPRISE -> "蓝色大肥鱼，有可用更新"
-        WhaleGirlClip.EATING -> "蓝色大肥鱼，正在等回复"
-        WhaleGirlClip.CHEWING -> "蓝色大肥鱼，正在回复"
-        WhaleGirlClip.THINKING -> "蓝色大肥鱼，正在推理"
-        WhaleGirlClip.SLEEPING -> "蓝色大肥鱼，睡着了"
-    }
+    val description = stringResource(if (state == MiffanMascotState.Error) R.string.whale_a11y_error else when (clip) {
+        WhaleGirlClip.IDLE -> R.string.whale_name
+        WhaleGirlClip.FOCUSED -> R.string.whale_a11y_focused
+        WhaleGirlClip.TYPING -> R.string.whale_a11y_typing
+        WhaleGirlClip.SUBMITTED -> R.string.whale_a11y_submitted
+        WhaleGirlClip.PETTING -> R.string.whale_a11y_petting
+        WhaleGirlClip.SUCCESS -> R.string.whale_a11y_success
+        WhaleGirlClip.SURPRISE -> R.string.whale_a11y_surprise
+        WhaleGirlClip.EATING -> R.string.whale_a11y_eating
+        WhaleGirlClip.CHEWING -> R.string.whale_a11y_chewing
+        WhaleGirlClip.THINKING -> R.string.whale_a11y_thinking
+        WhaleGirlClip.SLEEPING -> R.string.whale_a11y_sleeping
+    })
+    val petLabel = stringResource(R.string.whale_a11y_pet)
     val touch = if (interactive) Modifier.pointerInput(Unit) {
         detectTapGestures { pokeId++ }
     } else Modifier
@@ -112,7 +114,7 @@ fun WhaleGirlMascot(
         contentDescription = description
         if (interactive) {
             role = Role.Button
-            onClick(label = "摸摸蓝色大肥鱼") { pokeId++; true }
+            onClick(label = petLabel) { pokeId++; true }
         }
     }) {
         WhaleGirlAnimatedPortrait(

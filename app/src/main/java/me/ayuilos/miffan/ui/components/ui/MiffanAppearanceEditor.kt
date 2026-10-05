@@ -25,6 +25,8 @@ import me.ayuilos.miffan.data.model.MiffanAppearance
 import me.ayuilos.miffan.data.model.MiffanColorSource
 import me.ayuilos.miffan.data.model.MiffanKind
 import me.ayuilos.miffan.data.model.MiffanPalette
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 
 @Composable
 fun MiffanAppearanceEditor(
@@ -38,7 +40,7 @@ fun MiffanAppearanceEditor(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "Miffan 角色",
+                text = stringResource(R.string.miffan_character_kind_title),
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
@@ -102,7 +104,7 @@ fun MiffanAppearanceEditor(
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "Miffan 配色",
+                text = stringResource(R.string.miffan_character_palette_title),
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
@@ -122,11 +124,11 @@ fun MiffanAppearanceEditor(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
-                            text = "跟随 APP 主题",
+                            text = stringResource(R.string.miffan_character_follow_app_theme),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            text = "同步动态取色、预设主题与深浅模式",
+                            text = stringResource(R.string.miffan_character_follow_app_theme_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -203,20 +205,24 @@ fun MiffanAppearanceEditor(
 }
 
 val MiffanKind.displayName: String
-    get() = when (this) {
-        MiffanKind.RICE -> "米团"
-        MiffanKind.SPROUT -> "芽团"
-        MiffanKind.DUMPLING -> "丸团"
-        MiffanKind.STARGAZER -> "星团"
-    }
+    @Composable get() = stringResource(
+        when (this) {
+            MiffanKind.RICE -> R.string.miffan_character_kind_rice
+            MiffanKind.SPROUT -> R.string.miffan_character_kind_sprout
+            MiffanKind.DUMPLING -> R.string.miffan_character_kind_dumpling
+            MiffanKind.STARGAZER -> R.string.miffan_character_kind_stargazer
+        }
+    )
 
 val MiffanKind.description: String
-    get() = when (this) {
-        MiffanKind.RICE -> "米粒轻跳\n光滑陶碗"
-        MiffanKind.SPROUT -> "摇叶倾听\n刻纹陶碗"
-        MiffanKind.DUMPLING -> "丸子轮跳\n随身小勺"
-        MiffanKind.STARGAZER -> "悬浮星闪\n星光挂饰"
-    }
+    @Composable get() = stringResource(
+        when (this) {
+            MiffanKind.RICE -> R.string.miffan_character_kind_rice_desc
+            MiffanKind.SPROUT -> R.string.miffan_character_kind_sprout_desc
+            MiffanKind.DUMPLING -> R.string.miffan_character_kind_dumpling_desc
+            MiffanKind.STARGAZER -> R.string.miffan_character_kind_stargazer_desc
+        }
+    )
 
 val MiffanPalette.displayName: String
     get() = when (this) {

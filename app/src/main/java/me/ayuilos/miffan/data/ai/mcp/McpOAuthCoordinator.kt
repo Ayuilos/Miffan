@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import me.ayuilos.miffan.AppScope
+import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.event.AppEvent
 import me.ayuilos.miffan.data.event.AppEventBus
@@ -53,7 +54,18 @@ internal class McpOAuthCoordinator(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "OAuth authorization failed for ${config.commonOptions.name}", e)
-                updateStatus(config.id, McpStatus.Error.from(e, fallbackMessage = "OAuth authorization failed"))
+                val localized = (e as? McpOAuthException)?.let { oauthError ->
+                    val appContext = context.applicationContext
+                    when (oauthError.kind) {
+                        McpOAuthException.Kind.ProtectedResourceNotFound ->
+                            IllegalStateException(appContext.getString(R.string.mcp_oauth_error_protected_resource_not_found))
+                        McpOAuthException.Kind.AuthorizationServerNotFound ->
+                            IllegalStateException(appContext.getString(R.string.mcp_oauth_error_authorization_server_not_found, oauthError.detail.orEmpty()))
+                        McpOAuthException.Kind.InvalidAuthorizationEndpoint ->
+                            IllegalStateException(appContext.getString(R.string.mcp_oauth_error_invalid_authorization_endpoint, oauthError.detail.orEmpty()))
+                    }
+                } ?: e
+                updateStatus(config.id, McpStatus.Error.from(localized, fallbackMessage = "OAuth authorization failed"))
             }
         }
         authorizationJobs[config.id] = job
@@ -131,16 +143,16 @@ internal class McpOAuthCoordinator(
 
     private suspend fun authorize(config: McpServerConfig, context: Context) = withContext(Dispatchers.IO) {
         val serverUrl = config.serverUrl
-        require(serverUrl.isNotBlank()) { "Server URL 为空，无法授权" }
+        require(serverUrl.isNotBlank()) { context.getString(R.string.mcp_oauth_error_empty_server_url) }
 
         val protectedResource = oauthClient.discoverProtectedResource(serverUrl)
         val issuer = protectedResource.authorizationServers.firstOrNull()
-            ?: error("受保护资源未声明授权服务器")
+            ?: error(context.getString(R.string.mcp_oauth_error_no_authorization_server))
         val metadata = oauthClient.discoverAuthorizationServer(issuer)
         val authorizationEndpoint = metadata.authorizationEndpoint
-            ?: error("授权服务器缺少 authorization_endpoint")
+            ?: error(context.getString(R.string.mcp_oauth_error_missing_authorization_endpoint))
         val tokenEndpoint = metadata.tokenEndpoint
-            ?: error("授权服务器缺少 token_endpoint")
+            ?: error(context.getString(R.string.mcp_oauth_error_missing_token_endpoint))
         val scope = config.commonOptions.oauth?.scope
             ?: protectedResource.scopesSupported?.joinToString(" ")
             ?: metadata.scopesSupported?.joinToString(" ")
@@ -150,7 +162,7 @@ internal class McpOAuthCoordinator(
         var clientSecret = existing?.clientSecret
         if (clientId.isNullOrBlank()) {
             val registrationEndpoint = metadata.registrationEndpoint
-                ?: error("授权服务器不支持动态注册，且未预配置 client_id")
+                ?: error(context.getString(R.string.mcp_oauth_error_no_dynamic_registration))
             val registration = oauthClient.registerClient(
                 registrationEndpoint = registrationEndpoint,
                 clientName = config.commonOptions.name,
@@ -187,9 +199,9 @@ internal class McpOAuthCoordinator(
             resource = resource,
         )
         val callback = awaitCallbackAndLaunchBrowser(context, authorizationUrl, state)
-            ?: error("OAuth 授权超时")
-        callback.error?.let { error("授权失败: $it") }
-        val code = callback.code ?: error("授权失败: 未返回授权码")
+            ?: error(context.getString(R.string.mcp_oauth_error_timeout))
+        callback.error?.let { error(context.getString(R.string.mcp_oauth_error_failed, it)) }
+        val code = callback.code ?: error(context.getString(R.string.mcp_oauth_error_no_code))
 
         val token = oauthClient.exchangeCode(
             tokenEndpoint = tokenEndpoint,

@@ -39,6 +39,15 @@ private const val TAG = "McpOAuthClient"
  * SDK (kotlin-sdk 0.13.0) 本身不提供 OAuth 支持，因此该逻辑完全独立实现，
  * 最终仅通过 transport 的 requestBuilder 注入 `Authorization: Bearer` 请求头。
  */
+/** OAuth failure whose message reaches the user; the coordinator localizes it by [kind]. */
+class McpOAuthException(
+    val kind: Kind,
+    message: String,
+    val detail: String? = null,
+) : IllegalStateException(message) {
+    enum class Kind { ProtectedResourceNotFound, AuthorizationServerNotFound, InvalidAuthorizationEndpoint }
+}
+
 class McpOAuthClient(
     private val httpClient: OkHttpClient,
 ) {
@@ -115,7 +124,7 @@ class McpOAuthClient(
                     return@withContext meta
                 }
             }
-            error("无法发现受保护资源元数据 (protected resource metadata)")
+            throw McpOAuthException(McpOAuthException.Kind.ProtectedResourceNotFound, "Unable to discover protected resource metadata")
         }
 
     /**
@@ -131,7 +140,7 @@ class McpOAuthClient(
                     return@withContext meta
                 }
             }
-            error("无法发现授权服务器元数据 (authorization server metadata): $issuer")
+            throw McpOAuthException(McpOAuthException.Kind.AuthorizationServerNotFound, "Unable to discover authorization server metadata: $issuer", issuer)
         }
 
     /** 动态客户端注册 (RFC 7591)，返回 client_id (公共客户端通常无 secret)。 */
@@ -185,7 +194,7 @@ class McpOAuthClient(
         resource: String,
     ): String {
         val base = authorizationEndpoint.toHttpUrlOrNull()
-            ?: error("非法的授权端点: $authorizationEndpoint")
+            ?: throw McpOAuthException(McpOAuthException.Kind.InvalidAuthorizationEndpoint, "Invalid authorization endpoint: $authorizationEndpoint", authorizationEndpoint)
         return base.newBuilder()
             .addQueryParameter("response_type", "code")
             .addQueryParameter("client_id", clientId)

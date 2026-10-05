@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
+import me.ayuilos.miffan.R
 import android.content.Context
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -73,7 +74,7 @@ internal class TerminalCommandSession(
         private set
 
     init {
-        screen.appendOutput(("$ ${command.command.replace("\n", "\r\n")}\r\n\r\n按回车执行；密码请在终端提示后输入。\r\n").toByteArray())
+        screen.appendOutput(("$ ${command.command.replace("\n", "\r\n")}\r\n\r\n${context.getString(R.string.terminal_command_session_enter_hint)}\r\n").toByteArray())
         // Terminal protocol replies must never count as the user's Enter key.
         screen.sendBytes = { if (state.value == TerminalCommandState.RUNNING) enqueue(it) }
     }

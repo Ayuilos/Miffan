@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.transformers
 
+import me.ayuilos.miffan.R
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +60,7 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
 
         return withContext(Dispatchers.IO) {
             try {
-                ctx.processingStatus.value = "正在识别图片..."
+                ctx.processingStatus.value = ctx.context.getString(R.string.ocr_status_recognizing)
                 messages.map { message ->
                     message.copy(
                         parts = message.parts.map { part ->

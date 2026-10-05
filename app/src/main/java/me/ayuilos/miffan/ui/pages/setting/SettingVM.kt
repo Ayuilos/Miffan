@@ -47,8 +47,8 @@ class SettingVM(
         }
     }
 
-    suspend fun experienceWhaleTheme() {
-        settingsStore.update { it.withWhaleThemeTrial() }
+    suspend fun experienceWhaleTheme(whaleName: String) {
+        settingsStore.update { it.withWhaleThemeTrial(whaleName) }
     }
 
     fun downloadUpdate(context: Context, download: UpdateDownload) {

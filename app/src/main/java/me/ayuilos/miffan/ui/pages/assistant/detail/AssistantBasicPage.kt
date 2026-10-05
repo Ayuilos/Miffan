@@ -241,21 +241,22 @@ internal fun AssistantBasicContent(
 ) {
     val workspaceStrings = LocalResources.current
     var showWhaleReset by rememberSaveable(assistant.id.toString()) { mutableStateOf(false) }
+    val whaleName = stringResource(R.string.whale_name)
     if (showWhaleReset && isWhaleAssistant) {
         AlertDialog(
             onDismissRequest = { showWhaleReset = false },
-            title = { Text("恢复大肥鱼默认设定？") },
+            title = { Text(stringResource(R.string.whale_reset_title)) },
             text = {
-                Text("将恢复这个助手的名称、头像、性格提示词，以及模型、参数、工具、记忆开关和背景等全部配置。模型将跟随全局默认设置，工作区绑定也会解除。聊天记录和已保存的记忆不会删除，其他助手不受影响。")
+                Text(stringResource(R.string.whale_reset_message))
             },
             confirmButton = {
                 TextButton(onClick = {
                     showWhaleReset = false
-                    onUpdate(createWhaleAssistant(assistant.id))
-                }) { Text("恢复默认") }
+                    onUpdate(createWhaleAssistant(assistant.id, whaleName))
+                }) { Text(stringResource(R.string.whale_reset_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showWhaleReset = false }) { Text("取消") }
+                TextButton(onClick = { showWhaleReset = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -296,7 +297,7 @@ internal fun AssistantBasicContent(
             )
             if (assistant.avatar is Avatar.WhaleGirl) {
                 Text(
-                    "蓝色大肥鱼 · 爱吃饭、有点嘴硬，也会认真听你说话。",
+                    stringResource(R.string.whale_assistant_tagline),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -333,12 +334,12 @@ internal fun AssistantBasicContent(
         if (isWhaleAssistant) {
             Card(colors = CustomColors.cardColorsOnSurfaceContainer) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("大肥鱼专属助手", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.whale_assistant_card_title), style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "名称、头像和各项配置都可以自由修改；性格与说话方式可在系统提示词中编辑。",
+                        stringResource(R.string.whale_assistant_card_desc),
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    TextButton(onClick = { showWhaleReset = true }) { Text("恢复大肥鱼默认设定") }
+                    TextButton(onClick = { showWhaleReset = true }) { Text(stringResource(R.string.whale_reset_button)) }
                 }
             }
         }

@@ -254,7 +254,7 @@ fun UIAvatar(
                                 onUpdate?.invoke(Avatar.WhaleGirl())
                             },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("蓝色大肥鱼头像") }
+                        ) { Text(stringResource(R.string.whale_avatar_option)) }
                     }
                     Button(
                         onClick = {

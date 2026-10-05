@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.components.message
 
+import me.ayuilos.miffan.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -107,19 +109,19 @@ internal fun ChainOfThoughtScope.TerminalCommandToolStep(
         expanded = expanded,
         onExpandedChange = { expanded = it },
         label = { Text(when {
-            tool.isExecuted -> "终端执行结果"
-            tool.approvalState is ToolApprovalState.Denied -> "已取消终端执行"
-            tool.approvalState is ToolApprovalState.Answered -> "执行结果已返回，AI 正在处理"
-            !pending -> "正在准备终端命令"
-            state == TerminalCommandState.RUNNING -> "终端执行中"
-            state == TerminalCommandState.CONNECTING -> "正在连接终端"
-            state == TerminalCommandState.FINISHED && session != null -> "正在返回执行结果"
-            else -> "等待你在终端执行"
+            tool.isExecuted -> stringResource(R.string.terminal_command_title_result)
+            tool.approvalState is ToolApprovalState.Denied -> stringResource(R.string.terminal_command_title_cancelled)
+            tool.approvalState is ToolApprovalState.Answered -> stringResource(R.string.terminal_command_title_answered)
+            !pending -> stringResource(R.string.terminal_command_title_preparing)
+            state == TerminalCommandState.RUNNING -> stringResource(R.string.terminal_command_title_running)
+            state == TerminalCommandState.CONNECTING -> stringResource(R.string.terminal_command_title_connecting)
+            state == TerminalCommandState.FINISHED && session != null -> stringResource(R.string.terminal_command_title_returning)
+            else -> stringResource(R.string.terminal_command_title_waiting)
         }, style = MaterialTheme.typography.titleSmall) },
         content = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(arg("reason"), style = MaterialTheme.typography.bodyMedium)
-                Text("${target?.remoteHostLabel.orEmpty()} · ${target?.remoteRoot.orEmpty()}\n工作目录：${cwd.ifBlank { "沿用会话当前目录" }}",
+                Text(stringResource(R.string.terminal_command_target, target?.remoteHostLabel.orEmpty(), target?.remoteRoot.orEmpty(), cwd.ifBlank { stringResource(R.string.terminal_command_cwd_inherited) }),
                     style = MaterialTheme.typography.labelSmall)
                 SelectionContainer {
                     Text(command, fontFamily = FontFamily.Monospace,
@@ -128,17 +130,17 @@ internal fun ChainOfThoughtScope.TerminalCommandToolStep(
                             .verticalScroll(rememberScrollState()).padding(12.dp))
                 }
                 if (pending) {
-                    if (session == null) Text("命令缺少当前聊天的会话信息，请取消后让 AI 重新提交。")
+                    if (session == null) Text(stringResource(R.string.terminal_command_missing_session))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { showTerminal = true }, enabled = session != null && state != TerminalCommandState.FINISHED) {
-                            Text(if (state == TerminalCommandState.READY) "打开终端" else "查看终端")
+                            Text(if (state == TerminalCommandState.READY) stringResource(R.string.terminal_command_open) else stringResource(R.string.terminal_command_view))
                         }
                         TextButton(onClick = {
                             if (session != null) session.cancel()
                             else onToolApproval?.invoke(tool.toolCallId, false, "用户取消终端执行")
-                        }, enabled = onToolApproval != null || session != null) { Text("取消执行") }
+                        }, enabled = onToolApproval != null || session != null) { Text(stringResource(R.string.terminal_command_cancel_run)) }
                     }
-                    Text("按回车开始；结束后自动返回聊天，终端会话保留供 AI 继续使用。", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.terminal_command_enter_hint), style = MaterialTheme.typography.bodySmall)
                 }
                 if (tool.isExecuted) {
                     val raw = tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
@@ -147,30 +149,30 @@ internal fun ChainOfThoughtScope.TerminalCommandToolStep(
                     val active = shellStates[conversationId]?.takeIf { it.sessionId == sessionId }
                     if (sessionId != null) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(if (active != null) "会话保持连接" else "会话已结束",
+                            Text(if (active != null) stringResource(R.string.terminal_command_session_connected) else stringResource(R.string.terminal_command_session_ended),
                                 style = MaterialTheme.typography.labelSmall)
                             if (active != null && conversationId != null) TextButton(onClick = {
                                 uiScope.launch { repository.closeConversationTerminal(conversationId, active.sessionId) }
-                            }) { Text("结束会话") }
+                            }) { Text(stringResource(R.string.terminal_command_end_session)) }
                         }
                     }
                     val status = result?.get("status")?.jsonPrimitive?.contentOrNull
                     Text(when (status) {
-                        "completed" -> "执行结束 · 退出码 ${result["exitCode"]?.jsonPrimitive?.contentOrNull.orEmpty()}"
-                        "cancelled" -> "已取消，命令未执行"
-                        "interrupted" -> "执行中断，远程结果未知"
-                        else -> "执行结果"
+                        "completed" -> stringResource(R.string.terminal_command_result_completed, result["exitCode"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                        "cancelled" -> stringResource(R.string.terminal_command_result_cancelled)
+                        "interrupted" -> stringResource(R.string.terminal_command_result_interrupted)
+                        else -> stringResource(R.string.terminal_command_result_generic)
                     }, style = MaterialTheme.typography.labelMedium)
                     val output = result?.get("output")?.jsonPrimitive?.contentOrNull
                     val error = result?.get("error")?.jsonPrimitive?.contentOrNull
                     val display = listOfNotNull(output?.takeIf { it.isNotBlank() }, error).joinToString("\n")
-                        .ifBlank { if (result == null) raw else "无终端输出" }
+                        .ifBlank { if (result == null) raw else stringResource(R.string.terminal_command_no_output) }
                     SelectionContainer {
                         Text(display, modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()),
                             style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                     }
                     if (result?.get("truncated")?.jsonPrimitive?.contentOrNull == "true") {
-                        Text("输出较长，已截取前 64 KiB。", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.terminal_command_output_truncated), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -199,15 +201,15 @@ private fun TerminalCommandDialog(session: TerminalCommandSession, onBack: () ->
         MiffanTheme(colorMode = ColorMode.DARK) {
             Scaffold(topBar = {
                 TopAppBar(title = { Text(session.target.workspaceName) }, navigationIcon = {
-                    TextButton(onClick = onBack) { Text("返回聊天") }
-                }, actions = { TextButton(onClick = session::cancel) { Text("结束") } })
+                    TextButton(onClick = onBack) { Text(stringResource(R.string.terminal_command_back_to_chat)) }
+                }, actions = { TextButton(onClick = session::cancel) { Text(stringResource(R.string.terminal_command_end)) } })
             }) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding).imePadding().background(Color.Black)) {
                     Text(when (state) {
-                        TerminalCommandState.READY -> "命令已带入，按回车执行"
-                        TerminalCommandState.CONNECTING -> "正在连接，请稍候"
-                        TerminalCommandState.RUNNING -> "执行中 · 密码只在终端提示后输入"
-                        TerminalCommandState.FINISHED -> "执行结束"
+                        TerminalCommandState.READY -> stringResource(R.string.terminal_command_status_ready)
+                        TerminalCommandState.CONNECTING -> stringResource(R.string.terminal_command_status_connecting)
+                        TerminalCommandState.RUNNING -> stringResource(R.string.terminal_command_status_running)
+                        TerminalCommandState.FINISHED -> stringResource(R.string.terminal_command_status_finished)
                     }, modifier = Modifier.padding(12.dp), color = Color.White)
                     if (state == TerminalCommandState.CONNECTING) LinearProgressIndicator(Modifier.fillMaxWidth())
                     AndroidView(factory = { view }, modifier = Modifier.weight(1f).fillMaxWidth())

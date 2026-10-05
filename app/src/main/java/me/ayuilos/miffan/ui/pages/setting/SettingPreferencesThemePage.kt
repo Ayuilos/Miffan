@@ -50,6 +50,8 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
     val scope = rememberCoroutineScope()
     var openingWhale by rememberSaveable { mutableStateOf(false) }
     var trialError by rememberSaveable { mutableStateOf<String?>(null) }
+    val trialFailedMessage = stringResource(R.string.whale_trial_failed)
+    val whaleName = stringResource(R.string.whale_name)
     LaunchedEffect(openingWhale, settings.assistantId, settings.themeId, settings.whaleThemeDiscovery) {
         if (openingWhale && settings.themeId == WHALE_THEME_ID &&
             settings.assistantId == settings.whaleThemeDiscovery.dedicatedAssistantId) {
@@ -91,11 +93,11 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
                         openingWhale = true
                         trialError = null
                         scope.launch {
-                            try { vm.experienceWhaleTheme() }
+                            try { vm.experienceWhaleTheme(whaleName) }
                             catch (failure: Exception) {
                                 if (failure is CancellationException) throw failure
                                 openingWhale = false
-                                trialError = "暂时无法创建助手，请重试。"
+                                trialError = trialFailedMessage
                             }
                         }
                     },

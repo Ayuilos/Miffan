@@ -477,6 +477,7 @@ private fun ChatPageContent(
     val workspaceStrings = LocalResources.current
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    val selectModelFirstMessage = stringResource(R.string.chat_page_select_model_first)
     val focusManager = LocalFocusManager.current
     val workspaceRepository: WorkspaceRepository = koinInject()
     var previewMode by rememberSaveable { mutableStateOf(false) }
@@ -650,7 +651,7 @@ private fun ChatPageContent(
                     },
                     onSendClick = {
                         if (currentChatModel == null) {
-                            toaster.show("请先选择模型", type = ToastType.Error)
+                            toaster.show(selectModelFirstMessage, type = ToastType.Error)
                             return@ChatInput
                         }
                         if (inputState.isEditing()) {
@@ -669,7 +670,7 @@ private fun ChatPageContent(
                     },
                     onSendImmediatelyClick = {
                         if (currentChatModel == null) {
-                            toaster.show("请先选择模型", type = ToastType.Error)
+                            toaster.show(selectModelFirstMessage, type = ToastType.Error)
                             return@ChatInput
                         }
                         vm.handleMessageSend(inputState.getContents(), immediately = true)
