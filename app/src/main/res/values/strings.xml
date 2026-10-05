@@ -1761,7 +1761,6 @@
   <string name="im_time_yesterday">Yesterday</string>
   <string name="im_partners_mine">My partners</string>
   <string name="im_partners_add">Add partner</string>
-  <string name="im_partners_hint">Tap to chat · Long press to adjust a partner</string>
   <string name="im_discover_image_gen">Draw</string>
   <string name="im_discover_image_gen_desc">Turn what you imagine into pictures</string>
   <string name="im_discover_translate">Translate</string>
@@ -1858,7 +1857,7 @@
   <string name="im_p5_web">Look up news on the web</string>
   <string name="im_p5_remember">Remember our conversations</string>
   <string name="im_p5_history">History</string>
-  <string name="im_p5_settings_history">Setting history</string>
+  <string name="im_p5_settings_history">Settings history</string>
   <string name="im_p5_background">Chat background</string>
   <string name="im_p5_delete_chats">Delete chat history</string>
   <string name="im_p5_delete_chats_confirm">Delete all chat history with this partner? This cannot be undone.</string>

@@ -15,6 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.im.thread.threadAssistantName
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.revision.RevisionSubject
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
@@ -61,7 +62,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                             modifier = Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         TextButton(onClick = { name = partner.name; personality = partner.systemPrompt; editing = true }) { Text(stringResource(R.string.im_p5_edit)) }
                     }
-                    Text(partner.systemPrompt.ifBlank { stringResource(R.string.im_thread_intro, partner.name) }, textAlign = TextAlign.Center,
+                    Text(partner.systemPrompt.ifBlank { stringResource(R.string.im_thread_intro, threadAssistantName(partner)) }, textAlign = TextAlign.Center,
                         maxLines = 3, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { nav.navigate(Screen.Thread(assistantId)) }, Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(stringResource(R.string.im_p5_send_message)) }
                 }

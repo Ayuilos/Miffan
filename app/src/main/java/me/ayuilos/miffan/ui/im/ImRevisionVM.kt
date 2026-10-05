@@ -17,5 +17,5 @@ class ImRevisionVM(
 ) : ViewModel() {
     val history = revisions.history(subject, subjectId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     suspend fun restore(target: Revision, expectedHead: String) = service.restore(target, expectedHead)
-    suspend fun sourceAssistantId(conversationId: Uuid) = conversations.getConversationById(conversationId)?.assistantId?.toString()
+    suspend fun sourceAssistantId(conversationId: Uuid) = conversations.getAssistantIdOf(conversationId)?.toString()
 }

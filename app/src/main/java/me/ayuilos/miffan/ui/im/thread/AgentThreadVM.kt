@@ -197,7 +197,8 @@ class AgentThreadVM(
     }
 
     fun regenerate(item: TimelineItem.Message) {
-        if (item.canRegenerate) threadService.regenerate(item.segmentId, item.message)
+        if (!item.canRegenerate) return
+        viewModelScope.launch { threadService.regenerate(assistantId, item.segmentId, item.message) }
     }
 
     /**
@@ -208,18 +209,18 @@ class AgentThreadVM(
         viewModelScope.launch {
             val segment = segments.first().firstOrNull { it.id == segmentId } ?: return@launch
             val message = segment.currentMessages.lastOrNull { it.role == MessageRole.USER } ?: return@launch
-            threadService.regenerate(segmentId, message)
+            threadService.regenerate(assistantId, segmentId, message)
         }
     }
 
     /** Approves or declines a tool call that waits for the user (for example turning on web search). */
     fun answerToolApproval(item: TimelineItem.Message, toolCallId: String, approved: Boolean) {
-        chatService.handleToolApproval(item.segmentId, toolCallId, approved)
+        viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved) }
     }
 
     /** Answers a tool call that asks the user a question. */
     fun answerToolQuestion(item: TimelineItem.Message, toolCallId: String, answer: String) {
-        chatService.handleToolApproval(item.segmentId, toolCallId, approved = true, answer = answer)
+        viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved = true, answer = answer) }
     }
 
     /** Stops every generating segment of this thread. */

@@ -25,7 +25,7 @@ class ImSearchVM(settingsStore: SettingsStore, private val conversations: Conver
             try {
                 val results = conversations.searchMessages(query)
                 val byConversation = results.map { it.conversationId }.distinct().associateWith { id ->
-                    runCatching { Uuid.parse(id) }.getOrNull()?.let { conversations.getConversationById(it)?.assistantId }
+                    runCatching { Uuid.parse(id) }.getOrNull()?.let { conversations.getAssistantIdOf(it) }
                 }
                 ImSearchResults(query, partners, results.mapNotNull { result ->
                     assistants.find { it.id == byConversation[result.conversationId] }?.let { ImSearchHit(result, it) }

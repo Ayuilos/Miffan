@@ -58,7 +58,20 @@ class ThreadService(
         closeSegments(segments, segments.filter { it.threadClosedAt == 0L }.mapTo(HashSet()) { it.id })
     }
 
-    fun regenerate(segmentId: Uuid, message: UIMessage) = chatService.regenerateAtMessage(segmentId, message)
+    /**
+     * Regenerates from [message]. Sessions are released a few seconds after they go idle, so the
+     * segment is loaded first; acting on a released session would operate on an empty conversation.
+     */
+    suspend fun regenerate(assistantId: Uuid, segmentId: Uuid, message: UIMessage) {
+        chatService.openThreadSegment(segmentId, assistantId)
+        chatService.regenerateAtMessage(segmentId, message)
+    }
+
+    /** Approves, declines or answers a tool call waiting for the user, loading its segment first. */
+    suspend fun answerTool(assistantId: Uuid, segmentId: Uuid, toolCallId: String, approved: Boolean, answer: String? = null) {
+        chatService.openThreadSegment(segmentId, assistantId)
+        chatService.handleToolApproval(segmentId, toolCallId, approved, answer = answer)
+    }
 
     suspend fun stop(segmentId: Uuid) = chatService.stopGeneration(segmentId)
 

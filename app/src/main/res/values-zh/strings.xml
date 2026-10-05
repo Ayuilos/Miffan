@@ -1763,7 +1763,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_time_yesterday">昨天</string>
   <string name="im_partners_mine">我的伙伴</string>
   <string name="im_partners_add">添加伙伴</string>
-  <string name="im_partners_hint">点击开始聊天 · 长按调整伙伴设定</string>
   <string name="im_discover_image_gen">画图</string>
   <string name="im_discover_image_gen_desc">把脑海里的画面画出来</string>
   <string name="im_discover_translate">翻译</string>

@@ -49,6 +49,9 @@ interface ConversationDAO {
     )
     fun observeThreadSegmentStamps(assistantId: String, limit: Int): Flow<List<ThreadSegmentStamp>>
 
+    @Query("SELECT assistant_id FROM conversationentity WHERE id = :id")
+    suspend fun getAssistantIdOf(id: String): String?
+
     /** Summarized earlier segments of an assistant's thread, newest first. */
     @Query("SELECT id, title, thread_summary AS threadSummary, update_at AS updateAt FROM conversationentity WHERE assistant_id = :assistantId AND id != :excludeId AND thread_summary != '' ORDER BY update_at DESC LIMIT :limit")
     suspend fun getThreadDigests(assistantId: String, excludeId: String, limit: Int): List<ThreadSegmentDigest>

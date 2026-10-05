@@ -1762,7 +1762,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_time_yesterday">어제</string>
   <string name="im_partners_mine">내 파트너</string>
   <string name="im_partners_add">파트너 추가</string>
-  <string name="im_partners_hint">탭하여 대화 · 길게 눌러 파트너 설정</string>
   <string name="im_discover_image_gen">그림 그리기</string>
   <string name="im_discover_image_gen_desc">상상한 장면을 그림으로</string>
   <string name="im_discover_translate">번역</string>

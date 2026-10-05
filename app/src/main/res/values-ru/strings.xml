@@ -1762,7 +1762,6 @@
   <string name="im_time_yesterday">Вчера</string>
   <string name="im_partners_mine">Мои партнёры</string>
   <string name="im_partners_add">Добавить партнёра</string>
-  <string name="im_partners_hint">Нажмите, чтобы начать чат · Удерживайте, чтобы настроить</string>
   <string name="im_discover_image_gen">Рисование</string>
   <string name="im_discover_image_gen_desc">Превратите задумки в картинки</string>
   <string name="im_discover_translate">Перевод</string>

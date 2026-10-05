@@ -1762,7 +1762,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_time_yesterday">昨日</string>
   <string name="im_partners_mine">マイパートナー</string>
   <string name="im_partners_add">パートナーを追加</string>
-  <string name="im_partners_hint">タップでチャット · 長押しでパートナーを調整</string>
   <string name="im_discover_image_gen">お絵かき</string>
   <string name="im_discover_image_gen_desc">思い描いたものを絵にする</string>
   <string name="im_discover_translate">翻訳</string>

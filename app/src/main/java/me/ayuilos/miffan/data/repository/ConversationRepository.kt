@@ -68,6 +68,10 @@ class ConversationRepository(
             runCatching { JsonInstant.decodeFromString<UIMessage>(it) }.getOrNull()
         }
 
+    /** The assistant a conversation belongs to, without loading its messages. */
+    suspend fun getAssistantIdOf(conversationId: Uuid): Uuid? =
+        conversationDAO.getAssistantIdOf(conversationId.toString())?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+
     suspend fun getThreadDigests(assistantId: Uuid, excludeId: Uuid, limit: Int): List<ThreadSegmentDigest> =
         conversationDAO.getThreadDigests(assistantId.toString(), excludeId.toString(), limit)
 

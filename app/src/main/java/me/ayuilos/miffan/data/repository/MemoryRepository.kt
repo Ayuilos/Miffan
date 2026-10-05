@@ -7,6 +7,7 @@ import me.ayuilos.miffan.data.db.dao.MemoryDAO
 import me.ayuilos.miffan.data.db.entity.MemoryEntity
 import me.ayuilos.miffan.data.model.AssistantMemory
 import me.ayuilos.miffan.data.revision.MemorySnapshotItem
+import me.ayuilos.miffan.data.revision.Revision
 import me.ayuilos.miffan.data.revision.RevisionOrigin
 import me.ayuilos.miffan.data.revision.RevisionRepository
 import me.ayuilos.miffan.data.revision.RevisionSubject
@@ -93,11 +94,12 @@ class MemoryRepository(
         return AssistantMemory(id = id, content = content)
     }
 
-    suspend fun deleteMemory(id: Int) {
-        val old = memoryDAO.getMemoryById(id) ?: return
-        recording(old.assistantId, summary = old.content) {
+    /** Deletes a memory; returns the revision recording the deletion, if history is enabled. */
+    suspend fun deleteMemory(id: Int): Revision? {
+        val old = memoryDAO.getMemoryById(id) ?: return null
+        return recordingRevision(old.assistantId, summary = old.content) {
             memoryDAO.deleteMemory(id)
-        }
+        }.second
     }
 
     /** Replaces an owner's whole memory set, keeping the original ids (used by restore). */
@@ -112,17 +114,20 @@ class MemoryRepository(
         }
     }
 
-    private suspend fun <T> recording(ownerId: String, summary: String, change: suspend () -> T): T {
-        val revisions = revisions ?: return change()
+    private suspend fun <T> recording(ownerId: String, summary: String, change: suspend () -> T): T =
+        recordingRevision(ownerId, summary, change).first
+
+    private suspend fun <T> recordingRevision(ownerId: String, summary: String, change: suspend () -> T): Pair<T, Revision?> {
+        val revisions = revisions ?: return change() to null
         val before = snapshot(memoryDAO.getMemoriesOfAssistant(ownerId))
         val result = change()
-        revisions.record(
+        val revision = revisions.record(
             subject = RevisionSubject.MEMORY,
             subjectId = ownerId,
             before = before,
             after = snapshot(memoryDAO.getMemoriesOfAssistant(ownerId)),
             defaultSummary = summary,
         )
-        return result
+        return result to revision
     }
 }
