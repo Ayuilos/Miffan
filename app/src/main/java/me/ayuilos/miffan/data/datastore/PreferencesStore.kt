@@ -42,6 +42,8 @@ import me.ayuilos.miffan.data.datastore.migration.PreferenceStoreV3Migration
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.InjectionPosition
+import me.ayuilos.miffan.data.model.InterfaceModeState
+import me.ayuilos.miffan.data.model.initialInterfaceMode
 import me.ayuilos.miffan.data.model.Lorebook
 import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
@@ -70,6 +72,7 @@ private val Context.settingsStore by preferencesDataStore(
             PreferenceStoreV2Migration(),
             PreferenceStoreV3Migration(),
             WhaleThemeDiscoveryMigration(),
+            InterfaceModeMigration(),
         )
     }
 )
@@ -96,6 +99,25 @@ internal class WhaleThemeDiscoveryMigration(
     override suspend fun cleanUp() = Unit
 }
 
+/** Records the initial shell once: IM for fresh installations, a pending choice for upgrades. */
+internal class InterfaceModeMigration : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+        currentData[SettingsStore.INTERFACE_MODE] == null
+
+    override suspend fun migrate(currentData: Preferences): Preferences = currentData.toMutablePreferences().apply {
+        if (this[SettingsStore.INTERFACE_MODE] == null) {
+            this[SettingsStore.INTERFACE_MODE] = JsonInstant.encodeToString(
+                initialInterfaceMode(
+                    launchCount = this[SettingsStore.LAUNCH_COUNT] ?: 0,
+                    hasSavedProviders = this[SettingsStore.PROVIDERS] != null,
+                )
+            )
+        }
+    }
+
+    override suspend fun cleanUp() = Unit
+}
+
 class SettingsStore(
     context: Context,
     scope: AppScope,
@@ -109,6 +131,7 @@ class SettingsStore(
         val THEME_ID = stringPreferencesKey("theme_id")
         val WHALE_THEME_DISCOVERY = stringPreferencesKey("whale_theme_discovery")
         val REMOTE_WORKSPACE_INTRO_SEEN = booleanPreferencesKey("remote_workspace_intro_seen")
+        val INTERFACE_MODE = stringPreferencesKey("interface_mode")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
@@ -237,6 +260,9 @@ class SettingsStore(
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
                 themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
                 remoteWorkspaceIntroSeen = preferences[REMOTE_WORKSPACE_INTRO_SEEN] == true,
+                interfaceMode = preferences[INTERFACE_MODE]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: InterfaceModeState(choicePending = true),
                 whaleThemeDiscovery = preferences[WHALE_THEME_DISCOVERY]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: WhaleThemeDiscovery(settingsSeen = true),
@@ -407,6 +433,7 @@ class SettingsStore(
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
             preferences[REMOTE_WORKSPACE_INTRO_SEEN] = settings.remoteWorkspaceIntroSeen
+            preferences[INTERFACE_MODE] = JsonInstant.encodeToString(settings.interfaceMode)
             preferences[WHALE_THEME_DISCOVERY] = JsonInstant.encodeToString(settings.whaleThemeDiscovery)
             preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
             preferences[DEVELOPER_MODE] = settings.developerMode
@@ -585,6 +612,8 @@ data class Settings(
     val dynamicColor: Boolean = true,
     val themeId: String = PresetThemes[0].id,
     val remoteWorkspaceIntroSeen: Boolean = false,
+    // Settings without a recorded shell (such as older backups) keep the professional shell and ask.
+    val interfaceMode: InterfaceModeState = InterfaceModeState(choicePending = true),
     val whaleThemeDiscovery: WhaleThemeDiscovery = WhaleThemeDiscovery(),
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,

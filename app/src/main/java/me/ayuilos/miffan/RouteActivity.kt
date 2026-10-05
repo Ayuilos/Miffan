@@ -66,6 +66,7 @@ import me.ayuilos.miffan.data.db.DatabaseMigrationTracker
 import me.ayuilos.miffan.data.db.MigrationState
 import me.ayuilos.miffan.data.event.AppEvent
 import me.ayuilos.miffan.data.event.AppEventBus
+import me.ayuilos.miffan.data.model.isImMode
 import me.ayuilos.miffan.ui.activity.SafeModeActivity
 import me.ayuilos.miffan.ui.components.ui.TTSController
 import me.ayuilos.miffan.ui.components.ui.AppStartupLoading
@@ -84,6 +85,10 @@ import me.ayuilos.miffan.ui.hooks.readStringPreference
 import me.ayuilos.miffan.ui.hooks.rememberCurrentColorMode
 import me.ayuilos.miffan.ui.hooks.rememberCustomAsrState
 import me.ayuilos.miffan.ui.hooks.rememberCustomTtsState
+import me.ayuilos.miffan.ui.im.ImHomePage
+import me.ayuilos.miffan.ui.im.InterfaceModeChoiceHost
+import me.ayuilos.miffan.ui.im.navigateHome
+import me.ayuilos.miffan.ui.im.openFreshChat
 import me.ayuilos.miffan.ui.pages.assistant.AssistantPage
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantBasicPage
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantDetailPage
@@ -296,6 +301,8 @@ class RouteActivity : ComponentActivity() {
 
         val startScreen: Screen = if (settings.isNotConfigured()) {
             Screen.Onboarding
+        } else if (settings.isImMode) {
+            Screen.Home
         } else {
             Screen.Chat(
                 id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
@@ -316,6 +323,9 @@ class RouteActivity : ComponentActivity() {
         SideEffect { this@RouteActivity.navStack = backStack }
 
         ShareHandler(backStack)
+        val atHome = backStack.lastOrNull().let { it is Screen.Chat || it is Screen.Home }
+        // Like the workspace introduction, the shell choice reserves its launch for itself.
+        val modeChoiceLaunch = rememberSaveable { settings.interfaceMode.choicePending }
 
         SharedTransitionLayout {
             CompositionLocalProvider(
@@ -334,21 +344,26 @@ class RouteActivity : ComponentActivity() {
                     showCloseButton = true,
                 )
                 TTSController()
+                InterfaceModeChoiceHost(
+                    settings = settings,
+                    store = settingsStore,
+                    eligible = migrationState !is MigrationState.Migrating &&
+                        !settings.isNotConfigured() && atHome && normalLauncherEntry,
+                    onChosen = { Navigator(backStack).navigateHome(it) },
+                )
                 WorkspaceDiscoveryHost(
                     seen = settings.remoteWorkspaceIntroSeen,
-                    eligible = migrationState !is MigrationState.Migrating &&
-                        !settings.isNotConfigured() && backStack.lastOrNull() is Screen.Chat &&
-                        normalLauncherEntry,
+                    eligible = migrationState !is MigrationState.Migrating && !modeChoiceLaunch &&
+                        !settings.isNotConfigured() && atHome && normalLauncherEntry,
                     markSeen = { settingsStore.update { it.copy(remoteWorkspaceIntroSeen = true) } },
                     onOpenWorkspaces = { Navigator(backStack).navigate(Screen.Workspaces) },
                 )
                 WhaleThemeDiscoveryHost(
                     settings = settings,
                     store = settingsStore,
-                    onExperienced = { Navigator(backStack).clearAndNavigate(Screen.Chat(Uuid.random().toString())) },
+                    onExperienced = { Navigator(backStack).openFreshChat(settings) },
                     eligible = !workspaceIntroductionLaunch && migrationState !is MigrationState.Migrating &&
-                        !settings.isNotConfigured() && backStack.lastOrNull() is Screen.Chat &&
-                        normalLauncherEntry,
+                        !modeChoiceLaunch && !settings.isNotConfigured() && atHome && normalLauncherEntry,
                 )
                 Box(
                     modifier = Modifier
@@ -391,6 +406,13 @@ class RouteActivity : ComponentActivity() {
                                     nodeId = key.nodeId?.let { Uuid.parse(it) },
                                     messageId = key.messageId?.let { Uuid.parse(it) },
                                 )
+                            }
+
+                            entry<Screen.Home>(
+                                metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
+                                    + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
+                            ) {
+                                ImHomePage()
                             }
 
                             entry<Screen.Onboarding>(
@@ -665,6 +687,10 @@ class RouteActivity : ComponentActivity() {
 sealed interface Screen : NavKey {
     @Serializable
     data object Onboarding : Screen
+
+    /** Root of the IM shell with the four bottom tabs. */
+    @Serializable
+    data object Home : Screen
 
     @Serializable
     data class Chat(

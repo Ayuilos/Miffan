@@ -68,8 +68,8 @@ import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.theme.LocalDarkMode
 import me.ayuilos.miffan.ui.theme.presets.WHALE_THEME_ID
+import me.ayuilos.miffan.ui.im.navigateHome
 import org.koin.compose.koinInject
-import kotlin.uuid.Uuid
 
 @Composable
 fun OnboardingPage(
@@ -86,7 +86,7 @@ fun OnboardingPage(
 
     LaunchedEffect(settings.isNotConfigured()) {
         if (!settings.isNotConfigured()) {
-            navController.clearAndNavigate(Screen.Chat(Uuid.random().toString()))
+            navController.navigateHome(settings)
         } else {
             authService.checkExistingKey()
         }

@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.di
 
+import me.ayuilos.miffan.ui.im.ImHomeVM
 import me.ayuilos.miffan.ui.pages.assistant.AssistantVM
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantDetailVM
 import me.ayuilos.miffan.ui.pages.backup.BackupVM
@@ -37,6 +38,7 @@ val viewModelModule = module {
         )
     }
     viewModelOf(::ChatDrawerVM)
+    viewModelOf(::ImHomeVM)
     viewModelOf(::SettingVM)
     viewModelOf(::DebugVM)
     viewModelOf(::HistoryVM)

@@ -17,7 +17,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
-import kotlin.uuid.Uuid
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -39,6 +38,7 @@ import me.ayuilos.miffan.ui.hooks.rememberAmoledDarkMode
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.ui.theme.presets.WHALE_THEME_ID
 import me.ayuilos.miffan.utils.plus
+import me.ayuilos.miffan.ui.im.openFreshChat
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -54,7 +54,7 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
         if (openingWhale && settings.themeId == WHALE_THEME_ID &&
             settings.assistantId == settings.whaleThemeDiscovery.dedicatedAssistantId) {
             openingWhale = false
-            navController.clearAndNavigate(Screen.Chat(Uuid.random().toString()))
+            navController.openFreshChat(settings)
         }
     }
     LaunchedEffect(settings.init) {

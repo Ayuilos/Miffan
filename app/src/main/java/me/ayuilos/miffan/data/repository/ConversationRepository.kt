@@ -55,6 +55,12 @@ class ConversationRepository(
             .map { conversations -> conversations.map(::conversationSummaryToConversation) }
     }
 
+    fun observeLatestConversationOfEachAssistant(): Flow<List<Conversation>> {
+        return conversationDAO
+            .observeLatestConversationOfEachAssistant()
+            .map { conversations -> conversations.map(::conversationSummaryToConversation) }
+    }
+
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
         return conversationDAO
             .getConversationsOfAssistant(assistantId.toString())

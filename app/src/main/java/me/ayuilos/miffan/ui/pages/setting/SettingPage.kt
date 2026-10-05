@@ -27,6 +27,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,7 @@ import me.rerere.hugeicons.stroke.ImageUpload
 import me.rerere.hugeicons.stroke.LookTop
 import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.Megaphone01
+import me.rerere.hugeicons.stroke.Message01
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Settings03
@@ -58,7 +60,13 @@ import me.rerere.hugeicons.stroke.Share04
 import me.rerere.hugeicons.stroke.Sun01
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
+import kotlinx.coroutines.launch
+import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.isNotConfigured
+import me.ayuilos.miffan.data.model.InterfaceMode
+import me.ayuilos.miffan.data.model.isImMode
+import me.ayuilos.miffan.data.model.withInterfaceMode
+import me.ayuilos.miffan.ui.im.navigateHome
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
@@ -89,6 +97,8 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
         vm.availableUpdate.collectAsStateWithLifecycle().value
     }
     val filesManager: FilesManager = koinInject()
+    val settingsStore: SettingsStore = koinInject()
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -187,6 +197,19 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_extensions)) },
                     )
+                    if (!settings.isImMode) {
+                        item(
+                            onClick = {
+                                scope.launch {
+                                    settingsStore.update { it.withInterfaceMode(InterfaceMode.IM) }
+                                    navController.navigateHome(settingsStore.settingsFlow.value)
+                                }
+                            },
+                            leadingContent = { Icon(HugeIcons.Message01, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_switch_easy_chat_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_switch_easy_chat)) },
+                        )
+                    }
                 }
             }
 
