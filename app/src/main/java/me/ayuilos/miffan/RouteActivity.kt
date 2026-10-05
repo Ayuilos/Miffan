@@ -417,7 +417,7 @@ class RouteActivity : ComponentActivity() {
                             }
 
                             entry<Screen.Thread> { key ->
-                                AgentThreadPage(assistantId = Uuid.parse(key.assistantId))
+                                AgentThreadPage(assistantId = Uuid.parse(key.assistantId), focusMessageId = key.focusMessageId)
                             }
 
                             entry<Screen.Onboarding>(
