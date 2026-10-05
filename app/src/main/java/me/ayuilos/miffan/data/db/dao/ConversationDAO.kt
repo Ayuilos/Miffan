@@ -49,6 +49,10 @@ interface ConversationDAO {
     )
     fun observeThreadSegmentStamps(assistantId: String, limit: Int): Flow<List<ThreadSegmentStamp>>
 
+    /** Summarized earlier segments of an assistant's thread, newest first. */
+    @Query("SELECT id, title, thread_summary AS threadSummary, update_at AS updateAt FROM conversationentity WHERE assistant_id = :assistantId AND id != :excludeId AND thread_summary != '' ORDER BY update_at DESC LIMIT :limit")
+    suspend fun getThreadDigests(assistantId: String, excludeId: String, limit: Int): List<ThreadSegmentDigest>
+
     // SQLite returns the bare columns of the row holding MAX(update_at) within each group.
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, MAX(update_at) as updateAt, folder_id as folderId FROM conversationentity GROUP BY assistant_id ORDER BY updateAt DESC")
     fun observeLatestConversationOfEachAssistant(): Flow<List<LightConversationEntity>>
@@ -131,4 +135,11 @@ data class ThreadSegmentStamp(
     val selectedRootId: String,
     val nodeCount: Int,
     val revisionSum: Long,
+)
+
+data class ThreadSegmentDigest(
+    val id: String,
+    val title: String,
+    val threadSummary: String,
+    val updateAt: Long,
 )

@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.im.thread
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -16,11 +17,13 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.thread.ThreadNoticeSource
 import me.ayuilos.miffan.data.thread.ThreadRepository
 import me.ayuilos.miffan.data.thread.ThreadService
@@ -28,7 +31,10 @@ import me.ayuilos.miffan.data.thread.ThreadTimeline
 import me.ayuilos.miffan.data.thread.TimelineItem
 import me.ayuilos.miffan.service.ChatError
 import me.ayuilos.miffan.service.ChatService
+import me.rerere.ai.core.MessageRole
+import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import java.time.Instant
 import kotlin.uuid.Uuid
 
 /** A topic (segment) the user can filter the timeline to. */
@@ -53,6 +59,9 @@ class AgentThreadVM(
 
     /** Segment shown alone, or null for the whole thread. */
     val topicFilter: StateFlow<Uuid?> = _topicFilter.asStateFlow()
+
+    /** Sent messages still being routed; shown immediately until the segment records them. */
+    private val pending = MutableStateFlow<List<UIMessage>>(emptyList())
 
     private val _replyTarget = MutableStateFlow<TimelineItem.Message?>(null)
 
@@ -101,8 +110,12 @@ class AgentThreadVM(
         noticeSource.observe(assistantId),
         generatingSegmentIds,
         _topicFilter,
-    ) { segments, notices, generating, filter ->
-        ThreadTimeline.build(segments, notices, generating, filter)
+        pending,
+    ) { segments, notices, generating, filter, pending ->
+        val items = ThreadTimeline.build(segments, notices, generating, filter)
+        val shown = items.mapNotNullTo(HashSet()) { (it as? TimelineItem.Message)?.message?.id }
+        val outgoing = pending.filter { it.id !in shown }
+        if (outgoing.isEmpty()) items else items.withPending(outgoing)
     }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -115,6 +128,16 @@ class AgentThreadVM(
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    init {
+        // A pending message is released once its segment shows it, so it never flickers.
+        viewModelScope.launch {
+            segments.collect { list ->
+                val recorded = list.flatMapTo(HashSet()) { segment -> segment.messageNodes.map { it.message.id } }
+                pending.update { outgoing -> outgoing.filter { it.id !in recorded } }
+            }
+        }
+    }
+
     /** Errors of this thread's segments, oldest first. */
     val errors: StateFlow<List<ChatError>> = combine(chatService.errors, segments) { errors, segments ->
         val ids = segments.mapTo(HashSet()) { it.id }
@@ -125,14 +148,24 @@ class AgentThreadVM(
     fun send(parts: List<UIMessagePart>) {
         val replyTo = _replyTarget.value?.ref
         _replyTarget.value = null
+        val message = UIMessage(role = MessageRole.USER, parts = parts)
+        pending.update { it + message }
         viewModelScope.launch {
-            threadService.send(
-                assistantId = assistantId,
-                content = parts,
-                segments = storedSegments.value.orEmpty(),
-                replyTo = replyTo,
-                topicSegmentId = _topicFilter.value,
-            )
+            try {
+                threadService.send(
+                    assistantId = assistantId,
+                    content = parts,
+                    segments = storedSegments.value.orEmpty(),
+                    replyTo = replyTo,
+                    topicSegmentId = _topicFilter.value,
+                    messageId = message.id,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                pending.update { list -> list.filter { it.id != message.id } }
+                chatService.addError(e)
+            }
         }
     }
 
@@ -175,3 +208,26 @@ class AgentThreadVM(
         const val PAGE_SEGMENTS = 12
     }
 }
+
+/** Appends not-yet-routed messages after the timeline, followed by a typing row. */
+private fun List<TimelineItem>.withPending(outgoing: List<UIMessage>): List<TimelineItem> {
+    val base = filterNot { it is TimelineItem.Typing }
+    val typing = filterIsInstance<TimelineItem.Typing>().firstOrNull()
+    val last = base.lastOrNull { it is TimelineItem.Message } as? TimelineItem.Message
+    val pendingItems = outgoing.mapIndexed { index, message ->
+        TimelineItem.Message(
+            segmentId = PENDING_SEGMENT,
+            node = MessageNode.of(message),
+            at = Instant.now(),
+            topicIndex = last?.topicIndex ?: 0,
+            quote = null,
+            groupedWithPrevious = index > 0 || last?.message?.role == MessageRole.USER,
+            streaming = false,
+            canRegenerate = false,
+        )
+    }
+    return base + pendingItems + TimelineItem.Typing(typing?.segmentIds.orEmpty())
+}
+
+/** Segment id of messages that are still being routed. */
+val PENDING_SEGMENT: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000000")

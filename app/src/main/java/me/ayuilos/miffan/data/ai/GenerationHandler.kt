@@ -95,6 +95,8 @@ class GenerationHandler(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
         localToolOutputRoot: String? = assistant.workspaceId?.toString(),
+        /** Summaries of earlier IM thread segments, appended to the system prompt. */
+        threadContext: String? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -176,6 +178,7 @@ class GenerationHandler(
                     conversationLorebookIds = conversationLorebookIds,
                     workspaceCwd = workspaceCwd,
                     targetBinder = targetBinder,
+                    threadContext = threadContext,
                 )
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
@@ -391,6 +394,7 @@ class GenerationHandler(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
         targetBinder: WorkspaceToolTargetBinder,
+        threadContext: String? = null,
     ) {
         val internalMessages = buildList {
             val system = buildString {
@@ -408,6 +412,10 @@ class GenerationHandler(
                 if (assistant.enableMemory) {
                     appendLine()
                     append(buildMemoryPrompt(memories = memories))
+                }
+                if (!threadContext.isNullOrBlank()) {
+                    appendLine()
+                    append(threadContext)
                 }
                 // 工具prompt
                 tools.forEach { tool ->

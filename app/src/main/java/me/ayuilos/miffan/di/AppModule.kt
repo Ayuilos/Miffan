@@ -1,6 +1,9 @@
 package me.ayuilos.miffan.di
 
-import me.ayuilos.miffan.data.thread.RuleSegmentRouter
+import me.ayuilos.miffan.data.thread.LlmTopicClassifier
+import me.ayuilos.miffan.data.thread.SegmentSummarizer
+import me.ayuilos.miffan.data.thread.SmartSegmentRouter
+import me.ayuilos.miffan.data.thread.ThreadModels
 import me.ayuilos.miffan.data.thread.SegmentRouter
 import me.ayuilos.miffan.data.thread.ThreadNoticeSource
 import me.ayuilos.miffan.data.thread.ThreadService
@@ -101,11 +104,23 @@ val appModule = module {
         )
     }
 
-    single<SegmentRouter> { RuleSegmentRouter() }
+    single { ThreadModels(settingsStore = get(), providerManager = get()) }
+
+    single<SegmentRouter> { SmartSegmentRouter(LlmTopicClassifier(get())) }
+
+    single {
+        SegmentSummarizer(
+            models = get(),
+            settingsStore = get(),
+            conversationRepository = get(),
+            chatService = get(),
+            appScope = get(),
+        )
+    }
 
     single { ThreadNoticeSource.Empty }
 
-    single { ThreadService(chatService = get(), settingsStore = get(), router = get()) }
+    single { ThreadService(chatService = get(), settingsStore = get(), router = get(), summarizer = get()) }
 
     single {
         WebServerManager(

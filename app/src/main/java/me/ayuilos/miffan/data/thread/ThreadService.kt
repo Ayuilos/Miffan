@@ -18,6 +18,7 @@ class ThreadService(
     private val chatService: ChatService,
     private val settingsStore: SettingsStore,
     private val router: SegmentRouter,
+    private val summarizer: SegmentSummarizer,
 ) {
     /**
      * Sends [content] and returns the segment that received it. An explicit reply or an active
@@ -29,6 +30,7 @@ class ThreadService(
         segments: List<Conversation>,
         replyTo: MessageRef? = null,
         topicSegmentId: Uuid? = null,
+        messageId: Uuid = Uuid.random(),
     ): Uuid {
         val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId)
             ?: error("Assistant not found: $assistantId")
@@ -47,7 +49,7 @@ class ThreadService(
             }
         }
         chatService.openThreadSegment(segmentId, assistantId)
-        chatService.sendMessage(segmentId, content, replyTo = replyTo)
+        chatService.sendMessage(segmentId, content, replyTo = replyTo, messageId = messageId)
         return segmentId
     }
 
@@ -63,8 +65,10 @@ class ThreadService(
     private suspend fun closeSegments(segments: List<Conversation>, ids: Set<Uuid>) {
         if (ids.isEmpty()) return
         val now = System.currentTimeMillis()
-        segments.filter { it.id in ids && it.threadClosedAt == 0L }.forEach { segment ->
+        val closing = segments.filter { it.id in ids && it.threadClosedAt == 0L }
+        closing.forEach { segment ->
             chatService.updateThreadSegment(segment.id) { it.copy(threadClosedAt = now) }
         }
+        summarizer.summarizeLater(closing.map { it.id })
     }
 }

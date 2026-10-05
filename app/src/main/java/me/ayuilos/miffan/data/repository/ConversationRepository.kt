@@ -15,6 +15,7 @@ import me.ayuilos.miffan.data.db.AppDatabase
 import me.ayuilos.miffan.data.db.fts.MessageFtsManager
 import me.ayuilos.miffan.data.db.fts.MessageSearchSort
 import me.ayuilos.miffan.data.db.dao.ConversationDAO
+import me.ayuilos.miffan.data.db.dao.ThreadSegmentDigest
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentStamp
 import me.ayuilos.miffan.data.db.dao.FavoriteDAO
 import me.ayuilos.miffan.data.db.dao.MessageNodeDAO
@@ -60,6 +61,9 @@ class ConversationRepository(
     /** Change stamps of the newest [limit] conversations of [assistantId], newest first. */
     fun observeThreadSegmentStamps(assistantId: Uuid, limit: Int): Flow<List<ThreadSegmentStamp>> =
         conversationDAO.observeThreadSegmentStamps(assistantId.toString(), limit)
+
+    suspend fun getThreadDigests(assistantId: Uuid, excludeId: Uuid, limit: Int): List<ThreadSegmentDigest> =
+        conversationDAO.getThreadDigests(assistantId.toString(), excludeId.toString(), limit)
 
     fun observeLatestConversationOfEachAssistant(): Flow<List<Conversation>> {
         return conversationDAO

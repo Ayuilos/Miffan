@@ -97,6 +97,8 @@ import me.ayuilos.miffan.data.datastore.getCurrentChatModel
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageRef
+import me.ayuilos.miffan.data.model.isImMode
+import me.ayuilos.miffan.data.thread.ThreadContext
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
@@ -548,10 +550,11 @@ class ChatService(
         // Keep the existing REST send behavior; the native composer explicitly opts into queuing.
         immediately: Boolean = true,
         replyTo: MessageRef? = null,
+        messageId: Uuid = Uuid.random(),
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
-        val message = QueuedMessage(content = content.toList(), answer = answer, replyTo = replyTo)
+        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo)
         if (immediately) {
             sendMessageNow(session, message)
             session.resumeQueue()
@@ -963,6 +966,11 @@ class ChatService(
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
                 localToolOutputRoot = boundWorkspace?.takeUnless { it.isRemote }?.root,
+                threadContext = if (settings.isImMode) {
+                    ThreadContext.build(conversationRepo, assistant.id, conversation.id)
+                } else {
+                    null
+                },
                 memories = if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
                 } else {
