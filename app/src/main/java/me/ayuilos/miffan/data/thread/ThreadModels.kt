@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.thread
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -55,7 +56,12 @@ class ThreadModels(
             ).message.toText().trim().takeIf { it.isNotEmpty() }
         }
         return try {
-            withTimeoutOrNull(timeoutMillis) { request.await() }.also { if (it == null) request.cancel() }
+            val answer = withTimeoutOrNull(timeoutMillis) { request.await().orEmpty() }
+            if (answer == null) {
+                request.cancel()
+                Log.w(TAG, "${model.modelId} gave no answer within ${timeoutMillis}ms")
+            }
+            answer?.takeIf { it.isNotEmpty() }
         } catch (e: CancellationException) {
             request.cancel()
             throw e
@@ -63,5 +69,9 @@ class ThreadModels(
             e.printStackTrace()
             null
         }
+    }
+
+    private companion object {
+        const val TAG = "ThreadModels"
     }
 }

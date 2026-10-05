@@ -96,7 +96,9 @@ class LlmTopicClassifier(
     }
 
     companion object {
-        const val TIMEOUT_MILLIS = 4_000L
+        // Measured on OpenRouter: 1.6–3 s when idle, 6–8+ s while other replies stream. The typing
+        // row shows meanwhile, and waiting beats filing the message under the wrong topic.
+        const val TIMEOUT_MILLIS = 15_000L
 
         internal fun buildPrompt(message: String, candidates: List<TopicCandidate>): String = buildString {
             appendLine("You route chat messages to conversation topics. Ongoing topics:")

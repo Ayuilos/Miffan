@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.core.net.toUri
+import kotlinx.datetime.LocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -552,10 +553,11 @@ class ChatService(
         immediately: Boolean = true,
         replyTo: MessageRef? = null,
         messageId: Uuid = Uuid.random(),
+        createdAt: LocalDateTime? = null,
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
-        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo)
+        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt)
         if (immediately) {
             sendMessageNow(session, message)
             session.resumeQueue()
@@ -601,7 +603,7 @@ class ChatService(
                         id = message.id,
                         role = MessageRole.USER,
                         parts = processedContent,
-                    ),
+                    ).let { if (message.createdAt != null) it.copy(createdAt = message.createdAt) else it },
                     replyTo = message.replyTo,
                 ).copy(updateAt = Instant.now())
                 saveConversation(conversationId, newConversation)

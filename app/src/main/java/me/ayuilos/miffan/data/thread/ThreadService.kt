@@ -12,6 +12,7 @@ import me.ayuilos.miffan.service.ChatService
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import java.time.Instant
+import kotlinx.datetime.LocalDateTime
 import kotlin.uuid.Uuid
 
 private const val TAG = "ThreadService"
@@ -45,6 +46,7 @@ class ThreadService(
         replyTo: MessageRef? = null,
         topicSegmentId: Uuid? = null,
         messageId: Uuid = Uuid.random(),
+        createdAt: LocalDateTime? = null,
     ): Uuid {
         val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId)
             ?: error("Assistant not found: $assistantId")
@@ -77,16 +79,16 @@ class ThreadService(
                     ?: content.filterIsInstance<UIMessagePart.Text>().joinToString(" ") { it.text }.take(120)
                 recentTopics[segmentId] = RecentTopic(assistantId, label, now)
             }
-            deliver(assistantId, segmentId, content, replyTo, messageId)
+            deliver(assistantId, segmentId, content, replyTo, messageId, createdAt)
             segmentId
         }
     }
 
-    private suspend fun deliver(assistantId: Uuid, segmentId: Uuid, content: List<UIMessagePart>, replyTo: MessageRef?, messageId: Uuid) {
+    private suspend fun deliver(assistantId: Uuid, segmentId: Uuid, content: List<UIMessagePart>, replyTo: MessageRef?, messageId: Uuid, createdAt: LocalDateTime?) {
         chatService.openThreadSegment(segmentId, assistantId)
         // Like a messenger, a message to a topic that is still replying waits its turn instead of
         // cancelling that reply. Sending again also resumes a queue paused by an earlier failure.
-        chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId)
+        chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId, createdAt = createdAt)
         chatService.resumeMessageQueue(segmentId)
     }
 

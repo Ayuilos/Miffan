@@ -173,6 +173,7 @@ class AgentThreadVM(
                     replyTo = replyTo,
                     topicSegmentId = _topicFilter.value,
                     messageId = message.id,
+                    createdAt = message.createdAt,
                 )
             } catch (e: CancellationException) {
                 throw e

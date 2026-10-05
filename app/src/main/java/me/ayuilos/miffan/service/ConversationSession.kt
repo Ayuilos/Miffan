@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDateTime
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageRef
 import me.rerere.ai.ui.UIMessagePart
@@ -27,6 +28,8 @@ data class QueuedMessage(
     val answer: Boolean = true,
     /** The message the user explicitly replied to in the IM timeline. */
     val replyTo: MessageRef? = null,
+    /** When the user sent it; a queued message keeps its place in the timeline. */
+    val createdAt: LocalDateTime? = null,
 )
 
 data class MessageQueueState(
