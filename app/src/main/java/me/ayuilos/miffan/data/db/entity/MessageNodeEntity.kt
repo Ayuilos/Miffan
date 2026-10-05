@@ -36,4 +36,7 @@ data class MessageNodeEntity(
     val message: String, // JSON serialized UIMessage
     @ColumnInfo("revision", defaultValue = "0")
     val revision: Long,
+    /** JSON [me.ayuilos.miffan.data.model.MessageRef] the user explicitly replied to; empty when none. */
+    @ColumnInfo("reply_to", defaultValue = "")
+    val replyTo: String = "",
 )

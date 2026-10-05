@@ -67,7 +67,7 @@ internal fun ImChatsTab(
         items(items.orEmpty(), key = { it.assistant.id.toString() }) { chat ->
             ImChatRow(
                 chat = chat,
-                onClick = { navController.navigate(Screen.Chat(chat.conversationId.toString())) },
+                onClick = { navController.navigate(Screen.Thread(chat.assistant.id.toString())) },
             )
             HorizontalDivider(
                 modifier = Modifier.padding(start = 88.dp),

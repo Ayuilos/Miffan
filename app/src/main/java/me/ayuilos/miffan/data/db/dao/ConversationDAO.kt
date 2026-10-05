@@ -36,6 +36,19 @@ interface ConversationDAO {
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId FROM conversationentity ORDER BY update_at DESC LIMIT :limit")
     fun observeRecentConversations(limit: Int): Flow<List<LightConversationEntity>>
 
+    /**
+     * Change stamps of the newest segments of an assistant's IM thread. Reading message_node makes
+     * Room re-emit on node-only saves; the stamp changes whenever a segment's visible content does.
+     */
+    @Query(
+        "SELECT c.id AS id, c.title AS title, c.thread_summary AS threadSummary, c.thread_closed_at AS threadClosedAt, " +
+            "c.selected_root_id AS selectedRootId, " +
+            "(SELECT COUNT(*) FROM message_node n WHERE n.conversation_id = c.id) AS nodeCount, " +
+            "(SELECT COALESCE(SUM(n.revision), 0) FROM message_node n WHERE n.conversation_id = c.id) AS revisionSum " +
+            "FROM conversationentity c WHERE c.assistant_id = :assistantId ORDER BY c.update_at DESC LIMIT :limit"
+    )
+    fun observeThreadSegmentStamps(assistantId: String, limit: Int): Flow<List<ThreadSegmentStamp>>
+
     // SQLite returns the bare columns of the row holding MAX(update_at) within each group.
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, MAX(update_at) as updateAt, folder_id as folderId FROM conversationentity GROUP BY assistant_id ORDER BY updateAt DESC")
     fun observeLatestConversationOfEachAssistant(): Flow<List<LightConversationEntity>>
@@ -108,3 +121,14 @@ interface ConversationDAO {
 }
 
 data class ConversationDayCount(val day: String, val count: Int)
+
+/** Cheap fingerprint of a thread segment; equal stamps mean the loaded segment is current. */
+data class ThreadSegmentStamp(
+    val id: String,
+    val title: String,
+    val threadSummary: String,
+    val threadClosedAt: Long,
+    val selectedRootId: String,
+    val nodeCount: Int,
+    val revisionSum: Long,
+)

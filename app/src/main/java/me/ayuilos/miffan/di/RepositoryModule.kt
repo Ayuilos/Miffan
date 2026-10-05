@@ -12,6 +12,7 @@ import me.ayuilos.miffan.data.repository.FilesRepository
 import me.ayuilos.miffan.data.repository.GenMediaRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.thread.ThreadRepository
 import me.ayuilos.miffan.data.repository.WorkspaceNetworkBroker
 import me.ayuilos.miffan.data.repository.RemoteHostCredentialStore
 import me.ayuilos.miffan.data.repository.SshKeyCredentialStore
@@ -32,6 +33,8 @@ val repositoryModule = module {
     single {
         FolderRepository(get(), get())
     }
+
+    single { ThreadRepository(get()) }
 
     single {
         MemoryRepository(get())

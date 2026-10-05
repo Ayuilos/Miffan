@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.MessageRef
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyInputMessage
 import java.util.concurrent.atomic.AtomicInteger
@@ -24,6 +25,8 @@ data class QueuedMessage(
     val id: Uuid = Uuid.random(),
     val content: List<UIMessagePart>,
     val answer: Boolean = true,
+    /** The message the user explicitly replied to in the IM timeline. */
+    val replyTo: MessageRef? = null,
 )
 
 data class MessageQueueState(

@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,7 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.ayuilos.miffan.R
@@ -43,7 +41,6 @@ import me.ayuilos.miffan.ui.context.LocalNavController
 internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -79,12 +76,7 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
             }
         }
         items(settings.assistants, key = { it.id.toString() }) { assistant ->
-            val openChat: () -> Unit = {
-                scope.launch {
-                    val id = vm.conversationFor(assistant)
-                    navController.navigate(Screen.Chat(id.toString()))
-                }
-            }
+            val openChat: () -> Unit = { navController.navigate(Screen.Thread(assistant.id.toString())) }
             Column(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))

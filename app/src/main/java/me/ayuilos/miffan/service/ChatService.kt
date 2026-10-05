@@ -96,6 +96,7 @@ import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 import me.ayuilos.miffan.data.datastore.getCurrentChatModel
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
@@ -504,6 +505,40 @@ class ChatService(
         }
     }
 
+    /**
+     * Loads or creates an IM thread segment for [assistantId] without changing the selected
+     * assistant. Preset messages keep their ids, so the timeline shows them only once.
+     */
+    suspend fun openThreadSegment(conversationId: Uuid, assistantId: Uuid) {
+        // A loaded session is the source of truth; reloading could drop an in-flight generation.
+        if (getOrCreateSession(conversationId).state.value.messageNodes.isNotEmpty()) return
+        val conversation = conversationRepo.getConversationById(conversationId)
+        if (conversation != null) {
+            updateConversation(conversationId, conversation)
+        } else {
+            val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId) ?: return
+            updateConversation(
+                conversationId,
+                Conversation.ofId(id = conversationId, assistantId = assistant.id, newConversation = true)
+                    .updateCurrentMessages(assistant.presetMessages),
+            )
+        }
+    }
+
+    /**
+     * Updates thread metadata (summary, closing time) of a segment. A loaded session is updated
+     * and saved so a later save from the session cannot overwrite the change.
+     */
+    suspend fun updateThreadSegment(conversationId: Uuid, transform: (Conversation) -> Conversation) {
+        val loaded = sessions[conversationId]?.state?.value?.takeIf { it.messageNodes.isNotEmpty() }
+        if (loaded != null) {
+            saveConversation(conversationId, transform(loaded))
+        } else {
+            val stored = conversationRepo.getConversationById(conversationId) ?: return
+            conversationRepo.updateConversation(transform(stored))
+        }
+    }
+
     // ---- 发送消息 ----
 
     fun sendMessage(
@@ -512,10 +547,11 @@ class ChatService(
         answer: Boolean = true,
         // Keep the existing REST send behavior; the native composer explicitly opts into queuing.
         immediately: Boolean = true,
+        replyTo: MessageRef? = null,
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
-        val message = QueuedMessage(content = content.toList(), answer = answer)
+        val message = QueuedMessage(content = content.toList(), answer = answer, replyTo = replyTo)
         if (immediately) {
             sendMessageNow(session, message)
             session.resumeQueue()
@@ -561,7 +597,8 @@ class ChatService(
                         id = message.id,
                         role = MessageRole.USER,
                         parts = processedContent,
-                    )
+                    ),
+                    replyTo = message.replyTo,
                 )
                 saveConversation(conversationId, newConversation)
 

@@ -51,13 +51,6 @@ class ImHomeVM(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Returns the conversation to open for [assistant], selecting it first when a new one is needed. */
-    suspend fun conversationFor(assistant: Assistant): Uuid {
-        chats.value?.firstOrNull { it.assistant.id == assistant.id }?.let { return it.conversationId }
-        settingsStore.updateAssistant(assistant.id)
-        return Uuid.random()
-    }
-
     fun updateSettings(transform: (Settings) -> Settings) {
         viewModelScope.launch { settingsStore.update(transform) }
     }

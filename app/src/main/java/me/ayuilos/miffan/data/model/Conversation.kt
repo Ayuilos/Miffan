@@ -39,6 +39,10 @@ data class Conversation(
     val workspaceCwd: String? = null,
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
+    /** Rolling summary of this segment, injected into later segments of the IM thread. */
+    val threadSummary: String = "",
+    /** Epoch millis when the IM thread closed this segment to new topics; 0 while open. */
+    val threadClosedAt: Long = 0,
     @Transient
     val newConversation: Boolean = false
 ) {
@@ -122,10 +126,11 @@ data class Conversation(
             .filter { it.isNotEmpty() && it.first().parentId == null }
             .toList()
 
-    fun appendMessage(message: UIMessage): Conversation = addNodeAndSelect(
+    fun appendMessage(message: UIMessage, replyTo: MessageRef? = null): Conversation = addNodeAndSelect(
         MessageNode(
             message = message,
             parentId = currentMessageNodes.lastOrNull()?.id,
+            replyTo = replyTo,
         )
     )
 
@@ -252,12 +257,21 @@ data class Conversation(
     }
 }
 
+/** Identifies one message inside one conversation (an IM thread segment). */
+@Serializable
+data class MessageRef(
+    val conversationId: Uuid,
+    val messageId: Uuid,
+)
+
 @Serializable
 data class MessageNode(
     val id: Uuid = Uuid.random(),
     val message: UIMessage,
     val parentId: Uuid? = null,
     val selectedChildId: Uuid? = null,
+    /** The message the user explicitly replied to in the IM timeline. */
+    val replyTo: MessageRef? = null,
     @Transient
     val isFavorite: Boolean = false,
     @Transient

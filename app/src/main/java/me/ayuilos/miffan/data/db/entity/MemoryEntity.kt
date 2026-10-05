@@ -12,4 +12,11 @@ data class MemoryEntity(
     val assistantId: String,
     @ColumnInfo("content")
     val content: String = "",
+    /** Epoch millis; 0 for memories created before sources were recorded. */
+    @ColumnInfo("created_at", defaultValue = "0")
+    val createdAt: Long = 0,
+    @ColumnInfo("source_conversation_id", defaultValue = "")
+    val sourceConversationId: String = "",
+    @ColumnInfo("source_message_id", defaultValue = "")
+    val sourceMessageId: String = "",
 )

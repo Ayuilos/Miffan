@@ -89,6 +89,7 @@ import me.ayuilos.miffan.ui.im.ImHomePage
 import me.ayuilos.miffan.ui.im.InterfaceModeChoiceHost
 import me.ayuilos.miffan.ui.im.navigateHome
 import me.ayuilos.miffan.ui.im.openFreshChat
+import me.ayuilos.miffan.ui.im.thread.AgentThreadPage
 import me.ayuilos.miffan.ui.pages.assistant.AssistantPage
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantBasicPage
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantDetailPage
@@ -415,6 +416,10 @@ class RouteActivity : ComponentActivity() {
                                 ImHomePage()
                             }
 
+                            entry<Screen.Thread> { key ->
+                                AgentThreadPage(assistantId = Uuid.parse(key.assistantId))
+                            }
+
                             entry<Screen.Onboarding>(
                                 metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
                                     + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
@@ -691,6 +696,10 @@ sealed interface Screen : NavKey {
     /** Root of the IM shell with the four bottom tabs. */
     @Serializable
     data object Home : Screen
+
+    /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
+    @Serializable
+    data class Thread(val assistantId: String, val focusMessageId: String? = null) : Screen
 
     @Serializable
     data class Chat(

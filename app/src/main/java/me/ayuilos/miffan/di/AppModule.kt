@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.di
 
+import me.ayuilos.miffan.data.thread.RuleSegmentRouter
+import me.ayuilos.miffan.data.thread.SegmentRouter
+import me.ayuilos.miffan.data.thread.ThreadNoticeSource
+import me.ayuilos.miffan.data.thread.ThreadService
 import com.google.firebase.Firebase
 import com.google.firebase.analytics.analytics
 import kotlinx.serialization.json.Json
@@ -96,6 +100,12 @@ val appModule = module {
             httpClient = get(),
         )
     }
+
+    single<SegmentRouter> { RuleSegmentRouter() }
+
+    single { ThreadNoticeSource.Empty }
+
+    single { ThreadService(chatService = get(), settingsStore = get(), router = get()) }
 
     single {
         WebServerManager(

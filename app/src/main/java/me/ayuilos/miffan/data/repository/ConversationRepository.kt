@@ -15,6 +15,7 @@ import me.ayuilos.miffan.data.db.AppDatabase
 import me.ayuilos.miffan.data.db.fts.MessageFtsManager
 import me.ayuilos.miffan.data.db.fts.MessageSearchSort
 import me.ayuilos.miffan.data.db.dao.ConversationDAO
+import me.ayuilos.miffan.data.db.dao.ThreadSegmentStamp
 import me.ayuilos.miffan.data.db.dao.FavoriteDAO
 import me.ayuilos.miffan.data.db.dao.MessageNodeDAO
 import me.ayuilos.miffan.data.db.entity.ConversationEntity
@@ -22,6 +23,7 @@ import me.ayuilos.miffan.data.db.entity.MessageNodeEntity
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.utils.JsonInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
@@ -54,6 +56,10 @@ class ConversationRepository(
             .observeRecentConversations(limit)
             .map { conversations -> conversations.map(::conversationSummaryToConversation) }
     }
+
+    /** Change stamps of the newest [limit] conversations of [assistantId], newest first. */
+    fun observeThreadSegmentStamps(assistantId: Uuid, limit: Int): Flow<List<ThreadSegmentStamp>> =
+        conversationDAO.observeThreadSegmentStamps(assistantId.toString(), limit)
 
     fun observeLatestConversationOfEachAssistant(): Flow<List<Conversation>> {
         return conversationDAO
@@ -373,6 +379,8 @@ class ConversationRepository(
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
             selectedRootId = conversation.selectedRootId?.toString() ?: "",
+            threadSummary = conversation.threadSummary,
+            threadClosedAt = conversation.threadClosedAt,
         )
     }
 
@@ -395,6 +403,8 @@ class ConversationRepository(
             lorebookIds = JsonInstant.decodeFromString(conversationEntity.lorebookIds),
             workspaceCwd = conversationEntity.workspaceCwd.ifEmpty { null },
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
+            threadSummary = conversationEntity.threadSummary,
+            threadClosedAt = conversationEntity.threadClosedAt,
         )
     }
 
@@ -470,6 +480,7 @@ class ConversationRepository(
                             message = message,
                             parentId = entity.parentId.ifEmpty { null }?.let(Uuid::parse),
                             selectedChildId = entity.selectedChildId.ifEmpty { null }?.let(Uuid::parse),
+                            replyTo = entity.replyTo.ifEmpty { null }?.let { JsonInstant.decodeFromString<MessageRef>(it) },
                             isFavorite = favoriteNodeIds.contains(nodeId),
                             revision = entity.revision,
                         )
@@ -500,6 +511,7 @@ class ConversationRepository(
                 selectedChildId = node.selectedChildId?.toString() ?: "",
                 message = JsonInstant.encodeToString(node.message),
                 revision = node.revision,
+                replyTo = node.replyTo?.let { JsonInstant.encodeToString(it) } ?: "",
             )
         }
         if (entities.isNotEmpty()) {

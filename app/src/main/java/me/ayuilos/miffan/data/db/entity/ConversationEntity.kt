@@ -34,4 +34,10 @@ data class ConversationEntity(
     val folderId: String = "",
     @ColumnInfo("selected_root_id", defaultValue = "")
     val selectedRootId: String = "",
+    /** Rolling summary carried into the next segment of the assistant's IM thread. */
+    @ColumnInfo("thread_summary", defaultValue = "")
+    val threadSummary: String = "",
+    /** Epoch millis when this segment stopped receiving new topics; 0 while open. */
+    @ColumnInfo("thread_closed_at", defaultValue = "0")
+    val threadClosedAt: Long = 0,
 )

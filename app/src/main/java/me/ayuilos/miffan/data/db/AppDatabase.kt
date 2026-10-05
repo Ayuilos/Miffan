@@ -26,6 +26,7 @@ import me.ayuilos.miffan.data.db.entity.MessageNodeEntity
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
+import me.ayuilos.miffan.data.db.entity.RevisionEntity
 import me.ayuilos.miffan.data.db.migrations.Migration_16_17
 import me.ayuilos.miffan.data.db.migrations.Migration_22_23
 import me.ayuilos.miffan.data.db.migrations.Migration_8_9
@@ -43,8 +44,9 @@ import me.ayuilos.miffan.utils.JsonInstant
         RemoteHostEntity::class,
         SshKeyEntity::class,
         FolderEntity::class,
+        RevisionEntity::class,
     ],
-    version = 28,
+    version = 29,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
