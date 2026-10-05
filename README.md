@@ -18,10 +18,47 @@ Use an API key with OpenAI-compatible, Gemini, or Claude services, or sign in wi
 
 ## What makes Miffan different
 
+- **Chat like a messenger, or work like a pro.** Easy chat gives every partner one continuous conversation; the professional interface keeps every option within reach.
 - **One home for different models.** Mix official APIs, compatible gateways, self-hosted endpoints, and a Codex subscription without rebuilding your workflow around one provider.
 - **Assistants are real workspaces.** Each assistant can have isolated prompts, model parameters, memory, tools, MCP servers, Skills, visual identity, and conversation history.
 - **The phone can do more than display chat.** Miffan can search the web, work with files, run a local Linux workspace, connect to remote servers over SSH, use device capabilities, and expose the same conversations through a browser.
 - **A character system with purpose.** Choose customizable Miffan bowl characters or the blue whale girl, with expressions that respond to conversation state and time of day.
+
+## Easy chat · new in 4.0
+
+Miffan 4.0 adds a messenger-style way to use AI. Each partner is one ongoing chat: no new conversations to start, no models to pick, no settings to tune. Set up a service once, then just talk.
+
+- **One partner, one continuous chat.** Your history with a partner reads as a single timeline across days. Behind the scenes Miffan keeps topics apart and carries short summaries forward, so long chats stay fast and on point.
+- **Ask several things at once.** Unrelated questions become parallel topics. Each reply quotes the question it answers, and you can view one topic on its own or reply to any message.
+- **Change a partner by saying so.** "Keep your answers shorter" adjusts the partner's preferences, with a notice you can undo. A partner only acts on your own words, and it asks before turning on abilities such as web search.
+- **Everything is traceable.** Every change to a partner's settings or memories is versioned, linked to the message that caused it, and can be restored.
+- **What AI knows about you.** See what each partner remembered, where it came from, and delete anything at any time.
+- **Both ways of working.** New installations start in easy chat; existing users choose on upgrade and can switch between easy chat and the professional interface at any time. Both share the same data.
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v4/en/01-chats-light.webp" alt="Chats with partners, unread counts and typing indicators" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/en/03-parallel-light.webp" alt="Three questions at once, each reply quoting its question" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/en/05-self-config-light.webp" alt="A partner adjusting its own preferences with an undo notice" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">Chats</td>
+    <td align="center">Parallel topics</td>
+    <td align="center">Change by talking</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v4/en/06-history-light.webp" alt="Settings history with the raw difference" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/en/07-memory-light.webp" alt="What AI knows about you, with the source of each memory" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/en/02-thread-dark.webp" alt="A continuous chat across days in dark theme" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">Settings history</td>
+    <td align="center">What AI knows about you</td>
+    <td align="center">One continuous chat</td>
+  </tr>
+</table>
+
+Screenshots use demo partners and conversations.
 
 ## Remote workspaces · new in 3.4
 

@@ -18,10 +18,47 @@ Miffan 是為 Android 打造的開源 AI 工作空間。你可以連接自己正
 
 ## 為什麼選擇 Miffan
 
+- **像聊天軟體一樣用，也能像專業工具一樣用。** 輕鬆聊天讓每個夥伴都是一條持續的聊天；專業介面保留所有選項。
 - **不同模型，一個入口。** 官方 API、相容閘道、自行部署的端點和 Codex 訂閱可以共存，不必把工作流程綁定在單一供應商上。
 - **助理不只是提示詞。** 每個助理都能擁有獨立的模型參數、記憶、工具、MCP、Skills、視覺形象與對話記錄。
 - **手機不只是聊天視窗。** Miffan 可以搜尋網頁、處理檔案、執行本機 Linux 工作區、透過 SSH 連接遠端伺服器、使用裝置能力，還能透過瀏覽器存取同一套對話。
 - **有意義的角色系統。** 可選擇自訂 Miffan 碗角色或藍色大肥魚，讓動作神態回應聊天狀態與晝夜變化。
+
+## 輕鬆聊天 · 4.0 新功能
+
+Miffan 4.0 帶來像聊天軟體一樣使用 AI 的方式。每個夥伴就是一個持續的聊天：不用新建對話，不用選模型，也不用調參數。連接一次服務，之後直接聊。
+
+- **一個夥伴，一條聊天。** 和夥伴的聊天記錄跨越多天連成一條時間線。Miffan 在背後自動區分話題，並把簡短的摘要帶到後續聊天裡，長聊也保持快速、切題。
+- **一次問好幾件事。** 不相關的問題會成為並行的話題，每條回覆都引用它回答的問題；可以只看某個話題，也可以回覆任意一則訊息。
+- **說一句話就能調整夥伴。** 「以後回答簡短一點」會調整夥伴的偏好，並留下可復原的提示。夥伴只依據你本人的話做調整，開啟聯網搜尋等能力前會先徵求同意。
+- **每次改動都可追溯。** 夥伴設定和記憶的每次變化都有版本記錄，關聯到引起它的那則訊息，並且可以還原。
+- **AI 對我的了解。** 查看每個夥伴記下了什麼、來自哪次聊天，隨時刪除。
+- **兩種用法都保留。** 新安裝預設使用輕鬆聊天；舊用戶升級時自行選擇，之後可以隨時在輕鬆聊天和專業介面之間切換，兩者共用同一份資料。
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/01-chats-light.webp" alt="夥伴訊息列表，帶未讀數與正在輸入" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/03-parallel-light.webp" alt="一次問三個問題，每條回覆引用對應的問題" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/05-self-config-light.webp" alt="夥伴調整自己的偏好並留下可復原的提示" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">訊息</td>
+    <td align="center">並行話題</td>
+    <td align="center">說一句話就能調整</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/06-history-light.webp" alt="設定歷史與原文差異" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/07-memory-light.webp" alt="AI 對我的了解，顯示每條記憶的來源" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/02-thread-dark.webp" alt="深色主題下跨天連續的聊天" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">設定歷史</td>
+    <td align="center">AI 對我的了解</td>
+    <td align="center">一條連續的聊天</td>
+  </tr>
+</table>
+
+截圖使用簡體中文介面與示範夥伴、聊天資料。
 
 ## 遠端工作空間 · 3.4 新功能
 
