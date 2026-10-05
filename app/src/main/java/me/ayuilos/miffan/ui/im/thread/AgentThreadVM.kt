@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
@@ -188,6 +189,18 @@ class AgentThreadVM(
 
     fun regenerate(item: TimelineItem.Message) {
         if (item.canRegenerate) threadService.regenerate(item.segmentId, item.message)
+    }
+
+    /**
+     * Retries a failed reply in [segmentId] by answering its latest user message again. Unlike
+     * [regenerate], this also works when the failure happened before any reply existed.
+     */
+    fun retry(segmentId: Uuid) {
+        viewModelScope.launch {
+            val segment = segments.first().firstOrNull { it.id == segmentId } ?: return@launch
+            val message = segment.currentMessages.lastOrNull { it.role == MessageRole.USER } ?: return@launch
+            threadService.regenerate(segmentId, message)
+        }
     }
 
     /** Stops every generating segment of this thread. */
