@@ -41,16 +41,18 @@ file once. Write the JSON under the job's temporary directory, not the repositor
    and data meant for models, log messages and debug-only pages in code.
 2. **Name keys** by page or feature prefix (`setting_page_`, `im_`, `whale_theme_`, …), reusing
    an existing key when the text and meaning match.
-3. **Translate.** Choose who does it by size and nuance:
-   - Up to about 30 strings: translate them yourself in the same turn.
-   - Larger batches: split them by feature and hand each group to a sub-agent, choosing its
-     model. A strong mid-tier model (for example `sonnet` in Claude Code) suits ordinary UI copy.
-     Use the most capable model for brand voice, character personas, onboarding and promotional
-     text. An agent without sub-agents translates the batches itself.
-     Avoid small models for Japanese and Korean UI copy. Sub-agents return JSON only; you merge
-     their results and run `apply` once, so no two writers touch the same `strings.xml`.
-   - Give whoever translates the glossary below plus the surrounding screen, so short labels are
-     translated in context.
+3. **Translate.** Translation is cheap work; pick the cheapest model that does it well:
+   - Up to about 10 strings: translate them yourself in the same turn; a sub-agent costs more
+     to start than it saves.
+   - Larger batches: split them by feature and hand each group to a sub-agent on a small model.
+     Use `haiku` by default, including character and brand copy, and give it the tone notes
+     from the guidelines below. Move up to `sonnet` only for a group that haiku already got
+     wrong. Never use the top-tier model (Opus) for translation.
+   - An agent without sub-agents translates the batches itself.
+   - Sub-agents return JSON only. You merge their results and run `apply` once, so no two
+     writers touch the same `strings.xml`.
+   - Give whoever translates the glossary below and the surrounding screen, so short labels
+     are translated in context.
 4. **Apply** with `--dry-run` first, then for real. Replace the literals in code with
    `stringResource(R.string.…)` (Compose) or `context.getString(…)` outside composition.
 5. **Verify**: `missing` reports the module complete, and `./gradlew :app:lintDebug
