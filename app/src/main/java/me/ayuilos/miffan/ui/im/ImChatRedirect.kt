@@ -30,12 +30,8 @@ fun ImChatRedirect(key: Screen.Chat, conversations: ConversationRepository = koi
                 ?.messageNodes?.firstOrNull { it.id.toString() == nodeId }?.message?.id?.toString()
         }
         val thread = Screen.Thread(assistantId.toString(), focusMessageId = focus, text = key.text)
-        if (navigator.contains(Screen.Home)) {
-            navigator.replaceLast(thread)
-        } else {
-            navigator.clearAndNavigate(Screen.Home)
-            navigator.navigate(thread)
-        }
+        // Replace this entry only: switching shells may have reset the stack during the lookup.
+        navigator.replace(key, thread, root = Screen.Home)
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 }
