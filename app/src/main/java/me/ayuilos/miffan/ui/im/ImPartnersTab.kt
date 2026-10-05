@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -21,6 +22,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.HorizontalDivider
+import kotlinx.coroutines.launch
+import me.ayuilos.miffan.data.model.Assistant
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +53,9 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
 
+    val templates = imPartnerTemplates(LocalConfiguration.current.locales[0])
+    val scope = rememberCoroutineScope()
+    var adding by remember { mutableStateOf(false) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         modifier = Modifier.fillMaxSize(),
@@ -69,20 +83,29 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { navController.navigate(Screen.Assistant) }) {
+                TextButton(onClick = {
+                    if (!adding) scope.launch {
+                        adding = true
+                        try {
+                            val partner = Assistant(name = "Miffan")
+                            vm.addPartner(partner)
+                            navController.navigate(Screen.PartnerProfile(partner.id.toString()))
+                        } finally { adding = false }
+                    }
+                }) {
                     Icon(HugeIcons.Add01, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(stringResource(R.string.im_partners_add), modifier = Modifier.padding(start = 4.dp))
                 }
             }
         }
         items(settings.assistants, key = { it.id.toString() }) { assistant ->
-            val openChat: () -> Unit = { navController.navigate(Screen.Thread(assistant.id.toString())) }
+            val openChat: () -> Unit = { navController.navigate(Screen.PartnerProfile(assistant.id.toString())) }
             Column(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
                     .combinedClickable(
                         onClick = openChat,
-                        onLongClick = { navController.navigate(Screen.AssistantDetail(assistant.id.toString())) },
+                        onLongClick = { navController.navigate(Screen.PartnerProfile(assistant.id.toString())) },
                     )
                     .padding(vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -104,16 +127,33 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                 )
             }
         }
-        item(key = "hint", span = { GridItemSpan(maxLineSpan) }) {
-            Text(
-                text = stringResource(R.string.im_partners_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            )
+        item(key = "recommendations", span = { GridItemSpan(maxLineSpan) }) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 16.dp)) {
+                HorizontalDivider()
+                Text(stringResource(R.string.im_p5_recommended), style = MaterialTheme.typography.titleLarge)
+                templates.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        pair.forEach { template ->
+                            val added = settings.assistants.any { it.id == template.id }
+                            Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(20.dp), modifier = Modifier.weight(1f)) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    AssistantAvatar(template.name, template.avatar, Modifier.size(56.dp))
+                                    Text(template.name, style = MaterialTheme.typography.titleMedium)
+                                    Text(template.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.heightIn(min = 36.dp))
+                                    OutlinedButton(enabled = !added && !adding, onClick = {
+                                        scope.launch {
+                                            adding = true
+                                            try { vm.addPartner(template.assistant()); navController.navigate(Screen.PartnerProfile(template.id.toString())) }
+                                            finally { adding = false }
+                                        }
+                                    }) { Text(stringResource(if (added) R.string.im_p5_added else R.string.im_partners_add)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

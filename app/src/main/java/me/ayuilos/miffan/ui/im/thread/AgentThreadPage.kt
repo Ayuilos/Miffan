@@ -231,7 +231,9 @@ fun AgentThreadPage(
                         is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
                         is TimelineItem.Message -> ThreadMessageBubble(item, assistant, highlighted = highlighted == item.message.id.toString(),
                             onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
-                            onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } })
+                            onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
+                            onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
+                            onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) })
                         is TimelineItem.Typing -> ThreadTyping(assistant)
                         is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
                             onView = { viewingNotice = item.notice },

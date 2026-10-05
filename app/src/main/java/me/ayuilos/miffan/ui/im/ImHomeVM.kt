@@ -89,6 +89,13 @@ class ImHomeVM(
         viewModelScope.launch { settingsStore.update(transform) }
     }
 
+    suspend fun addPartner(assistant: Assistant) {
+        settingsStore.update { settings ->
+            if (settings.assistants.any { it.id == assistant.id }) settings
+            else settings.copy(assistants = settings.assistants + assistant)
+        }
+    }
+
     suspend fun switchInterfaceMode(mode: InterfaceMode) {
         settingsStore.update { it.withInterfaceMode(mode) }
     }

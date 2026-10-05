@@ -85,6 +85,11 @@ import me.ayuilos.miffan.ui.hooks.readStringPreference
 import me.ayuilos.miffan.ui.hooks.rememberCurrentColorMode
 import me.ayuilos.miffan.ui.hooks.rememberCustomAsrState
 import me.ayuilos.miffan.ui.hooks.rememberCustomTtsState
+import me.ayuilos.miffan.ui.im.ImOnboardingPage
+import me.ayuilos.miffan.ui.im.ImSearchPage
+import me.ayuilos.miffan.ui.im.ImMemoryPage
+import me.ayuilos.miffan.ui.im.ImRevisionHistoryPage
+import me.ayuilos.miffan.ui.im.ImPartnerProfilePage
 import me.ayuilos.miffan.ui.im.ImHomePage
 import me.ayuilos.miffan.ui.im.InterfaceModeChoiceHost
 import me.ayuilos.miffan.ui.im.navigateHome
@@ -416,6 +421,11 @@ class RouteActivity : ComponentActivity() {
                                 ImHomePage()
                             }
 
+                            entry<Screen.ImSearch> { ImSearchPage() }
+                            entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId) }
+                            entry<Screen.RevisionHistory> { key -> ImRevisionHistoryPage(key.subject, key.subjectId) }
+                            entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
+
                             entry<Screen.Thread> { key ->
                                 AgentThreadPage(assistantId = Uuid.parse(key.assistantId), focusMessageId = key.focusMessageId)
                             }
@@ -424,7 +434,7 @@ class RouteActivity : ComponentActivity() {
                                 metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
                                     + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
                             ) {
-                                OnboardingPage()
+                                if (settings.isImMode) ImOnboardingPage() else OnboardingPage()
                             }
 
                             entry<Screen.ShareHandler> { key ->
@@ -696,6 +706,18 @@ sealed interface Screen : NavKey {
     /** Root of the IM shell with the four bottom tabs. */
     @Serializable
     data object Home : Screen
+
+    @Serializable
+    data class PartnerProfile(val assistantId: String) : Screen
+
+    @Serializable
+    data class RevisionHistory(val subject: String, val subjectId: String) : Screen
+
+    @Serializable
+    data class ImMemory(val ownerId: String) : Screen
+
+    @Serializable
+    data object ImSearch : Screen
 
     /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
     @Serializable

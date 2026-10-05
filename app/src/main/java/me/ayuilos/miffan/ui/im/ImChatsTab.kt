@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.im
 
+import android.content.Context
+import androidx.core.content.edit
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,9 +27,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.draw.clipToBounds
+import me.ayuilos.miffan.data.thread.PreviewKind
+import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,13 +71,18 @@ internal fun ImChatsTab(
     val navController = LocalNavController.current
     val chats by vm.chats.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("im_ui_hints", Context.MODE_PRIVATE) }
+    val showHint = rememberSaveable { !prefs.getBoolean("chats_seen", false) }
+    LaunchedEffect(Unit) { prefs.edit { putBoolean("chats_seen", true) } }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = innerPadding,
     ) {
         item("title") { ImTabTitle(R.string.im_tab_chats) }
         item("search") {
-            ImSearchField(onClick = { navController.navigate(Screen.MessageSearch) })
+            ImSearchField(onClick = { navController.navigate(Screen.ImSearch) })
         }
         val items = chats
         if (items != null && items.isEmpty()) {
@@ -67,12 +91,18 @@ internal fun ImChatsTab(
         items(items.orEmpty(), key = { it.assistant.id.toString() }) { chat ->
             ImChatRow(
                 chat = chat,
+                onPin = { vm.setPinned(chat.assistant, !chat.pinned) },
+                onHide = { vm.hide(chat.assistant) },
                 onClick = { navController.navigate(Screen.Thread(chat.assistant.id.toString())) },
             )
             HorizontalDivider(
                 modifier = Modifier.padding(start = 88.dp),
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
             )
+        }
+        if (showHint) item("hint") {
+            Text(stringResource(R.string.im_p5_hide_hint), Modifier.padding(24.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -103,11 +133,36 @@ private fun ImSearchField(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ImChatRow(chat: ImChatItem, onClick: () -> Unit) {
+private fun ImChatRow(chat: ImChatItem, onClick: () -> Unit, onPin: () -> Unit, onHide: () -> Unit) {
+    val actionWidth = 160.dp
+    val width = with(LocalDensity.current) { actionWidth.toPx() }
+    var offset by remember { mutableFloatStateOf(0f) }
+    Box(Modifier.fillMaxWidth().clipToBounds()) {
+        Row(Modifier.align(Alignment.CenterEnd).width(actionWidth)) {
+            Surface(onClick = { offset = 0f; onPin() }, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f)) {
+                Text(stringResource(if (chat.pinned) R.string.im_p5_unpin else R.string.im_p5_pin),
+                    Modifier.padding(horizontal = 8.dp, vertical = 28.dp), style = MaterialTheme.typography.labelLarge)
+            }
+            Surface(onClick = onHide, color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.im_p5_hide), Modifier.padding(horizontal = 8.dp, vertical = 28.dp),
+                    style = MaterialTheme.typography.labelLarge)
+            }
+        }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .offset { IntOffset(offset.roundToInt(), 0) }
+            .background(MaterialTheme.colorScheme.background)
+            .pointerInput(width) {
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, amount -> change.consume(); offset = (offset + amount).coerceIn(-width, 0f) },
+                    onDragEnd = { offset = if (offset < -width / 3) -width else 0f },
+                    onDragCancel = { offset = 0f },
+                )
+            }
+            .clickable { if (offset != 0f) offset = 0f else onClick() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -134,14 +189,31 @@ private fun ImChatRow(chat: ImChatItem, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            val preview = when (chat.previewKind) {
+                PreviewKind.IMAGE -> stringResource(R.string.im_p5_image)
+                PreviewKind.FILE -> stringResource(R.string.im_p5_file)
+                else -> chat.preview
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = if (chat.typing) stringResource(R.string.im_chats_typing) else chat.preview,
+                modifier = Modifier.weight(1f),
+                text = if (chat.typing) stringResource(R.string.im_chats_typing)
+                    else if (chat.previewFromUser) stringResource(R.string.im_p5_you_prefix, preview) else preview,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (chat.typing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (chat.pinned) Text(stringResource(R.string.im_p5_pin), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary)
+            if (chat.unread > 0) Surface(shape = CircleShape, color = androidx.compose.ui.graphics.Color(0xFFD63B47)) {
+                Text(if (chat.unread > 99) "99+" else chat.unread.toString(),
+                    Modifier.padding(horizontal = 6.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall,
+                    color = androidx.compose.ui.graphics.Color.White)
+            }
+            }
         }
+    }
     }
 }
 
