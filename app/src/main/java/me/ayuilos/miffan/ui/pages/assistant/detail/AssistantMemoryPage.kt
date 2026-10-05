@@ -24,6 +24,8 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -45,6 +47,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantMemory
+import me.ayuilos.miffan.data.model.isImMode
+import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.components.ui.MiffanConfirmDialog
@@ -155,6 +159,7 @@ private fun AssistantMemoryContent(
         )
     }
 
+    val easyChat = LocalSettings.current.isImMode
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -209,13 +214,13 @@ private fun AssistantMemoryContent(
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
                 supportingContent = {
-                    Text(
-                        text = stringResource(R.string.assistant_page_recent_chats_desc),
-                    )
+                    AlwaysOnInEasyChat(stringResource(R.string.assistant_page_recent_chats_desc), easyChat)
                 },
                 trailingContent = {
                     Switch(
-                        checked = assistant.enableRecentChatsReference,
+                        checked = easyChat || assistant.enableRecentChatsReference,
+                        enabled = !easyChat,
+                        colors = lockedOnSwitchColors(),
                         onCheckedChange = {
                             onUpdateAssistant(
                                 assistant.copy(
@@ -229,13 +234,13 @@ private fun AssistantMemoryContent(
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_time_reminder)) },
                 supportingContent = {
-                    Text(
-                        text = stringResource(R.string.assistant_page_time_reminder_desc),
-                    )
+                    AlwaysOnInEasyChat(stringResource(R.string.assistant_page_time_reminder_desc), easyChat)
                 },
                 trailingContent = {
                     Switch(
-                        checked = assistant.enableTimeReminder,
+                        checked = easyChat || assistant.enableTimeReminder,
+                        enabled = !easyChat,
+                        colors = lockedOnSwitchColors(),
                         onCheckedChange = {
                             onUpdateAssistant(
                                 assistant.copy(
@@ -352,4 +357,21 @@ private fun MemoryItem(
             }
         }
     }
+}
+
+/** Explains a switch that Easy chat keeps on regardless of the assistant's own setting. */
+@Composable
+private fun AlwaysOnInEasyChat(description: String, easyChat: Boolean) {
+    Text(if (easyChat) description + "\n" + stringResource(R.string.im_always_on_in_easy_chat) else description)
+}
+
+/** A switch Easy chat keeps on still reads as on, only quieter, rather than as a greyed-out off. */
+@Composable
+private fun lockedOnSwitchColors(): SwitchColors {
+    val colors = MaterialTheme.colorScheme
+    return SwitchDefaults.colors(
+        disabledCheckedTrackColor = colors.primary.copy(alpha = 0.6f),
+        disabledCheckedThumbColor = colors.onPrimary,
+        disabledCheckedBorderColor = colors.primary.copy(alpha = 0.6f),
+    )
 }

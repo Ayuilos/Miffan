@@ -1914,5 +1914,6 @@
   <string name="im_p5_diff_empty">提示詞或記憶原文沒有變更</string>
   <string name="im_p5_web_permission">這是伙伴的能力開關，允許後會開啟聯網搜尋。</string>
   <string name="im_p5_clear">清除</string>
+  <string name="im_always_on_in_easy_chat">輕鬆聊天模式下始終開啟</string>
 </resources>
 

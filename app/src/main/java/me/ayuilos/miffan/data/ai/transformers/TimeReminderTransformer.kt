@@ -5,6 +5,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
+import me.ayuilos.miffan.data.model.timeReminderEnabled
 import me.ayuilos.miffan.utils.toLocalDateTime
 import java.time.ZoneId
 import java.time.format.TextStyle
@@ -23,7 +24,7 @@ object TimeReminderTransformer : InputMessageTransformer {
         ctx: TransformerContext,
         messages: List<UIMessage>,
     ): List<UIMessage> {
-        if (!ctx.assistant.enableTimeReminder) return messages
+        if (!ctx.assistant.timeReminderEnabled(ctx.settings)) return messages
         return applyTimeReminder(messages)
     }
 }

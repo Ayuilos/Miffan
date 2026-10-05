@@ -1916,5 +1916,6 @@
   <string name="im_p5_diff_empty">Текст инструкций и воспоминаний не изменился</string>
   <string name="im_p5_web_permission">Это переключатель возможности партнёра. Разрешение включит поиск в сети.</string>
   <string name="im_p5_clear">Очистить</string>
+  <string name="im_always_on_in_easy_chat">В простом чате всегда включено</string>
 </resources>
 

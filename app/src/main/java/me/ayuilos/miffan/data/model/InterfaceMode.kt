@@ -36,6 +36,13 @@ fun initialInterfaceMode(launchCount: Int, hasSavedProviders: Boolean): Interfac
 
 val Settings.isImMode: Boolean get() = interfaceMode.mode == InterfaceMode.IM
 
+// Easy chat is one continuous timeline: the partner always recalls earlier chats and knows the time.
+// The assistant's own switches are kept, so the professional shell still honors them.
+
+fun Assistant.recentChatsReferenceEnabled(settings: Settings): Boolean = settings.isImMode || enableRecentChatsReference
+
+fun Assistant.timeReminderEnabled(settings: Settings): Boolean = settings.isImMode || enableTimeReminder
+
 fun Settings.withInterfaceMode(mode: InterfaceMode): Settings = copy(
     interfaceMode = InterfaceModeState(mode = mode, choicePending = false),
 )

@@ -57,4 +57,20 @@ class InterfaceModeTest {
         val professional = im.withInterfaceMode(InterfaceMode.PROFESSIONAL)
         assertEquals(InterfaceModeState(InterfaceMode.PROFESSIONAL, choicePending = false), professional.interfaceMode)
     }
+
+    @Test
+    fun easyChatAlwaysRecallsEarlierChatsAndTheTimeWithoutChangingTheAssistant() {
+        val professional = JsonInstant.decodeFromString<Settings>("{}").withInterfaceMode(InterfaceMode.PROFESSIONAL)
+        val easy = professional.withInterfaceMode(InterfaceMode.IM)
+        val off = Assistant()
+
+        assertTrue(off.recentChatsReferenceEnabled(easy))
+        assertTrue(off.timeReminderEnabled(easy))
+        assertFalse(off.recentChatsReferenceEnabled(professional))
+        assertFalse(off.timeReminderEnabled(professional))
+
+        val on = off.copy(enableRecentChatsReference = true, enableTimeReminder = true)
+        assertTrue(on.recentChatsReferenceEnabled(professional))
+        assertTrue(on.timeReminderEnabled(professional))
+    }
 }

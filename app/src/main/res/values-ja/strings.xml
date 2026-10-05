@@ -1916,5 +1916,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_diff_empty">プロンプトや記憶の原文に変更はありません</string>
   <string name="im_p5_web_permission">パートナーの機能スイッチです。許可するとウェブ検索が有効になります。</string>
   <string name="im_p5_clear">クリア</string>
+  <string name="im_always_on_in_easy_chat">かんたんチャットでは常にオン</string>
 </resources>
 

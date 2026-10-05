@@ -100,6 +100,7 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.data.model.isImMode
+import me.ayuilos.miffan.data.model.recentChatsReferenceEnabled
 import me.ayuilos.miffan.data.thread.ThreadContext
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
@@ -1001,7 +1002,7 @@ class ChatService(
                     if (extensionManagementEnabled) {
                         addAll(createExtensionManagementTools(extensionManagementService))
                     }
-                    if (assistant.enableRecentChatsReference) {
+                    if (assistant.recentChatsReferenceEnabled(settings)) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     if (settings.isImMode) {

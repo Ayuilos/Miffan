@@ -1916,5 +1916,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_diff_empty">프롬프트나 기억 원문은 바뀌지 않았어요</string>
   <string name="im_p5_web_permission">파트너 기능 스위치예요. 허용하면 웹 검색이 켜져요.</string>
   <string name="im_p5_clear">지우기</string>
+  <string name="im_always_on_in_easy_chat">간편 채팅에서는 항상 켜짐</string>
 </resources>
 

@@ -1915,5 +1915,6 @@
   <string name="im_p5_diff_empty">No prompt or memory text changed</string>
   <string name="im_p5_web_permission">This is a partner capability switch. Allowing turns on web search.</string>
   <string name="im_p5_clear">Clear</string>
+  <string name="im_always_on_in_easy_chat">Always on in Easy chat</string>
 </resources>
 
