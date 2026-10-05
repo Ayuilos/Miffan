@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.di
 
+import me.ayuilos.miffan.data.revision.RevisionNoticeSource
+import me.ayuilos.miffan.data.revision.RevisionService
 import me.ayuilos.miffan.data.thread.LlmTopicClassifier
 import me.ayuilos.miffan.data.thread.SegmentSummarizer
 import me.ayuilos.miffan.data.thread.SmartSegmentRouter
@@ -118,7 +120,9 @@ val appModule = module {
         )
     }
 
-    single { ThreadNoticeSource.Empty }
+    single { RevisionService(revisions = get(), settingsStore = get(), memoryRepository = get()) }
+
+    single<ThreadNoticeSource> { RevisionNoticeSource(revisions = get(), settingsStore = get()) }
 
     single { ThreadService(chatService = get(), settingsStore = get(), router = get(), summarizer = get()) }
 

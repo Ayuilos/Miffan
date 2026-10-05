@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.data.ai
 
+import me.ayuilos.miffan.data.revision.RevisionOrigin
+import me.ayuilos.miffan.data.revision.RevisionAuthor
+import me.ayuilos.miffan.data.model.MessageRef
+import kotlinx.coroutines.withContext
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -102,6 +106,13 @@ class GenerationHandler(
         val providerImpl = providerManager.getProviderByType(provider)
 
         var messages: List<UIMessage> = messages
+        // Memory changes in this turn are attributed to the user message that started it.
+        val memoryOrigin = RevisionOrigin(
+            author = RevisionAuthor.AGENT,
+            trigger = conversationId?.let { id ->
+                messages.lastOrNull { it.role == MessageRole.USER }?.let { MessageRef(id, it.id) }
+            },
+        )
 
         for (stepIndex in 0 until maxSteps) {
             Log.i(TAG, "streamText: start step #$stepIndex (${model.id})")
@@ -117,13 +128,13 @@ class GenerationHandler(
                     buildMemoryTools(
                         json = json,
                         onCreation = { content ->
-                            memoryRepo.addMemory(memoryAssistantId, content)
+                            withContext(memoryOrigin) { memoryRepo.addMemory(memoryAssistantId, content) }
                         },
                         onUpdate = { id, content ->
-                            memoryRepo.updateContent(id, content)
+                            withContext(memoryOrigin) { memoryRepo.updateContent(id, content) }
                         },
                         onDelete = { id ->
-                            memoryRepo.deleteMemory(id)
+                            withContext(memoryOrigin) { memoryRepo.deleteMemory(id) }
                         }
                     ).let(this::addAll)
                 }
@@ -406,6 +417,13 @@ class GenerationHandler(
                     }
                 if (effectiveSystemPrompt.isNotBlank()) {
                     append(effectiveSystemPrompt)
+                }
+                if (assistant.learnedPreferences.isNotBlank()) {
+                    appendLine()
+                    appendLine("<learned_preferences>")
+                    appendLine("The user asked you to keep these preferences:")
+                    appendLine(assistant.learnedPreferences.trim())
+                    append("</learned_preferences>")
                 }
 
                 // 记忆

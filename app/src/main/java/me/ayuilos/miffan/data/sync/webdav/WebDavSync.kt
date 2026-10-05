@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.sync.webdav
 
+import me.ayuilos.miffan.data.revision.RevisionOrigin
+import me.ayuilos.miffan.data.revision.RevisionAuthor
 import android.content.Context
 import android.util.Log
 import io.ktor.client.HttpClient
@@ -232,7 +234,7 @@ class WebDavSync(
                             try {
                                 val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
                                 val settings = json.decodeFromString<Settings>(migratedJson)
-                                settingsStore.update(settings)
+                                withContext(RevisionOrigin(RevisionAuthor.BACKUP)) { settingsStore.update(settings) }
                                 Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
                             } catch (e: Exception) {
                                 Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)

@@ -24,6 +24,9 @@ import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.revision.RestoreResult
+import me.ayuilos.miffan.data.revision.RevisionService
+import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.ThreadNoticeSource
 import me.ayuilos.miffan.data.thread.ThreadRepository
 import me.ayuilos.miffan.data.thread.ThreadService
@@ -52,6 +55,7 @@ class AgentThreadVM(
     noticeSource: ThreadNoticeSource,
     private val chatService: ChatService,
     private val threadService: ThreadService,
+    private val revisionService: RevisionService,
 ) : ViewModel() {
     private val segmentLimit = MutableStateFlow(PAGE_SEGMENTS)
 
@@ -203,6 +207,12 @@ class AgentThreadVM(
     }
 
     fun dismissError(error: ChatError) = chatService.dismissError(error.id)
+
+    /** Reverts the change behind an undoable notice; [onResult] reports a conflict or success. */
+    fun undoNotice(notice: ThreadNotice, onResult: (RestoreResult) -> Unit = {}) {
+        val revisionId = notice.revisionId ?: return
+        viewModelScope.launch { onResult(revisionService.undo(revisionId)) }
+    }
 
     companion object {
         const val PAGE_SEGMENTS = 12

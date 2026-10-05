@@ -60,7 +60,16 @@ data class Quote(
     val explicit: Boolean,
 )
 
-enum class ThreadNoticeKind { SETTINGS, MEMORY }
+enum class ThreadNoticeKind {
+    /** The assistant changed its own settings or abilities. */
+    SETTINGS,
+
+    /** The assistant remembered or updated a memory. */
+    MEMORY,
+
+    /** The assistant removed a memory. */
+    MEMORY_FORGOTTEN,
+}
 
 data class ThreadNotice(
     val id: String,
@@ -154,7 +163,8 @@ object ThreadTimeline {
 
         val noticesByTrigger = notices.filter { it.trigger != null && it.trigger.messageId in byMessageId }
             .groupBy { it.trigger!!.messageId }
-        val looseNotices = notices.filter { it.trigger == null || it.trigger.messageId !in byMessageId }
+        // Notices whose trigger is not loaded (an older page or another thread) are not shown.
+        val looseNotices = notices.filter { it.trigger == null }
             .sortedBy { it.at }
             .toMutableList()
 

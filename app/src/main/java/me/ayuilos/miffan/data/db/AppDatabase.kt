@@ -27,6 +27,7 @@ import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.db.entity.RevisionEntity
+import me.ayuilos.miffan.data.db.dao.RevisionDAO
 import me.ayuilos.miffan.data.db.migrations.Migration_16_17
 import me.ayuilos.miffan.data.db.migrations.Migration_22_23
 import me.ayuilos.miffan.data.db.migrations.Migration_8_9
@@ -89,6 +90,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sshKeyDao(): SshKeyDAO
 
     abstract fun folderDao(): FolderDAO
+
+    abstract fun revisionDao(): RevisionDAO
 }
 
 object TokenUsageConverter {

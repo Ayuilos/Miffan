@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.service
 
+import me.ayuilos.miffan.data.ai.tools.buildSelfConfigTools
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -1000,6 +1001,18 @@ class ChatService(
                     }
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
+                    }
+                    if (settings.isImMode) {
+                        val trigger = conversation.currentMessages.lastOrNull { it.role == MessageRole.USER }
+                        addAll(
+                            buildSelfConfigTools(
+                                assistantId = assistant.id,
+                                settingsStore = settingsStore,
+                                trigger = trigger?.let { MessageRef(conversation.id, it.id) },
+                                triggerText = trigger?.toText().orEmpty(),
+                                webSearchEnabled = assistant.enableWebSearch,
+                            )
+                        )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
                     if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {

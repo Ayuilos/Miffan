@@ -13,6 +13,11 @@ import me.ayuilos.miffan.data.repository.GenMediaRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.thread.ThreadRepository
+import me.ayuilos.miffan.data.db.AppDatabase
+import me.ayuilos.miffan.data.revision.AssistantRevisionRecorder
+import me.ayuilos.miffan.data.revision.RevisionRepository
+import me.ayuilos.miffan.data.revision.RevisionStore
+import me.ayuilos.miffan.data.revision.RoomRevisionStore
 import me.ayuilos.miffan.data.repository.WorkspaceNetworkBroker
 import me.ayuilos.miffan.data.repository.RemoteHostCredentialStore
 import me.ayuilos.miffan.data.repository.SshKeyCredentialStore
@@ -37,8 +42,17 @@ val repositoryModule = module {
     single { ThreadRepository(get()) }
 
     single {
-        MemoryRepository(get())
+        MemoryRepository(get(), get())
     }
+
+    single<RevisionStore> {
+        val database: AppDatabase = get()
+        RoomRevisionStore(database, database.revisionDao())
+    }
+
+    single { RevisionRepository(get()) }
+
+    single { AssistantRevisionRecorder(get()) }
 
     single {
         GenMediaRepository(get())

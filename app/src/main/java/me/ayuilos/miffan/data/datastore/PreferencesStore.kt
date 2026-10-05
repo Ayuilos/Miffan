@@ -49,6 +49,7 @@ import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
 import me.ayuilos.miffan.data.model.Tag
 import me.ayuilos.miffan.data.model.WhaleThemeDiscovery
+import me.ayuilos.miffan.data.revision.AssistantRevisionRecorder
 import me.ayuilos.miffan.data.model.initialWhaleThemeDiscovery
 import me.ayuilos.miffan.data.sync.s3.S3Config
 import me.ayuilos.miffan.ui.theme.CustomTheme
@@ -212,6 +213,7 @@ class SettingsStore(
 
     private val dataStore = context.settingsStore
     private val updateMutex = Mutex()
+    private val assistantRevisions by lazy { runCatching { get<AssistantRevisionRecorder>() }.getOrNull() }
     private val providerSecretCipher = ProviderSecretCipher()
 
     val settingsFlowRaw = dataStore.data
@@ -429,6 +431,7 @@ class SettingsStore(
             Log.w(TAG, "Cannot update dummy settings")
             return false
         }
+        val previousAssistants = settingsFlow.value.takeUnless { it.init }?.assistants
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
@@ -502,6 +505,9 @@ class SettingsStore(
         // Publish only after DataStore has committed successfully. This prevents observers from
         // seeing a configuration that is later rolled back because persistence failed.
         settingsFlow.value = settings
+        if (previousAssistants != null) {
+            assistantRevisions?.onAssistantsChanged(previousAssistants, settings.assistants)
+        }
         return true
     }
 

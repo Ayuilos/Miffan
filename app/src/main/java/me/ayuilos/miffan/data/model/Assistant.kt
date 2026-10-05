@@ -23,6 +23,8 @@ data class Assistant(
     val useAssistantAvatar: Boolean = false, // 使用助手头像替代模型头像
     val tags: List<Uuid> = emptyList(),
     val systemPrompt: String = "",
+    /** Lasting preferences the assistant learned in conversation; kept apart from [systemPrompt]. */
+    val learnedPreferences: String = "",
     val temperature: Float? = null,
     val topP: Float? = null,
     // 上下文消息条数上限, 超出后阶梯式截断; 0 表示不限制

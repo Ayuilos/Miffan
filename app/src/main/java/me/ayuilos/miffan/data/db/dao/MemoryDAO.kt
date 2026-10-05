@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.db.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +27,9 @@ interface MemoryDAO {
 
     @Insert
     suspend fun insertMemory(memory: MemoryEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(memories: List<MemoryEntity>)
 
     @Update
     suspend fun updateMemory(memory: MemoryEntity)
