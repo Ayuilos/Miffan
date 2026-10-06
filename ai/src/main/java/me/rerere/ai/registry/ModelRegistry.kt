@@ -15,20 +15,34 @@ object ModelRegistry {
      * Provider 对某个字段有明确描述时以 Provider 为准；只有字段缺失时才按 model id 推断。
      * 返回值会移除临时发现元数据，便于作为用户可编辑的模型配置持久化。
      */
-    fun resolveCapabilities(model: Model): Model {
+    fun resolveCapabilities(model: Model, catalog: ModelCatalog = ModelCatalog.EMPTY): Model {
         val discovered = model.discoveredCapabilities
+        val inferred = inferCapabilities(model.modelId, catalog)
         val abilities = (discovered?.abilities
-            ?: MODEL_ABILITIES.getData(model.modelId)).toMutableList()
+            ?: inferred.abilities).toMutableList()
         if (model.reasoningCapabilities != null && ModelAbility.REASONING !in abilities) {
             abilities += ModelAbility.REASONING
         }
         return model.copy(
             inputModalities = discovered?.inputModalities
-                ?: MODEL_INPUT_MODALITIES.getData(model.modelId),
+                ?: inferred.inputModalities,
             outputModalities = discovered?.outputModalities
-                ?: MODEL_OUTPUT_MODALITIES.getData(model.modelId),
+                ?: inferred.outputModalities,
             abilities = abilities,
             discoveredCapabilities = null,
+        )
+    }
+
+    fun isKnown(modelId: String): Boolean = resolveModels(modelId).isNotEmpty()
+
+    fun inferCapabilities(modelId: String, catalog: ModelCatalog = ModelCatalog.EMPTY): CatalogCapabilities {
+        if (!isKnown(modelId)) {
+            catalog.lookup(modelId)?.let { return it }
+        }
+        return CatalogCapabilities(
+            abilities = MODEL_ABILITIES.getData(modelId),
+            inputModalities = MODEL_INPUT_MODALITIES.getData(modelId),
+            outputModalities = MODEL_OUTPUT_MODALITIES.getData(modelId),
         )
     }
 

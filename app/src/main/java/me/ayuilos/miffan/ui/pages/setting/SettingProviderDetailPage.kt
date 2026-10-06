@@ -104,6 +104,7 @@ import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.repository.ModelCatalogRepository
 import me.ayuilos.miffan.ui.components.ai.ModelAbilityTag
 import me.ayuilos.miffan.ui.components.ai.ModelModalityTag
 import me.ayuilos.miffan.ui.components.ai.ModelSelector
@@ -391,20 +392,27 @@ private fun ModelList(
     onUpdateProvider: (ProviderSetting) -> Unit
 ) {
     val providerManager = koinInject<ProviderManager>()
+    val catalogRepository = koinInject<ModelCatalogRepository>()
+    val catalog by catalogRepository.catalog.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var modelListError by remember(providerSetting) { mutableStateOf<String?>(null) }
-    val modelList by produceState(emptyList(), providerSetting) {
+    val discoveredModels by produceState(emptyList<Model>(), providerSetting) {
         modelListError = null
+        catalogRepository.awaitLoaded()
+        scope.launch { catalogRepository.refreshIfStale() }
         value = runCatching {
             println("loading models...")
             providerManager.getProviderByType(providerSetting)
                 .listModels(providerSetting)
-                .map(ModelRegistry::resolveCapabilities)
                 .sortedBy { it.modelId }
                 .toList()
         }.onFailure {
             modelListError = it.message ?: it.javaClass.simpleName
             it.printStackTrace()
         }.getOrDefault(emptyList())
+    }
+    val modelList = remember(discoveredModels, catalog) {
+        discoveredModels.map { ModelRegistry.resolveCapabilities(it, catalog) }
     }
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
@@ -512,18 +520,17 @@ private fun ModelSettingsForm(
 ) {
     val pagerState = rememberPagerState { 3 }
     val scope = rememberCoroutineScope()
+    val catalogRepository = koinInject<ModelCatalogRepository>()
 
     fun setModelId(id: String) {
-        val inputModality = ModelRegistry.MODEL_INPUT_MODALITIES.getData(id)
-        val outputModality = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(id)
-        val abilities = ModelRegistry.MODEL_ABILITIES.getData(id)
+        val inferred = ModelRegistry.inferCapabilities(id, catalogRepository.catalog.value)
         onModelChange(
             model.copy(
                 modelId = id,
                 displayName = id,
-                inputModalities = inputModality,
-                outputModalities = outputModality,
-                abilities = abilities
+                inputModalities = inferred.inputModalities,
+                outputModalities = inferred.outputModalities,
+                abilities = inferred.abilities
             )
         )
     }
@@ -618,11 +625,11 @@ private fun ModelSettingsForm(
                             model = model,
                             inputModalities = model.inputModalities,
                             onUpdateInputModalities = {
-                                onModelChange(model.copy(inputModalities = it))
+                                onModelChange(model.copy(inputModalities = it, capabilitiesEdited = true))
                             },
                             outputModalities = model.outputModalities,
                             onUpdateOutputModalities = {
-                                onModelChange(model.copy(outputModalities = it))
+                                onModelChange(model.copy(outputModalities = it, capabilitiesEdited = true))
                             }
                         )
 
@@ -630,7 +637,7 @@ private fun ModelSettingsForm(
                             ModalAbilitySelector(
                                 abilities = model.abilities,
                                 onUpdateAbilities = {
-                                    onModelChange(model.copy(abilities = it))
+                                    onModelChange(model.copy(abilities = it, capabilitiesEdited = true))
                                 }
                             )
                         }

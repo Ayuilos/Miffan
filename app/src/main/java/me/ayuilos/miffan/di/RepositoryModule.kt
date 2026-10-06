@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.di
 
 import android.content.Context
+import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.data.files.FileFolders
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.SkillManager
@@ -12,6 +13,7 @@ import me.ayuilos.miffan.data.repository.FolderRepository
 import me.ayuilos.miffan.data.repository.FilesRepository
 import me.ayuilos.miffan.data.repository.GenMediaRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
+import me.ayuilos.miffan.data.repository.ModelCatalogRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadRepository
@@ -33,6 +35,8 @@ import org.koin.dsl.module
 import java.io.File
 
 val repositoryModule = module {
+    single { ModelCatalogRepository(get<Context>(), get(), get<AppScope>()) }
+
     single {
         ConversationRepository(get(), get(), get(), get(), get(), get())
     }

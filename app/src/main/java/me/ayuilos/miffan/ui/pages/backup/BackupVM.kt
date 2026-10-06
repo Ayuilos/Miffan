@@ -16,6 +16,7 @@ import me.ayuilos.miffan.data.datastore.WebDavConfig
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.saveUploadFromBytes
 import me.ayuilos.miffan.data.repository.ConversationRepository
+import me.ayuilos.miffan.data.repository.ModelCatalogRepository
 import me.ayuilos.miffan.data.sync.importer.ChatboxImporter
 import me.ayuilos.miffan.data.sync.importer.CherryStudioProviderImporter
 import me.ayuilos.miffan.data.sync.webdav.WebDavBackupItem
@@ -33,6 +34,7 @@ class BackupVM(
     private val s3Sync: S3Sync,
     private val conversationRepository: ConversationRepository,
     private val filesManager: FilesManager,
+    private val modelCatalogRepository: ModelCatalogRepository,
 ) : ViewModel() {
     val settings = settingsStore.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -170,8 +172,9 @@ class BackupVM(
         )
     }
 
-    fun restoreFromCherryStudio(file: File) {
-        val importProviders = CherryStudioProviderImporter.importProviders(file)
+    suspend fun restoreFromCherryStudio(file: File) {
+        modelCatalogRepository.awaitLoaded()
+        val importProviders = CherryStudioProviderImporter.importProviders(file, modelCatalogRepository.catalog.value)
 
         if (importProviders.isEmpty()) {
             throw IllegalArgumentException("No importable providers found in Cherry Studio backup")

@@ -117,6 +117,7 @@ export interface ProviderModel {
   inputModalities?: ModelModality[];
   outputModalities?: ModelModality[];
   abilities?: ModelAbility[];
+  capabilitiesEdited?: boolean;
   tools?: BuiltInTool[];
   [key: string]: unknown;
 }

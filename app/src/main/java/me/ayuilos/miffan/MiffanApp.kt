@@ -11,6 +11,7 @@ import androidx.compose.runtime.tooling.ComposeStackTraceMode
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,8 @@ import me.ayuilos.miffan.utils.LauncherIconManager
 import me.ayuilos.miffan.utils.CrashHandler
 import me.ayuilos.miffan.utils.DatabaseUtil
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.repository.ModelCatalogRepository
+import me.ayuilos.miffan.data.repository.repairModelCapabilities
 import me.rerere.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -96,7 +99,30 @@ class MiffanApp : Application() {
         // Increment launch count
         incrementLaunchCount()
 
+        startModelCatalog()
+
         // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
+    }
+
+    private fun startModelCatalog() {
+        val repository = get<ModelCatalogRepository>()
+        get<AppScope>().launch(Dispatchers.IO) {
+            val store = get<SettingsStore>()
+            repository.awaitLoaded()
+            store.settingsFlow.first { !it.init }
+            repository.catalog.collect { catalog ->
+                try {
+                    store.update { it.repairModelCapabilities(catalog) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Unable to repair model capabilities", e)
+                }
+            }
+        }
+        get<AppScope>().launch(Dispatchers.IO) {
+            repository.refreshIfStale()
+        }
     }
 
     private fun incrementLaunchCount() {

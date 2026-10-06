@@ -10,13 +10,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.registry.ModelRegistry
+import me.rerere.ai.registry.ModelCatalog
 import me.rerere.common.http.jsonObjectOrNull
 import me.ayuilos.miffan.utils.JsonInstant
 import java.io.File
 import java.util.zip.ZipFile
 
 object CherryStudioProviderImporter {
-    fun importProviders(file: File): List<ProviderSetting> {
+    fun importProviders(file: File, catalog: ModelCatalog = ModelCatalog.EMPTY): List<ProviderSetting> {
         val dataJson = ZipFile(file).use { zip ->
             val entry = zip.getEntry("data.json")
                 ?: throw IllegalArgumentException("Invalid Cherry Studio backup: data.json not found")
@@ -37,12 +38,12 @@ object CherryStudioProviderImporter {
         val llm = JsonInstant.parseToJsonElement(llmRaw).jsonObject
 
         return llm["providers"]?.jsonArray
-            ?.mapNotNull { it.jsonObjectOrNull?.let(::parseProvider) }
+            ?.mapNotNull { it.jsonObjectOrNull?.let { provider -> parseProvider(provider, catalog) } }
             ?.distinctBy { importedProviderKey(it) }
             .orEmpty()
     }
 
-    private fun parseProvider(provider: JsonObject): ProviderSetting? {
+    private fun parseProvider(provider: JsonObject, catalog: ModelCatalog): ProviderSetting? {
         val apiKey = provider["apiKey"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
         if (apiKey.isBlank()) return null
 
@@ -50,7 +51,7 @@ object CherryStudioProviderImporter {
         val name = provider["name"]?.jsonPrimitive?.contentOrNull?.ifBlank { null } ?: "Cherry Studio"
         val apiHost = provider["apiHost"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val enabled = provider["enabled"]?.jsonPrimitive?.booleanOrNull ?: true
-        val models = parseModels(provider["models"]?.jsonArray)
+        val models = parseModels(provider["models"]?.jsonArray, catalog)
 
         return when (type) {
             "anthropic" -> ProviderSetting.Claude(
@@ -97,7 +98,7 @@ object CherryStudioProviderImporter {
         }
     }
 
-    private fun parseModels(models: JsonArray?): List<Model> {
+    private fun parseModels(models: JsonArray?, catalog: ModelCatalog): List<Model> {
         if (models == null) return emptyList()
         return models.mapNotNull { modelElement ->
             val model = modelElement.jsonObjectOrNull ?: return@mapNotNull null
@@ -105,12 +106,13 @@ object CherryStudioProviderImporter {
             if (modelId.isBlank()) return@mapNotNull null
 
             val displayName = model["name"]?.jsonPrimitive?.contentOrNull?.ifBlank { modelId } ?: modelId
+            val inferred = ModelRegistry.inferCapabilities(modelId, catalog)
             Model(
                 modelId = modelId,
                 displayName = displayName,
-                inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(modelId),
-                outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(modelId),
-                abilities = ModelRegistry.MODEL_ABILITIES.getData(modelId),
+                inputModalities = inferred.inputModalities,
+                outputModalities = inferred.outputModalities,
+                abilities = inferred.abilities,
             )
         }
     }

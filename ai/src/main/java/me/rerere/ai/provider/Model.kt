@@ -38,6 +38,7 @@ data class Model(
     val inputModalities: List<Modality> = listOf(Modality.TEXT),
     val outputModalities: List<Modality> = listOf(Modality.TEXT),
     val abilities: List<ModelAbility> = emptyList(),
+    val capabilitiesEdited: Boolean = false,
     val reasoningCapabilities: ReasoningCapabilities? = null,
     val tools: Set<BuiltInTools> = emptySet(),
     val providerOverwrite: ProviderSetting? = null,
@@ -106,4 +107,3 @@ sealed class BuiltInTools {
     @SerialName("image_generation")
     data object ImageGeneration : BuiltInTools()
 }
-
