@@ -82,6 +82,8 @@
   <string name="assistant_page_delete_dialog_text">确定要删除这个助手吗？此操作无法撤销。</string>
   <string name="assistant_page_delete_header">删除 Header</string>
   <string name="assistant_page_enter_image_url">输入图片URL</string>
+  <string name="assistant_page_auto_extract_memory">自动整理记忆</string>
+  <string name="assistant_page_auto_extract_memory_desc">回复结束后，由快速模型在后台回顾最近的对话，记下值得记住的内容。你说起自己的事时立即整理，否则每 5 条消息整理一次。需要先设置快速模型</string>
   <string name="assistant_page_global_memory">全局记忆</string>
   <string name="assistant_page_global_memory_desc">使用全局共享内存而非助手隔离内存。启用后，所有助手共享同一内存存储</string>
   <string name="assistant_page_header_name">Header 名称</string>
@@ -106,7 +108,7 @@
   <string name="assistant_page_max_tokens_no_token_limit">无Token限制</string>
   <string name="assistant_page_memory">记忆</string>
   <string name="assistant_page_memory_count">记忆: %d</string>
-  <string name="assistant_page_memory_desc">启用记忆后，模型在与你对话时尝试主动记录你的信息，并在后续其他对话中使用，此功能需要模型支持工具调用才能正常工作</string>
+  <string name="assistant_page_memory_desc">启用记忆后，模型会在与你对话时记录你的信息，并在后续其他对话中使用。支持工具调用的模型会在对话中直接记录，否则依靠自动整理记忆</string>
   <string name="assistant_page_message_template">聊天内容模板</string>
   <string name="assistant_page_message_template_desc">控制聊天消息在发送给LLM之前的内容格式，通常不需要修改</string>
   <string name="assistant_page_message_template_missing_message">模板不包含 {{ message }}，用户消息将不会被发送</string>

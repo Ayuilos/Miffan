@@ -82,6 +82,8 @@
   <string name="assistant_page_delete_dialog_text">Are you sure you want to delete this assistant? This action cannot be undone.</string>
   <string name="assistant_page_delete_header">Delete Header</string>
   <string name="assistant_page_enter_image_url">Enter Image URL</string>
+  <string name="assistant_page_auto_extract_memory">Auto-organize memories</string>
+  <string name="assistant_page_auto_extract_memory_desc">After a reply, the fast model reviews recent messages in the background and saves anything worth remembering. Runs right away when you share something about yourself, and every 5 messages otherwise. Requires a fast model</string>
   <string name="assistant_page_global_memory">Global Memory</string>
   <string name="assistant_page_global_memory_desc">Use global shared memory instead of assistant-isolated memory. When enabled, all assistants share the same memory storage</string>
   <string name="assistant_page_header_name">Header Name</string>
@@ -106,7 +108,7 @@
   <string name="assistant_page_max_tokens_no_token_limit">No token limit</string>
   <string name="assistant_page_memory">Memory</string>
   <string name="assistant_page_memory_count">Memory: %d</string>
-  <string name="assistant_page_memory_desc">When memory is enabled, the model will try to actively record your information during conversations and use it in subsequent conversations. This feature requires the model to support tool calls to work properly</string>
+  <string name="assistant_page_memory_desc">When memory is enabled, the model records your information during conversations and uses it in later conversations. Models that support tool calls save memories as they chat; otherwise memories come from auto-organize</string>
   <string name="assistant_page_message_template">Message Content Template</string>
   <string name="assistant_page_message_template_desc">Controls the content format of chat messages before being sent to the LLM, usually no need to modify</string>
   <string name="assistant_page_message_template_missing_message">Template does not contain {{ message }}, user messages will not be sent</string>

@@ -43,6 +43,9 @@ fun Assistant.recentChatsReferenceEnabled(settings: Settings): Boolean = setting
 
 fun Assistant.timeReminderEnabled(settings: Settings): Boolean = settings.isImMode || enableTimeReminder
 
+fun Assistant.memoryExtractionEnabled(settings: Settings): Boolean =
+    enableMemory && (settings.isImMode || autoExtractMemory)
+
 fun Settings.withInterfaceMode(mode: InterfaceMode): Settings = copy(
     interfaceMode = InterfaceModeState(mode = mode, choicePending = false),
 )

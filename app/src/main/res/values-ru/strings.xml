@@ -95,7 +95,7 @@
   <string name="assistant_page_max_tokens_no_token_limit">Без ограничения токенов</string>
   <string name="assistant_page_memory">Память</string>
   <string name="assistant_page_memory_count">Память: %d</string>
-  <string name="assistant_page_memory_desc">Когда память включена, модель будет стараться активно записывать вашу информацию во время разговоров и использовать её в последующих беседах. Для работы этой функции модель должна поддерживать вызовы инструментов</string>
+  <string name="assistant_page_memory_desc">Когда память включена, модель записывает вашу информацию во время разговоров и использует её в последующих беседах. Модели с поддержкой вызовов инструментов сохраняют память прямо в разговоре, иначе её пополняет автоматическая организация памяти</string>
   <string name="assistant_page_message_template">Шаблон содержимого сообщения</string>
   <string name="assistant_page_message_template_desc">Управляет форматом содержимого сообщений чата перед отправкой в LLM, обычно изменять не требуется</string>
   <string name="assistant_page_message_template_missing_message">Шаблон не содержит {{ message }}, сообщения пользователя не будут отправлены</string>
@@ -2106,4 +2106,6 @@
   <string name="setting_tts_step_instruction_placeholder">Например: мягкий тон, чуть медленнее</string>
   <string name="mcp_error_reconnect_exhausted">Соединение потеряно: исчерпаны попытки переподключения</string>
   <string name="chat_page_options">Параметры чата</string>
+  <string name="assistant_page_auto_extract_memory">Автоматическая организация памяти</string>
+  <string name="assistant_page_auto_extract_memory_desc">После ответа быстрая модель в фоне просматривает последние сообщения и сохраняет то, что стоит запомнить. Сразу — когда вы рассказываете о себе, иначе — каждые 5 сообщений. Требуется быстрая модель</string>
 </resources>

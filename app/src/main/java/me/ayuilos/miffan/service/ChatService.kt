@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -100,6 +101,15 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.data.model.isImMode
+import me.ayuilos.miffan.data.model.memoryExtractionEnabled
+import me.ayuilos.miffan.data.ai.MemoryOperation
+import me.ayuilos.miffan.data.ai.buildMemoryExtractionPrompt
+import me.ayuilos.miffan.data.ai.memoryExtractionWindow
+import me.ayuilos.miffan.data.ai.parseMemoryOperations
+import me.ayuilos.miffan.data.revision.RevisionAuthor
+import me.ayuilos.miffan.data.revision.RevisionOrigin
+import me.ayuilos.miffan.utils.toLocalString
+import java.time.LocalDate
 import me.ayuilos.miffan.data.model.recentChatsReferenceEnabled
 import me.ayuilos.miffan.data.thread.ThreadContext
 import me.ayuilos.miffan.data.model.Assistant
@@ -1129,6 +1139,9 @@ class ChatService(
             launchWithConversationReference(conversationId) {
                 generateSuggestion(conversationId, finalConversation)
             }
+            launchWithConversationReference(conversationId) {
+                extractMemories(conversationId, assistant.id, finalConversation)
+            }
         }
     }
 
@@ -1286,6 +1299,71 @@ class ChatService(
                 solution = ChatErrorSolution.CheckTitleModelSettings,
             )
         }.getOrNull()
+    }
+
+    // ---- 整理记忆 ----
+
+    // Serializes extractions so two quick turns cannot both create the same memory.
+    private val memoryExtractionLock = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun extractMemories(
+        conversationId: Uuid,
+        assistantId: Uuid,
+        conversation: Conversation,
+    ) = withContext(Dispatchers.IO) {
+        runCatching {
+            val settings = settingsStore.settingsFlow.first()
+            // Read the assistant now: memory may have been switched off while the reply streamed.
+            val assistant = settings.getAssistantById(assistantId) ?: return@runCatching
+            if (!assistant.memoryExtractionEnabled(settings)) return@runCatching
+            val messages = conversation.currentMessages
+            val window = memoryExtractionWindow(messages) ?: return@runCatching
+            // Only the fast model runs this, so it never adds hidden cost on the chat model.
+            val model = settings.findModelById(settings.fastModelId) ?: return@runCatching
+            val provider = model.findProvider(settings.providers) ?: return@runCatching
+
+            val ownerId = if (assistant.useGlobalMemory) {
+                MemoryRepository.GLOBAL_MEMORY_ID
+            } else {
+                assistant.id.toString()
+            }
+            memoryExtractionLock.withLock {
+                val memories = memoryRepository.getMemoriesOfAssistant(ownerId)
+                val result = providerManager.getProviderByType(provider).generateText(
+                    providerSetting = provider,
+                    messages = listOf(
+                        UIMessage.user(
+                            buildMemoryExtractionPrompt(
+                                memories = memories,
+                                window = window,
+                                today = LocalDate.now().toLocalString(true),
+                            )
+                        )
+                    ),
+                    params = backgroundTextGenerationParams(model, settings.fastModelReasoningLevel),
+                )
+                val operations = parseMemoryOperations(result.message.toText(), memories.map { it.id }.toSet())
+                if (operations.isEmpty()) return@withLock
+
+                val origin = RevisionOrigin(
+                    author = RevisionAuthor.AGENT,
+                    trigger = messages.lastOrNull { it.role == MessageRole.USER }
+                        ?.let { MessageRef(conversationId, it.id) },
+                )
+                withContext(origin) {
+                    operations.forEach { operation ->
+                        when (operation) {
+                            is MemoryOperation.Create -> memoryRepository.addMemory(ownerId, operation.content)
+                            is MemoryOperation.Edit -> memoryRepository.updateContent(operation.id, operation.content)
+                        }
+                    }
+                }
+            }
+        }.onFailure {
+            if (it is CancellationException) throw it
+            // Background work: a failure here must not interrupt the chat with an error banner.
+            Logging.log(TAG, "extractMemories: $it")
+        }
     }
 
     // ---- 生成建议 ----

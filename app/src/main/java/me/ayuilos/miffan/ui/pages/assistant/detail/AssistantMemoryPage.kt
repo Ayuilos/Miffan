@@ -212,6 +212,22 @@ private fun AssistantMemoryContent(
                 }
             )
             item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_auto_extract_memory)) },
+                supportingContent = {
+                    AlwaysOnInEasyChat(stringResource(R.string.assistant_page_auto_extract_memory_desc), easyChat)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = easyChat || assistant.autoExtractMemory,
+                        enabled = assistant.enableMemory && !easyChat,
+                        colors = lockedOnSwitchColors(),
+                        onCheckedChange = {
+                            onUpdateAssistant(assistant.copy(autoExtractMemory = it))
+                        }
+                    )
+                }
+            )
+            item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
                 supportingContent = {
                     AlwaysOnInEasyChat(stringResource(R.string.assistant_page_recent_chats_desc), easyChat)

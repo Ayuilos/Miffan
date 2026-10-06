@@ -95,7 +95,7 @@
   <string name="assistant_page_max_tokens_no_token_limit">토큰 제한 없음</string>
   <string name="assistant_page_memory">기억 기능</string>
   <string name="assistant_page_memory_count">기억: %d</string>
-  <string name="assistant_page_memory_desc">기억 기능 활성화 시, 모델이 대화 중 사용자 정보를 적극적으로 기록하고 이후 대화에서 활용합니다. 이 기능은 모델이 도구 호출을 지원해야 제대로 작동합니다</string>
+  <string name="assistant_page_memory_desc">기억 기능 활성화 시, 모델이 대화 중 사용자 정보를 기록하고 이후 대화에서 활용합니다. 도구 호출을 지원하는 모델은 대화 중 바로 기록하며, 그 외에는 기억 자동 정리에 의존합니다</string>
   <string name="assistant_page_message_template">메시지 내용 템플릿</string>
   <string name="assistant_page_message_template_desc">LLM에 전송되기 전 채팅 메시지 형식을 제어. 일반적으로 수정할 필요 없음</string>
   <string name="assistant_page_message_template_missing_message">템플릿에 {{ message }}가 없어 사용자 메시지가 전송되지 않습니다</string>
@@ -2106,4 +2106,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_tts_step_instruction_placeholder">예: 부드러운 말투, 약간 느린 속도</string>
   <string name="mcp_error_reconnect_exhausted">연결이 끊어졌으며 최대 재연결 횟수에 도달했습니다</string>
   <string name="chat_page_options">채팅 옵션</string>
+  <string name="assistant_page_auto_extract_memory">기억 자동 정리</string>
+  <string name="assistant_page_auto_extract_memory_desc">답변이 끝나면 빠른 모델이 백그라운드에서 최근 대화를 살펴보고 기억할 만한 내용을 저장합니다. 자신에 대해 이야기하면 바로 정리하고, 그 외에는 메시지 5개마다 정리합니다. 빠른 모델 설정이 필요합니다</string>
 </resources>

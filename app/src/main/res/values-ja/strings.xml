@@ -95,7 +95,7 @@
   <string name="assistant_page_max_tokens_no_token_limit">トークン制限なし</string>
   <string name="assistant_page_memory">記憶</string>
   <string name="assistant_page_memory_count">記憶: %d</string>
-  <string name="assistant_page_memory_desc">記憶を有効にすると、モデルは会話中にあなたの情報を積極的に記録し、後続の会話で使用しようとします。この機能が正常に動作するには、モデルがツール呼び出しをサポートしている必要があります</string>
+  <string name="assistant_page_memory_desc">記憶を有効にすると、モデルは会話中にあなたの情報を記録し、後続の会話で使用します。ツール呼び出しに対応したモデルは会話中に直接記録し、それ以外は記憶の自動整理に頼ります</string>
   <string name="assistant_page_message_template">チャットコンテンツテンプレート</string>
   <string name="assistant_page_message_template_desc">チャットメッセージがLLMに送信される前のコンテンツ形式を制御します。通常は変更する必要がありません</string>
   <string name="assistant_page_message_template_missing_message">テンプレートに{{ message }}が含まれていないため、ユーザーのメッセージは送信されません</string>
@@ -2106,4 +2106,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_tts_step_instruction_placeholder">例: 優しい口調で、ややゆっくり</string>
   <string name="mcp_error_reconnect_exhausted">接続が切れました。再接続の上限回数に達しました</string>
   <string name="chat_page_options">チャットのオプション</string>
+  <string name="assistant_page_auto_extract_memory">記憶の自動整理</string>
+  <string name="assistant_page_auto_extract_memory_desc">返信が終わると、高速モデルがバックグラウンドで最近の会話を振り返り、覚えておくべき内容を記録します。あなた自身のことを話したときはすぐに、それ以外は 5 メッセージごとに整理します。高速モデルの設定が必要です</string>
 </resources>
