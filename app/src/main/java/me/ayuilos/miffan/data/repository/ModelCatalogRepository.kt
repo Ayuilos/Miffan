@@ -53,10 +53,14 @@ class ModelCatalogRepository internal constructor(
     private var lastSuccess: Long? = null
     private var etag: String? = null
     private val initialLoad = scope.async(dispatcher) {
-        val cached = if (cacheFile.exists()) loadOrNull { cacheFile.readText() } else null
-        mutableCatalog.value = cached ?: loadOrNull(loadAsset) ?: ModelCatalog.EMPTY
+        val cached = if (cacheFile.exists()) loadSnapshotOrNull { cacheFile.readText() } else null
+        val bundled = loadSnapshotOrNull(loadAsset)
+        // An app update can ship a newer snapshot than the cache. Aliases only come from snapshots,
+        // so a stale cache must not shadow it.
+        val useCache = cached != null && (bundled == null || !cached.fetchedAt.isBefore(bundled.fetchedAt))
+        mutableCatalog.value = (if (useCache) cached else bundled)?.catalog ?: ModelCatalog.EMPTY
         // Only send a persisted validator when its cached representation was loaded.
-        if (cached != null) {
+        if (useCache) {
             try {
                 if (metadataFile.exists()) {
                     val metadata = Json.parseToJsonElement(metadataFile.readText()) as? JsonObject
@@ -109,8 +113,14 @@ class ModelCatalogRepository internal constructor(
         }
     }
 
-    private fun loadOrNull(read: () -> String): ModelCatalog? = try {
-        ModelCatalog.parseSnapshot(read())
+    private class Snapshot(val catalog: ModelCatalog, val fetchedAt: Instant)
+
+    private fun loadSnapshotOrNull(read: () -> String): Snapshot? = try {
+        val json = read()
+        val fetchedAt = ((Json.parseToJsonElement(json) as? JsonObject)?.get("fetchedAt") as? JsonPrimitive)
+            ?.takeIf { it.isString }
+            ?.let { runCatching { Instant.parse(it.content) }.getOrNull() }
+        Snapshot(ModelCatalog.parseSnapshot(json), fetchedAt ?: Instant.EPOCH)
     } catch (e: Exception) {
         logFailure(e)
         null

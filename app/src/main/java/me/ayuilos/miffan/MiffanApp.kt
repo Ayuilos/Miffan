@@ -112,7 +112,11 @@ class MiffanApp : Application() {
             store.settingsFlow.first { !it.init }
             repository.catalog.collect { catalog ->
                 try {
-                    store.update { it.repairModelCapabilities(catalog) }
+                    // Settings writes persist every field, so skip the write when nothing needs repair.
+                    val current = store.settingsFlow.value
+                    if (current.repairModelCapabilities(catalog) !== current) {
+                        store.update { it.repairModelCapabilities(catalog) }
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

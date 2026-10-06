@@ -71,13 +71,19 @@ class ModelCatalogRepositoryTest {
     }
 
     @Test
-    fun `parseable cache wins over asset and loading happens off caller thread`() = runBlocking {
-        val cache = temporaryFolder.newFile("model-catalog.json").apply { writeText(snapshot) }
-        var assetRead = false
-        val repository = repository(cache, asset = { assetRead = true; error("Asset should not load") })
+    fun `newer snapshot wins between cache and asset and loading happens off caller thread`() = runBlocking {
+        val older = snapshot.replaceFirst("{", """{"fetchedAt":"2026-01-01T00:00:00Z",""")
+        val newer = """{"fetchedAt":"2026-06-01T00:00:00Z","models":{"lab/new-model":{"tool_call":true,"reasoning":false,"modalities":{"input":["text"],"output":["text"]}}},"aliases":{"gateway":"lab/new-model"}}"""
+        val cache = temporaryFolder.newFile("model-catalog.json").apply { writeText(newer) }
+        val repository = repository(cache, asset = { older })
         repository.awaitLoaded()
-        assertEquals(emptyList<ModelAbility>(), repository.catalog.value.lookup("gateway")?.abilities)
-        assertFalse(assetRead)
+        assertEquals(listOf(ModelAbility.TOOL), repository.catalog.value.lookup("gateway")?.abilities)
+
+        // An app update shipped a newer snapshot than the cache: the asset must not be shadowed.
+        val staleCache = temporaryFolder.newFile("stale.json").apply { writeText(older) }
+        val updated = repository(staleCache, asset = { newer })
+        updated.awaitLoaded()
+        assertEquals(listOf(ModelAbility.TOOL), updated.catalog.value.lookup("gateway")?.abilities)
 
         val callerThread = Thread.currentThread()
         var assetThread: Thread? = null
