@@ -1808,6 +1808,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_thread_voice">音声入力</string>
   <string name="im_thread_voice_stop">もう一度タップして終了</string>
   <string name="im_thread_voice_unavailable">先に音声認識を設定してください</string>
+  <string name="im_thread_voice_setup">設定する</string>
   <string name="im_thread_attachment_error">添付できませんでした。再試行してください</string>
   <string name="im_thread_intro">%1$sです。お話ししましょう</string>
   <string name="im_thread_suggestions">話題を選んで会話を始めましょう</string>

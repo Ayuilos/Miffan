@@ -73,6 +73,7 @@ internal fun ThreadComposer(
     onSend: (List<UIMessagePart>) -> Unit,
     onStop: () -> Unit,
     onError: (String) -> Unit,
+    onVoiceUnavailable: () -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
@@ -97,7 +98,6 @@ internal fun ThreadComposer(
     val latestInput by rememberUpdatedState(onInput)
     val latestError by rememberUpdatedState(onError)
     val addError = stringResource(R.string.im_thread_attachment_error)
-    val unavailable = stringResource(R.string.im_thread_voice_unavailable)
 
     DisposableEffect(asr) {
         onDispose { if (ownsRecording) asr.stop() }
@@ -161,7 +161,7 @@ internal fun ThreadComposer(
     }
     fun toggleVoice() {
         if (asrState.isRecording) { asr.stop(); ownsRecording = false }
-        else if (!asrState.isAvailable) onError(unavailable)
+        else if (!asrState.isAvailable) onVoiceUnavailable()
         else if (!microphone.allRequiredPermissionsGranted) microphone.requestPermissions()
         else {
             panel = false; keyboard?.hide(); focus.clearFocus()

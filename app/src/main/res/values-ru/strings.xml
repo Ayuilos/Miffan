@@ -1808,6 +1808,7 @@
   <string name="im_thread_voice">Голосовой ввод</string>
   <string name="im_thread_voice_stop">Нажмите ещё раз для завершения</string>
   <string name="im_thread_voice_unavailable">Сначала настройте распознавание речи</string>
+  <string name="im_thread_voice_setup">Настроить</string>
   <string name="im_thread_attachment_error">Не удалось добавить вложение</string>
   <string name="im_thread_intro">Я %1$s. Давайте поговорим</string>
   <string name="im_thread_suggestions">Выберите тему для начала беседы</string>

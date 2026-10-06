@@ -572,8 +572,8 @@ class RouteActivity : ComponentActivity() {
                                 SettingSearchDetailPage(id)
                             }
 
-                            entry<Screen.SettingSpeech> {
-                                SettingSpeechPage()
+                            entry<Screen.SettingSpeech> { key ->
+                                SettingSpeechPage(openRecognition = key.recognition)
                             }
 
                             entry<Screen.SettingMcp> {
@@ -829,7 +829,7 @@ sealed interface Screen : NavKey {
     data class SettingSearchDetail(val serviceId: String) : Screen
 
     @Serializable
-    data object SettingSpeech : Screen
+    data class SettingSpeech(val recognition: Boolean = false) : Screen
 
     @Serializable
     data object SettingMcp : Screen

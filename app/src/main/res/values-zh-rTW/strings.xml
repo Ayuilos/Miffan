@@ -1806,6 +1806,7 @@
   <string name="im_thread_voice">語音輸入</string>
   <string name="im_thread_voice_stop">再點一下結束</string>
   <string name="im_thread_voice_unavailable">請先設定語音辨識服務</string>
+  <string name="im_thread_voice_setup">去設定</string>
   <string name="im_thread_attachment_error">無法加入附件，請再試一次</string>
   <string name="im_thread_intro">我是%1$s，一起聊聊吧</string>
   <string name="im_thread_suggestions">點一個話題，就能開始聊</string>

@@ -1811,6 +1811,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_thread_voice">语音输入</string>
   <string name="im_thread_voice_stop">再点一下结束</string>
   <string name="im_thread_voice_unavailable">请先配置语音识别服务</string>
+  <string name="im_thread_voice_setup">去设置</string>
   <string name="im_thread_attachment_error">没能添加附件，请再试一次</string>
   <string name="im_thread_intro">我是%1$s，一起聊聊吧</string>
   <string name="im_thread_suggestions">点一个话题，就能开始聊</string>

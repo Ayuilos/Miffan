@@ -1818,6 +1818,7 @@
   <string name="im_thread_voice">Voice input</string>
   <string name="im_thread_voice_stop">Tap to finish</string>
   <string name="im_thread_voice_unavailable">Set up speech recognition first</string>
+  <string name="im_thread_voice_setup">Set up</string>
   <string name="im_thread_attachment_error">Could not add this attachment</string>
   <string name="im_thread_intro">Hi, I\'m %1$s. What shall we talk about?</string>
   <string name="im_thread_suggestions">Pick a topic to start chatting</string>

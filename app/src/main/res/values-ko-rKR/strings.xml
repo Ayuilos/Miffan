@@ -1808,6 +1808,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_thread_voice">음성 입력</string>
   <string name="im_thread_voice_stop">다시 눌러서 마치기</string>
   <string name="im_thread_voice_unavailable">먼저 음성 인식 서비스를 설정해 주세요</string>
+  <string name="im_thread_voice_setup">설정하기</string>
   <string name="im_thread_attachment_error">첨부하지 못했어요. 다시 시도해 주세요</string>
   <string name="im_thread_intro">저는 %1$s예요. 함께 이야기해요</string>
   <string name="im_thread_suggestions">이야기를 골라 대화를 시작해 보세요</string>

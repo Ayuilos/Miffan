@@ -82,6 +82,8 @@ fun AgentThreadPage(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val missingMessage = stringResource(R.string.im_thread_missing_message)
+    val voiceUnavailable = stringResource(R.string.im_thread_voice_unavailable)
+    val voiceSetup = stringResource(R.string.im_thread_voice_setup)
     val undoFailed = stringResource(R.string.im_thread_undo_failed)
     val fallbackTopic = stringResource(R.string.im_thread_topic)
     val labels = remember(assistantId) { mutableStateMapOf<Uuid, String>() }
@@ -290,6 +292,12 @@ fun AgentThreadPage(
                 loaded = loaded, generating = generating.isNotEmpty(),
                 onSend = { followLatest = true; vm.send(it) }, onStop = vm::stop,
                 onError = { message -> scope.launch { snackbar.showSnackbar(message) } },
+                onVoiceUnavailable = {
+                    scope.launch {
+                        val result = snackbar.showSnackbar(voiceUnavailable, actionLabel = voiceSetup, withDismissAction = true, duration = SnackbarDuration.Long)
+                        if (result == SnackbarResult.ActionPerformed) nav.navigate(Screen.SettingSpeech(recognition = true))
+                    }
+                },
                 hazeState = hazeState)
         }
         // Outside the measured composer so showing it never shifts the list's padding.
