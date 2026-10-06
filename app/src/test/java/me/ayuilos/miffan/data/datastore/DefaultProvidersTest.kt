@@ -13,6 +13,12 @@ class DefaultProvidersTest {
     }
 
     @Test
+    fun `default providers no longer include upstream sponsors`() {
+        assertFalse(DEFAULT_PROVIDERS.any { it.name == "AiHubMix" })
+        assertFalse(DEFAULT_PROVIDERS.any { it.name == "随想AI网关" })
+    }
+
+    @Test
     fun `default providers should include vercel ai gateway with expected balance config`() {
         val vercelProviders = DEFAULT_PROVIDERS
             .filterIsInstance<ProviderSetting.OpenAI>()

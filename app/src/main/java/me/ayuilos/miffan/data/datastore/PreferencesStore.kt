@@ -206,9 +206,6 @@ class SettingsStore(
 
         // 统计
         val LAUNCH_COUNT = intPreferencesKey("launch_count")
-
-        // 赞助提醒
-        val SPONSOR_ALERT_DISMISSED_AT = intPreferencesKey("sponsor_alert_dismissed_at")
     }
 
     private val dataStore = context.settingsStore
@@ -318,11 +315,16 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
-                sponsorAlertDismissedAt = preferences[SPONSOR_ALERT_DISMISSED_AT] ?: 0,
             )
         }
         .map {
-            var providers = it.providers.ifEmpty { DEFAULT_PROVIDERS }.toMutableList()
+            var providers = it.providers
+                .filterNot { provider ->
+                    provider.id in REMOVED_SPONSOR_PROVIDER_IDS &&
+                        (provider as? ProviderSetting.OpenAI)?.apiKey.isNullOrBlank()
+                }
+                .ifEmpty { DEFAULT_PROVIDERS }
+                .toMutableList()
             DEFAULT_PROVIDERS.forEach { defaultProvider ->
                 if (providers.none { it.id == defaultProvider.id }) {
                     providers.add(defaultProvider.copyProvider())
@@ -344,7 +346,13 @@ class SettingsStore(
                     assistants.add(defaultAssistant.copy())
                 }
             }
-            val ttsProviders = it.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }.toMutableList()
+            val ttsProviders = it.ttsProviders
+                .filterNot { provider ->
+                    provider.id == REMOVED_AIHUBMIX_TTS_PROVIDER_ID &&
+                        (provider as? TTSProviderSetting.OpenAI)?.apiKey.isNullOrBlank()
+                }
+                .ifEmpty { DEFAULT_TTS_PROVIDERS }
+                .toMutableList()
             DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
                 if (ttsProviders.none { provider -> provider.id == defaultTTSProvider.id }) {
                     ttsProviders.add(defaultTTSProvider.copyProvider())
@@ -500,7 +508,6 @@ class SettingsStore(
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
-            preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
         }
         // Publish only after DataStore has committed successfully. This prevents observers from
         // seeing a configuration that is later rolled back because persistence failed.
@@ -668,7 +675,6 @@ data class Settings(
     val webServerLocalhostOnly: Boolean = false,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val launchCount: Int = 0,
-    val sponsorAlertDismissedAt: Int = 0,
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储
@@ -847,14 +853,14 @@ private val DEFAULT_TTS_PROVIDERS = listOf(
         id = DEFAULT_SYSTEM_TTS_ID,
         name = "",
     ),
-    TTSProviderSetting.OpenAI(
-        id = Uuid.parse("e36b22ef-ca82-40ab-9e70-60cad861911c"),
-        name = "AiHubMix",
-        baseUrl = "https://aihubmix.com/v1",
-        model = "gpt-4o-mini-tts",
-        voice = "alloy",
-    )
 )
+
+// 上游赞助商（AiHubMix、随想AI网关）曾作为内置提供商写入用户设置；未填写 API Key 的残留条目在读取时清理
+private val REMOVED_SPONSOR_PROVIDER_IDS = setOf(
+    Uuid.parse("1b1395ed-b702-4aeb-8bc1-b681c4456953"),
+    Uuid.parse("aecf04fd-cb5c-4582-aed2-e8bf393923fd"),
+)
+private val REMOVED_AIHUBMIX_TTS_PROVIDER_ID = Uuid.parse("e36b22ef-ca82-40ab-9e70-60cad861911c")
 
 internal val DEFAULT_ASSISTANTS_IDS = DEFAULT_ASSISTANTS.map { it.id }
 

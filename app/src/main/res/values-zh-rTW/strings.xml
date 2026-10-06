@@ -324,11 +324,6 @@
   <string name="deep_thinking">深度思考</string>
   <string name="deep_thinking_seconds">思考了 %1$.1f 秒</string>
   <string name="delete">刪除</string>
-  <string name="donate_page_afdian_desc">適用於🇨🇳用戶</string>
-  <string name="donate_page_donation_methods">贊助方式</string>
-  <string name="donate_page_kofi_desc">供全球用戶使用</string>
-  <string name="donate_page_sponsor_list">贊助用戶列表</string>
-  <string name="donate_page_title">贊助</string>
   <string name="edit">編輯</string>
   <string name="editing">編輯中</string>
   <string name="emoji_picker_search_placeholder">搜尋表情符號...</string>
@@ -790,8 +785,6 @@
   <string name="setting_page_display_setting_desc">管理顯示設定</string>
   <string name="setting_page_documentation">使用文檔</string>
   <string name="setting_page_documentation_desc">查看應用使用說明和幫助文檔</string>
-  <string name="setting_page_donate">贊助</string>
-  <string name="setting_page_donate_desc">如果你喜歡這個應用，請贊助作者的工作</string>
   <string name="setting_page_dynamic_color">動態顏色</string>
   <string name="setting_page_dynamic_color_desc">是否基於桌布動態生成 app 主題配色</string>
   <string name="setting_page_extensions">擴充功能</string>
@@ -821,10 +814,6 @@
   <string name="setting_page_share">分享</string>
   <string name="setting_page_share_desc">分享本APP給朋友</string>
   <string name="setting_page_share_text">Miffan - 開源 Android AI 工作空間\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
-  <string name="setting_page_sponsor_alert_confirm">捐款</string>
-  <string name="setting_page_sponsor_alert_desc">您已啟動應用程式超過 100 次！如果您喜歡使用它，請考慮支持開發者。</string>
-  <string name="setting_page_sponsor_alert_dismiss">稍後再說</string>
-  <string name="setting_page_sponsor_alert_title">支援開發者</string>
   <string name="setting_page_theme_setting">主題</string>
   <string name="setting_page_theme_setting_desc">自訂應用配色方案</string>
   <string name="setting_theme_page_preset_themes">預設主題</string>
@@ -928,7 +917,6 @@
   <string name="setting_provider_page_scan_error">錯誤: %s</string>
   <string name="setting_provider_page_scan_qr_code">掃描二維碼</string>
   <string name="setting_provider_page_search_providers">搜尋提供者</string>
-  <string name="setting_provider_page_recommend">推薦提供者</string>
   <string name="setting_provider_page_select_all">全選 (%1$d)</string>
   <string name="setting_provider_page_select_from_gallery">從相簿選擇</string>
   <string name="setting_provider_page_service_account_email">服務帳戶郵箱</string>
@@ -2096,7 +2084,6 @@
   <string name="mcp_oauth_error_protected_resource_not_found">無法探索受保護資源中繼資料</string>
   <string name="mcp_oauth_error_authorization_server_not_found">無法探索授權伺服器中繼資料: %1$s</string>
   <string name="mcp_oauth_error_invalid_authorization_endpoint">不合法的授權端點: %1$s</string>
-  <string name="setting_provider_page_discount_badge">10% 優惠</string>
   <string name="setting_asr_hotwords_placeholder">熱詞1, 熱詞2, 熱詞3</string>
   <string name="update_changelog_see_release">更新日誌請查看下方 GitHub Release。</string>
   <string name="update_download_start_failed">無法啟動下載，請使用 GitHub 備用下載</string>

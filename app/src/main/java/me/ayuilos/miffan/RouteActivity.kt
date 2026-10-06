@@ -131,7 +131,6 @@ import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesGeneralPage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesNetworkPage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesUIPage
 import me.ayuilos.miffan.ui.pages.setting.SettingThemePage
-import me.ayuilos.miffan.ui.pages.setting.SettingDonatePage
 import me.ayuilos.miffan.ui.pages.setting.SettingFilesPage
 import me.ayuilos.miffan.ui.pages.setting.SettingMcpPage
 import me.ayuilos.miffan.ui.pages.setting.SettingModelPage
@@ -581,10 +580,6 @@ class RouteActivity : ComponentActivity() {
                                 SettingMcpPage()
                             }
 
-                            entry<Screen.SettingDonate> {
-                                SettingDonatePage()
-                            }
-
                             entry<Screen.SettingFiles> {
                                 SettingFilesPage()
                             }
@@ -838,9 +833,6 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingMcp : Screen
-
-    @Serializable
-    data object SettingDonate : Screen
 
     @Serializable
     data object SettingFiles : Screen

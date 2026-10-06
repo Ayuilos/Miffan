@@ -324,11 +324,6 @@
   <string name="deep_thinking">Глубокое мышление</string>
   <string name="deep_thinking_seconds">Думал %1$.1f секунд</string>
   <string name="delete">Удалить</string>
-  <string name="donate_page_afdian_desc">Для пользователей 🇨🇳</string>
-  <string name="donate_page_donation_methods">Способы пожертвований</string>
-  <string name="donate_page_kofi_desc">Для пользователей по всему миру</string>
-  <string name="donate_page_sponsor_list">Список спонсоров</string>
-  <string name="donate_page_title">Поддержать</string>
   <string name="edit">Редактировать</string>
   <string name="editing">Редактирование</string>
   <string name="emoji_picker_search_placeholder">Поиск эмодзи...</string>
@@ -790,8 +785,6 @@
   <string name="setting_page_display_setting_desc">Управление настройками отображения</string>
   <string name="setting_page_documentation">Документация</string>
   <string name="setting_page_documentation_desc">Просмотрите инструкции по использованию приложения и справочную документацию</string>
-  <string name="setting_page_donate">Поддержать</string>
-  <string name="setting_page_donate_desc">Если вам нравится, поддержите автора</string>
   <string name="setting_page_dynamic_color">Динамический цвет</string>
   <string name="setting_page_dynamic_color_desc">Динамически создавать цвета темы приложения на основе обоев</string>
   <string name="setting_page_extensions">Расширения</string>
@@ -821,10 +814,6 @@
   <string name="setting_page_share">Поделиться</string>
   <string name="setting_page_share_desc">Поделиться этим приложением с друзьями</string>
   <string name="setting_page_share_text">Miffan — открытое рабочее пространство ИИ для Android\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
-  <string name="setting_page_sponsor_alert_confirm">Пожертвовать</string>
-  <string name="setting_page_sponsor_alert_desc">Вы запустили приложение более 100 раз! Если вам нравится им пользоваться, пожалуйста, поддержите разработчика.</string>
-  <string name="setting_page_sponsor_alert_dismiss">Не сейчас</string>
-  <string name="setting_page_sponsor_alert_title">Поддержать разработчика</string>
   <string name="setting_page_theme_setting">Тема</string>
   <string name="setting_page_theme_setting_desc">Настроить цветовую схему приложения</string>
   <string name="setting_theme_page_preset_themes">Предустановленные темы</string>
@@ -930,7 +919,6 @@
   <string name="setting_provider_page_scan_error">Ошибка: %s</string>
   <string name="setting_provider_page_scan_qr_code">Сканировать QR-код</string>
   <string name="setting_provider_page_search_providers">Поиск поставщиков</string>
-  <string name="setting_provider_page_recommend">Рекомендуемые поставщики</string>
   <string name="setting_provider_page_select_all">Выбрать все (%1$d)</string>
   <string name="setting_provider_page_select_from_gallery">Выбрать из галереи</string>
   <string name="setting_provider_page_service_account_email">Электронная почта служебной учётной записи</string>
@@ -2098,7 +2086,6 @@
   <string name="mcp_oauth_error_protected_resource_not_found">Не удалось обнаружить метаданные защищённого ресурса</string>
   <string name="mcp_oauth_error_authorization_server_not_found">Не удалось обнаружить метаданные сервера авторизации: %1$s</string>
   <string name="mcp_oauth_error_invalid_authorization_endpoint">Недопустимая конечная точка авторизации: %1$s</string>
-  <string name="setting_provider_page_discount_badge">Скидка 10%</string>
   <string name="setting_asr_hotwords_placeholder">слово1, слово2, слово3</string>
   <string name="update_changelog_see_release">Список изменений смотрите в GitHub Release ниже.</string>
   <string name="update_download_start_failed">Не удалось начать загрузку, воспользуйтесь резервной загрузкой с GitHub</string>

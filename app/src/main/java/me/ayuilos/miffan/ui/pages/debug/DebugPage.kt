@@ -683,29 +683,6 @@ private fun MainPage(vm: DebugVM) {
             }
         }
 
-        var dismissedAtInput by remember(settings.sponsorAlertDismissedAt) {
-            mutableStateOf(settings.sponsorAlertDismissedAt.toString())
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
-                value = dismissedAtInput,
-                onValueChange = { dismissedAtInput = it },
-                label = { Text("sponsorAlertDismissedAt (current: ${settings.sponsorAlertDismissedAt})") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            Button(onClick = {
-                dismissedAtInput.toIntOrNull()?.let {
-                    vm.updateSettings(settings.copy(sponsorAlertDismissedAt = it))
-                }
-            }) {
-                Text("Set")
-            }
-        }
-
         var markdown by remember { mutableStateOf("") }
         MarkdownBlock(markdown, modifier = Modifier.fillMaxWidth())
         MathBlock(markdown)

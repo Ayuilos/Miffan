@@ -324,11 +324,6 @@
   <string name="deep_thinking">심층 사고</string>
   <string name="deep_thinking_seconds">%1$.1f 초 동안 생각했습니다</string>
   <string name="delete">삭제</string>
-  <string name="donate_page_afdian_desc">🇨🇳 사용자를 위한 후원</string>
-  <string name="donate_page_donation_methods">후원 방법</string>
-  <string name="donate_page_kofi_desc">글로벌 사용자용</string>
-  <string name="donate_page_sponsor_list">후원자 목록</string>
-  <string name="donate_page_title">후원</string>
   <string name="edit">편집</string>
   <string name="editing">편집 중</string>
   <string name="emoji_picker_search_placeholder">이모지 검색...</string>
@@ -790,8 +785,6 @@
   <string name="setting_page_display_setting_desc">디스플레이 설정 관리</string>
   <string name="setting_page_documentation">문서</string>
   <string name="setting_page_documentation_desc">앱 사용법 및 도움말 문서 보기</string>
-  <string name="setting_page_donate">후원</string>
-  <string name="setting_page_donate_desc">앱이 마음에 드시면 제작자의 작업을 후원해 주세요</string>
   <string name="setting_page_dynamic_color">동적 색상</string>
   <string name="setting_page_dynamic_color_desc">배경화면을 기반으로 앱 테마 색상을 동적으로 생성할지 여부</string>
   <string name="setting_page_extensions">확장 기능</string>
@@ -821,10 +814,6 @@
   <string name="setting_page_share">공유</string>
   <string name="setting_page_share_desc">앱을 친구들과 공유하기</string>
   <string name="setting_page_share_text">Miffan - 오픈소스 Android AI 작업 공간\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
-  <string name="setting_page_sponsor_alert_confirm">기부하기</string>
-  <string name="setting_page_sponsor_alert_desc">앱을 100번 이상 실행하셨네요! 만족스럽게 사용하고 계시다면 개발자를 후원해 주세요.</string>
-  <string name="setting_page_sponsor_alert_dismiss">나중에</string>
-  <string name="setting_page_sponsor_alert_title">개발자 지원하기</string>
   <string name="setting_page_theme_setting">테마</string>
   <string name="setting_page_theme_setting_desc">앱 색상 구성 사용자 지정</string>
   <string name="setting_theme_page_preset_themes">프리셋 테마</string>
@@ -930,7 +919,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_provider_page_scan_error">오류: %s</string>
   <string name="setting_provider_page_scan_qr_code">QR 코드 스캔</string>
   <string name="setting_provider_page_search_providers">공급자 검색</string>
-  <string name="setting_provider_page_recommend">추천 공급자</string>
   <string name="setting_provider_page_select_all">전체 선택 (%1$d)</string>
   <string name="setting_provider_page_select_from_gallery">갤러리에서 선택</string>
   <string name="setting_provider_page_service_account_email">서비스 계정 이메일</string>
@@ -2098,7 +2086,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="mcp_oauth_error_protected_resource_not_found">보호된 리소스 메타데이터를 찾을 수 없습니다</string>
   <string name="mcp_oauth_error_authorization_server_not_found">인증 서버 메타데이터를 찾을 수 없습니다: %1$s</string>
   <string name="mcp_oauth_error_invalid_authorization_endpoint">잘못된 인증 엔드포인트: %1$s</string>
-  <string name="setting_provider_page_discount_badge">10% 할인</string>
   <string name="setting_asr_hotwords_placeholder">핫워드1, 핫워드2, 핫워드3</string>
   <string name="update_changelog_see_release">변경 내역은 아래 GitHub Release를 확인하세요.</string>
   <string name="update_download_start_failed">다운로드를 시작할 수 없습니다. GitHub 대체 다운로드를 사용해 주세요</string>

@@ -24,10 +24,6 @@ fun List<CustomHeader>.toHeaders(): Headers {
 fun Request.Builder.configureReferHeaders(url: String): Request.Builder {
     val httpUrl = url.toHttpUrl()
     return when (httpUrl.host) {
-        "aihubmix.com" -> {
-            addHeader("APP-Code", "DKHA9468")
-        }
-
         "openrouter.ai" -> {
             this
                 .addHeader("X-OpenRouter-Title", "Miffan")

@@ -337,11 +337,6 @@
   <string name="deep_thinking">Deep Thinking</string>
   <string name="deep_thinking_seconds">Thought for %1$.1f seconds</string>
   <string name="delete">Delete</string>
-  <string name="donate_page_afdian_desc">For 🇨🇳 users</string>
-  <string name="donate_page_donation_methods">Donation Methods</string>
-  <string name="donate_page_kofi_desc">For Global Users</string>
-  <string name="donate_page_sponsor_list">Sponsor List</string>
-  <string name="donate_page_title">Donate</string>
   <string name="edit">Edit</string>
   <string name="editing">Editing</string>
   <string name="emoji_picker_search_placeholder">Search emojis...</string>
@@ -880,8 +875,6 @@
   <string name="setting_page_preferences_network_auto_retry_desc">Retry model requests up to 3 times when network errors occur.</string>
   <string name="setting_page_documentation">Documentation</string>
   <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
-  <string name="setting_page_donate">Donate</string>
-  <string name="setting_page_donate_desc">If you like it, sponsor the author\'s work</string>
   <string name="setting_page_dynamic_color">Dynamic Color</string>
   <string name="setting_page_dynamic_color_desc">Generate the app theme colors dynamically from your wallpaper</string>
   <string name="setting_page_extensions">Extensions</string>
@@ -911,10 +904,6 @@
   <string name="setting_page_share">Share</string>
   <string name="setting_page_share_desc">Share this app with friends</string>
   <string name="setting_page_share_text">Miffan - Open Source Android AI Workspace\n\nGitHub: https://github.com/Ayuilos/Miffan</string>
-  <string name="setting_page_sponsor_alert_confirm">Donate</string>
-  <string name="setting_page_sponsor_alert_desc">You have launched the app over 100 times! If you enjoy using it, please consider supporting the developer.</string>
-  <string name="setting_page_sponsor_alert_dismiss">Not Now</string>
-  <string name="setting_page_sponsor_alert_title">Support the Developer</string>
   <string name="setting_page_theme_setting">Theme</string>
   <string name="setting_page_theme_setting_desc">Customize app color scheme</string>
   <string name="setting_theme_page_preset_themes">Preset Themes</string>
@@ -1031,7 +1020,6 @@
   <string name="setting_provider_page_scan_error">Error: %s</string>
   <string name="setting_provider_page_scan_qr_code">Scan QR Code</string>
   <string name="setting_provider_page_search_providers">Search providers</string>
-  <string name="setting_provider_page_recommend">Recommended providers</string>
   <string name="setting_provider_page_select_all">Select All (%1$d)</string>
   <string name="setting_provider_page_select_from_gallery">Select from Gallery</string>
   <string name="setting_provider_page_service_account_email">Service Account Email</string>
@@ -2106,7 +2094,6 @@
   <string name="mcp_oauth_error_protected_resource_not_found">Unable to discover protected resource metadata</string>
   <string name="mcp_oauth_error_authorization_server_not_found">Unable to discover authorization server metadata: %1$s</string>
   <string name="mcp_oauth_error_invalid_authorization_endpoint">Invalid authorization endpoint: %1$s</string>
-  <string name="setting_provider_page_discount_badge">10% off</string>
   <string name="setting_asr_hotwords_placeholder">hotword1, hotword2, hotword3</string>
   <string name="update_changelog_see_release">See the GitHub Release below for the changelog.</string>
   <string name="update_download_start_failed">Unable to start the download, please use the GitHub fallback download</string>

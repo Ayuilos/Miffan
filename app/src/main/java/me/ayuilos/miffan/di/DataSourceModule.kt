@@ -23,7 +23,6 @@ import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.transformers.TemplateTransformer
 import me.ayuilos.miffan.data.api.MiffanAPI
-import me.ayuilos.miffan.data.api.SponsorAPI
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.db.AppDatabase
 import me.ayuilos.miffan.data.db.fts.MessageFtsManager
@@ -274,10 +273,6 @@ val dataSourceModule = module {
             })
             .build()
         client.also { SearchService.init(it, get()) }
-    }
-
-    single {
-        SponsorAPI.create(get())
     }
 
     single {
