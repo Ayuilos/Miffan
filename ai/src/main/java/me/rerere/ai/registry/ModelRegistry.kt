@@ -111,6 +111,13 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    // Astra, Sol and Luna (and 6.1) share capabilities; context differs by channel, so it is left unset.
+    private val GPT_6 = defineModel {
+        tokens("gpt", "6")
+        visionInput()
+        toolReasoningAbility()
+    }
+
     private val GEMINI_20_FLASH = defineModel {
         tokens("gemini", "2", "0", "flash")
         multimediaInput()
@@ -273,6 +280,13 @@ object ModelRegistry {
         contextLength(1.m)
     }
 
+    private val CLAUDE_FABLE_5 = defineModel {
+        tokens("claude", "fable", "5")
+        visionInput()
+        toolReasoningAbility()
+        contextLength(1.m)
+    }
+
     val CLAUDE_SERIES = defineGroup {
         add(
             CLAUDE_SONNET_3_5,
@@ -284,7 +298,8 @@ object ModelRegistry {
             CLAUDE_OPUS_4_7,
             CLAUDE_OPUS_4_8,
             CLAUDE_SONNET_5,
-            CLAUDE_OPUS_5
+            CLAUDE_OPUS_5,
+            CLAUDE_FABLE_5
         )
     }
 
@@ -612,6 +627,7 @@ object ModelRegistry {
         GPT_5_4_NANO,
         GPT_5_5,
         GPT_5_6,
+        GPT_6,
         GEMINI_20_FLASH,
         GEMINI_2_5_FLASH,
         GEMINI_2_5_PRO,
@@ -636,6 +652,7 @@ object ModelRegistry {
         CLAUDE_OPUS_4_8,
         CLAUDE_SONNET_5,
         CLAUDE_OPUS_5,
+        CLAUDE_FABLE_5,
         DEEPSEEK_V3_MODEL,
         DEEPSEEK_CHAT,
         DEEPSEEK_R1_MODEL,

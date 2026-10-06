@@ -77,6 +77,26 @@ class ModelRegistryTest {
         assertEquals(1_000_000, ModelRegistry.MODEL_CONTEXT_LENGTH.getData("claude-opus-5"))
         assertEquals(1_000_000, ModelRegistry.MODEL_CONTEXT_LENGTH.getData("claude-sonnet-5-20260305"))
         assertEquals(null, ModelRegistry.MODEL_CONTEXT_LENGTH.getData("claude-sonnet-4.5"))
+        assertTrue(ModelRegistry.CLAUDE_SERIES.match("claude/claude-fable-5-1"))
+        assertEquals(
+            listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+            ModelRegistry.MODEL_ABILITIES.getData("claude/claude-fable-5-1")
+        )
+        assertEquals(1_000_000, ModelRegistry.MODEL_CONTEXT_LENGTH.getData("claude-fable-5"))
+    }
+
+    @Test
+    fun testGpt6Series() {
+        listOf("gpt-6-astra", "gpt-6-luna", "codex/gpt-6.1-sol", "openai/gpt-6-sol-pro").forEach { id ->
+            assertEquals(
+                listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+                ModelRegistry.MODEL_ABILITIES.getData(id)
+            )
+            assertEquals(
+                listOf(Modality.TEXT, Modality.IMAGE),
+                ModelRegistry.MODEL_INPUT_MODALITIES.getData(id)
+            )
+        }
     }
 
     @Test
