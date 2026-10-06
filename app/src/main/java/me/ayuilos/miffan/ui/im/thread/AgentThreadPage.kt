@@ -71,8 +71,10 @@ fun AgentThreadPage(
         onPauseOrDispose { vm.setVisible(false) }
     }
     val assistant by vm.assistant.collectAsStateWithLifecycle()
-    val timeline by vm.timeline.collectAsStateWithLifecycle()
-    val loaded by vm.loaded.collectAsStateWithLifecycle()
+    // One state, so the page never sees "loaded" before the items that came with it.
+    val timelineState = vm.timelineState.collectAsStateWithLifecycle()
+    val timeline by remember { derivedStateOf { timelineState.value.items } }
+    val loaded by remember { derivedStateOf { timelineState.value.loaded } }
     val generating by vm.generatingSegmentIds.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
     val filter by vm.topicFilter.collectAsStateWithLifecycle()

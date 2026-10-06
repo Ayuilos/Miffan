@@ -47,6 +47,12 @@ import kotlin.uuid.Uuid
 data class ThreadTopic(val segmentId: Uuid, val title: String, val topicIndex: Int)
 
 /**
+ * Timeline items and whether the first page is already in them. They travel together so an empty
+ * list is never read as an empty thread while the stored segments are still on their way in.
+ */
+data class ThreadTimelineState(val items: List<TimelineItem>, val loaded: Boolean)
+
+/**
  * State and actions of one assistant's IM timeline. The UI renders [timeline] and never needs to
  * know about conversations: sending, replying and filtering are expressed in timeline terms.
  */
@@ -101,32 +107,35 @@ class AgentThreadVM(
         }
 
     // Shared, so every reader sees the same hand-off from a finished live segment to its stored copy.
-    private val segments: StateFlow<List<Conversation>> = combine(storedSegments, liveSegments) { stored, live -> stored to live }
-        .scan(LiveSegmentHandoff()) { handoff, (stored, live) -> handoff.next(stored, live) }
-        .map { it.merged }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    // Null until the first page of stored segments is in.
+    private val loadedSegments: StateFlow<List<Conversation>?> = combine(storedSegments, liveSegments) { stored, live -> stored to live }
+        .scan(LiveSegmentHandoff() to false) { (handoff, _), (stored, live) -> handoff.next(stored, live) to (stored != null) }
+        .map { (handoff, loaded) -> handoff.merged.takeIf { loaded } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** True once the first page has loaded; distinguishes an empty thread from loading. */
-    val loaded: StateFlow<Boolean> = storedSegments.map { it != null }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val segments: StateFlow<List<Conversation>> = loadedSegments.map { it.orEmpty() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val generatingSegmentIds: StateFlow<Set<Uuid>> = liveSegments
         .map { live -> live.mapTo(HashSet()) { it.id } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
-    val timeline: StateFlow<List<TimelineItem>> = combine(
-        segments,
+    val timelineState: StateFlow<ThreadTimelineState> = combine(
+        loadedSegments,
         noticeSource.observe(assistantId),
         generatingSegmentIds,
         _topicFilter,
         pending,
     ) { segments, notices, generating, filter, pending ->
-        val items = ThreadTimeline.build(segments, notices, generating, filter)
+        val items = ThreadTimeline.build(segments.orEmpty(), notices, generating, filter)
         val shown = items.mapNotNullTo(HashSet()) { (it as? TimelineItem.Message)?.message?.id }
         val outgoing = pending.filter { it.id !in shown }
-        if (outgoing.isEmpty()) items else items.withPending(outgoing)
+        ThreadTimelineState(if (outgoing.isEmpty()) items else items.withPending(outgoing), loaded = segments != null)
     }
         .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ThreadTimelineState(emptyList(), loaded = false))
+
+    val timeline: StateFlow<List<TimelineItem>> = timelineState.map { it.items }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val topics: StateFlow<Map<Uuid, ThreadTopic>> = segments
