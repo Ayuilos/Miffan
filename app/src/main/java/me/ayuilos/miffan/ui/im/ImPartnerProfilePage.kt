@@ -33,6 +33,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     val snackbar = remember { SnackbarHostState() }
     var editing by rememberSaveable { mutableStateOf(false) }
     var deleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var deletePartnerConfirm by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
     var personality by rememberSaveable { mutableStateOf("") }
@@ -79,6 +80,9 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             item("separator") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             item("topic") { TextButton(enabled = !busy, onClick = { perform(changedTopic) { vm.changeTopic() } }) { Text(stringResource(R.string.im_thread_new_topic), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             item("delete") { ImSettingRow(stringResource(R.string.im_p5_delete_chats), { deleteConfirm = true }, destructive = true) }
+            if (vm.canDeletePartner) item("delete_partner") {
+                ImSettingRow(stringResource(R.string.im_partner_delete), { deletePartnerConfirm = true }, destructive = true)
+            }
         }
     }
     if (editing) AlertDialog(onDismissRequest = { editing = false }, title = { Text(stringResource(R.string.im_p5_edit)) }, text = {
@@ -93,6 +97,19 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
         text = { Text(stringResource(R.string.im_p5_delete_chats_confirm)) }, confirmButton = {
             TextButton(enabled = !busy, onClick = { perform(deleted) { vm.deleteChats(); deleteConfirm = false } }) { Text(stringResource(R.string.im_p5_delete_chats), color = MaterialTheme.colorScheme.error) }
         }, dismissButton = { TextButton(onClick = { deleteConfirm = false }) { Text(stringResource(R.string.chat_page_cancel)) } })
+    if (deletePartnerConfirm) AlertDialog(onDismissRequest = { deletePartnerConfirm = false }, title = { Text(stringResource(R.string.im_partner_delete)) },
+        text = { Text(stringResource(R.string.im_partner_delete_confirm)) }, confirmButton = {
+            TextButton(enabled = !busy, onClick = {
+                perform {
+                    vm.deletePartner()
+                    deletePartnerConfirm = false
+                    // Its thread and profile no longer have anything to show.
+                    nav.removeAll(Screen.Home) { screen ->
+                        screen == Screen.PartnerProfile(assistantId) || (screen is Screen.Thread && screen.assistantId == assistantId)
+                    }
+                }
+            }) { Text(stringResource(R.string.im_partner_delete), color = MaterialTheme.colorScheme.error) }
+        }, dismissButton = { TextButton(onClick = { deletePartnerConfirm = false }) { Text(stringResource(R.string.chat_page_cancel)) } })
 }
 
 @Composable

@@ -42,6 +42,12 @@ class Navigator(private val backStack: MutableList<NavKey>) {
         return true
     }
 
+    /** Drops every screen matching [predicate], e.g. pages of something just deleted, keeping [root] when nothing is left. */
+    fun removeAll(root: Screen, predicate: (Screen) -> Boolean) {
+        backStack.removeAll { it is Screen && predicate(it) }
+        if (backStack.isEmpty()) backStack.add(root)
+    }
+
     fun popBackStack() {
         if (backStack.size > 1) backStack.removeLastOrNull()
     }

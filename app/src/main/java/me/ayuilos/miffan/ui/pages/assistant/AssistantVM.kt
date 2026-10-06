@@ -1,6 +1,5 @@
 package me.ayuilos.miffan.ui.pages.assistant
 
-import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -9,19 +8,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
-import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
-import me.ayuilos.miffan.data.repository.ConversationRepository
+import me.ayuilos.miffan.data.repository.AssistantRemover
 import me.ayuilos.miffan.data.repository.MemoryRepository
-import me.ayuilos.miffan.data.repository.WorkspaceRepository
 
 class AssistantVM(
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
-    private val conversationRepo: ConversationRepository,
-    private val filesManager: FilesManager,
-    private val workspaceRepository: WorkspaceRepository,
+    private val assistantRemover: AssistantRemover,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
@@ -45,28 +40,7 @@ class AssistantVM(
 
     fun removeAssistant(assistant: Assistant) {
         viewModelScope.launch {
-            workspaceRepository.closeAssistantTerminals(assistant.id.toString())
-            cleanupAssistantFiles(assistant)
-
-            val settings = settings.value
-            settingsStore.update(
-                settings.copy(
-                    assistants = settings.assistants.filter { it.id != assistant.id }
-                )
-            )
-            memoryRepository.deleteMemoriesOfAssistant(assistant.id.toString())
-            conversationRepo.deleteConversationOfAssistant(assistant.id)
-        }
-    }
-
-    private fun cleanupAssistantFiles(assistant: Assistant) {
-        val uris = buildList {
-            (assistant.avatar as? Avatar.Image)?.let { add(it.url.toUri()) }
-            assistant.background?.let { add(it.toUri()) }
-        }
-
-        if (uris.isNotEmpty()) {
-            filesManager.deleteChatFiles(uris)
+            assistantRemover.remove(assistant)
         }
     }
 

@@ -1851,6 +1851,8 @@
   <string name="im_p5_background">聊天背景</string>
   <string name="im_p5_delete_chats">刪除聊天記錄</string>
   <string name="im_p5_delete_chats_confirm">刪除與這個伙伴的全部聊天記錄？此操作無法復原。</string>
+  <string name="im_partner_delete">刪除夥伴</string>
+  <string name="im_partner_delete_confirm">刪除這個夥伴及其全部聊天記錄和記憶？此操作無法復原。</string>
   <string name="im_p5_added">已加入</string>
   <string name="im_p5_recommended">推薦伙伴</string>
   <string name="im_p5_saved">已儲存</string>
@@ -1900,9 +1902,9 @@
   <string name="im_p5_continue">繼續</string>
   <string name="im_p5_choose_partner">選擇第一個伙伴</string>
   <string name="im_p5_choose_desc">選一個伙伴，開始聊聊吧。</string>
+  <string name="im_p5_default_partner_desc">全能小伙伴，什麼都可以聊。</string>
   <string name="im_p5_finish">開始聊天</string>
   <string name="im_p5_select_service">選擇一項後即可繼續</string>
-  <string name="im_p5_default_partner_desc">全能小伙伴，什麼都可以聊。</string>
   <string name="im_p5_diff_empty">提示詞或記憶原文沒有變更</string>
   <string name="im_p5_web_permission">這是伙伴的能力開關，允許後會開啟聯網搜尋。</string>
   <string name="im_p5_clear">清除</string>

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.repository.AssistantRemover
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.thread.ThreadRepository
@@ -27,6 +28,7 @@ class ImPartnerVM(
     private val conversations: ConversationRepository,
     private val threads: ThreadRepository,
     private val threadService: ThreadService,
+    private val assistantRemover: AssistantRemover,
 ) : ViewModel() {
     val assistant = settingsStore.settingsFlow.map { it.assistants.find { assistant -> assistant.id == assistantId } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, settingsStore.settingsFlow.value.assistants.find { it.id == assistantId })
@@ -42,4 +44,10 @@ class ImPartnerVM(
 
     suspend fun changeTopic() = threadService.closeAll(threads.observeSegments(assistantId, 12).first())
     suspend fun deleteChats() = conversations.deleteConversationOfAssistant(assistantId)
+
+    val canDeletePartner = assistantRemover.canRemove(assistantId)
+
+    suspend fun deletePartner() {
+        assistant.value?.let { assistantRemover.remove(it) }
+    }
 }

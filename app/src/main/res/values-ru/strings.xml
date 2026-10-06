@@ -1853,6 +1853,8 @@
   <string name="im_p5_background">Фон чата</string>
   <string name="im_p5_delete_chats">Удалить историю чата</string>
   <string name="im_p5_delete_chats_confirm">Удалить всю переписку с партнёром? Отменить это нельзя.</string>
+  <string name="im_partner_delete">Удалить партнёра</string>
+  <string name="im_partner_delete_confirm">Удалить партнёра вместе со всей перепиской и воспоминаниями? Отменить это нельзя.</string>
   <string name="im_p5_added">Добавлен</string>
   <string name="im_p5_recommended">Рекомендуемые партнёры</string>
   <string name="im_p5_saved">Сохранено</string>
@@ -1902,9 +1904,9 @@
   <string name="im_p5_continue">Продолжить</string>
   <string name="im_p5_choose_partner">Выберите первого партнёра</string>
   <string name="im_p5_choose_desc">Выберите партнёра для первой беседы.</string>
+  <string name="im_p5_default_partner_desc">Универсальный партнёр — можно поболтать о чём угодно.</string>
   <string name="im_p5_finish">Начать общение</string>
   <string name="im_p5_select_service">Выберите сервис для продолжения</string>
-  <string name="im_p5_default_partner_desc">Универсальный партнёр — можно поболтать о чём угодно.</string>
   <string name="im_p5_diff_empty">Текст инструкций и воспоминаний не изменился</string>
   <string name="im_p5_web_permission">Это переключатель возможности партнёра. Разрешение включит поиск в сети.</string>
   <string name="im_p5_clear">Очистить</string>

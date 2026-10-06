@@ -1861,6 +1861,8 @@
   <string name="im_p5_background">Chat background</string>
   <string name="im_p5_delete_chats">Delete chat history</string>
   <string name="im_p5_delete_chats_confirm">Delete all chat history with this partner? This cannot be undone.</string>
+  <string name="im_partner_delete">Delete partner</string>
+  <string name="im_partner_delete_confirm">Delete this partner along with its chat history and memories? This cannot be undone.</string>
   <string name="im_p5_added">Added</string>
   <string name="im_p5_recommended">Recommended partners</string>
   <string name="im_p5_saved">Saved</string>
@@ -1910,9 +1912,9 @@
   <string name="im_p5_continue">Continue</string>
   <string name="im_p5_choose_partner">Choose your first partner</string>
   <string name="im_p5_choose_desc">Pick someone to start a conversation with.</string>
+  <string name="im_p5_default_partner_desc">Your all-round partner. Chat about anything.</string>
   <string name="im_p5_finish">Start chatting</string>
   <string name="im_p5_select_service">Choose a service to continue</string>
-  <string name="im_p5_default_partner_desc">Your all-round partner. Chat about anything.</string>
   <string name="im_p5_diff_empty">No prompt or memory text changed</string>
   <string name="im_p5_web_permission">This is a partner capability switch. Allowing turns on web search.</string>
   <string name="im_p5_clear">Clear</string>

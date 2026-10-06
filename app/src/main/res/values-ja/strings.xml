@@ -1853,6 +1853,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_background">チャットの背景</string>
   <string name="im_p5_delete_chats">チャット履歴を削除</string>
   <string name="im_p5_delete_chats_confirm">このパートナーとの履歴をすべて削除しますか？元に戻せません。</string>
+  <string name="im_partner_delete">パートナーを削除</string>
+  <string name="im_partner_delete_confirm">このパートナーと履歴・記憶をすべて削除しますか？元に戻せません。</string>
   <string name="im_p5_added">追加済み</string>
   <string name="im_p5_recommended">おすすめのパートナー</string>
   <string name="im_p5_saved">保存しました</string>
@@ -1902,9 +1904,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_continue">続ける</string>
   <string name="im_p5_choose_partner">最初のパートナーを選ぶ</string>
   <string name="im_p5_choose_desc">パートナーを選んで話しましょう。</string>
+  <string name="im_p5_default_partner_desc">なんでも話せる万能パートナーです。</string>
   <string name="im_p5_finish">会話を始める</string>
   <string name="im_p5_select_service">サービスを選ぶと続行できます</string>
-  <string name="im_p5_default_partner_desc">なんでも話せる万能パートナーです。</string>
   <string name="im_p5_diff_empty">プロンプトや記憶の原文に変更はありません</string>
   <string name="im_p5_web_permission">パートナーの機能スイッチです。許可するとウェブ検索が有効になります。</string>
   <string name="im_p5_clear">クリア</string>

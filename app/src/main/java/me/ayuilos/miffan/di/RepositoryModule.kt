@@ -5,6 +5,7 @@ import me.ayuilos.miffan.data.files.FileFolders
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
+import me.ayuilos.miffan.data.repository.AssistantRemover
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.data.repository.FavoriteRepository
 import me.ayuilos.miffan.data.repository.FolderRepository
@@ -39,6 +40,8 @@ val repositoryModule = module {
     single {
         FolderRepository(get(), get())
     }
+
+    single { AssistantRemover(get(), get(), get(), get(), get()) }
 
     single { ThreadRepository(get()) }
 
