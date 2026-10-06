@@ -1904,6 +1904,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_choose_desc">파트너를 골라 대화를 시작해요.</string>
   <string name="im_p5_finish">대화 시작</string>
   <string name="im_p5_select_service">서비스를 선택하면 계속할 수 있어요</string>
+  <string name="im_p5_default_partner_desc">무엇이든 이야기할 수 있는 만능 파트너예요.</string>
   <string name="im_p5_diff_empty">프롬프트나 기억 원문은 바뀌지 않았어요</string>
   <string name="im_p5_web_permission">파트너 기능 스위치예요. 허용하면 웹 검색이 켜져요.</string>
   <string name="im_p5_clear">지우기</string>

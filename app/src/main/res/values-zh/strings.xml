@@ -1905,6 +1905,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_p5_choose_desc">选一个伙伴，开始聊聊吧。</string>
   <string name="im_p5_finish">开始聊天</string>
   <string name="im_p5_select_service">选择一项后即可继续</string>
+  <string name="im_p5_default_partner_desc">全能小伙伴，什么都可以聊。</string>
   <string name="im_p5_diff_empty">提示词或记忆原文没有变化</string>
   <string name="im_p5_web_permission">这是伙伴的能力开关，允许后会开启联网搜索。</string>
   <string name="im_p5_clear">清除</string>

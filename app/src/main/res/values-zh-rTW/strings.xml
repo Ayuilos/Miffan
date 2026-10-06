@@ -1902,6 +1902,7 @@
   <string name="im_p5_choose_desc">選一個伙伴，開始聊聊吧。</string>
   <string name="im_p5_finish">開始聊天</string>
   <string name="im_p5_select_service">選擇一項後即可繼續</string>
+  <string name="im_p5_default_partner_desc">全能小伙伴，什麼都可以聊。</string>
   <string name="im_p5_diff_empty">提示詞或記憶原文沒有變更</string>
   <string name="im_p5_web_permission">這是伙伴的能力開關，允許後會開啟聯網搜尋。</string>
   <string name="im_p5_clear">清除</string>

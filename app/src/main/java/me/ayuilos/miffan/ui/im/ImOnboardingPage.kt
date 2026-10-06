@@ -25,6 +25,7 @@ import me.ayuilos.miffan.data.datastore.OPENROUTER_PROVIDER_ID
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.withWhaleThemeTrial
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.rerere.ai.provider.ModelType
@@ -46,6 +47,9 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
     var saving by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val failure = stringResource(R.string.im_p5_failed)
+    val whaleName = stringResource(R.string.whale_name)
+    val whaleTagline = stringResource(R.string.whale_card_tagline)
+    val defaultPartnerDesc = stringResource(R.string.im_p5_default_partner_desc)
     val providers = settings.providers.sortedBy { if (it.id == OPENROUTER_PROVIDER_ID) 0 else 1 }
     val provider = providers.find { it.id.toString() == selectedService }
     val busy = authState == OpenRouterAuthState.Authorizing || savedKey == OpenRouterSavedKeyState.Restoring || saving
@@ -59,6 +63,8 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
     BackHandler(enabled = step == 1) { step = 0 }
     val fallbackPartner = remember { Assistant(name = "Miffan") }
     val defaultPartner = settings.assistants.firstOrNull() ?: fallbackPartner
+    val selectedAssistant = (settings.assistants + templates.map { it.assistant() } + defaultPartner).find { it.id.toString() == selectedPartner }
+    val whaleSelected = selectedPartner == WHALE_PARTNER_KEY
     LaunchedEffect(step) { if (step == 1 && selectedPartner == null) selectedPartner = defaultPartner.id.toString() }
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
         Column(Modifier.navigationBarsPadding().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -78,15 +84,22 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
                 } else scope.launch {
                     saving = true
                     try {
-                        val chosen = (settings.assistants + templates.map { it.assistant() } + defaultPartner).find { it.id.toString() == selectedPartner } ?: return@launch
+                        val chosen = selectedAssistant
+                        if (!whaleSelected && chosen == null) return@launch
                         val model = provider?.models?.find { it.id == settings.chatModelId && it.type == ModelType.CHAT }
                             ?: provider?.models?.firstOrNull { it.type == ModelType.CHAT }
                         if (model == null) { step = 0; return@launch }
-                        settingsStore.update { current -> current.copy(
-                            assistants = if (current.assistants.any { it.id == chosen.id }) current.assistants else current.assistants + chosen,
-                            assistantId = chosen.id, chatModelId = model.id,
-                            providers = current.providers.map { if (it.id == provider?.id) it.copyProvider(enabled = true) else it },
-                        ) }
+                        settingsStore.update { current ->
+                            // The whale shares the trial helper so its assistant and palette are adopted together.
+                            val partnered = if (chosen == null) current.withWhaleThemeTrial(whaleName) else current.copy(
+                                assistants = if (current.assistants.any { it.id == chosen.id }) current.assistants else current.assistants + chosen,
+                                assistantId = chosen.id,
+                            )
+                            partnered.copy(
+                                chatModelId = model.id,
+                                providers = current.providers.map { if (it.id == provider?.id) it.copyProvider(enabled = true) else it },
+                            )
+                        }
                         nav.clearAndNavigate(Screen.Home)
                     } catch (e: CancellationException) { throw e }
                     catch (_: Exception) { snackbar.showSnackbar(failure) }
@@ -101,7 +114,17 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
             item("welcome") {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("${step + 1} / 2", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    AssistantAvatar("Miffan", defaultPartner.avatar.takeIf { step == 1 } ?: Avatar.Miffan(), Modifier.size(124.dp))
+                    // Step 2 previews whichever partner is selected.
+                    val headerPartner = selectedAssistant ?: defaultPartner
+                    AssistantAvatar(
+                        if (step == 1 && whaleSelected) whaleName else headerPartner.name.ifBlank { "Miffan" },
+                        when {
+                            step == 0 -> Avatar.Miffan()
+                            whaleSelected -> Avatar.WhaleGirl()
+                            else -> headerPartner.avatar
+                        },
+                        Modifier.size(124.dp),
+                    )
                     Text(stringResource(if (step == 0) R.string.im_p5_connect else R.string.im_p5_choose_partner), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
                     Text(stringResource(if (step == 0) R.string.im_p5_connect_desc else R.string.im_p5_choose_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                         modifier = Modifier.padding(bottom = 16.dp))
@@ -113,8 +136,9 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
                         selected = selectedService == service.id.toString(), enabled = !busy) { selectedService = service.id.toString() }
                 }
             } else {
-                item("default") { ImOnboardingChoice(defaultPartner.name.ifBlank { "Miffan" }, defaultPartner.systemPrompt.take(100),
+                item("default") { ImOnboardingChoice(defaultPartner.name.ifBlank { "Miffan" }, defaultPartner.systemPrompt.take(100).ifBlank { defaultPartnerDesc },
                     selectedPartner == defaultPartner.id.toString(), !busy) { selectedPartner = defaultPartner.id.toString() } }
+                item(WHALE_PARTNER_KEY) { ImOnboardingChoice(whaleName, whaleTagline, selectedPartner == WHALE_PARTNER_KEY, !busy) { selectedPartner = WHALE_PARTNER_KEY } }
                 items(templates, key = { it.id.toString() }) { template ->
                     ImOnboardingChoice(template.name, template.description, selectedPartner == template.id.toString(), !busy) { selectedPartner = template.id.toString() }
                 }
@@ -122,6 +146,8 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
         }
     }
 }
+
+private const val WHALE_PARTNER_KEY = "whale"
 
 @Composable
 private fun ImOnboardingChoice(title: String, description: String, selected: Boolean, enabled: Boolean, onSelect: () -> Unit) {

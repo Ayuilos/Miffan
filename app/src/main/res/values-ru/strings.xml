@@ -1904,6 +1904,7 @@
   <string name="im_p5_choose_desc">Выберите партнёра для первой беседы.</string>
   <string name="im_p5_finish">Начать общение</string>
   <string name="im_p5_select_service">Выберите сервис для продолжения</string>
+  <string name="im_p5_default_partner_desc">Универсальный партнёр — можно поболтать о чём угодно.</string>
   <string name="im_p5_diff_empty">Текст инструкций и воспоминаний не изменился</string>
   <string name="im_p5_web_permission">Это переключатель возможности партнёра. Разрешение включит поиск в сети.</string>
   <string name="im_p5_clear">Очистить</string>

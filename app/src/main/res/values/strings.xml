@@ -1912,6 +1912,7 @@
   <string name="im_p5_choose_desc">Pick someone to start a conversation with.</string>
   <string name="im_p5_finish">Start chatting</string>
   <string name="im_p5_select_service">Choose a service to continue</string>
+  <string name="im_p5_default_partner_desc">Your all-round partner. Chat about anything.</string>
   <string name="im_p5_diff_empty">No prompt or memory text changed</string>
   <string name="im_p5_web_permission">This is a partner capability switch. Allowing turns on web search.</string>
   <string name="im_p5_clear">Clear</string>
