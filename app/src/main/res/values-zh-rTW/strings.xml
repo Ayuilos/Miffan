@@ -1794,10 +1794,12 @@
   <string name="im_thread_copy">複製</string>
   <string name="im_thread_filter">只看這個話題</string>
   <string name="im_thread_regenerate">重新產生</string>
+  <string name="im_thread_read_aloud">朗讀</string>
+  <string name="im_thread_stop_reading">停止朗讀</string>
   <string name="im_thread_topic">話題</string>
   <string name="im_thread_only">只看：%1$s</string>
   <string name="im_thread_in_topic">在「%1$s」裡說點什麼…</string>
-  <string name="im_thread_latest">回到最新 ↓</string>
+  <string name="im_thread_latest">回到最新</string>
   <string name="im_thread_camera">拍照</string>
   <string name="im_thread_file">檔案</string>
   <string name="im_thread_attachments">加入附件</string>
@@ -1807,8 +1809,6 @@
   <string name="im_thread_attachment_error">無法加入附件，請再試一次</string>
   <string name="im_thread_intro">我是%1$s，一起聊聊吧</string>
   <string name="im_thread_suggestions">點一個話題，就能開始聊</string>
-  <string name="im_thread_tools_done">完成了 %1$d 個步驟</string>
-  <string name="im_thread_tools_web">查了 %1$d 個網頁</string>
   <string name="im_thread_tools_running">正在查資料…</string>
   <string name="im_thread_tools_working">正在處理…</string>
   <string name="im_thread_notice_memory">%1$s 記住了：%2$s</string>
@@ -1817,7 +1817,6 @@
   <string name="im_thread_undo">復原</string>
   <string name="im_thread_loading">正在載入訊息…</string>
   <string name="im_thread_missing_message">目前載入的記錄中找不到這則訊息</string>
-  <string name="im_thread_tools_details">工具步驟（%1$d）</string>
   <string name="im_thread_undo_failed">之後又有改動，已經無法復原</string>
   <string name="im_thread_notice_memory_forgotten">%1$s 忘記了：%2$s</string>
   <string name="im_p5_pin">置頂</string>

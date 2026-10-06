@@ -4,6 +4,15 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.style.TextOverflow
+import dev.chrisbanes.haze.HazeState
+import me.ayuilos.miffan.ui.components.ui.GlassIconButton
+import me.ayuilos.miffan.ui.components.ui.GlassSurface
+import me.rerere.hugeicons.stroke.Mic01
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
@@ -50,7 +59,6 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.StopCircle
-import me.rerere.hugeicons.stroke.Voice
 import org.koin.compose.koinInject
 import java.io.File
 import kotlin.uuid.Uuid
@@ -65,6 +73,8 @@ internal fun ThreadComposer(
     onSend: (List<UIMessagePart>) -> Unit,
     onStop: () -> Unit,
     onError: (String) -> Unit,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -149,48 +159,28 @@ internal fun ThreadComposer(
             }
         }
     }
-    Column {
-        if (asrState.isRecording) ThreadVoiceRecording(asrState.amplitudes)
-        if (attachments.messageContent.isNotEmpty()) MediaFileInputRow(attachments)
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            FilledTonalIconButton(onClick = {
-                if (asrState.isRecording) { asr.stop(); ownsRecording = false }
-                else if (!asrState.isAvailable) onError(unavailable)
-                else if (!microphone.allRequiredPermissionsGranted) microphone.requestPermissions()
-                else {
-                    panel = false; keyboard?.hide(); focus.clearFocus()
-                    baseText = input
-                    ownsRecording = true
-                    asr.start { transcript -> latestInput(listOf(baseText, transcript).filter(String::isNotBlank).joinToString("\n")) }
-                }
-            }, enabled = loaded && !importing) {
-                Icon(HugeIcons.Voice, stringResource(R.string.im_thread_voice))
-            }
-            if (asrState.isRecording) {
-                FilledTonalButton(onClick = { asr.stop(); ownsRecording = false }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                    Text(stringResource(R.string.im_thread_voice_stop))
-                }
-            } else OutlinedTextField(value = input, onValueChange = onInput, modifier = Modifier.weight(1f).onFocusChanged { if (it.isFocused) panel = false },
-                shape = MaterialTheme.shapes.extraLarge, maxLines = 5,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { sendDraft() }),
-                placeholder = { Text(if (topicLabel != null) stringResource(R.string.im_thread_in_topic, topicLabel) else stringResource(R.string.im_thread_message)) })
-            FilledTonalIconButton(onClick = { focus.clearFocus(); keyboard?.hide(); panel = !panel }, enabled = loaded && !importing && !asrState.isRecording) {
-                Icon(if (panel) HugeIcons.Cancel01 else HugeIcons.Add01, stringResource(R.string.im_thread_attachments))
-            }
-            // Messages can be sent while replies are still arriving (parallel topics), so a draft
-            // always shows Send; Stop appears only when there is nothing to send.
-            val hasDraft = input.isNotBlank() || attachments.messageContent.isNotEmpty()
-            val stops = generating && !hasDraft
-            if (generating || hasDraft) FilledIconButton(
-                onClick = {
-                    if (stops) onStop() else sendDraft()
-                }, enabled = loaded && (stops || (!importing && !asrState.isRecording)),
-            ) { Icon(if (stops) HugeIcons.StopCircle else HugeIcons.ArrowUp02, stringResource(if (stops) R.string.im_thread_stop else R.string.im_thread_send)) }
+    fun toggleVoice() {
+        if (asrState.isRecording) { asr.stop(); ownsRecording = false }
+        else if (!asrState.isAvailable) onError(unavailable)
+        else if (!microphone.allRequiredPermissionsGranted) microphone.requestPermissions()
+        else {
+            panel = false; keyboard?.hide(); focus.clearFocus()
+            baseText = input
+            ownsRecording = true
+            asr.start { transcript -> latestInput(listOf(baseText, transcript).filter(String::isNotBlank).joinToString("\n")) }
         }
-        if (importing) Text(stringResource(R.string.im_thread_loading), Modifier.padding(12.dp), style = MaterialTheme.typography.labelMedium)
-        if (panel) Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+    }
+    val cardShape = RoundedCornerShape(28.dp)
+    Column(modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (asrState.isRecording) GlassSurface(hazeState, cardShape, Modifier.fillMaxWidth()) { ThreadVoiceRecording(asrState.amplitudes) }
+        if (attachments.messageContent.isNotEmpty()) GlassSurface(hazeState, cardShape, Modifier.fillMaxWidth()) {
+            Box(Modifier.padding(8.dp)) { MediaFileInputRow(attachments) }
+        }
+        if (importing) GlassSurface(hazeState, CircleShape) {
+            Text(stringResource(R.string.im_thread_loading), Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium)
+        }
+        if (panel) GlassSurface(hazeState, cardShape, Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 ThreadAttachmentAction(HugeIcons.Image02, stringResource(R.string.im_thread_photo)) { photos.launch("image/*") }
                 ThreadAttachmentAction(HugeIcons.Camera01, stringResource(R.string.im_thread_camera)) {
                     if (camera.allRequiredPermissionsGranted) {
@@ -200,6 +190,43 @@ internal fun ThreadComposer(
                     } else camera.requestPermissions()
                 }
                 ThreadAttachmentAction(HugeIcons.Files02, stringResource(R.string.im_thread_file)) { documents.launch(arrayOf("*/*")) }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlassIconButton(hazeState, if (panel) HugeIcons.Cancel01 else HugeIcons.Add01, stringResource(R.string.im_thread_attachments),
+                onClick = { focus.clearFocus(); keyboard?.hide(); panel = !panel }, enabled = loaded && !importing && !asrState.isRecording)
+            GlassSurface(hazeState, RoundedCornerShape(24.dp), Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Row(Modifier.padding(start = 18.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (asrState.isRecording) {
+                        Text(stringResource(R.string.im_thread_voice_stop), Modifier.weight(1f).padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else BasicTextField(value = input, onValueChange = onInput,
+                        modifier = Modifier.weight(1f).padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) panel = false },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), maxLines = 5,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { sendDraft() }),
+                        decorationBox = { field ->
+                            Box {
+                                if (input.isEmpty()) Text(if (topicLabel != null) stringResource(R.string.im_thread_in_topic, topicLabel) else stringResource(R.string.im_thread_message),
+                                    style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                field()
+                            }
+                        })
+                    IconButton(onClick = { toggleVoice() }, enabled = loaded && !importing) {
+                        Icon(if (asrState.isRecording) HugeIcons.StopCircle else HugeIcons.Mic01,
+                            stringResource(if (asrState.isRecording) R.string.im_thread_voice_stop else R.string.im_thread_voice))
+                    }
+                    // Messages can be sent while replies are still arriving (parallel topics), so a draft
+                    // always shows Send; Stop appears only when there is nothing to send.
+                    val hasDraft = input.isNotBlank() || attachments.messageContent.isNotEmpty()
+                    val stops = generating && !hasDraft
+                    if (generating || hasDraft) FilledIconButton(
+                        onClick = {
+                            if (stops) onStop() else sendDraft()
+                        }, enabled = loaded && (stops || (!importing && !asrState.isRecording)),
+                    ) { Icon(if (stops) HugeIcons.StopCircle else HugeIcons.ArrowUp02, stringResource(if (stops) R.string.im_thread_stop else R.string.im_thread_send)) }
+                }
             }
         }
     }
@@ -219,7 +246,7 @@ private fun ThreadVoiceRecording(amplitudes: List<Float>) {
     LaunchedEffect(Unit) { while (true) { delay(1000); seconds++ } }
     val color = MaterialTheme.colorScheme.primary
     val locale = LocalConfiguration.current.locales[0]
-    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.fillMaxWidth().height(64.dp)) {
             val bars = amplitudes.takeLast(32).ifEmpty { List(32) { 0f } }
             bars.forEachIndexed { index, amplitude ->

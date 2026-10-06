@@ -1796,10 +1796,12 @@
   <string name="im_thread_copy">Копировать</string>
   <string name="im_thread_filter">Только эта тема</string>
   <string name="im_thread_regenerate">Создать заново</string>
+  <string name="im_thread_read_aloud">Прочитать вслух</string>
+  <string name="im_thread_stop_reading">Остановить чтение</string>
   <string name="im_thread_topic">Тема</string>
   <string name="im_thread_only">Только: %1$s</string>
   <string name="im_thread_in_topic">Напишите в теме «%1$s»…</string>
-  <string name="im_thread_latest">К последним ↓</string>
+  <string name="im_thread_latest">К последним</string>
   <string name="im_thread_camera">Камера</string>
   <string name="im_thread_file">Файлы</string>
   <string name="im_thread_attachments">Вложения</string>
@@ -1809,8 +1811,6 @@
   <string name="im_thread_attachment_error">Не удалось добавить вложение</string>
   <string name="im_thread_intro">Я %1$s. Давайте поговорим</string>
   <string name="im_thread_suggestions">Выберите тему для начала беседы</string>
-  <string name="im_thread_tools_done">Завершённые шаги: %1$d</string>
-  <string name="im_thread_tools_web">Просмотрено страниц: %1$d</string>
   <string name="im_thread_tools_running">Ищу информацию…</string>
   <string name="im_thread_tools_working">Выполняю…</string>
   <string name="im_thread_notice_memory">%1$s запомнил: %2$s</string>
@@ -1819,7 +1819,6 @@
   <string name="im_thread_undo">Отменить</string>
   <string name="im_thread_loading">Загрузка сообщений…</string>
   <string name="im_thread_missing_message">В загруженной истории этого сообщения нет</string>
-  <string name="im_thread_tools_details">Шаги инструментов (%1$d)</string>
   <string name="im_thread_undo_failed">С тех пор были изменения, отменить уже нельзя</string>
   <string name="im_thread_notice_memory_forgotten">%1$s забыл(а): %2$s</string>
   <string name="im_p5_pin">Закрепить</string>

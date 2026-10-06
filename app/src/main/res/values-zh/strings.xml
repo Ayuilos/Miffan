@@ -1799,10 +1799,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_thread_copy">复制</string>
   <string name="im_thread_filter">只看这个话题</string>
   <string name="im_thread_regenerate">重新生成</string>
+  <string name="im_thread_read_aloud">朗读</string>
+  <string name="im_thread_stop_reading">停止朗读</string>
   <string name="im_thread_topic">话题</string>
   <string name="im_thread_only">只看：%1$s</string>
   <string name="im_thread_in_topic">在“%1$s”里说点什么…</string>
-  <string name="im_thread_latest">回到最新 ↓</string>
+  <string name="im_thread_latest">回到最新</string>
   <string name="im_thread_camera">拍照</string>
   <string name="im_thread_file">文件</string>
   <string name="im_thread_attachments">添加附件</string>
@@ -1812,8 +1814,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_thread_attachment_error">没能添加附件，请再试一次</string>
   <string name="im_thread_intro">我是%1$s，一起聊聊吧</string>
   <string name="im_thread_suggestions">点一个话题，就能开始聊</string>
-  <string name="im_thread_tools_done">完成了 %1$d 个步骤</string>
-  <string name="im_thread_tools_web">查了 %1$d 个网页</string>
   <string name="im_thread_tools_running">正在查资料…</string>
   <string name="im_thread_tools_working">正在处理…</string>
   <string name="im_thread_notice_memory">%1$s 记住了：%2$s</string>
@@ -1822,7 +1822,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_thread_undo">撤销</string>
   <string name="im_thread_loading">正在加载消息…</string>
   <string name="im_thread_missing_message">当前加载的记录中找不到这条消息</string>
-  <string name="im_thread_tools_details">工具步骤（%1$d）</string>
   <string name="im_thread_undo_failed">之后又有改动，已经无法撤销</string>
   <string name="im_thread_notice_memory_forgotten">%1$s 忘记了：%2$s</string>
   <string name="im_p5_pin">置顶</string>

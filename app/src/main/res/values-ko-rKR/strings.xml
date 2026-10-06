@@ -1796,10 +1796,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_thread_copy">복사</string>
   <string name="im_thread_filter">이 이야기만 보기</string>
   <string name="im_thread_regenerate">다시 생성</string>
+  <string name="im_thread_read_aloud">읽어 주기</string>
+  <string name="im_thread_stop_reading">읽기 중지</string>
   <string name="im_thread_topic">이야기</string>
   <string name="im_thread_only">보기: %1$s</string>
   <string name="im_thread_in_topic">“%1$s”에서 이야기해 보세요…</string>
-  <string name="im_thread_latest">최신으로 ↓</string>
+  <string name="im_thread_latest">최신으로</string>
   <string name="im_thread_camera">촬영</string>
   <string name="im_thread_file">파일</string>
   <string name="im_thread_attachments">첨부</string>
@@ -1809,8 +1811,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_thread_attachment_error">첨부하지 못했어요. 다시 시도해 주세요</string>
   <string name="im_thread_intro">저는 %1$s예요. 함께 이야기해요</string>
   <string name="im_thread_suggestions">이야기를 골라 대화를 시작해 보세요</string>
-  <string name="im_thread_tools_done">%1$d개 작업 완료</string>
-  <string name="im_thread_tools_web">웹페이지 %1$d개를 확인했어요</string>
   <string name="im_thread_tools_running">자료를 찾는 중…</string>
   <string name="im_thread_tools_working">처리 중…</string>
   <string name="im_thread_notice_memory">%1$s이 기억했어요: %2$s</string>
@@ -1819,7 +1819,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_thread_undo">되돌리기</string>
   <string name="im_thread_loading">메시지를 불러오는 중…</string>
   <string name="im_thread_missing_message">불러온 기록에서 이 메시지를 찾을 수 없어요</string>
-  <string name="im_thread_tools_details">도구 작업 (%1$d)</string>
   <string name="im_thread_undo_failed">이후 변경 사항이 있어 되돌릴 수 없어요</string>
   <string name="im_thread_notice_memory_forgotten">%1$s 이(가) 잊었어요: %2$s</string>
   <string name="im_p5_pin">고정</string>

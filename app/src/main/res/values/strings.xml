@@ -1806,10 +1806,12 @@
   <string name="im_thread_copy">Copy</string>
   <string name="im_thread_filter">Only this topic</string>
   <string name="im_thread_regenerate">Regenerate</string>
+  <string name="im_thread_read_aloud">Read aloud</string>
+  <string name="im_thread_stop_reading">Stop reading</string>
   <string name="im_thread_topic">Topic</string>
   <string name="im_thread_only">Only: %1$s</string>
   <string name="im_thread_in_topic">Say something in “%1$s”…</string>
-  <string name="im_thread_latest">Latest ↓</string>
+  <string name="im_thread_latest">Latest</string>
   <string name="im_thread_camera">Camera</string>
   <string name="im_thread_file">Files</string>
   <string name="im_thread_attachments">Attachments</string>
@@ -1819,8 +1821,6 @@
   <string name="im_thread_attachment_error">Could not add this attachment</string>
   <string name="im_thread_intro">Hi, I\'m %1$s. What shall we talk about?</string>
   <string name="im_thread_suggestions">Pick a topic to start chatting</string>
-  <string name="im_thread_tools_done">Completed steps: %1$d</string>
-  <string name="im_thread_tools_web">Checked webpages: %1$d</string>
   <string name="im_thread_tools_running">Looking things up…</string>
   <string name="im_thread_tools_working">Working on it…</string>
   <string name="im_thread_notice_memory">%1$s remembered: %2$s</string>
@@ -1829,7 +1829,6 @@
   <string name="im_thread_undo">Undo</string>
   <string name="im_thread_loading">Loading messages…</string>
   <string name="im_thread_missing_message">This message is not available in the loaded history</string>
-  <string name="im_thread_tools_details">Tool steps (%1$d)</string>
   <string name="im_thread_undo_failed">It has changed since then, so this can no longer be undone</string>
   <string name="im_thread_notice_memory_forgotten">%1$s forgot: %2$s</string>
   <string name="im_p5_pin">Pin</string>

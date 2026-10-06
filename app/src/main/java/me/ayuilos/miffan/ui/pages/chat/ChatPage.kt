@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -54,7 +55,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -72,12 +72,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.dokar.sonner.ToastType
-import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.HazeColorEffect
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.blur.material3.Material3
+import me.ayuilos.miffan.ui.components.ui.EdgeBlurScrim
+import me.ayuilos.miffan.ui.components.ui.EdgeScrimPosition
+import me.ayuilos.miffan.ui.components.ui.glass
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
@@ -815,6 +813,10 @@ private fun ChatPageContent(
                     vm.saveConversationAsync()
                 },
             )
+            Box(Modifier.fillMaxSize()) {
+                EdgeBlurScrim(hazeState, EdgeScrimPosition.Top, innerPadding.calculateTopPadding() + 16.dp, Modifier.align(Alignment.TopCenter))
+                EdgeBlurScrim(hazeState, EdgeScrimPosition.Bottom, innerPadding.calculateBottomPadding() + 24.dp, Modifier.align(Alignment.BottomCenter))
+            }
         }
 
         if (showFilesSheet) {
@@ -1142,18 +1144,8 @@ private fun ChatTopBarCapsule(
     content: @Composable RowScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(50)
-    // Keep the theme's hue, with a tonal step from the page (including AMOLED black).
-    val glassColor = MaterialTheme.colorScheme.surfaceContainerHighest
-    val glassStyle = HazeBlurStyle.Material3 {
-        blurRadius(20.dp)
-        noiseFactor(0.04f)
-        colorEffects(listOf(HazeColorEffect.tint(glassColor.copy(alpha = 0.8f))))
-        fallbackColorEffect(HazeColorEffect.tint(glassColor.copy(alpha = 0.9f)))
-    }
     Surface(
-        modifier = modifier
-            .clip(shape)
-            .hazeBlur(input = HazeInput.Sources(hazeState), style = glassStyle),
+        modifier = modifier.glass(hazeState, shape),
         shape = shape,
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,

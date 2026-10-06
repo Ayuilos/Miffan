@@ -28,10 +28,26 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import me.ayuilos.miffan.R
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Cancel01
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import me.ayuilos.miffan.ui.components.ui.EdgeBlurScrim
+import me.ayuilos.miffan.ui.components.ui.EdgeScrimPosition
+import me.ayuilos.miffan.ui.components.ui.GlassIconButton
+import me.ayuilos.miffan.ui.components.ui.GlassSurface
+import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
+import me.rerere.ai.core.MessageRole
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowLeft01
+import me.rerere.hugeicons.stroke.Filter
+import me.rerere.hugeicons.stroke.MoreHorizontal
+import me.rerere.hugeicons.stroke.Reply
 import me.ayuilos.miffan.Screen
-import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.thread.TimelineItem
@@ -76,7 +92,6 @@ fun AgentThreadPage(
     var jumping by remember { mutableStateOf(false) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
-    val viewportEnd by remember { derivedStateOf { listState.layoutInfo.viewportEndOffset } }
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
     val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
     val status = threadHeaderStatus(timeline, generating)
@@ -109,7 +124,7 @@ fun AgentThreadPage(
             if (listState.isScrollInProgress && (dragging || !followLatest) && listState.firstVisibleItemIndex == 0) listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key else null
         }.distinctUntilChanged().collect { if (it != null && !jumping) vm.loadMore() }
     }
-    LaunchedEffect(timeline, visibleErrors, loaded, viewportEnd) {
+    LaunchedEffect(timeline, visibleErrors, loaded) {
         val count = timeline.size + visibleErrors.size
         if (loaded && followLatest && !jumping && count > 0) {
             withFrameNanos { }
@@ -170,92 +185,117 @@ fun AgentThreadPage(
             },
         )
     }
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        topBar = {
-            Column {
-                TopAppBar(
-                    navigationIcon = { BackButton() },
-                    title = {
-                        Column {
-                            Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            // Fades between states and grows or shrinks the line as the status appears or clears.
-                            AnimatedContent(status, transitionSpec = { fadeIn() togetherWith fadeOut() using SizeTransform(clip = false) }, label = "thread-status") { shown ->
-                                if (shown != null) Text(stringResource(shown.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+    val headerPhase = assistantGenerationPhase(
+        (timeline.lastOrNull { it is TimelineItem.Message && it.streaming && it.message.role == MessageRole.ASSISTANT } as TimelineItem.Message?)?.message,
+        loading = generating.isNotEmpty(),
+    )
+    val density = LocalDensity.current
+    var topChrome by remember { mutableStateOf(0.dp) }
+    var bottomChrome by remember { mutableStateOf(0.dp) }
+    val hazeState = rememberHazeState()
+    LaunchedEffect(bottomChrome) {
+        // The composer grows (keyboard, attachments); keep the newest message above it while following.
+        if (loaded && followLatest && !jumping) scrollToLatest()
+    }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
+            items(timeline, key = { it.key }) { item ->
+                when (item) {
+                    is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
+                    is TimelineItem.Message -> ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
+                        onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
+                        onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
+                        onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
+                        onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) })
+                    is TimelineItem.Typing -> ThreadTyping()
+                    is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
+                        onView = { viewingNotice = item.notice },
+                        onUndo = {
+                            vm.undoNotice(item.notice) { result ->
+                                if (result != RestoreResult.Restored) scope.launch { snackbar.showSnackbar(undoFailed) }
                             }
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) }) { Icon(HugeIcons.MoreVertical, stringResource(R.string.im_p5_profile)) }
-                    },
-                )
-                if (filter != null && topicLabel != null) {
-                    val color = threadTopicColor(topics[filter]?.topicIndex ?: 0)
-                    Surface(color = color.copy(alpha = .12f), contentColor = color, shape = MaterialTheme.shapes.extraLarge,
-                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.im_thread_only, topicLabel), Modifier.padding(start = 16.dp).widthIn(max = 240.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            IconButton(onClick = { vm.setTopicFilter(null); followLatest = true }) { Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp)) }
-                        }
-                    }
+                        })
                 }
             }
-        },
-        bottomBar = {
-            Column(Modifier.imePadding().navigationBarsPadding()) {
-                if (filter == null) reply?.let { target ->
-                    Surface(color = threadTopicColor(target.topicIndex).copy(alpha = .12f), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), shape = MaterialTheme.shapes.medium) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f).padding(12.dp)) {
-                                Text(stringResource(R.string.im_thread_reply), style = MaterialTheme.typography.labelMedium)
-                                Text(target.message.previewText(), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            }
-                            IconButton(onClick = { vm.setReplyTarget(null) }) { Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp)) }
-                        }
-                    }
-                }
-                ThreadComposer(input = input, onInput = { input = it }, topicLabel = topicLabel,
-                    loaded = loaded, generating = generating.isNotEmpty(),
-                    onSend = { followLatest = true; vm.send(it) }, onStop = vm::stop,
-                    onError = { message -> scope.launch { snackbar.showSnackbar(message) } })
+            items(visibleErrors, key = { "error-${it.id}" }) { error ->
+                val segmentId = error.conversationId
+                ThreadErrorBubble(error, canRetry = segmentId != null,
+                    onRetry = { segmentId?.let(vm::retry); vm.dismissError(error) }, onDismiss = { vm.dismissError(error) })
             }
-        },
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp)) {
-                items(timeline, key = { it.key }) { item ->
-                    when (item) {
-                        is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
-                        is TimelineItem.Message -> ThreadMessageBubble(item, assistant, highlighted = highlighted == item.message.id.toString(),
-                            onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
-                            onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
-                            onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
-                            onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) })
-                        is TimelineItem.Typing -> ThreadTyping(assistant)
-                        is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
-                            onView = { viewingNotice = item.notice },
-                            onUndo = {
-                                vm.undoNotice(item.notice) { result ->
-                                    if (result != RestoreResult.Restored) scope.launch { snackbar.showSnackbar(undoFailed) }
-                                }
-                            })
-                    }
-                }
-                items(visibleErrors, key = { "error-${it.id}" }) { error ->
-                    val segmentId = error.conversationId
-                    ThreadErrorBubble(error, assistant, canRetry = segmentId != null,
-                        onRetry = { segmentId?.let(vm::retry); vm.dismissError(error) }, onDismiss = { vm.dismissError(error) })
-                }
-            }
-            if (!loaded) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.im_thread_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else if (filter == null && timeline.isEmpty() && visibleErrors.isEmpty()) {
+        }
+        if (!loaded) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(stringResource(R.string.im_thread_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else if (filter == null && timeline.isEmpty() && visibleErrors.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(top = topChrome, bottom = bottomChrome)) {
                 ThreadEmptyState(assistant) { followLatest = true; vm.sendText(it) }
             }
-            if (!atBottom || highlighted != null) FilledTonalButton(
-                onClick = { highlighted = null; followLatest = true; scope.launch { scrollToLatest(animate = true) } },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
-            ) { Text(stringResource(R.string.im_thread_latest)) }
         }
+        EdgeBlurScrim(hazeState, EdgeScrimPosition.Top, topChrome + 16.dp, Modifier.align(Alignment.TopCenter))
+        EdgeBlurScrim(hazeState, EdgeScrimPosition.Bottom, bottomChrome + 24.dp, Modifier.align(Alignment.BottomCenter))
+
+        Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()
+            .onSizeChanged { topChrome = with(density) { it.height.toDp() } }
+            .statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(end = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassIconButton(hazeState, HugeIcons.ArrowLeft01, stringResource(R.string.back), onClick = { nav.popBackStack() })
+                    GlassSurface(hazeState, CircleShape, Modifier.weight(1f, fill = false).heightIn(min = 48.dp),
+                        onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) }) {
+                        Row(Modifier.padding(start = 6.dp, end = 18.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // The reply's thinking and typing play here now that bubbles carry no avatar.
+                            ThreadAvatar(assistant, headerPhase, error = generating.isEmpty() && visibleErrors.isNotEmpty(), modifier = Modifier.size(36.dp))
+                            Column {
+                                Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                // Fades between states and grows or shrinks the line as the status appears or clears.
+                                AnimatedContent(status, transitionSpec = { fadeIn() togetherWith fadeOut() using SizeTransform(clip = false) }, label = "thread-status") { shown ->
+                                    if (shown != null) Text(stringResource(shown.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                }
+                GlassIconButton(hazeState, HugeIcons.MoreHorizontal, stringResource(R.string.im_p5_profile),
+                    onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) }, modifier = Modifier.align(Alignment.CenterEnd))
+            }
+            if (filter != null && topicLabel != null) {
+                val color = threadTopicColor(topics[filter]?.topicIndex ?: 0)
+                GlassSurface(hazeState, CircleShape, Modifier.align(Alignment.CenterHorizontally)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(HugeIcons.Filter, null, Modifier.padding(start = 16.dp).size(16.dp), tint = color)
+                        Text(stringResource(R.string.im_thread_only, topicLabel), Modifier.padding(start = 8.dp).widthIn(max = 240.dp), color = color,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        IconButton(onClick = { vm.setTopicFilter(null); followLatest = true }) { Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp)) }
+                    }
+                }
+            }
+        }
+
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            .onSizeChanged { bottomChrome = with(density) { it.height.toDp() } }
+            .imePadding().navigationBarsPadding()) {
+            if (filter == null) reply?.let { target ->
+                val color = threadTopicColor(target.topicIndex)
+                GlassSurface(hazeState, RoundedCornerShape(20.dp), Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(HugeIcons.Reply, null, Modifier.padding(start = 16.dp).size(18.dp), tint = color)
+                        Text(target.message.previewText(), Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        IconButton(onClick = { vm.setReplyTarget(null) }) { Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp)) }
+                    }
+                }
+            }
+            ThreadComposer(input = input, onInput = { input = it }, topicLabel = topicLabel,
+                loaded = loaded, generating = generating.isNotEmpty(),
+                onSend = { followLatest = true; vm.send(it) }, onStop = vm::stop,
+                onError = { message -> scope.launch { snackbar.showSnackbar(message) } },
+                hazeState = hazeState)
+        }
+        // Outside the measured composer so showing it never shifts the list's padding.
+        if (!atBottom || highlighted != null) GlassIconButton(hazeState, HugeIcons.ArrowDown01, stringResource(R.string.im_thread_latest),
+            onClick = { highlighted = null; followLatest = true; scope.launch { scrollToLatest(animate = true) } },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = bottomChrome + 8.dp))
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottomChrome))
     }
 }
