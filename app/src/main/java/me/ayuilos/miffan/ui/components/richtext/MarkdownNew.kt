@@ -71,6 +71,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapLatest
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Tick01
 import me.ayuilos.miffan.ui.components.table.DataTable
 import me.ayuilos.miffan.ui.context.LocalSettings
@@ -647,7 +649,7 @@ private fun HtmlDetails(element: Element, onClickCitation: (String) -> Unit) {
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = if (expanded) "▼ " else "▶ ")
+            Icon(if (expanded) HugeIcons.ArrowDown01 else HugeIcons.ArrowRight01, null, Modifier.padding(end = 4.dp).size(18.dp))
             Text(text = summaryText, fontWeight = FontWeight.Medium)
         }
         if (expanded) {

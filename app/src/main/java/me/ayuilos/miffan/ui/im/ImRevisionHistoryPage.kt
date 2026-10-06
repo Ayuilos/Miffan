@@ -22,6 +22,9 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.revision.*
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowUp01
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.time.ZoneId
@@ -108,7 +111,7 @@ private fun ImRevisionEntry(revision: Revision, parent: Revision?, current: Bool
                 for (change in changes) labels += if (change.detail == null) stringResource(change.label) else stringResource(change.label, change.detail)
                 val text = if (labels.isNotEmpty()) labels.joinToString("、") else revision.summary.ifBlank { stringResource(origin) }
                 Text(text, style = MaterialTheme.typography.titleMedium)
-                Text(if (expanded) "⌃" else "⌄", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (revision.trigger != null) ImSettingRow(stringResource(R.string.im_p5_source), onSource)
             if (expanded) {

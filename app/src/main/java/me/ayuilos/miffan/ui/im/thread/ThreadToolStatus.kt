@@ -3,6 +3,7 @@ package me.ayuilos.miffan.ui.im.thread
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,9 @@ import me.ayuilos.miffan.ui.components.message.ThinkingStep
 import me.ayuilos.miffan.ui.components.ui.ChainOfThought
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowRight01
 
 @Composable
 internal fun ThreadToolStatus(steps: List<ThinkingStep>, assistant: Assistant?, streaming: Boolean,
@@ -59,7 +63,10 @@ internal fun ThreadToolStatus(steps: List<ThinkingStep>, assistant: Assistant?, 
                 else -> stringResource(R.string.im_thread_tools_details, folded.size)
             }
             Surface(onClick = { expanded = !expanded }, color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
-                Text("$summary  ${if (expanded) "⌄" else "›"}", Modifier.padding(12.dp), style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(summary, style = MaterialTheme.typography.labelLarge)
+                    Icon(if (expanded) HugeIcons.ArrowDown01 else HugeIcons.ArrowRight01, null, Modifier.size(16.dp))
+                }
             }
             if (expanded) ThreadToolDetails(folded, streaming)
         }

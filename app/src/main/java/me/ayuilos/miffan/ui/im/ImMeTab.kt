@@ -7,12 +7,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -36,6 +39,9 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Brain01
 import me.rerere.hugeicons.stroke.Cloud
 import me.rerere.hugeicons.stroke.Earth
@@ -108,7 +114,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     onClick = { navController.navigate(Screen.ImMemory(settings.assistants.find { it.id == settings.assistantId }?.memoryOwnerId() ?: MemoryRepository.GLOBAL_MEMORY_ID)) },
                     leadingContent = { Icon(HugeIcons.Brain01, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_memory)) },
-                    trailingContent = { Text("›") },
+                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                 )
                 item(
                     onClick = { navController.navigate(Screen.SettingProvider) },
@@ -134,19 +140,19 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     onClick = { navController.navigate(Screen.SettingPreferencesTheme) },
                     leadingContent = { Icon(HugeIcons.PaintBoard, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_appearance)) },
-                    trailingContent = { Text("›") },
+                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                 )
                 item(
                     onClick = { navController.navigate(Screen.Backup) },
                     leadingContent = { Icon(HugeIcons.Cloud, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_backup)) },
-                    trailingContent = { Text("›") },
+                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                 )
                 item(
                     onClick = { navController.navigate(Screen.SettingPreferencesNotification) },
                     leadingContent = { Icon(HugeIcons.Notification01, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_notification)) },
-                    trailingContent = { Text("›") },
+                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                 )
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     item(
@@ -165,14 +171,20 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     onClick = { navController.navigate(Screen.SettingAbout) },
                     leadingContent = { Icon(HugeIcons.InformationCircle, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_about)) },
-                    trailingContent = { Text("›") },
+                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                 )
             }
         }
         item("advanced") {
             CardGroup(
                 modifier = Modifier.padding(horizontal = 16.dp),
-                title = { TextButton(onClick = { advanced = !advanced }) { Text("${if (advanced) "⌃" else "⌄"}  ${stringResource(R.string.im_me_advanced)}") } },
+                title = {
+                    TextButton(onClick = { advanced = !advanced }) {
+                        Icon(if (advanced) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01, null, Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                        Text(stringResource(R.string.im_me_advanced))
+                    }
+                },
             ) {
                 if (advanced) item(
                     onClick = { navController.navigate(Screen.Setting) },
@@ -190,7 +202,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     leadingContent = { Icon(HugeIcons.Exchange01, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_switch_professional)) },
                     supportingContent = { Text(stringResource(R.string.im_me_switch_professional_desc)) },
-                    trailingContent = { Text("›") },
+                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                 )
             }
         }
