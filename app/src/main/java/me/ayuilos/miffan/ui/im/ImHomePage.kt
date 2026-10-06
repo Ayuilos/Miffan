@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,21 +35,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.addOutline
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
@@ -61,7 +52,7 @@ import dev.chrisbanes.haze.blur.material3.Material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.ui.theme.LocalDarkMode
+import me.ayuilos.miffan.ui.components.ui.GlassShadow
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.DiscoverCircle
 import me.rerere.hugeicons.stroke.Message01
@@ -139,24 +130,8 @@ private fun ImFloatingTabBar(
         colorEffects(listOf(HazeColorEffect.tint(glassColor.copy(alpha = 0.55f))))
         fallbackColorEffect(HazeColorEffect.tint(glassColor.copy(alpha = 0.92f)))
     }
-    // A dark page leaves little room to darken, so the dark-mode shadow is wider and much denser.
-    val shadow = if (LocalDarkMode.current) {
-        Shadow(radius = 36.dp, spread = 4.dp, color = Color.Black.copy(alpha = 0.95f), offset = DpOffset(0.dp, 8.dp))
-    } else {
-        Shadow(radius = 24.dp, color = Color.Black.copy(alpha = 0.16f), offset = DpOffset(0.dp, 6.dp))
-    }
-
     Box(modifier) {
-        // Soft shadow drawn only outside the capsule, so it doesn't muddy the translucent glass.
-        Spacer(
-            Modifier
-                .matchParentSize()
-                .drawWithContent {
-                    val capsule = Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithContent)) }
-                    clipPath(capsule, ClipOp.Difference) { this@drawWithContent.drawContent() }
-                }
-                .dropShadow(shape, shadow)
-        )
+        GlassShadow(shape, Modifier.matchParentSize())
         ImFloatingTabBarGlass(shape, glassStyle, hazeState, selected, onSelect)
     }
 }

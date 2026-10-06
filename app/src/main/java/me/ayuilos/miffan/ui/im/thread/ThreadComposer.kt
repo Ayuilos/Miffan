@@ -12,6 +12,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import dev.chrisbanes.haze.HazeState
 import me.ayuilos.miffan.ui.components.ui.GlassIconButton
 import me.ayuilos.miffan.ui.components.ui.GlassSurface
+import me.ayuilos.miffan.ui.components.ui.glass
+import me.ayuilos.miffan.ui.components.ui.GlassShadow
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import me.rerere.hugeicons.stroke.Mic01
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -90,7 +109,7 @@ internal fun ThreadComposer(
     val camera = rememberPermissionState(PermissionCamera)
     PermissionManager(permissionState = microphone)
     PermissionManager(permissionState = camera)
-    var panel by rememberSaveable { mutableStateOf(false) }
+    var menu by rememberSaveable { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var cameraPath by rememberSaveable { mutableStateOf<String?>(null) }
     var baseText by remember { mutableStateOf("") }
@@ -108,7 +127,7 @@ internal fun ThreadComposer(
     fun importUris(uris: List<Uri>, images: Boolean, cleanup: () -> Unit = {}) {
         if (uris.isEmpty()) return
         importing = true
-        panel = false
+        menu = false
         scope.launch {
             try {
                 val parts = withContext(Dispatchers.IO) {
@@ -135,7 +154,7 @@ internal fun ThreadComposer(
             // The crop launcher deletes its output immediately after this callback.
             val saved = files.createChatFilesByContents(listOf(it))
             if (saved.isEmpty()) onError(addError) else attachments.addImages(saved)
-            panel = false
+            menu = false
         },
         onCleanup = { cameraPath?.let { File(it).delete() }; cameraPath = null },
     )
@@ -146,7 +165,7 @@ internal fun ThreadComposer(
     fun sendDraft() {
         if (!loaded || importing || asrState.isRecording || (input.isBlank() && attachments.messageContent.isEmpty())) return
         val parts = buildList { if (input.isNotBlank()) add(UIMessagePart.Text(input)); addAll(attachments.messageContent) }
-        onSend(parts); onInput(""); attachments.clearInput(); panel = false
+        onSend(parts); onInput(""); attachments.clearInput(); menu = false
     }
     val capture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         cameraPath?.let { path ->
@@ -164,7 +183,7 @@ internal fun ThreadComposer(
         else if (!asrState.isAvailable) onVoiceUnavailable()
         else if (!microphone.allRequiredPermissionsGranted) microphone.requestPermissions()
         else {
-            panel = false; keyboard?.hide(); focus.clearFocus()
+            menu = false; keyboard?.hide(); focus.clearFocus()
             baseText = input
             ownsRecording = true
             asr.start { transcript -> latestInput(listOf(baseText, transcript).filter(String::isNotBlank).joinToString("\n")) }
@@ -179,29 +198,30 @@ internal fun ThreadComposer(
         if (importing) GlassSurface(hazeState, CircleShape) {
             Text(stringResource(R.string.im_thread_loading), Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium)
         }
-        if (panel) GlassSurface(hazeState, cardShape, Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ThreadAttachmentAction(HugeIcons.Image02, stringResource(R.string.im_thread_photo)) { photos.launch("image/*") }
-                ThreadAttachmentAction(HugeIcons.Camera01, stringResource(R.string.im_thread_camera)) {
-                    if (camera.allRequiredPermissionsGranted) {
-                        val file = context.cacheDir.resolve("camera_${Uuid.random()}.jpg")
-                        cameraPath = file.absolutePath
-                        capture.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
-                    } else camera.requestPermissions()
-                }
-                ThreadAttachmentAction(HugeIcons.Files02, stringResource(R.string.im_thread_file)) { documents.launch(arrayOf("*/*")) }
-            }
-        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GlassIconButton(hazeState, if (panel) HugeIcons.Cancel01 else HugeIcons.Add01, stringResource(R.string.im_thread_attachments),
-                onClick = { focus.clearFocus(); keyboard?.hide(); panel = !panel }, enabled = loaded && !importing && !asrState.isRecording)
+            Box {
+                GlassIconButton(hazeState, if (menu) HugeIcons.Cancel01 else HugeIcons.Add01, stringResource(R.string.im_thread_attachments),
+                    onClick = { focus.clearFocus(); keyboard?.hide(); menu = !menu }, enabled = loaded && !importing && !asrState.isRecording)
+                ThreadAttachmentMenu(expanded = menu, onDismiss = { menu = false }, hazeState = hazeState) {
+                    ThreadAttachmentMenuItem(HugeIcons.Image02, stringResource(R.string.im_thread_photo)) { menu = false; photos.launch("image/*") }
+                    ThreadAttachmentMenuItem(HugeIcons.Camera01, stringResource(R.string.im_thread_camera)) {
+                        menu = false
+                        if (camera.allRequiredPermissionsGranted) {
+                            val file = context.cacheDir.resolve("camera_${Uuid.random()}.jpg")
+                            cameraPath = file.absolutePath
+                            capture.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
+                        } else camera.requestPermissions()
+                    }
+                    ThreadAttachmentMenuItem(HugeIcons.Files02, stringResource(R.string.im_thread_file)) { menu = false; documents.launch(arrayOf("*/*")) }
+                }
+            }
             GlassSurface(hazeState, RoundedCornerShape(24.dp), Modifier.weight(1f).heightIn(min = 48.dp)) {
                 Row(Modifier.padding(start = 18.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (asrState.isRecording) {
                         Text(stringResource(R.string.im_thread_voice_stop), Modifier.weight(1f).padding(vertical = 12.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else BasicTextField(value = input, onValueChange = onInput,
-                        modifier = Modifier.weight(1f).padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) panel = false },
+                        modifier = Modifier.weight(1f).padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) menu = false },
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), maxLines = 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -232,11 +252,47 @@ internal fun ThreadComposer(
     }
 }
 
+/** Frosted menu floating above the plus button; it takes no room in the composer, so the list never jumps. */
 @Composable
-private fun ThreadAttachmentAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilledTonalIconButton(onClick = onClick, modifier = Modifier.size(64.dp)) { Icon(icon, label, Modifier.size(28.dp)) }
-        Text(label, style = MaterialTheme.typography.labelLarge)
+private fun ThreadAttachmentMenu(expanded: Boolean, onDismiss: () -> Unit, hazeState: HazeState, content: @Composable ColumnScope.() -> Unit) {
+    val shown = remember { MutableTransitionState(false) }
+    shown.targetState = expanded
+    if (!shown.currentState && !shown.targetState) return
+    val density = LocalDensity.current
+    val gap = with(density) { 8.dp.roundToPx() }
+    // The popup window is only as large as its content, so it carries room for the shadow around the menu;
+    // that room may hang off the screen edge, hence no clipping.
+    val room = with(density) { MENU_SHADOW_ROOM.roundToPx() }
+    val position = remember(gap, room) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) =
+                IntOffset(if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left - room else anchorBounds.right + room - popupContentSize.width,
+                    anchorBounds.top - gap - popupContentSize.height + room)
+        }
+    }
+    val shape = RoundedCornerShape(24.dp)
+    val origin = if (LocalLayoutDirection.current == LayoutDirection.Ltr) TransformOrigin(0f, 1f) else TransformOrigin(1f, 1f)
+    Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true, clippingEnabled = false)) {
+        AnimatedVisibility(shown, enter = fadeIn() + scaleIn(initialScale = .8f, transformOrigin = origin),
+            exit = fadeOut() + scaleOut(targetScale = .8f, transformOrigin = origin)) {
+            // A tap in the shadow room is a tap outside the menu.
+            Box(Modifier.clickable(interactionSource = null, indication = null, onClick = onDismiss).padding(MENU_SHADOW_ROOM)) {
+                GlassShadow(shape, Modifier.matchParentSize())
+                Column(Modifier.width(IntrinsicSize.Max).widthIn(min = 180.dp).glass(hazeState, shape).padding(vertical = 8.dp),
+                    content = content)
+            }
+        }
+    }
+}
+
+private val MENU_SHADOW_ROOM = 48.dp
+
+@Composable
+private fun ThreadAttachmentMenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 

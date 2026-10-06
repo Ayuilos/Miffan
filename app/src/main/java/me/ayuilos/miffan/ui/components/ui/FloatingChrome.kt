@@ -19,6 +19,16 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.addOutline
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.unit.DpOffset
+import me.ayuilos.miffan.ui.theme.LocalDarkMode
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
@@ -39,6 +49,28 @@ fun Modifier.glass(hazeState: HazeState, shape: Shape): Modifier {
         fallbackColorEffect(HazeColorEffect.tint(glassColor.copy(alpha = 0.9f)))
     }
     return clip(shape).hazeBlur(input = HazeInput.Sources(hazeState), style = style)
+}
+
+/**
+ * Soft shadow drawn only outside [shape], so floating glass stands apart from content of the same
+ * tone without the shadow muddying the translucent glass. Place it under the glass at the same size.
+ */
+@Composable
+fun GlassShadow(shape: Shape, modifier: Modifier = Modifier) {
+    // A dark page leaves little room to darken, so the dark-mode shadow is wider and much denser.
+    val shadow = if (LocalDarkMode.current) {
+        Shadow(radius = 36.dp, spread = 4.dp, color = Color.Black.copy(alpha = 0.95f), offset = DpOffset(0.dp, 8.dp))
+    } else {
+        Shadow(radius = 24.dp, color = Color.Black.copy(alpha = 0.16f), offset = DpOffset(0.dp, 6.dp))
+    }
+    Spacer(
+        modifier
+            .drawWithContent {
+                val outline = Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithContent)) }
+                clipPath(outline, ClipOp.Difference) { this@drawWithContent.drawContent() }
+            }
+            .dropShadow(shape, shadow)
+    )
 }
 
 @Composable
