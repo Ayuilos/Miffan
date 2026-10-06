@@ -1822,6 +1822,8 @@
   <string name="im_thread_attachment_error">Could not add this attachment</string>
   <string name="im_thread_intro">Hi, I\'m %1$s. What shall we talk about?</string>
   <string name="im_thread_suggestions">Pick a topic to start chatting</string>
+  <string name="im_thread_last_chat">Last chat · %1$s</string>
+  <string name="im_thread_show_history">View earlier chats</string>
   <string name="im_thread_tools_running">Looking things up…</string>
   <string name="im_thread_tools_working">Working on it…</string>
   <string name="im_thread_notice_memory">%1$s remembered: %2$s</string>

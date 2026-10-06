@@ -1812,6 +1812,8 @@
   <string name="im_thread_attachment_error">Не удалось добавить вложение</string>
   <string name="im_thread_intro">Я %1$s. Давайте поговорим</string>
   <string name="im_thread_suggestions">Выберите тему для начала беседы</string>
+  <string name="im_thread_last_chat">Последний разговор · %1$s</string>
+  <string name="im_thread_show_history">Показать прошлые разговоры</string>
   <string name="im_thread_tools_running">Ищу информацию…</string>
   <string name="im_thread_tools_working">Выполняю…</string>
   <string name="im_thread_notice_memory">%1$s запомнил: %2$s</string>

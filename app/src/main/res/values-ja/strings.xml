@@ -1812,6 +1812,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_thread_attachment_error">添付できませんでした。再試行してください</string>
   <string name="im_thread_intro">%1$sです。お話ししましょう</string>
   <string name="im_thread_suggestions">話題を選んで会話を始めましょう</string>
+  <string name="im_thread_last_chat">前回の会話 · %1$s</string>
+  <string name="im_thread_show_history">過去の会話を見る</string>
   <string name="im_thread_tools_running">資料を調べています…</string>
   <string name="im_thread_tools_working">作業中…</string>
   <string name="im_thread_notice_memory">%1$s が覚えました：%2$s</string>

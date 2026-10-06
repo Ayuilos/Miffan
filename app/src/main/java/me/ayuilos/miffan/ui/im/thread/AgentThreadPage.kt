@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,6 +56,7 @@ import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.previewText
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import java.time.Instant
 import kotlin.uuid.Uuid
 
 @Composable
@@ -92,14 +94,27 @@ fun AgentThreadPage(
     var highlighted by remember { mutableStateOf<String?>(null) }
     var followLatest by remember { mutableStateOf(focusMessageId == null) }
     var jumping by remember { mutableStateOf(false) }
+    // Decided once per visit: a thread left alone for a while opens on the partner, not on its old messages.
+    var welcomeDecided by rememberSaveable { mutableStateOf(focusMessageId != null) }
+    var welcomeCutoff by rememberSaveable { mutableStateOf<Long?>(null) }
+    var historyShown by rememberSaveable { mutableStateOf(false) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
     val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
     val status = threadHeaderStatus(timeline, generating)
 
+    // The welcome hero stands in for the hidden history, so list rows and timeline indices differ.
+    fun welcomeAt(): Instant? = welcomeCutoff?.takeIf { filter == null }?.let(Instant::ofEpochMilli)
+    fun historySize(items: List<TimelineItem>): Int = welcomeAt()?.let { ThreadWelcome.historySize(items, it) } ?: 0
+    fun rowOf(index: Int, items: List<TimelineItem>): Int {
+        if (welcomeAt() == null) return index
+        val history = historySize(items)
+        return if (index < history) index else index - (if (historyShown) 0 else history) + 1
+    }
+
     suspend fun scrollToLatest(animate: Boolean = false) {
-        val lastIndex = timeline.size + visibleErrors.size - 1
+        val lastIndex = rowOf(timeline.size, timeline) + visibleErrors.size - 1
         if (lastIndex < 0) return
         if (animate) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
         withFrameNanos { }
@@ -111,6 +126,12 @@ fun AgentThreadPage(
         }
     }
 
+    LaunchedEffect(loaded, timeline) {
+        if (!welcomeDecided && loaded && timeline.isNotEmpty()) {
+            welcomeDecided = true
+            if (generating.isEmpty()) welcomeCutoff = ThreadWelcome.cutoff(timeline, Instant.now())?.toEpochMilli()
+        }
+    }
     LaunchedEffect(timeline, topics) {
         timeline.filterIsInstance<TimelineItem.Message>().forEach { message ->
             message.quote?.let { quote -> labels.putIfAbsent(quote.ref.conversationId, quote.preview) }
@@ -123,7 +144,9 @@ fun AgentThreadPage(
     }
     LaunchedEffect(listState, filter) {
         if (filter == null) snapshotFlow {
-            if (listState.isScrollInProgress && (dragging || !followLatest) && listState.firstVisibleItemIndex == 0) listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key else null
+            // While the welcome hides the history, the top of the list is the welcome, not the oldest page.
+            if (listState.isScrollInProgress && (dragging || !followLatest) && listState.firstVisibleItemIndex == 0 &&
+                (welcomeCutoff == null || historyShown)) listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key else null
         }.distinctUntilChanged().collect { if (it != null && !jumping) vm.loadMore() }
     }
     LaunchedEffect(timeline, visibleErrors, loaded) {
@@ -160,13 +183,33 @@ fun AgentThreadPage(
             if (index >= 0) {
                 // Allow the collected timeline to reach the LazyColumn before using its index.
                 withFrameNanos { }
-                listState.animateScrollToItem(index)
+                val items = vm.timeline.value
+                if (!historyShown && index < historySize(items)) {
+                    historyShown = true
+                    withFrameNanos { }
+                }
+                listState.animateScrollToItem(rowOf(index, items))
                 highlighted = messageId
             } else snackbar.showSnackbar(missingMessage)
         } finally { jumping = false }
     }
     LaunchedEffect(focusMessageId, loaded) {
         if (loaded && focusMessageId != null) jumpTo(focusMessageId)
+    }
+    fun showHistory() {
+        historyShown = true
+        followLatest = false
+        scope.launch {
+            withFrameNanos { }
+            listState.scrollToItem(historySize(timeline))
+            withFrameNanos { }
+            // Rest the partner at the bottom so the end of the history shows right above it.
+            val layout = listState.layoutInfo
+            layout.visibleItemsInfo.firstOrNull { it.key == "welcome" }?.let { hero ->
+                val gap = layout.viewportEndOffset - layout.afterContentPadding - (hero.offset + hero.size)
+                if (gap > 0) listState.animateScrollBy(-gap.toFloat())
+            }
+        }
     }
     fun replyTo(item: TimelineItem.Message) {
         vm.setTopicFilter(null)
@@ -200,25 +243,42 @@ fun AgentThreadPage(
         // The composer grows (keyboard, attachments); keep the newest message above it while following.
         if (loaded && followLatest && !jumping) scrollToLatest()
     }
+    @Composable
+    fun TimelineRow(item: TimelineItem) {
+        when (item) {
+            is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
+            is TimelineItem.Message -> ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
+                onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
+                onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
+                onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
+                onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) })
+            is TimelineItem.Typing -> ThreadTyping()
+            is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
+                onView = { viewingNotice = item.notice },
+                onUndo = {
+                    vm.undoNotice(item.notice) { result ->
+                        if (result != RestoreResult.Restored) scope.launch { snackbar.showSnackbar(undoFailed) }
+                    }
+                })
+        }
+    }
+    val welcome = welcomeAt()
+    val history = historySize(timeline)
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
-            items(timeline, key = { it.key }) { item ->
-                when (item) {
-                    is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
-                    is TimelineItem.Message -> ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
-                        onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
-                        onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
-                        onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
-                        onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) })
-                    is TimelineItem.Typing -> ThreadTyping()
-                    is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
-                        onView = { viewingNotice = item.notice },
-                        onUndo = {
-                            vm.undoNotice(item.notice) { result ->
-                                if (result != RestoreResult.Restored) scope.launch { snackbar.showSnackbar(undoFailed) }
-                            }
-                        })
+            if (welcomeDecided) {
+                if (welcome == null) {
+                    items(timeline, key = { it.key }) { TimelineRow(it) }
+                } else {
+                    if (historyShown) items(timeline.subList(0, history), key = { it.key }) { TimelineRow(it) }
+                    item(key = "welcome") {
+                        val fill = !historyShown && history == timeline.size && visibleErrors.isEmpty()
+                        ThreadWelcomeHero(assistant, welcome, headerPhase, historyHidden = !historyShown, fill = fill,
+                            onShowHistory = ::showHistory,
+                            modifier = if (fill) Modifier.fillParentMaxHeight() else Modifier)
+                    }
+                    items(timeline.subList(history, timeline.size), key = { it.key }) { TimelineRow(it) }
                 }
             }
             items(visibleErrors, key = { "error-${it.id}" }) { error ->

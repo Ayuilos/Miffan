@@ -1815,6 +1815,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_thread_attachment_error">没能添加附件，请再试一次</string>
   <string name="im_thread_intro">我是%1$s，一起聊聊吧</string>
   <string name="im_thread_suggestions">点一个话题，就能开始聊</string>
+  <string name="im_thread_last_chat">上次聊天 · %1$s</string>
+  <string name="im_thread_show_history">查看历史对话</string>
   <string name="im_thread_tools_running">正在查资料…</string>
   <string name="im_thread_tools_working">正在处理…</string>
   <string name="im_thread_notice_memory">%1$s 记住了：%2$s</string>

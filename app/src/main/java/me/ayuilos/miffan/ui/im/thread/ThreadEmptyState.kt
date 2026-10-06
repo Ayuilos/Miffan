@@ -13,8 +13,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
-import me.ayuilos.miffan.data.model.Avatar
-import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
+import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowUp02
@@ -31,9 +30,11 @@ internal fun ThreadEmptyState(assistant: Assistant?, onSuggestion: (String) -> U
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        AssistantAvatar(name = name, value = assistant?.avatar ?: Avatar.Miffan(), modifier = Modifier.size(144.dp))
+        ThreadWelcomeMascot(assistant, AssistantGenerationPhase.None, Modifier.size(168.dp))
         Spacer(Modifier.height(24.dp))
-        Text(introduction, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        // The page is not inside a Surface, so the content color must be set here.
+        Text(introduction, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onBackground)
         if (suggestions.isNotEmpty()) {
             Spacer(Modifier.height(24.dp))
             suggestions.forEach { suggestion ->
