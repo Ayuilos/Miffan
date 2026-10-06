@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -69,7 +70,8 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "title", span = { GridItemSpan(maxLineSpan) }) {
-            ImTabTitle(R.string.im_tab_partners, modifier = Modifier.padding(start = 0.dp))
+            // Cancel the grid's 12dp side padding so the title lines up with the other tabs.
+            ImTabTitle(R.string.im_tab_partners, modifier = Modifier.offset(x = (-12).dp))
         }
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
             Row(
