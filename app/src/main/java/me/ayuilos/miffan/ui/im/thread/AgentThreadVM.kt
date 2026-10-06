@@ -150,6 +150,15 @@ class AgentThreadVM(
                 pending.update { outgoing -> outgoing.filter { it.id !in recorded } }
             }
         }
+        // "换个话题" from the partner profile: the next message must not stick to an old topic.
+        viewModelScope.launch {
+            threadService.topicChanges.collect { changed ->
+                if (changed == assistantId) {
+                    _topicFilter.value = null
+                    _replyTarget.value = null
+                }
+            }
+        }
     }
 
     /** Errors of this thread's segments, oldest first. */
@@ -229,11 +238,6 @@ class AgentThreadVM(
         viewModelScope.launch {
             generatingSegmentIds.value.forEach { threadService.stop(it) }
         }
-    }
-
-    /** "换个话题": the next message starts a fresh segment. */
-    fun startNewTopic() {
-        viewModelScope.launch { threadService.closeAll(storedSegments.value.orEmpty()) }
     }
 
     /** Called by the page when it starts or stops being visible. */

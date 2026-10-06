@@ -1789,6 +1789,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_page_switch_easy_chat">간편 채팅으로 전환</string>
   <string name="setting_page_switch_easy_chat_desc">메신저 방식으로 파트너와 대화</string>
   <string name="im_thread_typing">입력 중…</string>
+  <string name="im_thread_status_thinking">생각 중…</string>
+  <string name="im_thread_status_tools">도구 사용 중…</string>
   <string name="im_thread_new_topic">다른 이야기</string>
   <string name="im_thread_message">메시지…</string>
   <string name="im_thread_send">보내기</string>

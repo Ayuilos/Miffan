@@ -1789,6 +1789,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_page_switch_easy_chat">かんたんチャットに切り替え</string>
   <string name="setting_page_switch_easy_chat_desc">メッセージアプリのようにパートナーとチャット</string>
   <string name="im_thread_typing">入力中…</string>
+  <string name="im_thread_status_thinking">考え中…</string>
+  <string name="im_thread_status_tools">ツールを使用中…</string>
   <string name="im_thread_new_topic">話題を変える</string>
   <string name="im_thread_message">メッセージ…</string>
   <string name="im_thread_send">送信</string>

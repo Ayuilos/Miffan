@@ -1790,6 +1790,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_switch_easy_chat">切换到轻松聊天</string>
   <string name="setting_page_switch_easy_chat_desc">以聊天软件的方式和伙伴聊天</string>
   <string name="im_thread_typing">正在输入…</string>
+  <string name="im_thread_status_thinking">正在思考…</string>
+  <string name="im_thread_status_tools">正在使用工具…</string>
   <string name="im_thread_new_topic">换个话题</string>
   <string name="im_thread_message">发消息…</string>
   <string name="im_thread_send">发送</string>

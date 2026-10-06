@@ -1,6 +1,9 @@
 package me.ayuilos.miffan.data.thread
 
 import android.util.Log
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -34,6 +37,11 @@ class ThreadService(
     private val recentTopics = ConcurrentHashMap<Uuid, RecentTopic>()
 
     private data class RecentTopic(val assistantId: Uuid, val label: String, val at: Instant)
+
+    private val _topicChanges = MutableSharedFlow<Uuid>(extraBufferCapacity = 8)
+
+    /** Assistants whose user explicitly changed the topic; open threads drop their topic focus. */
+    val topicChanges: SharedFlow<Uuid> = _topicChanges.asSharedFlow()
 
     /**
      * Sends [content] and returns the segment that received it. An explicit reply or an active
@@ -93,8 +101,9 @@ class ThreadService(
     }
 
     /** Forces the next message into a new segment ("换个话题"). */
-    suspend fun closeAll(segments: List<Conversation>) {
+    suspend fun closeAll(assistantId: Uuid, segments: List<Conversation>) {
         closeSegments(segments, segments.filter { it.threadClosedAt == 0L }.mapTo(HashSet()) { it.id })
+        _topicChanges.emit(assistantId)
     }
 
     /**

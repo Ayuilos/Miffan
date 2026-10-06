@@ -1787,6 +1787,8 @@
   <string name="setting_page_switch_easy_chat">切換到輕鬆聊天</string>
   <string name="setting_page_switch_easy_chat_desc">以聊天軟體的方式和夥伴聊天</string>
   <string name="im_thread_typing">正在輸入…</string>
+  <string name="im_thread_status_thinking">正在思考…</string>
+  <string name="im_thread_status_tools">正在使用工具…</string>
   <string name="im_thread_new_topic">換個話題</string>
   <string name="im_thread_message">傳訊息…</string>
   <string name="im_thread_send">傳送</string>

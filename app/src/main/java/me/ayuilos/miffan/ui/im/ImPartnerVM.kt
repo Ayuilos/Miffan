@@ -42,7 +42,7 @@ class ImPartnerVM(
         }) }
     }
 
-    suspend fun changeTopic() = threadService.closeAll(threads.observeSegments(assistantId, 12).first())
+    suspend fun changeTopic() = threadService.closeAll(assistantId, threads.observeSegments(assistantId, 12).first())
     suspend fun deleteChats() = conversations.deleteConversationOfAssistant(assistantId)
 
     val canDeletePartner = assistantRemover.canRemove(assistantId)

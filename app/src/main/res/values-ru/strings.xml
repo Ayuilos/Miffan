@@ -1789,6 +1789,8 @@
   <string name="setting_page_switch_easy_chat">Перейти в простой чат</string>
   <string name="setting_page_switch_easy_chat_desc">Общайтесь с партнёрами в стиле мессенджера</string>
   <string name="im_thread_typing">Печатает…</string>
+  <string name="im_thread_status_thinking">Думает…</string>
+  <string name="im_thread_status_tools">Использует инструменты…</string>
   <string name="im_thread_new_topic">Сменить тему</string>
   <string name="im_thread_message">Сообщение…</string>
   <string name="im_thread_send">Отправить</string>

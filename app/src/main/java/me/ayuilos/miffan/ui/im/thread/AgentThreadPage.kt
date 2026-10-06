@@ -1,5 +1,10 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
@@ -27,9 +32,7 @@ import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Cancel01
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.ui.components.nav.BackButton
-import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
-import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.thread.TimelineItem
 import me.ayuilos.miffan.data.thread.ThreadNotice
@@ -67,7 +70,6 @@ fun AgentThreadPage(
     val fallbackTopic = stringResource(R.string.im_thread_topic)
     val labels = remember(assistantId) { mutableStateMapOf<Uuid, String>() }
     var input by rememberSaveable(assistantId.toString()) { mutableStateOf(initialText.orEmpty()) }
-    var overflow by remember { mutableStateOf(false) }
     var viewingNotice by remember { mutableStateOf<ThreadNotice?>(null) }
     var highlighted by remember { mutableStateOf<String?>(null) }
     var followLatest by remember { mutableStateOf(focusMessageId == null) }
@@ -77,6 +79,7 @@ fun AgentThreadPage(
     val viewportEnd by remember { derivedStateOf { listState.layoutInfo.viewportEndOffset } }
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
     val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
+    val status = threadHeaderStatus(timeline, generating)
 
     suspend fun scrollToLatest(animate: Boolean = false) {
         val lastIndex = timeline.size + visibleErrors.size - 1
@@ -174,23 +177,16 @@ fun AgentThreadPage(
                 TopAppBar(
                     navigationIcon = { BackButton() },
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            AssistantAvatar(name = assistantName, value = assistant?.avatar ?: Avatar.Miffan(),
-                                modifier = Modifier.size(36.dp), onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) })
-                            TextButton(onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) }) {
-                                Text(assistantName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Column {
+                            Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // Fades between states and grows or shrinks the line as the status appears or clears.
+                            AnimatedContent(status, transitionSpec = { fadeIn() togetherWith fadeOut() using SizeTransform(clip = false) }, label = "thread-status") { shown ->
+                                if (shown != null) Text(stringResource(shown.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                             }
                         }
                     },
                     actions = {
-                        Box {
-                            IconButton(onClick = { overflow = true }) { Icon(HugeIcons.MoreVertical, stringResource(R.string.more_options)) }
-                            DropdownMenu(expanded = overflow, onDismissRequest = { overflow = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(R.string.im_thread_new_topic)) }, onClick = {
-                                    overflow = false; vm.setTopicFilter(null); vm.setReplyTarget(null); vm.startNewTopic()
-                                })
-                            }
-                        }
+                        IconButton(onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) }) { Icon(HugeIcons.MoreVertical, stringResource(R.string.im_p5_profile)) }
                     },
                 )
                 if (filter != null && topicLabel != null) {

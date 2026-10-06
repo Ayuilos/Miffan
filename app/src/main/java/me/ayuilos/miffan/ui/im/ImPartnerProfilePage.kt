@@ -78,7 +78,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             item("history") { ImSettingRow(stringResource(R.string.im_p5_settings_history), { nav.navigate(Screen.RevisionHistory(RevisionSubject.ASSISTANT.name, assistantId)) }) }
             item("background") { ImSettingRow(stringResource(R.string.im_p5_background), { nav.navigate(Screen.AssistantBasic(assistantId)) }) }
             item("separator") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-            item("topic") { TextButton(enabled = !busy, onClick = { perform(changedTopic) { vm.changeTopic() } }) { Text(stringResource(R.string.im_thread_new_topic), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+            item("topic") { ImSettingRow(stringResource(R.string.im_thread_new_topic), { perform(changedTopic) { vm.changeTopic() } }) }
             item("delete") { ImSettingRow(stringResource(R.string.im_p5_delete_chats), { deleteConfirm = true }, destructive = true) }
             if (vm.canDeletePartner) item("delete_partner") {
                 ImSettingRow(stringResource(R.string.im_partner_delete), { deletePartnerConfirm = true }, destructive = true)

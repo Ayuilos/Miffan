@@ -1797,6 +1797,8 @@
   <string name="setting_page_switch_easy_chat">Switch to easy chat</string>
   <string name="setting_page_switch_easy_chat_desc">Chat with partners in a messaging-style interface</string>
   <string name="im_thread_typing">Typing…</string>
+  <string name="im_thread_status_thinking">Thinking…</string>
+  <string name="im_thread_status_tools">Using tools…</string>
   <string name="im_thread_new_topic">Change topic</string>
   <string name="im_thread_message">Message…</string>
   <string name="im_thread_send">Send</string>
