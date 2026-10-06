@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import me.ayuilos.miffan.utils.jsonPrimitiveOrNull
 import me.ayuilos.miffan.utils.JsonInstant
@@ -63,6 +64,14 @@ object SettingsJsonMigrator {
                     )
                     root["quickMessages"] = merged
                 }
+            }
+
+            // V5: 剔除已移除的 RikkaHub 搜索服务
+            (root["searchServices"] as? JsonArray)?.let { services ->
+                val selected = root["searchServiceSelected"]?.jsonPrimitiveOrNull?.intOrNull ?: 0
+                val (kept, adjustedSelected) = dropRemovedSearchServices(services, selected)
+                root["searchServices"] = kept
+                root["searchServiceSelected"] = JsonPrimitive(adjustedSelected)
             }
 
             // V4: namespace 独立化后，将旧备份中的全限定 Avatar 类型名改为稳定标识。

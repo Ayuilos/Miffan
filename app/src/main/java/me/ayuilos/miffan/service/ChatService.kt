@@ -287,6 +287,9 @@ data class ChatError(
 
 enum class ChatErrorSolution {
     CheckTitleModelSettings,
+
+    /** The model lacks tool calling, so search/MCP were skipped; the reply itself still runs. */
+    EnableModelTools,
 }
 
 private val inputTransformers by lazy {
@@ -914,7 +917,8 @@ class ChatService(
                     addError(
                         IllegalStateException(context.getString(R.string.tools_warning)),
                         conversationId,
-                        title = context.getString(R.string.error_title_tool_unavailable)
+                        title = context.getString(R.string.error_title_tool_unavailable),
+                        solution = ChatErrorSolution.EnableModelTools,
                     )
                 }
             }

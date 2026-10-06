@@ -36,6 +36,7 @@ import me.ayuilos.miffan.ui.components.message.groupMessageParts
 import me.ayuilos.miffan.ui.components.message.MessagePartBlock
 import me.ayuilos.miffan.data.thread.TimelineItem
 import me.ayuilos.miffan.service.ChatError
+import me.ayuilos.miffan.service.ChatErrorSolution
 import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
 import me.ayuilos.miffan.ui.components.richtext.ZoomableAsyncImage
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
@@ -202,7 +203,10 @@ internal fun ThreadTyping(assistant: Assistant?) {
 @Composable
 internal fun ThreadErrorBubble(error: ChatError, assistant: Assistant?, canRetry: Boolean, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val detail = error.error.message.orEmpty().lowercase(Locale.ROOT)
+    // The reply still arrives without tools, so this is a notice rather than a failed reply.
+    val toolsOff = error.solution == ChatErrorSolution.EnableModelTools
     val text = when {
+        toolsOff -> R.string.im_thread_error_tools_off
         listOf("401", "403", "api key", "unauthorized", "authentication").any { it in detail } -> R.string.im_thread_error_connection
         listOf("429", "rate limit", "quota").any { it in detail } -> R.string.im_thread_error_busy
         error.error is java.io.IOException -> R.string.im_thread_error_network
@@ -214,7 +218,7 @@ internal fun ThreadErrorBubble(error: ChatError, assistant: Assistant?, canRetry
             Column(Modifier.padding(12.dp)) {
                 Text(stringResource(text))
                 Row {
-                    if (canRetry) OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.im_thread_retry)) }
+                    if (canRetry && !toolsOff) OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.im_thread_retry)) }
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.im_thread_dismiss)) }
                 }
             }

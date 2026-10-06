@@ -23,6 +23,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
@@ -39,6 +42,7 @@ import me.rerere.asr.ASRProviderSetting
 import me.ayuilos.miffan.data.datastore.migration.PreferenceStoreV1Migration
 import me.ayuilos.miffan.data.datastore.migration.PreferenceStoreV2Migration
 import me.ayuilos.miffan.data.datastore.migration.PreferenceStoreV3Migration
+import me.ayuilos.miffan.data.datastore.migration.dropRemovedSearchServices
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.InjectionPosition
@@ -221,6 +225,11 @@ class SettingsStore(
                 throw exception
             }
         }.map { preferences ->
+            val (searchServicesJson, searchServiceSelected) = dropRemovedSearchServices(
+                services = preferences[SEARCH_SERVICES]?.let { JsonInstant.parseToJsonElement(it).jsonArray }
+                    ?: JsonArray(emptyList()),
+                selected = preferences[SEARCH_SELECTED] ?: 0,
+            )
             Settings(
                 favoriteModels = preferences[FAVORITE_MODELS]?.let {
                     JsonInstant.decodeFromString(it)
@@ -272,12 +281,13 @@ class SettingsStore(
                 displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
                 networkSetting = JsonInstant.decodeFromString(preferences[NETWORK_SETTING] ?: "{}"),
                 searchServices = preferences[SEARCH_SERVICES]?.let {
-                    JsonInstant.decodeFromString(it)
+                    JsonInstant.decodeFromJsonElement<List<SearchServiceOptions>>(searchServicesJson)
+                        .ifEmpty { listOf(SearchServiceOptions.DEFAULT) }
                 } ?: listOf(SearchServiceOptions.DEFAULT),
                 searchCommonOptions = preferences[SEARCH_COMMON]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: SearchCommonOptions(),
-                searchServiceSelected = preferences[SEARCH_SELECTED] ?: 0,
+                searchServiceSelected = searchServiceSelected,
                 mcpServers = preferences[MCP_SERVERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),

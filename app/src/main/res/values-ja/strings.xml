@@ -538,7 +538,6 @@
   <string name="regenerate">再生成</string>
   <string name="regenerate_confirm_message">このメッセージを再生成してもよろしいですか？</string>
   <string name="render_with_webview">WebViewで表示</string>
-  <string name="rikkahub_provider_description">RikkaHub が提供する、Miffan が運営していない第三者の無料 AI サービスです。コミュニティの支援金により、API キー不要の限定的な予備モデルを提供します。厳しいレート制限があるため、利用可能な場合はご自身のプロバイダーを優先してください。</string>
   <string name="safe_mode_assistants">アシスタント</string>
   <string name="safe_mode_copy">コピー</string>
   <string name="safe_mode_crash_report">クラッシュレポート</string>
@@ -1790,6 +1789,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_thread_error_busy">混み合っています。少し待って再試行してください</string>
   <string name="im_thread_error_network">通信が不安定で返信を受信できませんでした</string>
   <string name="im_thread_error_reply">返信が届きませんでした。再試行してください</string>
+  <string name="im_thread_error_tools_off">このモデルはツールを使えないため、ウェブ検索などは使えません</string>
   <string name="im_thread_retry">再試行</string>
   <string name="im_thread_dismiss">閉じる</string>
   <string name="im_thread_reply">返信</string>

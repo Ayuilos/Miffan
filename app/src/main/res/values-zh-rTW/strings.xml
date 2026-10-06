@@ -538,7 +538,6 @@
   <string name="regenerate">重新生成</string>
   <string name="regenerate_confirm_message">您確定要重新產生這則訊息嗎？</string>
   <string name="render_with_webview">網頁視圖渲染</string>
-  <string name="rikkahub_provider_description">由 RikkaHub 提供、非 Miffan 營運的第三方免費 AI 服務。該服務使用社群贊助資金提供少量免 API Key 的備用模型，並設有嚴格的速率限制；如有自有供應商，請優先使用。</string>
   <string name="safe_mode_assistants">助理</string>
   <string name="safe_mode_copy">複製</string>
   <string name="safe_mode_crash_report">當機報告</string>
@@ -1788,6 +1787,7 @@
   <string name="im_thread_error_busy">現在有點忙，等一下再試試</string>
   <string name="im_thread_error_network">網路有點卡，沒有收到回覆</string>
   <string name="im_thread_error_reply">沒有收到回覆，再試一次吧</string>
+  <string name="im_thread_error_tools_off">這個模型不支援呼叫工具，聯網搜尋等功能暫時無法使用</string>
   <string name="im_thread_retry">重試</string>
   <string name="im_thread_dismiss">關閉</string>
   <string name="im_thread_reply">回覆</string>

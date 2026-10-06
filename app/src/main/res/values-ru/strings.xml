@@ -538,7 +538,6 @@
   <string name="regenerate">Сгенерировать заново</string>
   <string name="regenerate_confirm_message">Вы уверены, что хотите перегенерировать это сообщение?</string>
   <string name="render_with_webview">Отображать в WebView</string>
-  <string name="rikkahub_provider_description">Сторонний бесплатный ИИ-сервис от RikkaHub, не управляемый Miffan. За счёт поддержки сообщества он предоставляет ограниченный набор резервных моделей без API-ключа. Действуют строгие ограничения частоты запросов; по возможности используйте собственного провайдера.</string>
   <string name="safe_mode_assistants">Помощники</string>
   <string name="safe_mode_copy">Копировать</string>
   <string name="safe_mode_crash_report">Отчёт о сбое</string>
@@ -1790,6 +1789,7 @@
   <string name="im_thread_error_busy">Сейчас занят. Попробуйте чуть позже</string>
   <string name="im_thread_error_network">Сеть подвисла, ответ не получен</string>
   <string name="im_thread_error_reply">Ответ не получен. Попробуйте снова</string>
+  <string name="im_thread_error_tools_off">Эта модель не умеет вызывать инструменты, поэтому веб-поиск и другие инструменты недоступны</string>
   <string name="im_thread_retry">Повторить</string>
   <string name="im_thread_dismiss">Закрыть</string>
   <string name="im_thread_reply">Ответить</string>

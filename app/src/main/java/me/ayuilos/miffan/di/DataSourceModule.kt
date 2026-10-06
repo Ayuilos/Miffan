@@ -10,7 +10,6 @@ import io.ktor.http.HttpHeaders
 import io.pebbletemplates.pebble.PebbleEngine
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import io.requery.android.database.sqlite.SQLiteCustomExtension
-import kotlinx.serialization.json.Json
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.common.http.AcceptLanguageBuilder
 import me.ayuilos.miffan.BuildConfig
@@ -22,7 +21,6 @@ import me.ayuilos.miffan.data.ai.transformers.AssistantTemplateLoader
 import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.transformers.TemplateTransformer
-import me.ayuilos.miffan.data.api.MiffanAPI
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.db.AppDatabase
 import me.ayuilos.miffan.data.db.fts.MessageFtsManager
@@ -44,12 +42,9 @@ import me.ayuilos.miffan.data.network.SettingsSocks5Authenticator
 import me.ayuilos.miffan.data.sync.webdav.WebDavSync
 import me.rerere.search.SearchService
 import me.ayuilos.miffan.data.sync.S3Sync
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import org.koin.dsl.module
-import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -330,16 +325,5 @@ val dataSourceModule = module {
             context = get(),
             httpClient = get()
         )
-    }
-
-    single<Retrofit> {
-        Retrofit.Builder()
-            .baseUrl("https://api.rikka-ai.com")
-            .addConverterFactory(get<Json>().asConverterFactory("application/json; charset=UTF8".toMediaType()))
-            .build()
-    }
-
-    single<MiffanAPI> {
-        get<Retrofit>().create(MiffanAPI::class.java)
     }
 }

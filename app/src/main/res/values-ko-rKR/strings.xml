@@ -538,7 +538,6 @@
   <string name="regenerate">다시 생성</string>
   <string name="regenerate_confirm_message">이 메시지를 다시 생성하시겠습니까?</string>
   <string name="render_with_webview">WebView로 렌더링</string>
-  <string name="rikkahub_provider_description">RikkaHub에서 제공하며 Miffan이 운영하지 않는 타사 무료 AI 서비스입니다. 커뮤니티 후원금으로 API 키 없이 사용할 수 있는 제한된 대체 모델을 제공합니다. 엄격한 요청 제한이 적용되므로 가능하면 자체 제공자를 우선 사용하세요.</string>
   <string name="safe_mode_assistants">도우미</string>
   <string name="safe_mode_copy">복사</string>
   <string name="safe_mode_crash_report">충돌 보고서</string>
@@ -1790,6 +1789,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_thread_error_busy">조금 바빠요. 잠시 후 다시 시도해 주세요</string>
   <string name="im_thread_error_network">네트워크가 느려 답장을 받지 못했어요</string>
   <string name="im_thread_error_reply">답장을 받지 못했어요. 다시 시도해 주세요</string>
+  <string name="im_thread_error_tools_off">이 모델은 도구를 사용할 수 없어 웹 검색 등은 사용할 수 없어요</string>
   <string name="im_thread_retry">다시 시도</string>
   <string name="im_thread_dismiss">닫기</string>
   <string name="im_thread_reply">답장</string>

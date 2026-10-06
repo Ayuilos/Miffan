@@ -40,7 +40,7 @@ balance queries where an endpoint provides them.
 
 | Category | Built-in integrations |
 | --- | --- |
-| Search providers | Bing, RikkaHub, Zhipu, Doubao, Tavily, Exa, SearXNG, LinkUp, Brave, Metaso, Ollama, Perplexity, Firecrawl, Jina, Bocha, Grok, Tinyfish, Serper |
+| Search providers | Bing, Zhipu, Doubao, Tavily, Exa, SearXNG, LinkUp, Brave, Metaso, Ollama, Perplexity, Firecrawl, Jina, Bocha, Grok, Tinyfish, Serper |
 | Custom search | JavaScript adapter |
 | Model-native search | Conditional; currently exposed for compatible Gemini models |
 | Page retrieval | Provider-specific scraping where available, plus configurable content services |

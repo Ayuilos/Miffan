@@ -551,7 +551,6 @@
   <string name="regenerate">重新生成</string>
   <string name="regenerate_confirm_message">确定要重新生成此消息吗？</string>
   <string name="render_with_webview">网页视图渲染</string>
-  <string name="rikkahub_provider_description">由 RikkaHub 提供、非 Miffan 运营的第三方免费 AI 服务。该服务使用社区赞助资金提供少量免 API Key 的备用模型，并设有严格的速率限制；如有自有服务商，请优先使用。</string>
   <string name="safe_mode_assistants">助手</string>
   <string name="safe_mode_copy">复制</string>
   <string name="safe_mode_crash_report">崩溃报告</string>
@@ -1791,6 +1790,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_thread_error_busy">现在有点忙，等会儿再试试</string>
   <string name="im_thread_error_network">网络有点卡，没收到回复</string>
   <string name="im_thread_error_reply">没收到回复，再试一次吧</string>
+  <string name="im_thread_error_tools_off">这个模型不支持调用工具，联网搜索等功能暂时用不了</string>
   <string name="im_thread_retry">重试</string>
   <string name="im_thread_dismiss">关闭</string>
   <string name="im_thread_reply">回复</string>

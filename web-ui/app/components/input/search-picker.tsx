@@ -31,7 +31,6 @@ const SEARCH_TOOL_NAME = "search";
 
 const SEARCH_SERVICE_LABELS: Record<string, string> = {
   bing_local: "Bing",
-  rikkahub: "RikkaHub",
   zhipu: "智谱",
   tavily: "Tavily",
   exa: "Exa",
