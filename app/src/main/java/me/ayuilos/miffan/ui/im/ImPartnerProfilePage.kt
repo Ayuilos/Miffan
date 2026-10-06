@@ -64,7 +64,10 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                     }
                     Text(partner.systemPrompt.ifBlank { stringResource(R.string.im_thread_intro, threadAssistantName(partner)) }, textAlign = TextAlign.Center,
                         maxLines = 3, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = { nav.navigate(Screen.Thread(assistantId)) }, Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(stringResource(R.string.im_p5_send_message)) }
+                    Button(onClick = {
+                        // Opened from this partner's thread: return to it instead of stacking a second copy.
+                        nav.navigate(Screen.Thread(assistantId)) { popUpTo(Screen.Thread(assistantId)); launchSingleTop = true }
+                    }, Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(stringResource(R.string.im_p5_send_message)) }
                 }
             }
             item("memory") { ImSettingRow(stringResource(R.string.im_p5_memory_count, memories.size), { nav.navigate(Screen.ImMemory(partner.memoryOwnerId())) }) }

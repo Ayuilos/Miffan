@@ -176,8 +176,8 @@ fun AgentThreadPage(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             AssistantAvatar(name = assistantName, value = assistant?.avatar ?: Avatar.Miffan(),
-                                modifier = Modifier.size(36.dp), onClick = { nav.navigate(Screen.AssistantDetail(assistantId.toString())) })
-                            TextButton(onClick = { nav.navigate(Screen.AssistantDetail(assistantId.toString())) }) {
+                                modifier = Modifier.size(36.dp), onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) })
+                            TextButton(onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) }) {
                                 Text(assistantName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
