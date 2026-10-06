@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.im.thread
 
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.thread.ThreadTimeline
+import me.ayuilos.miffan.data.thread.TimelineItem
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -23,6 +24,11 @@ class ThreadHeaderStatusTest {
     @Test
     fun idleShowsNothing() {
         assertNull(status(UIMessagePart.Text("在的"), generating = false))
+    }
+
+    @Test
+    fun aMessageBeingRoutedIsAlreadyThinking() {
+        assertEquals(ThreadHeaderStatus.Thinking, threadHeaderStatus(listOf(TimelineItem.Typing(emptySet())), emptySet()))
     }
 
     @Test

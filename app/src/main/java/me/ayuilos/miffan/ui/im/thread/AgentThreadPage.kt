@@ -189,7 +189,8 @@ fun AgentThreadPage(
     }
     val headerPhase = assistantGenerationPhase(
         (timeline.lastOrNull { it is TimelineItem.Message && it.streaming && it.message.role == MessageRole.ASSISTANT } as TimelineItem.Message?)?.message,
-        loading = generating.isNotEmpty(),
+        // Follows the header status, so the avatar already thinks while a sent message is being routed.
+        loading = status != null,
     )
     val density = LocalDensity.current
     var topChrome by remember { mutableStateOf(0.dp) }

@@ -12,11 +12,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,6 +27,7 @@ import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.revision.RevisionService
+import me.ayuilos.miffan.data.thread.LiveSegmentHandoff
 import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadNoticeSource
@@ -99,11 +100,11 @@ class AgentThreadVM(
             }
         }
 
-    private val segments: Flow<List<Conversation>> = combine(storedSegments, liveSegments) { stored, live ->
-        val liveById = live.associateBy { it.id }
-        val merged = stored.orEmpty().map { liveById[it.id] ?: it }
-        merged + live.filter { segment -> merged.none { it.id == segment.id } }
-    }
+    // Shared, so every reader sees the same hand-off from a finished live segment to its stored copy.
+    private val segments: StateFlow<List<Conversation>> = combine(storedSegments, liveSegments) { stored, live -> stored to live }
+        .scan(LiveSegmentHandoff()) { handoff, (stored, live) -> handoff.next(stored, live) }
+        .map { it.merged }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** True once the first page has loaded; distinguishes an empty thread from loading. */
     val loaded: StateFlow<Boolean> = storedSegments.map { it != null }
@@ -217,7 +218,7 @@ class AgentThreadVM(
      */
     fun retry(segmentId: Uuid) {
         viewModelScope.launch {
-            val segment = segments.first().firstOrNull { it.id == segmentId } ?: return@launch
+            val segment = segments.value.firstOrNull { it.id == segmentId } ?: return@launch
             val message = segment.currentMessages.lastOrNull { it.role == MessageRole.USER } ?: return@launch
             threadService.regenerate(assistantId, segmentId, message)
         }

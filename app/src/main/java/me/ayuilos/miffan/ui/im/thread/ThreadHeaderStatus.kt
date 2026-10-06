@@ -14,9 +14,12 @@ internal enum class ThreadHeaderStatus(@StringRes val label: Int) {
     Typing(R.string.im_thread_typing),
 }
 
-/** Null while idle; otherwise follows the newest streaming reply, or thinking before its first token. */
+/**
+ * Null while idle; otherwise follows the newest streaming reply, or thinking before its first token.
+ * A typing row also counts: a sent message is routed to a topic before its generation starts.
+ */
 internal fun threadHeaderStatus(timeline: List<TimelineItem>, generatingSegmentIds: Set<Uuid>): ThreadHeaderStatus? {
-    if (generatingSegmentIds.isEmpty()) return null
+    if (generatingSegmentIds.isEmpty()) return if (timeline.any { it is TimelineItem.Typing }) ThreadHeaderStatus.Thinking else null
     val reply = timeline.lastOrNull { it is TimelineItem.Message && it.streaming && it.message.role == MessageRole.ASSISTANT }
         as TimelineItem.Message? ?: return ThreadHeaderStatus.Thinking
     for (part in reply.message.parts.asReversed()) {
