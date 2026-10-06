@@ -2113,4 +2113,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_tts_step_instruction_description">전역 문맥 지침, stepaudio-2.5-tts에서만 적용됩니다 (200자 이하, 비워 두면 전송하지 않음)</string>
   <string name="setting_tts_step_instruction_placeholder">예: 부드러운 말투, 약간 느린 속도</string>
   <string name="mcp_error_reconnect_exhausted">연결이 끊어졌으며 최대 재연결 횟수에 도달했습니다</string>
+  <string name="chat_page_options">채팅 옵션</string>
 </resources>

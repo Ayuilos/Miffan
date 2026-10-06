@@ -2113,4 +2113,5 @@
   <string name="setting_tts_step_instruction_description">Глобальная контекстная инструкция, действует только для stepaudio-2.5-tts (до 200 символов, пусто — не отправляется)</string>
   <string name="setting_tts_step_instruction_placeholder">Например: мягкий тон, чуть медленнее</string>
   <string name="mcp_error_reconnect_exhausted">Соединение потеряно: исчерпаны попытки переподключения</string>
+  <string name="chat_page_options">Параметры чата</string>
 </resources>

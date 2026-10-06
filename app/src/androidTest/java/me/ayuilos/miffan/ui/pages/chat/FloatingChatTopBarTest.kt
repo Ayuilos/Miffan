@@ -32,9 +32,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.ayuilos.miffan.R
 import me.ayuilos.miffan.RouteActivity
+import me.ayuilos.miffan.appString
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.model.MessageNode
@@ -48,6 +51,8 @@ import me.ayuilos.miffan.ui.hooks.writeStringPreference
 import me.ayuilos.miffan.ui.theme.ColorMode
 import me.ayuilos.miffan.ui.theme.CustomTheme
 import me.ayuilos.miffan.ui.theme.presets.MinimalThemePreset
+import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessage
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -76,13 +81,23 @@ class FloatingChatTopBarTest {
         val savedAmoled = context.readBooleanPreference("amoledDark")
         val backdrop = File(context.cacheDir, "floating-topbar-test-background.png")
         createBackdrop(backdrop)
-        val assistant = Assistant(name = "界面测试", background = backdrop.toURI().toString())
+        // A configured provider skips onboarding, and a static avatar keeps Compose idle: the Miffan
+        // mascot on both screens animates forever.
+        val model = Model(modelId = "floating-topbar-test")
+        val provider = ProviderSetting.OpenAI(name = "UI fixture", enabled = false,
+            baseUrl = "https://example.invalid/v1", models = listOf(model))
+        val assistant = Assistant(name = "界面测试", avatar = Avatar.Emoji("🫧"), chatModelId = model.id,
+            background = backdrop.toURI().toString())
+        val nodes = (1..32).map { index ->
+            val text = "第 $index 条消息：滚动时，文字可以从顶部胶囊后面经过。胶囊内部模糊背景，外部保持清晰。"
+            MessageNode.of(if (index % 2 == 0) UIMessage.assistant(text) else UIMessage.user(text))
+        }
         val conversation = Conversation(
             assistantId = assistant.id,
             title = "悬浮胶囊",
-            messageNodes = (1..32).map { index ->
-                val text = "第 $index 条消息：滚动时，文字可以从顶部胶囊后面经过。胶囊内部模糊背景，外部保持清晰。"
-                MessageNode.of(if (index % 2 == 0) UIMessage.assistant(text) else UIMessage.user(text))
+            // Nodes form a linked thread; unlinked nodes would not render as one conversation.
+            messageNodes = nodes.mapIndexed { index, node ->
+                node.copy(parentId = nodes.getOrNull(index - 1)?.id, selectedChildId = nodes.getOrNull(index + 1)?.id)
             },
         )
         try {
@@ -93,6 +108,11 @@ class FloatingChatTopBarTest {
                     developerMode = false,
                     assistantId = assistant.id,
                     assistants = it.assistants + assistant,
+                    providers = it.providers + provider,
+                    chatModelId = model.id,
+                    // The introductions animate forever, so Compose would never go idle under them.
+                    remoteWorkspaceIntroSeen = true,
+                    whaleThemeDiscovery = it.whaleThemeDiscovery.copy(introPending = false, settingsSeen = true),
                 ).withInterfaceMode(InterfaceMode.PROFESSIONAL)
             }
             context.writeBooleanPreference("create_new_conversation_on_start", false)
@@ -125,7 +145,7 @@ class FloatingChatTopBarTest {
                 saveScreenshot("chat-glass-topbar.png", tag = "chat_floating_topbar")
 
                 compose.onNode(SemanticsMatcher.expectValue(
-                    SemanticsProperties.ContentDescription, listOf("Chat Options")
+                    SemanticsProperties.ContentDescription, listOf(appString(R.string.chat_page_options))
                 )).performClick()
                 compose.onNodeWithTag("chat_preview_list").performScrollToIndex(12)
                 compose.onNodeWithTag("chat_preview_list").performTouchInput {
@@ -138,7 +158,7 @@ class FloatingChatTopBarTest {
                 // Use a plain page to catch the original same-color capsule regression,
                 // then switch themes in-place to verify that glass tint is not cached.
                 compose.onNode(SemanticsMatcher.expectValue(
-                    SemanticsProperties.ContentDescription, listOf("Chat Options")
+                    SemanticsProperties.ContentDescription, listOf(appString(R.string.chat_page_options))
                 )).performClick()
                 compose.onNodeWithTag("chat_message_list").performScrollToIndex(0)
                 val blue = CustomTheme(name = "Test blue", primaryColorArgb = 0xFF1565C0)

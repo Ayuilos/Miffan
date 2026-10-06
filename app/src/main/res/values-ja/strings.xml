@@ -2113,4 +2113,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_tts_step_instruction_description">グローバルなコンテキスト指示。stepaudio-2.5-tts のみ有効 (200 文字以内、空欄の場合は送信しません)</string>
   <string name="setting_tts_step_instruction_placeholder">例: 優しい口調で、ややゆっくり</string>
   <string name="mcp_error_reconnect_exhausted">接続が切れました。再接続の上限回数に達しました</string>
+  <string name="chat_page_options">チャットのオプション</string>
 </resources>

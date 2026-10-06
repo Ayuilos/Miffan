@@ -2114,4 +2114,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_step_instruction_description">全局语境指令, 仅 stepaudio-2.5-tts 生效 (≤200 字符, 留空不下发)</string>
   <string name="setting_tts_step_instruction_placeholder">例如: 语气温柔, 语速偏慢</string>
   <string name="mcp_error_reconnect_exhausted">连接断开，已达最大重连次数</string>
+  <string name="chat_page_options">聊天选项</string>
 </resources>
