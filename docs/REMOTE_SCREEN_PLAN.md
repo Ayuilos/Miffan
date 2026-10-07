@@ -146,7 +146,8 @@ cua-driver 的 Skill 应从远端读取，不打包进 APP。0.34 通过 MCP `re
 | P2 远端准备 | 启动脚本与版本管理、`miffan-probe`、cua-driver 检测与升级、wayvnc Unix 套接字与 streamlocal 转发；先验证 GNOME（gnome-remote-desktop 的 VNC 后端，或 RDP 的替代方案）与 KDE（krfb）上画面、输入和 cua-driver 的可行性 | P1 | 远端环境可一键检测和准备，桌面支持矩阵确定 |
 | P3 伙伴工具 | MCP stdio transport、精选工具与 schema 适配、Skill 读取、截图压缩、审批与助手开关、控制权仲裁 | P2 | 伙伴可在聊天中操作电脑，用户可随时接管 |
 | P4 轻松模式 | 电脑图标入口、轻松模式屏幕页与对话条、“正在操作电脑”卡片、引导流程 | P3 | IM 外壳下的完整体验 |
-| P5 扩展 | X11 桌面、真机性能调优、Windows 与 RDP 评估 | P4 | 支持矩阵扩大 |
+| P5 RDP 客户端 | 基于 FreeRDP 的 RDP 查看与输入，接入同一套屏幕页与 SSH 隧道；脚本探测并启用 gnome-remote-desktop / krdp | P3 | GNOME、KDE（及将来 Windows）可用 |
+| P6 扩展 | 真机性能调优、轻松模式之外的入口完善 | P4 | 支持矩阵扩大 |
 
 ## 验收
 
@@ -161,7 +162,6 @@ cua-driver 的 Skill 应从远端读取，不打包进 APP。0.34 通过 MCP `re
 ## 待定问题
 
 - macOS 画面策略中的帧率档位需在真机实测后确定默认值；省流模式在 Mac 屏幕共享上的收益待实测。
-- GNOME Wayland 新版本的系统远程桌面以 RDP 为主，VNC 后端是否可用因发行版而异；如果不可用，GNOME 需要另找画面通道（例如 RDP 客户端）。在 P2 验证后确定。
 - cua-driver 遥测与 capability manifest 的默认配置。
 
 ## 当前状态
@@ -170,5 +170,6 @@ cua-driver 的 Skill 应从远端读取，不打包进 APP。0.34 通过 MCP `re
 - P1 已完成并在模拟器上对 CachyOS（niri Wayland + wayvnc，经 Tailscale）联调：在 APP 内生成密钥、添加并核对主机、开启屏幕设置、打开屏幕页，画面、旋转保持会话、前后台暂停与恢复、点击、长按右键、键盘输入与退格、回车、按键栏 Esc 均验证通过。联调中修复了输入法重复提交字符和首次点击被 GTK 忽略两个问题。
 - 尚未验证：双指缩放与滚动、触控板模式手势（adb 无法模拟多指）、macOS 屏幕共享在 APP 内的 Apple 认证、真机性能与移动网络流量。
 - P2 进行中。已完成并在模拟器上对 CachyOS 联调：远端脚本 `~/.miffan/bin/miffan`（自动安装与按版本更新；探测、在 0600 Unix 套接字上启动 VNC、剪贴板、带会话环境启动 cua-driver）、“自动”连接方式（经 SSH streamlocal 连接脚本启动的 wayvnc）、检测环境面板、cua-driver 安装/升级确认（命令与执行同源，执行前校验主机身份）、按失败原因引导、真实光标形状（Cursor 伪编码，尚未在解锁桌面上确认 wayvnc 是否发送）。
-- P2 待定：GNOME / KDE 的验证环境；在 CachyOS 上实测 cua-driver 升级流程；X11（x11vnc）分支的实机验证。
+- P2 已收尾（2026-10-07），支持范围：macOS（系统屏幕共享）、wlroots 系 Wayland（wayvnc，Unix 套接字）、X11（x11vnc，本机回环 TCP + 每次启动随机密码；其 `-unixsock` 模式会在版本握手后断开，不可用）。在 CachyOS 上经 APP 完成 cua-driver 0.24 → 0.34 升级（0.24 的 `update` 自身报错，已回退到官方安装脚本，并在升级后重启用户的 cua-driver systemd 服务）。真实光标形状在 x11vnc 上验证通过。
+- GNOME / KDE 结论（在 Debian 13 容器上验证）：Debian 的 gnome-remote-desktop 48 只编译了 RDP，GNOME Wayland 无法由系统组件提供 VNC；KDE 的 krfb 在 Wayland 下依赖门户远程桌面授权与 KDE 钱包、默认监听所有网卡的 5900 端口，不符合“无人值守、只经 SSH 隧道”的模型。两者自带的远程桌面都转向 RDP（gnome-remote-desktop、krdp），因此在 P3 之后单独增加 RDP 客户端（候选 FreeRDP），同时覆盖 GNOME、KDE 与将来的 Windows。在此之前，GNOME/KDE 主机在检测环境与失败引导中显示“支持仍在验证中”。
 - 代码在 `feature/remote-screen` 分支，基于 `feature/im-4.0`。
