@@ -543,6 +543,24 @@ class WorkspaceRepository(
         return true
     }
 
+    /**
+     * The SSH account's home directory on a verified host, used as the default root when a
+     * guided setup creates the host's first workspace.
+     */
+    suspend fun remoteHome(id: String): String {
+        val host = hostDao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, id))
+        val config = host.config()
+        val home = runRemoteInterruptible {
+            remoteTransport.open(config).use { session ->
+                session.execute("printf '%s' \"\$HOME\"", timeoutMillis = 15_000).stdout.trim()
+            }
+        }
+        require(home.startsWith('/') && home != "/" && home.none { it == '\n' || it == '\u0000' }) {
+            workspaceStrings.getString(R.string.workspace_error_absolute_path)
+        }
+        return home
+    }
+
     suspend fun deleteHost(id: String): Boolean {
         if (hostDao.getById(id) == null) return false
         require(dao.countByRemoteHostId(id) == 0) { workspaceStrings.getString(R.string.workspace_delete_linked_workspaces_first) }

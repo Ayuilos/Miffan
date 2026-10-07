@@ -132,6 +132,7 @@ val repositoryModule = module {
     single { me.ayuilos.miffan.data.ai.computer.RemoteComputerControl() }
 
     single { me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry(get(), get<AppScope>()) }
+    single { me.ayuilos.miffan.data.ai.computer.PartnerComputers(get(), get()) }
 
     single {
         FilesManager(get(), get(), get())

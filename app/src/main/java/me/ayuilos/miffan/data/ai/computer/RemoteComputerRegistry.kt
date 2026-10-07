@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.computer
 
+import android.util.Base64
 import android.util.Log
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.StdioClientTransport
@@ -7,9 +8,11 @@ import io.modelcontextprotocol.kotlin.sdk.shared.RequestOptions
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ReadResourceRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ReadResourceRequestParams
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 import io.modelcontextprotocol.kotlin.sdk.types.Tool as McpTool
 import java.util.UUID
@@ -25,13 +28,24 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import me.ayuilos.miffan.data.repository.LeasedRemote
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.rerere.workspace.RemoteChannelStream
 
 private const val TAG = "RemoteComputer"
+
+/** macOS privacy grants cua-driver needs to read and operate the desktop. */
+data class ComputerPermissions(val accessibility: Boolean, val screenRecording: Boolean) {
+    val complete: Boolean get() = accessibility && screenRecording
+}
 
 /**
  * One cua-driver MCP connection per remote workspace, running `cua-driver mcp` inside the remote
@@ -102,6 +116,39 @@ class RemoteComputerRegistry(
         val current = connection(workspaceId)
         current.lastUsed = System.currentTimeMillis()
         return readText(current.client, uri)
+    }
+
+    /**
+     * The remote cua-driver daemon's macOS grants. Null when the driver has no such check (Linux).
+     * [prompt] raises the system dialogs on the remote Mac for missing grants; the user answers
+     * them on that screen.
+     */
+    suspend fun permissions(workspaceId: String, prompt: Boolean): ComputerPermissions? {
+        if (capabilities(workspaceId).tools.none { it.name == "check_permissions" }) return null
+        val result = call(workspaceId, "check_permissions", buildJsonObject {
+            put("prompt", prompt)
+            if (prompt) put("probe_direct_capture", false)
+        })
+        val report = result.structuredContent ?: result.content.filterIsInstance<TextContent>()
+            .firstNotNullOfOrNull { runCatching { Json.parseToJsonElement(it.text).jsonObject }.getOrNull() }
+            ?: error("cua-driver returned no permission report")
+        return ComputerPermissions(
+            accessibility = report["accessibility"]?.jsonPrimitive?.booleanOrNull == true,
+            screenRecording = report["screen_recording"]?.jsonPrimitive?.booleanOrNull == true,
+        )
+    }
+
+    /**
+     * A read-only screenshot of the whole desktop through cua-driver, proving the partner can
+     * see the screen. Null when the driver returned no image.
+     */
+    suspend fun desktopScreenshot(workspaceId: String): ByteArray? {
+        val result = call(workspaceId, "get_desktop_state", buildJsonObject { put("max_image_dimension", 1280) })
+        check(result.isError != true) {
+            result.content.filterIsInstance<TextContent>().joinToString("\n") { it.text }.ifBlank { "cua-driver error" }
+        }
+        return result.content.filterIsInstance<ImageContent>().lastOrNull()
+            ?.let { Base64.decode(it.data, Base64.DEFAULT) }
     }
 
     suspend fun closeWorkspace(workspaceId: String) {
