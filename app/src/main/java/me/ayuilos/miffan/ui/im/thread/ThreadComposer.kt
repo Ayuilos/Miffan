@@ -216,7 +216,7 @@ internal fun ThreadComposer(
                     ThreadAttachmentMenuItem(HugeIcons.Files02, stringResource(R.string.im_thread_file)) { menu = false; documents.launch(arrayOf("*/*")) }
                 }
             }
-            GlassSurface(hazeState, RoundedCornerShape(24.dp), Modifier.weight(1f).heightIn(min = 48.dp)) {
+            ComposerPill(compact, hazeState, Modifier.weight(1f).heightIn(min = 48.dp)) {
                 Row(Modifier.padding(start = 18.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (asrState.isRecording) {
                         Text(stringResource(R.string.im_thread_voice_stop), Modifier.weight(1f).padding(vertical = 12.dp),
@@ -315,4 +315,14 @@ private fun ThreadVoiceRecording(amplitudes: List<Float>) {
         Text(String.format(locale, "%d:%02d", seconds / 60, seconds % 60), style = MaterialTheme.typography.headlineMedium)
         Text(stringResource(R.string.im_thread_voice_stop), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/**
+ * The input's rounded container. Glass needs content scrolling behind it; the compact composer
+ * sits under a remote screen with nothing behind it, so it uses a plain surface instead.
+ */
+@Composable
+private fun ComposerPill(compact: Boolean, hazeState: HazeState, modifier: Modifier, content: @Composable () -> Unit) {
+    if (compact) Surface(modifier, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, content = content)
+    else GlassSurface(hazeState, RoundedCornerShape(24.dp), modifier, content = content)
 }

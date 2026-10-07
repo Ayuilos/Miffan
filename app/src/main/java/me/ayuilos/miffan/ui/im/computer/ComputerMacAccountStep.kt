@@ -16,6 +16,7 @@ import me.ayuilos.miffan.R
 @Composable
 internal fun ComputerMacAccountStep(vm: ComputerSetupVM, state: ComputerSetupState, sshUsername: String) {
     var username by rememberSaveable(state.hostId) { mutableStateOf(sshUsername) }
+    // Credentials never enter saved instance state.
     var password by remember(state.hostId) { mutableStateOf("") }
     var saved by remember(state.hostId) { mutableStateOf<String?>(null) }
     var loading by remember(state.hostId) { mutableStateOf(true) }
@@ -30,24 +31,38 @@ internal fun ComputerMacAccountStep(vm: ComputerSetupVM, state: ComputerSetupSta
         catch (_: Exception) { loadFailed = true }
         finally { loading = false }
     }
-    Text(stringResource(R.string.im_computer_mac_account), style = MaterialTheme.typography.headlineSmall)
-    Text(stringResource(R.string.im_computer_mac_account_help))
-    if (loading) CircularProgressIndicator()
-    if (loadFailed) Text(stringResource(R.string.im_computer_saved_account_failed), color = MaterialTheme.colorScheme.error)
-    if (saved != null) Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = useSaved, enabled = !state.busy && !loading, onCheckedChange = {
-            useSaved = it
-            password = ""
-            if (it) username = saved.orEmpty()
-        })
-        Text(stringResource(R.string.im_computer_use_saved_account))
+    val editable = !state.busy && !loading
+    ComputerSetupStepLayout(
+        title = stringResource(R.string.im_computer_mac_account),
+        supporting = stringResource(R.string.im_computer_mac_account_help),
+        state = state, onDismissError = vm::dismissError,
+        primary = SetupAction(stringResource(R.string.im_computer_continue),
+            enabled = !loading && username.isNotBlank() && (useSaved || password.isNotEmpty())) {
+            vm.saveMacAccount(username.trim(), if (useSaved) null else password)
+        },
+    ) {
+        if (loadFailed) SetupWarning(stringResource(R.string.im_computer_saved_account_failed))
+        SetupCard {
+            saved?.let { account ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.im_computer_use_saved_account))
+                        Text(account, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = useSaved, enabled = editable, onCheckedChange = {
+                        useSaved = it
+                        password = ""
+                        if (it) username = account
+                    })
+                }
+            }
+            if (!useSaved) {
+                OutlinedTextField(username, { username = it }, label = { Text(stringResource(R.string.im_computer_username)) },
+                    enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.im_computer_password)) },
+                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        }
     }
-    OutlinedTextField(username, { username = it }, label = { Text(stringResource(R.string.im_computer_username)) },
-        enabled = !state.busy && !loading && !useSaved, singleLine = true, modifier = Modifier.fillMaxWidth())
-    if (!useSaved) OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.im_computer_password)) },
-        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        enabled = !state.busy && !loading, singleLine = true, modifier = Modifier.fillMaxWidth())
-    ComputerSetupButton(stringResource(R.string.im_computer_continue), state.busy,
-        enabled = !loading && username.isNotBlank() && (useSaved || password.isNotEmpty()),
-        onClick = { vm.saveMacAccount(username.trim(), if (useSaved) null else password) })
 }

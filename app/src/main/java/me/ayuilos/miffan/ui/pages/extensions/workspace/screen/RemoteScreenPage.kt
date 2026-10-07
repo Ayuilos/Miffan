@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -112,17 +113,21 @@ internal fun RemoteScreenScaffold(
             launch { snackbar.showSnackbar(resources.getString(R.string.workspace_screen_metered)) }
         }
         vm.notices.collect { notice ->
-            val text = when (notice) {
-                RemoteScreenNotice.TextNotTypable -> resources.getString(R.string.workspace_screen_text_unsupported)
-                is RemoteScreenNotice.ClipboardFailed -> resources.getString(R.string.workspace_screen_paste_failed)
-                is RemoteScreenNotice.RemoteClipboard -> {
-                    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(
-                        ClipData.newPlainText(resources.getString(R.string.workspace_screen_title), notice.text),
-                    )
-                    resources.getString(R.string.workspace_screen_clipboard_copied)
+            launch {
+                when (notice) {
+                    RemoteScreenNotice.TextNotTypable -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_text_unsupported))
+                    is RemoteScreenNotice.ClipboardFailed -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_paste_failed))
+                    // Copying to the phone is the user's call: the computer's clipboard can hold anything.
+                    is RemoteScreenNotice.RemoteClipboard -> {
+                        val result = snackbar.showSnackbar(resources.getString(R.string.workspace_screen_clipboard_new),
+                            actionLabel = resources.getString(R.string.workspace_screen_clipboard_copy), withDismissAction = true)
+                        if (result == SnackbarResult.ActionPerformed) {
+                            context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(
+                                ClipData.newPlainText(resources.getString(R.string.workspace_screen_title), notice.text))
+                        }
+                    }
                 }
             }
-            launch { snackbar.showSnackbar(text) }
         }
     }
 

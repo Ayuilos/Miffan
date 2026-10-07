@@ -6,7 +6,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +63,7 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
     val timeline by thread.timelineState.collectAsStateWithLifecycle()
     val generating by thread.generatingSegmentIds.collectAsStateWithLifecycle()
     val errors by thread.errors.collectAsStateWithLifecycle()
+    val assistant by thread.assistant.collectAsStateWithLifecycle()
     val computer by rememberPartnerComputer(assistantId)
     var input by rememberSaveable(assistantId.toString()) { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
@@ -96,16 +99,22 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
         Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState())
             .padding(start = 12.dp, end = 12.dp, top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Surface(onClick = { openChat(latest) }, shape = MaterialTheme.shapes.medium,
+            Surface(onClick = { openChat(latest) }, shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 val action = latest?.takeIf { it.streaming }?.message?.parts?.let(::latestComputerAction)
+                val working = latest?.streaming == true || generating.isNotEmpty()
                 val preview = when {
                     action != null -> computerActionText(action)
-                    latest?.streaming == true || generating.isNotEmpty() -> stringResource(R.string.im_thread_tools_working)
+                    working -> stringResource(R.string.im_thread_tools_working)
                     latest != null -> latest.message.previewText()
                     else -> stringResource(R.string.im_computer_chat_help)
                 }
-                Text(preview, Modifier.fillMaxWidth().padding(10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ThreadAvatar(assistant, assistantGenerationPhase(latest?.message, loading = working), modifier = Modifier.size(32.dp))
+                    Text(preview, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = if (latest == null && !working) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                }
             }
             pending.forEach { (item, tool) ->
                 // Already on the screen; the card's own "view screen" link has nowhere to go.

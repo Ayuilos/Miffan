@@ -19,6 +19,7 @@ internal fun computerPublicKeyCommand(publicKey: String): String {
     return "mkdir -p ~/.ssh && printf '\\n%s\\n' $quoted >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ComputerAddressStep(vm: ComputerSetupVM, state: ComputerSetupState, keys: List<SshKeyEntity>) {
     var name by rememberSaveable { mutableStateOf("") }
@@ -27,48 +28,77 @@ internal fun ComputerAddressStep(vm: ComputerSetupVM, state: ComputerSetupState,
     var username by rememberSaveable { mutableStateOf("") }
     var passwordLogin by rememberSaveable { mutableStateOf(false) }
     var keyId by rememberSaveable { mutableStateOf<String?>(null) }
+    var keyRequested by rememberSaveable { mutableStateOf(false) }
     // Credentials never enter saved instance state.
     var password by remember { mutableStateOf("") }
     var keyMenu by remember { mutableStateOf(false) }
     val selectedKey = keys.find { it.id == keyId } ?: keys.firstOrNull()
     // submitAddress has already saved this computer even when fingerprint reading fails.
     val retryFingerprint = state.hostId != null
-    val enabled = !state.busy && !retryFingerprint
-    Text(stringResource(R.string.im_computer_address_title), style = MaterialTheme.typography.headlineSmall)
-    OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.im_computer_name)) }, enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(address, { address = it }, label = { Text(stringResource(R.string.im_computer_address)) },
-        supportingText = { Text(stringResource(R.string.im_computer_address_hint)) }, enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(port, { if (it.all(Char::isDigit)) port = it }, label = { Text(stringResource(R.string.im_computer_port)) },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(username, { username = it }, label = { Text(stringResource(R.string.im_computer_username)) }, enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth())
-    FilterChip(selected = !passwordLogin, onClick = { passwordLogin = false; password = "" }, enabled = enabled,
-        label = { Text(stringResource(R.string.im_computer_app_key)) })
-    FilterChip(selected = passwordLogin, onClick = { passwordLogin = true }, enabled = enabled,
-        label = { Text(stringResource(R.string.im_computer_password_login)) })
-    if (passwordLogin) OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.im_computer_password)) },
-        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth())
-    else {
-        if (selectedKey != null) {
-            Box {
-                OutlinedButton(onClick = { keyMenu = true }, enabled = enabled) { Text(selectedKey.name) }
-                DropdownMenu(keyMenu, onDismissRequest = { keyMenu = false }) {
-                    keys.forEach { key -> DropdownMenuItem(text = { Text(key.name) }, enabled = enabled,
-                        onClick = { keyId = key.id; keyMenu = false }) }
+    val editable = !state.busy && !retryFingerprint
+    // The recommended path needs a key; make one rather than asking the user to.
+    LaunchedEffect(passwordLogin, keys.isEmpty()) {
+        if (!passwordLogin && keys.isEmpty() && !keyRequested) {
+            keyRequested = true
+            vm.createAppKey { keyId = it.id }
+        }
+    }
+    val valid = name.isNotBlank() && address.isNotBlank() && username.isNotBlank() && port.toIntOrNull() in 1..65535 &&
+        if (passwordLogin) password.isNotEmpty() else selectedKey != null
+    ComputerSetupStepLayout(
+        title = stringResource(R.string.im_computer_address_title),
+        supporting = stringResource(R.string.im_computer_address_help),
+        state = state, onDismissError = vm::dismissError,
+        primary = if (retryFingerprint) SetupAction(stringResource(R.string.im_computer_reread_fingerprint), onClick = vm::rereadFingerprint)
+        else SetupAction(stringResource(R.string.im_computer_continue), enabled = valid) {
+            vm.submitAddress(name.trim(), address.trim(), port.toInt(), username.trim(),
+                if (passwordLogin) ComputerSetupAuth.Password(password) else ComputerSetupAuth.AppKey(requireNotNull(selectedKey).id))
+        },
+    ) {
+        SetupCard {
+            OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.im_computer_name)) },
+                enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(address, { address = it }, label = { Text(stringResource(R.string.im_computer_address)) },
+                    supportingText = { Text(stringResource(R.string.im_computer_address_hint)) },
+                    enabled = editable, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(port, { if (it.all(Char::isDigit) && it.length <= 5) port = it },
+                    label = { Text(stringResource(R.string.im_computer_port)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    enabled = editable, singleLine = true, modifier = Modifier.width(88.dp))
+            }
+            OutlinedTextField(username, { username = it }, label = { Text(stringResource(R.string.im_computer_username)) },
+                enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
+        }
+        SetupCard {
+            Text(stringResource(R.string.im_computer_sign_in), style = MaterialTheme.typography.titleSmall)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                SegmentedButton(selected = !passwordLogin, enabled = editable, onClick = { passwordLogin = false; password = "" },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text(stringResource(R.string.im_computer_app_key)) }
+                SegmentedButton(selected = passwordLogin, enabled = editable, onClick = { passwordLogin = true },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text(stringResource(R.string.im_computer_password_login)) }
+            }
+            if (passwordLogin) {
+                OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.im_computer_password)) },
+                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
+            } else if (selectedKey != null) {
+                Text(stringResource(R.string.im_computer_key_command_help), style = MaterialTheme.typography.bodyMedium)
+                RemoteScreenCopyCommand("", computerPublicKeyCommand(selectedKey.publicKey))
+                if (keys.size > 1) Box {
+                    TextButton(enabled = editable, onClick = { keyMenu = true }, contentPadding = PaddingValues(0.dp)) {
+                        Text(stringResource(R.string.im_computer_other_key, selectedKey.name))
+                    }
+                    DropdownMenu(keyMenu, onDismissRequest = { keyMenu = false }) {
+                        keys.forEach { key ->
+                            DropdownMenuItem(text = { Text(key.name) }, onClick = { keyId = key.id; keyMenu = false })
+                        }
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text(stringResource(R.string.im_computer_generate_key)) },
+                            onClick = { keyMenu = false; vm.createAppKey { keyId = it.id } })
+                    }
                 }
             }
-            Text(stringResource(R.string.im_computer_key_command_help))
-            RemoteScreenCopyCommand(selectedKey.name, selectedKey.publicKey)
-            RemoteScreenCopyCommand(stringResource(R.string.im_computer_authorize_key), computerPublicKeyCommand(selectedKey.publicKey))
         }
-        TextButton(enabled = enabled, onClick = { vm.createAppKey { keyId = it.id } }) { Text(stringResource(R.string.im_computer_generate_key)) }
     }
-    ComputerSetupButton(stringResource(if (retryFingerprint) R.string.im_computer_reread_fingerprint else R.string.im_computer_continue), state.busy,
-        enabled = retryFingerprint || (name.isNotBlank() && address.isNotBlank() && username.isNotBlank() && port.toIntOrNull() in 1..65535 &&
-            if (passwordLogin) password.isNotEmpty() else selectedKey != null),
-        onClick = {
-            if (retryFingerprint) vm.rereadFingerprint()
-            else vm.submitAddress(name.trim(), address.trim(), port.toInt(), username.trim(),
-                if (passwordLogin) ComputerSetupAuth.Password(password) else ComputerSetupAuth.AppKey(requireNotNull(selectedKey).id))
-        })
 }

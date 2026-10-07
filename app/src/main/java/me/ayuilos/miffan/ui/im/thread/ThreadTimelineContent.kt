@@ -171,7 +171,9 @@ internal fun ThreadMessageBubble(
                     }
                     if (evidence != null && computerName != null) {
                         if (liveComputer) ThreadComputerLiveCard(evidence, computerName, computerAvailable, onComputerScreen)
-                        else if (!item.streaming) ThreadComputerSummary(evidence, computerName, computerAvailable, onComputerScreen)
+                        // A reply paused on an approval is not finished; its summary comes after the user answers.
+                        else if (!item.streaming && evidence.tools.none { it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending })
+                            ThreadComputerSummary(evidence, computerName, computerAvailable, onComputerScreen)
                     }
                     status?.let { ThreadLiveStatus(it) }
                 }

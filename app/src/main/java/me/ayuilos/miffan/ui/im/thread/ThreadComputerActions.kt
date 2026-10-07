@@ -24,6 +24,11 @@ import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
 import me.ayuilos.miffan.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Computer
+import me.rerere.hugeicons.stroke.ComputerVideo
+import androidx.compose.ui.graphics.Color
 
 private val computerObservationNames = setOf(
     "get_desktop_state", "get_window_state", "list_windows", "list_apps", "read_guide",
@@ -111,14 +116,19 @@ internal fun ThreadComputerLiveCard(evidence: ThreadComputerEvidence, name: Stri
 
 @Composable
 internal fun ThreadComputerSummary(evidence: ThreadComputerEvidence, name: String, canOpen: Boolean, onScreen: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (evidence.tools.all { it.toolName.removePrefix(COMPUTER_TOOL_PREFIX) in computerObservationNames }) stringResource(R.string.im_computer_observed, name)
-            else pluralStringResource(R.plurals.im_computer_steps, evidence.actionCount, name, evidence.actionCount),
-            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        ThreadComputerResultStatus(evidence.status)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            evidence.screenshot?.let { ThreadComputerScreenshot(it, 64.dp) }
-            TextButton(onClick = onScreen, enabled = canOpen) { Text(stringResource(R.string.im_computer_view_screen)) }
+    val observedOnly = evidence.actionCount == 0
+    Surface(onClick = onScreen, enabled = canOpen, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium) {
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            evidence.screenshot?.let { ThreadComputerScreenshot(it, 48.dp) }
+                ?: Icon(HugeIcons.Computer, null, Modifier.padding(start = 4.dp).size(20.dp), tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(if (observedOnly) stringResource(R.string.im_computer_observed, name)
+                    else pluralStringResource(R.plurals.im_computer_steps, evidence.actionCount, name, evidence.actionCount),
+                    style = MaterialTheme.typography.labelLarge)
+                ThreadComputerResultStatus(evidence.status)
+            }
+            if (canOpen) Icon(HugeIcons.ArrowRight01, stringResource(R.string.im_computer_view_screen), Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -135,21 +145,37 @@ internal fun ThreadComputerApprovalCard(
     var answered by remember(tool.toolCallId) { mutableStateOf(false) }
     var details by remember(tool.toolCallId) { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(if (compact) 10.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.im_computer_wants_to_operate, name), style = MaterialTheme.typography.titleSmall)
-            Text(computerActionText(tool), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.fillMaxWidth().padding(if (compact) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(HugeIcons.Computer, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.im_computer_wants_to_operate, name), Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (canOpen) IconButton(onClick = onScreen, modifier = Modifier.size(32.dp)) {
+                    Icon(HugeIcons.ComputerVideo, stringResource(R.string.im_computer_view_screen), Modifier.size(18.dp))
+                }
+            }
+            // The action itself; tapping it shows the exact arguments the partner sent.
+            Surface(onClick = { details = true }, color = Color.Transparent, shape = MaterialTheme.shapes.small) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(computerActionText(tool), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Icon(HugeIcons.ArrowRight01, stringResource(R.string.im_computer_details), Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             if (computerToolNeedsForegroundWarning(tool.toolName, tool.inputAsJson())) {
-                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
-                    Text(stringResource(R.string.im_computer_foreground_warning), Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall)
+                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
+                    Text(stringResource(R.string.im_computer_foreground_warning), Modifier.fillMaxWidth().padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) { Text(stringResource(R.string.im_computer_allow)) }
-                OutlinedButton(enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_computer_decline)) }
-            }
-            Row {
-                TextButton(onClick = onScreen, enabled = canOpen) { Text(stringResource(R.string.im_computer_view_screen)) }
-                TextButton(onClick = { details = true }) { Text(stringResource(R.string.im_computer_details)) }
+                Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) {
+                    Text(stringResource(R.string.im_computer_allow))
+                }
+                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) {
+                    Text(stringResource(R.string.im_computer_decline))
+                }
             }
         }
     }

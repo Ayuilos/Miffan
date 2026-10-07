@@ -2,16 +2,24 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,7 +42,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Cancel01
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
@@ -44,6 +55,7 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 
 private enum class ScreenConnectionMode { AUTOMATIC, TCP, UNIX }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteHostScreenSettingsDialog(
     host: RemoteHostEntity,
@@ -106,97 +118,124 @@ fun RemoteHostScreenSettingsDialog(
     val valid = loaded && endpointValid &&
         (auth == RemoteScreenAuth.NONE || hasPassword || password.isNotEmpty())
 
-    AlertDialog(
+    fun save() {
+        configBusy = true
+        error = null
+        val endpoint = when (mode) {
+            ScreenConnectionMode.AUTOMATIC -> RemoteScreenEndpoint.Helper
+            ScreenConnectionMode.TCP -> RemoteScreenEndpoint.Tcp(requireNotNull(validPort))
+            ScreenConnectionMode.UNIX -> RemoteScreenEndpoint.Unix(path)
+        }
+        vm.updateScreenConfig(host.id, enabled, endpoint, auth, username, password.takeIf { it.isNotEmpty() }) { result ->
+            if (!active) return@updateScreenConfig
+            configBusy = false
+            result.fold(onSuccess = { saved ->
+                if (saved) { onSaved(); onDismiss() }
+                else error = resources.getString(R.string.workspace_screen_host_missing)
+            }, onFailure = { error = it.localizedMessage ?: resources.getString(R.string.workspace_screen_save_failed) })
+        }
+    }
+
+    // A full-screen page rather than an alert: it holds settings and the whole environment check.
+    Dialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(stringResource(R.string.workspace_screen_settings)) },
-        properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
-        text = {
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = !busy, dismissOnClickOutside = false,
+            decorFitsSystemWindows = false),
+    ) {
+        Scaffold(topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(stringResource(R.string.workspace_screen_settings))
+                        Text(host.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                navigationIcon = {
+                    IconButton(enabled = !busy, onClick = onDismiss) { Icon(HugeIcons.Cancel01, stringResource(R.string.common_cancel)) }
+                },
+                actions = {
+                    TextButton(enabled = valid && !busy, onClick = ::save) { Text(stringResource(R.string.common_save)) }
+                },
+            )
+        }) { padding ->
             Column(
-                Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
+                    .verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(host.name, style = MaterialTheme.typography.titleSmall)
-                if (configBusy && !loaded) CircularProgressIndicator()
+                if (configBusy && !loaded) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
                 if (loaded) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.workspace_screen_enabled), Modifier.weight(1f))
-                        Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !busy)
-                    }
-                    Text(stringResource(R.string.workspace_screen_endpoint), style = MaterialTheme.typography.titleSmall)
-                    Column(Modifier.selectableGroup()) {
-                        ScreenSettingOption(mode == ScreenConnectionMode.AUTOMATIC, R.string.workspace_screen_automatic, !busy) { mode = ScreenConnectionMode.AUTOMATIC }
-                        ScreenSettingOption(mode == ScreenConnectionMode.TCP, R.string.workspace_screen_tcp, !busy) { mode = ScreenConnectionMode.TCP }
-                        ScreenSettingOption(mode == ScreenConnectionMode.UNIX, R.string.workspace_screen_unix, !busy) { mode = ScreenConnectionMode.UNIX }
-                    }
-                    if (mode == ScreenConnectionMode.UNIX) {
-                        OutlinedTextField(path, { path = it; error = null },
-                            label = { Text(stringResource(R.string.workspace_screen_socket_path)) },
-                            supportingText = { Text(stringResource(R.string.workspace_screen_path_hint)) },
-                            isError = path.isNotEmpty() && !validPath,
-                            singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                    } else if (mode == ScreenConnectionMode.TCP) {
-                        OutlinedTextField(port, { port = it; error = null },
-                            label = { Text(stringResource(R.string.workspace_screen_port)) },
-                            supportingText = { Text(stringResource(R.string.workspace_screen_port_hint)) },
-                            isError = validPort == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                    }
-                    if (mode == ScreenConnectionMode.AUTOMATIC) {
-                        Text(stringResource(R.string.workspace_screen_automatic_help), style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text(stringResource(R.string.workspace_screen_auth), style = MaterialTheme.typography.titleSmall)
-                    Column(Modifier.selectableGroup()) {
-                        RemoteScreenAuth.entries.forEach { option ->
-                            ScreenSettingOption(auth == option, when (option) {
-                                RemoteScreenAuth.NONE -> R.string.workspace_screen_auth_none
-                                RemoteScreenAuth.VNC_PASSWORD -> R.string.workspace_screen_auth_vnc
-                                RemoteScreenAuth.MACOS_ACCOUNT -> R.string.workspace_screen_auth_macos
-                            }, !busy) { auth = option; password = ""; error = null }
+                    SettingsCard {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.workspace_screen_enabled), Modifier.weight(1f))
+                            Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !busy)
                         }
                     }
-                    if (auth == RemoteScreenAuth.MACOS_ACCOUNT) {
-                        OutlinedTextField(username, { username = it; error = null },
-                            label = { Text(stringResource(R.string.workspace_screen_username)) },
-                            placeholder = { Text(host.username) },
-                            supportingText = { Text(stringResource(R.string.workspace_screen_username_hint)) },
-                            singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                    SettingsCard {
+                        Text(stringResource(R.string.workspace_screen_endpoint), style = MaterialTheme.typography.titleSmall)
+                        Column(Modifier.selectableGroup()) {
+                            ScreenSettingOption(mode == ScreenConnectionMode.AUTOMATIC, R.string.workspace_screen_automatic, !busy) { mode = ScreenConnectionMode.AUTOMATIC }
+                            ScreenSettingOption(mode == ScreenConnectionMode.TCP, R.string.workspace_screen_tcp, !busy) { mode = ScreenConnectionMode.TCP }
+                            ScreenSettingOption(mode == ScreenConnectionMode.UNIX, R.string.workspace_screen_unix, !busy) { mode = ScreenConnectionMode.UNIX }
+                        }
+                        when (mode) {
+                            ScreenConnectionMode.UNIX -> OutlinedTextField(path, { path = it; error = null },
+                                label = { Text(stringResource(R.string.workspace_screen_socket_path)) },
+                                supportingText = { Text(stringResource(R.string.workspace_screen_path_hint)) },
+                                isError = path.isNotEmpty() && !validPath,
+                                singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                            ScreenConnectionMode.TCP -> OutlinedTextField(port, { port = it; error = null },
+                                label = { Text(stringResource(R.string.workspace_screen_port)) },
+                                supportingText = { Text(stringResource(R.string.workspace_screen_port_hint)) },
+                                isError = validPort == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                            ScreenConnectionMode.AUTOMATIC -> Text(stringResource(R.string.workspace_screen_automatic_help),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    if (auth != RemoteScreenAuth.NONE) {
-                        OutlinedTextField(password, { password = it; error = null },
-                            label = { Text(stringResource(R.string.workspace_screen_password)) },
-                            placeholder = if (hasPassword) ({ Text(stringResource(R.string.workspace_screen_password_saved)) }) else null,
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                    SettingsCard {
+                        Text(stringResource(R.string.workspace_screen_auth), style = MaterialTheme.typography.titleSmall)
+                        Column(Modifier.selectableGroup()) {
+                            RemoteScreenAuth.entries.forEach { option ->
+                                ScreenSettingOption(auth == option, when (option) {
+                                    RemoteScreenAuth.NONE -> R.string.workspace_screen_auth_none
+                                    RemoteScreenAuth.VNC_PASSWORD -> R.string.workspace_screen_auth_vnc
+                                    RemoteScreenAuth.MACOS_ACCOUNT -> R.string.workspace_screen_auth_macos
+                                }, !busy) { auth = option; password = ""; error = null }
+                            }
+                        }
+                        if (auth == RemoteScreenAuth.MACOS_ACCOUNT) {
+                            OutlinedTextField(username, { username = it; error = null },
+                                label = { Text(stringResource(R.string.workspace_screen_username)) },
+                                placeholder = { Text(host.username) },
+                                supportingText = { Text(stringResource(R.string.workspace_screen_username_hint)) },
+                                singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                        }
+                        if (auth != RemoteScreenAuth.NONE) {
+                            OutlinedTextField(password, { password = it; error = null },
+                                label = { Text(stringResource(R.string.workspace_screen_password)) },
+                                placeholder = if (hasPassword) ({ Text(stringResource(R.string.workspace_screen_password_saved)) }) else null,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                        }
+                        Text(stringResource(R.string.workspace_screen_setup_help), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(stringResource(R.string.workspace_screen_setup_help), style = MaterialTheme.typography.bodySmall)
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (!loaded && !busy) TextButton(onClick = ::load) { Text(stringResource(R.string.workspace_screen_retry)) }
-                RemoteScreenEnvironmentPanel(host, environment, vm, blocked = configBusy)
+                SettingsCard { RemoteScreenEnvironmentPanel(host, environment, vm, blocked = configBusy) }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = valid && !busy, onClick = {
-                configBusy = true
-                error = null
-                val endpoint = when (mode) {
-                    ScreenConnectionMode.AUTOMATIC -> RemoteScreenEndpoint.Helper
-                    ScreenConnectionMode.TCP -> RemoteScreenEndpoint.Tcp(requireNotNull(validPort))
-                    ScreenConnectionMode.UNIX -> RemoteScreenEndpoint.Unix(path)
-                }
-                vm.updateScreenConfig(host.id, enabled, endpoint, auth, username, password.takeIf { it.isNotEmpty() }) { result ->
-                    if (!active) return@updateScreenConfig
-                    configBusy = false
-                    result.fold(onSuccess = { saved ->
-                        if (saved) { onSaved(); onDismiss() }
-                        else error = resources.getString(R.string.workspace_screen_host_missing)
-                    }, onFailure = { error = it.localizedMessage ?: resources.getString(R.string.workspace_screen_save_failed) })
-                }
-            }) { Text(stringResource(R.string.common_save)) }
-        },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
-    )
+        }
+    }
+}
+
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    }
 }
 
 @Composable
