@@ -21,10 +21,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
@@ -129,7 +127,6 @@ import me.rerere.workspace.WorkspaceShellStatus
 import java.io.File
 import java.time.Instant
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 import okhttp3.OkHttpClient
 
@@ -348,8 +345,7 @@ class ChatService(
     )
 
     // 统一会话管理
-    private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
-    private val _sessionsVersion = MutableStateFlow(0L)
+    private val sessions = ConversationSessions()
 
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
@@ -390,7 +386,7 @@ class ChatService(
     // ---- Session 管理 ----
 
     private fun getOrCreateSession(conversationId: Uuid): ConversationSession {
-        return sessions.computeIfAbsent(conversationId) { id ->
+        return sessions.getOrCreate(conversationId) { id ->
             val settings = settingsStore.settingsFlow.value
             ConversationSession(
                 id = id,
@@ -404,7 +400,6 @@ class ChatService(
                     session.takeNextQueuedMessage()?.let { sendMessageNow(session, it) }
                 },
             ).also {
-                _sessionsVersion.value++
                 Log.i(TAG, "createSession: $id (total: ${sessions.size + 1})")
             }
         }
@@ -418,7 +413,6 @@ class ChatService(
         }
         if (sessions.remove(conversationId, session)) {
             session.cleanup()
-            _sessionsVersion.value++
             Log.i(TAG, "removeSession: $conversationId (remaining: ${sessions.size})")
         }
     }
@@ -464,20 +458,7 @@ class ChatService(
         return getOrCreateSession(conversationId).messageQueue
     }
 
-    fun getConversationJobs(): Flow<Map<Uuid, Job?>> {
-        return _sessionsVersion.flatMapLatest {
-            val currentSessions = sessions.values.toList()
-            if (currentSessions.isEmpty()) {
-                flowOf(emptyMap())
-            } else {
-                combine(currentSessions.map { s ->
-                    s.generationJob.map { job -> s.id to job }
-                }) { pairs ->
-                    pairs.filter { it.second != null }.toMap()
-                }
-            }
-        }
-    }
+    fun getConversationJobs(): Flow<Map<Uuid, Job?>> = sessions.jobs()
 
     private fun launchGenerationJob(
         conversationId: Uuid,
@@ -1533,7 +1514,7 @@ class ChatService(
      * 先改内存可确保这段窗口内的整对象保存也带上新 folderId。
      */
     suspend fun moveConversationToFolder(conversationId: Uuid, folderId: Uuid?) {
-        if (sessions.containsKey(conversationId)) {
+        if (conversationId in sessions) {
             updateConversationState(conversationId) { it.copy(folderId = folderId) }
         }
         conversationRepo.updateConversationFolderId(conversationId, folderId)
@@ -1809,7 +1790,7 @@ class ChatService(
         val jobs = session.stopGeneration()
         session.cleanup()
         jobs.joinAll()
-        if (sessions.remove(conversationId, session)) _sessionsVersion.value++
+        sessions.remove(conversationId, session)
     }
 }
 
