@@ -57,6 +57,10 @@ data class Assistant(
     val workspacePermissionRevision: String = "legacy",
     /** The exact target for which persistent Shell confirmation was disabled. */
     val workspaceShellApprovalTarget: WorkspaceToolTargetSnapshot? = null,
+    /** Whether the partner may see and operate the remote workspace's desktop (cua-driver). */
+    val computerUseEnabled: Boolean = false,
+    /** Desktop-changing computer actions ask first; foreground takeovers always ask. */
+    val computerUseApprovalRequired: Boolean = true,
     val background: String? = null, // 聊天页背景图地址(本地文件 URI 或网络 URL), 为 null 时无背景
     val backgroundOpacity: Float = 1.0f, // 背景图不透明度(0~1)
     val useGradientBackground: Boolean = false, // 开启后聊天页使用动态渐变背景

@@ -129,6 +129,10 @@ val repositoryModule = module {
 
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets) }
 
+    single { me.ayuilos.miffan.data.ai.computer.RemoteComputerControl() }
+
+    single { me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry(get(), get<AppScope>()) }
+
     single {
         FilesManager(get(), get(), get())
     }

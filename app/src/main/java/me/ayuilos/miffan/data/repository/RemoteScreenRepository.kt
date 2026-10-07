@@ -273,6 +273,20 @@ class RemoteScreenRepository(
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_WORKSPACE)
     }
 
+    /**
+     * Starts `cua-driver mcp` inside the remote graphical session (through the helper, which
+     * supplies the session environment) and returns its stdio as a leased stream. The caller
+     * speaks MCP over it and closes it when done.
+     */
+    suspend fun openCuaProcess(workspaceId: String): LeasedRemote<me.rerere.workspace.RemoteChannelStream> =
+        workspaces.openLeasedRemote(workspaceId) { ssh ->
+            ensureHelper(ssh)
+            ssh.openProcess("$HELPER cua")
+        }
+
+    /** The host behind a remote workspace, for control arbitration keyed by machine. */
+    suspend fun hostIdOf(workspaceId: String): String? = workspaceDao.getById(workspaceId)?.remoteHostId
+
     /** Installs or refreshes the helper and describes the machine behind [workspaceId]. */
     suspend fun probe(workspaceId: String): RemoteMachineProbe = withRemote(workspaceId) { ssh ->
         ensureHelper(ssh)

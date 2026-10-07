@@ -95,7 +95,7 @@ val viewModelModule = module {
         )
     }
     viewModel<RemoteScreenVM> {
-        RemoteScreenVM(args = it.get(), repository = get(), context = get())
+        RemoteScreenVM(args = it.get(), repository = get(), control = get(), context = get())
     }
     viewModelOf(::FavoriteVM)
     viewModelOf(::SearchVM)

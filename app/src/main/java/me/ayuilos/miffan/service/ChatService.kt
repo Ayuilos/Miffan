@@ -60,6 +60,10 @@ import me.ayuilos.miffan.data.ai.GenerationChunk
 import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
+import org.koin.java.KoinJavaComponent.getKoin
+import me.ayuilos.miffan.data.ai.tools.createComputerTools
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
@@ -1032,6 +1036,7 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
+                    addAll(createComputerToolsIfReady(assistant, conversation.id.toString()))
                     if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(
@@ -1154,6 +1159,38 @@ class ChatService(
             workspaceId = workspaceId,
             scopeId = assistant.workspaceScopeId?.toString(),
         )
+    }
+
+    /**
+     * Desktop tools for a remote workspace whose assistant allows computer use. Connecting to the
+     * remote cua-driver is bounded so an unreachable machine never stalls the generation.
+     */
+    private suspend fun createComputerToolsIfReady(assistant: Assistant, conversationId: String): List<Tool> {
+        if (!assistant.computerUseEnabled) return emptyList()
+        val workspaceId = assistant.workspaceId?.toString() ?: return emptyList()
+        val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
+        if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return emptyList()
+        val snapshot = workspaceRepository.currentWorkspaceToolTarget(
+            assistant.id.toString(), workspaceId, assistant.workspaceScopeId?.toString(),
+        )?.copy(conversationId = conversationId) ?: return emptyList()
+        return try {
+            withTimeout(20_000) {
+                createComputerTools(
+                    snapshot = snapshot,
+                    approvalRequired = assistant.computerUseApprovalRequired,
+                    registry = getKoin().get(),
+                    control = getKoin().get(),
+                    filesManager = getKoin().get(),
+                )
+            }
+        } catch (error: CancellationException) {
+            if (error is TimeoutCancellationException) emptyList<Tool>().also {
+                Log.w(TAG, "createComputerToolsIfReady: cua-driver did not answer in time")
+            } else throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "createComputerToolsIfReady: computer tools unavailable", error)
+            emptyList()
+        }
     }
 
     private suspend fun createWorkspaceToolsIfReady(

@@ -16,6 +16,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
+import me.ayuilos.miffan.data.ai.computer.RemoteController
 import me.ayuilos.miffan.data.repository.RemoteScreenConnection
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
@@ -81,6 +86,7 @@ sealed interface RemoteCursor {
 class RemoteScreenVM(
     private val args: RemoteScreenArgs,
     private val repository: RemoteScreenRepository,
+    private val control: RemoteComputerControl,
     context: Context,
 ) : ViewModel() {
     private val appContext = context.applicationContext
@@ -110,6 +116,24 @@ class RemoteScreenVM(
     private val _maxFps = MutableStateFlow(if (metered) 10 else 20)
     /** Frame-rate cap; kept across reconnects and applied to every new session. */
     val maxFps: StateFlow<Int> = _maxFps.asStateFlow()
+
+    private val _hostId = MutableStateFlow<String?>(null)
+
+    /**
+     * Who drives this machine's desktop. Any input from this page makes the user the controller,
+     * which stops the partner's computer actions until [handBackToPartner] or the page closes.
+     */
+    val controller: StateFlow<RemoteController> = combine(_hostId, control.states) { hostId, states ->
+        hostId?.let { states[it] } ?: RemoteController.IDLE
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, RemoteController.IDLE)
+
+    fun handBackToPartner() {
+        _hostId.value?.let(control::userHandsBack)
+    }
+
+    private fun userInput() {
+        _hostId.value?.let { if (control.controller(it) != RemoteController.USER) control.userTakesOver(it) }
+    }
 
     private val _platform = MutableStateFlow(RemoteScreenPlatform.UNKNOWN)
     /** Detected remote platform, for key labels such as ⌘ versus Super. */
@@ -180,11 +204,13 @@ class RemoteScreenVM(
     }
 
     fun movePointer(x: Float, y: Float) {
+        userInput()
         updatePointer(x, y)
         send()
     }
 
     fun press(button: RemoteMouseButton, down: Boolean) {
+        userInput()
         buttons = if (down) buttons or button.mask else buttons and button.mask.inv()
         send()
     }
@@ -202,6 +228,7 @@ class RemoteScreenVM(
 
     /** Positive [steps] scrolls content down (wheel towards the user). */
     fun scroll(steps: Int, horizontal: Boolean = false) {
+        userInput()
         val mask = when {
             horizontal && steps > 0 -> 64
             horizontal -> 32
@@ -215,6 +242,7 @@ class RemoteScreenVM(
     }
 
     fun key(keysym: Int, modifiers: Set<RemoteModifier> = emptySet()) {
+        userInput()
         keyboard.trySend { sendKey(keysym, modifiers) }
     }
 
@@ -223,6 +251,7 @@ class RemoteScreenVM(
      * the remote clipboard over SSH and pasted with the platform shortcut.
      */
     fun typeText(text: String) {
+        userInput()
         keyboard.trySend {
             val current = connection ?: return@trySend
             if (current.session.typeText(text)) return@trySend
@@ -259,6 +288,7 @@ class RemoteScreenVM(
                     ),
                 )
                 connection = opened
+                _hostId.value = opened.hostId
                 _platform.value = opened.platform
                 opened.session.setPaused(!visible)
                 opened.session.start(viewModelScope)
@@ -320,6 +350,8 @@ class RemoteScreenVM(
         appContext.getSystemService(ConnectivityManager::class.java)
 
     override fun onCleared() {
+        // Leaving the screen hands the desktop back to the partner.
+        handBackToPartner()
         keyboard.close()
         close()
     }
