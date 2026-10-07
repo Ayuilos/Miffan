@@ -17,6 +17,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,15 +30,31 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
+import kotlinx.coroutines.delay
 import me.ayuilos.miffan.data.ai.computer.RemoteController
 
+private const val PARTNER_LINGER_MILLIS = 3_000L
+
 @Composable
-internal fun RemoteScreenControllerBanner(controller: RemoteController, onHandBack: () -> Unit) {
+internal fun RemoteScreenControllerBanner(
+    controller: RemoteController,
+    onHandBack: () -> Unit,
+    /** The partner's turn is still running on this computer, between its individual actions. */
+    partnerBusy: Boolean = false,
+) {
+    // The controller is PARTNER only while one action runs (often a few milliseconds), so the
+    // banner follows the partner's whole turn when known and lingers after its last action.
+    val raw = if (controller == RemoteController.IDLE && partnerBusy) RemoteController.PARTNER else controller
+    var shown by remember { mutableStateOf(raw) }
+    LaunchedEffect(raw) {
+        if (raw == RemoteController.IDLE && shown == RemoteController.PARTNER) delay(PARTNER_LINGER_MILLIS)
+        shown = raw
+    }
     // Keep the last visible message during the exit transition.
-    var visibleController by remember { mutableStateOf(controller) }
-    if (controller != RemoteController.IDLE && visibleController != controller) visibleController = controller
+    var visibleController by remember { mutableStateOf(shown) }
+    if (shown != RemoteController.IDLE && visibleController != shown) visibleController = shown
     AnimatedVisibility(
-        visible = controller != RemoteController.IDLE,
+        visible = shown != RemoteController.IDLE,
         enter = expandVertically(tween(150)) + fadeIn(tween(150)),
         exit = shrinkVertically(tween(150)) + fadeOut(tween(150)),
     ) {
@@ -59,7 +76,7 @@ internal fun RemoteScreenControllerBanner(controller: RemoteController, onHandBa
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (visibleController == RemoteController.USER) {
-                    TextButton(onClick = onHandBack, enabled = controller == RemoteController.USER) {
+                    TextButton(onClick = onHandBack, enabled = shown == RemoteController.USER) {
                         Text(stringResource(R.string.workspace_screen_hand_back))
                     }
                 }

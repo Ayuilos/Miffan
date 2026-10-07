@@ -156,7 +156,9 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding).imePadding()) {
           val conversationHeight = (maxHeight * .35f).coerceAtMost(220.dp)
           Column(Modifier.fillMaxSize()) {
-            RemoteScreenControllerBanner(controller, vm::handBackToPartner)
+            val partnerBusy = latest?.streaming == true && latest.message.parts.let(::latestComputerAction)
+                ?.let { it.approvalState !is ToolApprovalState.Pending } == true
+            RemoteScreenControllerBanner(controller, vm::handBackToPartner, partnerBusy)
             RemoteScreenViewport(vm, trackpad, Modifier.weight(1f).fillMaxWidth()) { failed ->
                 RemoteScreenFailureContent(failed, true, vm::reconnect,
                     onSettings = { vm.handBackToPartner(); nav.navigate(Screen.ComputerSetup(assistantId.toString())) },
