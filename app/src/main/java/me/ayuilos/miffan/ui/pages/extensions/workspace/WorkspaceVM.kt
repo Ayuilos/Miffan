@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
+import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
@@ -19,6 +20,7 @@ import me.rerere.workspace.RootfsInstallProgress
 
 class WorkspaceVM(
     private val repository: WorkspaceRepository,
+    private val screenRepository: RemoteScreenRepository,
 ) : ViewModel() {
     val workspaces = repository.listFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -142,7 +144,7 @@ class WorkspaceVM(
     }
 
     fun deleteHost(id: String, onResult: (Result<Boolean>) -> Unit) {
-        runOperation({ repository.deleteHost(id) }, onResult)
+        runOperation({ repository.deleteHost(id).also { deleted -> if (deleted) screenRepository.forgetHost(id) } }, onResult)
     }
 
     fun rename(workspace: WorkspaceEntity, name: String) {

@@ -1,5 +1,6 @@
 package me.rerere.workspace
 
+import com.jcraft.jsch.ChannelDirectStreamLocal
 import com.jcraft.jsch.ChannelDirectTCPIP
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.Channel
@@ -326,6 +327,27 @@ class RemoteWorkspaceSession internal constructor(
             channel.setPort(port)
             channel.setOrgIPAddress("127.0.0.1")
             channel.setOrgPort(0)
+            val input = channel.inputStream
+            val output = channel.outputStream
+            channel.connect(channelTimeoutMillis)
+            return RemoteChannelStream(this, channel, input, output, null)
+        } catch (error: Throwable) {
+            runCatching { channel.disconnect() }
+            throw error
+        }
+    }
+
+    /**
+     * Opens an OpenSSH direct-streamlocal stream to the Unix socket at [path]. Socket file
+     * permissions on the remote host decide who may connect, so a per-user runtime directory
+     * keeps other accounts on that machine out.
+     */
+    fun openUnixSocketStream(path: String): RemoteChannelStream {
+        require(path.startsWith("/") && path.none { it == '\u0000' || it == '\n' }) { "Invalid socket path" }
+        checkOpen()
+        val channel = session.openChannel("direct-streamlocal@openssh.com") as ChannelDirectStreamLocal
+        try {
+            channel.setSocketPath(path)
             val input = channel.inputStream
             val output = channel.outputStream
             channel.connect(channelTimeoutMillis)

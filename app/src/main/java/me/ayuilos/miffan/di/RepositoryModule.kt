@@ -24,6 +24,8 @@ import me.ayuilos.miffan.data.revision.RevisionStore
 import me.ayuilos.miffan.data.revision.RoomRevisionStore
 import me.ayuilos.miffan.data.repository.WorkspaceNetworkBroker
 import me.ayuilos.miffan.data.repository.RemoteHostCredentialStore
+import me.ayuilos.miffan.data.repository.RemoteScreenCredentialStore
+import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.SshKeyCredentialStore
 import me.rerere.workspace.AndroidPageSize
 import me.rerere.workspace.ProotShellRunner
@@ -117,11 +119,15 @@ val repositoryModule = module {
 
     single { SshKeyCredentialStore(get()) }
 
+    single { RemoteScreenCredentialStore(get()) }
+
     single { NativeSshWorkspaceTransport }
 
     single {
         WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources)
     }
+
+    single { RemoteScreenRepository(get(), get(), get(), get()) }
 
     single {
         FilesManager(get(), get(), get())

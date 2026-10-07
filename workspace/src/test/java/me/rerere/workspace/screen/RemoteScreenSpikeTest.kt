@@ -76,7 +76,7 @@ class RemoteScreenSpikeTest {
                 while ((System.nanoTime() - start) / 1_000_000 < window) {
                     client.requestUpdate(incremental = true)
                     var e = client.readMessage()
-                    while (e !is RfbEvent.FramebufferUpdated && e !is RfbEvent.Resized) e = client.readMessage()
+                    while (e !is RfbEvent.FramebufferUpdated) e = client.readMessage()
                     updates++
                 }
                 val kib = (client.bytesRead - before) / 1024
@@ -112,8 +112,8 @@ class RemoteScreenSpikeTest {
             while ((System.nanoTime() - start) / 1_000_000 < 5_000) {
                 client.requestUpdate(incremental = true)
                 var e = client.readMessage()
-                while (e !is RfbEvent.FramebufferUpdated && e !is RfbEvent.Resized) e = client.readMessage()
-                if (e is RfbEvent.FramebufferUpdated) seen += e.encodings
+                while (e !is RfbEvent.FramebufferUpdated) e = client.readMessage()
+                seen += (e as RfbEvent.FramebufferUpdated).encodings
                 updates++
             }
             println("incremental: $updates updates in 5s, ${(client.bytesRead - before) / 1024} KiB, encodings=$seen")

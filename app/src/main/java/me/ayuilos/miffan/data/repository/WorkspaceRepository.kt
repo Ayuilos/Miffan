@@ -57,6 +57,20 @@ import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+/** A resource opened on a leased remote connection; closing it releases the lease once. */
+class LeasedRemote<T : Closeable> internal constructor(
+    val value: T,
+    private val release: () -> Unit,
+) : Closeable {
+    private val closed = AtomicBoolean(false)
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) {
+            try { value.close() } finally { release() }
+        }
+    }
+}
+
 class WorkspaceRepository(
     private val dao: WorkspaceDAO,
     private val manager: WorkspaceManager,
@@ -77,6 +91,7 @@ class WorkspaceRepository(
     )
     private val terminalLock = Any()
     private val activeTerminals = mutableMapOf<String, MutableSet<RemoteTerminalConnection>>()
+    private val activeLeased = mutableMapOf<String, MutableSet<LeasedRemote<*>>>()
     private val conversationShells = RemoteConversationShells(
         open = { target -> openRemoteTerminal(
             id = target.workspaceId, expectedHostId = target.remoteHostId,
@@ -193,6 +208,8 @@ class WorkspaceRepository(
     private fun closeRemoteTerminals(id: String) {
         val terminals = synchronized(terminalLock) { activeTerminals[id]?.toList().orEmpty() }
         terminals.forEach { runCatching { it.close() } }
+        val leased = synchronized(terminalLock) { activeLeased[id]?.toList().orEmpty() }
+        leased.forEach { runCatching { it.close() } }
     }
 
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
@@ -928,6 +945,80 @@ class WorkspaceRepository(
             if (!handedOff) {
                 withContext(NonCancellable + Dispatchers.IO) {
                     runCatching { terminal?.close() }
+                    runCatching { lease?.close() }
+                }
+                if (!classified) remoteRuntime.abandoned(hostId, id, revision)
+            }
+        }
+    }
+
+    /**
+     * Opens a long-lived resource (a screen stream, an MCP process) on the workspace's verified
+     * SSH connection. The returned handle keeps the connection leased until closed and is closed
+     * for the caller on disconnect or when the host's connection identity changes.
+     */
+    suspend fun <T : Closeable> openLeasedRemote(
+        id: String,
+        open: (RemoteWorkspaceSession) -> T,
+    ): LeasedRemote<T> {
+        val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_not_found))
+        require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
+        val hostId = requireNotNull(workspace.remoteHostId)
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
+        val revision = host.connectionRevision
+        remoteRuntime.begin(hostId, id, revision)
+        var lease: RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>.Lease? = null
+        var resource: T? = null
+        var handedOff = false
+        var classified = false
+        try {
+            val config = try {
+                host.config(requireNotNull(workspace.remotePath))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val state = if (host.trustedHostKeySha256 == null) RemoteConfigurationState.HOST_KEY_UNTRUSTED
+                    else RemoteConfigurationState.CREDENTIAL_MISSING
+                remoteRuntime.configurationFailed(hostId, id, state, state.shortReason(), revision)
+                classified = true
+                throw error
+            }
+            val opened = openLeasedConnection(remoteIdentity(workspace, host), config, verifyPath = false)
+                .also { lease = it }.session
+            if (opened.resolvedRoot != workspace.remotePath ||
+                hostDao.getById(hostId)?.connectionRevision != revision
+            ) throw WorkspaceToolTargetChangedException()
+            val value = runRemoteOperation(opened) { open(opened).also { resource = it } }
+            currentCoroutineContext().ensureActive()
+            if (hostDao.getById(hostId)?.connectionRevision != revision) throw WorkspaceToolTargetChangedException()
+            remoteRuntime.connected(hostId, id, revision)
+            lateinit var handle: LeasedRemote<T>
+            handle = LeasedRemote(value) {
+                synchronized(terminalLock) {
+                    activeLeased[id]?.remove(handle)
+                    if (activeLeased[id].isNullOrEmpty()) activeLeased.remove(id)
+                }
+                try { lease?.close() } finally { remoteRuntime.completed(hostId, id, revision) }
+            }
+            synchronized(terminalLock) { activeLeased.getOrPut(id, ::mutableSetOf) += handle }
+            handedOff = true
+            return handle
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: WorkspaceToolTargetChangedException) {
+            remoteConnections.invalidate(id)
+            throw error
+        } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
+            if (!classified) {
+                remoteRuntime.connectionFailed(hostId, id, shortConnectionReason(error), revision)
+                classified = true
+            }
+            throw error
+        } finally {
+            if (!handedOff) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    runCatching { resource?.close() }
                     runCatching { lease?.close() }
                 }
                 if (!classified) remoteRuntime.abandoned(hostId, id, revision)

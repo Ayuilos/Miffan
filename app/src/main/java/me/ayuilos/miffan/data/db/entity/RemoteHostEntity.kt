@@ -23,4 +23,38 @@ data class RemoteHostEntity(
     @ColumnInfo("trusted_host_key_sha256") val trustedHostKeySha256: String?,
     @ColumnInfo("created_at") val createdAt: Long,
     @ColumnInfo("updated_at") val updatedAt: Long,
+    @ColumnInfo("screen_enabled", defaultValue = "0") val screenEnabled: Boolean = false,
+    /** `tcp:<port>` on the remote loopback, or `unix:<absolute path>` (see [RemoteScreenEndpoint]). */
+    @ColumnInfo("screen_endpoint", defaultValue = "'tcp:5900'") val screenEndpoint: String = "tcp:5900",
+    /** One of [RemoteScreenAuth] names, lower case. */
+    @ColumnInfo("screen_auth", defaultValue = "'none'") val screenAuth: String = "none",
+    /** Account for macOS screen sharing; blank means the SSH username. */
+    @ColumnInfo("screen_username", defaultValue = "''") val screenUsername: String = "",
+    /** `macos`, `linux`, or blank until detected over SSH. */
+    @ColumnInfo("screen_platform", defaultValue = "''") val screenPlatform: String = "",
 )
+
+enum class RemoteScreenAuth { NONE, VNC_PASSWORD, MACOS_ACCOUNT;
+    val storageName: String get() = name.lowercase()
+    companion object {
+        fun parse(value: String): RemoteScreenAuth = entries.firstOrNull { it.storageName == value } ?: NONE
+    }
+}
+
+sealed interface RemoteScreenEndpoint {
+    data class Tcp(val port: Int) : RemoteScreenEndpoint
+    data class Unix(val path: String) : RemoteScreenEndpoint
+
+    val storageValue: String get() = when (this) {
+        is Tcp -> "tcp:$port"
+        is Unix -> "unix:$path"
+    }
+
+    companion object {
+        fun parse(value: String): RemoteScreenEndpoint? = when {
+            value.startsWith("tcp:") -> value.removePrefix("tcp:").toIntOrNull()?.takeIf { it in 1..65535 }?.let(::Tcp)
+            value.startsWith("unix:/") -> Unix(value.removePrefix("unix:"))
+            else -> null
+        }
+    }
+}

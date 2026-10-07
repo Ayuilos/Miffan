@@ -20,6 +20,7 @@ import me.ayuilos.miffan.ui.pages.imggen.ImgGenVM
 import me.ayuilos.miffan.ui.pages.extensions.PromptVM
 import me.ayuilos.miffan.ui.pages.extensions.QuickMessagesVM
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceDetailVM
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenVM
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 import me.ayuilos.miffan.ui.pages.setting.SettingVM
 import me.ayuilos.miffan.ui.pages.share.handler.ShareHandlerVM
@@ -92,6 +93,9 @@ val viewModelModule = module {
             skillManager = get(),
             workspaceStrings = get<android.content.Context>().resources,
         )
+    }
+    viewModel<RemoteScreenVM> {
+        RemoteScreenVM(args = it.get(), repository = get(), context = get())
     }
     viewModelOf(::FavoriteVM)
     viewModelOf(::SearchVM)

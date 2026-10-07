@@ -24,9 +24,15 @@ data class RfbServerInfo(
     val name: String,
 )
 
+/** A framebuffer region in full-resolution server pixels. */
+data class RfbRect(val x: Int, val y: Int, val width: Int, val height: Int)
+
 sealed interface RfbEvent {
-    data class FramebufferUpdated(val rectangles: Int, val encodings: Set<Int>) : RfbEvent
-    data class Resized(val width: Int, val height: Int) : RfbEvent
+    /**
+     * One update has been applied. [resized] means the framebuffer was reallocated and every
+     * pixel must be treated as changed; [rects] then still lists only the regions sent.
+     */
+    data class FramebufferUpdated(val rects: List<RfbRect>, val encodings: Set<Int>, val resized: Boolean) : RfbEvent
     data object Bell : RfbEvent
     data class CutText(val text: String) : RfbEvent
 }
@@ -152,6 +158,16 @@ class RfbClient(
         output.flush()
     }
 
+    /** Standard RFB clipboard is ISO-8859-1; characters outside it cannot be sent this way. */
+    fun clientCutText(text: String) = synchronized(output) {
+        val bytes = text.toByteArray(StandardCharsets.ISO_8859_1)
+        output.writeByte(6)
+        output.write(ByteArray(3))
+        output.writeInt(bytes.size)
+        output.write(bytes)
+        output.flush()
+    }
+
     /** Blocks until one server message has been applied to [framebuffer]. */
     fun readMessage(): RfbEvent {
         return when (val type = input.readUnsignedByte()) {
@@ -176,7 +192,8 @@ class RfbClient(
         input.skipBytes(1)
         val count = input.readUnsignedShort()
         val encodings = mutableSetOf<Int>()
-        var resized: RfbEvent.Resized? = null
+        val rects = ArrayList<RfbRect>(count)
+        var resized = false
         repeat(count) {
             val x = input.readUnsignedShort()
             val y = input.readUnsignedShort()
@@ -184,6 +201,7 @@ class RfbClient(
             val h = input.readUnsignedShort()
             val encoding = input.readInt()
             encodings += encoding
+            if (encoding != ENCODING_DESKTOP_SIZE) rects += RfbRect(x, y, w, h)
             when (encoding) {
                 ENCODING_RAW -> readRaw(x, y, w, h)
                 ENCODING_COPY_RECT -> copyRect(input.readUnsignedShort(), input.readUnsignedShort(), x, y, w, h)
@@ -191,12 +209,12 @@ class RfbClient(
                 ENCODING_TIGHT -> tight.decode(input, framebuffer, x, y, w, h)
                 ENCODING_DESKTOP_SIZE -> {
                     framebuffer.resize(w, h)
-                    resized = RfbEvent.Resized(w, h)
+                    resized = true
                 }
                 else -> throw IOException("Server sent unrequested encoding $encoding")
             }
         }
-        return resized ?: RfbEvent.FramebufferUpdated(count, encodings)
+        return RfbEvent.FramebufferUpdated(rects, encodings, resized)
     }
 
     private fun readRaw(x: Int, y: Int, w: Int, h: Int) {
