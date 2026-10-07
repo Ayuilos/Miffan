@@ -119,7 +119,8 @@ class RemoteComputerRegistry(
     }
 
     /**
-     * The remote cua-driver daemon's macOS grants. Null when the driver has no such check (Linux).
+     * The remote cua-driver daemon's macOS grants; call it only for a Mac (Linux drivers answer
+     * with fields that do not apply). Null when the driver has no such check.
      * [prompt] raises the system dialogs on the remote Mac for missing grants; the user answers
      * them on that screen.
      */

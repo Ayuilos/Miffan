@@ -238,7 +238,8 @@ class ComputerSetupVM(
      */
     fun checkPartner() = run(ComputerSetupTask.CHECKING) {
         val workspaceId = requireNotNull(_state.value.workspaceId)
-        val permissions = registry.permissions(workspaceId, prompt = false)
+        // Linux drivers also answer check_permissions, with macOS TCC fields that mean nothing there.
+        val permissions = if (_state.value.isMac) registry.permissions(workspaceId, prompt = false) else null
         _state.update { it.copy(permissions = permissions, partnerChecked = false) }
         if (permissions?.complete == false) return@run
         val png = registry.desktopScreenshot(workspaceId) ?: error("cua-driver returned no screenshot")
