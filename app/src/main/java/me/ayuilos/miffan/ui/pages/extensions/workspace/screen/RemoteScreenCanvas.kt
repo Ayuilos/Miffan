@@ -20,6 +20,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInteropFilter
@@ -69,14 +73,29 @@ internal fun RemoteScreenCanvas(
         drawImage(image, dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),
             dstSize = IntSize(max(1, (bitmap.width * scale).roundToInt()), max(1, (bitmap.height * scale).roundToInt())),
             filterQuality = FilterQuality.Medium)
-        if (trackpad) {
-            val point = input.toViewport(input.pointer)
-            drawCircle(Color.Black, radius = 9.dp.toPx(), center = point)
-            drawCircle(Color.White, radius = 6.dp.toPx(), center = point)
-            drawLine(Color.Black, point - Offset(4.dp.toPx(), 0f), point + Offset(4.dp.toPx(), 0f), 1.dp.toPx())
-            drawLine(Color.Black, point - Offset(0f, 4.dp.toPx()), point + Offset(0f, 4.dp.toPx()), 1.dp.toPx())
-        }
+        if (trackpad) drawArrowCursor(input.toViewport(input.pointer))
     }
+}
+
+/**
+ * A desktop arrow pointer whose tip is the click point, at a fixed on-screen size regardless of
+ * zoom: black with a white outline, like the macOS cursor.
+ */
+private fun DrawScope.drawArrowCursor(tip: Offset) {
+    val unit = 1.2.dp.toPx()
+    val arrow = Path().apply {
+        moveTo(tip.x, tip.y)
+        lineTo(tip.x, tip.y + 17 * unit)
+        lineTo(tip.x + 4 * unit, tip.y + 13 * unit)
+        lineTo(tip.x + 7 * unit, tip.y + 20 * unit)
+        lineTo(tip.x + 9.5f * unit, tip.y + 19 * unit)
+        lineTo(tip.x + 6.5f * unit, tip.y + 12 * unit)
+        lineTo(tip.x + 12 * unit, tip.y + 12 * unit)
+        close()
+    }
+    drawPath(arrow, Color.Black.copy(alpha = 0.25f), style = Stroke(width = 4 * unit, join = StrokeJoin.Round))
+    drawPath(arrow, Color.White, style = Stroke(width = 2.5f * unit, join = StrokeJoin.Round))
+    drawPath(arrow, Color.Black)
 }
 
 /** Android's tap timing plus an explicit multi-touch phase; one owner always releases drags. */
