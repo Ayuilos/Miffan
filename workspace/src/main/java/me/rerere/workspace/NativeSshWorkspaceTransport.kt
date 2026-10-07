@@ -1,5 +1,6 @@
 package me.rerere.workspace
 
+import com.jcraft.jsch.ChannelDirectTCPIP
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.Channel
 import com.jcraft.jsch.ChannelSftp
@@ -312,6 +313,46 @@ class RemoteWorkspaceSession internal constructor(
         }
     }
 
+    /**
+     * Opens a direct-tcpip stream to [port] on the remote host's loopback interface. Nothing
+     * listens on the device, so other local apps cannot reach the forwarded service.
+     */
+    fun openLoopbackStream(port: Int): RemoteChannelStream {
+        require(port in 1..65535) { "Invalid port" }
+        checkOpen()
+        val channel = session.openChannel("direct-tcpip") as ChannelDirectTCPIP
+        try {
+            channel.setHost("127.0.0.1")
+            channel.setPort(port)
+            channel.setOrgIPAddress("127.0.0.1")
+            channel.setOrgPort(0)
+            val input = channel.inputStream
+            val output = channel.outputStream
+            channel.connect(channelTimeoutMillis)
+            return RemoteChannelStream(this, channel, input, output, null)
+        } catch (error: Throwable) {
+            runCatching { channel.disconnect() }
+            throw error
+        }
+    }
+
+    /** Starts [command] without a PTY and exposes its stdio as a byte stream (e.g. MCP stdio). */
+    fun openProcess(command: String): RemoteChannelStream {
+        checkOpen()
+        val channel = session.openChannel("exec") as ChannelExec
+        try {
+            channel.setCommand(command)
+            val input = channel.inputStream
+            val output = channel.outputStream
+            val stderr = channel.errStream
+            channel.connect(channelTimeoutMillis)
+            return RemoteChannelStream(this, channel, input, output, stderr)
+        } catch (error: Throwable) {
+            runCatching { channel.disconnect() }
+            throw error
+        }
+    }
+
     fun list(path: String = ""): List<WorkspaceFileEntry> = withSftp { sftp, _ ->
         val directory = paths.absolute(path, allowRoot = true)
         requireDirectoryPath(sftp, directory)
@@ -582,6 +623,30 @@ class RemoteTerminalSession internal constructor(
             output.flush()
         }
     }
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                channel.disconnect()
+            } finally {
+                runCatching { input.close() }
+                runCatching { output.close() }
+            }
+        }
+    }
+}
+
+/** A raw SSH channel byte stream; the caller owns the parent SSH session. */
+class RemoteChannelStream internal constructor(
+    private val owner: RemoteWorkspaceSession,
+    private val channel: Channel,
+    val input: InputStream,
+    val output: OutputStream,
+    val errors: InputStream?,
+) : Closeable {
+    private val closed = AtomicBoolean(false)
+
+    val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
