@@ -169,4 +169,6 @@ cua-driver 的 Skill 应从远端读取，不打包进 APP。0.34 通过 MCP `re
 - P0 已完成（见上文验证结论）。
 - P1 已完成并在模拟器上对 CachyOS（niri Wayland + wayvnc，经 Tailscale）联调：在 APP 内生成密钥、添加并核对主机、开启屏幕设置、打开屏幕页，画面、旋转保持会话、前后台暂停与恢复、点击、长按右键、键盘输入与退格、回车、按键栏 Esc 均验证通过。联调中修复了输入法重复提交字符和首次点击被 GTK 忽略两个问题。
 - 尚未验证：双指缩放与滚动、触控板模式手势（adb 无法模拟多指）、macOS 屏幕共享在 APP 内的 Apple 认证、真机性能与移动网络流量。
-- 代码在 `feature/remote-screen` 分支，基于 `feature/im-4.0`。下一步：P2 远端准备。
+- P2 进行中。已完成并在模拟器上对 CachyOS 联调：远端脚本 `~/.miffan/bin/miffan`（自动安装与按版本更新；探测、在 0600 Unix 套接字上启动 VNC、剪贴板、带会话环境启动 cua-driver）、“自动”连接方式（经 SSH streamlocal 连接脚本启动的 wayvnc）、检测环境面板、cua-driver 安装/升级确认（命令与执行同源，执行前校验主机身份）、按失败原因引导、真实光标形状（Cursor 伪编码，尚未在解锁桌面上确认 wayvnc 是否发送）。
+- P2 待定：GNOME / KDE 的验证环境；在 CachyOS 上实测 cua-driver 升级流程；X11（x11vnc）分支的实机验证。
+- 代码在 `feature/remote-screen` 分支，基于 `feature/im-4.0`。
