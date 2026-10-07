@@ -79,7 +79,7 @@ class RemoteScreenSession(
 
     private val _clipboard = MutableSharedFlow<String>(extraBufferCapacity = 4)
 
-    /** Text the remote side put on its clipboard (ISO-8859-1 only in standard RFB). */
+    /** Text the remote side put on its clipboard (UTF-8 when the server sends it, else ISO-8859-1). */
     val clipboard: SharedFlow<String> = _clipboard.asSharedFlow()
 
     private val paused = MutableStateFlow(false)

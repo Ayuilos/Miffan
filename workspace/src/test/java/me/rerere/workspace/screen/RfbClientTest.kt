@@ -266,4 +266,11 @@ class RfbClientTest {
         assertEquals(RfbKeys.RETURN, RfbKeys.forChar('\n'))
         assertNull(RfbKeys.forChar('中'))
     }
+
+    @Test
+    fun clipboardTextIsReadAsUtf8WhenValidAndLatin1Otherwise() {
+        assertEquals("你好 café", decodeCutText("你好 café".toByteArray(Charsets.UTF_8)))
+        // 0xE9 alone is not UTF-8; standard RFB reads it as é.
+        assertEquals("caf\u00e9", decodeCutText(byteArrayOf(0x63, 0x61, 0x66, 0xE9.toByte())))
+    }
 }

@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import androidx.lifecycle.ViewModel
@@ -295,7 +296,13 @@ class RemoteScreenVM(
                 _platform.value = opened.platform
                 opened.session.setPaused(!visible)
                 opened.session.start(viewModelScope)
-                launch { opened.session.clipboard.collect { _notices.tryEmit(RemoteScreenNotice.RemoteClipboard(it)) } }
+                val openedAt = SystemClock.elapsedRealtime()
+                launch {
+                    // Servers send their current clipboard right after connecting; only later copies are news.
+                    opened.session.clipboard.collect {
+                        if (SystemClock.elapsedRealtime() - openedAt > INITIAL_CLIPBOARD_MILLIS) _notices.tryEmit(RemoteScreenNotice.RemoteClipboard(it))
+                    }
+                }
                 opened.session.state.collect { state ->
                     when (state) {
                         RemoteScreenState.Connecting -> _state.value = RemoteScreenUiState.Connecting
@@ -371,3 +378,5 @@ class RemoteScreenVM(
         }
     }
 }
+
+private const val INITIAL_CLIPBOARD_MILLIS = 3_000L

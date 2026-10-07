@@ -195,8 +195,9 @@ class RfbClient(
             2 -> RfbEvent.Bell
             3 -> {
                 input.skipBytes(3)
-                val bytes = ByteArray(input.readInt()).also(input::readFully)
-                RfbEvent.CutText(String(bytes, StandardCharsets.ISO_8859_1))
+                val length = input.readInt()
+                if (length !in 0..MAX_CUT_TEXT) throw IOException("Clipboard text of $length bytes")
+                RfbEvent.CutText(decodeCutText(ByteArray(length).also(input::readFully)))
             }
             else -> throw IOException("Unknown server message $type")
         }
@@ -345,4 +346,21 @@ private class CountingInputStream(input: InputStream) : FilterInputStream(input)
 
     override fun read(b: ByteArray, off: Int, len: Int): Int =
         super.read(b, off, len).also { if (it > 0) count += it }
+}
+
+private const val MAX_CUT_TEXT = 4 * 1024 * 1024
+
+/**
+ * RFB says clipboard text is ISO-8859-1, but wayvnc, x11vnc and macOS send UTF-8. Bytes that
+ * form valid UTF-8 are read as such; anything else falls back to the standard.
+ */
+internal fun decodeCutText(bytes: ByteArray): String {
+    val decoder = StandardCharsets.UTF_8.newDecoder()
+        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+    return try {
+        decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+    } catch (_: java.nio.charset.CharacterCodingException) {
+        String(bytes, StandardCharsets.ISO_8859_1)
+    }
 }
