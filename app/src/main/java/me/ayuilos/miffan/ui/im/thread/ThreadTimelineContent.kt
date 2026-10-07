@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import me.ayuilos.miffan.ui.components.richtext.workspaceImageContext
+import me.ayuilos.miffan.ui.components.richtext.withWorkspaceImages
+import me.ayuilos.miffan.data.ai.tools.workspaceArtifacts
+import me.ayuilos.miffan.ui.components.message.EditedFilesList
 import android.content.ClipData
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
@@ -122,7 +126,12 @@ internal fun ThreadMessageBubble(
     val status = if (liveComputer) null else threadLiveStatus(parts, item.streaming)
     val computerName = evidence?.let { computerTargetName(it.latest, computer, stringResource(R.string.im_computer_computer)) }
     val computerAvailable = evidence?.let { canOpenComputer(it.latest, computer) } == true
-    val visible = parts.any { part ->
+    // Files the partner published (screenshots, reports) are part of its answer, not process.
+    val imageContext = remember(item.message.id, parts, computer?.workspaceId) {
+        item.message.takeIf { !user }?.workspaceImageContext(null, computer?.workspaceId)
+    }
+    val published = remember(parts) { !user && parts.any { it is UIMessagePart.Tool && it.workspaceArtifacts().isNotEmpty() } }
+    val visible = published || parts.any { part ->
         when (part) {
             is UIMessagePart.Text -> part.text.isNotBlank()
             is UIMessagePart.Image, is UIMessagePart.Document -> true
@@ -154,7 +163,8 @@ internal fun ThreadMessageBubble(
                     }
                     parts.forEach { part ->
                         when (part) {
-                            is UIMessagePart.Text -> if (part.text.isNotBlank()) MarkdownBlock(part.text, style = MaterialTheme.typography.bodyLarge)
+                            is UIMessagePart.Text -> if (part.text.isNotBlank()) MarkdownBlock(part.text.withWorkspaceImages(imageContext),
+                                style = MaterialTheme.typography.bodyLarge)
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
                             is UIMessagePart.Document -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(HugeIcons.File01, null, Modifier.size(18.dp))
@@ -169,6 +179,7 @@ internal fun ThreadMessageBubble(
                             else -> Unit
                         }
                     }
+                    if (published && !item.streaming) EditedFilesList(parts, assistant = null, imageContext = imageContext)
                     if (evidence != null && computerName != null) {
                         if (liveComputer) ThreadComputerLiveCard(evidence, computerName, computerAvailable, onComputerScreen)
                         // A reply paused on an approval is not finished; its summary comes after the user answers.

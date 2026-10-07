@@ -1,5 +1,11 @@
 package me.ayuilos.miffan.ui.components.message
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.clip
+import me.ayuilos.miffan.ui.components.richtext.workspaceImageUri
+import me.ayuilos.miffan.ui.components.richtext.embeddedWorkspaceImagePaths
+import me.ayuilos.miffan.ui.components.richtext.ZoomableAsyncImage
+import me.ayuilos.miffan.ui.components.richtext.WorkspaceImageContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -65,6 +71,7 @@ private const val DEFAULT_VISIBLE_COUNT = 3
 internal fun EditedFilesList(
     parts: List<UIMessagePart>,
     assistant: Assistant?,
+    imageContext: WorkspaceImageContext? = null,
 ) {
     val fallbackWorkspaceId = assistant?.workspaceId?.toString()
     val artifacts = remember(parts, fallbackWorkspaceId) {
@@ -117,6 +124,27 @@ internal fun EditedFilesList(
                     )
                 } ?: error("Unable to open export destination")
             }.onFailure(::reportFailure)
+        }
+    }
+
+    // Published images show themselves; ones the reply already embeds are not repeated.
+    val replyText = remember(parts) { parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text } }
+    val images = remember(artifacts, replyText, imageContext) {
+        val embedded = embeddedWorkspaceImagePaths(replyText, imageContext)
+        if (imageContext == null) emptyList()
+        else artifacts.filter { it.mimeType.startsWith("image/") && it.path !in embedded }
+    }
+    if (imageContext != null && images.isNotEmpty()) FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(bottom = 6.dp),
+    ) {
+        images.forEach { artifact ->
+            ZoomableAsyncImage(
+                model = workspaceImageUri(imageContext.copy(workspaceId = artifact.workspaceId, scopeId = artifact.scopeId), artifact.path),
+                contentDescription = artifact.name,
+                modifier = Modifier.heightIn(max = 220.dp).clip(MaterialTheme.shapes.medium),
+            )
         }
     }
 

@@ -82,6 +82,9 @@ import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.model.replaceRegexes
 import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
+import me.ayuilos.miffan.ui.components.richtext.WorkspaceImageContext
+import me.ayuilos.miffan.ui.components.richtext.withWorkspaceImages
+import me.ayuilos.miffan.ui.components.richtext.workspaceImageContext
 import me.ayuilos.miffan.ui.components.richtext.ZoomableAsyncImage
 import me.ayuilos.miffan.ui.components.richtext.buildMarkdownPreviewHtml
 import me.ayuilos.miffan.ui.components.webview.WebViewContentCache
@@ -165,9 +168,14 @@ fun ChatMessage(
                 )
             }
         }
+        // Workspace images the reply names (screenshots taken over SSH, generated charts) load through the workspace.
+        val imageContext = remember(message.id, message.parts, assistant?.workspaceId) {
+            message.takeIf { it.role == MessageRole.ASSISTANT }?.workspaceImageContext(assistant)
+        }
         ProvideTextStyle(textStyle) {
             MessagePartsBlock(
                 assistant = assistant,
+                imageContext = imageContext,
                 role = message.role,
                 parts = message.parts,
                 annotations = message.annotations,
@@ -219,6 +227,7 @@ fun ChatMessage(
         EditedFilesList(
             parts = message.parts,
             assistant = assistant,
+            imageContext = imageContext,
         )
 
         ProvideTextStyle(textStyle) {
@@ -274,6 +283,7 @@ fun ChatMessage(
 @Composable
 private fun MessagePartsBlock(
     assistant: Assistant?,
+    imageContext: WorkspaceImageContext?,
     role: MessageRole,
     model: Model?,
     parts: List<UIMessagePart>,
@@ -417,7 +427,7 @@ private fun MessagePartsBlock(
                                                     assistant = assistant,
                                                     scope = AssistantAffectScope.ASSISTANT,
                                                     visual = true,
-                                                ),
+                                                ).withWorkspaceImages(imageContext),
                                                 onClickCitation = handleClickCitation,
                                             )
                                         }
@@ -428,7 +438,7 @@ private fun MessagePartsBlock(
                                             assistant = assistant,
                                             scope = AssistantAffectScope.ASSISTANT,
                                             visual = true,
-                                        ),
+                                        ).withWorkspaceImages(imageContext),
                                         onClickCitation = handleClickCitation,
                                         modifier = Modifier
                                             .animateContentSize()

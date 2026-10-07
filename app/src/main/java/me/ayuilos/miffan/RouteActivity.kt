@@ -51,6 +51,9 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
+import java.io.File
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.ui.components.richtext.WorkspaceImageFetcher
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
 import coil3.network.cachecontrol.CacheControlCacheStrategy
@@ -170,6 +173,7 @@ class RouteActivity : ComponentActivity() {
     private var normalLauncherEntry by mutableStateOf(false)
     private val okHttpClient by inject<OkHttpClient>()
     private val settingsStore by inject<SettingsStore>()
+    private val workspaceRepository by inject<WorkspaceRepository>()
     private var navStack: MutableList<NavKey>? = null
 
     // Volume key listener registry — last registered handler wins
@@ -219,6 +223,7 @@ class RouteActivity : ComponentActivity() {
                                 add(GifDecoder.Factory())
                             }
                             add(SvgDecoder.Factory(scaleToDensity = true))
+                            add(WorkspaceImageFetcher.Factory(workspaceRepository, File(context.cacheDir, "workspace-images")))
                         }
                         .build()
                 }
