@@ -75,6 +75,7 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
     val bitmap by vm.bitmap.collectAsStateWithLifecycle()
     // Keep this as State and read its value only in Canvas's drawing scope.
     val frameVersion = vm.frameVersion.collectAsState()
+    val cursor = vm.cursor.collectAsState()
     val bytes by vm.bytesReceived.collectAsStateWithLifecycle()
     var trackpad by rememberSaveable(id) { mutableStateOf(false) }
     var keyboard by rememberSaveable(id) { mutableStateOf(false) }
@@ -181,7 +182,7 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
             Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black)) {
                 if (connected && bitmap != null) {
-                    RemoteScreenCanvas(requireNotNull(bitmap), frameVersion, trackpad, vm,
+                    RemoteScreenCanvas(requireNotNull(bitmap), frameVersion, cursor, trackpad, vm,
                         Modifier.fillMaxSize())
                 }
                 when (val current = state) {

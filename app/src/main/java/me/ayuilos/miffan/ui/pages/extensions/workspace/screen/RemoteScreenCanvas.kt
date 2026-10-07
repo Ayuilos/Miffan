@@ -46,6 +46,7 @@ import kotlin.math.roundToInt
 internal fun RemoteScreenCanvas(
     bitmap: Bitmap,
     frameVersion: State<Long>,
+    cursor: State<RemoteCursor>,
     trackpad: Boolean,
     vm: RemoteScreenVM,
     modifier: Modifier = Modifier,
@@ -73,7 +74,23 @@ internal fun RemoteScreenCanvas(
         drawImage(image, dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),
             dstSize = IntSize(max(1, (bitmap.width * scale).roundToInt()), max(1, (bitmap.height * scale).roundToInt())),
             filterQuality = FilterQuality.Medium)
-        if (trackpad) drawArrowCursor(input.toViewport(input.pointer))
+        if (trackpad) {
+            val tip = input.toViewport(input.pointer)
+            when (val shape = cursor.value) {
+                RemoteCursor.Unknown -> drawArrowCursor(tip)
+                RemoteCursor.Hidden -> Unit
+                is RemoteCursor.Shape -> {
+                    // One cursor pixel per dp on a normal screen, two on Retina.
+                    val unit = 1.dp.toPx() / shape.scale
+                    drawImage(
+                        shape.bitmap.asImageBitmap(),
+                        dstOffset = IntOffset((tip.x - shape.hotspotX * unit).roundToInt(), (tip.y - shape.hotspotY * unit).roundToInt()),
+                        dstSize = IntSize((shape.bitmap.width * unit).roundToInt().coerceAtLeast(1), (shape.bitmap.height * unit).roundToInt().coerceAtLeast(1)),
+                        filterQuality = FilterQuality.Medium,
+                    )
+                }
+            }
+        }
     }
 }
 

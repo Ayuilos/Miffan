@@ -49,6 +49,9 @@ interface RemoteScreenFrameSink {
     fun onPixels(rect: RfbRect, pixels: IntArray)
 
     fun onFrameComplete()
+
+    /** The remote pointer shape changed; null pixels with zero size means hidden. */
+    fun onCursor(cursor: RfbCursor) {}
 }
 
 /**
@@ -160,6 +163,7 @@ class RemoteScreenSession(
                     if (event is RfbEvent.CutText) _clipboard.tryEmit(event.text)
                     event = rfb.readMessage()
                 }
+                event.cursor?.let(sink::onCursor)
                 val fb = rfb.framebuffer
                 val dirty = if (event.resized) {
                     scale = ScreenScaler.scaleFor(fb.width, fb.height)

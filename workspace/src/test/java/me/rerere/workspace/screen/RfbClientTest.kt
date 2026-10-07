@@ -182,6 +182,23 @@ class RfbClientTest {
     }
 
     @Test
+    fun cursorShapeHonoursItsMaskAndHotspot() {
+        val (client, _) = connect(serverInit(4, 1) {
+            update({
+                rectHeader(1, 0, 2, 1, RfbClient.ENCODING_CURSOR) // hotspot (1, 0), 2×1 pixels
+                raw32(red); raw32(blue)
+                writeByte(0b1000_0000) // only the first pixel is visible
+            })
+        })
+        val event = client.readMessage() as RfbEvent.FramebufferUpdated
+        val cursor = requireNotNull(event.cursor)
+        assertTrue(event.rects.isEmpty())
+        assertEquals(1, cursor.hotspotX)
+        assertEquals(0, cursor.hotspotY)
+        assertArrayEquals(intArrayOf(red, 0), cursor.pixels)
+    }
+
+    @Test
     fun clientMessagesUseRfbWireFormat() {
         val (client, sent) = connect(serverInit(10, 10) {})
         val afterHandshake = sent.size()

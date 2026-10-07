@@ -47,10 +47,12 @@ class RemoteScreenSpikeTest {
 
     @Test
     fun vncOverSshTunnel() {
-        assumeTrue(env("HOST") != null && env("VNC_PORT") != null)
+        assumeTrue(env("HOST") != null && (env("VNC_PORT") != null || env("VNC_SOCKET") != null))
         open().use { ssh ->
             val t0 = System.nanoTime()
-            ssh.openLoopbackStream(env("VNC_PORT")!!.toInt()).use { stream ->
+            val opened = env("VNC_SOCKET")?.let(ssh::openUnixSocketStream)
+                ?: ssh.openLoopbackStream(env("VNC_PORT")!!.toInt())
+            opened.use { stream ->
                 val credentials = if (env("VNC_PASSWORD") != null) RfbCredentials(env("VNC_USER"), env("VNC_PASSWORD")) else null
                 val jpeg = if (env("NO_JPEG") == null) RfbJpegDecoder { bytes, length, fb, x, y, w, h ->
                     val image = ImageIO.read(java.io.ByteArrayInputStream(bytes, 0, length))
@@ -68,6 +70,7 @@ class RemoteScreenSpikeTest {
                 while (event !is RfbEvent.FramebufferUpdated) event = client.readMessage()
                 val fullBytes = client.bytesRead
                 println("full frame: ${ms(tFull)} ms, decode ${client.decodeNanos / 1_000_000} ms, ${fullBytes / 1024} KiB, encodings=${event.encodings}")
+                event.cursor?.let { println("cursor ${it.width}x${it.height} hotspot=(${it.hotspotX},${it.hotspotY}) visible=${it.pixels.count { p -> p != 0 }}") }
                 save(client.framebuffer, "vnc-full.png")
 
                 val window = 5_000L
@@ -75,9 +78,11 @@ class RemoteScreenSpikeTest {
                 val before = client.bytesRead
                 var updates = 0
                 while ((System.nanoTime() - start) / 1_000_000 < window) {
+                    if (env("WIGGLE") != null) client.pointer(100 + updates * 7 % 200, 100, 0)
                     client.requestUpdate(incremental = true)
                     var e = client.readMessage()
                     while (e !is RfbEvent.FramebufferUpdated) e = client.readMessage()
+                    e.cursor?.let { println("cursor ${it.width}x${it.height} hotspot=(${it.hotspotX},${it.hotspotY}) visible=${it.pixels.count { p -> p != 0 }}") }
                     updates++
                 }
                 val kib = (client.bytesRead - before) / 1024

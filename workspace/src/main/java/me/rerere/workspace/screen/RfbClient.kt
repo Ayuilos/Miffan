@@ -27,12 +27,24 @@ data class RfbServerInfo(
 /** A framebuffer region in full-resolution server pixels. */
 data class RfbRect(val x: Int, val y: Int, val width: Int, val height: Int)
 
+/**
+ * The remote pointer shape in server pixels: ARGB [pixels] (transparent where the server's mask
+ * is clear) with its hotspot. A zero-size cursor means the server hides the pointer.
+ */
+class RfbCursor(val width: Int, val height: Int, val hotspotX: Int, val hotspotY: Int, val pixels: IntArray)
+
 sealed interface RfbEvent {
     /**
      * One update has been applied. [resized] means the framebuffer was reallocated and every
      * pixel must be treated as changed; [rects] then still lists only the regions sent.
      */
-    data class FramebufferUpdated(val rects: List<RfbRect>, val encodings: Set<Int>, val resized: Boolean) : RfbEvent
+    data class FramebufferUpdated(
+        val rects: List<RfbRect>,
+        val encodings: Set<Int>,
+        val resized: Boolean,
+        /** Set when this update changed the pointer shape. */
+        val cursor: RfbCursor? = null,
+    ) : RfbEvent
     data object Bell : RfbEvent
     data class CutText(val text: String) : RfbEvent
 }
@@ -196,6 +208,7 @@ class RfbClient(
         val encodings = mutableSetOf<Int>()
         val rects = ArrayList<RfbRect>(count)
         var resized = false
+        var cursor: RfbCursor? = null
         repeat(count) {
             val x = input.readUnsignedShort()
             val y = input.readUnsignedShort()
@@ -203,12 +216,13 @@ class RfbClient(
             val h = input.readUnsignedShort()
             val encoding = input.readInt()
             encodings += encoding
-            if (encoding != ENCODING_DESKTOP_SIZE) rects += RfbRect(x, y, w, h)
+            if (encoding != ENCODING_DESKTOP_SIZE && encoding != ENCODING_CURSOR) rects += RfbRect(x, y, w, h)
             when (encoding) {
                 ENCODING_RAW -> readRaw(x, y, w, h)
                 ENCODING_COPY_RECT -> copyRect(input.readUnsignedShort(), input.readUnsignedShort(), x, y, w, h)
                 ENCODING_ZRLE -> zrle.decode(input, framebuffer, x, y, w, h)
                 ENCODING_TIGHT -> tight.decode(input, framebuffer, x, y, w, h)
+                ENCODING_CURSOR -> cursor = readCursor(x, y, w, h)
                 ENCODING_DESKTOP_SIZE -> {
                     framebuffer.resize(w, h)
                     resized = true
@@ -216,7 +230,7 @@ class RfbClient(
                 else -> throw IOException("Server sent unrequested encoding $encoding")
             }
         }
-        return RfbEvent.FramebufferUpdated(rects, encodings, resized)
+        return RfbEvent.FramebufferUpdated(rects, encodings, resized, cursor)
     }
 
     private fun readRaw(x: Int, y: Int, w: Int, h: Int) {
@@ -232,6 +246,20 @@ class RfbClient(
                 i += bpp
             }
         }
+    }
+
+    /** Cursor pseudo-encoding: pixels in the client format, then a 1-bit MSB-first mask. */
+    private fun readCursor(hotX: Int, hotY: Int, w: Int, h: Int): RfbCursor {
+        val bpp = pixelFormat.bytesPerPixel
+        val data = ByteArray(w * h * bpp).also(input::readFully)
+        val rowMask = (w + 7) / 8
+        val mask = ByteArray(rowMask * h).also(input::readFully)
+        val pixels = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            val visible = (mask[y * rowMask + x / 8].toInt() shr (7 - x % 8)) and 1 == 1
+            if (visible) pixels[y * w + x] = pixelFormat.toArgb(pixelFormat.readPixel(data, (y * w + x) * bpp))
+        }
+        return RfbCursor(w, h, hotX, hotY, pixels)
     }
 
     private fun copyRect(sx: Int, sy: Int, x: Int, y: Int, w: Int, h: Int) {
@@ -290,6 +318,7 @@ class RfbClient(
         const val ENCODING_TIGHT = 7
         const val ENCODING_ZRLE = 16
         const val ENCODING_DESKTOP_SIZE = -223
+        const val ENCODING_CURSOR = -239
         private const val ENCODING_COMPRESS_LEVEL_0 = -256
         private const val ENCODING_QUALITY_LEVEL_0 = -32
 
@@ -301,6 +330,7 @@ class RfbClient(
             add(ENCODING_COPY_RECT)
             add(ENCODING_RAW)
             add(ENCODING_DESKTOP_SIZE)
+            add(ENCODING_CURSOR)
             add(ENCODING_COMPRESS_LEVEL_0 + compressLevel)
             if (jpegQuality != null) add(ENCODING_QUALITY_LEVEL_0 + jpegQuality)
         }.toIntArray()

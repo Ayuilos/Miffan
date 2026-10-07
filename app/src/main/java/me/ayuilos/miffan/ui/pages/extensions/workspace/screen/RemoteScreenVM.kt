@@ -24,6 +24,7 @@ import me.rerere.workspace.screen.RemoteScreenFrameSink
 import me.rerere.workspace.screen.RemoteScreenOptions
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RfbJpegDecoder
+import me.rerere.workspace.screen.RfbCursor
 import me.rerere.workspace.screen.RfbKeys
 import me.rerere.workspace.screen.RfbRect
 
@@ -57,6 +58,21 @@ sealed interface RemoteScreenNotice {
 
 data class RemoteScreenArgs(val workspaceId: String)
 
+/** What the page draws as the remote pointer. */
+sealed interface RemoteCursor {
+    /** The server never sent a shape; draw a local arrow. */
+    data object Unknown : RemoteCursor
+
+    /** The server hides its pointer (for example while typing). */
+    data object Hidden : RemoteCursor
+
+    /**
+     * The server's pointer image. Draw [bitmap] with its hotspot at the pointer position, at
+     * `size / scale` dp so Retina (scale 2) cursors keep the same on-screen size.
+     */
+    class Shape(val bitmap: Bitmap, val hotspotX: Int, val hotspotY: Int, val scale: Int) : RemoteCursor
+}
+
 /**
  * Owns one VNC viewer for the page's lifetime: survives rotation, closes when the page leaves the
  * back stack. Frames land in [bitmap] on the session thread; [frameVersion] changes after each
@@ -76,6 +92,10 @@ class RemoteScreenVM(
 
     private val _frameVersion = MutableStateFlow(0L)
     val frameVersion: StateFlow<Long> = _frameVersion.asStateFlow()
+
+    private val _cursor = MutableStateFlow<RemoteCursor>(RemoteCursor.Unknown)
+    /** The remote pointer shape, when the server sends one. */
+    val cursor: StateFlow<RemoteCursor> = _cursor.asStateFlow()
 
     private val _bytesReceived = MutableStateFlow(0L)
     /** Bytes received on the current connection, updated with each frame. */
@@ -119,6 +139,15 @@ class RemoteScreenVM(
 
         override fun onPixels(rect: RfbRect, pixels: IntArray) {
             _bitmap.value?.setPixels(pixels, 0, rect.width, rect.x, rect.y, rect.width, rect.height)
+        }
+
+        override fun onCursor(cursor: RfbCursor) {
+            _cursor.value = if (cursor.width == 0 || cursor.height == 0 || cursor.pixels.none { it != 0 }) {
+                RemoteCursor.Hidden
+            } else RemoteCursor.Shape(
+                Bitmap.createBitmap(cursor.pixels, cursor.width, cursor.height, Bitmap.Config.ARGB_8888),
+                cursor.hotspotX, cursor.hotspotY, this@RemoteScreenVM.scale,
+            )
         }
 
         override fun onFrameComplete() {
@@ -261,6 +290,7 @@ class RemoteScreenVM(
     }
 
     private fun close() {
+        _cursor.value = RemoteCursor.Unknown
         connectJob?.cancel()
         connectJob = null
         connection?.close()
