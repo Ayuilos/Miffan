@@ -530,7 +530,7 @@ private fun ExportedChatMessage(
     if (message.parts.isEmptyUIMessage()) return
     val context = LocalContext.current
     val settings = LocalSettings.current
-    val model = message.modelId?.let { settings.findModelById(it) }
+    val model = message.modelId?.let { settings.findModelById(it) } ?: message.snapshotModel()
     // Always show model icon for assistant messages in exported images
     val showModelIcon = message.role == MessageRole.ASSISTANT && prevMessage?.role == MessageRole.USER
     val iconLabel = when {
