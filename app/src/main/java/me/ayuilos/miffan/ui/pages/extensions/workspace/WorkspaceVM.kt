@@ -52,7 +52,7 @@ class WorkspaceVM(
             probe = null,
             error = null,
         )) }
-        runOperation({ screenRepository.probeHost(host.id) }) { result ->
+        runOperation({ screenRepository.probeHost(host.id, host.connectionRevision) }) { result ->
             _screenEnvironments.update { states ->
                 val current = states.getValue(host.id)
                 states + (host.id to current.copy(
@@ -76,7 +76,7 @@ class WorkspaceVM(
             installationError = null,
             error = null,
         )) }
-        runOperation({ screenRepository.installCuaDriverOnHost(host.id, upgradePath) }) { result ->
+        runOperation({ screenRepository.installCuaDriverOnHost(host.id, host.connectionRevision, upgradePath) }) { result ->
             _screenEnvironments.update { states ->
                 states + (host.id to states.getValue(host.id).copy(
                     phase = RemoteScreenEnvironmentPhase.IDLE,

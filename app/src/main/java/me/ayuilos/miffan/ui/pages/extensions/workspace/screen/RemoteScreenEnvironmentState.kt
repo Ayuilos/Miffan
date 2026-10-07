@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
+import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 
 /** Host operations survive rotation; the UI must not offer a second install while one runs. */
 data class RemoteScreenEnvironmentState(
@@ -17,9 +18,5 @@ data class RemoteScreenEnvironmentState(
 
 enum class RemoteScreenEnvironmentPhase { IDLE, PROBING, INSTALLING }
 
-/** Must match RemoteScreenRepository's command exactly, including quoting the upgrade path. */
-internal fun remoteCuaDriverCommand(upgradePath: String?): String = if (upgradePath == null) {
-    "/bin/bash -c \"\$(curl -fsSL https://cua.ai/driver/install.sh)\""
-} else {
-    "'" + upgradePath.replace("'", "'\\''") + "' update --apply"
-}
+/** The command shown for confirmation is the one the repository runs. */
+internal fun remoteCuaDriverCommand(upgradePath: String?): String = RemoteScreenRepository.cuaDriverCommand(upgradePath)

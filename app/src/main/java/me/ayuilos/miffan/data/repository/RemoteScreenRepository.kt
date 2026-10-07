@@ -53,6 +53,8 @@ class RemoteScreenUnavailableException(
     val problem: RemoteScreenProblem,
     /** Extra context from the remote helper, such as the session type or a log tail. */
     val detail: String? = null,
+    /** The remote desktop name (for example `GNOME`, `KDE`, `niri`) when the helper knows it. */
+    val desktop: String? = null,
 ) : IllegalStateException("${problem.name}${detail?.let { ": $it" }.orEmpty()}")
 
 /** `miffan probe` output; see `assets/remote/miffan.sh`. */
@@ -79,6 +81,7 @@ data class RemoteMachineProbe(
         val endpoint: String? = null,
         val error: String? = null,
         val session: String? = null,
+        val desktop: String? = null,
         val log: String? = null,
     )
 }
@@ -245,16 +248,23 @@ class RemoteScreenRepository(
         return true
     }
 
-    /** [probe] for a host, through any remote workspace on it (the SSH lease is per workspace). */
-    suspend fun probeHost(hostId: String): RemoteMachineProbe = probe(workspaceOnHost(hostId))
+    /**
+     * [probe] for a host, through any remote workspace on it (the SSH lease is per workspace).
+     * [expectedRevision] is the host identity the user was looking at; a changed host is refused.
+     */
+    suspend fun probeHost(hostId: String, expectedRevision: String): RemoteMachineProbe =
+        probe(workspaceOnHost(hostId, expectedRevision))
 
     /** [installCuaDriver] for a host; see [probeHost]. */
-    suspend fun installCuaDriverOnHost(hostId: String, upgradePath: String?): RemoteCommandOutcome =
-        installCuaDriver(workspaceOnHost(hostId), upgradePath)
+    suspend fun installCuaDriverOnHost(hostId: String, expectedRevision: String, upgradePath: String?): RemoteCommandOutcome =
+        installCuaDriver(workspaceOnHost(hostId, expectedRevision), upgradePath)
 
-    private suspend fun workspaceOnHost(hostId: String): String =
-        workspaceDao.getByRemoteHostId(hostId).firstOrNull()?.id
+    private suspend fun workspaceOnHost(hostId: String, expectedRevision: String): String {
+        val host = hostDao.getById(hostId) ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
+        if (host.connectionRevision != expectedRevision) throw WorkspaceToolTargetChangedException()
+        return workspaceDao.getByRemoteHostId(hostId).firstOrNull()?.id
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_WORKSPACE)
+    }
 
     /** Installs or refreshes the helper and describes the machine behind [workspaceId]. */
     suspend fun probe(workspaceId: String): RemoteMachineProbe = withRemote(workspaceId) { ssh ->
@@ -270,9 +280,7 @@ class RemoteScreenRepository(
      */
     suspend fun installCuaDriver(workspaceId: String, upgradePath: String?): RemoteCommandOutcome =
         withRemote(workspaceId) { ssh ->
-            val command = if (upgradePath != null) "${shellQuote(upgradePath)} update --apply"
-                else "/bin/bash -c \"\$(curl -fsSL $CUA_INSTALLER)\""
-            val result = ssh.execute(command, timeoutMillis = 10 * 60_000L, maxOutputBytes = 256 * 1024)
+            val result = ssh.execute(cuaDriverCommand(upgradePath), timeoutMillis = 10 * 60_000L, maxOutputBytes = 256 * 1024)
             RemoteCommandOutcome(result.exitCode == 0 && !result.timedOut,
                 (result.stdout + result.stderr).lines().takeLast(30).joinToString("\n"))
         }
@@ -299,7 +307,7 @@ class RemoteScreenRepository(
         when (status.error) {
             null -> Unit
             "no_graphical_session" -> throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_GRAPHICAL_SESSION)
-            "no_vnc_server" -> throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_VNC_SERVER, status.session)
+            "no_vnc_server" -> throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_VNC_SERVER, status.session, status.desktop)
             else -> throw RemoteScreenUnavailableException(RemoteScreenProblem.VNC_START_FAILED, status.log)
         }
         return status.endpoint?.let(RemoteScreenEndpoint::parse)?.takeIf { it != RemoteScreenEndpoint.Helper }
@@ -324,12 +332,20 @@ class RemoteScreenRepository(
         withContext(Dispatchers.IO) { credentials.load(hostId) }
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.PASSWORD_MISSING)
 
-    private companion object {
-        const val HELPER_ASSET = "remote/miffan.sh"
-        const val HELPER = "\"\$HOME/.miffan/bin/miffan\""
-        const val CUA_INSTALLER = "https://cua.ai/driver/install.sh"
+    companion object {
+        /**
+         * The exact shell command [installCuaDriver] runs, for the confirmation the user sees:
+         * the vendor installer, or `<path> update --apply` when upgrading [upgradePath].
+         */
+        fun cuaDriverCommand(upgradePath: String?): String =
+            if (upgradePath != null) "${shellQuote(upgradePath)} update --apply"
+            else "/bin/bash -c \"\$(curl -fsSL $CUA_INSTALLER)\""
 
-        fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+        private const val HELPER_ASSET = "remote/miffan.sh"
+        private const val HELPER = "\"\$HOME/.miffan/bin/miffan\""
+        private const val CUA_INSTALLER = "https://cua.ai/driver/install.sh"
+
+        private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
     }
 
     private fun RemoteHostEntity.screenConfig(hasPassword: Boolean) = RemoteHostScreenConfig(

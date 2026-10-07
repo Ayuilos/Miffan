@@ -43,7 +43,7 @@ internal fun RemoteScreenFailurePanel(
                 error != null -> remoteScreenSetupError(resources, error)
                 else -> resources.getString(R.string.workspace_screen_closed)
             })
-            if (missingServer) RemoteScreenVncInstallGuidance(unavailable.detail)
+            if (missingServer) RemoteScreenVncInstallGuidance(unavailable.detail, unavailable.desktop)
             if (unavailable?.problem == RemoteScreenProblem.VNC_START_FAILED) {
                 unavailable.detail?.takeIf { it.isNotBlank() }?.let { RemoteScreenLog(it) }
             }

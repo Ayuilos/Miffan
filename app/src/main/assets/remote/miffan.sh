@@ -11,7 +11,7 @@
 #                           manage a VNC server only this user can reach (JSON on stdout)
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=1
+MIFFAN_HELPER_VERSION=2
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -193,7 +193,7 @@ vnc_start() {
                 -noxdamage -localhost -quiet >"$dir/vnc.log" 2>&1 </dev/null &
             ;;
         *)
-            printf '{"error":"no_vnc_server","session":"%s"}\n' "$(session_type)"
+            printf '{"error":"no_vnc_server","session":"%s","desktop":%s}\n' "$(session_type)" "$(json_or_null "${XDG_CURRENT_DESKTOP:-}")"
             return 1
             ;;
     esac
