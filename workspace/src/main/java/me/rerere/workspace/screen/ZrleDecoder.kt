@@ -5,10 +5,11 @@ import java.io.IOException
 import java.util.zip.Inflater
 
 /**
- * ZRLE (RFC 6143 §7.7.6) for the 32bpp/depth-24 little-endian format set by [RfbClient], where a
- * compressed pixel (CPIXEL) is 3 bytes: blue, green, red. One zlib stream spans the connection.
+ * ZRLE (RFC 6143 §7.7.6) for the client pixel [format]. A compressed pixel (CPIXEL) is 3 bytes
+ * (blue, green, red) for 24-bit colour and the full pixel otherwise. One zlib stream spans the
+ * connection.
  */
-internal class ZrleDecoder {
+internal class ZrleDecoder(private val format: RfbPixelFormat) {
     private val inflater = Inflater()
     private var compressed = ByteArray(1 shl 16)
     private var data = ByteArray(1 shl 18)
@@ -126,11 +127,9 @@ internal class ZrleDecoder {
     private fun u8(): Int = data[pos++].toInt() and 0xFF
 
     private fun cpixel(): Int {
-        val b = data[pos].toInt() and 0xFF
-        val g = data[pos + 1].toInt() and 0xFF
-        val r = data[pos + 2].toInt() and 0xFF
-        pos += 3
-        return 0xFF shl 24 or (r shl 16) or (g shl 8) or b
+        val c = format.readZrleCompact(data, pos)
+        pos += format.compactBytes
+        return c
     }
 
     private companion object {

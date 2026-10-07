@@ -56,7 +56,8 @@ class RemoteScreenSpikeTest {
                     val image = ImageIO.read(java.io.ByteArrayInputStream(bytes, 0, length))
                     image.getRGB(0, 0, w, h, fb.pixels, y * fb.width + x, fb.width)
                 } else null
-                val client = RfbClient(stream.input, stream.output, credentials, jpeg)
+                val format = if (env("LOW_COLOR") != null) RfbPixelFormat.RGB565 else RfbPixelFormat.RGB888
+                val client = RfbClient(stream.input, stream.output, credentials, jpeg, format)
                 val info = client.handshake()
                 println("server ${info.protocolVersion} offered=${info.securityTypes} chose=${info.securityType} " +
                     "${info.width}x${info.height} '${info.name}' in ${ms(t0)} ms")

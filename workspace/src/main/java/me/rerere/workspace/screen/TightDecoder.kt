@@ -11,10 +11,13 @@ fun interface RfbJpegDecoder {
 }
 
 /**
- * Tight encoding for the 32bpp/depth-24 format set by [RfbClient]: TPIXEL is 3 bytes R, G, B.
- * Four zlib streams persist across rectangles and may be reset by the server.
+ * Tight encoding for the client pixel [format]: TPIXEL is 3 bytes R, G, B for 24-bit colour and
+ * the full little-endian pixel otherwise. Four zlib streams persist across rectangles and may be
+ * reset by the server.
  */
-internal class TightDecoder(private val jpeg: RfbJpegDecoder?) {
+internal class TightDecoder(private val jpeg: RfbJpegDecoder?, private val format: RfbPixelFormat) {
+    private val tpixelBytes = format.compactBytes
+    private val tpixel = ByteArray(4)
     private val streams = Array(4) { Inflater() }
     private var compressed = ByteArray(1 shl 16)
     private var data = ByteArray(1 shl 18)
@@ -55,7 +58,7 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?) {
         var paletteSize = 0
         val rowBytes: Int
         when (filter) {
-            FILTER_COPY, FILTER_GRADIENT -> rowBytes = w * 3
+            FILTER_COPY, FILTER_GRADIENT -> rowBytes = w * tpixelBytes
             FILTER_PALETTE -> {
                 paletteSize = input.readUnsignedByte() + 1
                 for (i in 0 until paletteSize) palette[i] = tpixel(input)
@@ -89,8 +92,8 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?) {
                 for (dy in 0 until h) {
                     var o = (y + dy) * stride + x
                     repeat(w) {
-                        pixels[o++] = rgb(data[p], data[p + 1], data[p + 2])
-                        p += 3
+                        pixels[o++] = format.readTightCompact(data, p)
+                        p += tpixelBytes
                     }
                 }
             }
@@ -107,20 +110,40 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?) {
                 }
             }
             FILTER_GRADIENT -> {
+                // Prediction runs per colour component in the format's own ranges.
+                val max = intArrayOf(
+                    if (format == RfbPixelFormat.RGB888) 255 else format.redMax,
+                    if (format == RfbPixelFormat.RGB888) 255 else format.greenMax,
+                    if (format == RfbPixelFormat.RGB888) 255 else format.blueMax,
+                )
                 val prev = IntArray(w * 3)
                 val cur = IntArray(w * 3)
+                val diff = IntArray(3)
                 var p = 0
                 for (dy in 0 until h) {
                     var o = (y + dy) * stride + x
                     for (dx in 0 until w) {
+                        if (format == RfbPixelFormat.RGB888) {
+                            diff[0] = data[p].toInt() and 0xFF
+                            diff[1] = data[p + 1].toInt() and 0xFF
+                            diff[2] = data[p + 2].toInt() and 0xFF
+                        } else {
+                            val value = format.readPixel(data, p)
+                            diff[0] = format.red(value)
+                            diff[1] = format.green(value)
+                            diff[2] = format.blue(value)
+                        }
+                        p += tpixelBytes
                         for (c in 0 until 3) {
                             val left = if (dx > 0) cur[(dx - 1) * 3 + c] else 0
                             val up = prev[dx * 3 + c]
                             val upLeft = if (dx > 0) prev[(dx - 1) * 3 + c] else 0
-                            val predicted = (left + up - upLeft).coerceIn(0, 255)
-                            cur[dx * 3 + c] = (predicted + (data[p++].toInt() and 0xFF)) and 0xFF
+                            val predicted = (left + up - upLeft).coerceIn(0, max[c])
+                            cur[dx * 3 + c] = (predicted + diff[c]) and max[c]
                         }
-                        pixels[o++] = 0xFF shl 24 or (cur[dx * 3] shl 16) or (cur[dx * 3 + 1] shl 8) or cur[dx * 3 + 2]
+                        pixels[o++] = if (format == RfbPixelFormat.RGB888) {
+                            0xFF shl 24 or (cur[dx * 3] shl 16) or (cur[dx * 3 + 1] shl 8) or cur[dx * 3 + 2]
+                        } else format.argb(cur[dx * 3], cur[dx * 3 + 1], cur[dx * 3 + 2])
                     }
                     cur.copyInto(prev)
                 }
@@ -134,14 +157,9 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?) {
     }
 
     private fun tpixel(input: DataInputStream): Int {
-        val r = input.readUnsignedByte()
-        val g = input.readUnsignedByte()
-        val b = input.readUnsignedByte()
-        return 0xFF shl 24 or (r shl 16) or (g shl 8) or b
+        input.readFully(tpixel, 0, tpixelBytes)
+        return format.readTightCompact(tpixel, 0)
     }
-
-    private fun rgb(r: Byte, g: Byte, b: Byte): Int =
-        0xFF shl 24 or (r.toInt() and 0xFF shl 16) or (g.toInt() and 0xFF shl 8) or (b.toInt() and 0xFF)
 
     private fun compactLength(input: DataInputStream): Int {
         var b = input.readUnsignedByte()

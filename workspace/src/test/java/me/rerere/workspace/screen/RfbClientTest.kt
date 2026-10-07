@@ -50,9 +50,13 @@ class RfbClientTest {
         writeByte(color and 0xFF); writeByte(color shr 8 and 0xFF); writeByte(color shr 16 and 0xFF); writeByte(0)
     }
 
-    private fun connect(server: ByteArray, jpeg: RfbJpegDecoder? = null): Pair<RfbClient, ByteArrayOutputStream> {
+    private fun connect(
+        server: ByteArray,
+        jpeg: RfbJpegDecoder? = null,
+        format: RfbPixelFormat = RfbPixelFormat.RGB888,
+    ): Pair<RfbClient, ByteArrayOutputStream> {
         val sent = ByteArrayOutputStream()
-        val client = RfbClient(ByteArrayInputStream(server), sent, null, jpeg)
+        val client = RfbClient(ByteArrayInputStream(server), sent, null, jpeg, format)
         client.handshake()
         return client to sent
     }
@@ -150,6 +154,31 @@ class RfbClientTest {
             client.framebuffer.pixels,
         )
         assertEquals(1, jpegCalls)
+    }
+
+    @Test
+    fun lowColorFormatIsRequestedAndDecodedInEveryEncoding() {
+        // RGB565 little-endian: red 0xF800, green 0x07E0, blue 0x001F.
+        fun DataOutputStream.p16(v: Int) { writeByte(v and 0xFF); writeByte(v shr 8 and 0xFF) }
+        val deflater = Deflater()
+        val zrle = ByteArray(64).let { out ->
+            deflater.setInput(byteArrayOf(1, 0xE0.toByte(), 0x07)) // solid green CPIXEL (2 bytes)
+            out.copyOf(deflater.deflate(out, 0, out.size, Deflater.SYNC_FLUSH))
+        }
+        val (client, sent) = connect(serverInit(2, 3) {
+            update(
+                { rectHeader(0, 0, 2, 1, RfbClient.ENCODING_RAW); p16(0xF800); p16(0x001F) },
+                { rectHeader(0, 1, 2, 1, RfbClient.ENCODING_ZRLE); writeInt(zrle.size); write(zrle) },
+                { rectHeader(0, 2, 2, 1, RfbClient.ENCODING_TIGHT); writeByte(0x80); p16(0xF800) },
+            )
+        }, format = RfbPixelFormat.RGB565)
+        // Version (12) + security choice (1) + ClientInit (1), then SetPixelFormat: type, 3 pad, format.
+        val message = sent.toByteArray().copyOfRange(14, 34)
+        assertEquals(0, message[0].toInt())
+        assertEquals(16, message[4].toInt()) // bits per pixel
+        assertEquals(16, message[5].toInt()) // depth
+        client.readMessage()
+        assertArrayEquals(intArrayOf(red, blue, green, green, red, red), client.framebuffer.pixels)
     }
 
     @Test

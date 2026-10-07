@@ -64,12 +64,14 @@ class RfbClient(
     output: OutputStream,
     private val credentials: RfbCredentials?,
     jpeg: RfbJpegDecoder? = null,
+    /** Fixed for the connection so an update already in flight never changes format. */
+    private val pixelFormat: RfbPixelFormat = RfbPixelFormat.RGB888,
 ) {
     private val counter = CountingInputStream(BufferedInputStream(input, 1 shl 16))
     private val input = DataInputStream(counter)
     private val output = DataOutputStream(BufferedOutputStream(output))
-    private val zrle = ZrleDecoder()
-    private val tight = TightDecoder(jpeg)
+    private val zrle = ZrleDecoder(pixelFormat)
+    private val tight = TightDecoder(jpeg, pixelFormat)
     lateinit var framebuffer: Framebuffer
         private set
 
@@ -218,18 +220,16 @@ class RfbClient(
     }
 
     private fun readRaw(x: Int, y: Int, w: Int, h: Int) {
-        val row = ByteArray(w * 4)
+        val bpp = pixelFormat.bytesPerPixel
+        val row = ByteArray(w * bpp)
         val fb = framebuffer
         for (dy in 0 until h) {
             input.readFully(row)
             var offset = (y + dy) * fb.width + x
             var i = 0
             while (i < row.size) {
-                fb.pixels[offset++] = 0xFF shl 24 or
-                    (row[i + 2].toInt() and 0xFF shl 16) or
-                    (row[i + 1].toInt() and 0xFF shl 8) or
-                    (row[i].toInt() and 0xFF)
-                i += 4
+                fb.pixels[offset++] = pixelFormat.toArgb(pixelFormat.readPixel(row, i))
+                i += bpp
             }
         }
     }
@@ -255,16 +255,16 @@ class RfbClient(
     private fun setPixelFormat() = synchronized(output) {
         output.writeByte(0)
         output.write(ByteArray(3))
-        output.writeByte(32) // bits per pixel
-        output.writeByte(24) // depth
+        output.writeByte(pixelFormat.bitsPerPixel)
+        output.writeByte(pixelFormat.depth)
         output.writeByte(0) // little endian
         output.writeByte(1) // true colour
-        output.writeShort(255)
-        output.writeShort(255)
-        output.writeShort(255)
-        output.writeByte(16)
-        output.writeByte(8)
-        output.writeByte(0)
+        output.writeShort(pixelFormat.redMax)
+        output.writeShort(pixelFormat.greenMax)
+        output.writeShort(pixelFormat.blueMax)
+        output.writeByte(pixelFormat.redShift)
+        output.writeByte(pixelFormat.greenShift)
+        output.writeByte(pixelFormat.blueShift)
         output.write(ByteArray(3))
         output.flush()
     }

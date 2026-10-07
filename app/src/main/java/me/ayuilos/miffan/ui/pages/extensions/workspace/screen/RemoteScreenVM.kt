@@ -196,7 +196,11 @@ class RemoteScreenVM(
             try {
                 val opened = repository.open(
                     args.workspaceId, sink, jpeg,
-                    RemoteScreenOptions(jpegQuality = if (metered) 4 else 6, maxFps = if (metered) 8 else 20),
+                    RemoteScreenOptions(
+                        jpegQuality = if (metered) 4 else 6,
+                        maxFps = if (metered) 8 else 20,
+                        lowColor = metered,
+                    ),
                 )
                 connection = opened
                 opened.session.setPaused(!visible)

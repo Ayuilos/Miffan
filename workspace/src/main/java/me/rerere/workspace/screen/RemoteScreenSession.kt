@@ -24,6 +24,8 @@ data class RemoteScreenOptions(
     /** JPEG quality 0..9 for Tight; null asks for lossless encodings only. */
     val jpegQuality: Int? = 6,
     val maxFps: Int = 15,
+    /** 16-bit colour: lossless encodings (macOS screen sharing) send a third fewer bytes. */
+    val lowColor: Boolean = false,
 )
 
 sealed interface RemoteScreenState {
@@ -80,6 +82,7 @@ class RemoteScreenSession(
     private val paused = MutableStateFlow(false)
     @Volatile private var maxFps = options.maxFps.coerceIn(1, 60)
     private val jpegQuality = options.jpegQuality
+    private val pixelFormat = if (options.lowColor) RfbPixelFormat.RGB565 else RfbPixelFormat.RGB888
     private val inputs = Channel<Input>(Channel.UNLIMITED)
     private val closed = AtomicBoolean(false)
     private var client: RfbClient? = null
@@ -133,7 +136,7 @@ class RemoteScreenSession(
 
     private suspend fun runReader(scope: CoroutineScope) {
         try {
-            val rfb = RfbClient(input, output, credentials, jpeg)
+            val rfb = RfbClient(input, output, credentials, jpeg, pixelFormat)
             client = rfb
             val info = rfb.handshake(RfbClient.defaultEncodings(jpegQuality = if (jpeg != null) jpegQuality else null))
             var scale = ScreenScaler.scaleFor(info.width, info.height)
