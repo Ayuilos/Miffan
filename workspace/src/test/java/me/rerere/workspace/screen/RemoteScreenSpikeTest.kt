@@ -28,6 +28,15 @@ import org.junit.Test
 class RemoteScreenSpikeTest {
     private fun env(name: String): String? = System.getenv("MIFFAN_SPIKE_$name")?.takeIf { it.isNotBlank() }
 
+    init {
+        if (System.getenv("MIFFAN_SPIKE_JSCH_LOG") != null) {
+            com.jcraft.jsch.JSch.setLogger(object : com.jcraft.jsch.Logger {
+                override fun isEnabled(level: Int) = true
+                override fun log(level: Int, message: String) = println("jsch[$level] $message")
+            })
+        }
+    }
+
     private fun open(): RemoteWorkspaceSession {
         val host = env("HOST")!!
         val port = env("PORT")?.toInt() ?: 22
@@ -52,6 +61,9 @@ class RemoteScreenSpikeTest {
             val t0 = System.nanoTime()
             val opened = env("VNC_SOCKET")?.let(ssh::openUnixSocketStream)
                 ?: ssh.openLoopbackStream(env("VNC_PORT")!!.toInt())
+            val watchdog = Thread {
+                try { Thread.sleep((System.getenv("MIFFAN_SPIKE_WATCHDOG_MS") ?: "20000").toLong()); println("watchdog: closing stuck stream"); opened.close() } catch (_: InterruptedException) {}
+            }.apply { isDaemon = true; start() }
             opened.use { stream ->
                 val credentials = if (env("VNC_PASSWORD") != null) RfbCredentials(env("VNC_USER"), env("VNC_PASSWORD")) else null
                 val jpeg = if (env("NO_JPEG") == null) RfbJpegDecoder { bytes, length, fb, x, y, w, h ->

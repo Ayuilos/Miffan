@@ -79,6 +79,8 @@ data class RemoteMachineProbe(
         val server: String? = null,
         val running: Boolean = false,
         val endpoint: String? = null,
+        /** Per-start VNC password the helper generated (x11vnc on loopback TCP). */
+        val password: String? = null,
         val error: String? = null,
         val session: String? = null,
         val desktop: String? = null,
@@ -208,8 +210,13 @@ class RemoteScreenRepository(
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
             }
+            var credentials = rfbCredentials
             val target = when (endpoint) {
-                RemoteScreenEndpoint.Helper -> startHelperVnc(ssh)
+                RemoteScreenEndpoint.Helper -> startHelperVnc(ssh).let { (started, password) ->
+                    // A helper-generated password replaces "no auth"; macOS keeps the account.
+                    if (password != null && credentials == null) credentials = RfbCredentials(password = password)
+                    started
+                }
                 else -> endpoint
             }
             val stream = when (target) {
@@ -217,7 +224,7 @@ class RemoteScreenRepository(
                 is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(target.path)
                 RemoteScreenEndpoint.Helper -> throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
             }
-            RemoteScreenSession(stream.input, stream.output, stream, rfbCredentials, jpeg, options, sink)
+            RemoteScreenSession(stream.input, stream.output, stream, credentials, jpeg, options, sink)
         }
         detected?.takeIf { it != RemoteScreenPlatform.UNKNOWN }?.let { platform ->
             hostDao.getById(host.id)?.let { hostDao.update(it.copy(screenPlatform = platform.storageName)) }
@@ -298,7 +305,8 @@ class RemoteScreenRepository(
         check(result.exitCode == 0) { result.stderr.ifBlank { "Could not install the Miffan helper" } }
     }
 
-    private fun startHelperVnc(ssh: RemoteWorkspaceSession): RemoteScreenEndpoint {
+    /** Starts the helper's VNC server; returns where it listens and its password, if any. */
+    private fun startHelperVnc(ssh: RemoteWorkspaceSession): Pair<RemoteScreenEndpoint, String?> {
         ensureHelper(ssh)
         val result = ssh.execute("$HELPER vnc start", timeoutMillis = 20_000)
         val status = runCatching {
@@ -310,8 +318,9 @@ class RemoteScreenRepository(
             "no_vnc_server" -> throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_VNC_SERVER, status.session, status.desktop)
             else -> throw RemoteScreenUnavailableException(RemoteScreenProblem.VNC_START_FAILED, status.log)
         }
-        return status.endpoint?.let(RemoteScreenEndpoint::parse)?.takeIf { it != RemoteScreenEndpoint.Helper }
+        val started = status.endpoint?.let(RemoteScreenEndpoint::parse)?.takeIf { it != RemoteScreenEndpoint.Helper }
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.VNC_START_FAILED, status.endpoint)
+        return started to status.password
     }
 
     private suspend fun <T> withRemote(workspaceId: String, block: (RemoteWorkspaceSession) -> T): T {

@@ -11,7 +11,7 @@
 #                           manage a VNC server only this user can reach (JSON on stdout)
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=2
+MIFFAN_HELPER_VERSION=5
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -74,6 +74,11 @@ session_env_lines() {
 # Exports the session environment into the current shell. Values are passed through `export`
 # one variable at a time, never evaluated as shell code.
 load_session_env() {
+    # An explicitly chosen display wins over discovery (machines with several sessions, tests).
+    if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
+        [ -n "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "/run/user/$(id -u)" ] || export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+        return 0
+    fi
     lines=$(session_env_lines) || return 1
     old_ifs=$IFS
     IFS='
@@ -84,7 +89,7 @@ load_session_env() {
         export "$key=$value"
     done
     IFS=$old_ifs
-    [ -n "${XDG_RUNTIME_DIR:-}" ] || export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    [ -n "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "/run/user/$(id -u)" ] || export XDG_RUNTIME_DIR="/run/user/$(id -u)"
     return 0
 }
 
@@ -121,10 +126,12 @@ version_at_least() {
 # --- VNC ---------------------------------------------------------------------------------
 
 runtime_dir() {
-    if [ "$(os)" = macos ]; then
-        dir="$HOME/.miffan/run"
+    # Prefer the per-user runtime directory; machines without logind (containers, minimal
+    # servers) have none, so fall back to a private directory in $HOME.
+    if [ "$(os)" != macos ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -w "$XDG_RUNTIME_DIR" ]; then
+        dir="$XDG_RUNTIME_DIR/miffan"
     else
-        dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/miffan"
+        dir="$HOME/.miffan/run"
     fi
     mkdir -p "$dir" && chmod 700 "$dir"
     printf '%s\n' "$dir"
@@ -144,6 +151,11 @@ vnc_server_kind() {
     if [ "$(os)" = macos ]; then echo macos-screen-sharing; return; fi
     case "$(session_type)" in
         wayland)
+            # wayvnc needs wlroots screencopy/virtual-input protocols (sway, Hyprland, niri,
+            # river, labwc, Wayfire); GNOME's mutter and KDE's KWin do not provide them.
+            case "${XDG_CURRENT_DESKTOP:-}" in
+                *GNOME*|*gnome*|*KDE*|*kde*|*Plasma*) echo none; return ;;
+            esac
             if command -v wayvnc >/dev/null 2>&1; then echo wayvnc; return; fi
             ;;
         x11)
@@ -153,6 +165,7 @@ vnc_server_kind() {
     echo none
 }
 
+# $1 = "with-secret" to include the x11vnc password (only `vnc start` hands it to the app).
 vnc_status_json() {
     kind=$(vnc_server_kind)
     if [ "$kind" = macos-screen-sharing ]; then
@@ -161,51 +174,82 @@ vnc_status_json() {
         return
     fi
     dir=$(runtime_dir)
-    socket="$dir/vnc.sock"
     running=false
-    if [ -S "$socket" ] && [ -f "$dir/vnc.pid" ] && kill -0 "$(cat "$dir/vnc.pid")" 2>/dev/null; then
-        running=true
+    if [ -f "$dir/vnc.pid" ] && kill -0 "$(cat "$dir/vnc.pid")" 2>/dev/null; then running=true; fi
+    if [ "$kind" = x11vnc ]; then
+        # x11vnc's -unixsock mode drops clients after the version handshake, so it listens on
+        # loopback TCP with a random per-start password only this account can read.
+        port=$(cat "$dir/vnc.port" 2>/dev/null)
+        password=$(cat "$dir/vnc.secret" 2>/dev/null)
+        if [ "$running" = true ] && [ -n "$port" ] && [ "${1:-}" = with-secret ]; then
+            printf '{"server":"%s","running":true,"endpoint":"tcp:%s","password":%s}\n' "$kind" "$port" "$(json_str "$password")"
+        elif [ "$running" = true ] && [ -n "$port" ]; then
+            printf '{"server":"%s","running":true,"endpoint":"tcp:%s"}\n' "$kind" "$port"
+        else
+            printf '{"server":"%s","running":false,"endpoint":null}\n' "$kind"
+        fi
+        return
     fi
+    socket="$dir/vnc.sock"
+    [ -S "$socket" ] || running=false
     printf '{"server":"%s","running":%s,"endpoint":%s}\n' "$kind" "$running" "$(json_str "unix:$socket")"
+}
+
+free_port() {
+    port=5950
+    while [ $port -lt 6000 ]; do
+        port_listening $port || { echo $port; return 0; }
+        port=$((port + 1))
+    done
+    return 1
 }
 
 vnc_start() {
     load_session_env || { echo '{"error":"no_graphical_session"}'; return 1; }
     kind=$(vnc_server_kind)
     if [ "$kind" = macos-screen-sharing ]; then
-        vnc_status_json
+        vnc_status_json with-secret
         return 0
     fi
     dir=$(runtime_dir)
-    socket="$dir/vnc.sock"
-    if [ -S "$socket" ] && [ -f "$dir/vnc.pid" ] && kill -0 "$(cat "$dir/vnc.pid")" 2>/dev/null; then
-        vnc_status_json
+    if [ -f "$dir/vnc.pid" ] && kill -0 "$(cat "$dir/vnc.pid")" 2>/dev/null; then
+        vnc_status_json with-secret
         return 0
     fi
-    rm -f "$socket"
+    socket="$dir/vnc.sock"
+    rm -f "$socket" "$dir/vnc.port" "$dir/vnc.secret" "$dir/vnc.passwd"
     case "$kind" in
         wayvnc)
             # Own control socket so a wayvnc the user runs separately is left alone.
             nohup wayvnc -u -S "$dir/wayvncctl" "$socket" >"$dir/vnc.log" 2>&1 </dev/null &
+            echo $! >"$dir/vnc.pid"
+            ready() { [ -S "$socket" ]; }
             ;;
         x11vnc)
-            nohup x11vnc -display "$DISPLAY" -unixsock "$socket" -rfbport 0 -forever -shared \
-                -noxdamage -localhost -quiet >"$dir/vnc.log" 2>&1 </dev/null &
+            port=$(free_port) || { echo '{"error":"vnc_start_failed","log":"no free port"}'; return 1; }
+            umask 077
+            secret=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 8)
+            printf '%s' "$secret" >"$dir/vnc.secret"
+            x11vnc -storepasswd "$secret" "$dir/vnc.passwd" >/dev/null 2>&1
+            nohup x11vnc -display "$DISPLAY" -localhost -rfbport "$port" -rfbauth "$dir/vnc.passwd" \
+                -forever -shared -noxdamage -quiet >"$dir/vnc.log" 2>&1 </dev/null &
+            echo $! >"$dir/vnc.pid"
+            echo "$port" >"$dir/vnc.port"
+            ready() { port_listening "$port"; }
             ;;
         *)
             printf '{"error":"no_vnc_server","session":"%s","desktop":%s}\n' "$(session_type)" "$(json_or_null "${XDG_CURRENT_DESKTOP:-}")"
             return 1
             ;;
     esac
-    echo $! >"$dir/vnc.pid"
     i=0
-    while [ $i -lt 50 ] && [ ! -S "$socket" ]; do
+    while [ $i -lt 50 ] && ! ready; do
         sleep 0.1
         i=$((i + 1))
     done
-    if [ -S "$socket" ]; then
-        chmod 600 "$socket" 2>/dev/null
-        vnc_status_json
+    if ready; then
+        [ -S "$socket" ] && chmod 600 "$socket" 2>/dev/null
+        vnc_status_json with-secret
     else
         printf '{"error":"vnc_start_failed","log":%s}\n' "$(json_str "$(tail -n 5 "$dir/vnc.log" 2>/dev/null)")"
         return 1
@@ -218,7 +262,7 @@ vnc_stop() {
         kill "$(cat "$dir/vnc.pid")" 2>/dev/null
         rm -f "$dir/vnc.pid"
     fi
-    rm -f "$dir/vnc.sock"
+    rm -f "$dir/vnc.sock" "$dir/vnc.port" "$dir/vnc.secret" "$dir/vnc.passwd"
     echo '{"stopped":true}'
 }
 
