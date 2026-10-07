@@ -24,7 +24,7 @@ data class RemoteHostEntity(
     @ColumnInfo("created_at") val createdAt: Long,
     @ColumnInfo("updated_at") val updatedAt: Long,
     @ColumnInfo("screen_enabled", defaultValue = "0") val screenEnabled: Boolean = false,
-    /** `tcp:<port>` on the remote loopback, or `unix:<absolute path>` (see [RemoteScreenEndpoint]). */
+    /** `helper`, `tcp:<port>` on the remote loopback, or `unix:<absolute path>` (see [RemoteScreenEndpoint]). */
     @ColumnInfo("screen_endpoint", defaultValue = "'tcp:5900'") val screenEndpoint: String = "tcp:5900",
     /** One of [RemoteScreenAuth] names, lower case. */
     @ColumnInfo("screen_auth", defaultValue = "'none'") val screenAuth: String = "none",
@@ -45,13 +45,18 @@ sealed interface RemoteScreenEndpoint {
     data class Tcp(val port: Int) : RemoteScreenEndpoint
     data class Unix(val path: String) : RemoteScreenEndpoint
 
+    /** The Miffan helper starts a per-user VNC server and reports where it listens. */
+    data object Helper : RemoteScreenEndpoint
+
     val storageValue: String get() = when (this) {
         is Tcp -> "tcp:$port"
         is Unix -> "unix:$path"
+        Helper -> "helper"
     }
 
     companion object {
         fun parse(value: String): RemoteScreenEndpoint? = when {
+            value == "helper" -> Helper
             value.startsWith("tcp:") -> value.removePrefix("tcp:").toIntOrNull()?.takeIf { it in 1..65535 }?.let(::Tcp)
             value.startsWith("unix:/") -> Unix(value.removePrefix("unix:"))
             else -> null

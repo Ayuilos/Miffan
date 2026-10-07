@@ -127,7 +127,7 @@ val repositoryModule = module {
         WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources)
     }
 
-    single { RemoteScreenRepository(get(), get(), get(), get()) }
+    single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets) }
 
     single {
         FilesManager(get(), get(), get())

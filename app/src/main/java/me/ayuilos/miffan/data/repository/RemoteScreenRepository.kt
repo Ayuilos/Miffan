@@ -1,14 +1,18 @@
 package me.ayuilos.miffan.data.repository
 
+import android.content.res.AssetManager
 import java.io.ByteArrayInputStream
 import java.io.Closeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
+import me.rerere.workspace.RemoteWorkspaceSession
 import me.rerere.workspace.screen.RemoteScreenFrameSink
 import me.rerere.workspace.screen.RemoteScreenOptions
 import me.rerere.workspace.screen.RemoteScreenSession
@@ -33,7 +37,54 @@ enum class RemoteScreenPlatform { UNKNOWN, MACOS, LINUX;
     }
 }
 
-class RemoteScreenUnavailableException(message: String) : IllegalStateException(message)
+/** Why a screen could not be opened; the page maps each reason to a fix the user can make. */
+enum class RemoteScreenProblem {
+    NOT_FOUND, NOT_ENABLED, BAD_ENDPOINT, PASSWORD_MISSING,
+    /** Host-level actions need a remote workspace on the host to borrow its SSH connection. */
+    NO_WORKSPACE,
+    /** The helper found no logged-in graphical session for this account. */
+    NO_GRAPHICAL_SESSION,
+    /** No supported VNC server is installed for the session type (see [RemoteScreenUnavailableException.detail]). */
+    NO_VNC_SERVER,
+    VNC_START_FAILED,
+}
+
+class RemoteScreenUnavailableException(
+    val problem: RemoteScreenProblem,
+    /** Extra context from the remote helper, such as the session type or a log tail. */
+    val detail: String? = null,
+) : IllegalStateException("${problem.name}${detail?.let { ": $it" }.orEmpty()}")
+
+/** `miffan probe` output; see `assets/remote/miffan.sh`. */
+@Serializable
+data class RemoteMachineProbe(
+    val helper: Int,
+    val os: String,
+    val arch: String,
+    val session: Session,
+    val cua: Cua,
+    val vnc: Vnc,
+    val clipboard: String? = null,
+) {
+    @Serializable
+    data class Session(val present: Boolean, val type: String, val desktop: String? = null)
+
+    @Serializable
+    data class Cua(val path: String? = null, val version: String? = null, val min: String, val ok: Boolean)
+
+    @Serializable
+    data class Vnc(
+        val server: String? = null,
+        val running: Boolean = false,
+        val endpoint: String? = null,
+        val error: String? = null,
+        val session: String? = null,
+        val log: String? = null,
+    )
+}
+
+/** Result of a remote install or upgrade the user confirmed; [output] is the command's tail. */
+data class RemoteCommandOutcome(val success: Boolean, val output: String)
 
 /** A VNC viewer bound to a workspace's SSH lease. Call [RemoteScreenSession.start] once. */
 class RemoteScreenConnection internal constructor(
@@ -63,7 +114,14 @@ class RemoteScreenRepository(
     private val workspaceDao: WorkspaceDAO,
     private val hostDao: RemoteHostDAO,
     private val credentials: RemoteScreenCredentialStore,
+    assets: AssetManager,
 ) {
+    private val helperScript: ByteArray = assets.open(HELPER_ASSET).use { it.readBytes() }
+    private val helperVersion: String = Regex("""MIFFAN_HELPER_VERSION=(\d+)""")
+        .find(helperScript.toString(Charsets.UTF_8))?.groupValues?.get(1)
+        ?: error("Helper script has no version")
+    private val json = Json { ignoreUnknownKeys = true }
+
     private val lock = Any()
     private val open = mutableMapOf<String, MutableSet<RemoteScreenConnection>>()
 
@@ -124,12 +182,12 @@ class RemoteScreenRepository(
         options: RemoteScreenOptions = RemoteScreenOptions(),
     ): RemoteScreenConnection {
         val workspace = workspaceDao.getById(workspaceId)?.takeIf { it.isRemote }
-            ?: throw RemoteScreenUnavailableException("Remote workspace not found")
+            ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
-            ?: throw RemoteScreenUnavailableException("Remote host not found")
-        if (!host.screenEnabled) throw RemoteScreenUnavailableException("Screen is not enabled for this host")
+            ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
+        if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
         val endpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
-            ?: throw RemoteScreenUnavailableException("Invalid screen endpoint")
+            ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
         val rfbCredentials = when (RemoteScreenAuth.parse(host.screenAuth)) {
             RemoteScreenAuth.NONE -> null
             RemoteScreenAuth.VNC_PASSWORD -> RfbCredentials(password = loadPassword(host.id))
@@ -147,9 +205,14 @@ class RemoteScreenRepository(
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
             }
-            val stream = when (endpoint) {
-                is RemoteScreenEndpoint.Tcp -> ssh.openLoopbackStream(endpoint.port)
-                is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(endpoint.path)
+            val target = when (endpoint) {
+                RemoteScreenEndpoint.Helper -> startHelperVnc(ssh)
+                else -> endpoint
+            }
+            val stream = when (target) {
+                is RemoteScreenEndpoint.Tcp -> ssh.openLoopbackStream(target.port)
+                is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(target.path)
+                RemoteScreenEndpoint.Helper -> throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
             }
             RemoteScreenSession(stream.input, stream.output, stream, rfbCredentials, jpeg, options, sink)
         }
@@ -169,22 +232,87 @@ class RemoteScreenRepository(
 
     /**
      * Puts [text] on the remote clipboard over SSH so it can be pasted with the platform
-     * shortcut; VNC key events cannot carry most non-Latin text. Returns false where the
-     * platform has no supported clipboard command yet.
+     * shortcut; VNC key events cannot carry most non-Latin text. The helper finds the graphical
+     * session (Wayland, X11 or macOS) and its clipboard tool.
      */
-    suspend fun setRemoteClipboard(workspaceId: String, platform: RemoteScreenPlatform, text: String): Boolean {
-        val command = when (platform) {
-            RemoteScreenPlatform.MACOS -> "pbcopy"
-            // Linux needs the graphical session's environment; the P2 launcher script provides it.
-            else -> return false
-        }
-        workspaces.openLeasedRemote(workspaceId) { ssh ->
-            val result = ssh.execute(command, timeoutMillis = 10_000,
+    suspend fun setRemoteClipboard(workspaceId: String, @Suppress("UNUSED_PARAMETER") platform: RemoteScreenPlatform, text: String): Boolean {
+        withRemote(workspaceId) { ssh ->
+            ensureHelper(ssh)
+            val result = ssh.execute("$HELPER clip", timeoutMillis = 10_000,
                 stdin = ByteArrayInputStream(text.toByteArray(Charsets.UTF_8)))
-            check(result.exitCode == 0) { "Remote clipboard command failed" }
+            check(result.exitCode == 0) { result.stderr.ifBlank { "Remote clipboard command failed" } }
+        }
+        return true
+    }
+
+    /** [probe] for a host, through any remote workspace on it (the SSH lease is per workspace). */
+    suspend fun probeHost(hostId: String): RemoteMachineProbe = probe(workspaceOnHost(hostId))
+
+    /** [installCuaDriver] for a host; see [probeHost]. */
+    suspend fun installCuaDriverOnHost(hostId: String, upgradePath: String?): RemoteCommandOutcome =
+        installCuaDriver(workspaceOnHost(hostId), upgradePath)
+
+    private suspend fun workspaceOnHost(hostId: String): String =
+        workspaceDao.getByRemoteHostId(hostId).firstOrNull()?.id
+            ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_WORKSPACE)
+
+    /** Installs or refreshes the helper and describes the machine behind [workspaceId]. */
+    suspend fun probe(workspaceId: String): RemoteMachineProbe = withRemote(workspaceId) { ssh ->
+        ensureHelper(ssh)
+        val result = ssh.execute("$HELPER probe", timeoutMillis = 20_000)
+        check(result.exitCode == 0) { result.stderr.ifBlank { "Remote probe failed" } }
+        json.decodeFromString<RemoteMachineProbe>(result.stdout.trim().lineSequence().last())
+    }
+
+    /**
+     * Installs cua-driver, or upgrades it when [upgradePath] names the installed binary. Runs the
+     * vendor's installer on the remote machine, so call it only after the user confirmed.
+     */
+    suspend fun installCuaDriver(workspaceId: String, upgradePath: String?): RemoteCommandOutcome =
+        withRemote(workspaceId) { ssh ->
+            val command = if (upgradePath != null) "${shellQuote(upgradePath)} update --apply"
+                else "/bin/bash -c \"\$(curl -fsSL $CUA_INSTALLER)\""
+            val result = ssh.execute(command, timeoutMillis = 10 * 60_000L, maxOutputBytes = 256 * 1024)
+            RemoteCommandOutcome(result.exitCode == 0 && !result.timedOut,
+                (result.stdout + result.stderr).lines().takeLast(30).joinToString("\n"))
+        }
+
+    /** Uploads the bundled helper when the remote copy is missing or a different version. */
+    private fun ensureHelper(ssh: RemoteWorkspaceSession) {
+        val installed = ssh.execute("$HELPER version 2>/dev/null", timeoutMillis = 10_000).stdout.trim()
+        if (installed == helperVersion) return
+        val result = ssh.execute(
+            "mkdir -p \"\$HOME/.miffan/bin\" && cat > \"\$HOME/.miffan/bin/miffan.tmp\" && " +
+                "chmod 755 \"\$HOME/.miffan/bin/miffan.tmp\" && mv -f \"\$HOME/.miffan/bin/miffan.tmp\" $HELPER",
+            timeoutMillis = 20_000,
+            stdin = ByteArrayInputStream(helperScript),
+        )
+        check(result.exitCode == 0) { result.stderr.ifBlank { "Could not install the Miffan helper" } }
+    }
+
+    private fun startHelperVnc(ssh: RemoteWorkspaceSession): RemoteScreenEndpoint {
+        ensureHelper(ssh)
+        val result = ssh.execute("$HELPER vnc start", timeoutMillis = 20_000)
+        val status = runCatching {
+            json.decodeFromString<RemoteMachineProbe.Vnc>(result.stdout.trim().lineSequence().last())
+        }.getOrNull() ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.VNC_START_FAILED, result.stderr.take(500))
+        when (status.error) {
+            null -> Unit
+            "no_graphical_session" -> throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_GRAPHICAL_SESSION)
+            "no_vnc_server" -> throw RemoteScreenUnavailableException(RemoteScreenProblem.NO_VNC_SERVER, status.session)
+            else -> throw RemoteScreenUnavailableException(RemoteScreenProblem.VNC_START_FAILED, status.log)
+        }
+        return status.endpoint?.let(RemoteScreenEndpoint::parse)?.takeIf { it != RemoteScreenEndpoint.Helper }
+            ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.VNC_START_FAILED, status.endpoint)
+    }
+
+    private suspend fun <T> withRemote(workspaceId: String, block: (RemoteWorkspaceSession) -> T): T {
+        var value: Result<T>? = null
+        workspaces.openLeasedRemote(workspaceId) { ssh ->
+            value = runCatching { block(ssh) }
             Closeable {}
         }.close()
-        return true
+        return requireNotNull(value).getOrThrow()
     }
 
     private fun closeHost(hostId: String) {
@@ -194,7 +322,15 @@ class RemoteScreenRepository(
 
     private suspend fun loadPassword(hostId: String): String =
         withContext(Dispatchers.IO) { credentials.load(hostId) }
-            ?: throw RemoteScreenUnavailableException("Screen password missing")
+            ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.PASSWORD_MISSING)
+
+    private companion object {
+        const val HELPER_ASSET = "remote/miffan.sh"
+        const val HELPER = "\"\$HOME/.miffan/bin/miffan\""
+        const val CUA_INSTALLER = "https://cua.ai/driver/install.sh"
+
+        fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+    }
 
     private fun RemoteHostEntity.screenConfig(hasPassword: Boolean) = RemoteHostScreenConfig(
         enabled = screenEnabled,
