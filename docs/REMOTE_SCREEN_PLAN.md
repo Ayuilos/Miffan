@@ -172,4 +172,17 @@ cua-driver 的 Skill 应从远端读取，不打包进 APP。0.34 通过 MCP `re
 - P2 进行中。已完成并在模拟器上对 CachyOS 联调：远端脚本 `~/.miffan/bin/miffan`（自动安装与按版本更新；探测、在 0600 Unix 套接字上启动 VNC、剪贴板、带会话环境启动 cua-driver）、“自动”连接方式（经 SSH streamlocal 连接脚本启动的 wayvnc）、检测环境面板、cua-driver 安装/升级确认（命令与执行同源，执行前校验主机身份）、按失败原因引导、真实光标形状（Cursor 伪编码，尚未在解锁桌面上确认 wayvnc 是否发送）。
 - P2 已收尾（2026-10-07），支持范围：macOS（系统屏幕共享）、wlroots 系 Wayland（wayvnc，Unix 套接字）、X11（x11vnc，本机回环 TCP + 每次启动随机密码；其 `-unixsock` 模式会在版本握手后断开，不可用）。在 CachyOS 上经 APP 完成 cua-driver 0.24 → 0.34 升级（0.24 的 `update` 自身报错，已回退到官方安装脚本，并在升级后重启用户的 cua-driver systemd 服务）。真实光标形状在 x11vnc 上验证通过。
 - GNOME / KDE 结论（在 Debian 13 容器上验证）：Debian 的 gnome-remote-desktop 48 只编译了 RDP，GNOME Wayland 无法由系统组件提供 VNC；KDE 的 krfb 在 Wayland 下依赖门户远程桌面授权与 KDE 钱包、默认监听所有网卡的 5900 端口，不符合“无人值守、只经 SSH 隧道”的模型。两者自带的远程桌面都转向 RDP（gnome-remote-desktop、krdp），因此在 P3 之后单独增加 RDP 客户端（候选 FreeRDP），同时覆盖 GNOME、KDE 与将来的 Windows。在此之前，GNOME/KDE 主机在检测环境与失败引导中显示“支持仍在验证中”。
+- P3 已完成（2026-10-07），在模拟器上用真实模型对 CachyOS 联调通过：
+  - 设置：助手绑定远程工作空间后出现“允许伙伴操作电脑”，首次开启时弹出确认说明。
+  - 连接：cua-driver 0.34 经 SSH 以 MCP stdio 连接（62 个工具），SKILL.md 注入系统提示。
+  - 任务：伙伴依次列出窗口、查看窗口、输入文字（经审批）、点击“确定”（经审批），再列出窗口确认对话框已关闭；远端 zenity 收到 “Hello from Miffan”。
+  - 截图：查看整个桌面时，截图以缩略图显示在聊天中并发给模型。
+  - 接管：在屏幕页触摸画布（包括黑边）立即接管，横幅显示“你正在操作”，“交还给伙伴”后横幅消失。
+- P3 尚未在真机上验证的部分：
+  - “伙伴正在操作”横幅与接管后的拒绝结果。审批只能在聊天页完成，离开屏幕页会自动交还，所以现有入口下无法同时触发；待 P4 在屏幕页加入对话条后验证。拒绝逻辑已有单元测试。
+- P3 联调中发现、留给后续处理的问题：
+  - 轻松模式聊天只显示待审批的卡片，已完成的电脑操作和截图不显示；审批卡片标题是通用的“Enable a partner capability”。归入 P4。
+  - 在 Wayland 上，cua-driver 的 `get_window_state` 不返回截图（`surface_identity_unproven`），只有 `get_desktop_state` 带整屏截图。这是 cua-driver 的设计。
+  - 轻松模式聊天在一次成功回复后，仍显示之前失败留下的 “The reply did not arrive”。
+  - 专业模式聊天顶部工作空间按钮的无障碍描述是“Connection failed”，与实际的已连接状态不符。
 - 代码在 `feature/remote-screen` 分支，基于 `feature/im-4.0`。
