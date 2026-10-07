@@ -95,6 +95,7 @@ internal fun ThreadComposer(
     onVoiceUnavailable: () -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -199,7 +200,7 @@ internal fun ThreadComposer(
             Text(stringResource(R.string.im_thread_loading), Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box {
+            if (!compact) Box {
                 GlassIconButton(hazeState, if (menu) HugeIcons.Cancel01 else HugeIcons.Add01, stringResource(R.string.im_thread_attachments),
                     onClick = { focus.clearFocus(); keyboard?.hide(); menu = !menu }, enabled = loaded && !importing && !asrState.isRecording)
                 ThreadAttachmentMenu(expanded = menu, onDismiss = { menu = false }, hazeState = hazeState) {
@@ -223,7 +224,7 @@ internal fun ThreadComposer(
                     } else BasicTextField(value = input, onValueChange = onInput,
                         modifier = Modifier.weight(1f).padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) menu = false },
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), maxLines = 5,
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), maxLines = if (compact) 2 else 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { sendDraft() }),
                         decorationBox = { field ->
@@ -233,7 +234,7 @@ internal fun ThreadComposer(
                                 field()
                             }
                         })
-                    IconButton(onClick = { toggleVoice() }, enabled = loaded && !importing) {
+                    if (!compact) IconButton(onClick = { toggleVoice() }, enabled = loaded && !importing) {
                         Icon(if (asrState.isRecording) HugeIcons.StopCircle else HugeIcons.Mic01,
                             stringResource(if (asrState.isRecording) R.string.im_thread_voice_stop else R.string.im_thread_voice))
                     }

@@ -47,6 +47,8 @@ import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.Filter
 import me.rerere.hugeicons.stroke.MoreHorizontal
+import me.rerere.hugeicons.stroke.Computer
+import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
 import me.rerere.hugeicons.stroke.Reply
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.ui.context.LocalNavController
@@ -71,6 +73,7 @@ fun AgentThreadPage(
         onPauseOrDispose { vm.setVisible(false) }
     }
     val assistant by vm.assistant.collectAsStateWithLifecycle()
+    val computer by rememberPartnerComputer(assistantId)
     // One state, so the page never sees "loaded" before the items that came with it.
     val timelineState = vm.timelineState.collectAsStateWithLifecycle()
     val timeline by remember { derivedStateOf { timelineState.value.items } }
@@ -253,7 +256,8 @@ fun AgentThreadPage(
                 onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
                 onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
-                onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) })
+                onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
+                computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) })
             is TimelineItem.Typing -> ThreadTyping()
             is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
                 onView = { viewingNotice = item.notice },
@@ -322,8 +326,11 @@ fun AgentThreadPage(
                         }
                     }
                 }
-                GlassIconButton(hazeState, HugeIcons.MoreHorizontal, stringResource(R.string.im_p5_profile),
-                    onClick = { nav.navigate(Screen.PartnerProfile(assistantId.toString())) }, modifier = Modifier.align(Alignment.CenterEnd))
+                GlassIconButton(hazeState, if (computer?.showsEntry == true) HugeIcons.Computer else HugeIcons.MoreHorizontal,
+                    if (computer?.showsEntry == true) stringResource(R.string.im_computer_screen_description, computer?.name.orEmpty())
+                    else stringResource(R.string.im_p5_profile),
+                    onClick = { nav.navigate(if (computer?.showsEntry == true) Screen.PartnerScreen(assistantId.toString())
+                        else Screen.PartnerProfile(assistantId.toString())) }, modifier = Modifier.align(Alignment.CenterEnd))
             }
             if (filter != null && topicLabel != null) {
                 val color = threadTopicColor(topics[filter]?.topicIndex ?: 0)

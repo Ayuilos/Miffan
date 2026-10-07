@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.computer.PartnerComputer
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MessageRef
@@ -102,6 +103,8 @@ internal fun ThreadMessageBubble(
     onQuote: (MessageRef) -> Unit = {},
     onToolApproval: (String, Boolean) -> Unit = { _, _ -> },
     onToolAnswer: (String, String) -> Unit = { _, _ -> },
+    computer: PartnerComputer? = null,
+    onComputerScreen: () -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
     val clipboard = LocalClipboard.current
@@ -113,7 +116,12 @@ internal fun ThreadMessageBubble(
 
     val user = item.message.role == MessageRole.USER
     val parts = item.message.parts
-    val status = threadLiveStatus(parts, item.streaming)
+    val evidence = remember(parts) { threadComputerEvidence(parts) }
+    val liveComputer = item.streaming && latestComputerAction(parts)?.approvalState !is me.rerere.ai.ui.ToolApprovalState.Pending &&
+        latestComputerAction(parts) != null
+    val status = if (liveComputer) null else threadLiveStatus(parts, item.streaming)
+    val computerName = evidence?.let { computerTargetName(it.latest, computer, stringResource(R.string.im_computer_computer)) }
+    val computerAvailable = evidence?.let { canOpenComputer(it.latest, computer) } == true
     val visible = parts.any { part ->
         when (part) {
             is UIMessagePart.Text -> part.text.isNotBlank()
@@ -123,7 +131,7 @@ internal fun ThreadMessageBubble(
         }
     }
     // A finished reply made only of process (thinking, tool calls) has nothing to show in easy mode.
-    if (!visible && status == null && item.quote == null) return
+    if (!visible && status == null && evidence == null && item.quote == null) return
     Row(Modifier.fillMaxWidth().padding(top = if (item.groupedWithPrevious) 4.dp else 16.dp),
         horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
         Box(Modifier.widthIn(max = threadBubbleMaxWidth())) {
@@ -152,9 +160,18 @@ internal fun ThreadMessageBubble(
                                 Icon(HugeIcons.File01, null, Modifier.size(18.dp))
                                 Text(part.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            is UIMessagePart.Tool -> if (part.isThreadPrompt()) ThreadToolPrompt(part, onToolApproval, onToolAnswer)
+                            is UIMessagePart.Tool -> if (part.isThreadPrompt()) {
+                                if (part.isComputerTool()) ThreadComputerApprovalCard(part,
+                                    computerTargetName(part, computer, stringResource(R.string.im_computer_computer)),
+                                    canOpenComputer(part, computer), onComputerScreen, onToolApproval)
+                                else ThreadToolPrompt(part, onToolApproval, onToolAnswer)
+                            }
                             else -> Unit
                         }
+                    }
+                    if (evidence != null && computerName != null) {
+                        if (liveComputer) ThreadComputerLiveCard(evidence, computerName, computerAvailable, onComputerScreen)
+                        else if (!item.streaming) ThreadComputerSummary(evidence, computerName, computerAvailable, onComputerScreen)
                     }
                     status?.let { ThreadLiveStatus(it) }
                 }

@@ -186,7 +186,7 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
                 when (val current = state) {
                     RemoteScreenUiState.Connecting -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     is RemoteScreenUiState.Connected -> Unit
-                    else -> RemoteScreenFailurePanel(
+                    else -> RemoteScreenFailureContent(
                         state = current,
                         settingsAvailable = host != null,
                         onRetry = vm::reconnect,

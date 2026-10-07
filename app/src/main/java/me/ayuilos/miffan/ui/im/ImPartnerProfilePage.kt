@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
+import me.ayuilos.miffan.ui.im.computer.PartnerComputerPermissionRow
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.im.thread.threadAssistantName
 import me.ayuilos.miffan.Screen
@@ -28,6 +30,7 @@ import kotlin.uuid.Uuid
 fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(key = assistantId, parameters = { parametersOf(Uuid.parse(assistantId)) })) {
     val nav = LocalNavController.current
     val assistant by vm.assistant.collectAsStateWithLifecycle()
+    val computer by rememberPartnerComputer(vm.assistantId)
     val memories by vm.memories.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -74,6 +77,13 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             item("memory") { ImSettingRow(stringResource(R.string.im_p5_memory_count, memories.size), { nav.navigate(Screen.ImMemory(partner.memoryOwnerId())) }) }
             item("capabilities") { Text(stringResource(R.string.im_p5_capabilities), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item("web") { ImCapabilityRow(stringResource(R.string.im_p5_web), partner.enableWebSearch, !busy) { enabled -> perform { vm.update { it.copy(enableWebSearch = enabled) } } } }
+            item("computer") {
+                PartnerComputerPermissionRow(computer, partner.computerUseEnabled, busy, partner.computerUseApprovalRequired,
+                    onApprovalRequired = { required -> perform { vm.update { it.copy(computerUseApprovalRequired = required) } } },
+                    onEnabled = { enabled -> perform { vm.update { it.copy(computerUseEnabled = enabled) } } },
+                    onSetup = { nav.navigate(Screen.ComputerSetup(assistantId)) },
+                    onScreen = { nav.navigate(Screen.PartnerScreen(assistantId)) })
+            }
             item("remember") { ImCapabilityRow(stringResource(R.string.im_p5_remember), partner.enableMemory, !busy) { enabled -> perform { vm.update { it.copy(enableMemory = enabled) } } } }
             item("history") { ImSettingRow(stringResource(R.string.im_p5_settings_history), { nav.navigate(Screen.RevisionHistory(RevisionSubject.ASSISTANT.name, assistantId)) }) }
             item("background") { ImSettingRow(stringResource(R.string.im_p5_background), { nav.navigate(Screen.AssistantBasic(assistantId)) }) }
