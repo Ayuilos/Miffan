@@ -49,6 +49,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.isRepliedInChat
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import me.rerere.hugeicons.HugeIcons
@@ -289,7 +290,13 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                             }
                         }
                     }
-                    if (isDenied) {
+                    if (tool.approvalState.isRepliedInChat) {
+                        Text(
+                            text = stringResource(R.string.chat_message_tool_replied_in_chat),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (isDenied) {
                         val reason = (tool.approvalState as ToolApprovalState.Denied).reason
                         Text(
                             text = stringResource(R.string.chat_message_tool_denied) +

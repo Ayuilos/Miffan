@@ -12,6 +12,7 @@ import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.service.ChatService
+import me.ayuilos.miffan.service.hasPendingToolApprovals
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import java.time.Instant
@@ -58,7 +59,9 @@ class ThreadService(
     ): Uuid {
         val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId)
             ?: error("Assistant not found: $assistantId")
+        // A message sent while a topic waits for an approval answers it, so it goes to that topic.
         val forced = topicSegmentId ?: replyTo?.conversationId
+            ?: segments.filter { it.hasPendingToolApprovals() }.maxByOrNull { it.updateAt }?.id
         return routeMutex.withLock {
             val now = Instant.now()
             val known = segments.mapTo(HashSet()) { it.id }

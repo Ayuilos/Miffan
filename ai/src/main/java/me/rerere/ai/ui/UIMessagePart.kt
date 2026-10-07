@@ -31,6 +31,17 @@ sealed class ToolApprovalState {
     data class Answered(val answer: String) : ToolApprovalState()
 }
 
+/**
+ * The user answered a pending approval by sending a chat message instead of a button. Stored as
+ * [ToolApprovalState.Denied] so older versions still read it; the action did not run and the
+ * model decides what to do from the message. Agreement in text never approves: a repeated call
+ * asks again.
+ */
+const val TOOL_REPLIED_IN_CHAT = "replied_in_chat"
+
+val ToolApprovalState.isRepliedInChat: Boolean
+    get() = this is ToolApprovalState.Denied && reason == TOOL_REPLIED_IN_CHAT
+
 fun ToolApprovalState.canResumeToolExecution(): Boolean {
     return when (this) {
         ToolApprovalState.Approved -> true

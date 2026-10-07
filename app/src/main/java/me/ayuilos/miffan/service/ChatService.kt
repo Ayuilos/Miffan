@@ -47,6 +47,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.ui.TOOL_REPLIED_IN_CHAT
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -197,6 +198,34 @@ internal fun Conversation.approvePendingWorkspaceShellTools(
             )
         }
     )
+}
+
+/**
+ * Ends tool calls that never ran. Approvals still waiting when the user writes in chat are settled
+ * as replied: the action did not run and the model reads the user's message to decide what next.
+ * Agreement in text is not an approval, so a repeated call asks again. Everything else was cut
+ * off by the user and is cancelled.
+ */
+internal fun UIMessage.settleUnfinishedTools(repliedInChat: Boolean): UIMessage = finishPendingTools { tool ->
+    if (repliedInChat && tool.isPending) tool.copy(
+        output = listOf(
+            UIMessagePart.Text(
+                """{"status":"not_run","reason":"The user did not answer this approval request and replied in chat instead. """ +
+                    """Their message follows. Do what it says; if they agreed to this action, call the tool again and they will be asked to approve it."}"""
+            )
+        ),
+        approvalState = ToolApprovalState.Denied(TOOL_REPLIED_IN_CHAT),
+    ) else tool.copy(
+        output = listOf(
+            UIMessagePart.Text(
+                """{"status":"cancelled","error":"Generation cancelled by user before tool execution completed."}"""
+            )
+        ),
+        approvalState = ToolApprovalState.Denied("Generation cancelled by user"),
+    )
+}.let { settled ->
+    // The reply finished before the user answered; keep its place above their message.
+    if (repliedInChat && finishedAt != null && settled !== this) settled.copy(finishedAt = finishedAt) else settled
 }
 
 internal fun Conversation.hasPendingToolApprovals(): Boolean = currentMessageNodes.any { node ->
@@ -579,7 +608,9 @@ class ChatService(
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
         val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt)
-        if (immediately) {
+        // A message sent while an approval waits is the user's answer to it, not a turn behind it.
+        val answersApproval = !session.isGenerating && session.state.value.hasPendingToolApprovals()
+        if (immediately || answersApproval) {
             sendMessageNow(session, message)
             session.resumeQueue()
         } else {
@@ -610,7 +641,7 @@ class ChatService(
             queuedMessage = message,
         ) {
             try {
-                finishInterruptedPendingTools(conversationId)
+                finishInterruptedPendingTools(conversationId, repliedInChat = true)
 
                 val currentConversation = session.state.value
                 val settings = settingsStore.settingsFlow.first()
@@ -1248,22 +1279,11 @@ class ChatService(
         updateConversation(conversationId, conversation.deleteNodeSubtree(invalidNode.id))
     }
 
-    private fun cancelToolByUser(tool: UIMessagePart.Tool): UIMessagePart.Tool {
-        return tool.copy(
-            output = listOf(
-                UIMessagePart.Text(
-                    """{"status":"cancelled","error":"Generation cancelled by user before tool execution completed."}"""
-                )
-            ),
-            approvalState = ToolApprovalState.Denied("Generation cancelled by user")
-        )
-    }
-
-    private suspend fun finishInterruptedPendingTools(conversationId: Uuid) {
+    private suspend fun finishInterruptedPendingTools(conversationId: Uuid, repliedInChat: Boolean = false) {
         val currentConversation = getConversationFlow(conversationId).value
         val lastNode = currentConversation.currentMessageNodes.lastOrNull() ?: return
         val lastMessage = lastNode.currentMessage
-        val updatedMessage = lastMessage.finishPendingTools(::cancelToolByUser)
+        val updatedMessage = lastMessage.settleUnfinishedTools(repliedInChat)
         if (updatedMessage == lastMessage) {
             return
         }

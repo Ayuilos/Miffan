@@ -54,6 +54,7 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.TerminalCommandState
 import me.ayuilos.miffan.ui.theme.ColorMode
 import me.ayuilos.miffan.ui.theme.MiffanTheme
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.isRepliedInChat
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.workspace.RemoteTerminalCommandSpec
 import org.koin.compose.koinInject
@@ -109,8 +110,10 @@ internal fun ChainOfThoughtScope.TerminalCommandToolStep(
         expanded = expanded,
         onExpandedChange = { expanded = it },
         label = { Text(when {
-            tool.isExecuted -> stringResource(R.string.terminal_command_title_result)
+            tool.approvalState.isRepliedInChat -> stringResource(R.string.terminal_command_title_replied_in_chat)
+            // Declined calls carry an explanatory output too, so check them before results.
             tool.approvalState is ToolApprovalState.Denied -> stringResource(R.string.terminal_command_title_cancelled)
+            tool.isExecuted -> stringResource(R.string.terminal_command_title_result)
             tool.approvalState is ToolApprovalState.Answered -> stringResource(R.string.terminal_command_title_answered)
             !pending -> stringResource(R.string.terminal_command_title_preparing)
             state == TerminalCommandState.RUNNING -> stringResource(R.string.terminal_command_title_running)

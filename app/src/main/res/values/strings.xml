@@ -2365,4 +2365,6 @@
   <string name="im_computer_disconnect_title" tools:ignore="MissingTranslation">Disconnect %1$s?</string>
   <string name="im_computer_disconnect_help" tools:ignore="MissingTranslation">Your partner will no longer use this computer: no screen, commands or files. Nothing on the computer is deleted, and you can connect it again later.</string>
   <string name="im_computer_disconnect_confirm" tools:ignore="MissingTranslation">Disconnect</string>
+  <string name="chat_message_tool_replied_in_chat" tools:ignore="MissingTranslation">Not run: you replied in chat instead</string>
+  <string name="terminal_command_title_replied_in_chat" tools:ignore="MissingTranslation">Not run: you replied in chat</string>
 </resources>

@@ -18,6 +18,7 @@ import me.ayuilos.miffan.data.model.MiffanHelpOverride
 import me.ayuilos.miffan.data.model.toLinearMessageNodes
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.isRepliedInChat
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
@@ -111,6 +112,29 @@ class ChatServiceTest {
         assertNull(conversation.copy(messageNodes = listOf(MessageNode.of(UIMessage.assistant("")))).completedAssistantReplyId())
         val pending = reply.copy(parts = reply.parts + tool("approval", "ask_user", ToolApprovalState.Pending))
         assertNull(conversation.copy(messageNodes = listOf(MessageNode.of(pending))).completedAssistantReplyId())
+    }
+
+    @Test
+    fun `writing in chat answers a waiting approval without approving it`() {
+        val reply = UIMessage.assistant("Let me click it").let {
+            it.copy(parts = it.parts + tool("click", "computer_click", ToolApprovalState.Pending) +
+                tool("cut", "workspace_shell", ToolApprovalState.Auto))
+        }
+
+        val finished = reply.copy(finishedAt = reply.createdAt)
+        assertEquals(reply.createdAt, finished.settleUnfinishedTools(repliedInChat = true).finishedAt)
+        val settled = reply.settleUnfinishedTools(repliedInChat = true).getTools()
+
+        val click = settled.single { it.toolCallId == "click" }
+        assertTrue(click.approvalState.isRepliedInChat)
+        assertTrue(click.isExecuted)
+        assertTrue((click.output.single() as UIMessagePart.Text).text.contains("asked to approve it"))
+        // A call the user cut off was never waiting for them, so it stays cancelled.
+        val cut = settled.single { it.toolCallId == "cut" }
+        assertFalse(cut.approvalState.isRepliedInChat)
+        assertTrue(cut.approvalState is ToolApprovalState.Denied)
+        // Stopping the generation is not an answer.
+        assertFalse(reply.settleUnfinishedTools(repliedInChat = false).getTools().any { it.approvalState.isRepliedInChat })
     }
 
     @Test

@@ -47,13 +47,14 @@ internal data class ThreadComputerEvidence(
 }
 
 internal fun threadComputerEvidence(parts: List<UIMessagePart>): ThreadComputerEvidence? {
-    val tools = parts.filterIsInstance<UIMessagePart.Tool>().filter { it.isComputerTool() }
+    // Declined or answered-in-chat calls never touched the computer.
+    val tools = parts.filterIsInstance<UIMessagePart.Tool>()
+        .filter { it.isComputerTool() && it.approvalState !is ToolApprovalState.Denied }
     if (tools.isEmpty()) return null
     return ThreadComputerEvidence(
         tools = tools,
         actionCount = tools.count {
-            it.isExecuted && it.approvalState !is ToolApprovalState.Denied &&
-                computerToolStatus(it.output) == null &&
+            it.isExecuted && computerToolStatus(it.output) == null &&
                 it.toolName.removePrefix(COMPUTER_TOOL_PREFIX) !in computerObservationNames
         },
         screenshot = tools.flatMap { it.output }.filterIsInstance<UIMessagePart.Image>().lastOrNull()?.url,

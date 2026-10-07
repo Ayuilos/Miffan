@@ -2356,4 +2356,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_disconnect_title">断开 %1$s？</string>
   <string name="im_computer_disconnect_help">伙伴将不再使用这台电脑，看不到屏幕，也不能运行命令或读写文件。电脑上的东西不会被删除，之后可以重新连接。</string>
   <string name="im_computer_disconnect_confirm">断开</string>
+  <string name="chat_message_tool_replied_in_chat">未执行：你在聊天里回复了</string>
+  <string name="terminal_command_title_replied_in_chat">未运行：你在聊天里回复了</string>
 </resources>
