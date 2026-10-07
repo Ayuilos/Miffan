@@ -68,6 +68,7 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
     val hostId = workspaces.find { it.id == id }?.remoteHostId
     val host = hosts.find { it.id == hostId }
     val state by vm.state.collectAsStateWithLifecycle()
+    val controller by vm.controller.collectAsStateWithLifecycle()
     val bitmap by vm.bitmap.collectAsStateWithLifecycle()
     // Keep this as State and read its value only in Canvas's drawing scope.
     val frameVersion = vm.frameVersion.collectAsState()
@@ -176,6 +177,7 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+            RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner)
             Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black)) {
                 if (connected && bitmap != null) {
                     RemoteScreenCanvas(requireNotNull(bitmap), frameVersion, cursor, trackpad, vm,

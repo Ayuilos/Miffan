@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -34,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -55,6 +57,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.Tools
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TOOL_NAMES
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIRegistry
@@ -152,7 +155,10 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         return
     }
 
-    val renderer = remember(tool.toolName) { ToolUIRegistry.resolve(tool.toolName) }
+    val isComputerTool = tool.toolName.startsWith(COMPUTER_TOOL_PREFIX)
+    val renderer = remember(tool.toolName) {
+        if (isComputerTool) ComputerToolUIRenderer else ToolUIRegistry.resolve(tool.toolName)
+    }
     val context = remember(tool, loading) {
         ToolUIContext(
             tool = tool,
@@ -176,6 +182,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
     val images = tool.output.filterIsInstance<UIMessagePart.Image>()
+    val computerError = isComputerTool && computerToolStatus(tool.output) == ComputerToolStatus.ERROR
 
     // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用
     val isWorkspaceTool = tool.toolName.startsWith("workspace_")
@@ -196,7 +203,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     imageVector = renderer.icon(context),
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = LocalContentColor.current.copy(alpha = 0.7f)
+                    tint = if (computerError) MaterialTheme.colorScheme.error
+                    else LocalContentColor.current.copy(alpha = 0.7f)
                 )
             }
         },
@@ -204,7 +212,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             Text(
                 text = renderer.title(context),
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.secondary,
+                color = if (computerError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.shimmer(isLoading = loading),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -258,7 +266,14 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                         }
                     }
                     renderer.Summary(context)
-                    if (images.isNotEmpty()) {
+                    if (isComputerTool && images.isNotEmpty()) {
+                        ZoomableAsyncImage(
+                            model = images.last().url,
+                            contentDescription = stringResource(R.string.computer_use_screenshot),
+                            modifier = Modifier.heightIn(max = 160.dp).wrapContentWidth()
+                                .clip(MaterialTheme.shapes.small),
+                        )
+                    } else if (images.isNotEmpty()) {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.wrapContentWidth(),

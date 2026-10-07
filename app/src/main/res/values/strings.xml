@@ -2201,4 +2201,34 @@
   <string name="workspace_screen_status_ok" tools:ignore="MissingTranslation">Ready</string>
   <string name="workspace_screen_status_action" tools:ignore="MissingTranslation">Needs attention</string>
   <string name="workspace_screen_status_unsupported" tools:ignore="MissingTranslation">Unsupported</string>
+  <!-- P3 computer control UI is scoped to English and Simplified Chinese. -->
+  <string name="computer_use_enabled" tools:ignore="MissingTranslation">Allow companion to control computer</string>
+  <string name="computer_use_enabled_help" tools:ignore="MissingTranslation">Your companion can view and operate this computer’s desktop: click, type and open apps. You can take over at any time on the screen page. Requires cua-driver 0.34 or newer on the remote computer; install or upgrade it in the host’s Screen settings → Check environment.</string>
+  <string name="computer_use_ask_before_actions" tools:ignore="MissingTranslation">Ask before controlling computer</string>
+  <string name="computer_use_ask_before_actions_help" tools:ignore="MissingTranslation">Viewing the screen does not need approval. Actions that switch a window to the foreground always ask first.</string>
+  <string name="computer_use_confirm_enable" tools:ignore="MissingTranslation">Allow computer control?</string>
+  <string name="computer_use_enable_disclosure" tools:ignore="MissingTranslation">Screenshots will be sent to the current model’s provider. Your companion’s actions run with the permissions of this computer account. We recommend keeping “Ask before controlling computer” enabled.</string>
+  <string name="workspace_screen_partner_operating" tools:ignore="MissingTranslation">Companion is operating this computer</string>
+  <string name="workspace_screen_user_operating" tools:ignore="MissingTranslation">You are operating; companion is paused</string>
+  <string name="workspace_screen_hand_back" tools:ignore="MissingTranslation">Hand back to companion</string>
+  <string name="computer_use_view_screen" tools:ignore="MissingTranslation">View screen</string>
+  <string name="computer_use_view_window" tools:ignore="MissingTranslation">View window</string>
+  <string name="computer_use_list_windows" tools:ignore="MissingTranslation">List windows</string>
+  <string name="computer_use_list_apps" tools:ignore="MissingTranslation">List apps</string>
+  <string name="computer_use_click" tools:ignore="MissingTranslation">Click</string>
+  <string name="computer_use_double_click" tools:ignore="MissingTranslation">Double click</string>
+  <string name="computer_use_right_click" tools:ignore="MissingTranslation">Right click</string>
+  <string name="computer_use_drag" tools:ignore="MissingTranslation">Drag</string>
+  <string name="computer_use_type_text" tools:ignore="MissingTranslation">Type text</string>
+  <string name="computer_use_press_key" tools:ignore="MissingTranslation">Press key</string>
+  <string name="computer_use_shortcut" tools:ignore="MissingTranslation">Shortcut</string>
+  <string name="computer_use_scroll" tools:ignore="MissingTranslation">Scroll</string>
+  <string name="computer_use_open_app" tools:ignore="MissingTranslation">Open app</string>
+  <string name="computer_use_read_guide" tools:ignore="MissingTranslation">Read computer guide</string>
+  <string name="computer_use_bring_to_front" tools:ignore="MissingTranslation">Bring window to front</string>
+  <string name="computer_use_action_detail" tools:ignore="MissingTranslation">%1$s: %2$s</string>
+  <string name="computer_use_refused" tools:ignore="MissingTranslation">You took over the screen; companion stopped</string>
+  <string name="computer_use_error" tools:ignore="MissingTranslation">Computer action failed. Open details to see the output.</string>
+  <string name="computer_use_foreground_warning" tools:ignore="MissingTranslation">This will switch to the foreground and interrupt the window you are using.</string>
+  <string name="computer_use_screenshot" tools:ignore="MissingTranslation">Computer action screenshot; tap to preview</string>
 </resources>

@@ -2193,4 +2193,34 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_status_ok">正常</string>
   <string name="workspace_screen_status_action">需要处理</string>
   <string name="workspace_screen_status_unsupported">不支持</string>
+  <!-- P3 computer control UI is scoped to English and Simplified Chinese. -->
+  <string name="computer_use_enabled">允许伙伴操作电脑</string>
+  <string name="computer_use_enabled_help">伙伴可以查看并操作这台电脑的桌面，包括点击、输入和打开应用；你可以随时在屏幕页接管。远端需要 cua-driver 0.34 或更新版本，可在主机的“屏幕设置 → 检测环境”中安装或升级。</string>
+  <string name="computer_use_ask_before_actions">操作电脑前询问</string>
+  <string name="computer_use_ask_before_actions_help">观察屏幕不需要询问；切到前台的操作总是会询问。</string>
+  <string name="computer_use_confirm_enable">允许操作电脑？</string>
+  <string name="computer_use_enable_disclosure">截图会发送给当前模型的提供商。伙伴的操作以该电脑账户的权限执行。建议保留“操作电脑前询问”。</string>
+  <string name="workspace_screen_partner_operating">伙伴正在操作这台电脑</string>
+  <string name="workspace_screen_user_operating">你正在操作，伙伴已暂停</string>
+  <string name="workspace_screen_hand_back">交还给伙伴</string>
+  <string name="computer_use_view_screen">查看屏幕</string>
+  <string name="computer_use_view_window">查看窗口</string>
+  <string name="computer_use_list_windows">列出窗口</string>
+  <string name="computer_use_list_apps">列出应用</string>
+  <string name="computer_use_click">点击</string>
+  <string name="computer_use_double_click">双击</string>
+  <string name="computer_use_right_click">右键</string>
+  <string name="computer_use_drag">拖动</string>
+  <string name="computer_use_type_text">输入文字</string>
+  <string name="computer_use_press_key">按键</string>
+  <string name="computer_use_shortcut">快捷键</string>
+  <string name="computer_use_scroll">滚动</string>
+  <string name="computer_use_open_app">打开应用</string>
+  <string name="computer_use_read_guide">读取操作指南</string>
+  <string name="computer_use_bring_to_front">将窗口切到前台</string>
+  <string name="computer_use_action_detail">%1$s：%2$s</string>
+  <string name="computer_use_refused">用户已接管屏幕，伙伴已停止</string>
+  <string name="computer_use_error">电脑操作失败，请打开详情查看输出。</string>
+  <string name="computer_use_foreground_warning">会切换到前台，打断你正在使用的窗口。</string>
+  <string name="computer_use_screenshot">电脑操作截图，点按查看大图</string>
 </resources>
