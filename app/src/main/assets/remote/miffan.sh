@@ -11,7 +11,7 @@
 #                           manage a VNC server only this user can reach (JSON on stdout)
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=5
+MIFFAN_HELPER_VERSION=6
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -205,12 +205,13 @@ free_port() {
 }
 
 vnc_start() {
-    load_session_env || { echo '{"error":"no_graphical_session"}'; return 1; }
-    kind=$(vnc_server_kind)
-    if [ "$kind" = macos-screen-sharing ]; then
+    # macOS Screen Sharing is a system service; there is no session environment to find.
+    if [ "$(os)" = macos ]; then
         vnc_status_json with-secret
         return 0
     fi
+    load_session_env || { echo '{"error":"no_graphical_session"}'; return 1; }
+    kind=$(vnc_server_kind)
     dir=$(runtime_dir)
     if [ -f "$dir/vnc.pid" ] && kill -0 "$(cat "$dir/vnc.pid")" 2>/dev/null; then
         vnc_status_json with-secret
