@@ -166,5 +166,7 @@ cua-driver 的 Skill 应从远端读取，不打包进 APP。0.34 通过 MCP `re
 
 ## 当前状态
 
-- P0 已完成，验证代码在 `feature/remote-screen` 分支（未合并）：`RemoteWorkspaceSession.openLoopbackStream` / `openProcess`、`workspace/.../screen/` 下的 RFB 客户端（None/VNC/Apple 认证，Raw/CopyRect/ZRLE/Tight），以及按环境变量启用的 JVM 与设备测试 `RemoteScreenSpikeTest`、`RemoteScreenSpikeInstrumentedTest`。
-- 下一步：确认本计划后进入 P1。
+- P0 已完成（见上文验证结论）。
+- P1 已完成并在模拟器上对 CachyOS（niri Wayland + wayvnc，经 Tailscale）联调：在 APP 内生成密钥、添加并核对主机、开启屏幕设置、打开屏幕页，画面、旋转保持会话、前后台暂停与恢复、点击、长按右键、键盘输入与退格、回车、按键栏 Esc 均验证通过。联调中修复了输入法重复提交字符和首次点击被 GTK 忽略两个问题。
+- 尚未验证：双指缩放与滚动、触控板模式手势（adb 无法模拟多指）、macOS 屏幕共享在 APP 内的 Apple 认证、真机性能与移动网络流量。
+- 代码在 `feature/remote-screen` 分支，基于 `feature/im-4.0`。下一步：P2 远端准备。
