@@ -35,7 +35,7 @@ import java.time.format.DateTimeFormatter
  */
 internal object ThreadWelcome {
     /** A thread left alone at least this long opens on the partner instead of its old messages. */
-    val IDLE: Duration = Duration.ofHours(6)
+    val IDLE: Duration = Duration.ofHours(1)
 
     /** Up to this age the last chat reads as relative time ("2 小时前"); older, as a date. */
     val RELATIVE_LIMIT: Duration = Duration.ofDays(3)
