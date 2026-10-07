@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
+import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import kotlin.uuid.Uuid
@@ -19,8 +20,8 @@ data class PartnerComputer(
     val platform: RemoteScreenPlatform,
     /** The host's screen is set up, so the screen page can open. */
     val screenEnabled: Boolean,
-    /** The partner may use the computer_* tools on it. */
-    val computerUseEnabled: Boolean,
+    /** How the partner may operate it. */
+    val computerUse: ComputerUseMode,
 ) {
     /** Easy mode shows the computer entry only when there is a screen to open. */
     val showsEntry: Boolean get() = screenEnabled
@@ -48,7 +49,7 @@ class PartnerComputers(
             name = host.name,
             platform = RemoteScreenPlatform.parse(host.screenPlatform),
             screenEnabled = host.screenEnabled,
-            computerUseEnabled = assistant.computerUseEnabled,
+            computerUse = assistant.computerUse,
         )
     }.distinctUntilChanged()
 }

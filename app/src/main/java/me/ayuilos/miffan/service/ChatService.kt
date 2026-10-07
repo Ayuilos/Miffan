@@ -61,7 +61,9 @@ import me.ayuilos.miffan.data.ai.GenerationHandler
 import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.mcp.McpManager
 import org.koin.java.KoinJavaComponent.getKoin
+import me.ayuilos.miffan.data.ai.tools.ComputerToolbox
 import me.ayuilos.miffan.data.ai.tools.createComputerTools
+import me.ayuilos.miffan.data.ai.tools.usesComputer
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
@@ -117,6 +119,7 @@ import java.time.LocalDate
 import me.ayuilos.miffan.data.model.recentChatsReferenceEnabled
 import me.ayuilos.miffan.data.thread.ThreadContext
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.model.isMiffanHelpEnabled
@@ -970,17 +973,19 @@ class ChatService(
 
             // start generating
             val session = getOrCreateSession(conversationId)
+            val generationMessages = conversation.currentMessages.let {
+                if (messageRange != null) {
+                    it.subList(messageRange.start, messageRange.endInclusive + 1)
+                } else {
+                    it
+                }
+            }
+            val computerToolbox = createComputerToolbox(assistant, conversation.id.toString(), generationMessages)
             generationHandler.generateText(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
-                messages = conversation.currentMessages.let {
-                    if (messageRange != null) {
-                        it.subList(messageRange.start, messageRange.endInclusive + 1)
-                    } else {
-                        it
-                    }
-                },
+                messages = generationMessages,
                 assistant = assistant,
                 conversationId = conversationId,
                 conversationSystemPrompt = conversation.customSystemPrompt,
@@ -1004,6 +1009,7 @@ class ChatService(
                     add(workspaceReminderTransformer)
                 },
                 outputTransformers = outputTransformers,
+                dynamicTools = { computerToolbox?.tools().orEmpty() },
                 tools = buildList {
                     val miffanHelpEnabled = shouldEnableMiffanHelp(
                         assistant = assistant,
@@ -1036,7 +1042,6 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
-                    addAll(createComputerToolsIfReady(assistant, conversation.id.toString()))
                     if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(
@@ -1162,35 +1167,38 @@ class ChatService(
     }
 
     /**
-     * Desktop tools for a remote workspace whose assistant allows computer use. Connecting to the
-     * remote cua-driver is bounded so an unreachable machine never stalls the generation.
+     * The computer toolbox for a partner bound to a remote computer it may operate. Conversations
+     * that already used the computer get the full tools straight away (bounded, so an unreachable
+     * machine never stalls the generation); others load them through computer_start.
      */
-    private suspend fun createComputerToolsIfReady(assistant: Assistant, conversationId: String): List<Tool> {
-        if (!assistant.computerUseEnabled) return emptyList()
-        val workspaceId = assistant.workspaceId?.toString() ?: return emptyList()
-        val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
-        if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return emptyList()
+    private suspend fun createComputerToolbox(
+        assistant: Assistant,
+        conversationId: String,
+        messages: List<UIMessage>,
+    ): ComputerToolbox? {
+        if (assistant.computerUse == ComputerUseMode.OFF) return null
+        val workspaceId = assistant.workspaceId?.toString() ?: return null
+        val workspace = workspaceRepository.getById(workspaceId) ?: return null
+        if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        // A host without a screen is a server, not a computer to operate.
+        if (workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled != true) return null
         val snapshot = workspaceRepository.currentWorkspaceToolTarget(
             assistant.id.toString(), workspaceId, assistant.workspaceScopeId?.toString(),
-        )?.copy(conversationId = conversationId) ?: return emptyList()
-        return try {
+        )?.copy(conversationId = conversationId) ?: return null
+        val approvalRequired = assistant.computerUse == ComputerUseMode.ASK
+        val toolbox = ComputerToolbox(snapshot, approvalRequired) {
             withTimeout(20_000) {
                 createComputerTools(
                     snapshot = snapshot,
-                    approvalRequired = assistant.computerUseApprovalRequired,
+                    approvalRequired = approvalRequired,
                     registry = getKoin().get(),
                     control = getKoin().get(),
                     filesManager = getKoin().get(),
                 )
             }
-        } catch (error: CancellationException) {
-            if (error is TimeoutCancellationException) emptyList<Tool>().also {
-                Log.w(TAG, "createComputerToolsIfReady: cua-driver did not answer in time")
-            } else throw error
-        } catch (error: Exception) {
-            Log.w(TAG, "createComputerToolsIfReady: computer tools unavailable", error)
-            emptyList()
         }
+        if (messages.usesComputer()) toolbox.preload()
+        return toolbox
     }
 
     private suspend fun createWorkspaceToolsIfReady(

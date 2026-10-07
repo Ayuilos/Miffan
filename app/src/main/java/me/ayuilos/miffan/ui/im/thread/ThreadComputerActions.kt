@@ -31,7 +31,7 @@ import me.rerere.hugeicons.stroke.ComputerVideo
 import androidx.compose.ui.graphics.Color
 
 private val computerObservationNames = setOf(
-    "get_desktop_state", "get_window_state", "list_windows", "list_apps", "read_guide",
+    "start", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "read_guide",
     "get_screen_size", "get_cursor_position", "zoom", "verify_state",
 )
 

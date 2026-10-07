@@ -78,9 +78,8 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             item("capabilities") { Text(stringResource(R.string.im_p5_capabilities), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item("web") { ImCapabilityRow(stringResource(R.string.im_p5_web), partner.enableWebSearch, !busy) { enabled -> perform { vm.update { it.copy(enableWebSearch = enabled) } } } }
             item("computer") {
-                PartnerComputerPermissionRow(computer, partner.computerUseEnabled, busy, partner.computerUseApprovalRequired,
-                    onApprovalRequired = { required -> perform { vm.update { it.copy(computerUseApprovalRequired = required) } } },
-                    onEnabled = { enabled -> perform { vm.update { it.copy(computerUseEnabled = enabled) } } },
+                PartnerComputerPermissionRow(computer, partner.computerUse, busy,
+                    onMode = { mode -> perform { vm.update { it.copy(computerUse = mode) } } },
                     onSetup = { nav.navigate(Screen.ComputerSetup(assistantId)) },
                     onScreen = { nav.navigate(Screen.PartnerScreen(assistantId)) })
             }

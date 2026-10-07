@@ -25,6 +25,7 @@ import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
+import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
@@ -268,7 +269,7 @@ class ComputerSetupVM(
         settingsStore.update { settings ->
             settings.copy(assistants = settings.assistants.map {
                 if (it.id != assistantId) it
-                else it.withWorkspaceBinding(workspaceId).copy(computerUseEnabled = true, computerUseApprovalRequired = true)
+                else it.withWorkspaceBinding(workspaceId).copy(computerUse = ComputerUseMode.ASK)
             })
         }
         _state.update { it.copy(step = ComputerSetupStep.DONE) }

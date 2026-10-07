@@ -91,6 +91,8 @@ class GenerationHandler(
         assistant: Assistant,
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
+        /** Read again at every step, for tools that load during the generation. */
+        dynamicTools: () -> List<Tool> = { emptyList() },
         maxSteps: Int = 256,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
@@ -139,6 +141,7 @@ class GenerationHandler(
                     ).let(this::addAll)
                 }
                 addAll(tools)
+                addAll(dynamicTools())
             }
             val targetBinder = WorkspaceToolTargetBinder(messages, toolsInternal)
 

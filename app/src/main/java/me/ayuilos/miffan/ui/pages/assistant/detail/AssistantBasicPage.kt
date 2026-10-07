@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.im.computer.ComputerUseModeSelector
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
@@ -947,54 +948,16 @@ internal fun WorkspaceShellPermissionControls(
 
 @Composable
 private fun ComputerUsePermissionControls(assistant: Assistant, onUpdate: (Assistant) -> Unit) {
-    // A changed binding cannot inherit a confirmation still open for the previous computer.
-    var confirmEnable by rememberSaveable(assistant.id.toString(), assistant.workspaceId?.toString()) {
-        mutableStateOf(false)
-    }
     FormItem(
         modifier = Modifier.padding(8.dp),
         label = { Text(stringResource(R.string.computer_use_enabled)) },
         description = { Text(stringResource(R.string.computer_use_enabled_help)) },
-        tail = {
-            Switch(
-                checked = assistant.computerUseEnabled,
-                onCheckedChange = { enabled ->
-                    if (enabled) confirmEnable = true
-                    else onUpdate(assistant.copy(computerUseEnabled = false))
-                },
-                modifier = Modifier.testTag("computer-use-capability"),
-            )
-        },
-    )
-    if (assistant.computerUseEnabled) {
-        HorizontalDivider()
-        FormItem(
-            modifier = Modifier.padding(8.dp),
-            label = { Text(stringResource(R.string.computer_use_ask_before_actions)) },
-            description = { Text(stringResource(R.string.computer_use_ask_before_actions_help)) },
-            tail = {
-                Switch(
-                    checked = assistant.computerUseApprovalRequired,
-                    onCheckedChange = { onUpdate(assistant.copy(computerUseApprovalRequired = it)) },
-                    modifier = Modifier.testTag("computer-use-each-approval"),
-                )
-            },
-        )
-    }
-    if (confirmEnable && !assistant.computerUseEnabled) {
-        AlertDialog(
-            onDismissRequest = { confirmEnable = false },
-            title = { Text(stringResource(R.string.computer_use_confirm_enable)) },
-            text = { Text(stringResource(R.string.computer_use_enable_disclosure)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmEnable = false
-                    onUpdate(assistant.copy(computerUseEnabled = true))
-                }) { Text(stringResource(R.string.common_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmEnable = false }) { Text(stringResource(R.string.common_cancel)) }
-            },
+    ) {
+        ComputerUseModeSelector(
+            mode = assistant.computerUse,
+            enabled = true,
+            onMode = { onUpdate(assistant.copy(computerUse = it)) },
+            modifier = Modifier.padding(top = 8.dp).testTag("computer-use-mode"),
         )
     }
 }

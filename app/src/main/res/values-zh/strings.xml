@@ -2193,12 +2193,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_status_action">需要处理</string>
   <string name="workspace_screen_status_unsupported">不支持</string>
   <!-- P3 computer control UI is scoped to English and Simplified Chinese. -->
-  <string name="computer_use_enabled">允许伙伴操作电脑</string>
-  <string name="computer_use_enabled_help">伙伴可以查看并操作这台电脑的桌面，包括点击、输入和打开应用；你可以随时在屏幕页接管。远端需要 cua-driver 0.34 或更新版本，可在主机的“屏幕设置 → 检测环境”中安装或升级。</string>
-  <string name="computer_use_ask_before_actions">操作电脑前询问</string>
-  <string name="computer_use_ask_before_actions_help">观察屏幕不需要询问；切到前台的操作总是会询问。</string>
-  <string name="computer_use_confirm_enable">允许操作电脑？</string>
-  <string name="computer_use_enable_disclosure">截图会发送给当前模型的提供商。伙伴的操作以该电脑账户的权限执行。建议保留“操作电脑前询问”。</string>
+  <string name="computer_use_enabled">伙伴操作电脑</string>
+  <string name="computer_use_enabled_help">伙伴可以查看并操作这台电脑的桌面，包括点击、输入和打开应用；你可以随时在屏幕页接管。需要在主机的屏幕设置里开启屏幕，并安装 cua-driver 0.34 或更新版本（屏幕设置 → 检测环境）。</string>
   <string name="workspace_screen_partner_operating">伙伴正在操作这台电脑</string>
   <string name="workspace_screen_user_operating">你正在操作，伙伴已暂停</string>
   <string name="workspace_screen_hand_back">交还给伙伴</string>
@@ -2347,4 +2343,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_ssh_unreachable">连不上这台电脑。请检查地址，并确认它开启了 SSH。</string>
   <string name="workspace_screen_clipboard_new">电脑上复制了新内容</string>
   <string name="workspace_screen_clipboard_copy">复制到手机</string>
+  <string name="computer_use_mode_ask">先问我</string>
+  <string name="computer_use_mode_auto">直接操作</string>
+  <string name="computer_use_mode_off">不允许</string>
+  <string name="computer_use_mode_ask_help">需要用电脑时伙伴会自己开始，每个改动桌面的操作都会先在聊天里问你；看屏幕不用问。</string>
+  <string name="computer_use_mode_auto_help">伙伴直接操作，不再逐步询问；把窗口切到前台仍会先问你。</string>
+  <string name="computer_use_mode_off_help">伙伴不会操作这台电脑，也不会主动提起。</string>
+  <string name="computer_use_confirm_auto">让伙伴直接操作？</string>
+  <string name="computer_use_auto_disclosure">伙伴会直接点击、输入和打开应用，不再逐步询问。截图会发送给当前模型的提供商，操作以这台电脑账户的权限执行。你可以随时在屏幕页接管。</string>
+  <string name="computer_use_start">连接电脑</string>
 </resources>

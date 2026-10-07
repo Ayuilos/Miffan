@@ -10,6 +10,8 @@ import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.Tool as McpTool
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -24,6 +26,7 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.saveUploadFromBytes
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
+import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 
@@ -52,6 +55,78 @@ private fun isHiddenArgument(name: String) =
 
 /** Structured fields worth showing the model next to the text (element tokens are built from snapshot_id). */
 private val DROPPED_STRUCTURED_FIELDS = setOf("tree_markdown", "elements", "_note")
+
+const val COMPUTER_START_TOOL = COMPUTER_TOOL_PREFIX + "start"
+
+/** True once a conversation has touched the computer, so its later steps need the full tools. */
+fun List<UIMessage>.usesComputer(): Boolean =
+    any { message -> message.parts.any { it is UIMessagePart.Tool && it.toolName.startsWith(COMPUTER_TOOL_PREFIX) } }
+
+/**
+ * The partner always knows it can operate the bound computer, but the cua-driver tools (dozens of
+ * schemas and an SSH round trip) load only when it calls [COMPUTER_START_TOOL]. Ordinary chats pay
+ * for one small tool; the loaded tools join the generation from its next step.
+ */
+class ComputerToolbox(
+    private val snapshot: WorkspaceToolTargetSnapshot,
+    private val approvalRequired: Boolean,
+    private val load: suspend () -> List<Tool>,
+) {
+    private val target = snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
+    @Volatile private var loaded: List<Tool>? = null
+
+    fun tools(): List<Tool> = listOf(startTool) + loaded.orEmpty()
+
+    /** Loads the tools up front; failures are left for [COMPUTER_START_TOOL] to report. */
+    suspend fun preload() {
+        if (loaded == null) runCatching { loaded = load() }.onFailure {
+            if (it is CancellationException) throw it
+            Log.w(TAG, "preload: computer tools unavailable", it)
+        }
+    }
+
+    private val startTool = Tool(
+        name = COMPUTER_START_TOOL,
+        description = "Start operating the desktop of $target. Loads the computer_* tools for observing and " +
+            "controlling it; they become available on your next step.",
+        parameters = { InputSchema.Obj(properties = JsonObject(emptyMap())) },
+        workspaceTarget = snapshot,
+        systemPrompt = { _, _ ->
+            if (loaded != null) "" else buildString {
+                appendLine("## Computer")
+                appendLine("You can see and operate the desktop of $target: open apps, click, type and read what is on screen.")
+                appendLine("- When a request needs that desktop, call $COMPUTER_START_TOOL first; do not ask the user to enable anything.")
+                if (approvalRequired) {
+                    appendLine("- Each action that changes the desktop asks the user for approval in the chat, so you need not ask for permission in text beforehand.")
+                }
+                appendLine("- The user can watch the same screen and take over at any time.")
+                appendLine("- For anything on the screen, use these tools rather than shell screenshot or input commands.")
+            }
+        },
+        execute = {
+            if (loaded == null) loaded = try {
+                load()
+            } catch (error: CancellationException) {
+                if (error is TimeoutCancellationException) null else throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "start: computer tools unavailable", error)
+                return@Tool listOf(UIMessagePart.Text(buildJsonObject {
+                    put("status", "error")
+                    put("reason", "Could not reach cua-driver on $target: ${error.message}")
+                    put("next", "Tell the user. They can recheck the computer from your profile (Connect a computer).")
+                }.toString()))
+            }
+            val tools = loaded ?: return@Tool listOf(UIMessagePart.Text(
+                """{"status":"error","reason":"$target did not answer in time. Tell the user and stop."}""",
+            ))
+            listOf(UIMessagePart.Text(buildJsonObject {
+                put("status", "ready")
+                put("tools", tools.joinToString(", ") { it.name })
+                put("next", "Observe first, e.g. computer_get_desktop_state.")
+            }.toString()))
+        },
+    )
+}
 
 /**
  * `computer_*` tools for an assistant bound to a remote workspace, backed by cua-driver over SSH.

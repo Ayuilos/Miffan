@@ -14,6 +14,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.PartnerComputer
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
+import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.repository.RemoteScreenProblem
 import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
 import me.ayuilos.miffan.utils.workspaceErrorMessage
@@ -43,15 +44,12 @@ internal fun computerErrorMessage(resources: Resources, error: Throwable): Strin
 @Composable
 internal fun PartnerComputerPermissionRow(
     computer: PartnerComputer?,
-    enabled: Boolean,
+    mode: ComputerUseMode,
     busy: Boolean,
-    approvalRequired: Boolean,
-    onEnabled: (Boolean) -> Unit,
-    onApprovalRequired: (Boolean) -> Unit,
+    onMode: (ComputerUseMode) -> Unit,
     onSetup: () -> Unit,
     onScreen: () -> Unit,
 ) {
-    var confirm by rememberSaveable(computer?.workspaceId, computer?.hostId) { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth()) {
             if (computer == null) {
@@ -59,14 +57,12 @@ internal fun PartnerComputerPermissionRow(
                     enabled = !busy, onClick = onSetup) { Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 return@Column
             }
-            PartnerComputerRow(stringResource(R.string.im_computer_control), computer.name) {
-                Switch(checked = enabled, enabled = !busy, onCheckedChange = { if (it) confirm = true else onEnabled(false) })
-            }
-            if (enabled) {
-                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                PartnerComputerRow(stringResource(R.string.computer_use_ask_before_actions), stringResource(R.string.computer_use_ask_before_actions_help)) {
-                    Switch(checked = approvalRequired, enabled = !busy, onCheckedChange = onApprovalRequired)
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.im_computer_control))
+                    Text(computer.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                ComputerUseModeSelector(mode, enabled = !busy, onMode = onMode)
             }
             if (computer.showsEntry) {
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
@@ -80,11 +76,42 @@ internal fun PartnerComputerPermissionRow(
             }
         }
     }
-    if (confirm && computer != null) AlertDialog(onDismissRequest = { if (!busy) confirm = false },
-        title = { Text(stringResource(R.string.computer_use_confirm_enable)) },
-        text = { Text(stringResource(R.string.computer_use_enable_disclosure)) },
-        confirmButton = { TextButton(enabled = !busy, onClick = { confirm = false; onEnabled(true) }) { Text(stringResource(R.string.common_confirm)) } },
-        dismissButton = { TextButton(enabled = !busy, onClick = { confirm = false }) { Text(stringResource(R.string.common_cancel)) } })
+}
+
+/** Ask first / automatic / off, with what the chosen mode means. Automatic confirms first. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ComputerUseModeSelector(
+    mode: ComputerUseMode,
+    enabled: Boolean,
+    onMode: (ComputerUseMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var confirmAuto by rememberSaveable { mutableStateOf(false) }
+    val modes = listOf(
+        ComputerUseMode.ASK to R.string.computer_use_mode_ask,
+        ComputerUseMode.AUTO to R.string.computer_use_mode_auto,
+        ComputerUseMode.OFF to R.string.computer_use_mode_off,
+    )
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            modes.forEachIndexed { index, (value, label) ->
+                SegmentedButton(selected = mode == value, enabled = enabled,
+                    onClick = { if (value == ComputerUseMode.AUTO && mode != value) confirmAuto = true else onMode(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index, modes.size)) { Text(stringResource(label), maxLines = 1) }
+            }
+        }
+        Text(stringResource(when (mode) {
+            ComputerUseMode.ASK -> R.string.computer_use_mode_ask_help
+            ComputerUseMode.AUTO -> R.string.computer_use_mode_auto_help
+            ComputerUseMode.OFF -> R.string.computer_use_mode_off_help
+        }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (confirmAuto) AlertDialog(onDismissRequest = { confirmAuto = false },
+        title = { Text(stringResource(R.string.computer_use_confirm_auto)) },
+        text = { Text(stringResource(R.string.computer_use_auto_disclosure)) },
+        confirmButton = { TextButton(onClick = { confirmAuto = false; onMode(ComputerUseMode.AUTO) }) { Text(stringResource(R.string.common_confirm)) } },
+        dismissButton = { TextButton(onClick = { confirmAuto = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** One row of the IM settings card; tappable when [onClick] is given. */
