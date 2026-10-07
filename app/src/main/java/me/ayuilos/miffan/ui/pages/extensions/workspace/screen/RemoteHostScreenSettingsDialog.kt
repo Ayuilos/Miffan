@@ -34,11 +34,15 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
+
+private enum class ScreenConnectionMode { AUTOMATIC, TCP, UNIX }
 
 @Composable
 fun RemoteHostScreenSettingsDialog(
@@ -49,11 +53,14 @@ fun RemoteHostScreenSettingsDialog(
 ) {
     val resources = LocalResources.current
     var loaded by remember(host.id) { mutableStateOf(false) }
-    var busy by remember(host.id) { mutableStateOf(false) }
+    var configBusy by remember(host.id) { mutableStateOf(false) }
+    val environments by vm.screenEnvironments.collectAsStateWithLifecycle()
+    val environment = environments[host.id] ?: RemoteScreenEnvironmentState()
+    val busy = configBusy || environment.busy
     var active by remember(host.id) { mutableStateOf(true) }
     var error by remember(host.id) { mutableStateOf<String?>(null) }
     var enabled by remember(host.id) { mutableStateOf(false) }
-    var unix by remember(host.id) { mutableStateOf(false) }
+    var mode by remember(host.id) { mutableStateOf(ScreenConnectionMode.AUTOMATIC) }
     var port by remember(host.id) { mutableStateOf("5900") }
     var path by remember(host.id) { mutableStateOf("") }
     var auth by remember(host.id) { mutableStateOf(RemoteScreenAuth.NONE) }
@@ -64,16 +71,20 @@ fun RemoteHostScreenSettingsDialog(
     DisposableEffect(host.id) { onDispose { active = false } }
     fun load() {
         error = null
-        busy = true
+        configBusy = true
         vm.getScreenConfig(host.id) { result ->
             if (!active) return@getScreenConfig
-            busy = false
+            configBusy = false
             result.fold(onSuccess = { config ->
                 if (config == null) {
                     error = resources.getString(R.string.workspace_screen_host_missing)
                 } else {
                     enabled = config.enabled
-                    unix = config.endpoint is RemoteScreenEndpoint.Unix
+                    mode = if (!config.enabled) ScreenConnectionMode.AUTOMATIC else when (config.endpoint) {
+                        RemoteScreenEndpoint.Helper -> ScreenConnectionMode.AUTOMATIC
+                        is RemoteScreenEndpoint.Tcp -> ScreenConnectionMode.TCP
+                        is RemoteScreenEndpoint.Unix -> ScreenConnectionMode.UNIX
+                    }
                     port = (config.endpoint as? RemoteScreenEndpoint.Tcp)?.port?.toString() ?: "5900"
                     path = (config.endpoint as? RemoteScreenEndpoint.Unix)?.path.orEmpty()
                     auth = config.auth
@@ -87,19 +98,25 @@ fun RemoteHostScreenSettingsDialog(
     LaunchedEffect(host.id) { load() }
     val validPort = port.toIntOrNull()?.takeIf { it in 1..65535 }
     val validPath = path.startsWith('/') && path.none { it == '\u0000' || it == '\n' }
-    val valid = loaded && (if (unix) validPath else validPort != null) &&
+    val endpointValid = when (mode) {
+        ScreenConnectionMode.AUTOMATIC -> true
+        ScreenConnectionMode.TCP -> validPort != null
+        ScreenConnectionMode.UNIX -> validPath
+    }
+    val valid = loaded && endpointValid &&
         (auth == RemoteScreenAuth.NONE || hasPassword || password.isNotEmpty())
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(stringResource(R.string.workspace_screen_settings)) },
+        properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
         text = {
             Column(
                 Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(host.name, style = MaterialTheme.typography.titleSmall)
-                if (busy && !loaded) CircularProgressIndicator()
+                if (configBusy && !loaded) CircularProgressIndicator()
                 if (loaded) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.workspace_screen_enabled), Modifier.weight(1f))
@@ -107,21 +124,25 @@ fun RemoteHostScreenSettingsDialog(
                     }
                     Text(stringResource(R.string.workspace_screen_endpoint), style = MaterialTheme.typography.titleSmall)
                     Column(Modifier.selectableGroup()) {
-                        ScreenSettingOption(!unix, R.string.workspace_screen_tcp, !busy) { unix = false }
-                        ScreenSettingOption(unix, R.string.workspace_screen_unix, !busy) { unix = true }
+                        ScreenSettingOption(mode == ScreenConnectionMode.AUTOMATIC, R.string.workspace_screen_automatic, !busy) { mode = ScreenConnectionMode.AUTOMATIC }
+                        ScreenSettingOption(mode == ScreenConnectionMode.TCP, R.string.workspace_screen_tcp, !busy) { mode = ScreenConnectionMode.TCP }
+                        ScreenSettingOption(mode == ScreenConnectionMode.UNIX, R.string.workspace_screen_unix, !busy) { mode = ScreenConnectionMode.UNIX }
                     }
-                    if (unix) {
+                    if (mode == ScreenConnectionMode.UNIX) {
                         OutlinedTextField(path, { path = it; error = null },
                             label = { Text(stringResource(R.string.workspace_screen_socket_path)) },
                             supportingText = { Text(stringResource(R.string.workspace_screen_path_hint)) },
                             isError = path.isNotEmpty() && !validPath,
                             singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                    } else {
+                    } else if (mode == ScreenConnectionMode.TCP) {
                         OutlinedTextField(port, { port = it; error = null },
                             label = { Text(stringResource(R.string.workspace_screen_port)) },
                             supportingText = { Text(stringResource(R.string.workspace_screen_port_hint)) },
                             isError = validPort == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                    }
+                    if (mode == ScreenConnectionMode.AUTOMATIC) {
+                        Text(stringResource(R.string.workspace_screen_automatic_help), style = MaterialTheme.typography.bodySmall)
                     }
                     Text(stringResource(R.string.workspace_screen_auth), style = MaterialTheme.typography.titleSmall)
                     Column(Modifier.selectableGroup()) {
@@ -152,16 +173,21 @@ fun RemoteHostScreenSettingsDialog(
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (!loaded && !busy) TextButton(onClick = ::load) { Text(stringResource(R.string.workspace_screen_retry)) }
+                RemoteScreenEnvironmentPanel(host, environment, vm, blocked = configBusy)
             }
         },
         confirmButton = {
             TextButton(enabled = valid && !busy, onClick = {
-                busy = true
+                configBusy = true
                 error = null
-                val endpoint = if (unix) RemoteScreenEndpoint.Unix(path) else RemoteScreenEndpoint.Tcp(requireNotNull(validPort))
+                val endpoint = when (mode) {
+                    ScreenConnectionMode.AUTOMATIC -> RemoteScreenEndpoint.Helper
+                    ScreenConnectionMode.TCP -> RemoteScreenEndpoint.Tcp(requireNotNull(validPort))
+                    ScreenConnectionMode.UNIX -> RemoteScreenEndpoint.Unix(path)
+                }
                 vm.updateScreenConfig(host.id, enabled, endpoint, auth, username, password.takeIf { it.isNotEmpty() }) { result ->
                     if (!active) return@updateScreenConfig
-                    busy = false
+                    configBusy = false
                     result.fold(onSuccess = { saved ->
                         if (saved) { onSaved(); onDismiss() }
                         else error = resources.getString(R.string.workspace_screen_host_missing)

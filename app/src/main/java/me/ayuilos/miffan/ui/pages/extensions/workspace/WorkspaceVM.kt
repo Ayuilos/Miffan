@@ -17,6 +17,8 @@ import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.repository.RemoteHostScreenConfig
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnvironmentPhase
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnvironmentState
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RootfsInstallProgress
@@ -36,6 +38,57 @@ class WorkspaceVM(
     val remoteConnectionStates = repository.remoteConnectionStates
     private val _keyMaterialStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val keyMaterialStatus = _keyMaterialStatus.asStateFlow()
+
+    private val _screenEnvironments = MutableStateFlow<Map<String, RemoteScreenEnvironmentState>>(emptyMap())
+    val screenEnvironments = _screenEnvironments.asStateFlow()
+
+    fun probeScreenHost(host: RemoteHostEntity) {
+        val previous = _screenEnvironments.value[host.id] ?: RemoteScreenEnvironmentState()
+        if (previous.busy) return
+        val retained = if (previous.connectionRevision == host.connectionRevision) previous else RemoteScreenEnvironmentState()
+        _screenEnvironments.update { it + (host.id to retained.copy(
+            connectionRevision = host.connectionRevision,
+            phase = RemoteScreenEnvironmentPhase.PROBING,
+            probe = null,
+            error = null,
+        )) }
+        runOperation({ screenRepository.probeHost(host.id) }) { result ->
+            _screenEnvironments.update { states ->
+                val current = states.getValue(host.id)
+                states + (host.id to current.copy(
+                    phase = RemoteScreenEnvironmentPhase.IDLE,
+                    probe = result.getOrNull(),
+                    error = result.exceptionOrNull(),
+                ))
+            }
+        }
+    }
+
+    /** Called only by the environment panel's explicit install/upgrade confirmation. */
+    fun installScreenCuaDriver(host: RemoteHostEntity, upgradePath: String?) {
+        val previous = _screenEnvironments.value[host.id] ?: return
+        if (previous.busy || previous.connectionRevision != host.connectionRevision || previous.probe == null) return
+        val cua = previous.probe.cua
+        if (cua.ok || upgradePath != cua.path?.takeIf { it.isNotBlank() }) return
+        _screenEnvironments.update { it + (host.id to previous.copy(
+            phase = RemoteScreenEnvironmentPhase.INSTALLING,
+            installation = null,
+            installationError = null,
+            error = null,
+        )) }
+        runOperation({ screenRepository.installCuaDriverOnHost(host.id, upgradePath) }) { result ->
+            _screenEnvironments.update { states ->
+                states + (host.id to states.getValue(host.id).copy(
+                    phase = RemoteScreenEnvironmentPhase.IDLE,
+                    installation = result.getOrNull(),
+                    installationError = result.exceptionOrNull(),
+                ))
+            }
+            // A fresh probe follows both a command outcome and an execution exception.
+            // Keep the install error/output distinct from the probe error.
+            probeScreenHost(host)
+        }
+    }
 
     fun refreshKeyMaterial(keys: List<SshKeyEntity>) {
         viewModelScope.launch {

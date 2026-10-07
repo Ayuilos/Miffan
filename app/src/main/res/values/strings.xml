@@ -2157,4 +2157,48 @@
   <string name="workspace_screen_paste_failed" tools:ignore="MissingTranslation">Could not paste on the remote computer</string>
   <string name="workspace_screen_clipboard_copied" tools:ignore="MissingTranslation">Remote text copied to your clipboard</string>
   <string name="workspace_screen_text_unsupported" tools:ignore="MissingTranslation">This platform cannot type this text yet</string>
+  <!-- P2 screen setup is scoped to English and Simplified Chinese. -->
+  <string name="workspace_screen_automatic" tools:ignore="MissingTranslation">Automatic (recommended)</string>
+  <string name="workspace_screen_automatic_help" tools:ignore="MissingTranslation">Miffan installs a small helper at ~/.miffan/bin/miffan on the remote computer. It finds your desktop session and starts a screen service only your account can connect to. The entire connection goes through SSH.</string>
+  <string name="workspace_screen_environment" tools:ignore="MissingTranslation">Environment check</string>
+  <string name="workspace_screen_probe" tools:ignore="MissingTranslation">Check environment</string>
+  <string name="workspace_screen_probe_help" tools:ignore="MissingTranslation">This check installs or updates the Miffan helper on the remote computer and checks the desktop, screen service and input tools.</string>
+  <string name="workspace_screen_probing" tools:ignore="MissingTranslation">Checking the remote environment…</string>
+  <string name="workspace_screen_installing" tools:ignore="MissingTranslation">Installing or upgrading… This may take a few minutes.</string>
+  <string name="workspace_screen_install_success" tools:ignore="MissingTranslation">Installation or upgrade completed</string>
+  <string name="workspace_screen_install_failed" tools:ignore="MissingTranslation">Installation or upgrade failed</string>
+  <string name="workspace_screen_no_output" tools:ignore="MissingTranslation">The command returned no output.</string>
+  <string name="workspace_screen_no_workspace" tools:ignore="MissingTranslation">Create a remote workspace for this host first, then check again.</string>
+  <string name="workspace_screen_no_session" tools:ignore="MissingTranslation">No logged-in desktop session was found. Log in to the desktop on this computer, then retry.</string>
+  <string name="workspace_screen_config_incomplete" tools:ignore="MissingTranslation">The screen is disabled or its configuration is incomplete. Open screen settings to finish setup.</string>
+  <string name="workspace_screen_start_failed" tools:ignore="MissingTranslation">The screen service could not start. Check the output and retry.</string>
+  <string name="workspace_screen_system" tools:ignore="MissingTranslation">System</string>
+  <string name="workspace_screen_session" tools:ignore="MissingTranslation">Desktop session</string>
+  <string name="workspace_screen_vnc" tools:ignore="MissingTranslation">Screen service</string>
+  <string name="workspace_screen_macos_sharing_help" tools:ignore="MissingTranslation">Enable Screen Sharing in System Settings → General → Sharing, and choose macOS account authentication in screen settings.</string>
+  <string name="workspace_screen_vnc_missing" tools:ignore="MissingTranslation">No supported screen service is available.</string>
+  <string name="workspace_screen_vnc_running" tools:ignore="MissingTranslation">%1$s · running</string>
+  <string name="workspace_screen_vnc_autostart" tools:ignore="MissingTranslation">%1$s · ready; starts automatically when you open the screen</string>
+  <string name="workspace_screen_session_unsupported" tools:ignore="MissingTranslation">Automatic screen setup is not supported for this desktop session.</string>
+  <string name="workspace_screen_install_vnc" tools:ignore="MissingTranslation">Install %1$s on the remote computer, then retry.</string>
+  <string name="workspace_screen_desktop_validation" tools:ignore="MissingTranslation">Support for GNOME and KDE desktops is still being verified.</string>
+  <string name="workspace_screen_copy_command" tools:ignore="MissingTranslation">Copy command</string>
+  <string name="workspace_screen_command_copied" tools:ignore="MissingTranslation">Command copied</string>
+  <string name="workspace_screen_show_output" tools:ignore="MissingTranslation">Show output</string>
+  <string name="workspace_screen_hide_output" tools:ignore="MissingTranslation">Hide output</string>
+  <string name="workspace_screen_clipboard" tools:ignore="MissingTranslation">Clipboard</string>
+  <string name="workspace_screen_clipboard_missing" tools:ignore="MissingTranslation">No clipboard tool was found.</string>
+  <string name="workspace_screen_install_clipboard" tools:ignore="MissingTranslation">Install %1$s to type Chinese and other non-Latin text.</string>
+  <string name="workspace_screen_cua" tools:ignore="MissingTranslation">cua-driver · needed for companion computer control</string>
+  <string name="workspace_screen_cua_missing" tools:ignore="MissingTranslation">Not installed</string>
+  <string name="workspace_screen_cua_outdated" tools:ignore="MissingTranslation">Version %1$s · required %2$s or newer</string>
+  <string name="workspace_screen_unknown_version" tools:ignore="MissingTranslation">Unknown version</string>
+  <string name="workspace_screen_install" tools:ignore="MissingTranslation">Install</string>
+  <string name="workspace_screen_upgrade" tools:ignore="MissingTranslation">Upgrade</string>
+  <string name="workspace_screen_confirm_install" tools:ignore="MissingTranslation">Install cua-driver?</string>
+  <string name="workspace_screen_confirm_upgrade" tools:ignore="MissingTranslation">Upgrade cua-driver?</string>
+  <string name="workspace_screen_install_disclosure" tools:ignore="MissingTranslation">The command below will run on the remote computer. It downloads and installs software from cua.ai / GitHub. On macOS, grant Accessibility and Screen Recording permissions in System Settings after installation.</string>
+  <string name="workspace_screen_status_ok" tools:ignore="MissingTranslation">Ready</string>
+  <string name="workspace_screen_status_action" tools:ignore="MissingTranslation">Needs attention</string>
+  <string name="workspace_screen_status_unsupported" tools:ignore="MissingTranslation">Unsupported</string>
 </resources>

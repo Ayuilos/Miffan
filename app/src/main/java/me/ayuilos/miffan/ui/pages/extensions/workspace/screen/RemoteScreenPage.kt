@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,14 +20,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,7 +46,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
@@ -188,21 +184,13 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
                 when (val current = state) {
                     RemoteScreenUiState.Connecting -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     is RemoteScreenUiState.Connected -> Unit
-                    else -> Column(
-                        Modifier.align(Alignment.Center).padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text(when (current) {
-                            is RemoteScreenUiState.Failed -> current.error.localizedMessage
-                                ?: resources.getString(R.string.workspace_screen_connection_failed)
-                            else -> resources.getString(R.string.workspace_screen_closed)
-                        }, color = Color.White)
-                        val unavailable = current is RemoteScreenUiState.Failed && current.error is RemoteScreenUnavailableException
-                        TextButton(enabled = !unavailable || host != null, onClick = {
-                            if (unavailable) settings = true else vm.reconnect()
-                        }) { Text(stringResource(if (unavailable) R.string.workspace_screen_settings else if (current is RemoteScreenUiState.Failed) R.string.workspace_screen_retry else R.string.workspace_screen_reconnect)) }
-                    }
+                    else -> RemoteScreenFailurePanel(
+                        state = current,
+                        settingsAvailable = host != null,
+                        onRetry = vm::reconnect,
+                        onSettings = { settings = true },
+                        modifier = Modifier.align(Alignment.Center),
+                    )
                 }
             }
             if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = platform == RemoteScreenPlatform.MACOS)
