@@ -49,7 +49,9 @@ internal fun PartnerComputerPermissionRow(
     onMode: (ComputerUseMode) -> Unit,
     onSetup: () -> Unit,
     onScreen: () -> Unit,
+    onDisconnect: () -> Unit,
 ) {
+    var confirmDisconnect by rememberSaveable(computer?.workspaceId) { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth()) {
             if (computer == null) {
@@ -74,8 +76,20 @@ internal fun PartnerComputerPermissionRow(
             PartnerComputerRow(stringResource(R.string.im_computer_recheck_or_change), null, enabled = !busy, onClick = onSetup) {
                 Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+            PartnerComputerRow(stringResource(R.string.im_computer_disconnect), null, enabled = !busy,
+                color = MaterialTheme.colorScheme.error, onClick = { confirmDisconnect = true }) {}
         }
     }
+    if (confirmDisconnect && computer != null) AlertDialog(onDismissRequest = { confirmDisconnect = false },
+        title = { Text(stringResource(R.string.im_computer_disconnect_title, computer.name)) },
+        text = { Text(stringResource(R.string.im_computer_disconnect_help)) },
+        confirmButton = {
+            TextButton(onClick = { confirmDisconnect = false; onDisconnect() }) {
+                Text(stringResource(R.string.im_computer_disconnect_confirm), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** Ask first / automatic / off, with what the chosen mode means. Automatic confirms first. */
@@ -120,6 +134,7 @@ private fun PartnerComputerRow(
     title: String,
     supporting: String?,
     enabled: Boolean = true,
+    color: Color = Color.Unspecified,
     onClick: (() -> Unit)? = null,
     trailing: @Composable () -> Unit,
 ) {
@@ -127,7 +142,7 @@ private fun PartnerComputerRow(
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = if (supporting == null) 16.dp else 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title)
+                Text(title, color = color)
                 supporting?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             trailing()

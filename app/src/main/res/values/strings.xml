@@ -2357,8 +2357,12 @@
   <string name="computer_use_mode_off" tools:ignore="MissingTranslation">Off</string>
   <string name="computer_use_mode_ask_help" tools:ignore="MissingTranslation">Your partner starts on its own when a request needs the computer, and asks in chat before each action that changes the desktop. Looking at the screen needs no approval.</string>
   <string name="computer_use_mode_auto_help" tools:ignore="MissingTranslation">Your partner acts without asking each time. Bringing a window to the front still asks.</string>
-  <string name="computer_use_mode_off_help" tools:ignore="MissingTranslation">Your partner won’t operate this computer or offer to.</string>
+  <string name="computer_use_mode_off_help" tools:ignore="MissingTranslation">Your partner won’t operate this computer’s desktop or offer to. It can still run commands and work with files there; to stop that too, disconnect the computer.</string>
   <string name="computer_use_confirm_auto" tools:ignore="MissingTranslation">Let your partner act directly?</string>
   <string name="computer_use_auto_disclosure" tools:ignore="MissingTranslation">Your partner will click, type and open apps without asking each time. Screenshots are sent to the current model’s provider, and actions run with this computer account’s permissions. You can take over at any time on the screen page.</string>
   <string name="computer_use_start" tools:ignore="MissingTranslation">Connect to computer</string>
+  <string name="im_computer_disconnect" tools:ignore="MissingTranslation">Disconnect this computer</string>
+  <string name="im_computer_disconnect_title" tools:ignore="MissingTranslation">Disconnect %1$s?</string>
+  <string name="im_computer_disconnect_help" tools:ignore="MissingTranslation">Your partner will no longer use this computer: no screen, commands or files. Nothing on the computer is deleted, and you can connect it again later.</string>
+  <string name="im_computer_disconnect_confirm" tools:ignore="MissingTranslation">Disconnect</string>
 </resources>

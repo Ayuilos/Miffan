@@ -15,6 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
+import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.ui.im.computer.PartnerComputerPermissionRow
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.im.thread.threadAssistantName
@@ -81,7 +82,8 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                 PartnerComputerPermissionRow(computer, partner.computerUse, busy,
                     onMode = { mode -> perform { vm.update { it.copy(computerUse = mode) } } },
                     onSetup = { nav.navigate(Screen.ComputerSetup(assistantId)) },
-                    onScreen = { nav.navigate(Screen.PartnerScreen(assistantId)) })
+                    onScreen = { nav.navigate(Screen.PartnerScreen(assistantId)) },
+                    onDisconnect = { perform { vm.update { it.withWorkspaceBinding(null) } } })
             }
             item("remember") { ImCapabilityRow(stringResource(R.string.im_p5_remember), partner.enableMemory, !busy) { enabled -> perform { vm.update { it.copy(enableMemory = enabled) } } } }
             item("history") { ImSettingRow(stringResource(R.string.im_p5_settings_history), { nav.navigate(Screen.RevisionHistory(RevisionSubject.ASSISTANT.name, assistantId)) }) }
