@@ -2309,7 +2309,6 @@
   <string name="im_computer_screen_service" tools:ignore="MissingTranslation">Screen service</string>
   <string name="im_computer_screen_start_failed" tools:ignore="MissingTranslation">The screen service could not start. Check again or retry.</string>
   <string name="im_computer_screenshot" tools:ignore="MissingTranslation">Computer screenshot; tap to preview</string>
-  <string name="im_computer_send_key" tools:ignore="MissingTranslation">Send %1$s</string>
   <string name="im_computer_setup_needed" tools:ignore="MissingTranslation">Connect and prepare this computer to open its screen.</string>
   <string name="im_computer_step_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
   <plurals name="im_computer_steps" tools:ignore="MissingTranslation">

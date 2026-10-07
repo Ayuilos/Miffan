@@ -2301,7 +2301,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_screen_service">屏幕服务</string>
   <string name="im_computer_screen_start_failed">屏幕服务无法启动，请重新检测或重试。</string>
   <string name="im_computer_screenshot">电脑截图，点按查看大图</string>
-  <string name="im_computer_send_key">发送 %1$s</string>
   <string name="im_computer_setup_needed">请先连接并准备好这台电脑，再打开屏幕。</string>
   <string name="im_computer_step_progress">第 %1$d 步，共 %2$d 步</string>
   <plurals name="im_computer_steps">
