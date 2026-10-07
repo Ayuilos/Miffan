@@ -47,6 +47,8 @@ internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, macOS: Boolean) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var value by remember { mutableStateOf(emptyInput()) }
+    /** Text already delivered to the remote side, excluding the anchor. */
+    var sent by remember { mutableStateOf("") }
     var modifiers by remember { mutableStateOf(emptySet<RemoteModifier>()) }
     fun sendKey(keysym: Int) { vm.key(keysym, modifiers); modifiers = emptySet() }
     fun sendText(text: String) {
@@ -71,12 +73,22 @@ internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, macOS: Boolean) {
             onValueChange = { updated ->
                 value = updated
                 // No events leave the phone while an IME is composing (e.g. uncommitted pinyin).
-                if (updated.composition == null) {
-                    val committed = updated.text.replace(INPUT_ANCHOR, "")
-                    if (committed.isNotEmpty()) sendText(committed)
-                    else if (!updated.text.contains(INPUT_ANCHOR)) sendKey(RfbKeys.BACKSPACE)
+                if (updated.composition != null) return@BasicTextField
+                // The field keeps what was typed instead of being cleared after each send: an IME
+                // that still holds the old text would otherwise commit it a second time. Only the
+                // difference to what was already sent goes to the remote side.
+                if (!updated.text.startsWith(INPUT_ANCHOR)) {
+                    repeat(sent.length + 1) { sendKey(RfbKeys.BACKSPACE) }
+                    sent = ""
                     value = emptyInput()
+                    return@BasicTextField
                 }
+                val current = updated.text.removePrefix(INPUT_ANCHOR)
+                val common = current.commonPrefixWith(sent).length
+                repeat(sent.length - common) { sendKey(RfbKeys.BACKSPACE) }
+                val added = current.substring(common)
+                if (added.isNotEmpty()) sendText(added)
+                sent = current
             },
             modifier = Modifier.size(1.dp).alpha(0f).focusRequester(focus).onPreviewKeyEvent { event ->
                 val keysym = when (event.key) {

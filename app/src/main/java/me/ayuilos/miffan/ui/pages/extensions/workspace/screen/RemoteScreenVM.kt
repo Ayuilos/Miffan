@@ -162,6 +162,9 @@ class RemoteScreenVM(
 
     fun click(x: Float, y: Float, button: RemoteMouseButton = RemoteMouseButton.LEFT, count: Int = 1) {
         updatePointer(x, y)
+        // Move first, as a real mouse does: toolkits such as GTK on Wayland ignore a press that
+        // arrives in the same event that brings the pointer into the widget.
+        send()
         repeat(count) {
             press(button, true)
             press(button, false)
