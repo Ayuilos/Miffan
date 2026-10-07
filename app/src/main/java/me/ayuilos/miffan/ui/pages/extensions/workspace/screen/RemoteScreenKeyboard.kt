@@ -101,7 +101,7 @@ internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, macOS: Boolean) {
             ScreenKey("Tab") { sendKey(RfbKeys.TAB) }
             ScreenKey("Ctrl", RemoteModifier.CONTROL in modifiers) { toggle(RemoteModifier.CONTROL) }
             ScreenKey("Alt", RemoteModifier.ALT in modifiers) { toggle(RemoteModifier.ALT) }
-            ScreenKey(if (macOS) "⌘" else "Super", RemoteModifier.COMMAND in modifiers, enabled = macOS) { toggle(RemoteModifier.COMMAND) }
+            ScreenKey(if (macOS) "⌘" else "Super", RemoteModifier.SUPER in modifiers) { toggle(RemoteModifier.SUPER) }
             ScreenKey("Shift", RemoteModifier.SHIFT in modifiers) { toggle(RemoteModifier.SHIFT) }
             listOf("←" to RfbKeys.LEFT, "↑" to RfbKeys.UP, "↓" to RfbKeys.DOWN, "→" to RfbKeys.RIGHT,
                 "Home" to RfbKeys.HOME, "End" to RfbKeys.END, "PgUp" to RfbKeys.PAGE_UP, "PgDn" to RfbKeys.PAGE_DOWN,

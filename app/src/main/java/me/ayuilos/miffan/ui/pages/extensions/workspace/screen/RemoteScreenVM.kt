@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -39,8 +40,11 @@ sealed interface RemoteScreenUiState {
 
 enum class RemoteMouseButton(internal val mask: Int) { LEFT(1), MIDDLE(2), RIGHT(4) }
 
-/** Modifiers held while a key is pressed. [COMMAND] is Command on macOS and Ctrl elsewhere. */
-enum class RemoteModifier { SHIFT, CONTROL, ALT, COMMAND }
+/**
+ * Modifiers held while a key is pressed. [COMMAND] is the platform shortcut key (Command on
+ * macOS, Ctrl elsewhere); [SUPER] is always the Super/Windows/Command key itself.
+ */
+enum class RemoteModifier { SHIFT, CONTROL, ALT, COMMAND, SUPER }
 
 /** One-shot results the page reports as a toast or snackbar. */
 sealed interface RemoteScreenNotice {
@@ -83,6 +87,20 @@ class RemoteScreenVM(
     /** True on metered networks; the page may show a data-usage hint. */
     val metered: Boolean = connectivity()?.isActiveNetworkMetered ?: true
 
+    private val _maxFps = MutableStateFlow(if (metered) 10 else 20)
+    /** Frame-rate cap; kept across reconnects and applied to every new session. */
+    val maxFps: StateFlow<Int> = _maxFps.asStateFlow()
+
+    private val _platform = MutableStateFlow(RemoteScreenPlatform.UNKNOWN)
+    /** Detected remote platform, for key labels such as ⌘ versus Super. */
+    val platform: StateFlow<RemoteScreenPlatform> = _platform.asStateFlow()
+
+    /**
+     * Keyboard work runs strictly in order: a paste through the remote clipboard is async, and a
+     * Return typed right after it must not overtake it.
+     */
+    private val keyboard = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
     @Volatile private var connection: RemoteScreenConnection? = null
     @Volatile private var scale = 1
     @Volatile private var serverWidth = 0
@@ -112,6 +130,7 @@ class RemoteScreenVM(
     private val jpeg = RfbJpegDecoder { bytes, length, fb, x, y, w, h -> decodeJpeg(bytes, length, fb, x, y, w, h) }
 
     init {
+        viewModelScope.launch { for (job in keyboard) job() }
         connect()
     }
 
@@ -127,6 +146,7 @@ class RemoteScreenVM(
     }
 
     fun setMaxFps(fps: Int) {
+        _maxFps.value = fps
         connection?.session?.setMaxFps(fps)
     }
 
@@ -163,11 +183,7 @@ class RemoteScreenVM(
     }
 
     fun key(keysym: Int, modifiers: Set<RemoteModifier> = emptySet()) {
-        val session = connection?.session ?: return
-        val held = modifiers.map(::modifierKeysym)
-        held.forEach { session.key(it, true) }
-        session.tapKey(keysym)
-        held.asReversed().forEach { session.key(it, false) }
+        keyboard.trySend { sendKey(keysym, modifiers) }
     }
 
     /**
@@ -175,12 +191,12 @@ class RemoteScreenVM(
      * the remote clipboard over SSH and pasted with the platform shortcut.
      */
     fun typeText(text: String) {
-        val current = connection ?: return
-        if (current.session.typeText(text)) return
-        viewModelScope.launch {
+        keyboard.trySend {
+            val current = connection ?: return@trySend
+            if (current.session.typeText(text)) return@trySend
             try {
                 if (repository.setRemoteClipboard(args.workspaceId, current.platform, text)) {
-                    key('v'.code, setOf(RemoteModifier.COMMAND))
+                    sendKey('v'.code, setOf(RemoteModifier.COMMAND))
                 } else _notices.tryEmit(RemoteScreenNotice.TextNotTypable)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -188,6 +204,14 @@ class RemoteScreenVM(
                 _notices.tryEmit(RemoteScreenNotice.ClipboardFailed(error))
             }
         }
+    }
+
+    private fun sendKey(keysym: Int, modifiers: Set<RemoteModifier>) {
+        val session = connection?.session ?: return
+        val held = modifiers.map(::modifierKeysym)
+        held.forEach { session.key(it, true) }
+        session.tapKey(keysym)
+        held.asReversed().forEach { session.key(it, false) }
     }
 
     private fun connect() {
@@ -198,11 +222,12 @@ class RemoteScreenVM(
                     args.workspaceId, sink, jpeg,
                     RemoteScreenOptions(
                         jpegQuality = if (metered) 4 else 6,
-                        maxFps = if (metered) 8 else 20,
+                        maxFps = _maxFps.value,
                         lowColor = metered,
                     ),
                 )
                 connection = opened
+                _platform.value = opened.platform
                 opened.session.setPaused(!visible)
                 opened.session.start(viewModelScope)
                 launch { opened.session.clipboard.collect { _notices.tryEmit(RemoteScreenNotice.RemoteClipboard(it)) } }
@@ -255,12 +280,14 @@ class RemoteScreenVM(
         RemoteModifier.ALT -> RfbKeys.ALT_L
         RemoteModifier.COMMAND ->
             if (connection?.platform == RemoteScreenPlatform.MACOS) RfbKeys.SUPER_L else RfbKeys.CONTROL_L
+        RemoteModifier.SUPER -> RfbKeys.SUPER_L
     }
 
     private fun connectivity(): ConnectivityManager? =
         appContext.getSystemService(ConnectivityManager::class.java)
 
     override fun onCleared() {
+        keyboard.close()
         close()
     }
 

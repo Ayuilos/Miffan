@@ -46,6 +46,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
@@ -80,7 +81,8 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
     var menu by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable(id) { mutableStateOf(false) }
-    var fps by rememberSaveable(id) { mutableIntStateOf(if (vm.metered) 5 else 20) }
+    val fps by vm.maxFps.collectAsStateWithLifecycle()
+    val platform by vm.platform.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val view = LocalView.current
@@ -108,9 +110,8 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
             view.keepScreenOn = previousKeepScreenOn
         }
     }
-    LaunchedEffect(vm, state, fps) {
-        if (state is RemoteScreenUiState.Connected) vm.setMaxFps(fps)
-        else keyboard = false
+    LaunchedEffect(vm, state) {
+        if (state !is RemoteScreenUiState.Connected) keyboard = false
     }
     LaunchedEffect(vm) {
         if (vm.metered && !meteredNoticeShown) {
@@ -164,7 +165,7 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
                                 20 to R.string.workspace_screen_fps_smooth).forEach { (value, label) ->
                                 DropdownMenuItem(text = { Text(stringResource(label)) },
                                     trailingIcon = { if (fps == value) Text("✓") },
-                                    onClick = { fps = value; menu = false })
+                                    onClick = { vm.setMaxFps(value); menu = false })
                             }
                             DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_reconnect)) },
                                 onClick = { menu = false; vm.reconnect() })
@@ -203,7 +204,7 @@ fun RemoteScreenPage(id: String, vm: RemoteScreenVM) {
                     }
                 }
             }
-            if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = host?.screenPlatform == "macos")
+            if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = platform == RemoteScreenPlatform.MACOS)
         }
     }
     if (settings && host != null) {
