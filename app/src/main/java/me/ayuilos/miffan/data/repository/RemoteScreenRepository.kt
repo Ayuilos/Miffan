@@ -337,9 +337,17 @@ class RemoteScreenRepository(
          * The exact shell command [installCuaDriver] runs, for the confirmation the user sees:
          * the vendor installer, or `<path> update --apply` when upgrading [upgradePath].
          */
-        fun cuaDriverCommand(upgradePath: String?): String =
-            if (upgradePath != null) "${shellQuote(upgradePath)} update --apply"
-            else "/bin/bash -c \"\$(curl -fsSL $CUA_INSTALLER)\""
+        fun cuaDriverCommand(upgradePath: String?): String {
+            val installer = "/bin/bash -c \"\$(curl -fsSL $CUA_INSTALLER)\""
+            // cua-driver 0.24's `update` fails its own release check ("Could not reach GitHub")
+            // even where `check-update` succeeds, so an upgrade falls back to the installer,
+            // which replaces the installed release in place.
+            val install = if (upgradePath != null) "${shellQuote(upgradePath)} update --apply || $installer" else installer
+            // The installer stops a running daemon; a systemd user service (Restart=on-failure)
+            // stays down after that clean stop, so bring it back on the new release.
+            return "$install; status=\$?; systemctl --user is-enabled cua-driver.service >/dev/null 2>&1 && " +
+                "systemctl --user restart cua-driver.service; exit \$status"
+        }
 
         private const val HELPER_ASSET = "remote/miffan.sh"
         private const val HELPER = "\"\$HOME/.miffan/bin/miffan\""

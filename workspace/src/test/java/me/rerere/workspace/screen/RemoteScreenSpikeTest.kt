@@ -127,6 +127,17 @@ class RemoteScreenSpikeTest {
     }
 
     @Test
+    fun execProbe() {
+        assumeTrue(env("HOST") != null && env("EXEC") != null)
+        open().use { ssh ->
+            val result = ssh.execute(env("EXEC")!!, timeoutMillis = 60_000)
+            println("exit=${result.exitCode} timedOut=${result.timedOut}")
+            println("stdout:\n${result.stdout}")
+            println("stderr:\n${result.stderr}")
+        }
+    }
+
+    @Test
     fun vncKeyboardInput() {
         assumeTrue(env("HOST") != null && env("VNC_PORT") != null && env("VNC_TYPE") != null)
         open().use { ssh ->
