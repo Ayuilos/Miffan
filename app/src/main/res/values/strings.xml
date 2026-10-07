@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
   <string name="about_page_github">Github</string>
   <string name="about_page_license">License</string>
   <string name="about_page_system">System</string>
@@ -2118,4 +2118,43 @@
   <string name="setting_tts_step_instruction_placeholder">e.g. gentle tone, slightly slow pace</string>
   <string name="mcp_error_reconnect_exhausted">Connection lost after the maximum number of reconnect attempts</string>
   <string name="chat_page_options">Chat options</string>
+  <!-- P1 screen UI is scoped to English and Simplified Chinese; other locales use English. -->
+  <string name="workspace_screen_open" tools:ignore="MissingTranslation">Open screen</string>
+  <string name="workspace_screen_settings" tools:ignore="MissingTranslation">Screen settings</string>
+  <string name="workspace_screen_enabled" tools:ignore="MissingTranslation">Enable screen</string>
+  <string name="workspace_screen_endpoint" tools:ignore="MissingTranslation">Connection method</string>
+  <string name="workspace_screen_auth" tools:ignore="MissingTranslation">Authentication</string>
+  <string name="workspace_screen_auth_none" tools:ignore="MissingTranslation">None</string>
+  <string name="workspace_screen_auth_vnc" tools:ignore="MissingTranslation">VNC password</string>
+  <string name="workspace_screen_auth_macos" tools:ignore="MissingTranslation">macOS account</string>
+  <string name="workspace_screen_username" tools:ignore="MissingTranslation">Username</string>
+  <string name="workspace_screen_username_hint" tools:ignore="MissingTranslation">Leave blank to use the SSH username</string>
+  <string name="workspace_screen_password" tools:ignore="MissingTranslation">Password</string>
+  <string name="workspace_screen_password_saved" tools:ignore="MissingTranslation">Saved; leave blank to keep it</string>
+  <string name="workspace_screen_port" tools:ignore="MissingTranslation">TCP port</string>
+  <string name="workspace_screen_port_hint" tools:ignore="MissingTranslation">Port from 1 to 65535; default 5900</string>
+  <string name="workspace_screen_socket_path" tools:ignore="MissingTranslation">Unix socket path</string>
+  <string name="workspace_screen_path_hint" tools:ignore="MissingTranslation">Absolute path starting with /</string>
+  <string name="workspace_screen_unix" tools:ignore="MissingTranslation">Unix socket</string>
+  <string name="workspace_screen_tcp" tools:ignore="MissingTranslation">TCP port</string>
+  <string name="workspace_screen_setup_help" tools:ignore="MissingTranslation">macOS: enable Screen Sharing in System Settings → General → Sharing and choose macOS account authentication.\n\nLinux: run a VNC service listening only on localhost, such as wayvnc 127.0.0.1 5900 or x11vnc -localhost. The connection goes through SSH; no public VNC port is needed.</string>
+  <string name="workspace_screen_host_missing" tools:ignore="MissingTranslation">Remote host is unavailable</string>
+  <string name="workspace_screen_save_failed" tools:ignore="MissingTranslation">Could not save screen settings</string>
+  <string name="workspace_screen_retry" tools:ignore="MissingTranslation">Retry</string>
+  <string name="workspace_screen_reconnect" tools:ignore="MissingTranslation">Reconnect</string>
+  <string name="workspace_screen_closed" tools:ignore="MissingTranslation">Connection closed</string>
+  <string name="workspace_screen_connection_failed" tools:ignore="MissingTranslation">Could not connect to the screen</string>
+  <string name="workspace_screen_title" tools:ignore="MissingTranslation">Remote screen</string>
+  <string name="workspace_screen_usage" tools:ignore="MissingTranslation">Used this connection: %1$s</string>
+  <string name="workspace_screen_mode_trackpad" tools:ignore="MissingTranslation">Touchpad mode; switch to direct touch</string>
+  <string name="workspace_screen_mode_direct" tools:ignore="MissingTranslation">Direct touch mode; switch to touchpad</string>
+  <string name="workspace_screen_keyboard" tools:ignore="MissingTranslation">Toggle keyboard</string>
+  <string name="workspace_screen_actions" tools:ignore="MissingTranslation">Screen actions</string>
+  <string name="workspace_screen_fps_saver" tools:ignore="MissingTranslation">Data saver · 5 fps</string>
+  <string name="workspace_screen_fps_standard" tools:ignore="MissingTranslation">Standard · 10 fps</string>
+  <string name="workspace_screen_fps_smooth" tools:ignore="MissingTranslation">Smooth · 20 fps</string>
+  <string name="workspace_screen_metered" tools:ignore="MissingTranslation">You are using a mobile or metered network. Viewing the screen uses data.</string>
+  <string name="workspace_screen_paste_failed" tools:ignore="MissingTranslation">Could not paste on the remote computer</string>
+  <string name="workspace_screen_clipboard_copied" tools:ignore="MissingTranslation">Remote text copied to your clipboard</string>
+  <string name="workspace_screen_text_unsupported" tools:ignore="MissingTranslation">This platform cannot type this text yet</string>
 </resources>

@@ -115,6 +115,9 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspacePage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceDetailPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceFileEditorPage
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceFilePreviewPage
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenArgs
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenPage
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenVM
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceTerminalPage
 import me.rerere.workspace.WorkspaceStorageArea
 import me.ayuilos.miffan.ui.pages.favorite.FavoritePage
@@ -152,6 +155,8 @@ import me.ayuilos.miffan.utils.AppStartupAppearance
 import me.ayuilos.miffan.utils.AppStartupAppearanceController
 import me.ayuilos.miffan.utils.openUsageAccessSettings
 import okhttp3.OkHttpClient
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 import org.koin.android.ext.android.inject
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
@@ -623,6 +628,13 @@ class RouteActivity : ComponentActivity() {
                                 )
                             }
 
+                            entry<Screen.WorkspaceScreen> { key ->
+                                val vm = koinViewModel<RemoteScreenVM>(
+                                    parameters = { parametersOf(RemoteScreenArgs(key.id)) },
+                                )
+                                RemoteScreenPage(id = key.id, vm = vm)
+                            }
+
                             entry<Screen.WorkspaceTerminal> { key ->
                                 WorkspaceTerminalPage(
                                     id = key.id,
@@ -867,6 +879,9 @@ sealed interface Screen : NavKey {
         val scopeId: String? = null,
         val scopeName: String? = null,
     ) : Screen
+
+    @Serializable
+    data class WorkspaceScreen(val id: String) : Screen
 
     @Serializable
     data class WorkspaceTerminal(

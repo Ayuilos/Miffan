@@ -51,6 +51,8 @@ import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.repository.RemoteHostRuntimeState
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteHostScreenSettingsDialog
+import org.koin.androidx.compose.koinViewModel
 import me.ayuilos.miffan.ui.components.ai.workspaceKindIcon
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.MoreVertical
@@ -68,6 +70,11 @@ internal fun RemoteHostCard(
 ) {
     val workspaceStrings = LocalResources.current
     var menuExpanded by remember { mutableStateOf(false) }
+    var screenSettings by remember { mutableStateOf(false) }
+    val vm: WorkspaceVM = koinViewModel()
+    if (screenSettings) {
+        RemoteHostScreenSettingsDialog(host = host, vm = vm, onDismiss = { screenSettings = false })
+    }
     val authentication = when {
         host.sshKeyId != null -> workspaceStrings.getString(R.string.workspace_ssh_key_name_label, keyName ?: workspaceStrings.getString(R.string.workspace_key_unavailable))
         host.authType == "PRIVATE_KEY" -> workspaceStrings.getString(R.string.workspace_paste_private_key)
@@ -119,6 +126,7 @@ internal fun RemoteHostCard(
             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.workspace_edit_host)) }, onClick = { menuExpanded = false; onEdit() })
                 DropdownMenuItem(text = { Text(stringResource(R.string.workspace_confirm_fingerprint_test)) }, onClick = { menuExpanded = false; onVerify() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_settings)) }, onClick = { menuExpanded = false; screenSettings = true })
                 DropdownMenuItem(text = { Text(stringResource(R.string.workspace_delete_host)) }, onClick = { menuExpanded = false; onDelete() })
             }
         }

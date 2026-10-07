@@ -12,6 +12,9 @@ import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
+import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
+import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
+import me.ayuilos.miffan.data.repository.RemoteHostScreenConfig
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
@@ -101,6 +104,22 @@ class WorkspaceVM(
 
     fun getHost(id: String, onResult: (Result<RemoteHostEntity?>) -> Unit) {
         runOperation({ repository.getHostById(id) }, onResult)
+    }
+
+    fun getScreenConfig(hostId: String, onResult: (Result<RemoteHostScreenConfig?>) -> Unit) {
+        runOperation({ screenRepository.getConfig(hostId) }, onResult)
+    }
+
+    fun updateScreenConfig(
+        hostId: String,
+        enabled: Boolean,
+        endpoint: RemoteScreenEndpoint,
+        auth: RemoteScreenAuth,
+        username: String,
+        password: String?,
+        onResult: (Result<Boolean>) -> Unit,
+    ) {
+        runOperation({ screenRepository.updateConfig(hostId, enabled, endpoint, auth, username, password) }, onResult)
     }
 
     fun generateSshKey(name: String, onResult: (Result<SshKeyEntity>) -> Unit) {

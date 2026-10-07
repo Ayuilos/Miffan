@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.Bash
+import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.File02
@@ -247,6 +248,11 @@ fun WorkspaceDetailPage(
                     }
                     IconButton(onClick = { vm.refresh() }) {
                         Icon(HugeIcons.Refresh01, contentDescription = workspaceStrings.getString(R.string.workspace_refresh))
+                    }
+                    if (state.workspace?.isRemote == true) {
+                        IconButton(onClick = { navController.navigate(Screen.WorkspaceScreen(id)) }) {
+                            Icon(HugeIcons.Computer, contentDescription = stringResource(R.string.workspace_screen_open))
+                        }
                     }
                     if (state.workspace?.let { it.isRemote || it.shellStatus != WorkspaceShellStatus.DISABLED.name } == true) {
                         IconButton(
