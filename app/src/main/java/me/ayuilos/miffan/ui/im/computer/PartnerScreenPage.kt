@@ -78,6 +78,7 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
     val controller by vm.controller.collectAsStateWithLifecycle()
     val bytes by vm.bytesReceived.collectAsStateWithLifecycle()
     val platform by vm.platform.collectAsStateWithLifecycle()
+    val fps by vm.maxFps.collectAsStateWithLifecycle()
     var trackpad by rememberSaveable(name) { mutableStateOf(false) }
     var keyboard by rememberSaveable(name) { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -142,6 +143,12 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
             Box {
                 IconButton(onClick = { menu = true }) { Icon(HugeIcons.MoreVertical, stringResource(R.string.workspace_screen_actions)) }
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                    listOf(5 to R.string.workspace_screen_fps_saver, 10 to R.string.workspace_screen_fps_standard,
+                        20 to R.string.workspace_screen_fps_smooth).forEach { (value, label) ->
+                        DropdownMenuItem(text = { Text(stringResource(label)) },
+                            trailingIcon = { if (fps == value) Text("✓") },
+                            onClick = { vm.setMaxFps(value); menu = false })
+                    }
                     DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_reconnect)) }, onClick = { menu = false; vm.reconnect() })
                     listOf("Esc" to RfbKeys.ESCAPE, "Tab" to RfbKeys.TAB, "Enter" to RfbKeys.RETURN).forEach { (label, code) ->
                         DropdownMenuItem(text = { Text(stringResource(R.string.im_computer_send_key, label)) }, enabled = connected,
