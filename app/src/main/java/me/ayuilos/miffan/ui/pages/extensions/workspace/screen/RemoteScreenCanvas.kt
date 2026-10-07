@@ -209,6 +209,7 @@ private class ScreenGestures(
         val point = Offset(e.x, e.y)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                vm.takeControl()
                 release()
                 down = point
                 last = point

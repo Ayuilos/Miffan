@@ -131,6 +131,9 @@ class RemoteScreenVM(
         _hostId.value?.let(control::userHandsBack)
     }
 
+    /** The user touched the screen: take the desktop now, before a tap or drag sends any input. */
+    fun takeControl() = userInput()
+
     private fun userInput() {
         _hostId.value?.let { if (control.controller(it) != RemoteController.USER) control.userTakesOver(it) }
     }
