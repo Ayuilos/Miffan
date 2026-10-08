@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,8 +42,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
@@ -53,6 +57,7 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.ui.GlassShadow
+import me.ayuilos.miffan.ui.hooks.rememberIsPlayStoreVersion
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.DiscoverCircle
 import me.rerere.hugeicons.stroke.Message01
@@ -77,6 +82,9 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
     var tab by rememberSaveable { mutableStateOf(ImTab.CHATS) }
     val hazeState = rememberHazeState()
     val layoutDirection = LocalLayoutDirection.current
+    val isPlayStore = rememberIsPlayStoreVersion()
+    val availableUpdate = if (isPlayStore) null else vm.availableUpdate.collectAsStateWithLifecycle().value
+    val updateNotice = availableUpdate?.let { stringResource(R.string.update_card_new_version_found, it.version) }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         // Tab content scrolls underneath the floating bar, so reserve its height at the end of lists.
@@ -98,13 +106,14 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     ImTab.CHATS -> ImChatsTab(vm, contentPadding, onFindPartner = { tab = ImTab.PARTNERS })
                     ImTab.PARTNERS -> ImPartnersTab(vm, contentPadding)
                     ImTab.DISCOVER -> ImDiscoverTab(contentPadding)
-                    ImTab.ME -> ImMeTab(vm, contentPadding)
+                    ImTab.ME -> ImMeTab(vm, contentPadding, availableUpdate)
                 }
             }
             ImFloatingTabBar(
                 selected = tab,
                 onSelect = { tab = it },
                 hazeState = hazeState,
+                notices = mapOf(ImTab.ME to updateNotice),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = innerPadding.calculateBottomPadding() + TabBarBottomMargin),
@@ -119,6 +128,7 @@ private fun ImFloatingTabBar(
     selected: ImTab,
     onSelect: (ImTab) -> Unit,
     hazeState: HazeState,
+    notices: Map<ImTab, String?>,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(50)
@@ -132,7 +142,7 @@ private fun ImFloatingTabBar(
     }
     Box(modifier) {
         GlassShadow(shape, Modifier.matchParentSize())
-        ImFloatingTabBarGlass(shape, glassStyle, hazeState, selected, onSelect)
+        ImFloatingTabBarGlass(shape, glassStyle, hazeState, selected, onSelect, notices)
     }
 }
 
@@ -143,6 +153,7 @@ private fun ImFloatingTabBarGlass(
     hazeState: HazeState,
     selected: ImTab,
     onSelect: (ImTab) -> Unit,
+    notices: Map<ImTab, String?>,
 ) {
     val indicatorOffset by animateDpAsState(
         targetValue = TabItemWidth * selected.ordinal,
@@ -171,6 +182,7 @@ private fun ImFloatingTabBarGlass(
                     ImFloatingTabItem(
                         tab = item,
                         selected = item == selected,
+                        notice = notices[item],
                         onClick = { onSelect(item) },
                     )
                 }
@@ -180,7 +192,7 @@ private fun ImFloatingTabBarGlass(
 }
 
 @Composable
-private fun ImFloatingTabItem(tab: ImTab, selected: Boolean, onClick: () -> Unit) {
+private fun ImFloatingTabItem(tab: ImTab, selected: Boolean, notice: String?, onClick: () -> Unit) {
     val color by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -196,11 +208,22 @@ private fun ImFloatingTabItem(tab: ImTab, selected: Boolean, onClick: () -> Unit
                 role = Role.Tab,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = ripple(),
-            ),
+            )
+            .semantics { if (notice != null) stateDescription = notice },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(tab.icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+        Box {
+            Icon(tab.icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+            // A dot for something waiting in this tab, such as a new version.
+            if (notice != null) Badge(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 3.dp, y = (-2).dp)
+                    .size(8.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+            )
+        }
         Text(
             text = stringResource(tab.label),
             color = color,

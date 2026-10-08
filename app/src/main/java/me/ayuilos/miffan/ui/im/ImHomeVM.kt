@@ -1,11 +1,13 @@
 package me.ayuilos.miffan.ui.im
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -21,6 +23,10 @@ import me.ayuilos.miffan.data.thread.ThreadListPrefs
 import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadListSummaries
 import me.ayuilos.miffan.service.ChatService
+import me.ayuilos.miffan.utils.UpdateChecker
+import me.ayuilos.miffan.utils.UpdateDownload
+import me.ayuilos.miffan.utils.UpdateInfo
+import me.ayuilos.miffan.utils.availableUpdate
 import java.time.Instant
 import kotlin.uuid.Uuid
 
@@ -43,8 +49,15 @@ class ImHomeVM(
     private val conversationRepository: ConversationRepository,
     private val chatService: ChatService,
     private val listState: ThreadListState,
+    private val updateChecker: UpdateChecker,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
+
+    val availableUpdate: StateFlow<UpdateInfo?> = updateChecker.updateState
+        .map { it.availableUpdate() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun downloadUpdate(context: Context, download: UpdateDownload) = updateChecker.downloadUpdate(context, download)
 
     /** Pinned threads first, then by latest activity; hidden threads stay out until new activity. */
     val chats: StateFlow<List<ImChatItem>?> = combine(

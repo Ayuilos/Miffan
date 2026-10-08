@@ -57,13 +57,15 @@ import me.ayuilos.miffan.data.datastore.isNotConfigured
 import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
+import me.ayuilos.miffan.ui.components.ui.UpdateAvailableBanner
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.EditStateContent
 import me.ayuilos.miffan.ui.hooks.useEditState
+import me.ayuilos.miffan.utils.UpdateInfo
 import kotlin.uuid.Uuid
 
 @Composable
-internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
+internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate: UpdateInfo?) {
     val navController = LocalNavController.current
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -105,6 +107,15 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     modifier = Modifier
                         .weight(1f)
                         .clickable { nicknameEditState.open(settings.displaySetting.userNickname) },
+                )
+            }
+        }
+        availableUpdate?.let { info ->
+            item("update") {
+                UpdateAvailableBanner(
+                    info = info,
+                    onDownload = { vm.downloadUpdate(context, it) },
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
         }
