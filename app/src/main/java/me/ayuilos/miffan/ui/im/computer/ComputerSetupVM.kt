@@ -108,17 +108,28 @@ data class ComputerSetupState(
 }
 
 /**
- * Guides the user through connecting a computer and giving it to one partner. The UI shows
+ * Where the setup starts. With [assistantId] it ends by giving the computer to that partner; without
+ * it (opened from "my computers") it ends by letting the user pick any partners, or none. [hostId]
+ * starts on that known computer: with [edit] at its connection details, otherwise by connecting and
+ * checking it.
+ */
+data class ComputerSetupArgs(val assistantId: Uuid? = null, val hostId: String? = null, val edit: Boolean = false)
+
+/**
+ * Guides the user through connecting a computer and giving it to partners. The UI shows
  * [state] and collects input; every step that trusts a host, runs software on it, stores a
  * credential or changes the partner happens here and only on an explicit user action.
  */
 class ComputerSetupVM(
-    val assistantId: Uuid,
+    private val args: ComputerSetupArgs,
     private val workspaces: WorkspaceRepository,
     private val screens: RemoteScreenRepository,
     private val registry: RemoteComputerRegistry,
     private val settingsStore: SettingsStore,
 ) : ViewModel() {
+    /** The partner this setup is for; null when opened from "my computers". */
+    val assistantId: Uuid? get() = args.assistantId
+
     private val _state = MutableStateFlow(ComputerSetupState())
     val state: StateFlow<ComputerSetupState> = _state.asStateFlow()
 
@@ -134,7 +145,7 @@ class ComputerSetupVM(
      * it, so the UI says so before the user confirms.
      */
     val replacedBinding: StateFlow<ReplacedBinding?> = combine(settingsStore.settingsFlow, workspaces.listFlow(), hosts, _state) { settings, list, hostList, state ->
-        val bound = settings.getAssistantById(assistantId)?.workspaceId?.toString() ?: return@combine null
+        val bound = settings.getAssistantById(assistantId ?: return@combine null)?.workspaceId?.toString() ?: return@combine null
         if (bound == state.workspaceId) return@combine null
         val workspace = list.find { it.id == bound } ?: return@combine null
         if (!workspace.isRemote) ReplacedBinding.Phone
@@ -180,12 +191,18 @@ class ComputerSetupVM(
         withContext(Dispatchers.Main) { onCreated(key) }
     }
 
-    fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth) =
+    /**
+     * Saves a new computer, or with [ComputerSetupArgs.edit] updates the one being edited; there a null
+     * [auth] keeps the saved sign-in. Continues to the fingerprint when it is not trusted (new, or the
+     * address changed), otherwise straight to connecting and checking.
+     */
+    fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?) =
         run(ComputerSetupTask.READING_FINGERPRINT) {
             val host = when (auth) {
                 is ComputerSetupAuth.Password -> workspaces.createHost(name, address, port, username,
                     authentication = RemoteAuthentication.Password(auth.value))
                 is ComputerSetupAuth.AppKey -> workspaces.createHost(name, address, port, username, sshKeyId = auth.keyId)
+                null -> TODO("data layer")
             }
             _state.update { it.copy(hostId = host.id) }
             readFingerprint(host)
@@ -273,7 +290,15 @@ class ComputerSetupVM(
      * Binds the partner to this computer and allows computer use with approval kept on. The UI
      * shows the disclosure (screenshots go to the model provider) before calling this.
      */
-    fun bind() = run(ComputerSetupTask.BINDING) {
+    /**
+     * Partners already bound to a workspace of the computer being set up; the bind step shows them as
+     * already using it.
+     */
+    val boundPartnerIds: StateFlow<Set<Uuid>> = MutableStateFlow(emptySet<Uuid>()).asStateFlow() // TODO data layer
+
+    fun bind(assistantIds: Set<Uuid>): Unit = TODO("data layer")
+
+    private fun bindOld() = run(ComputerSetupTask.BINDING) {
         val workspaceId = Uuid.parse(requireNotNull(_state.value.workspaceId))
         settingsStore.update { settings ->
             settings.copy(assistants = settings.assistants.map {

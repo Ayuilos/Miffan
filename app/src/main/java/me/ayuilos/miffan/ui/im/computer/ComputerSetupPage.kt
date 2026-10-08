@@ -46,8 +46,9 @@ internal fun computerSetupProgress(state: ComputerSetupState): Pair<Int, Int> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ComputerSetupPage(assistantId: Uuid) {
-    val vm: ComputerSetupVM = koinViewModel(key = "setup:$assistantId", parameters = { parametersOf(assistantId) })
+fun ComputerSetupPage(args: ComputerSetupArgs) {
+    val vm: ComputerSetupVM = koinViewModel(key = "setup:$args", parameters = { parametersOf(args) })
+    val assistantId = args.assistantId ?: Uuid.NIL
     val partnerVM: ImPartnerVM = koinViewModel(key = "partner:$assistantId", parameters = { parametersOf(assistantId) })
     val partner by partnerVM.assistant.collectAsStateWithLifecycle()
     val name = threadAssistantName(partner)
@@ -85,7 +86,7 @@ fun ComputerSetupPage(assistantId: Uuid) {
                 ComputerSetupStep.BIND -> ComputerSetupStepLayout(
                     title = stringResource(R.string.im_computer_give_title, name),
                     supporting = null, state = state, onDismissError = vm::dismissError,
-                    primary = SetupAction(stringResource(R.string.im_computer_give_to, name), onClick = vm::bind),
+                    primary = SetupAction(stringResource(R.string.im_computer_give_to, name), onClick = { vm.bind(setOf(assistantId)) }),
                 ) {
                     SetupCard {
                         SetupComputerRow(host)

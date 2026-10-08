@@ -27,11 +27,57 @@ data class PartnerComputer(
     val showsEntry: Boolean get() = screenEnabled
 }
 
+/** A computer Miffan knows, as easy chat's "my computers" shows it. */
+data class KnownComputer(
+    val hostId: String,
+    /** The host's display name, e.g. "cachyos". */
+    val name: String,
+    /** "user@host", with ":port" only when the port is not 22. */
+    val address: String,
+    val platform: RemoteScreenPlatform,
+    /** The host's screen is set up, so the screen page can open. */
+    val screenEnabled: Boolean,
+    /** The workspace easy chat uses for this computer; null until one exists. See [PartnerComputers.computerWorkspace]. */
+    val workspaceId: String?,
+    /** Remote workspaces on this host besides [workspaceId]; only the professional interface manages them. */
+    val otherWorkspaceCount: Int,
+    /** Partners bound to any workspace of this host, in the order of the partner list. */
+    val partnerIds: List<Uuid>,
+)
+
+/** Deleting a computer that still has professional-interface workspaces is refused. */
+class ComputerHasWorkspacesException(val count: Int) : IllegalStateException("The computer still has $count other workspaces")
+
 /** Resolves which computer, if any, a partner is bound to. */
 class PartnerComputers(
     private val settingsStore: SettingsStore,
     private val workspaces: WorkspaceRepository,
 ) {
+    /** Every remote host, sorted by name. */
+    fun observeAll(): Flow<List<KnownComputer>> = TODO("data layer")
+
+    /** One remote host; null once it is deleted. */
+    fun observeComputer(hostId: String): Flow<KnownComputer?> = TODO("data layer")
+
+    /**
+     * The workspace easy chat uses for [hostId], creating one rooted at the account's home
+     * directory when the host has none (this connects over SSH).
+     */
+    suspend fun ensureComputerWorkspace(hostId: String): String = TODO("data layer")
+
+    /**
+     * Gives the computer to [assistantIds]: binds each to [ensureComputerWorkspace] with computer use
+     * set to ask first. Partners already bound to a workspace of this host keep their binding and mode.
+     */
+    suspend fun bind(hostId: String, assistantIds: Collection<Uuid>): Unit = TODO("data layer")
+
+    /**
+     * Deletes the computer: its easy-chat workspace (unbinding the partners on it), then the host and
+     * its saved credentials. Throws [ComputerHasWorkspacesException] without changing anything when the
+     * host has other workspaces.
+     */
+    suspend fun delete(hostId: String): Unit = TODO("data layer")
+
     /** Null when the partner is unbound or bound to a local workspace. */
     fun observe(assistantId: Uuid): Flow<PartnerComputer?> = combine(
         settingsStore.settingsFlow,

@@ -102,7 +102,11 @@ import me.ayuilos.miffan.ui.im.navigateHome
 import me.ayuilos.miffan.ui.im.openFreshChat
 import me.ayuilos.miffan.ui.im.thread.AgentThreadPage
 import me.ayuilos.miffan.ui.im.computer.PartnerScreenPage
+import me.ayuilos.miffan.ui.im.computer.ComputerDetailPage
+import me.ayuilos.miffan.ui.im.computer.ComputerScreenPage
+import me.ayuilos.miffan.ui.im.computer.ComputerSetupArgs
 import me.ayuilos.miffan.ui.im.computer.ComputerSetupPage
+import me.ayuilos.miffan.ui.im.computer.ComputersPage
 import me.ayuilos.miffan.ui.pages.assistant.AssistantPage
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantBasicPage
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantDetailPage
@@ -448,7 +452,12 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
 
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
-                            entry<Screen.ComputerSetup> { key -> ComputerSetupPage(Uuid.parse(key.assistantId)) }
+                            entry<Screen.ComputerSetup> { key ->
+                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit))
+                            }
+                            entry<Screen.Computers> { ComputersPage() }
+                            entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
+                            entry<Screen.ComputerScreen> { key -> ComputerScreenPage(key.hostId) }
                             entry<Screen.ApprovalHistory> { key -> ImApprovalHistoryPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ImChatBackground> { key -> ImChatBackgroundPage(key.assistantId) }
                             entry<Screen.Thread> { key ->
@@ -758,8 +767,20 @@ sealed interface Screen : NavKey {
     @Serializable
     data class PartnerScreen(val assistantId: String) : Screen
 
+    /** Connect a computer: for one partner, or with no partner from "my computers"; see ComputerSetupArgs. */
     @Serializable
-    data class ComputerSetup(val assistantId: String) : Screen
+    data class ComputerSetup(val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false) : Screen
+
+    /** Easy chat's list of computers. */
+    @Serializable
+    data object Computers : Screen
+
+    @Serializable
+    data class ComputerDetail(val hostId: String) : Screen
+
+    /** A computer's screen without a partner conversation. */
+    @Serializable
+    data class ComputerScreen(val hostId: String) : Screen
 
     @Serializable
     data class ApprovalHistory(val assistantId: String) : Screen
