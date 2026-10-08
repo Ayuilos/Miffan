@@ -175,7 +175,7 @@ internal fun ThreadMessageBubble(
                                 Text(part.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             is UIMessagePart.Tool -> if (part.isThreadPrompt()) {
-                                if (part.isComputerTool()) ThreadComputerApprovalCard(part,
+                                if (part.isComputerTool() && part.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending) ThreadComputerApprovalCard(part,
                                     computerTargetName(part, computer, stringResource(R.string.im_computer_computer)),
                                     canOpenComputer(part, computer), onComputerScreen, onToolApproval)
                                 else ThreadToolPrompt(part, onToolApproval, onToolAnswer)

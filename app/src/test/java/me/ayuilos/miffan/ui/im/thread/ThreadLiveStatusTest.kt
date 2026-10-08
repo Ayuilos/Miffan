@@ -1,7 +1,10 @@
 package me.ayuilos.miffan.ui.im.thread
 
 import me.ayuilos.miffan.R
+import me.rerere.ai.ui.ToolApprovalRecord
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolDecision
+import me.rerere.ai.ui.ToolDecisionVia
 import me.rerere.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,5 +38,18 @@ class ThreadLiveStatusTest {
         assertTrue(UIMessagePart.Tool("1", "write_file", "{}", approvalState = ToolApprovalState.Pending).isThreadPrompt())
         assertTrue(UIMessagePart.Tool("1", "ask_user", "{}", approvalState = ToolApprovalState.Answered("{}")).isThreadPrompt())
         assertFalse(UIMessagePart.Tool("1", "search_web", "{}").isThreadPrompt())
+    }
+
+    @Test
+    fun settledPermissionCardsLeaveARecord() {
+        fun settled(name: String, state: ToolApprovalState, decision: ToolDecision) = UIMessagePart.Tool("1", name, "{}",
+            approvalState = state, approvalRecord = ToolApprovalRecord(1L, 2L, decision, ToolDecisionVia.CARD))
+        assertTrue(settled("request_web_search", ToolApprovalState.Approved, ToolDecision.ALLOWED).isThreadPrompt())
+        assertTrue(settled("computer_click", ToolApprovalState.Denied(""), ToolDecision.DECLINED).isThreadPrompt())
+        assertTrue(settled("workspace_shell", ToolApprovalState.Denied("stopped"), ToolDecision.CANCELLED).isThreadPrompt())
+        // Never asked, so nothing to record; answered questions keep their own presentation.
+        assertFalse(settled("search_web", ToolApprovalState.Auto, ToolDecision.AUTO_ALLOWED).isSettledPermission())
+        assertFalse(settled("ask_user", ToolApprovalState.Answered("{}"), ToolDecision.ANSWERED).isSettledPermission())
+        assertFalse(UIMessagePart.Tool("1", "write_file", "{}", approvalState = ToolApprovalState.Approved).isSettledPermission())
     }
 }

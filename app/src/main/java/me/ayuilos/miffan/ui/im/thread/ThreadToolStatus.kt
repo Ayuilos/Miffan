@@ -6,7 +6,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -18,15 +20,22 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
 import me.ayuilos.miffan.ui.components.message.ChatMessageToolStep
+import me.ayuilos.miffan.ui.components.message.ComputerToolUIRenderer
+import me.ayuilos.miffan.ui.components.message.approvalDecisionText
+import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
+import me.ayuilos.miffan.ui.components.message.tools.ToolUIRegistry
 import me.ayuilos.miffan.ui.components.message.ThinkingStep
 import me.ayuilos.miffan.ui.components.ui.ChainOfThought
 import me.ayuilos.miffan.ui.modifier.shimmer
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 
 private const val ASK_USER = "ask_user"
+private const val REQUEST_WEB_SEARCH = "request_web_search"
 
 /**
  * What a streaming reply is doing right now, or null once its own text (or a prompt card) is the feedback.
@@ -51,9 +60,21 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): I
 private fun toolStatus(name: String): Int =
     if (name.contains("search", true) || name.contains("web", true)) R.string.im_thread_tools_running else R.string.im_thread_tools_working
 
-/** Tool calls that stay in the chat: prompts waiting for the user, and questions the user already answered. */
+/**
+ * Tool calls that stay in the chat: prompts waiting for the user, questions the user already answered,
+ * and permission requests the user already settled.
+ */
 internal fun UIMessagePart.Tool.isThreadPrompt(): Boolean =
-    approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered)
+    approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered) ||
+        isSettledPermission()
+
+/** A permission card the user (or stopping the reply) already settled; it shrinks to a one-line record in place. */
+internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
+    if (toolName == ASK_USER || approvalState is ToolApprovalState.Pending) return false
+    val record = approvalRecord ?: return false
+    return record.decidedAt != null && record.decision != null &&
+        record.decision != ToolDecision.ANSWERED && record.decision != ToolDecision.AUTO_ALLOWED
+}
 
 @Composable
 internal fun ThreadToolPrompt(tool: UIMessagePart.Tool, onApproval: (String, Boolean) -> Unit, onAnswer: (String, String) -> Unit) {
@@ -62,6 +83,7 @@ internal fun ThreadToolPrompt(tool: UIMessagePart.Tool, onApproval: (String, Boo
             ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)), onAnswer)
         tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
+        tool.isSettledPermission() -> ThreadPermissionRecord(tool)
     }
 }
 
@@ -114,9 +136,8 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.im_p5_permission), style = MaterialTheme.typography.titleMedium)
-            if (tool.toolName == "request_web_search") {
-                val reason = (tool.inputAsJson() as? JsonObject)?.get("reason")?.jsonPrimitive?.contentOrNull
-                Text(reason?.takeIf { it.isNotBlank() } ?: stringResource(R.string.im_p5_web))
+            if (tool.toolName == REQUEST_WEB_SEARCH) {
+                Text(webSearchReason(tool) ?: stringResource(R.string.im_p5_web))
                 Text(stringResource(R.string.im_p5_web_permission), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -128,6 +149,51 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
                 OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
             }
         }
+    }
+}
+
+private fun webSearchReason(tool: UIMessagePart.Tool): String? =
+    (tool.inputAsJson() as? JsonObject)?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+
+/**
+ * What a settled permission card leaves behind: what was asked and how it was answered,
+ * in the same wording as the approval history. Tapping it shows the exact request.
+ */
+@Composable
+private fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
+    val record = tool.approvalRecord ?: return
+    val decision = record.decision ?: return
+    val at = record.decidedAt ?: return
+    val computer = tool.isComputerTool()
+    val renderer = remember(tool.toolName) { if (computer) ComputerToolUIRenderer else ToolUIRegistry.resolve(tool.toolName) }
+    val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), null, false) }
+    var details by remember(tool.toolCallId) { mutableStateOf(false) }
+    val allowed = decision == ToolDecision.ALLOWED
+    val declined = decision == ToolDecision.DECLINED
+    val reason = (tool.approvalState as? ToolApprovalState.Denied)?.reason?.takeIf { declined && it.isNotBlank() }
+    val title = when {
+        tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
+        computer -> computerActionText(tool)
+        else -> renderer.title(context)
+    }
+    Surface(onClick = { details = true }, color = Color.Transparent, shape = MaterialTheme.shapes.small) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(if (allowed) HugeIcons.Tick01 else HugeIcons.Cancel01, null, Modifier.padding(top = 2.dp).size(16.dp),
+                tint = when {
+                    allowed -> MaterialTheme.colorScheme.primary
+                    declined -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                })
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(approvalDecisionText(decision, record.via, at) + reason?.let { ": $it" }.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (declined) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    if (details) ModalBottomSheet(onDismissRequest = { details = false }) {
+        renderer.Preview(context) { details = false }
     }
 }
 
