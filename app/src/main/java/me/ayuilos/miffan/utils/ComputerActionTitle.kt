@@ -24,8 +24,9 @@ internal fun computerActionTitle(toolName: String, arguments: JsonElement): Comp
         "double_click" -> ComputerActionTitle(R.string.computer_use_double_click)
         "right_click" -> ComputerActionTitle(R.string.computer_use_right_click)
         "drag" -> ComputerActionTitle(R.string.computer_use_drag)
-        "type_text" -> {
-            val text = argument("text")
+        // set_value fills a text field in one go; to the user it is typing too.
+        "type_text", "set_value" -> {
+            val text = argument("text", "value")
             val detail = text?.let {
                 val count = it.codePointCount(0, it.length)
                 it.substring(0, it.offsetByCodePoints(0, minOf(count, 40)))
@@ -50,6 +51,13 @@ internal fun computerActionTitle(toolName: String, arguments: JsonElement): Comp
         "start" -> ComputerActionTitle(R.string.computer_use_start)
         "read_guide" -> ComputerActionTitle(R.string.computer_use_read_guide)
         "bring_to_front" -> ComputerActionTitle(R.string.computer_use_bring_to_front)
+        "invoke_menu" -> ComputerActionTitle(R.string.computer_use_menu)
+        "set_window_frame" -> ComputerActionTitle(R.string.computer_use_window_frame)
+        "move_cursor" -> ComputerActionTitle(R.string.computer_use_move_cursor)
+        "zoom" -> ComputerActionTitle(R.string.computer_use_zoom)
+        "get_screen_size" -> ComputerActionTitle(R.string.computer_use_screen_size)
+        "get_cursor_position" -> ComputerActionTitle(R.string.computer_use_cursor_position)
+        "verify_state" -> ComputerActionTitle(R.string.computer_use_verify)
         else -> ComputerActionTitle(null)
     }
 }

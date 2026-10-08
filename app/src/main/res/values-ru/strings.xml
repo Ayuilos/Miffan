@@ -2217,6 +2217,13 @@
   <string name="computer_use_open_app">Открыть приложение</string>
   <string name="computer_use_read_guide">Прочитать инструкцию по управлению компьютером</string>
   <string name="computer_use_bring_to_front">Переместить окно на передний план</string>
+  <string name="computer_use_menu">Открыть меню</string>
+  <string name="computer_use_window_frame">Изменить положение и размер окна</string>
+  <string name="computer_use_move_cursor">Переместить указатель</string>
+  <string name="computer_use_zoom">Посмотреть крупнее</string>
+  <string name="computer_use_screen_size">Узнать размер экрана</string>
+  <string name="computer_use_cursor_position">Найти указатель</string>
+  <string name="computer_use_verify">Проверить результат</string>
   <string name="computer_use_action_detail">%1$s: %2$s</string>
   <string name="computer_use_refused">Вы перехватили управление экраном; партнёр остановился</string>
   <string name="computer_use_error">Не удалось выполнить действие на компьютере. Откройте подробности, чтобы посмотреть вывод.</string>

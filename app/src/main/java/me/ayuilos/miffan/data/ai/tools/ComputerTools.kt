@@ -50,6 +50,9 @@ private val ACTION_TOOLS = setOf(
 /** Raising windows takes over what the user sees; always asks, like delivery_mode=foreground. */
 private val FOREGROUND_TOOLS = setOf("bring_to_front")
 
+/** Every cua-driver tool the partner gets; each needs a readable title in the chat. */
+internal val COMPUTER_DRIVER_TOOL_NAMES = OBSERVE_TOOLS + ACTION_TOOLS + FOREGROUND_TOOLS
+
 internal fun computerAutoApprovedBy(name: String, args: JsonElement, approvalRequired: Boolean): ToolDecisionVia? =
     if (name in ACTION_TOOLS && !approvalRequired &&
         (args as? JsonObject)?.get("delivery_mode")?.jsonPrimitive?.contentOrNull != "foreground"

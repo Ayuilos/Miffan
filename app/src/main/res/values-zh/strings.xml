@@ -2220,6 +2220,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="computer_use_open_app">打开应用</string>
   <string name="computer_use_read_guide">读取操作指南</string>
   <string name="computer_use_bring_to_front">将窗口切到前台</string>
+  <string name="computer_use_menu">使用菜单</string>
+  <string name="computer_use_window_frame">调整窗口位置和大小</string>
+  <string name="computer_use_move_cursor">移动鼠标</string>
+  <string name="computer_use_zoom">放大查看</string>
+  <string name="computer_use_screen_size">查看屏幕尺寸</string>
+  <string name="computer_use_cursor_position">查看鼠标位置</string>
+  <string name="computer_use_verify">确认结果</string>
   <string name="computer_use_action_detail">%1$s：%2$s</string>
   <string name="computer_use_refused">用户已接管屏幕，伙伴已停止</string>
   <string name="computer_use_error">电脑操作失败，请打开详情查看输出。</string>

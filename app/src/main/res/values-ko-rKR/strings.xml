@@ -2217,6 +2217,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="computer_use_open_app">앱 열기</string>
   <string name="computer_use_read_guide">컴퓨터 안내 읽기</string>
   <string name="computer_use_bring_to_front">창을 앞으로 가져오기</string>
+  <string name="computer_use_menu">메뉴 사용</string>
+  <string name="computer_use_window_frame">창 위치와 크기 조정</string>
+  <string name="computer_use_move_cursor">포인터 이동</string>
+  <string name="computer_use_zoom">확대해서 보기</string>
+  <string name="computer_use_screen_size">화면 크기 확인</string>
+  <string name="computer_use_cursor_position">포인터 위치 확인</string>
+  <string name="computer_use_verify">결과 확인</string>
   <string name="computer_use_action_detail">%1$s: %2$s</string>
   <string name="computer_use_refused">화면을 직접 조작해 파트너가 멈췄어요</string>
   <string name="computer_use_error">컴퓨터 작업에 실패했어요. 출력을 보려면 세부정보를 여세요.</string>

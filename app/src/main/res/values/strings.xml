@@ -2228,6 +2228,13 @@
   <string name="computer_use_open_app" tools:ignore="MissingTranslation">Open app</string>
   <string name="computer_use_read_guide" tools:ignore="MissingTranslation">Read computer guide</string>
   <string name="computer_use_bring_to_front" tools:ignore="MissingTranslation">Bring window to front</string>
+  <string name="computer_use_menu" tools:ignore="MissingTranslation">Use a menu</string>
+  <string name="computer_use_window_frame" tools:ignore="MissingTranslation">Move or resize a window</string>
+  <string name="computer_use_move_cursor" tools:ignore="MissingTranslation">Move the pointer</string>
+  <string name="computer_use_zoom" tools:ignore="MissingTranslation">Take a closer look</string>
+  <string name="computer_use_screen_size" tools:ignore="MissingTranslation">Check the screen size</string>
+  <string name="computer_use_cursor_position" tools:ignore="MissingTranslation">Find the pointer</string>
+  <string name="computer_use_verify" tools:ignore="MissingTranslation">Check the result</string>
   <string name="computer_use_action_detail" tools:ignore="MissingTranslation">%1$s: %2$s</string>
   <string name="computer_use_refused" tools:ignore="MissingTranslation">You took over the screen; the partner stopped</string>
   <string name="computer_use_error" tools:ignore="MissingTranslation">Computer action failed. Open details to see the output.</string>

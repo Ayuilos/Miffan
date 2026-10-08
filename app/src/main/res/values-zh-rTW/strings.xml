@@ -2215,6 +2215,13 @@
   <string name="computer_use_open_app">開啟應用程式</string>
   <string name="computer_use_read_guide">讀取電腦操作指南</string>
   <string name="computer_use_bring_to_front">將視窗切到前景</string>
+  <string name="computer_use_menu">使用選單</string>
+  <string name="computer_use_window_frame">調整視窗位置與大小</string>
+  <string name="computer_use_move_cursor">移動滑鼠</string>
+  <string name="computer_use_zoom">放大查看</string>
+  <string name="computer_use_screen_size">查看螢幕尺寸</string>
+  <string name="computer_use_cursor_position">查看滑鼠位置</string>
+  <string name="computer_use_verify">確認結果</string>
   <string name="computer_use_action_detail">%1$s：%2$s</string>
   <string name="computer_use_refused">你已接手操作螢幕，夥伴已停止</string>
   <string name="computer_use_error">電腦操作失敗，請開啟詳細資料查看輸出。</string>

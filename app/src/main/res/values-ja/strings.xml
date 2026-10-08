@@ -2217,6 +2217,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="computer_use_open_app">アプリを開く</string>
   <string name="computer_use_read_guide">コンピューター操作ガイドを読む</string>
   <string name="computer_use_bring_to_front">ウィンドウを前面に表示</string>
+  <string name="computer_use_menu">メニューを使う</string>
+  <string name="computer_use_window_frame">ウィンドウの位置とサイズを変更</string>
+  <string name="computer_use_move_cursor">ポインターを動かす</string>
+  <string name="computer_use_zoom">拡大して見る</string>
+  <string name="computer_use_screen_size">画面サイズを確認</string>
+  <string name="computer_use_cursor_position">ポインターの位置を確認</string>
+  <string name="computer_use_verify">結果を確認</string>
   <string name="computer_use_action_detail">%1$s：%2$s</string>
   <string name="computer_use_refused">画面の操作を引き継いだため、パートナーは停止しました</string>
   <string name="computer_use_error">コンピューターの操作に失敗しました。詳細を開いて出力を確認してください。</string>
