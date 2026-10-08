@@ -1,212 +1,89 @@
 <div align="center">
   <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan 應用程式圖示" width="120" />
   <h1>Miffan</h1>
-  <p>把模型、助理、工具與本機、遠端工作空間帶進手機的原生 Android AI 用戶端。</p>
+  <p>像和朋友聊天一樣使用 AI，還能讓它替你操作電腦的 Android 應用程式。</p>
 
   <p>
-    <a href="https://github.com/Ayuilos/Miffan/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Ayuilos/Miffan?display_name=tag&sort=semver" /></a>
+    <a href="https://github.com/Ayuilos/Miffan/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ayuilos/Miffan?display_name=tag&sort=semver" /></a>
     <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" />
-    <a href="LICENSE"><img alt="授權條款：AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue" /></a>
+    <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue" /></a>
   </p>
 
   <p><a href="README.md">English</a> · <a href="README_ZH_CN.md">简体中文</a> · 繁體中文</p>
 </div>
 
-Miffan 是為 Android 打造的開源 AI 工作空間。你可以連接自己正在使用的模型服務，為不同助理設定獨立的提示詞、記憶、工具和性格，並在一個原生 APP 中管理對話與檔案。
-
-你可以透過 API Key 連接 OpenAI 相容、Gemini 或 Claude 服務，也可以使用符合條件的 ChatGPT 訂閱登入 Codex。Miffan 本身不內建模型，也不取代模型服務帳號；實際可用能力和費用取決於你設定的服務。
-
-## 為什麼選擇 Miffan
-
-- **像聊天軟體一樣用，也能像專業工具一樣用。** 輕鬆聊天讓每個夥伴都是一條持續的聊天；專業介面保留所有選項。
-- **不同模型，一個入口。** 官方 API、相容閘道、自行部署的端點和 Codex 訂閱可以共存，不必把工作流程綁定在單一供應商上。
-- **助理不只是提示詞。** 每個助理都能擁有獨立的模型參數、記憶、工具、MCP、Skills、視覺形象與對話記錄。
-- **手機不只是聊天視窗。** Miffan 可以搜尋網頁、處理檔案、執行本機 Linux 工作區、透過 SSH 連接遠端伺服器、使用裝置能力，還能透過瀏覽器存取同一套對話。
-- **有意義的角色系統。** 可選擇自訂 Miffan 碗角色或藍色大肥魚，讓動作神態回應聊天狀態與晝夜變化。
-
-## 輕鬆聊天 · 4.0 新功能
-
-Miffan 4.0 帶來像聊天軟體一樣使用 AI 的方式。每個夥伴就是一個持續的聊天：不用新建對話，不用選模型，也不用調參數。連接一次服務，之後直接聊。
-
-- **一個夥伴，一條聊天。** 和夥伴的聊天記錄跨越多天連成一條時間線。Miffan 在背後自動區分話題，並把簡短的摘要帶到後續聊天裡，長聊也保持快速、切題。
-- **一次問好幾件事。** 不相關的問題會成為並行的話題，每條回覆都引用它回答的問題；可以只看某個話題，也可以回覆任意一則訊息。
-- **說一句話就能調整夥伴。** 「以後回答簡短一點」會調整夥伴的偏好，並留下可復原的提示。夥伴只依據你本人的話做調整，開啟聯網搜尋等能力前會先徵求同意。
-- **每次改動都可追溯。** 夥伴設定和記憶的每次變化都有版本記錄，關聯到引起它的那則訊息，並且可以還原。
-- **AI 對我的了解。** 查看每個夥伴記下了什麼、來自哪次聊天，隨時刪除。
-- **兩種用法都保留。** 新安裝預設使用輕鬆聊天；舊用戶升級時自行選擇，之後可以隨時在輕鬆聊天和專業介面之間切換，兩者共用同一份資料。
-
 <table>
   <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/01-chats-light.webp" alt="夥伴訊息列表，帶未讀數與正在輸入" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/03-parallel-light.webp" alt="一次問三個問題，每條回覆引用對應的問題" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/05-self-config-light.webp" alt="夥伴調整自己的偏好並留下可復原的提示" width="260" /></td>
-  </tr>
-  <tr>
-    <td align="center">訊息</td>
-    <td align="center">並行話題</td>
-    <td align="center">說一句話就能調整</td>
-  </tr>
-  <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/06-history-light.webp" alt="設定歷史與原文差異" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/07-memory-light.webp" alt="AI 對我的了解，顯示每條記憶的來源" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/02-thread-dark.webp" alt="深色主題下跨天連續的聊天" width="260" /></td>
-  </tr>
-  <tr>
-    <td align="center">設定歷史</td>
-    <td align="center">AI 對我的了解</td>
-    <td align="center">一條連續的聊天</td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/01-chats-light.webp" alt="夥伴訊息列表，含未讀數與正在輸入狀態" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/03-parallel-light.webp" alt="同時問三件事，每則回覆都引用對應的問題" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/05-self-config-light.webp" alt="夥伴依你的要求調整偏好，並提供復原" width="260" /></td>
   </tr>
 </table>
 
-截圖使用簡體中文介面與示範夥伴、聊天資料。
+用你已經在用的 AI 服務就好：OpenAI 相容、Gemini 或 Claude 服務的 API Key，或透過 Codex 登入 ChatGPT 訂閱。Miffan 不內建模型，聊天紀錄和設定都保存在你的手機上。
 
-## 遠端工作空間 · 3.4 新功能
+## 像傳訊息一樣聊天
 
-透過 SSH 連接自己的伺服器，讓助理在指定專案目錄中處理任務。本機專案與遠端機器可以在同一個 APP 中管理，清楚區分位置與連線狀態。
+每個 AI 夥伴就是一段持續的聊天。不用新增對話，不用選模型，也不用調參數。
 
-- **多主機、多專案。** 統一管理 SSH 主機、驗證資訊與專案目錄，也可連接手機已經接入的 Tailscale 私有網路機器。
-- **檔案與互動式終端機。** 瀏覽、預覽、編輯、匯入匯出遠端檔案，或開啟持續連線的終端機手動執行命令；預覽返回後保留目前目錄。
-- **讓 AI 在檔案所在的位置工作。** 為助理綁定工作空間後，即可使用檔案與 Shell 工具。本機與遠端目標分別管理 AI Shell 權限和執行確認。
-- **SSH 金鑰管理。** 支援產生和匯入金鑰、複製公鑰、檢視與匯出私鑰；備份時可選擇密碼加密。
+- **一個夥伴，一段對話。** 和夥伴的聊天紀錄跨越多天也是一條時間軸。Miffan 會在背後把不同話題分開，長聊天依然又快又切題。
+- **同時問好幾件事。** 不相關的問題會並行回答，每則回覆都會引用它回答的那則訊息。
+- **說一句話就能調整夥伴。** 例如「回答短一點」，夥伴就會調整自己的偏好。夥伴設定和記憶的每次變更都關聯到引起它的那則訊息，保留在歷史紀錄裡，隨時可以復原。
+- **看看 AI 記住了你什麼。** 每則記憶都能看到來源，隨時可以刪除。
 
-從**工作空間 → 新建 → 遠端**選擇主機與專案目錄，再到助理設定中綁定工作空間。首次顯示的新功能介紹視窗也可直接開啟工作空間管理頁。
+## 讓夥伴操作你的電腦 · 4.0 新功能
 
-<table>
-  <tr>
-    <td align="center" valign="top"><img src="docs/img/miffan-remote-workspaces.png" alt="含搜尋、類型篩選與連線狀態的本機和遠端工作空間清單" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/miffan-remote-hosts.png" alt="顯示驗證方式與連線狀態的 SSH 主機管理" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/miffan-workspace-introduction.png" alt="介紹遠端工作空間並提供直接體驗入口的新功能視窗" width="300" /></td>
-  </tr>
-  <tr>
-    <td align="center">本機與遠端專案</td>
-    <td align="center">SSH 主機管理</td>
-    <td align="center">新功能介紹與入口</td>
-  </tr>
-</table>
+透過 SSH（包括 Tailscale）連接一台 Mac 或 Linux 桌上型電腦，夥伴就能在上面開啟應用程式、輸入文字、點擊按鈕，你在手機上看著它操作。
 
-截圖使用示範主機與專案資料，畫面語言為簡體中文。
+- **同一個畫面。** 在手機上查看並操作電腦桌面，一碰螢幕就能立刻接管。
+- **由你作主。** 預設情況下，夥伴每做一步都會先問你。每次核准都記在權限紀錄裡，刪除聊天也會保留。
+- **一步步引導。** 輕鬆模式會帶你連接電腦、檢查是否就緒，再把電腦交給夥伴。
 
-目前支援 Linux/Unix SSH/SFTP 主機。APP 使用既有網路連線，不負責設定 Tailscale，也不提供手機離線後的自主工作託管。設定步驟與目前限制請參閱[遠端工作空間說明](docs/REMOTE_WORKSPACE.md)。
+支援的桌面：macOS、基於 wlroots 的 Linux Wayland（如 niri、Sway、Hyprland）以及 X11。暫不支援 GNOME 和 KDE。
 
-## 認識藍色大肥魚
+## 需要時切換到專業模式
+
+隨時可以切換到專業模式，它和輕鬆模式共用同一份資料。
+
+- 混用官方 API、相容閘道、自架服務和 Codex 訂閱。
+- 為每個助理分別設定提示詞、模型參數、記憶、MCP 伺服器、Skills 和網路搜尋。
+- 在手機上執行本機 Linux 工作空間，或讓助理透過 SSH 在遠端伺服器上處理檔案、使用終端機。
+- 語音輸入與朗讀、在任何應用程式中選取文字翻譯，還能在同一個網路裡用瀏覽器聊天。
+
+完整的服務商、搜尋、語音和工具支援情況請見[功能矩陣](docs/FEATURE_MATRIX.md)。
+
+## 有表情的角色
 
 <p align="center">
-  <img src="docs/assets/branding/miffan-whale-girl.png" alt="臉上黏著飯粒的藍色大肥魚趴在微笑的 Miffan 飯碗裡，伸手指向前方" width="560" />
-  <br /><em>Miffan 與藍色大肥魚 · 角色插畫</em>
+  <img src="docs/assets/branding/miffan-whale-girl.png" alt="藍色大肥魚從微笑的 Miffan 飯碗裡探出身來" width="420" />
 </p>
 
-**藍色大肥魚**是一位樂觀、愛吃飯的新夥伴，與原有的 Miffan 碗角色並存。在**設定 → 外觀**中預覽主題，即可體驗她的專屬助理。
+你可以選擇 Miffan 飯碗，或是藍色大肥魚。它們的表情會跟著對話變化：等待時吃飯，AI 思考時轉圈圈眼，回覆送達時露出笑容，夜裡還會打瞌睡。
 
-- **獨立的專屬助理。** 首次體驗會建立大肥魚助理並開啟新對話，再次體驗會沿用已有助理、保留你的修改。名字、性格提示詞、模型和工具皆可編輯，原有助理和對話保持不變。
-- **跟隨聊天的動作神態。** 微笑、摸摸、得意、更新提醒、等待時吃飯、輸出時咀嚼、實際推理時搖晃並轉圈眼，以及帶呼吸鼻涕泡的睡眠。原生繪圖保持頭像外透明，並支援減少動態效果。
-- **配套外觀。** 鮮藍頭髮、鯨鰭和蝴蝶結搭配淺色與深色主題、新手引導預覽和啟動畫面；碗與大肥魚桌面圖示可獨立選擇。還原之前的配色會保留專屬助理。
-- **隨時體驗。** 新安裝可在引導中選擇，既有使用者會在聊天首頁看到一次介紹；也可單獨為某個助理選擇大肥魚頭像。
+## 開始使用
 
-## 介面預覽
+1. 從 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 下載最新 APK。正式版適用於 Android 8.0 以上的 `arm64-v8a` 裝置。
+2. 第一次開啟時，用 API Key 或支援的帳號連接一個 AI 服務。
+3. 開始聊天。
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/img/miffan-empty-chat.png" alt="空白對話中的 Miffan 動態角色" width="280" /></td>
-    <td align="center"><img src="docs/img/miffan-character-settings.png" alt="Miffan 角色外觀與動作自訂" width="280" /></td>
-    <td align="center"><img src="docs/img/miffan-tool-call.png" alt="包含本機工具呼叫的聊天回覆" width="280" /></td>
-  </tr>
-  <tr>
-    <td align="center">動態角色</td>
-    <td align="center">角色自訂</td>
-    <td align="center">工具呼叫</td>
-  </tr>
-</table>
+資料可以備份到 WebDAV 或 S3 相容儲存空間，也可以從 RikkaHub、Chatbox 和 Cherry Studio 匯入。提示詞、附件和工具資料只會傳送給你設定的服務，詳見 [PRIVACY.md](PRIVACY.md) 和 [SECURITY.md](SECURITY.md)。
 
-### 選取文字翻譯流程
+## 專案歷史
 
-在任何 Android APP 中選取文字，從文字操作選單選擇 **Miffan-翻譯**（選單名稱跟隨 APP 語言），即可在不離開目前頁面的情況下，透過小型浮動視窗查看翻譯結果。
+Miffan 最初是開源 Android LLM 用戶端 [RikkaHub](https://github.com/rikkahub/rikkahub) 的一個 fork，後來逐漸發展成獨立的應用程式。
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/img/miffan-selected-text-action.png" alt="從 Android 文字操作選單選擇 Miffan-翻譯" width="300" /></td>
-    <td align="center"><img src="docs/img/miffan-selected-text-translation.png" alt="Miffan 浮動視窗中的翻譯結果" width="300" /></td>
-  </tr>
-  <tr>
-    <td align="center">1. 選取文字並選擇 Miffan-翻譯</td>
-    <td align="center">2. 查看或複製翻譯結果</td>
-  </tr>
-</table>
+| 時間 | 版本 | 變化 |
+| --- | --- | --- |
+| 2026 年 8 月 | 2.4.10-miffan.1 | 基於 RikkaHub 2.4.10 分出，更名為 Miffan，並使用獨立的應用程式 ID，可與 RikkaHub 同時安裝。新增透過 Codex 登入 ChatGPT 訂閱。 |
+| 2026 年 8 月 | 2.4.10-miffan.5 | 加入會動的 Miffan 飯碗角色。 |
+| 2026 年 8 月 | 3.0.0 | 改用 Miffan 自己的版本號，不再跟隨 RikkaHub 的版本。 |
+| 2026 年 9 月 | 3.1 – 3.3 | 首次設定引導、憑證加密、持久保存的回覆分支，以及藍色大肥魚。 |
+| 2026 年 9 月 | 3.4 | 遠端 SSH 工作空間。 |
+| 2026 年 10 月 | 4.0 | 輕鬆模式，以及讓夥伴操作你的電腦。 |
 
-## 功能
+Miffan 仍會選擇性吸收 RikkaHub 的改進，每一項都經過審查，並在發布說明中單獨列出（見[上游同步策略](docs/upstream-sync.md)）。專案依照授權條款保留上游的著作權與署名資訊。Miffan 不是 RikkaHub 的官方版本。
 
-### 模型與供應商
-
-- 支援 OpenAI Chat Completions / Responses 相容服務、Google Gemini / Vertex AI，以及 Anthropic Claude 相容服務
-- 使用符合條件的 ChatGPT 訂閱，透過瀏覽器登入 OpenAI Codex
-- 內建常見官方服務與閘道預設，也可自訂供應商、Base URL、模型、請求路徑、Headers 與 Body 參數
-- 支援模型探索，並可設定模態、推理、工具呼叫、上下文視窗與生成參數
-- 支援具備驗證的 HTTP/SOCKS5 Proxy、自訂 User-Agent、連線測試和選用的餘額查詢
-- 依照模型能力提供聊天、推理、工具呼叫、圖片生成與多模態輸入
-
-### 對話體驗
-
-- 串流輸出、訊息編輯與重新生成、回覆分支、收藏、資料夾和本機全文搜尋
-- 對話層級系統提示詞、記錄壓縮、自動標題、後續建議、Token 用量與生成統計
-- 支援圖片和文件附件；需要時可在本機擷取 PDF、DOCX、PPTX 與 EPUB 文字
-- 豐富的 Markdown 與 HTML 呈現，支援程式碼醒目提示、LaTeX、表格、Mermaid、圖片與 Diff
-- 對話可匯出為 Markdown 或圖片，也可從 Android 分享內容並交給指定助理處理
-
-### 助理與 Miffan 角色
-
-- 每個助理可獨立設定模型、提示詞、取樣參數、上下文限制、自訂請求與聊天背景
-- 支援記憶、參照近期對話、預設訊息、快速訊息、正規表示式轉換、模式注入與世界書
-- 支援匯入 JSON 或 PNG 格式的 Tavern 角色卡
-- 四種 Miffan 角色、六套精選配色、三種動作風格，並可選擇跟隨 APP 主題配色
-- 對應待機、思考、成功、錯誤、輸入、提交、點擊與晝夜場景的語意動畫，並支援減少動態效果
-
-### 工具與擴充
-
-- 支援透過 SSE 或 Streamable HTTP 連接 MCP，包括 OAuth 流程和依助理選擇伺服器
-- 可從檔案、GitHub 儲存庫和 Skill.sh 目錄安裝並管理 Skills，並對安裝目標進行約束
-- 可連接 Bing、Tavily、Exa、SearXNG、Brave、Perplexity、Firecrawl、Jina、Grok 等搜尋服務，也支援自訂 JavaScript 搜尋介面卡
-- 選用的本機工具包括時間、剪貼簿、JavaScript、文字轉語音、向使用者提問、螢幕使用時間與行事曆事件
-- 本機 Linux 與遠端 SSH 工作空間，包含檔案管理、編輯器、互動式終端機、工作目錄上下文與 AI 檔案/命令工具
-
-### 語音、翻譯與瀏覽器存取
-
-- 可設定 OpenAI Realtime、DashScope、火山引擎、MiMo 與階躍星辰語音辨識
-- 支援 Android 系統語音，以及 OpenAI、OpenRouter、Gemini、MiniMax、Qwen、Groq、xAI、MiMo、ElevenLabs、Fish Audio、階躍星辰等 TTS 服務
-- 內建 AI 翻譯，並支援透過 Android「處理文字」在小型浮動視窗中翻譯選取文字
-- 選用的本機 Web 伺服器，支援本機或區域網路瀏覽器存取、密碼驗證、僅本機監聽與 mDNS 探索
-
-### 資料與移轉
-
-- 對話與設定儲存在 APP 本機資料庫中
-- 支援選擇內容的本機備份與還原、備份提醒、WebDAV 和 S3 相容儲存空間
-- 可從 Chatbox 匯入供應商與完整對話、從 Cherry Studio 匯入供應商，也可匯入相容的 RikkaHub 備份
-- 使用獨立的應用程式 ID、簽署身分、發布管道與 Deep Link，可與 RikkaHub 同時安裝
-
-完整的模型協定、搜尋、語音、工具與移轉支援情況見[功能相容矩陣](docs/FEATURE_MATRIX.md)。
-
-## 下載與首次設定
-
-Miffan 目前透過 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 發布簽署 APK。正式版本適用於執行 Android 8.0 或更新版本的 `arm64-v8a` 裝置。
-
-1. 安裝最新的 Miffan APK。
-2. 開啟 **設定 → 供應商** 設定模型服務，或使用支援的訂閱登入 OpenAI Codex。
-3. 新增或探索模型，再將其設為全域模型或某個助理的專用模型。
-4. 僅在需要時啟用搜尋、MCP、Skills、本機工具或工作區。
-
-Miffan 的應用程式 ID 為 `me.ayuilos.miffan.app`，Deep Link 協定為 `miffan://`。RikkaHub 的既有資料不會自動共享；如需移轉，請先在舊 APP 中匯出備份，再匯入 Miffan。
-
-自 `3.0.0-rc.1` 起，Miffan 採用不再編入 RikkaHub 版本的獨立 SemVer 發布線。正式 APK 保留既有套件名稱與正式簽署身分，因此 `2.4.11-miffan.1` 可在不變更使用者資料或資料庫相容策略的前提下原地升級。Nightly 工作流程成品使用 `me.ayuilos.miffan.app.nightly` 與 CI 臨時 debug 簽署，只能分開安裝，不能覆蓋正式版。Nightly 屬於一次性測試產物；不同執行的簽署可能變更，因此不保證 Nightly 之間可以原地升級。
-
-## 安全與隱私說明
-
-Miffan 是用戶端：提示詞、附件和工具資料會傳送到你選擇的模型、搜尋、語音、MCP、同步或其他服務端點。請分別了解所設定服務的隱私權政策和計費方式。詳細資料流說明見 [PRIVACY.md](PRIVACY.md)。
-
-Skills、MCP 伺服器、本機工具與工作區可能在授權範圍內存取外部服務或裝置資料。請只安裝可信任的 Skills、檢查工具請求，並只為助理開啟必要能力。
-
-在開啟區域網路存取、執行工作區指令或儲存敏感憑證前，請閱讀 [SECURITY.md](SECURITY.md)。
-
-## 從原始碼建置
-
-專案使用 Kotlin、Jetpack Compose、Material 3、Gradle 與 Java 17。
+## 建置與參與貢獻
 
 ```bash
 git clone https://github.com/Ayuilos/Miffan.git
@@ -214,44 +91,6 @@ cd Miffan
 ./gradlew assembleDebug
 ```
 
-常用驗證命令：
+專案使用 Kotlin、Jetpack Compose 和 Java 17。提交 PR 前請先閱讀[貢獻指南](CONTRIBUTING.md)和 [Issue 指南](docs/ISSUE_GUIDELINES.md)。發布與簽署流程請見 [docs/releasing.md](docs/releasing.md)。
 
-```bash
-./gradlew test
-./gradlew lint
-```
-
-`app/google-services.json` 是選用設定。沒有經過授權的設定時，Firebase 使用情況分析與當機回報會保持關閉。正式簽署與發布流程請參閱 [docs/releasing.md](docs/releasing.md)。
-
-### 角色動作實驗室
-
-進入**設定 → 關於**，長按版本資訊，在除錯頁選擇**藍色大肥魚**。可預覽八種神態、暫停或重播、切換晝夜配色與減少動態效果、檢查 28–280 dp 尺寸，還可拖動時間滑桿觀察中間姿態。這些控制只影響預覽。
-
-大肥魚使用原生 Compose 路徑與前景動畫時鐘，APK 已移除停用的舊 WebP 動畫圖集。實作與驗證記錄見[角色架構](docs/miffan/ARCHITECTURE.md)和[視覺驗證說明](docs/miffan/whale-girl/line-art/README.md)。
-
-### 儲存庫模組
-
-| 模組 | 職責 |
-| --- | --- |
-| `app` | Compose UI、資料、助理、對話、工具與應用程式服務 |
-| `ai` | 供應商抽象層以及 OpenAI、Gemini、Claude 協定實作 |
-| `search` | 網頁搜尋與頁面內容服務整合 |
-| `speech` | 語音辨識、合成與播放 |
-| `document` | PDF、DOCX、PPTX 與 EPUB 文字擷取 |
-| `workspace` | 本機檔案系統/Linux 環境與原生 SSH/SFTP 遠端工作空間 |
-| `web` / `web-ui` | 內建伺服器與瀏覽器用戶端 |
-| `highlight`、`material3`、`common` | 呈現與共用基礎設施 |
-
-## 專案歷史與歸屬
-
-Miffan 最初源自 [RikkaHub](https://github.com/rikkahub/rikkahub) 的社群分支，並會繼續選擇性吸收上游改進。現在它作為獨立應用程式維護，擁有自己的產品定位、角色系統、套件名稱、簽署憑證、發布版本線與功能開發方向。RikkaHub 僅作為選擇性的程式碼輸入，而不是產品版本來源；具體審查與來源記錄規則請見[上游同步策略](docs/upstream-sync.md)。
-
-專案會依照授權條款保留上游版權與歸屬資訊。Miffan 不是 RikkaHub 的官方版本。
-
-## 參與貢獻
-
-歡迎提交 Issue 與 Pull Request。對於較大的改動，建議先建立 Issue 討論產品方向和實作範圍。回報問題時請附上 Miffan 版本、Android 版本、供應商類型和重現步驟，並移除 API Key 與私人對話內容。
-
-## 授權條款
-
-Miffan 使用 [GNU Affero General Public License v3.0](LICENSE) 發布。
+Miffan 以 [GNU Affero General Public License v3.0](LICENSE) 授權發布。

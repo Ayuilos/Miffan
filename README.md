@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan app icon" width="120" />
   <h1>Miffan</h1>
-  <p>A native Android AI client that brings models, assistants, tools, and local or remote workspaces together.</p>
+  <p>An Android AI app you talk to like a friend, and that can work on your computer.</p>
 
   <p>
     <a href="https://github.com/Ayuilos/Miffan/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ayuilos/Miffan?display_name=tag&sort=semver" /></a>
@@ -12,201 +12,78 @@
   <p>English · <a href="README_ZH_CN.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a></p>
 </div>
 
-Miffan is an open-source AI workspace designed for Android. Connect the model services you already use, give different assistants their own prompts, memories, tools, and personalities, and keep conversations and files organized in one native app.
-
-Use an API key with OpenAI-compatible, Gemini, or Claude services, or sign in with an eligible ChatGPT subscription for Codex access. Miffan does not bundle a model or replace a provider account; availability and charges depend on the services you configure.
-
-## What makes Miffan different
-
-- **Chat like a messenger, or work like a pro.** Easy chat gives every partner one continuous conversation; the professional interface keeps every option within reach.
-- **One home for different models.** Mix official APIs, compatible gateways, self-hosted endpoints, and a Codex subscription without rebuilding your workflow around one provider.
-- **Assistants are real workspaces.** Each assistant can have isolated prompts, model parameters, memory, tools, MCP servers, Skills, visual identity, and conversation history.
-- **The phone can do more than display chat.** Miffan can search the web, work with files, run a local Linux workspace, connect to remote servers over SSH, use device capabilities, and expose the same conversations through a browser.
-- **A character system with purpose.** Choose customizable Miffan bowl characters or the blue whale girl, with expressions that respond to conversation state and time of day.
-
-## Easy chat · new in 4.0
-
-Miffan 4.0 adds a messenger-style way to use AI. Each partner is one ongoing chat: no new conversations to start, no models to pick, no settings to tune. Set up a service once, then just talk.
-
-- **One partner, one continuous chat.** Your history with a partner reads as a single timeline across days. Behind the scenes Miffan keeps topics apart and carries short summaries forward, so long chats stay fast and on point.
-- **Ask several things at once.** Unrelated questions become parallel topics. Each reply quotes the question it answers, and you can view one topic on its own or reply to any message.
-- **Change a partner by saying so.** "Keep your answers shorter" adjusts the partner's preferences, with a notice you can undo. A partner only acts on your own words, and it asks before turning on abilities such as web search.
-- **Everything is traceable.** Every change to a partner's settings or memories is versioned, linked to the message that caused it, and can be restored.
-- **What AI knows about you.** See what each partner remembered, where it came from, and delete anything at any time.
-- **Both ways of working.** New installations start in easy chat; existing users choose on upgrade and can switch between easy chat and the professional interface at any time. Both share the same data.
-
 <table>
   <tr>
     <td align="center" valign="top"><img src="docs/img/v4/en/01-chats-light.webp" alt="Chats with partners, unread counts and typing indicators" width="260" /></td>
     <td align="center" valign="top"><img src="docs/img/v4/en/03-parallel-light.webp" alt="Three questions at once, each reply quoting its question" width="260" /></td>
     <td align="center" valign="top"><img src="docs/img/v4/en/05-self-config-light.webp" alt="A partner adjusting its own preferences with an undo notice" width="260" /></td>
   </tr>
-  <tr>
-    <td align="center">Chats</td>
-    <td align="center">Parallel topics</td>
-    <td align="center">Change by talking</td>
-  </tr>
-  <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/en/06-history-light.webp" alt="Settings history with the raw difference" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/en/07-memory-light.webp" alt="What AI knows about you, with the source of each memory" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/en/02-thread-dark.webp" alt="A continuous chat across days in dark theme" width="260" /></td>
-  </tr>
-  <tr>
-    <td align="center">Settings history</td>
-    <td align="center">What AI knows about you</td>
-    <td align="center">One continuous chat</td>
-  </tr>
 </table>
 
-Screenshots use demo partners and conversations.
+Bring the AI service you already use, whether that's an API key for an OpenAI-compatible, Gemini or Claude service, or a ChatGPT subscription through Codex sign-in. Miffan doesn't bundle a model. Your chats and settings stay on your phone.
 
-## Remote workspaces · new in 3.4
+## Chat like a messenger
 
-Connect your own server over SSH and let an assistant work in a chosen project directory. Keep local projects and remote machines in the same app, with clear identities and connection states.
+Each AI partner is one ongoing chat. There's nothing to start, no model to pick and nothing to tune.
 
-- **Multiple hosts and projects.** Manage SSH hosts, credentials, and project directories, including machines on a Tailscale network your device has already joined.
-- **Files and an interactive terminal.** Browse, preview, edit, import, and export remote files, or open a persistent terminal to run commands yourself. Returning from a file preview keeps your current directory.
-- **AI that works where your files live.** Bind a workspace to an assistant and use file and shell tools there. AI shell permissions and execution confirmations are managed separately for local and remote targets.
-- **SSH key management.** Generate or import keys, copy public keys, and view or export private keys, with optional passphrase encryption for backups.
+- **One partner, one conversation.** Your history with a partner reads as one timeline across days. Behind the scenes Miffan keeps topics apart, so long chats stay quick and on point.
+- **Ask several things at once.** Unrelated questions run in parallel, and each reply quotes the message it answers.
+- **Change a partner by telling it.** "Keep your answers shorter" adjusts its preferences. Every change to a partner's settings or memory is linked to the message behind it, kept in a history and can be undone.
+- **See what AI knows about you.** Each memory shows where it came from, and you can delete it at any time.
 
-Open **Workspaces → New → Remote** to choose a host and project directory, then bind the workspace in the assistant settings. The one-time introduction also links directly to workspace management.
+## Let your partner use your computer · new in 4.0
 
-<table>
-  <tr>
-    <td align="center" valign="top"><img src="docs/img/miffan-remote-workspaces.png" alt="Local and remote workspace list with search and connection status" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/miffan-remote-hosts.png" alt="SSH host management with authentication and connection status" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/miffan-workspace-introduction.png" alt="Remote workspace introduction with a direct entry to workspace management" width="300" /></td>
-  </tr>
-  <tr>
-    <td align="center">Local and remote projects</td>
-    <td align="center">SSH host management</td>
-    <td align="center">Discover the new workspace</td>
-  </tr>
-</table>
+Connect a Mac or Linux desktop over SSH, including over Tailscale, and your partner can open apps, type and click on it while you watch from your phone.
 
-Screenshots use demo hosts and projects; the displayed UI language is Simplified Chinese.
+- **One shared screen.** View and control the desktop from your phone. Touch the screen and you take over right away.
+- **You stay in charge.** By default the partner asks before every action. Each approval is recorded in a permission history that stays even if you delete the chat.
+- **Guided setup.** Easy chat walks you through connecting a computer, checking that it's ready and handing it to a partner.
 
-Remote workspaces currently support Linux/Unix SSH/SFTP hosts. Miffan uses an existing network connection and does not set up Tailscale or keep tasks running autonomously while the phone is offline. See the [remote workspace guide](docs/REMOTE_WORKSPACE.md) for setup and current limits.
+Supported desktops: macOS, Linux with wlroots-based Wayland (such as niri, Sway or Hyprland), and X11. GNOME and KDE aren't supported yet.
 
-## Meet the blue whale girl
+## Professional mode when you want every option
+
+Switch to the professional interface at any time. It uses the same data as easy chat.
+
+- Combine official APIs, compatible gateways, self-hosted endpoints and a Codex subscription.
+- Give each assistant its own prompts, model parameters, memory, MCP servers, Skills and web search.
+- Run a local Linux workspace on the phone, or let assistants work on remote servers over SSH with files and a terminal.
+- Use voice input and output, translate selected text in any app, and chat from a browser on your network.
+
+The [feature matrix](docs/FEATURE_MATRIX.md) lists every supported provider, search service, speech engine and tool.
+
+## Characters with feelings
 
 <p align="center">
-  <img src="docs/assets/branding/miffan-whale-girl.png" alt="The blue whale girl pointing forward from a smiling Miffan rice bowl, with rice grains on her cheeks" width="560" />
-  <br /><em>Miffan and the blue whale girl · character illustration</em>
+  <img src="docs/assets/branding/miffan-whale-girl.png" alt="The blue whale girl pointing forward from a smiling Miffan rice bowl" width="420" />
 </p>
 
-**蓝色大肥鱼** is a cheerful, rice-loving companion alongside the original Miffan bowl characters. Open **Settings → Appearance** to preview the collection and try it with a dedicated assistant.
+Choose a Miffan rice bowl or the blue whale girl. Their expressions follow the conversation: they eat while you wait, get dizzy while the AI reasons, smile when a reply arrives and doze off at night.
 
-- **An assistant of her own.** The first trial creates a separate whale-girl assistant and opens a new chat. Later trials reuse it and preserve your edits. Her name, personality prompt, model, and tools remain editable; existing assistants and conversations stay intact.
-- **Expressions that follow the conversation.** She smiles, enjoys petting, looks proud, reacts to updates, eats while waiting, chews during text output, sways with spinning eyes during actual reasoning, and dozes with a breathing nose bubble. Native drawing keeps the background transparent and supports reduced motion.
-- **A coordinated appearance.** Vivid blue hair, fins, and a bow come with light and dark palettes, onboarding previews, and startup artwork. The bowl and whale launcher icons can be selected independently. Restoring the previous palette keeps the dedicated assistant.
-- **Easy to discover.** New installations can choose the collection during onboarding; existing users receive a one-time introduction on the chat home screen. You can also choose the whale avatar for an individual assistant.
+## Get started
 
-## Screenshots
+1. Download the latest APK from [GitHub Releases](https://github.com/Ayuilos/Miffan/releases). Official builds are for `arm64-v8a` devices on Android 8.0 or later.
+2. On first launch, connect an AI service with an API key or sign in with a supported account.
+3. Start chatting.
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/img/miffan-empty-chat.png" alt="Miffan mascot in an empty chat" width="280" /></td>
-    <td align="center"><img src="docs/img/miffan-character-settings.png" alt="Miffan character customization" width="280" /></td>
-    <td align="center"><img src="docs/img/miffan-tool-call.png" alt="Chat response with a local tool call" width="280" /></td>
-  </tr>
-  <tr>
-    <td align="center">Living mascot</td>
-    <td align="center">Character styles</td>
-    <td align="center">Tool-aware chat</td>
-  </tr>
-</table>
+You can back up to WebDAV or S3-compatible storage, and import data from RikkaHub, Chatbox and Cherry Studio. Prompts, attachments and tool data go only to the services you configure; see [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
-### Selected-text translation
+## Project history
 
-Select text in any Android app and choose **Miffan-Translate** from the text action menu (the label follows the app language). Miffan shows the translation in a compact floating window without taking you away from the current page.
+Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an open-source Android LLM client, and has since grown into an independent app.
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/img/miffan-selected-text-action.png" alt="Choosing Miffan-Translate from the Android text action menu" width="300" /></td>
-    <td align="center"><img src="docs/img/miffan-selected-text-translation.png" alt="Translation result in the Miffan floating window" width="300" /></td>
-  </tr>
-  <tr>
-    <td align="center">1. Select text and choose Miffan-Translate</td>
-    <td align="center">2. Review or copy the translation</td>
-  </tr>
-</table>
+| When | Release | What changed |
+| --- | --- | --- |
+| Aug 2026 | 2.4.10-miffan.1 | Forked from RikkaHub 2.4.10 and renamed Miffan, with its own app ID so it installs alongside RikkaHub. Added ChatGPT subscription sign-in through Codex. |
+| Aug 2026 | 2.4.10-miffan.5 | The animated Miffan bowl characters arrived. |
+| Aug 2026 | 3.0.0 | Moved to Miffan's own version numbers, independent of RikkaHub releases. |
+| Sep 2026 | 3.1 – 3.3 | First-run setup, encrypted credentials, persistent reply branches and the blue whale girl. |
+| Sep 2026 | 3.4 | Remote SSH workspaces. |
+| Oct 2026 | 4.0 | Easy chat and letting your partner use your computer. |
 
-## Features
+Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 
-### Models and providers
-
-- OpenAI Chat Completions and Responses-compatible services, Google Gemini and Vertex AI, and Anthropic Claude-compatible services
-- Browser-based OpenAI Codex sign-in using access included with eligible ChatGPT subscriptions
-- Built-in presets for popular official services and gateways, plus fully custom providers, base URLs, models, request paths, headers, and body parameters
-- Model discovery and configurable modality, reasoning, tool-use, context-window, and generation settings
-- Authenticated HTTP/SOCKS5 proxy support, custom User-Agent, connection testing, and optional provider balance queries
-- Chat, reasoning, tool calls, image generation, and multimodal input according to the selected model's capabilities
-
-### Conversation experience
-
-- Streaming responses, message editing and regeneration, response branches, favorites, folders, and local full-text search
-- Per-conversation system prompts, history compression, automatic titles, follow-up suggestions, token usage, and generation statistics
-- Images and document attachments; local text extraction for PDF, DOCX, PPTX, and EPUB when needed
-- Rich Markdown and HTML rendering with syntax highlighting, LaTeX, tables, Mermaid diagrams, images, and diffs
-- Export conversations as Markdown or images, share content into Miffan, and hand shared text to a selected assistant
-
-### Assistants and Miffan characters
-
-- Independent assistant configuration for models, prompts, sampling parameters, context limits, request customization, and chat backgrounds
-- Memory, references to recent chats, preset messages, quick messages, regular-expression transforms, mode injections, and lorebooks
-- Import Tavern character cards in JSON or PNG format
-- Four Miffan character kinds, six curated palettes, three motion profiles, and optional app-theme color synchronization
-- Semantic animations for idle, thinking, success, error, typing, submitting, attention, and time-of-day scenes, with reduced-motion support
-
-### Tools and extensions
-
-- MCP over SSE or Streamable HTTP, including OAuth flows and per-assistant server selection
-- Install and manage Skills from files, GitHub repositories, and the Skill.sh catalog with guarded install targets
-- Web search through Bing, Tavily, Exa, SearXNG, Brave, Perplexity, Firecrawl, Jina, Grok, and other services, plus custom JavaScript search adapters
-- Optional local tools for time, clipboard, JavaScript, text-to-speech, user questions, screen time, and calendar events
-- Local Linux and remote SSH workspaces with file management, an editor, interactive terminals, working-directory context, and AI file/shell tools
-
-### Voice, translation, and browser access
-
-- Configurable speech recognition through OpenAI Realtime, DashScope, Volcengine, MiMo, and Step
-- Android system speech plus configurable TTS services including OpenAI, OpenRouter, Gemini, MiniMax, Qwen, Groq, xAI, MiMo, ElevenLabs, Fish Audio, and Step
-- In-app AI translation and Android selected-text translation in a compact floating window
-- Optional local web server for browser access on the device or LAN, with password authentication, localhost-only mode, and mDNS discovery
-
-### Data and portability
-
-- Conversations and settings are stored in the app's local database
-- Selective local backup and restore, backup reminders, WebDAV, and S3-compatible storage
-- Import provider settings and conversations from Chatbox, provider settings from Cherry Studio, and compatible backups from RikkaHub
-- Independent application ID, signing identity, release channel, and deep links; Miffan can coexist with RikkaHub on the same device
-
-See the [feature compatibility matrix](docs/FEATURE_MATRIX.md) for the complete provider, search, speech, tool, and portability coverage.
-
-## Download and first setup
-
-Miffan currently distributes signed APKs through [GitHub Releases](https://github.com/Ayuilos/Miffan/releases). Official releases target `arm64-v8a` devices running Android 8.0 or newer.
-
-1. Install the latest Miffan APK.
-2. Open **Settings → Providers** and configure a service, or sign in to OpenAI Codex with a supported subscription.
-3. Add or discover a model, then select it globally or for a specific assistant.
-4. Enable search, MCP, Skills, local tools, or a workspace only when you need them.
-
-Miffan uses the application ID `me.ayuilos.miffan.app` and the `miffan://` deep-link scheme. Existing RikkaHub data is not shared automatically; export a backup from the old app and import it into Miffan if you want to migrate.
-
-Beginning with `3.0.0-rc.1`, Miffan uses an independent SemVer release line that does not encode a RikkaHub version. Official APKs retain the existing package and production signing identity, so `2.4.11-miffan.1` can be upgraded in place without changing the app's data or database compatibility policy. Nightly workflow artifacts use `me.ayuilos.miffan.app.nightly` and an ephemeral CI debug signer; they install separately and cannot replace an official build. Nightlies are disposable test artifacts, and the signer may change between runs, so in-place upgrades between Nightlies are not guaranteed.
-
-## Security and privacy notes
-
-Miffan is a client: prompts, attachments, and tool data are sent to the model, search, speech, MCP, sync, or other endpoints you choose. Review the privacy policy and pricing of every service you configure. The repository's data-flow disclosures are in [PRIVACY.md](PRIVACY.md).
-
-Skills, MCP servers, local tools, and workspaces can access external services or device data within their granted scope. Install trusted Skills, inspect tool requests, and enable only the capabilities an assistant needs.
-
-Read [SECURITY.md](SECURITY.md) before enabling LAN access, running workspace commands, or handling sensitive credentials.
-
-## Build from source
-
-The project uses Kotlin, Jetpack Compose, Material 3, Gradle, and Java 17.
+## Build and contribute
 
 ```bash
 git clone https://github.com/Ayuilos/Miffan.git
@@ -214,46 +91,6 @@ cd Miffan
 ./gradlew assembleDebug
 ```
 
-Useful verification commands:
+The project uses Kotlin, Jetpack Compose and Java 17. Read the [contribution guidelines](CONTRIBUTING.md) and [issue guidelines](docs/ISSUE_GUIDELINES.md) before opening a pull request. Release and signing steps are in [docs/releasing.md](docs/releasing.md).
 
-```bash
-./gradlew test
-./gradlew lint
-```
-
-`app/google-services.json` is optional. Builds without an authorized configuration keep Firebase analytics and crash reporting disabled. Production signing and release steps are documented in [docs/releasing.md](docs/releasing.md).
-
-### Character animation lab
-
-Open **Settings → About**, long-press the version entry, and select **蓝色大肥鱼** in the debug page. Preview all eight expressions, pause or replay them, switch light/dark colors and reduced motion, test 28–280 dp sizes, or scrub through the action timeline. These controls affect only the preview.
-
-The whale uses native Compose paths and a foreground animation clock. Unused legacy WebP animation atlases have been removed from the APK. See the [character architecture](docs/miffan/ARCHITECTURE.md) and [visual validation notes](docs/miffan/whale-girl/line-art/README.md) for implementation and test evidence.
-
-### Repository modules
-
-| Module | Responsibility |
-| --- | --- |
-| `app` | Compose UI, data, assistants, conversations, tools, and application services |
-| `ai` | Provider abstraction and OpenAI, Gemini, and Claude protocol implementations |
-| `search` | Web search and page-content service integrations |
-| `speech` | Speech recognition, synthesis, and playback |
-| `document` | PDF, DOCX, PPTX, and EPUB text extraction |
-| `workspace` | Local filesystem/Linux environment and native SSH/SFTP remote workspaces |
-| `web` / `web-ui` | Embedded server and browser client |
-| `highlight`, `material3`, `common` | Rendering and shared infrastructure |
-
-## Project history and attribution
-
-Miffan began as a community fork of [RikkaHub](https://github.com/rikkahub/rikkahub) and continues to incorporate selected upstream improvements. It is now maintained as an independent application with its own product identity, character system, package name, signing certificate, release line, and feature development. RikkaHub is treated as a selective code input rather than a product-version source; the review and provenance rules are documented in the [upstream synchronization policy](docs/upstream-sync.md).
-
-Upstream copyright and attribution are retained as required by the license. Miffan is not an official RikkaHub release.
-
-## Contributing
-
-Issues and pull requests are welcome. For substantial changes, open an issue first so the product direction and implementation scope can be discussed. When reporting a bug, include the Miffan version, Android version, provider type, and reproducible steps, but remove API keys and private conversation content.
-
-Before opening an issue, please read the [Issue guidelines](docs/ISSUE_GUIDELINES.md). Before submitting a pull request, please read the [contribution guidelines](CONTRIBUTING.md).
-
-## License
-
-Miffan is released under the [GNU Affero General Public License v3.0](LICENSE).
+Miffan is licensed under the [GNU Affero General Public License v3.0](LICENSE).
