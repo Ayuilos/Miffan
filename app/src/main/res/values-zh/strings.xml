@@ -1750,8 +1750,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_discover_translate_desc">读懂世界，也表达自己</string>
   <string name="im_discover_favorites">收藏</string>
   <string name="im_discover_favorites_desc">留住喜欢的消息</string>
-  <string name="im_discover_workspace">文件与工作区</string>
-  <string name="im_discover_workspace_desc">整理文件，一起完成事情</string>
   <string name="im_discover_extensions">扩展</string>
   <string name="im_discover_extensions_desc">为伙伴添一点新本领</string>
   <string name="im_me_memory">AI 对我的了解</string>
@@ -2288,6 +2286,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_recheck">重新检测</string>
   <string name="im_computer_recheck_or_change">重新检测或更换电脑</string>
   <string name="im_computer_replace_binding">这会替换 %1$s 当前使用的 %2$s。</string>
+  <string name="im_computer_phone_title">在这台手机上工作</string>
+  <string name="im_computer_phone_help">伙伴可以在手机里处理文件、运行命令。这项只能在专业模式中设置。</string>
+  <string name="im_computer_phone_switch">改为连接电脑</string>
+  <string name="im_computer_replace_phone">%1$s 将不再在这台手机上工作，手机里的文件会保留。</string>
   <string name="im_computer_request_permissions">在 Mac 上请求权限</string>
   <string name="im_computer_requirements">这台电脑需要开启 SSH 并已登录桌面。Linux 支持 wlroots 系 Wayland（如 niri、Sway、Hyprland）或 X11，GNOME/KDE 暂不支持。macOS 需要开启“远程登录”和“屏幕共享”。</string>
   <string name="im_computer_reread_fingerprint">重新读取指纹</string>

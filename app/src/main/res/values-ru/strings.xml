@@ -1747,8 +1747,6 @@
   <string name="im_discover_translate_desc">Понимайте мир и выражайте себя</string>
   <string name="im_discover_favorites">Избранное</string>
   <string name="im_discover_favorites_desc">Сохраняйте понравившиеся сообщения</string>
-  <string name="im_discover_workspace">Файлы и рабочие области</string>
-  <string name="im_discover_workspace_desc">Упорядочивайте файлы и делайте дела вместе</string>
   <string name="im_discover_extensions">Расширения</string>
   <string name="im_discover_extensions_desc">Новые навыки для ваших партнёров</string>
   <string name="im_me_memory">Что ИИ знает обо мне</string>
@@ -2284,6 +2282,10 @@
   <string name="im_computer_recheck">Проверить ещё раз</string>
   <string name="im_computer_recheck_or_change">Проверить ещё раз или выбрать другой компьютер</string>
   <string name="im_computer_replace_binding">Это заменит текущее подключение %1$s к компьютеру %2$s.</string>
+  <string name="im_computer_phone_title">Работает на этом телефоне</string>
+  <string name="im_computer_phone_help">Партнёр может работать с файлами и выполнять команды на этом телефоне. Это настраивается в профессиональном режиме.</string>
+  <string name="im_computer_phone_switch">Подключить компьютер вместо этого</string>
+  <string name="im_computer_replace_phone">%1$s больше не будет работать на этом телефоне. Файлы на нём сохранятся.</string>
   <string name="im_computer_request_permissions">Запросить разрешения на Mac</string>
   <string name="im_computer_requirements">Для вашего компьютера должны быть включены SSH и выполнен вход в систему на рабочем столе. Linux поддерживает wlroots Wayland (например, niri, Sway или Hyprland) и X11; GNOME/KDE пока не поддерживаются. На macOS включите Remote Login и Screen Sharing.</string>
   <string name="im_computer_reread_fingerprint">Снова прочитать отпечаток</string>

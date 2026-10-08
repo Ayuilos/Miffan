@@ -55,6 +55,12 @@ enum class ComputerSetupStep {
 }
 
 /** Long-running work, shown as progress; at most one runs at a time. */
+/** What binding a computer would replace: the phone's own workspace, or another computer. */
+sealed interface ReplacedBinding {
+    data object Phone : ReplacedBinding
+    data class Computer(val name: String) : ReplacedBinding
+}
+
 enum class ComputerSetupTask { CREATING_KEY, CONNECTING, READING_FINGERPRINT, VERIFYING, PREPARING, INSTALLING, SAVING, CHECKING, BINDING }
 
 sealed interface ComputerSetupAuth {
@@ -124,12 +130,15 @@ class ComputerSetupVM(
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /**
-     * The workspace the partner is bound to now, when it is not the one being set up; binding
-     * replaces it, so the UI says so before the user confirms.
+     * What the partner is bound to now, when it is not the workspace being set up; binding replaces
+     * it, so the UI says so before the user confirms.
      */
-    val replacedWorkspaceName: StateFlow<String?> = combine(settingsStore.settingsFlow, workspaces.listFlow(), _state) { settings, list, state ->
+    val replacedBinding: StateFlow<ReplacedBinding?> = combine(settingsStore.settingsFlow, workspaces.listFlow(), hosts, _state) { settings, list, hostList, state ->
         val bound = settings.getAssistantById(assistantId)?.workspaceId?.toString() ?: return@combine null
-        if (bound == state.workspaceId) null else list.find { it.id == bound }?.name
+        if (bound == state.workspaceId) return@combine null
+        val workspace = list.find { it.id == bound } ?: return@combine null
+        if (!workspace.isRemote) ReplacedBinding.Phone
+        else ReplacedBinding.Computer(hostList.find { it.id == workspace.remoteHostId }?.name ?: workspace.name)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var job: Job? = null

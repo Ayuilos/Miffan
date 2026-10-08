@@ -15,6 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
+import me.ayuilos.miffan.ui.im.computer.rememberPartnerUsesPhone
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.ui.im.computer.PartnerComputerPermissionRow
 import me.ayuilos.miffan.R
@@ -32,6 +33,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     val nav = LocalNavController.current
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val computer by rememberPartnerComputer(vm.assistantId)
+    val usesPhone by rememberPartnerUsesPhone(vm.assistantId)
     val memories by vm.memories.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -79,7 +81,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             item("capabilities") { Text(stringResource(R.string.im_p5_capabilities), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item("web") { ImCapabilityRow(stringResource(R.string.im_p5_web), partner.enableWebSearch, !busy) { enabled -> perform { vm.update { it.copy(enableWebSearch = enabled) } } } }
             item("computer") {
-                PartnerComputerPermissionRow(computer, partner.computerUse, busy,
+                PartnerComputerPermissionRow(computer, usesPhone, partner.computerUse, busy,
                     onMode = { mode -> perform { vm.update { it.copy(computerUse = mode) } } },
                     onSetup = { nav.navigate(Screen.ComputerSetup(assistantId)) },
                     onScreen = { nav.navigate(Screen.PartnerScreen(assistantId)) },

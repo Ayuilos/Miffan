@@ -370,9 +370,10 @@ class RouteActivity : ComponentActivity() {
                         !settings.isNotConfigured() && atHome && normalLauncherEntry,
                     onChosen = { Navigator(backStack).navigateHome(it) },
                 )
+                // Easy chat has no workspaces, only the partner's computer; the introduction waits for the professional interface.
                 WorkspaceDiscoveryHost(
                     seen = settings.remoteWorkspaceIntroSeen,
-                    eligible = migrationState !is MigrationState.Migrating && !modeChoiceLaunch &&
+                    eligible = !settings.isImMode && migrationState !is MigrationState.Migrating && !modeChoiceLaunch &&
                         !settings.isNotConfigured() && atHome && normalLauncherEntry,
                     markSeen = { settingsStore.update { it.copy(remoteWorkspaceIntroSeen = true) } },
                     onOpenWorkspaces = { Navigator(backStack).navigate(Screen.Workspaces) },

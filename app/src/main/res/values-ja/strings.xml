@@ -1747,8 +1747,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_discover_translate_desc">世界を理解し、自分を表現する</string>
   <string name="im_discover_favorites">お気に入り</string>
   <string name="im_discover_favorites_desc">お気に入りのメッセージを残す</string>
-  <string name="im_discover_workspace">ファイルとワークスペース</string>
-  <string name="im_discover_workspace_desc">ファイルを整理して一緒に作業する</string>
   <string name="im_discover_extensions">拡張機能</string>
   <string name="im_discover_extensions_desc">パートナーに新しいスキルを</string>
   <string name="im_me_memory">AI が知っている私のこと</string>
@@ -2284,6 +2282,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_recheck">もう一度確認</string>
   <string name="im_computer_recheck_or_change">もう一度確認するか、コンピューターを変更</string>
   <string name="im_computer_replace_binding">これにより、%1$s が現在使用している %2$s との接続が置き換わります。</string>
+  <string name="im_computer_phone_title">このスマホで作業中</string>
+  <string name="im_computer_phone_help">パートナーはこのスマホでファイルを扱い、コマンドを実行できます。この設定はプロモードで行います。</string>
+  <string name="im_computer_phone_switch">代わりにコンピューターを接続</string>
+  <string name="im_computer_replace_phone">%1$s はこのスマホで作業しなくなります。スマホ内のファイルは残ります。</string>
   <string name="im_computer_request_permissions">Mac でアクセス許可を求める</string>
   <string name="im_computer_requirements">コンピューターでは SSH を有効にし、デスクトップにログインしておく必要があります。Linux は wlroots 系 Wayland（niri、Sway、Hyprland など）と X11 に対応しています。GNOME / KDE はまだ対応していません。macOS では Remote Login と Screen Sharing を有効にしてください。</string>
   <string name="im_computer_reread_fingerprint">フィンガープリントを再読み込み</string>

@@ -65,6 +65,7 @@ import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.data.model.miffanMotionProfileOrDefault
 import me.ayuilos.miffan.data.model.withMiffanAppearance
 import me.ayuilos.miffan.data.model.withMiffanMotionProfile
+import me.ayuilos.miffan.data.model.isImMode
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.data.model.withWorkspaceShellApproval
 import me.ayuilos.miffan.data.model.withWorkspaceShellEnabled
@@ -387,92 +388,95 @@ internal fun AssistantBasicContent(
                 )
             }
 
-            HorizontalDivider()
+            // Easy chat has no workspaces; the partner profile shows the computer instead.
+            if (!LocalSettings.current.isImMode) {
+                HorizontalDivider()
 
-            FormItem(
-                label = {
-                    Text(stringResource(R.string.assistant_page_workspace))
-                },
-                description = {
-                    Text(stringResource(R.string.assistant_page_workspace_desc))
-                },
-                modifier = Modifier.padding(8.dp),
-            ) {
-                val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Select(
-                        options = listOf<WorkspaceEntity?>(null) + workspaces,
-                        selectedOption = selectedWorkspace,
-                        onOptionSelected = { workspace ->
-                            onUpdate(assistant.withWorkspaceBinding(workspace?.id?.let { Uuid.parse(it) }))
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        optionToString = { workspace ->
-                            workspace?.let { "${it.name} · ${if (it.isRemote) workspaceStrings.getString(R.string.workspace_remote_server) else workspaceStrings.getString(R.string.workspace_local_device)}" }
-                                ?: stringResource(R.string.workspace_no_binding)
-                        },
-                    )
-                    if (selectedWorkspace != null) {
-                        if (selectedWorkspace.isRemote) {
-                            val remoteHost = remoteHosts.find { it.id == selectedWorkspace.remoteHostId }
-                            Text(
-                                workspaceStrings.getString(R.string.workspace_remote_server_line, remoteHost?.name ?: workspaceStrings.getString(R.string.workspace_host_unavailable)) +
-                                    workspaceStrings.getString(R.string.workspace_account_line, remoteHost?.username ?: "?", remoteHost?.host ?: "?", remoteHost?.port ?: 22) +
-                                    workspaceStrings.getString(R.string.workspace_directory_label, selectedWorkspace.remotePath.orEmpty()),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            Text(stringResource(R.string.workspace_local_device_local), style = MaterialTheme.typography.bodySmall)
-                        }
-                        TextButton(
-                            onClick = {
-                                onOpenWorkspaceScope(
-                                    selectedWorkspace.id,
-                                    assistant.workspaceScopeId?.toString(),
-                                    assistant.name.takeIf { it.isNotBlank() },
-                                )
+                FormItem(
+                    label = {
+                        Text(stringResource(R.string.assistant_page_workspace))
+                    },
+                    description = {
+                        Text(stringResource(R.string.assistant_page_workspace_desc))
+                    },
+                    modifier = Modifier.padding(8.dp),
+                ) {
+                    val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Select(
+                            options = listOf<WorkspaceEntity?>(null) + workspaces,
+                            selectedOption = selectedWorkspace,
+                            onOptionSelected = { workspace ->
+                                onUpdate(assistant.withWorkspaceBinding(workspace?.id?.let { Uuid.parse(it) }))
                             },
                             modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                if (selectedWorkspace.isRemote) {
-                                    workspaceStrings.getString(R.string.workspace_remote_shared_directory_path, selectedWorkspace.remotePath.orEmpty())
-                                } else if (assistant.workspaceScopeId == null) {
-                                    stringResource(R.string.workspace_scope_legacy)
-                                } else {
-                                    stringResource(
-                                        R.string.workspace_scope_private,
-                                        assistant.name.ifBlank { assistant.id.toString() },
+                            optionToString = { workspace ->
+                                workspace?.let { "${it.name} · ${if (it.isRemote) workspaceStrings.getString(R.string.workspace_remote_server) else workspaceStrings.getString(R.string.workspace_local_device)}" }
+                                    ?: stringResource(R.string.workspace_no_binding)
+                            },
+                        )
+                        if (selectedWorkspace != null) {
+                            if (selectedWorkspace.isRemote) {
+                                val remoteHost = remoteHosts.find { it.id == selectedWorkspace.remoteHostId }
+                                Text(
+                                    workspaceStrings.getString(R.string.workspace_remote_server_line, remoteHost?.name ?: workspaceStrings.getString(R.string.workspace_host_unavailable)) +
+                                        workspaceStrings.getString(R.string.workspace_account_line, remoteHost?.username ?: "?", remoteHost?.host ?: "?", remoteHost?.port ?: 22) +
+                                        workspaceStrings.getString(R.string.workspace_directory_label, selectedWorkspace.remotePath.orEmpty()),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                Text(stringResource(R.string.workspace_local_device_local), style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(
+                                onClick = {
+                                    onOpenWorkspaceScope(
+                                        selectedWorkspace.id,
+                                        assistant.workspaceScopeId?.toString(),
+                                        assistant.name.takeIf { it.isNotBlank() },
                                     )
-                                }
-                            )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    if (selectedWorkspace.isRemote) {
+                                        workspaceStrings.getString(R.string.workspace_remote_shared_directory_path, selectedWorkspace.remotePath.orEmpty())
+                                    } else if (assistant.workspaceScopeId == null) {
+                                        stringResource(R.string.workspace_scope_legacy)
+                                    } else {
+                                        stringResource(
+                                            R.string.workspace_scope_private,
+                                            assistant.name.ifBlank { assistant.id.toString() },
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            if (assistant.workspaceId != null) {
-                HorizontalDivider()
-
-                val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
-                val partnerComputer by rememberPartnerComputer(assistant.id)
-                val approvalByComputer = partnerComputer?.screenEnabled == true
-                WorkspaceShellPermissionControls(
-                    shellEnabled = assistant.workspaceShellEnabled,
-                    approvalRequired = if (approvalByComputer) assistant.computerUse == ComputerUseMode.ASK
-                        else assistant.workspaceShellApprovalRequired,
-                    isRemote = selectedWorkspace?.isRemote == true,
-                    approvalByComputer = approvalByComputer,
-                    onShellEnabledChange = { onUpdate(assistant.withWorkspaceShellEnabled(it)) },
-                    onApprovalRequiredChange = { required ->
-                        if (required) onUpdate(assistant.withWorkspaceShellApproval(true))
-                        else onDisableShellApproval(assistant)
-                    },
-                )
-                if (selectedWorkspace?.isRemote == true) {
+                if (assistant.workspaceId != null) {
                     HorizontalDivider()
-                    ComputerUsePermissionControls(assistant, onUpdate)
+
+                    val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
+                    val partnerComputer by rememberPartnerComputer(assistant.id)
+                    val approvalByComputer = partnerComputer?.screenEnabled == true
+                    WorkspaceShellPermissionControls(
+                        shellEnabled = assistant.workspaceShellEnabled,
+                        approvalRequired = if (approvalByComputer) assistant.computerUse == ComputerUseMode.ASK
+                            else assistant.workspaceShellApprovalRequired,
+                        isRemote = selectedWorkspace?.isRemote == true,
+                        approvalByComputer = approvalByComputer,
+                        onShellEnabledChange = { onUpdate(assistant.withWorkspaceShellEnabled(it)) },
+                        onApprovalRequiredChange = { required ->
+                            if (required) onUpdate(assistant.withWorkspaceShellApproval(true))
+                            else onDisableShellApproval(assistant)
+                        },
+                    )
+                    if (selectedWorkspace?.isRemote == true) {
+                        HorizontalDivider()
+                        ComputerUsePermissionControls(assistant, onUpdate)
+                    }
                 }
             }
 

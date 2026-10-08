@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Image01
 import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Star
@@ -45,12 +44,6 @@ internal fun ImDiscoverTab(innerPadding: PaddingValues) {
                     leadingContent = { Icon(HugeIcons.Star, null) },
                     headlineContent = { Text(stringResource(R.string.im_discover_favorites)) },
                     supportingContent = { Text(stringResource(R.string.im_discover_favorites_desc)) },
-                )
-                item(
-                    onClick = { navController.navigate(Screen.Workspaces) },
-                    leadingContent = { Icon(HugeIcons.Folder01, null) },
-                    headlineContent = { Text(stringResource(R.string.im_discover_workspace)) },
-                    supportingContent = { Text(stringResource(R.string.im_discover_workspace_desc)) },
                 )
                 item(
                     onClick = { navController.navigate(Screen.Extensions) },

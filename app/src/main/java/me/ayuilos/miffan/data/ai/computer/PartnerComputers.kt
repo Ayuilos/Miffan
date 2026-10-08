@@ -52,4 +52,16 @@ class PartnerComputers(
             computerUse = assistant.computerUse,
         )
     }.distinctUntilChanged()
+
+    /**
+     * True when the partner works in a local workspace on this phone. Easy chat only shows it; the
+     * professional interface is where it is set up.
+     */
+    fun observeUsesPhone(assistantId: Uuid): Flow<Boolean> = combine(
+        settingsStore.settingsFlow,
+        workspaces.listFlow(),
+    ) { settings, workspaceList ->
+        val bound = settings.getAssistantById(assistantId)?.workspaceId?.toString() ?: return@combine false
+        workspaceList.find { it.id == bound }?.isRemote == false
+    }.distinctUntilChanged()
 }

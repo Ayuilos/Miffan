@@ -54,7 +54,7 @@ fun ComputerSetupPage(assistantId: Uuid) {
     val state by vm.state.collectAsStateWithLifecycle()
     val hosts by vm.hosts.collectAsStateWithLifecycle()
     val keys by vm.sshKeys.collectAsStateWithLifecycle()
-    val replaced by vm.replacedWorkspaceName.collectAsStateWithLifecycle()
+    val replaced by vm.replacedBinding.collectAsStateWithLifecycle()
     val host = hosts.find { it.id == state.hostId }
     val nav = LocalNavController.current
     val (step, steps) = computerSetupProgress(state)
@@ -93,7 +93,11 @@ fun ComputerSetupPage(assistantId: Uuid) {
                         listOf(R.string.im_computer_bind_screenshots, R.string.im_computer_bind_account, R.string.im_computer_bind_approval)
                             .forEach { SetupBullet(stringResource(it)) }
                     }
-                    replaced?.let { SetupWarning(stringResource(R.string.im_computer_replace_binding, name, it)) }
+                    when (val old = replaced) {
+                        ReplacedBinding.Phone -> SetupWarning(stringResource(R.string.im_computer_replace_phone, name))
+                        is ReplacedBinding.Computer -> SetupWarning(stringResource(R.string.im_computer_replace_binding, name, old.name))
+                        null -> Unit
+                    }
                 }
                 ComputerSetupStep.DONE -> {
                     val draft = stringResource(R.string.im_computer_first_message)

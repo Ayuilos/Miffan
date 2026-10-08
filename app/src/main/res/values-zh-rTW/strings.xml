@@ -1745,8 +1745,6 @@
   <string name="im_discover_translate_desc">讀懂世界，也表達自己</string>
   <string name="im_discover_favorites">收藏</string>
   <string name="im_discover_favorites_desc">留住喜歡的訊息</string>
-  <string name="im_discover_workspace">檔案與工作區</string>
-  <string name="im_discover_workspace_desc">整理檔案，一起完成事情</string>
   <string name="im_discover_extensions">擴充</string>
   <string name="im_discover_extensions_desc">為夥伴添一點新本領</string>
   <string name="im_me_memory">AI 對我的了解</string>
@@ -2282,6 +2280,10 @@
   <string name="im_computer_recheck">重新檢查</string>
   <string name="im_computer_recheck_or_change">重新檢查或更換電腦</string>
   <string name="im_computer_replace_binding">這會取代 %1$s 目前與 %2$s 的連線。</string>
+  <string name="im_computer_phone_title">在這台手機上工作</string>
+  <string name="im_computer_phone_help">夥伴可以在手機裡處理檔案、執行指令。這項只能在專業模式中設定。</string>
+  <string name="im_computer_phone_switch">改為連接電腦</string>
+  <string name="im_computer_replace_phone">%1$s 將不再在這台手機上工作，手機裡的檔案會保留。</string>
   <string name="im_computer_request_permissions">在 Mac 上要求權限</string>
   <string name="im_computer_requirements">這台電腦需要啟用 SSH 並已登入桌面。Linux 支援 wlroots Wayland（例如 niri、Sway 或 Hyprland）和 X11，GNOME/KDE 暫不支援。macOS 需要啟用Remote Login和 Screen Sharing。</string>
   <string name="im_computer_reread_fingerprint">重新讀取指紋</string>

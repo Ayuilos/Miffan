@@ -17,6 +17,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.model.isImMode
+import me.ayuilos.miffan.ui.context.LocalSettings
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Zap
@@ -31,6 +33,7 @@ import me.ayuilos.miffan.utils.plus
 fun ExtensionsPage() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
+    val easyChat = LocalSettings.current.isImMode
 
     Scaffold(
         topBar = {
@@ -66,7 +69,8 @@ fun ExtensionsPage() {
                         headlineContent = { Text(stringResource(R.string.extensions_page_prompts)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_prompts_desc)) },
                     )
-                    item(
+                    // Easy chat has no workspaces; partners use a computer set up from their profile.
+                    if (!easyChat) item(
                         onClick = { navController.navigate(Screen.Workspaces) },
                         leadingContent = { Icon(HugeIcons.Folder01, null) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_workspace)) },

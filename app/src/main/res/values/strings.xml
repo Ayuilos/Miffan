@@ -1757,8 +1757,6 @@
   <string name="im_discover_translate_desc">Understand the world and express yourself</string>
   <string name="im_discover_favorites">Favorites</string>
   <string name="im_discover_favorites_desc">Keep the messages you like</string>
-  <string name="im_discover_workspace">Files &amp; workspaces</string>
-  <string name="im_discover_workspace_desc">Organize files and get things done together</string>
   <string name="im_discover_extensions">Extensions</string>
   <string name="im_discover_extensions_desc">Give your partners new skills</string>
   <string name="im_me_memory">What AI knows about me</string>
@@ -2296,6 +2294,10 @@
   <string name="im_computer_recheck" tools:ignore="MissingTranslation">Check again</string>
   <string name="im_computer_recheck_or_change" tools:ignore="MissingTranslation">Check again or change computer</string>
   <string name="im_computer_replace_binding" tools:ignore="MissingTranslation">This replaces %1$s’s current connection to %2$s.</string>
+  <string name="im_computer_phone_title" tools:ignore="MissingTranslation">Works on this phone</string>
+  <string name="im_computer_phone_help" tools:ignore="MissingTranslation">Your partner can work with files and run commands on this phone. This is set up in professional mode.</string>
+  <string name="im_computer_phone_switch" tools:ignore="MissingTranslation">Connect a computer instead</string>
+  <string name="im_computer_replace_phone" tools:ignore="MissingTranslation">%1$s will stop working on this phone. Files there are kept.</string>
   <string name="im_computer_request_permissions" tools:ignore="MissingTranslation">Request permissions on Mac</string>
   <string name="im_computer_requirements" tools:ignore="MissingTranslation">Your computer needs SSH enabled and a logged-in desktop. Linux supports wlroots Wayland (such as niri, Sway or Hyprland) and X11; GNOME/KDE are not supported yet. On macOS, enable Remote Login and Screen Sharing.</string>
   <string name="im_computer_reread_fingerprint" tools:ignore="MissingTranslation">Read fingerprint again</string>

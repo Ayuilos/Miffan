@@ -30,6 +30,13 @@ internal fun rememberPartnerComputer(assistantId: Uuid): State<PartnerComputer?>
         .collectAsStateWithLifecycle(initialValue = null)
 }
 
+@Composable
+internal fun rememberPartnerUsesPhone(assistantId: Uuid): State<Boolean> {
+    val computers: PartnerComputers = koinInject()
+    return remember(computers, assistantId) { computers.observeUsesPhone(assistantId) }
+        .collectAsStateWithLifecycle(initialValue = false)
+}
+
 internal fun computerErrorMessage(resources: Resources, error: Throwable): String =
     when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.im_computer_no_desktop)
@@ -44,6 +51,8 @@ internal fun computerErrorMessage(resources: Resources, error: Throwable): Strin
 @Composable
 internal fun PartnerComputerPermissionRow(
     computer: PartnerComputer?,
+    /** Bound to a local workspace on this phone, which only the professional interface manages. */
+    usesPhone: Boolean,
     mode: ComputerUseMode,
     busy: Boolean,
     onMode: (ComputerUseMode) -> Unit,
@@ -54,6 +63,14 @@ internal fun PartnerComputerPermissionRow(
     var confirmDisconnect by rememberSaveable(computer?.workspaceId) { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth()) {
+            if (computer == null && usesPhone) {
+                PartnerComputerRow(stringResource(R.string.im_computer_phone_title), stringResource(R.string.im_computer_phone_help)) {}
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                PartnerComputerRow(stringResource(R.string.im_computer_phone_switch), null, enabled = !busy, onClick = onSetup) {
+                    Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                return@Column
+            }
             if (computer == null) {
                 PartnerComputerRow(stringResource(R.string.im_computer_control), stringResource(R.string.im_computer_connect_help),
                     enabled = !busy, onClick = onSetup) { Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
