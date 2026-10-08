@@ -39,6 +39,19 @@
 - **由你做主。** 默认情况下，伙伴每做一步都会先问你。每次批准都记在权限记录里，删掉聊天也会保留。
 - **一步步引导。** 轻松模式会带你连接电脑、检查是否就绪，再把电脑交给伙伴。
 
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/11-computer-screen-light.webp" alt="伙伴正在便签里写字，你在手机上看着" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/12-computer-approval-light.webp" alt="伙伴输入文字前先征求你的同意" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/13-computer-setup-light.webp" alt="引导流程中实时显示电脑桌面" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">看着它操作</td>
+    <td align="center">每一步先问你</td>
+    <td align="center">几步就能连上</td>
+  </tr>
+</table>
+
 支持的桌面：macOS、基于 wlroots 的 Linux Wayland（如 niri、Sway、Hyprland）以及 X11。暂不支持 GNOME 和 KDE。
 
 ## 需要时切换到专业模式

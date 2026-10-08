@@ -39,6 +39,19 @@
 - **由你作主。** 預設情況下，夥伴每做一步都會先問你。每次核准都記在權限紀錄裡，刪除聊天也會保留。
 - **一步步引導。** 輕鬆模式會帶你連接電腦、檢查是否就緒，再把電腦交給夥伴。
 
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/11-computer-screen-light.webp" alt="夥伴正在便簽裡寫字，你在手機上看著" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/12-computer-approval-light.webp" alt="夥伴輸入文字前先徵求你的同意" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/zh/13-computer-setup-light.webp" alt="引導流程中即時顯示電腦桌面" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">看著它操作</td>
+    <td align="center">每一步先問你</td>
+    <td align="center">幾步就能連上</td>
+  </tr>
+</table>
+
 支援的桌面：macOS、基於 wlroots 的 Linux Wayland（如 niri、Sway、Hyprland）以及 X11。暫不支援 GNOME 和 KDE。
 
 ## 需要時切換到專業模式

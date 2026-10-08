@@ -39,6 +39,19 @@ Connect a Mac or Linux desktop over SSH, including over Tailscale, and your part
 - **You stay in charge.** By default the partner asks before every action. Each approval is recorded in a permission history that stays even if you delete the chat.
 - **Guided setup.** Easy chat walks you through connecting a computer, checking that it's ready and handing it to a partner.
 
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v4/en/11-computer-screen-light.webp" alt="The partner typing into a note while you watch" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/en/12-computer-approval-light.webp" alt="The partner asking before it types" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v4/en/13-computer-setup-light.webp" alt="Guided setup with a live view of the desktop" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">Watch it work</td>
+    <td align="center">Approve each step</td>
+    <td align="center">Connect in a few steps</td>
+  </tr>
+</table>
+
 Supported desktops: macOS, Linux with wlroots-based Wayland (such as niri, Sway or Hyprland), and X11. GNOME and KDE aren't supported yet.
 
 ## Professional mode when you want every option
