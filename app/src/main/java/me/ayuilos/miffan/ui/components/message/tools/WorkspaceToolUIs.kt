@@ -396,16 +396,17 @@ object ShellToolUI : ToolUIRenderer {
     }
 }
 
-/** Shell 退出状态文本: exit code 为 0 显示绿色, 超时或非零显示错误色 */
+/** Shell 退出状态文本: exit code 为 0 显示绿色, 超时或非零显示错误色; 未执行(拒绝、取消)时不显示 */
 @Composable
 private fun ShellExitStatus(content: JsonElement, style: androidx.compose.ui.text.TextStyle) {
     val exitCode = content.int("exitCode")
     val timedOut = content.boolean("timedOut") ?: false
+    if (exitCode == null && !timedOut) return
     val ok = !timedOut && exitCode == 0
     Text(
         text = when {
             timedOut -> stringResource(R.string.tool_ui_shell_timeout)
-            else -> stringResource(R.string.tool_ui_shell_exit, exitCode?.toString() ?: "?")
+            else -> stringResource(R.string.tool_ui_shell_exit, exitCode.toString())
         },
         style = style,
         color = if (ok) DiffAddedColor else MaterialTheme.colorScheme.error,

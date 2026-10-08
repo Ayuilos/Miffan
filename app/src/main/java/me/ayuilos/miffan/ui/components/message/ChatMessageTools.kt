@@ -49,6 +49,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.isRepliedInChat
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
@@ -189,7 +190,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val isWorkspaceTool = tool.toolName.startsWith("workspace_")
     val isPreparingWorkspaceTarget = loading && tool.approvalState is ToolApprovalState.Auto &&
         tool.toolName !in WORKSPACE_TOOL_NAMES
-    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || images.isNotEmpty()
+    val record = tool.approvalRecord?.takeIf { it.decision != null && it.decidedAt != null }
+    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || record != null || images.isNotEmpty()
 
     ControlledChainOfThoughtStep(
         expanded = expanded,
@@ -290,7 +292,19 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                             }
                         }
                     }
-                    if (tool.approvalState.isRepliedInChat) {
+                    if (record != null) {
+                        val decision = requireNotNull(record.decision)
+                        // A reason the user typed when declining belongs next to the decision.
+                        val reason = (tool.approvalState as? ToolApprovalState.Denied)?.reason
+                            ?.takeIf { decision == ToolDecision.DECLINED && it.isNotBlank() }
+                        Text(
+                            text = approvalDecisionText(decision, record.via, requireNotNull(record.decidedAt)) +
+                                reason?.let { ": $it" }.orEmpty(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (decision == ToolDecision.DECLINED) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (tool.approvalState.isRepliedInChat) {
                         Text(
                             text = stringResource(R.string.chat_message_tool_replied_in_chat),
                             style = MaterialTheme.typography.labelSmall,

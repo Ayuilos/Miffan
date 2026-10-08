@@ -2384,4 +2384,24 @@
   <string name="im_revision_not_allowed" tools:ignore="MissingTranslation">not allowed</string>
   <string name="im_revision_on" tools:ignore="MissingTranslation">on</string>
   <string name="im_revision_off" tools:ignore="MissingTranslation">off</string>
+  <string name="audit_allowed" tools:ignore="MissingTranslation">You allowed it at %1$s</string>
+  <string name="audit_allowed_screen" tools:ignore="MissingTranslation">You allowed it on the screen page at %1$s</string>
+  <string name="audit_always_allowed" tools:ignore="MissingTranslation">You chose always allow at %1$s</string>
+  <string name="audit_declined" tools:ignore="MissingTranslation">You declined at %1$s</string>
+  <string name="audit_declined_screen" tools:ignore="MissingTranslation">You declined on the screen page at %1$s</string>
+  <string name="audit_answered" tools:ignore="MissingTranslation">You answered at %1$s</string>
+  <string name="audit_replied" tools:ignore="MissingTranslation">You replied in chat at %1$s; it did not run</string>
+  <string name="audit_cancelled" tools:ignore="MissingTranslation">Stopped at %1$s; it did not run</string>
+  <string name="audit_auto_standing" tools:ignore="MissingTranslation">Allowed automatically at %1$s: you chose always allow earlier</string>
+  <string name="audit_auto_setting" tools:ignore="MissingTranslation">Allowed automatically at %1$s: your settings don’t ask first</string>
+  <string name="audit_screen_taken" tools:ignore="MissingTranslation">You took over the screen at %1$s</string>
+  <string name="audit_screen_back" tools:ignore="MissingTranslation">You handed the screen back at %1$s</string>
+  <string name="im_audit_title" tools:ignore="MissingTranslation">Permission history</string>
+  <string name="im_audit_intro" tools:ignore="MissingTranslation">Everything your partner asked permission for, how it was settled, and when you took over its computer screen. Kept even if you delete the chat.</string>
+  <string name="im_audit_empty" tools:ignore="MissingTranslation">No permission requests yet</string>
+  <string name="im_audit_today" tools:ignore="MissingTranslation">Today</string>
+  <string name="im_audit_screen_of" tools:ignore="MissingTranslation">%1$s screen</string>
+  <string name="im_audit_clear" tools:ignore="MissingTranslation">Clear history</string>
+  <string name="im_audit_clear_title" tools:ignore="MissingTranslation">Clear permission history?</string>
+  <string name="im_audit_clear_help" tools:ignore="MissingTranslation">This partner\'s records are deleted. Screen takeovers on the computer, which other partners may share, are kept.</string>
 </resources>

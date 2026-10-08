@@ -87,6 +87,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             }
             item("remember") { ImCapabilityRow(stringResource(R.string.im_p5_remember), partner.enableMemory, !busy) { enabled -> perform { vm.update { it.copy(enableMemory = enabled) } } } }
             item("history") { ImSettingRow(stringResource(R.string.im_p5_settings_history), { nav.navigate(Screen.RevisionHistory(RevisionSubject.ASSISTANT.name, assistantId)) }) }
+            item("approvals") { ImSettingRow(stringResource(R.string.im_audit_title), { nav.navigate(Screen.ApprovalHistory(assistantId)) }) }
             item("background") { ImSettingRow(stringResource(R.string.im_p5_background), { nav.navigate(Screen.AssistantBasic(assistantId)) }) }
             item("separator") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             item("topic") { ImSettingRow(stringResource(R.string.im_thread_new_topic), { perform(changedTopic) { vm.changeTopic() } }) }

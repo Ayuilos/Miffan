@@ -2375,4 +2375,24 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_revision_not_allowed">不允许</string>
   <string name="im_revision_on">开</string>
   <string name="im_revision_off">关</string>
+  <string name="audit_allowed">你在 %1$s 允许了</string>
+  <string name="audit_allowed_screen">你在 %1$s 于屏幕页允许了</string>
+  <string name="audit_always_allowed">你在 %1$s 选择了总是允许</string>
+  <string name="audit_declined">你在 %1$s 拒绝了</string>
+  <string name="audit_declined_screen">你在 %1$s 于屏幕页拒绝了</string>
+  <string name="audit_answered">你在 %1$s 回答了</string>
+  <string name="audit_replied">你在 %1$s 用消息回复了，没有执行</string>
+  <string name="audit_cancelled">%1$s 停止了，没有执行</string>
+  <string name="audit_auto_standing">%1$s 自动允许：之前选了总是允许</string>
+  <string name="audit_auto_setting">%1$s 自动允许：按你的设置不用先问</string>
+  <string name="audit_screen_taken">你在 %1$s 接管了屏幕</string>
+  <string name="audit_screen_back">你在 %1$s 把屏幕交还给伙伴</string>
+  <string name="im_audit_title">授权记录</string>
+  <string name="im_audit_intro">伙伴请求过的每一项权限、当时怎么处理的，以及你接管电脑屏幕的记录。删除聊天后也会保留。</string>
+  <string name="im_audit_empty">还没有授权记录</string>
+  <string name="im_audit_today">今天</string>
+  <string name="im_audit_screen_of">%1$s 的屏幕</string>
+  <string name="im_audit_clear">清空记录</string>
+  <string name="im_audit_clear_title">清空授权记录？</string>
+  <string name="im_audit_clear_help">这位伙伴的授权记录会被删除。电脑屏幕的接管记录可能属于其他伙伴，会保留。</string>
 </resources>
