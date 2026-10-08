@@ -93,7 +93,11 @@ internal fun ThreadComputerScreenshot(url: String, maxHeight: Dp = 160.dp, previ
 internal fun ThreadComputerResultStatus(status: ComputerToolStatus?) {
     if (status == null) return
     val error = status == ComputerToolStatus.ERROR
-    Text(stringResource(if (error) R.string.im_computer_action_error else R.string.im_computer_taken_over),
+    Text(stringResource(when (status) {
+        ComputerToolStatus.ERROR -> R.string.im_computer_action_error
+        ComputerToolStatus.UNCONFIRMED -> R.string.computer_use_unconfirmed
+        ComputerToolStatus.REFUSED -> R.string.im_computer_taken_over
+    }),
         style = MaterialTheme.typography.bodySmall,
         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
 }

@@ -2388,4 +2388,6 @@
   <string name="im_audit_clear">Очистить историю</string>
   <string name="im_audit_clear_title">Очистить историю разрешений?</string>
   <string name="im_audit_clear_help">Записи этого партнёра будут удалены. Записи о перехвате управления экраном останутся: этим компьютером могут пользоваться и другие партнёры.</string>
+  <string name="computer_use_close_app">Закрыть приложение</string>
+  <string name="computer_use_unconfirmed">Не удалось подтвердить результат; проверьте экран</string>
 </resources>

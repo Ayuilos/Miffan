@@ -2388,4 +2388,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_audit_clear">履歴を消去</string>
   <string name="im_audit_clear_title">許可の履歴を消去しますか？</string>
   <string name="im_audit_clear_help">このパートナーの記録を削除します。コンピューターは他のパートナーも共有している可能性があるため、画面操作を引き継いだ記録は残ります。</string>
+  <string name="computer_use_close_app">アプリを閉じる</string>
+  <string name="computer_use_unconfirmed">成功したか確認できませんでした。画面を確認してください</string>
 </resources>

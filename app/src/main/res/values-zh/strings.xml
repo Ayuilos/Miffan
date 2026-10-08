@@ -2395,4 +2395,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_audit_clear">清空记录</string>
   <string name="im_audit_clear_title">清空授权记录？</string>
   <string name="im_audit_clear_help">这位伙伴的授权记录会被删除。电脑屏幕的接管记录可能属于其他伙伴，会保留。</string>
+  <string name="computer_use_close_app">关闭应用</string>
+  <string name="computer_use_unconfirmed">没能确认是否成功，可以看一眼屏幕</string>
 </resources>

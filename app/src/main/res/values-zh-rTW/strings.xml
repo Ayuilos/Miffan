@@ -2386,4 +2386,6 @@
   <string name="im_audit_clear">清除紀錄</string>
   <string name="im_audit_clear_title">清除授權紀錄？</string>
   <string name="im_audit_clear_help">將刪除這位夥伴的授權紀錄。電腦可能與其他夥伴共用，因此接手操作螢幕的紀錄會保留。</string>
+  <string name="computer_use_close_app">關閉應用程式</string>
+  <string name="computer_use_unconfirmed">無法確認是否成功，可以看一下螢幕</string>
 </resources>

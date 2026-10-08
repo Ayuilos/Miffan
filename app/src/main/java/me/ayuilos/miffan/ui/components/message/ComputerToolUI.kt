@@ -28,7 +28,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.Computer
 
-internal enum class ComputerToolStatus { REFUSED, ERROR }
+internal enum class ComputerToolStatus { REFUSED, UNCONFIRMED, ERROR }
 
 /** Only result status fields count; quoted status examples in a guide are ordinary text. */
 internal fun computerToolStatus(output: List<UIMessagePart>): ComputerToolStatus? {
@@ -40,6 +40,7 @@ internal fun computerToolStatus(output: List<UIMessagePart>): ComputerToolStatus
     }
     return when {
         "error" in statuses -> ComputerToolStatus.ERROR
+        "unconfirmed" in statuses -> ComputerToolStatus.UNCONFIRMED
         "refused" in statuses -> ComputerToolStatus.REFUSED
         else -> null
     }
@@ -71,8 +72,9 @@ internal object ComputerToolUIRenderer : ToolUIRenderer {
     @Composable
     override fun Summary(context: ToolUIContext) {
         when (computerToolStatus(context.tool.output)) {
-            ComputerToolStatus.REFUSED -> Text(
-                stringResource(R.string.computer_use_refused),
+            ComputerToolStatus.REFUSED, ComputerToolStatus.UNCONFIRMED -> Text(
+                stringResource(if (computerToolStatus(context.tool.output) == ComputerToolStatus.UNCONFIRMED)
+                    R.string.computer_use_unconfirmed else R.string.computer_use_refused),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

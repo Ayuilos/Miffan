@@ -2404,4 +2404,6 @@
   <string name="im_audit_clear" tools:ignore="MissingTranslation">Clear history</string>
   <string name="im_audit_clear_title" tools:ignore="MissingTranslation">Clear permission history?</string>
   <string name="im_audit_clear_help" tools:ignore="MissingTranslation">This partner\'s records are deleted. Screen takeovers on the computer, which other partners may share, are kept.</string>
+  <string name="computer_use_close_app" tools:ignore="MissingTranslation">Close app</string>
+  <string name="computer_use_unconfirmed" tools:ignore="MissingTranslation">Couldn\'t confirm it worked; check the screen</string>
 </resources>

@@ -184,7 +184,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
     val images = tool.output.filterIsInstance<UIMessagePart.Image>()
-    val computerError = isComputerTool && computerToolStatus(tool.output) == ComputerToolStatus.ERROR
+    val computerStatus = if (isComputerTool) computerToolStatus(tool.output) else null
 
     // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用
     val isWorkspaceTool = tool.toolName.startsWith("workspace_")
@@ -206,8 +206,11 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     imageVector = renderer.icon(context),
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = if (computerError) MaterialTheme.colorScheme.error
-                    else LocalContentColor.current.copy(alpha = 0.7f)
+                    tint = when (computerStatus) {
+                        ComputerToolStatus.ERROR -> MaterialTheme.colorScheme.error
+                        ComputerToolStatus.UNCONFIRMED -> MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> LocalContentColor.current.copy(alpha = 0.7f)
+                    }
                 )
             }
         },
@@ -215,7 +218,11 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             Text(
                 text = renderer.title(context),
                 style = MaterialTheme.typography.titleSmall,
-                color = if (computerError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                color = when (computerStatus) {
+                    ComputerToolStatus.ERROR -> MaterialTheme.colorScheme.error
+                    ComputerToolStatus.UNCONFIRMED -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.secondary
+                },
                 modifier = Modifier.shimmer(isLoading = loading),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

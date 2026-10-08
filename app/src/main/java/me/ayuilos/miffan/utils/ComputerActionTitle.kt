@@ -46,6 +46,7 @@ internal fun computerActionTitle(toolName: String, arguments: JsonElement): Comp
         }
         "scroll" -> ComputerActionTitle(R.string.computer_use_scroll)
         "launch_app" -> ComputerActionTitle(R.string.computer_use_open_app, argument("bundle_id", "name", "app"))
+        "kill_app" -> ComputerActionTitle(R.string.computer_use_close_app, argument("pid", "bundle_id", "name", "app"))
         "start" -> ComputerActionTitle(R.string.computer_use_start)
         "read_guide" -> ComputerActionTitle(R.string.computer_use_read_guide)
         "bring_to_front" -> ComputerActionTitle(R.string.computer_use_bring_to_front)

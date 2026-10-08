@@ -43,7 +43,7 @@ private val OBSERVE_TOOLS = setOf(
 
 /** Tools that change the desktop; approval follows the assistant setting. */
 private val ACTION_TOOLS = setOf(
-    "launch_app", "click", "double_click", "right_click", "drag", "type_text", "press_key",
+    "launch_app", "kill_app", "click", "double_click", "right_click", "drag", "type_text", "press_key",
     "hotkey", "scroll", "set_value", "invoke_menu", "set_window_frame", "move_cursor",
 )
 
@@ -211,6 +211,7 @@ private fun createReadGuideTool(
             appendLine("You can see and operate the desktop of $target through the computer_* tools, which call cua-driver on that machine.")
             appendLine("- The user can watch the same screen and take over at any time. If a tool reports that the user has taken control, stop and wait for them.")
             appendLine("- Observe before every action and verify after it (computer_get_window_state or computer_get_desktop_state).")
+            appendLine("- launch_app only opens GUI apps; never use it to run commands such as kill. To close an app or window use kill_app (or the app's own close shortcut via hotkey). For other commands use the shell tool if you have one.")
             appendLine("- An element_token is `<snapshot_id>:<element index>`, using snapshot_id from the latest state of that window; the tree shows indices as [n].")
             appendLine("- Prefer background actions. delivery_mode \"foreground\" and computer_bring_to_front interrupt the user and always ask for their approval.")
             appendLine("- Never type passwords or other secrets. Ask the user to enter them on their screen themselves.")
@@ -248,7 +249,7 @@ private fun withScreenshotCap(tool: McpTool, args: JsonObject): JsonObject {
 
 private fun inputSchemaHas(tool: McpTool, name: String) = tool.inputSchema.properties?.containsKey(name) == true
 
-private suspend fun convert(result: CallToolResult, filesManager: FilesManager): List<UIMessagePart> {
+internal suspend fun convert(result: CallToolResult, filesManager: FilesManager): List<UIMessagePart> {
     val parts = mutableListOf<UIMessagePart>()
     result.content.forEach { content ->
         when (content) {
@@ -268,7 +269,15 @@ private suspend fun convert(result: CallToolResult, filesManager: FilesManager):
             compact.filterValues { it is JsonPrimitive }
         ).toString().take(2_000))
     }
-    if (result.isError == true) parts.add(0, UIMessagePart.Text("""{"status":"error"}"""))
+    if (result.isError == true) {
+        val code = (result.structuredContent?.get("code") as? JsonPrimitive)?.contentOrNull
+        val effect = (result.structuredContent?.get("effect") as? JsonPrimitive)?.contentOrNull
+        val unconfirmed = code == "launch_handoff_timeout" ||
+            (code?.endsWith("_timeout") == true && effect != "failed")
+        parts.add(0, UIMessagePart.Text(
+            if (unconfirmed) """{"status":"unconfirmed"}""" else """{"status":"error"}""",
+        ))
+    }
     return parts
 }
 
