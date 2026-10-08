@@ -2227,6 +2227,7 @@
   <string name="im_computer_authorize_key">Разрешить этот ключ</string>
   <string name="im_computer_bind_disclosure">Снимки экрана будут отправляться поставщику услуг текущей модели. Партнёр действует с правами этой учётной записи компьютера. Перед каждым действием он будет спрашивать разрешение; это можно изменить в профиле партнёра.</string>
   <string name="im_computer_chat_help">Общайтесь с партнёром, наблюдая за экраном</string>
+  <string name="im_computer_waiting_for_you">Партнёр ждёт вашего подтверждения</string>
   <string name="im_computer_choose">Выбрать компьютер</string>
   <string name="im_computer_clipboard">Буфер обмена (необязательно)</string>
   <string name="im_computer_clipboard_optional">Необязательно; установите инструмент для буфера обмена, чтобы вводить китайский и другие нелатинские тексты.</string>

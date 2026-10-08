@@ -2227,6 +2227,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_authorize_key">이 키 승인</string>
   <string name="im_computer_bind_disclosure">화면 캡처가 현재 모델 제공업체로 전송돼요. 파트너의 작업은 이 컴퓨터 계정의 권한으로 실행돼요. 작업할 때마다 먼저 확인을 요청해요. 파트너 프로필에서 변경할 수 있어요.</string>
   <string name="im_computer_chat_help">화면을 보면서 파트너와 대화하세요</string>
+  <string name="im_computer_waiting_for_you">파트너가 확인을 기다리고 있어요</string>
   <string name="im_computer_choose">컴퓨터 선택</string>
   <string name="im_computer_clipboard">클립보드(선택 사항)</string>
   <string name="im_computer_clipboard_optional">선택 사항 · 중국어 등 라틴 문자 이외의 텍스트를 입력하려면 클립보드 도구를 설치하세요.</string>

@@ -74,8 +74,16 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
     }
     val replies = timeline.items.filterIsInstance<TimelineItem.Message>().filter { it.message.role == MessageRole.ASSISTANT }
     val latest = replies.lastOrNull { it.streaming } ?: replies.lastOrNull()
+    // The strip is about now: the reply already on screen when the page opened belongs to the chat.
+    var openedOn by rememberSaveable(assistantId.toString()) { mutableStateOf<String?>(null) }
+    LaunchedEffect(timeline.loaded) {
+        // A reply still streaming when the page opens is the partner's current work, so it stays.
+        if (timeline.loaded && openedOn == null) openedOn = latest?.takeUnless { it.streaming }?.let(::replyKey).orEmpty()
+    }
+    val fresh = latest?.takeIf { openedOn != null && replyKey(it) != openedOn }
+    // Everything the partner is waiting on, not only computer actions: commands and questions block it too.
     val pending = replies.flatMap { item -> item.message.parts.filterIsInstance<UIMessagePart.Tool>()
-        .filter { it.isComputerTool() && it.approvalState is ToolApprovalState.Pending }.map { item to it } }
+        .filter { it.approvalState is ToolApprovalState.Pending }.map { item to it } }
     val partnerBusy = latest?.streaming == true && latest.message.parts.let(::latestComputerAction)
         ?.let { it.approvalState !is ToolApprovalState.Pending } == true
     fun openChat(item: TimelineItem.Message?) {
@@ -104,27 +112,42 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
                 val action = latest?.takeIf { it.streaming }?.message?.parts?.let(::latestComputerAction)
                 val working = latest?.streaming == true || generating.isNotEmpty()
                 val preview = when {
+                    pending.isNotEmpty() -> stringResource(R.string.im_computer_waiting_for_you)
                     action != null -> computerActionText(action)
                     working -> stringResource(R.string.im_thread_tools_working)
-                    latest != null -> latest.message.previewText()
+                    fresh != null -> fresh.message.previewText()
                     else -> stringResource(R.string.im_computer_chat_help)
                 }
+                val quiet = pending.isEmpty() && !working && fresh == null
                 Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ThreadAvatar(assistant, assistantGenerationPhase(latest?.message, loading = working), modifier = Modifier.size(32.dp))
                     Text(preview, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        color = if (latest == null && !working) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                        style = if (pending.isNotEmpty()) MaterialTheme.typography.titleSmall else LocalTextStyle.current,
+                        color = when {
+                            pending.isNotEmpty() -> MaterialTheme.colorScheme.primary
+                            quiet -> MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> MaterialTheme.colorScheme.onSurface
+                        })
                 }
             }
             pending.forEach { (item, tool) ->
-                // Already on the screen; the card's own "view screen" link has nowhere to go.
-                ThreadComputerApprovalCard(tool, computerTargetName(tool, computer, name), canOpen = false,
-                    onScreen = {},
-                    onApproval = { id, approved ->
-                        // Allowing an action hands the desktop back to the partner.
-                        if (approved) vm.handBackToPartner()
-                        thread.answerToolApproval(item, id, approved, via = me.rerere.ai.ui.ToolDecisionVia.PARTNER_SCREEN)
-                    }, compact = true)
+                if (tool.isComputerTool()) {
+                    // Already on the screen; the card's own "view screen" link has nowhere to go.
+                    ThreadComputerApprovalCard(tool, computerTargetName(tool, computer, name), canOpen = false,
+                        onScreen = {},
+                        onApproval = { id, approved ->
+                            // Allowing an action hands the desktop back to the partner.
+                            if (approved) vm.handBackToPartner()
+                            thread.answerToolApproval(item, id, approved, via = me.rerere.ai.ui.ToolDecisionVia.PARTNER_SCREEN)
+                        }, compact = true)
+                } else {
+                    ThreadToolPrompt(tool,
+                        onApproval = { id, approved ->
+                            thread.answerToolApproval(item, id, approved, via = me.rerere.ai.ui.ToolDecisionVia.PARTNER_SCREEN)
+                        },
+                        onAnswer = { id, answer -> thread.answerToolQuestion(item, id, answer) })
+                }
             }
             errors.lastOrNull()?.let { error ->
                 ThreadErrorBubble(error, error.conversationId != null,
@@ -138,3 +161,6 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
             compact = true)
     }
 }
+
+/** A reply that grows after the page opened (it was paused on a question, say) counts as new. */
+private fun replyKey(item: TimelineItem.Message) = "${item.message.id}:${item.message.parts.size}"

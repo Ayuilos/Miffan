@@ -2225,6 +2225,7 @@
   <string name="im_computer_authorize_key">允許使用此金鑰登入</string>
   <string name="im_computer_bind_disclosure">截圖會傳送給目前模型的供應商。夥伴會以這台電腦帳號的權限操作。每次操作前都會先問你，可在夥伴資料頁修改。</string>
   <string name="im_computer_chat_help">邊看螢幕，邊和夥伴聊天</string>
+  <string name="im_computer_waiting_for_you">夥伴在等你確認</string>
   <string name="im_computer_choose">選擇一台電腦</string>
   <string name="im_computer_clipboard">剪貼簿（選用）</string>
   <string name="im_computer_clipboard_optional">不影響繼續；安裝剪貼簿工具後，才能輸入中文等非拉丁文字。</string>

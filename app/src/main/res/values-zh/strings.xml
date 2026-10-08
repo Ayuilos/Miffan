@@ -2231,6 +2231,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_authorize_key">允许使用此密钥登录</string>
   <string name="im_computer_bind_disclosure">截图会发送给当前模型的提供商。伙伴的操作以该电脑账户的权限执行。每次操作前都会询问你，可在伙伴资料页修改。</string>
   <string name="im_computer_chat_help">边看屏幕，边和伙伴说话</string>
+  <string name="im_computer_waiting_for_you">伙伴在等你确认</string>
   <string name="im_computer_choose">选择一台电脑</string>
   <string name="im_computer_clipboard">剪贴板（可选）</string>
   <string name="im_computer_clipboard_optional">不影响继续；安装剪贴板工具后才能输入中文等非拉丁文字。</string>

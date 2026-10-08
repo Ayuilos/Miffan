@@ -2227,6 +2227,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_authorize_key">このキーを承認</string>
   <string name="im_computer_bind_disclosure">スクリーンショットは現在のモデルのプロバイダーに送信されます。パートナーはこのコンピューターアカウントの権限で操作します。操作のたびに事前確認を求めます。パートナーのプロフィールで変更できます。</string>
   <string name="im_computer_chat_help">画面を見ながらパートナーと話す</string>
+  <string name="im_computer_waiting_for_you">パートナーがあなたの確認を待っています</string>
   <string name="im_computer_choose">コンピューターを選択</string>
   <string name="im_computer_clipboard">クリップボード（任意）</string>
   <string name="im_computer_clipboard_optional">任意です。クリップボードツールをインストールすると、中国語などのラテン文字以外を入力できます。</string>

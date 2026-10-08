@@ -2,13 +2,13 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +41,7 @@ internal fun RemoteScreenControllerBanner(
     onHandBack: () -> Unit,
     /** The partner's turn is still running on this computer, between its individual actions. */
     partnerBusy: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     // The controller is PARTNER only while one action runs (often a few milliseconds), so the
     // banner follows the partner's whole turn when known and lingers after its last action.
@@ -55,15 +56,17 @@ internal fun RemoteScreenControllerBanner(
     if (shown != RemoteController.IDLE && visibleController != shown) visibleController = shown
     AnimatedVisibility(
         visible = shown != RemoteController.IDLE,
-        enter = expandVertically(tween(150)) + fadeIn(tween(150)),
-        exit = shrinkVertically(tween(150)) + fadeOut(tween(150)),
+        modifier = modifier,
+        enter = slideInVertically(tween(150)) { -it } + fadeIn(tween(150)),
+        exit = slideOutVertically(tween(150)) { -it } + fadeOut(tween(150)),
     ) {
-        Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        // A floating pill over the screen: showing or hiding it never moves the picture underneath.
+        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = CircleShape, shadowElevation = 3.dp) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                modifier = Modifier.padding(start = 16.dp, end = if (visibleController == RemoteController.USER) 4.dp else 16.dp)
                     .semantics { liveRegion = LiveRegionMode.Polite },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (visibleController == RemoteController.PARTNER) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -72,8 +75,8 @@ internal fun RemoteScreenControllerBanner(
                     stringResource(if (visibleController == RemoteController.PARTNER) {
                         R.string.workspace_screen_partner_operating
                     } else R.string.workspace_screen_user_operating),
-                    modifier = Modifier.weight(1f).padding(vertical = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    style = MaterialTheme.typography.labelLarge,
                 )
                 if (visibleController == RemoteController.USER) {
                     TextButton(onClick = onHandBack, enabled = shown == RemoteController.USER) {

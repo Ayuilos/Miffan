@@ -3,6 +3,7 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,11 +28,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
@@ -180,16 +183,19 @@ internal fun RemoteScreenScaffold(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy)
-            RemoteScreenViewport(vm, trackpad, Modifier.weight(1f).fillMaxWidth()) { failed ->
-                RemoteScreenFailureContent(
-                    state = failed,
-                    settingsAvailable = onSettings != null,
-                    onRetry = vm::reconnect,
-                    onSettings = { onSettings?.invoke() },
-                    failureText = (failed as? RemoteScreenUiState.Failed)?.error?.let(failureText),
-                    settingsText = settingsLabel,
-                )
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                RemoteScreenViewport(vm, trackpad, Modifier.fillMaxSize()) { failed ->
+                    RemoteScreenFailureContent(
+                        state = failed,
+                        settingsAvailable = onSettings != null,
+                        onRetry = vm::reconnect,
+                        onSettings = { onSettings?.invoke() },
+                        failureText = (failed as? RemoteScreenUiState.Failed)?.error?.let(failureText),
+                        settingsText = settingsLabel,
+                    )
+                }
+                RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
             }
             if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = platform == RemoteScreenPlatform.MACOS)
             bottom()

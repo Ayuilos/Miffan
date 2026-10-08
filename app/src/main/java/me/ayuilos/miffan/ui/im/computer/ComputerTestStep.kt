@@ -89,7 +89,6 @@ private fun ComputerTestPreview(workspaceId: String, busy: Boolean, onRecheck: (
     val ratio = (state as? RemoteScreenUiState.Connected)?.let { it.width.toFloat() / it.height }?.takeIf { it > 0f } ?: (16f / 10f)
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column {
-            RemoteScreenControllerBanner(controller, screen::handBackToPartner)
             Box(Modifier.fillMaxWidth().aspectRatio(ratio.coerceIn(0.5f, 2.4f)).clip(MaterialTheme.shapes.large)) {
                 RemoteScreenViewport(screen, false, Modifier.fillMaxSize()) { failed ->
                     RemoteScreenFailureContent(failed, true, screen::reconnect, onSettings = onRecheck,
@@ -97,6 +96,8 @@ private fun ComputerTestPreview(workspaceId: String, busy: Boolean, onRecheck: (
                         settingsText = stringResource(R.string.im_computer_recheck))
                 }
                 if (busy) Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null) {})
+                RemoteScreenControllerBanner(controller, screen::handBackToPartner,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
             }
         }
     }
