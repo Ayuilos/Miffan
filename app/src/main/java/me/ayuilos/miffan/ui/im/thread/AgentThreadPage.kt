@@ -269,7 +269,6 @@ fun AgentThreadPage(
         }
     }
     val welcome = welcomeAt()
-    val history = historySize(timeline)
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
@@ -277,14 +276,18 @@ fun AgentThreadPage(
                 if (welcome == null) {
                     items(timeline, key = { it.key }) { TimelineRow(it) }
                 } else {
-                    if (historyShown) items(timeline.subList(0, history), key = { it.key }) { TimelineRow(it) }
+                    // The list content is re-read lazily against the newest timeline, so split that same
+                    // snapshot here: a split computed in an earlier composition can exceed a shrunk timeline.
+                    val items = timeline
+                    val history = historySize(items).coerceIn(0, items.size)
+                    if (historyShown) items(items.subList(0, history), key = { it.key }) { TimelineRow(it) }
                     item(key = "welcome") {
-                        val fill = !historyShown && history == timeline.size && visibleErrors.isEmpty()
+                        val fill = !historyShown && history == items.size && visibleErrors.isEmpty()
                         ThreadWelcomeHero(assistant, welcome, headerPhase, historyHidden = !historyShown, fill = fill,
                             onShowHistory = ::showHistory,
                             modifier = if (fill) Modifier.fillParentMaxHeight() else Modifier)
                     }
-                    items(timeline.subList(history, timeline.size), key = { it.key }) { TimelineRow(it) }
+                    items(items.subList(history, items.size), key = { it.key }) { TimelineRow(it) }
                 }
             }
             items(visibleErrors, key = { "error-${it.id}" }) { error ->
