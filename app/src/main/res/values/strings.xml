@@ -2425,4 +2425,52 @@
   <string name="im_audit_clear_help" tools:ignore="MissingTranslation">This partner\'s records are deleted. Screen takeovers on the computer, which other partners may share, are kept.</string>
   <string name="computer_use_close_app" tools:ignore="MissingTranslation">Close app</string>
   <string name="computer_use_unconfirmed" tools:ignore="MissingTranslation">Couldn\'t confirm it worked; check the screen</string>
+  <string name="im_me_computers" tools:ignore="MissingTranslation">My computers</string>
+  <string name="im_me_computers_count" tools:ignore="MissingTranslation">%1$d</string>
+  <string name="im_me_computers_none" tools:ignore="MissingTranslation">None yet</string>
+  <string name="im_computers_title" tools:ignore="MissingTranslation">My computers</string>
+  <string name="im_computers_empty_title" tools:ignore="MissingTranslation">No computers yet</string>
+  <string name="im_computers_empty_help" tools:ignore="MissingTranslation">Connect a computer and your partners can see its screen and work on it for you.</string>
+  <string name="im_computers_connect_first" tools:ignore="MissingTranslation">Connect a computer</string>
+  <string name="im_computers_connect_new" tools:ignore="MissingTranslation">Connect another computer</string>
+  <string name="im_computers_screen_ready" tools:ignore="MissingTranslation">Screen ready</string>
+  <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">Screen not set up</string>
+  <string name="im_computers_used_by" tools:ignore="MissingTranslation">Used by %1$s</string>
+  <string name="im_computers_name_separator" tools:ignore="MissingTranslation">, </string>
+  <string name="im_computers_unused" tools:ignore="MissingTranslation">No partner uses it yet</string>
+  <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">View screen</string>
+  <string name="im_computer_detail_set_up_screen" tools:ignore="MissingTranslation">Set up the screen</string>
+  <string name="im_computer_detail_set_up_screen_help" tools:ignore="MissingTranslation">Check this computer so you and your partners can see its screen</string>
+  <string name="im_computer_detail_users" tools:ignore="MissingTranslation">Who uses this computer</string>
+  <string name="im_computer_detail_add_partner" tools:ignore="MissingTranslation">Let a partner use it</string>
+  <string name="im_computer_detail_check" tools:ignore="MissingTranslation">Check this computer</string>
+  <string name="im_computer_detail_check_help" tools:ignore="MissingTranslation">Desktop, screen service and cua-driver</string>
+  <string name="im_computer_detail_connection" tools:ignore="MissingTranslation">Connection</string>
+  <string name="im_computer_detail_delete" tools:ignore="MissingTranslation">Delete this computer</string>
+  <string name="im_computer_delete_title" tools:ignore="MissingTranslation">Delete %1$s?</string>
+  <string name="im_computer_delete_partners" tools:ignore="MissingTranslation">%1$s will no longer be able to use it.</string>
+  <string name="im_computer_delete_help" tools:ignore="MissingTranslation">Its sign-in details are removed from this phone. Nothing on the computer changes.</string>
+  <string name="im_computer_delete_confirm" tools:ignore="MissingTranslation">Delete</string>
+  <string name="im_computer_delete_blocked_title" tools:ignore="MissingTranslation">Can\'t delete it here</string>
+  <string name="im_computer_delete_blocked" tools:ignore="MissingTranslation">%1$d more workspaces on this computer were set up in professional mode. Remove them there first.</string>
+  <string name="im_computer_pick_partner" tools:ignore="MissingTranslation">Which partner may use it?</string>
+  <string name="im_computer_pick_screen_partner" tools:ignore="MissingTranslation">Watch with which partner?</string>
+  <string name="im_computer_screen_only" tools:ignore="MissingTranslation">Just the screen</string>
+  <string name="im_computer_replaces_computer" tools:ignore="MissingTranslation">Replaces the computer it uses now</string>
+  <string name="im_computer_replaces_phone" tools:ignore="MissingTranslation">It will stop working on this phone</string>
+  <string name="im_computer_already_using" tools:ignore="MissingTranslation">Already uses it</string>
+  <string name="im_computer_bind_many_title" tools:ignore="MissingTranslation">Which partners may use this computer?</string>
+  <string name="im_computer_bind_many_help" tools:ignore="MissingTranslation">You can change this later in My computers.</string>
+  <string name="im_computer_bind_many_confirm" tools:ignore="MissingTranslation">Give it to %1$d partners</string>
+  <string name="im_computer_bind_none" tools:ignore="MissingTranslation">Done, no partner for now</string>
+  <string name="im_computer_connected_title" tools:ignore="MissingTranslation">Connected</string>
+  <string name="im_computer_connected_help" tools:ignore="MissingTranslation">%1$s is ready.</string>
+  <string name="im_computer_done" tools:ignore="MissingTranslation">Done</string>
+  <string name="im_computer_edit_title" tools:ignore="MissingTranslation">Connection</string>
+  <string name="im_computer_edit_help" tools:ignore="MissingTranslation">Changing the address asks you to confirm the computer\'s fingerprint again.</string>
+  <string name="im_computer_sign_in_keep" tools:ignore="MissingTranslation">Keep the current sign-in</string>
+  <string name="im_computer_sign_in_change" tools:ignore="MissingTranslation">Change</string>
+  <string name="im_computer_save_continue" tools:ignore="MissingTranslation">Save and check</string>
+  <string name="im_computer_retry" tools:ignore="MissingTranslation">Retry</string>
+  <string name="im_computer_open_details" tools:ignore="MissingTranslation">Computer details</string>
 </resources>

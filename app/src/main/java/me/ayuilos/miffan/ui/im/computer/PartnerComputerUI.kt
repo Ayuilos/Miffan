@@ -59,6 +59,8 @@ internal fun PartnerComputerPermissionRow(
     onSetup: () -> Unit,
     onScreen: () -> Unit,
     onDisconnect: () -> Unit,
+    /** Opens the computer's own page in "my computers". */
+    onOpenComputer: () -> Unit,
 ) {
     var confirmDisconnect by rememberSaveable(computer?.workspaceId) { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
@@ -76,13 +78,11 @@ internal fun PartnerComputerPermissionRow(
                     enabled = !busy, onClick = onSetup) { Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 return@Column
             }
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(stringResource(R.string.im_computer_control))
-                    Text(computer.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                ComputerUseModeSelector(mode, enabled = !busy, onMode = onMode)
+            PartnerComputerRow(stringResource(R.string.im_computer_control), computer.name, enabled = !busy, onClick = onOpenComputer) {
+                Icon(HugeIcons.ArrowRight01, stringResource(R.string.im_computer_open_details), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            ComputerUseModeSelector(mode, enabled = !busy, onMode = onMode,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))
             if (computer.showsEntry) {
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 PartnerComputerRow(stringResource(R.string.im_computer_view_screen), null, enabled = !busy, onClick = onScreen) {

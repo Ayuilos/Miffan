@@ -38,12 +38,14 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import me.ayuilos.miffan.ui.im.computer.rememberKnownComputers
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Brain01
 import me.rerere.hugeicons.stroke.Cloud
+import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.Exchange01
 import me.rerere.hugeicons.stroke.InformationCircle
@@ -69,6 +71,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
     val navController = LocalNavController.current
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val computers by rememberKnownComputers()
     val scope = rememberCoroutineScope()
     var advanced by rememberSaveable { mutableStateOf(true) }
     val locale = LocalConfiguration.current.locales[0]
@@ -126,6 +129,20 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
                     leadingContent = { Icon(HugeIcons.Brain01, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_memory)) },
                     trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
+                )
+                item(
+                    onClick = { navController.navigate(Screen.Computers) },
+                    leadingContent = { Icon(HugeIcons.Computer, null) },
+                    headlineContent = { Text(stringResource(R.string.im_me_computers)) },
+                    trailingContent = {
+                        val count = computers?.size
+                        if (count != null) Text(
+                            text = if (count == 0) stringResource(R.string.im_me_computers_none)
+                            else stringResource(R.string.im_me_computers_count, count),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
                 )
                 item(
                     onClick = { navController.navigate(Screen.SettingProvider) },

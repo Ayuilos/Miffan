@@ -23,7 +23,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.im.ImPartnerVM
 import me.ayuilos.miffan.ui.im.thread.threadAssistantName
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenCopyCommand
@@ -36,6 +39,7 @@ import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.Tick01
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
@@ -48,10 +52,17 @@ internal fun computerSetupProgress(state: ComputerSetupState): Pair<Int, Int> {
 @Composable
 fun ComputerSetupPage(args: ComputerSetupArgs) {
     val vm: ComputerSetupVM = koinViewModel(key = "setup:$args", parameters = { parametersOf(args) })
-    val assistantId = args.assistantId ?: Uuid.NIL
-    val partnerVM: ImPartnerVM = koinViewModel(key = "partner:$assistantId", parameters = { parametersOf(assistantId) })
-    val partner by partnerVM.assistant.collectAsStateWithLifecycle()
+    // Null when opened from "my computers": the setup ends by picking any partners, or none.
+    val forPartner = args.assistantId
+    val partner = forPartner?.let { id ->
+        val partnerVM: ImPartnerVM = koinViewModel(key = "partner:$id", parameters = { parametersOf(id) })
+        partnerVM.assistant.collectAsStateWithLifecycle().value
+    }
     val name = threadAssistantName(partner)
+    // "Connect another computer" skips choosing: the list it came from already shows the known ones.
+    val addingNew = forPartner == null && args.hostId == null
+    // Checking a known computer starts by connecting to it; editing starts at its address.
+    val checking = args.hostId != null && !args.edit
     val state by vm.state.collectAsStateWithLifecycle()
     val hosts by vm.hosts.collectAsStateWithLifecycle()
     val keys by vm.sshKeys.collectAsStateWithLifecycle()
@@ -60,9 +71,13 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     val nav = LocalNavController.current
     val (step, steps) = computerSetupProgress(state)
     val progressLabel = stringResource(R.string.im_computer_step_progress, step, steps)
+    LaunchedEffect(Unit) { if (addingNew && state.step == ComputerSetupStep.CHOOSE) vm.addNewComputer() }
     fun back() {
         if (state.busy) return
-        if (state.step in setOf(ComputerSetupStep.CHOOSE, ComputerSetupStep.DONE)) nav.popBackStack() else vm.back()
+        val first = state.step in setOf(ComputerSetupStep.CHOOSE, ComputerSetupStep.DONE) ||
+            (state.step == ComputerSetupStep.ADDRESS && (addingNew || args.edit)) ||
+            (checking && state.step in setOf(ComputerSetupStep.VERIFY, ComputerSetupStep.PREPARE))
+        if (first) nav.popBackStack() else vm.back()
     }
     BackHandler { back() }
     Scaffold(topBar = {
@@ -77,16 +92,26 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
             when (state.step) {
-                ComputerSetupStep.CHOOSE -> ComputerChooseStep(vm, state, hosts)
-                ComputerSetupStep.ADDRESS -> ComputerAddressStep(vm, state, keys)
+                ComputerSetupStep.CHOOSE -> when {
+                    checking -> ComputerSetupStepLayout(
+                        title = stringResource(R.string.im_computer_prepare), supporting = null,
+                        state = state, onDismissError = vm::dismissError,
+                        primary = SetupAction(stringResource(R.string.im_computer_retry), enabled = state.error != null) {
+                            vm.chooseHost(requireNotNull(args.hostId))
+                        },
+                    ) { SetupCard { SetupComputerRow(host) } }
+                    addingNew -> Unit
+                    else -> ComputerChooseStep(vm, state, hosts)
+                }
+                ComputerSetupStep.ADDRESS -> ComputerAddressStep(vm, state, keys, edit = args.edit, host = host)
                 ComputerSetupStep.VERIFY -> ComputerVerifyStep(vm, state, host)
                 ComputerSetupStep.PREPARE -> ComputerPrepareStep(vm, state)
                 ComputerSetupStep.MAC_ACCOUNT -> ComputerMacAccountStep(vm, state, host?.username.orEmpty())
                 ComputerSetupStep.TEST -> ComputerTestStep(vm, state)
-                ComputerSetupStep.BIND -> ComputerSetupStepLayout(
+                ComputerSetupStep.BIND -> if (forPartner == null) ComputerBindManyStep(vm, state, host) else ComputerSetupStepLayout(
                     title = stringResource(R.string.im_computer_give_title, name),
                     supporting = null, state = state, onDismissError = vm::dismissError,
-                    primary = SetupAction(stringResource(R.string.im_computer_give_to, name), onClick = { vm.bind(setOf(assistantId)) }),
+                    primary = SetupAction(stringResource(R.string.im_computer_give_to, name), onClick = { vm.bind(setOf(forPartner)) }),
                 ) {
                     SetupCard {
                         SetupComputerRow(host)
@@ -100,7 +125,20 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                         null -> Unit
                     }
                 }
-                ComputerSetupStep.DONE -> {
+                ComputerSetupStep.DONE -> if (forPartner == null) ComputerSetupStepLayout(
+                    title = null, supporting = null, state = state, onDismissError = vm::dismissError,
+                    primary = SetupAction(stringResource(R.string.im_computer_done)) {
+                        val hostId = host?.id
+                        // A new computer continues to its own page; checking or editing returns where it started.
+                        if (addingNew && hostId != null) nav.replace(Screen.ComputerSetup(), Screen.ComputerDetail(hostId), Screen.Home)
+                        else nav.popBackStack()
+                    },
+                ) {
+                    SetupDoneHeader(stringResource(R.string.im_computer_connected_title),
+                        stringResource(R.string.im_computer_connected_help, host?.name.orEmpty()))
+                    state.partnerView?.let { ComputerPartnerView(it, Modifier.fillMaxWidth().padding(top = 12.dp)) }
+                } else {
+                    val assistantId = forPartner
                     val draft = stringResource(R.string.im_computer_first_message)
                     ComputerSetupStepLayout(
                         title = null, supporting = null, state = state, onDismissError = vm::dismissError,
@@ -114,20 +152,78 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                             nav.replace(Screen.ComputerSetup(id), Screen.PartnerScreen(id), Screen.Home)
                         },
                     ) {
-                        Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Box(Modifier.size(72.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
-                                Icon(HugeIcons.Tick01, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                            }
-                            Text(stringResource(R.string.im_computer_done_title), style = MaterialTheme.typography.headlineSmall)
-                            Text(stringResource(R.string.im_computer_done_help, name, host?.name.orEmpty()), textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            state.partnerView?.let { ComputerPartnerView(it, Modifier.padding(top = 12.dp)) }
-                        }
+                        SetupDoneHeader(stringResource(R.string.im_computer_done_title),
+                            stringResource(R.string.im_computer_done_help, name, host?.name.orEmpty()))
+                        state.partnerView?.let { ComputerPartnerView(it, Modifier.fillMaxWidth().padding(top = 12.dp)) }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SetupDoneHeader(title: String, help: String) {
+    Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(72.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(HugeIcons.Tick01, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Text(title, style = MaterialTheme.typography.headlineSmall)
+        Text(help, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The last step from "my computers": any partners may get the computer, or none for now. */
+@Composable
+private fun ComputerBindManyStep(vm: ComputerSetupVM, state: ComputerSetupState, host: RemoteHostEntity?) {
+    val assistants = LocalSettings.current.assistants
+    val bound by vm.boundPartnerIds.collectAsStateWithLifecycle()
+    val workspaces: WorkspaceRepository = koinInject()
+    val workspaceList by remember(workspaces) { workspaces.listFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    var selected by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val picked = selected.mapNotNull { id -> assistants.find { it.id.toString() == id && it.id !in bound } }
+    ComputerSetupStepLayout(
+        title = stringResource(R.string.im_computer_bind_many_title),
+        supporting = stringResource(R.string.im_computer_bind_many_help),
+        state = state, onDismissError = vm::dismissError,
+        primary = SetupAction(
+            if (picked.isEmpty()) stringResource(R.string.im_computer_bind_none)
+            else stringResource(R.string.im_computer_bind_many_confirm, picked.size),
+        ) { vm.bind(picked.map { it.id }.toSet()) },
+    ) {
+        SetupCard { SetupComputerRow(host) }
+        SetupCard(padding = 0.dp, spacing = 0.dp) {
+            assistants.forEachIndexed { index, partner ->
+                if (index > 0) HorizontalDivider(Modifier.padding(start = 68.dp))
+                val already = partner.id in bound
+                val checked = already || partner.id.toString() in selected
+                val boundTo = partner.workspaceId?.toString()?.let { id -> workspaceList.find { it.id == id } }
+                val note = when {
+                    already -> stringResource(R.string.im_computer_already_using)
+                    !checked || boundTo == null -> null
+                    boundTo.isRemote -> stringResource(R.string.im_computer_replaces_computer)
+                    else -> stringResource(R.string.im_computer_replaces_phone)
+                }
+                val toggle = {
+                    val id = partner.id.toString()
+                    selected = if (id in selected) selected - id else selected + id
+                }
+                Surface(onClick = toggle, enabled = !already && !state.busy, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        AssistantAvatar(partner.name, partner.avatar, Modifier.size(36.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(threadAssistantName(partner))
+                            note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                        Checkbox(checked, onCheckedChange = { toggle() }, enabled = !already && !state.busy)
+                    }
+                }
+            }
+        }
+        if (picked.isNotEmpty()) listOf(R.string.im_computer_bind_screenshots, R.string.im_computer_bind_account, R.string.im_computer_bind_approval)
+            .forEach { SetupBullet(stringResource(it)) }
     }
 }
 
@@ -273,7 +369,7 @@ internal fun SetupWarning(text: String) {
 }
 
 @Composable
-private fun SetupBullet(text: String) {
+internal fun SetupBullet(text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.padding(top = 8.dp).size(6.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
         Text(text, style = MaterialTheme.typography.bodyMedium)
