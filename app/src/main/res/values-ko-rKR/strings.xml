@@ -1662,6 +1662,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_local_shell_access_help">AI가 로컬 작업 공간에서 명령을 실행하도록 허용합니다. 이 옵션을 꺼도 파일 도구는 사용할 수 있습니다.</string>
   <string name="workspace_ask_before_shell">각 Shell 명령 실행 전에 묻기</string>
   <string name="workspace_ask_before_shell_help">사용하면 AI Shell 명령마다 별도 승인이 필요합니다. 승인 화면에는 해당 시점의 대상 기기, 계정, 디렉터리가 표시됩니다.</string>
+  <string name="workspace_ask_before_shell_by_computer">이 컴퓨터에서 명령 실행 전 묻기는 아래의 “파트너의 컴퓨터 조작” 설정을 따라요.</string>
   <string name="workspace_remote_shared_directory">원격 공유 디렉터리</string>
   <string name="workspace_a11y_host_fragment">", 호스트 "</string>
   <string name="workspace_a11y_account_fragment">", 계정 "</string>
@@ -2339,11 +2340,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="computer_use_mode_ask">먼저 확인</string>
   <string name="computer_use_mode_auto">자동</string>
   <string name="computer_use_mode_off">사용 안 함</string>
-  <string name="computer_use_mode_ask_help">요청에 컴퓨터가 필요하면 파트너가 알아서 시작하고, 데스크톱을 바꾸는 작업마다 채팅에서 먼저 물어봐요. 화면을 보는 데는 승인이 필요하지 않아요.</string>
-  <string name="computer_use_mode_auto_help">파트너가 매번 묻지 않고 작업해요. 창을 앞으로 가져올 때는 확인을 요청해요.</string>
-  <string name="computer_use_mode_off_help">파트너는 이 컴퓨터의 데스크톱을 조작하지 않으며 조작을 제안하지도 않아요. 명령 실행과 파일 작업은 계속할 수 있어요. 이것도 막으려면 컴퓨터 연결을 해제하세요.</string>
+  <string name="computer_use_mode_ask_help">요청에 컴퓨터가 필요하면 파트너가 알아서 시작하고, 클릭·입력·명령 실행·파일 변경 전에는 채팅에서 먼저 물어봐요. 화면 보기와 파일 읽기는 승인이 필요하지 않아요.</string>
+  <string name="computer_use_mode_auto_help">파트너가 매번 묻지 않고 클릭하고 입력하고 명령을 실행하고 파일을 바꿔요. 창을 앞으로 가져오거나 웹에서 다운로드할 때는 여전히 물어봐요.</string>
+  <string name="computer_use_mode_off_help">파트너는 이 컴퓨터를 전혀 건드리지 않아요. 화면을 보거나, 데스크톱을 조작하거나, 명령을 실행하거나, 파일을 읽고 쓰지 않으며, 그렇게 하자고 제안하지도 않아요. 화면 페이지는 직접 열 수 있어요.</string>
   <string name="computer_use_confirm_auto">파트너가 바로 작업하도록 허용할까요?</string>
-  <string name="computer_use_auto_disclosure">파트너가 매번 묻지 않고 클릭하고 입력하고 앱을 열어요. 스크린샷은 현재 모델 제공업체로 전송되고 작업은 이 컴퓨터 계정의 권한으로 실행돼요. 화면 페이지에서 언제든 직접 조작할 수 있어요.</string>
+  <string name="computer_use_auto_disclosure">파트너가 매번 묻지 않고 클릭하고 입력하고 앱을 열고 명령을 실행하고 파일을 바꿔요. 스크린샷은 현재 모델 제공업체로 전송되고, 모든 작업은 이 컴퓨터 계정의 권한으로 실행돼요. 화면 페이지에서 언제든 직접 조작을 맡을 수 있어요.</string>
   <string name="computer_use_start">컴퓨터에 연결</string>
   <string name="im_computer_disconnect">이 컴퓨터 연결 해제</string>
   <string name="im_computer_disconnect_title">%1$s 연결을 해제할까요?</string>

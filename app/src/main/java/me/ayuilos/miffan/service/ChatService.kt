@@ -124,6 +124,7 @@ import java.time.LocalDate
 import me.ayuilos.miffan.data.model.recentChatsReferenceEnabled
 import me.ayuilos.miffan.data.thread.ThreadContext
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
@@ -978,13 +979,15 @@ class ChatService(
             val boundWorkspace = assistant.workspaceId
                 ?.toString()
                 ?.let { workspaceRepository.getById(it) }
-            val workspaceReady = if (boundWorkspace?.isRemote == true) {
-                boundWorkspace.shellStatus == WorkspaceShellStatus.READY.name &&
-                    boundWorkspace.remoteHostId?.let { workspaceRepository.getHostById(it) }
-                        ?.trustedHostKeySha256 != null
-            } else {
-                boundWorkspace?.shellStatus == WorkspaceShellStatus.READY.name
-            }
+            // A partner computer set to off is out of reach entirely, skills that run there included.
+            val workspaceReady = partnerComputerUse(assistant, boundWorkspace) != ComputerUseMode.OFF &&
+                if (boundWorkspace?.isRemote == true) {
+                    boundWorkspace.shellStatus == WorkspaceShellStatus.READY.name &&
+                        boundWorkspace.remoteHostId?.let { workspaceRepository.getHostById(it) }
+                            ?.trustedHostKeySha256 != null
+                } else {
+                    boundWorkspace?.shellStatus == WorkspaceShellStatus.READY.name
+                }
             val availableSkills = buildList {
                 if (boundWorkspace != null && !boundWorkspace.isRemote) {
                     if (assistant.enabledSkills.isNotEmpty()) {
@@ -1255,6 +1258,8 @@ class ChatService(
             )
             return emptyList()
         }
+        val computerUse = partnerComputerUse(assistant, workspace)
+        if (computerUse == ComputerUseMode.OFF) return emptyList()
         return createWorkspaceTools(
             assistantId = assistant.id.toString(),
             workspaceId = workspaceId,
@@ -1266,7 +1271,18 @@ class ChatService(
             workspaceRepository = workspaceRepository,
             cwd = cwd,
             conversationId = conversationId,
+            computerUse = computerUse,
         )
+    }
+
+    /**
+     * A remote host with a screen is the partner's computer: its desktop, commands and files all
+     * follow [Assistant.computerUse]. Null for local workspaces and servers without a screen.
+     */
+    private suspend fun partnerComputerUse(assistant: Assistant, workspace: WorkspaceEntity?): ComputerUseMode? {
+        if (workspace?.isRemote != true) return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        return assistant.computerUse.takeIf { host.screenEnabled }
     }
 
     // ---- 检查无效消息 ----

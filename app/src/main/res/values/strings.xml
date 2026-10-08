@@ -1671,6 +1671,7 @@
   <string name="workspace_local_shell_access_help">Allow AI to run commands in the local workspace. File tools remain available when this is off.</string>
   <string name="workspace_ask_before_shell">Ask before each Shell command</string>
   <string name="workspace_ask_before_shell_help">When enabled, each AI Shell command requires separate approval. The approval screen shows the target device, account, and directory at that time.</string>
+  <string name="workspace_ask_before_shell_by_computer" tools:ignore="MissingTranslation">On this computer, asking before commands follows “Partner computer control” below.</string>
   <string name="workspace_remote_shared_directory">Remote shared directory</string>
   <string name="workspace_a11y_host_fragment">", host "</string>
   <string name="workspace_a11y_account_fragment">", account "</string>
@@ -2355,11 +2356,11 @@
   <string name="computer_use_mode_ask" tools:ignore="MissingTranslation">Ask first</string>
   <string name="computer_use_mode_auto" tools:ignore="MissingTranslation">Automatic</string>
   <string name="computer_use_mode_off" tools:ignore="MissingTranslation">Off</string>
-  <string name="computer_use_mode_ask_help" tools:ignore="MissingTranslation">Your partner starts on its own when a request needs the computer, and asks in chat before each action that changes the desktop. Looking at the screen needs no approval.</string>
-  <string name="computer_use_mode_auto_help" tools:ignore="MissingTranslation">Your partner acts without asking each time. Bringing a window to the front still asks.</string>
-  <string name="computer_use_mode_off_help" tools:ignore="MissingTranslation">Your partner won’t operate this computer’s desktop or offer to. It can still run commands and work with files there; to stop that too, disconnect the computer.</string>
+  <string name="computer_use_mode_ask_help" tools:ignore="MissingTranslation">Your partner starts on its own when a request needs the computer, and asks in chat before each click, keystroke, command or file change. Looking at the screen and reading files need no approval.</string>
+  <string name="computer_use_mode_auto_help" tools:ignore="MissingTranslation">Your partner clicks, types, runs commands and changes files without asking each time. Bringing a window to the front or downloading from the web still asks.</string>
+  <string name="computer_use_mode_off_help" tools:ignore="MissingTranslation">Your partner won’t touch this computer at all: it can’t see the screen, operate the desktop, run commands or read and write files, and won’t offer to. You can still open the screen page yourself.</string>
   <string name="computer_use_confirm_auto" tools:ignore="MissingTranslation">Let your partner act directly?</string>
-  <string name="computer_use_auto_disclosure" tools:ignore="MissingTranslation">Your partner will click, type and open apps without asking each time. Screenshots are sent to the current model’s provider, and actions run with this computer account’s permissions. You can take over at any time on the screen page.</string>
+  <string name="computer_use_auto_disclosure" tools:ignore="MissingTranslation">Your partner will click, type, open apps, run commands and change files without asking each time. Screenshots are sent to the current model’s provider, and everything runs with this computer account’s permissions. You can take over at any time on the screen page.</string>
   <string name="computer_use_start" tools:ignore="MissingTranslation">Connect to computer</string>
   <string name="im_computer_disconnect" tools:ignore="MissingTranslation">Disconnect this computer</string>
   <string name="im_computer_disconnect_title" tools:ignore="MissingTranslation">Disconnect %1$s?</string>

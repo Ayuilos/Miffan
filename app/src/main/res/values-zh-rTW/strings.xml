@@ -1660,6 +1660,7 @@
   <string name="workspace_local_shell_access_help">允許 AI 在本機工作區執行命令。關閉此選項後仍可使用檔案工具。</string>
   <string name="workspace_ask_before_shell">執行每條 Shell 命令前詢問</string>
   <string name="workspace_ask_before_shell_help">啟用後，每條 AI Shell 命令都需要分別核准。核准畫面會顯示當時的目標裝置、帳戶和目錄。</string>
+  <string name="workspace_ask_before_shell_by_computer">在這台電腦上，執行命令前是否詢問，由下方的「夥伴操作電腦」決定。</string>
   <string name="workspace_remote_shared_directory">遠端共享目錄</string>
   <string name="workspace_a11y_host_fragment">"，主機 "</string>
   <string name="workspace_a11y_account_fragment">"，帳戶 "</string>
@@ -2337,11 +2338,11 @@
   <string name="computer_use_mode_ask">先問我</string>
   <string name="computer_use_mode_auto">直接操作</string>
   <string name="computer_use_mode_off">不允許</string>
-  <string name="computer_use_mode_ask_help">需要使用電腦時，夥伴會自行開始，每個會改動桌面的操作都會先在聊天中問你。查看螢幕不需要同意。</string>
-  <string name="computer_use_mode_auto_help">夥伴直接操作，不再逐步詢問；將視窗切到前景時仍會先問你。</string>
-  <string name="computer_use_mode_off_help">夥伴不會操作這台電腦的桌面，也不會主動提議。它仍然可以在上面執行指令、處理檔案；若這些也不需要，請中斷與這台電腦的連線。</string>
+  <string name="computer_use_mode_ask_help">需要使用電腦時，夥伴會自行開始，並在每次點按、輸入、執行命令或更改檔案前先在聊天中詢問你。查看螢幕和讀取檔案不需要同意。</string>
+  <string name="computer_use_mode_auto_help">夥伴會直接點按、輸入、執行命令和更改檔案，不再每次詢問；將視窗移到前景或從網路下載仍會先問你。</string>
+  <string name="computer_use_mode_off_help">夥伴完全不碰這台電腦：不看螢幕、不操作桌面、不執行命令，也不讀寫檔案，也不會主動提議。你自己仍可開啟螢幕頁。</string>
   <string name="computer_use_confirm_auto">要讓夥伴直接操作嗎？</string>
-  <string name="computer_use_auto_disclosure">夥伴會直接點按、輸入和開啟應用程式，不再逐步詢問。截圖會傳送給目前模型的供應商，並以這台電腦帳號的權限操作。你可以隨時在螢幕頁接手操作。</string>
+  <string name="computer_use_auto_disclosure">夥伴會直接點按、輸入、開啟應用程式、執行命令和修改檔案，不再逐次詢問。截圖會傳送給目前模型的供應商，所有操作都以這台電腦帳號的權限執行。你可以隨時在螢幕頁接手操作。</string>
   <string name="computer_use_start">連接電腦</string>
   <string name="im_computer_disconnect">中斷與這台電腦的連線</string>
   <string name="im_computer_disconnect_title">要中斷與 %1$s 的連線嗎？</string>

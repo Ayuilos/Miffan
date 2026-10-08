@@ -1662,6 +1662,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_local_shell_access_help">AI がローカルワークスペースでコマンドを実行できるようにします。オフにしてもファイルツールは利用できます。</string>
   <string name="workspace_ask_before_shell">Shell コマンドごとに確認</string>
   <string name="workspace_ask_before_shell_help">有効にすると、AI の各 Shell コマンドには個別の承認が必要です。承認画面には、その時点の対象デバイス、アカウント、ディレクトリが表示されます。</string>
+  <string name="workspace_ask_before_shell_by_computer">このコンピューターでは、コマンド実行前の確認は下の「パートナーによるコンピューター操作」の設定に従います。</string>
   <string name="workspace_remote_shared_directory">リモート共有ディレクトリ</string>
   <string name="workspace_a11y_host_fragment">"、ホスト "</string>
   <string name="workspace_a11y_account_fragment">"、アカウント "</string>
@@ -2339,11 +2340,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="computer_use_mode_ask">操作前に確認</string>
   <string name="computer_use_mode_auto">自動</string>
   <string name="computer_use_mode_off">オフ</string>
-  <string name="computer_use_mode_ask_help">パートナーは、コンピューターが必要な依頼を受けると自動で開始し、デスクトップを変更する操作の前にチャットで確認します。画面を見るだけなら確認は不要です。</string>
-  <string name="computer_use_mode_auto_help">パートナーは毎回確認せずに操作します。ウィンドウを前面に表示する場合は確認します。</string>
-  <string name="computer_use_mode_off_help">パートナーはこのコンピューターのデスクトップを操作せず、操作を提案することもありません。コマンドの実行やファイルの操作は引き続き可能です。それも停止するには、コンピューターを切断してください。</string>
+  <string name="computer_use_mode_ask_help">パートナーは、コンピューターが必要な依頼を受けると自動で開始します。クリック、キー入力、コマンド実行、ファイル変更の前には、チャットで確認します。画面を見る操作やファイルの読み取りには確認は不要です。</string>
+  <string name="computer_use_mode_auto_help">パートナーは毎回確認せずに、クリック、入力、コマンド実行、ファイル変更を行います。ウィンドウを前面に表示する操作や Web からのダウンロードは、引き続き確認します。</string>
+  <string name="computer_use_mode_off_help">パートナーはこのコンピューターに一切関与しません。画面の確認、デスクトップ操作、コマンド実行、ファイルの読み書きは行わず、そのような提案もしません。画面ページは自分で開けます。</string>
   <string name="computer_use_confirm_auto">パートナーに直接操作させますか？</string>
-  <string name="computer_use_auto_disclosure">パートナーは毎回確認せずにクリック、入力、アプリの起動を行います。スクリーンショットは現在のモデルのプロバイダーに送信され、操作はこのコンピューターアカウントの権限で実行されます。画面ページからいつでも操作を引き継げます。</string>
+  <string name="computer_use_auto_disclosure">パートナーは毎回確認せずに、クリック、入力、アプリの起動、コマンド実行、ファイル変更を行います。スクリーンショットは現在のモデルのプロバイダーに送信され、操作はこのコンピューターアカウントの権限で実行されます。画面ページからいつでも操作を引き継げます。</string>
   <string name="computer_use_start">コンピューターに接続</string>
   <string name="im_computer_disconnect">このコンピューターを切断</string>
   <string name="im_computer_disconnect_title">%1$s を切断しますか？</string>

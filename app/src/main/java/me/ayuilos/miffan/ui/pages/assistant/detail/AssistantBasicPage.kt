@@ -49,6 +49,8 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.im.computer.ComputerUseModeSelector
+import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
+import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
@@ -454,10 +456,14 @@ internal fun AssistantBasicContent(
                 HorizontalDivider()
 
                 val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
+                val partnerComputer by rememberPartnerComputer(assistant.id)
+                val approvalByComputer = partnerComputer?.screenEnabled == true
                 WorkspaceShellPermissionControls(
                     shellEnabled = assistant.workspaceShellEnabled,
-                    approvalRequired = assistant.workspaceShellApprovalRequired,
+                    approvalRequired = if (approvalByComputer) assistant.computerUse == ComputerUseMode.ASK
+                        else assistant.workspaceShellApprovalRequired,
                     isRemote = selectedWorkspace?.isRemote == true,
+                    approvalByComputer = approvalByComputer,
                     onShellEnabledChange = { onUpdate(assistant.withWorkspaceShellEnabled(it)) },
                     onApprovalRequiredChange = { required ->
                         if (required) onUpdate(assistant.withWorkspaceShellApproval(true))
@@ -908,6 +914,8 @@ internal fun WorkspaceShellPermissionControls(
     isRemote: Boolean,
     onShellEnabledChange: (Boolean) -> Unit,
     onApprovalRequiredChange: (Boolean) -> Unit,
+    /** The workspace is the partner's computer, where the computer setting decides about asking. */
+    approvalByComputer: Boolean = false,
 ) {
     val workspaceStrings = LocalResources.current
     FormItem(
@@ -933,12 +941,13 @@ internal fun WorkspaceShellPermissionControls(
         modifier = Modifier.padding(8.dp),
         label = { Text(stringResource(R.string.workspace_ask_before_shell)) },
         description = {
-            Text(stringResource(R.string.workspace_ask_before_shell_help))
+            Text(stringResource(if (approvalByComputer) R.string.workspace_ask_before_shell_by_computer
+                else R.string.workspace_ask_before_shell_help))
         },
         tail = {
             Switch(
                 checked = approvalRequired,
-                enabled = shellEnabled,
+                enabled = shellEnabled && !approvalByComputer,
                 onCheckedChange = onApprovalRequiredChange,
                 modifier = Modifier.testTag("workspace-shell-each-approval"),
             )

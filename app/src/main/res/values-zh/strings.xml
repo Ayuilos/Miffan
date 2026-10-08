@@ -1664,6 +1664,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_local_shell_access_help">允许 AI 在本地工作空间执行命令。关闭后仍可使用文件工具。</string>
   <string name="workspace_ask_before_shell">Shell 每次执行前询问</string>
   <string name="workspace_ask_before_shell_help">启用后，每条 AI Shell 命令执行前都需单独批准。批准界面会显示当时的目标设备、账户和目录。</string>
+  <string name="workspace_ask_before_shell_by_computer">在这台电脑上，运行命令前是否询问由下方“伙伴操作电脑”决定。</string>
   <string name="workspace_remote_shared_directory">远程共享目录</string>
   <string name="workspace_a11y_host_fragment">"，主机 "</string>
   <string name="workspace_a11y_account_fragment">"，账户 "</string>
@@ -2346,11 +2347,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="computer_use_mode_ask">先问我</string>
   <string name="computer_use_mode_auto">直接操作</string>
   <string name="computer_use_mode_off">不允许</string>
-  <string name="computer_use_mode_ask_help">需要用电脑时伙伴会自己开始，每个改动桌面的操作都会先在聊天里问你；看屏幕不用问。</string>
-  <string name="computer_use_mode_auto_help">伙伴直接操作，不再逐步询问；把窗口切到前台仍会先问你。</string>
-  <string name="computer_use_mode_off_help">伙伴不会操作这台电脑的桌面，也不会主动提起；它仍然可以在上面运行命令、读写文件。如果都不需要，请断开这台电脑。</string>
+  <string name="computer_use_mode_ask_help">需要用电脑时伙伴会自己开始。点击、输入、运行命令、改文件之前，都会先在聊天里问你；看屏幕和读文件不用问。</string>
+  <string name="computer_use_mode_auto_help">伙伴直接点击、输入、运行命令和改文件，不再逐步询问；把窗口切到前台、从网上下载文件仍会先问你。</string>
+  <string name="computer_use_mode_off_help">伙伴完全不碰这台电脑：不看屏幕、不操作桌面、不运行命令、不读写文件，也不会主动提起。你自己仍然可以打开屏幕页。</string>
   <string name="computer_use_confirm_auto">让伙伴直接操作？</string>
-  <string name="computer_use_auto_disclosure">伙伴会直接点击、输入和打开应用，不再逐步询问。截图会发送给当前模型的提供商，操作以这台电脑账户的权限执行。你可以随时在屏幕页接管。</string>
+  <string name="computer_use_auto_disclosure">伙伴会直接点击、输入、打开应用、运行命令和修改文件，不再逐步询问。截图会发送给当前模型的提供商，所有操作都以这台电脑账户的权限执行。你可以随时在屏幕页接管。</string>
   <string name="computer_use_start">连接电脑</string>
   <string name="im_computer_disconnect">断开这台电脑</string>
   <string name="im_computer_disconnect_title">断开 %1$s？</string>

@@ -17,6 +17,7 @@ import me.rerere.ai.ui.toMetadata
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.utils.generateUnifiedDiff
 import me.rerere.workspace.GuestPath
 import me.rerere.workspace.WorkspaceManager
@@ -49,6 +50,17 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
 fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>): Boolean =
     overrides[name] ?: WorkspaceToolDefaultApprovals[name] ?: false
 
+/**
+ * On the partner's computer, commands and file changes are part of operating it, so they follow
+ * [ComputerUseMode] instead of the workspace's own approval rules: ASK asks before every change,
+ * AUTO never asks. Reading stays free like looking at the screen. Null when the rule does not apply.
+ */
+internal fun computerWorkspaceApproval(name: String, computerUse: ComputerUseMode): Boolean? = when (computerUse) {
+    ComputerUseMode.AUTO -> false
+    ComputerUseMode.ASK -> name != "workspace_read_file"
+    ComputerUseMode.OFF -> null
+}
+
 suspend fun createWorkspaceTools(
     assistantId: String,
     workspaceId: String?,
@@ -60,8 +72,11 @@ suspend fun createWorkspaceTools(
     cwd: String? = null,
     conversationId: String? = null,
     shellApprovalVia: ToolDecisionVia? = null,
+    /** How the partner may use this workspace when it is the partner's computer; null for any other workspace. */
+    computerUse: ComputerUseMode? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
+    if (computerUse == ComputerUseMode.OFF) return emptyList()
     val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
     val approvalOverrides = workspace.toolApprovalOverrides()
     val remoteHost = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }
@@ -70,7 +85,7 @@ suspend fun createWorkspaceTools(
         ?.copy(conversationId = conversationId, conversationCwd = cwd) ?: return emptyList()
     val remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" }
     val target = WorkspaceToolTarget(workspace, remoteHostLabel, snapshot)
-    fun needsApproval(name: String) = if (name == WORKSPACE_SHELL_TOOL_NAME) {
+    fun needsApproval(name: String) = computerUse?.let { computerWorkspaceApproval(name, it) } ?: if (name == WORKSPACE_SHELL_TOOL_NAME) {
         shellApprovalRequired || shellApprovalTarget?.sameTarget(snapshot) != true
     } else {
         resolveWorkspaceToolApproval(name, approvalOverrides)
@@ -87,6 +102,7 @@ suspend fun createWorkspaceTools(
         if (shellEnabled) {
             add(createShellTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, shellCwd, target).copy(autoApprovedBy = {
                 if (needsApproval(WORKSPACE_SHELL_TOOL_NAME)) null
+                else if (computerUse != null) ToolDecisionVia.NO_ASK_SETTING
                 else shellApprovalVia ?: ToolDecisionVia.STANDING_ALWAYS_ALLOW
             }))
             if (workspace.isRemote && conversationId != null) add(createTerminalTool(snapshot, shellCwd))
