@@ -59,7 +59,7 @@ internal fun ComputerAddressStep(
     LaunchedEffect(passwordLogin, keys.isEmpty(), changeSignIn) {
         if (changeSignIn && !passwordLogin && keys.isEmpty() && !keyRequested) {
             keyRequested = true
-            vm.createAppKey { keyId = it.id }
+            vm.createAppKey(reuseExisting = true) { keyId = it.id }
         }
     }
     val valid = name.isNotBlank() && address.isNotBlank() && username.isNotBlank() && port.toIntOrNull() in 1..65535 &&

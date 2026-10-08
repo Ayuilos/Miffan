@@ -76,13 +76,15 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
         if (state.busy) return
         val first = state.step in setOf(ComputerSetupStep.CHOOSE, ComputerSetupStep.DONE) ||
             (state.step == ComputerSetupStep.ADDRESS && (addingNew || args.edit)) ||
-            (checking && state.step in setOf(ComputerSetupStep.VERIFY, ComputerSetupStep.PREPARE))
+            // The computer is saved by then and stays in the list, where it can be checked again.
+            ((checking || addingNew) && state.step in setOf(ComputerSetupStep.VERIFY, ComputerSetupStep.PREPARE))
         if (first) nav.popBackStack() else vm.back()
     }
     BackHandler { back() }
     Scaffold(topBar = {
         Column {
-            TopAppBar(title = { Text(stringResource(R.string.im_computer_setup_title)) }, navigationIcon = {
+            // Checking or editing a known computer is about that computer, not connecting a new one.
+            TopAppBar(title = { Text(if (args.hostId != null) host?.name.orEmpty() else stringResource(R.string.im_computer_setup_title)) }, navigationIcon = {
                 IconButton(onClick = ::back, enabled = !state.busy) { Icon(HugeIcons.ArrowLeft01, stringResource(R.string.back)) }
             })
             LinearProgressIndicator(progress = { step.toFloat() / steps },
@@ -96,7 +98,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                     checking -> ComputerSetupStepLayout(
                         title = stringResource(R.string.im_computer_prepare), supporting = null,
                         state = state, onDismissError = vm::dismissError,
-                        primary = SetupAction(stringResource(R.string.im_computer_retry), enabled = state.error != null) {
+                        primary = SetupAction(stringResource(R.string.im_computer_retry)) {
                             vm.chooseHost(requireNotNull(args.hostId))
                         },
                     ) { SetupCard { SetupComputerRow(host) } }

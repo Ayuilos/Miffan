@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -193,9 +194,17 @@ class ComputerSetupVM(
         if (host.trustedHostKeySha256 == null) readFingerprint(host) else connectAndProbe(host.id)
     }
 
-    /** Generates a key in Miffan; the UI shows its public key for the user to authorize. */
-    fun createAppKey(onCreated: (SshKeyEntity) -> Unit) = run(ComputerSetupTask.CREATING_KEY) {
-        val taken = sshKeys.value.map { it.name }.toSet()
+    /**
+     * Generates a key in Miffan; the UI shows its public key for the user to authorize. With
+     * [reuseExisting] a key that already exists is used instead: [sshKeys] may not have loaded yet.
+     */
+    fun createAppKey(reuseExisting: Boolean = false, onCreated: (SshKeyEntity) -> Unit) = run(ComputerSetupTask.CREATING_KEY) {
+        val existing = workspaces.listSshKeysFlow().first()
+        if (reuseExisting && existing.isNotEmpty()) {
+            withContext(Dispatchers.Main) { onCreated(existing.first()) }
+            return@run
+        }
+        val taken = existing.map { it.name }.toSet()
         val name = generateSequence(1) { it + 1 }.map { if (it == 1) "Miffan" else "Miffan $it" }.first { it !in taken }
         val key = workspaces.generateSshKey(name)
         withContext(Dispatchers.Main) { onCreated(key) }

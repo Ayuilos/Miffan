@@ -210,7 +210,8 @@ fun ComputerDetailPage(hostId: String) {
         }
     }
     val current = computer
-    Scaffold(topBar = { ImPageBar(current?.name.orEmpty()) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    // The name heads the page itself.
+    Scaffold(topBar = { ImPageBar("") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         if (current == null) return@Scaffold
         val partners = current.partnerIds.mapNotNull { id -> assistants.find { it.id == id } }
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
@@ -269,9 +270,12 @@ fun ComputerDetailPage(hostId: String) {
             }
             item("manage") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
-                    DetailRow(stringResource(R.string.im_computer_detail_check), stringResource(R.string.im_computer_detail_check_help),
-                        enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId)) }
-                    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    // Without a screen, "set up the screen" above already runs the same check.
+                    if (current.screenEnabled) {
+                        DetailRow(stringResource(R.string.im_computer_detail_check), stringResource(R.string.im_computer_detail_check_help),
+                            enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId)) }
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    }
                     DetailRow(stringResource(R.string.im_computer_detail_connection), current.address, enabled = !busy) {
                         nav.navigate(Screen.ComputerSetup(hostId = hostId, edit = true))
                     }
@@ -356,7 +360,7 @@ private fun DetailRow(title: String, supporting: String?, enabled: Boolean, onCl
                 Text(title)
                 supporting?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
             Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

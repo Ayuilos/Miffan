@@ -2436,7 +2436,7 @@
   <string name="im_computers_screen_ready" tools:ignore="MissingTranslation">Screen ready</string>
   <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">Screen not set up</string>
   <string name="im_computers_used_by" tools:ignore="MissingTranslation">Used by %1$s</string>
-  <string name="im_computers_name_separator" tools:ignore="MissingTranslation">, </string>
+  <string name="im_computers_name_separator" tools:ignore="MissingTranslation">", "</string>
   <string name="im_computers_unused" tools:ignore="MissingTranslation">No partner uses it yet</string>
   <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">View screen</string>
   <string name="im_computer_detail_set_up_screen" tools:ignore="MissingTranslation">Set up the screen</string>
