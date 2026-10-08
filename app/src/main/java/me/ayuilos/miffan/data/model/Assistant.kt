@@ -57,6 +57,8 @@ data class Assistant(
     val workspacePermissionRevision: String = "legacy",
     /** The exact target for which persistent Shell confirmation was disabled. */
     val workspaceShellApprovalTarget: WorkspaceToolTargetSnapshot? = null,
+    /** Audit-only provenance; legacy target grants predate this distinction. */
+    val workspaceShellApprovalVia: me.rerere.ai.ui.ToolDecisionVia? = null,
     /** How the partner may operate the bound computer's desktop (cua-driver). */
     val computerUse: ComputerUseMode = ComputerUseMode.ASK,
     val background: String? = null, // 聊天页背景图地址(本地文件 URI 或网络 URL), 为 null 时无背景
@@ -141,6 +143,7 @@ fun Assistant.withWorkspaceShellEnabled(enabled: Boolean): Assistant =
 fun Assistant.withWorkspaceShellApproval(
     required: Boolean,
     target: WorkspaceToolTargetSnapshot? = null,
+    via: me.rerere.ai.ui.ToolDecisionVia = me.rerere.ai.ui.ToolDecisionVia.NO_ASK_SETTING,
 ): Assistant {
     if (required) return if (workspaceShellApprovalRequired) this else copy(
         workspaceShellApprovalRequired = true,
@@ -153,7 +156,7 @@ fun Assistant.withWorkspaceShellApproval(
         target.scopeId == workspaceScopeId?.toString() &&
         target.workspacePermissionRevision == workspacePermissionRevision
     ) { "A current Workspace target is required to skip Shell approval" }
-    return copy(workspaceShellApprovalRequired = false, workspaceShellApprovalTarget = target)
+    return copy(workspaceShellApprovalRequired = false, workspaceShellApprovalTarget = target, workspaceShellApprovalVia = via)
 }
 
 fun Assistant.requiresWorkspaceShellApproval(target: WorkspaceToolTargetSnapshot?): Boolean =

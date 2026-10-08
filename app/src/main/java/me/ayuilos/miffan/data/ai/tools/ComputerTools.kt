@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.tools
 
+import me.rerere.ai.ui.ToolDecisionVia
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -48,6 +49,11 @@ private val ACTION_TOOLS = setOf(
 
 /** Raising windows takes over what the user sees; always asks, like delivery_mode=foreground. */
 private val FOREGROUND_TOOLS = setOf("bring_to_front")
+
+internal fun computerAutoApprovedBy(name: String, args: JsonElement, approvalRequired: Boolean): ToolDecisionVia? =
+    if (name in ACTION_TOOLS && !approvalRequired &&
+        (args as? JsonObject)?.get("delivery_mode")?.jsonPrimitive?.contentOrNull != "foreground"
+    ) ToolDecisionVia.NO_ASK_SETTING else null
 
 /** Arguments the app supplies or that would make the driver write files on the remote side. */
 private fun isHiddenArgument(name: String) =
@@ -161,6 +167,9 @@ suspend fun createComputerTools(
                 parameters = { tool.toInputSchema() },
                 workspaceTarget = snapshot,
                 needsApproval = { args -> requiresApproval(tool.name, args) },
+                autoApprovedBy = { args ->
+                    computerAutoApprovedBy(tool.name, args, approvalRequired)
+                },
                 execute = { args ->
                     val arguments = withScreenshotCap(tool, args.jsonObject)
                     if (tool.name in OBSERVE_TOOLS) {

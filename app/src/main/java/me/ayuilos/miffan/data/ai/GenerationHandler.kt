@@ -1,5 +1,10 @@
 package me.ayuilos.miffan.data.ai
 
+import me.ayuilos.miffan.data.audit.AuditRepository
+import me.ayuilos.miffan.data.audit.waitForApproval
+import me.ayuilos.miffan.data.audit.recordAutomaticApproval
+import me.rerere.ai.ui.ToolDecision
+import me.rerere.ai.ui.recordDecision
 import me.ayuilos.miffan.data.revision.RevisionOrigin
 import me.ayuilos.miffan.data.revision.RevisionAuthor
 import me.ayuilos.miffan.data.model.MessageRef
@@ -81,6 +86,7 @@ class GenerationHandler(
     private val json: Json,
     private val memoryRepo: MemoryRepository,
     private val workspaceManager: WorkspaceManager,
+    private val auditRepository: AuditRepository,
 ) {
     fun generateText(
         settings: Settings,
@@ -229,8 +235,7 @@ class GenerationHandler(
                         toolDef?.needsApproval(tool.inputAsJson()) == true &&
                             tool.approvalState is ToolApprovalState.Auto -> {
                             hasPendingApproval = true
-                            tool.copy(
-                                approvalState = ToolApprovalState.Pending,
+                            tool.waitForApproval(Clock.System.now().toEpochMilliseconds()).copy(
                                 terminalRequestId = if (tool.toolName == "workspace_terminal") {
                                     java.util.UUID.randomUUID().toString()
                                 } else null,
@@ -276,7 +281,16 @@ class GenerationHandler(
 
             // Handle tools (execute approved tools, handle denied tools)
             val executedTools = arrayListOf<UIMessagePart.Tool>()
-            toolsToProcess.forEach { tool ->
+            toolsToProcess.forEach { originalTool ->
+                val definition = toolsInternal.find { it.name == originalTool.toolName }
+                val tool = originalTool.recordAutomaticApproval(definition, Clock.System.now().toEpochMilliseconds())
+                if (tool != originalTool) {
+                    messages = messages.dropLast(1) + messages.last().copy(parts = messages.last().parts.map {
+                        if (it === originalTool) tool else it
+                    })
+                    auditRepository.recordApproval(assistant.id, conversationId, messages.last().id, tool)
+                    emit(GenerationChunk.Messages(messages))
+                }
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
                         // Tool was denied by user

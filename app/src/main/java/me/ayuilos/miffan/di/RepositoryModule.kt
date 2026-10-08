@@ -37,6 +37,8 @@ import org.koin.dsl.module
 import java.io.File
 
 val repositoryModule = module {
+    single { me.ayuilos.miffan.data.audit.AuditRepository(get<AppDatabase>().auditDao(), get(), get()) }
+
     single { ModelCatalogRepository(get<Context>(), get(), get<AppScope>()) }
 
     single {
@@ -129,7 +131,10 @@ val repositoryModule = module {
 
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets) }
 
-    single { me.ayuilos.miffan.data.ai.computer.RemoteComputerControl() }
+    single {
+        val audit: me.ayuilos.miffan.data.audit.AuditRepository = get()
+        me.ayuilos.miffan.data.ai.computer.RemoteComputerControl(audit::recordScreen)
+    }
 
     single { me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry(get(), get<AppScope>()) }
     single { me.ayuilos.miffan.data.ai.computer.PartnerComputers(get(), get()) }

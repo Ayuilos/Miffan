@@ -1,5 +1,11 @@
 package me.ayuilos.miffan.service
 
+import kotlin.time.Clock
+import me.ayuilos.miffan.data.audit.AuditRepository
+import me.ayuilos.miffan.data.audit.recordCardDecision
+import me.rerere.ai.ui.ToolDecision
+import me.rerere.ai.ui.ToolDecisionVia
+import me.rerere.ai.ui.recordDecision
 import me.ayuilos.miffan.data.ai.tools.buildSelfConfigTools
 import android.app.Application
 import android.content.Context
@@ -189,7 +195,10 @@ internal fun Conversation.approvePendingWorkspaceShellTools(
                             } else workspaceToolTargetError(part, currentTarget?.copy(conversationId = id.toString()))
                             part.copy(approvalState = if (error == null) {
                                 ToolApprovalState.Approved
-                            } else ToolApprovalState.Denied(error))
+                            } else ToolApprovalState.Denied(error)).recordDecision(
+                                if (error == null) ToolDecision.ALLOWED else ToolDecision.DECLINED,
+                                ToolDecisionVia.ALWAYS_ALLOW, Clock.System.now().toEpochMilliseconds(),
+                            )
                         } else {
                             part
                         }
@@ -215,6 +224,7 @@ internal fun UIMessage.settleUnfinishedTools(repliedInChat: Boolean): UIMessage 
             )
         ),
         approvalState = ToolApprovalState.Denied(TOOL_REPLIED_IN_CHAT),
+        approvalRecord = tool.recordDecision(ToolDecision.REPLIED_IN_CHAT, ToolDecisionVia.CHAT_REPLY, Clock.System.now().toEpochMilliseconds()).approvalRecord,
     ) else tool.copy(
         output = listOf(
             UIMessagePart.Text(
@@ -222,6 +232,9 @@ internal fun UIMessage.settleUnfinishedTools(repliedInChat: Boolean): UIMessage 
             )
         ),
         approvalState = ToolApprovalState.Denied("Generation cancelled by user"),
+        approvalRecord = if (tool.isPending || tool.approvalRecord != null) tool.recordDecision(
+            ToolDecision.CANCELLED, ToolDecisionVia.STOP, Clock.System.now().toEpochMilliseconds(),
+        ).approvalRecord else null,
     )
 }.let { settled ->
     // The reply finished before the user answered; keep its place above their message.
@@ -374,6 +387,7 @@ class ChatService(
     private val extensionManagementService: ExtensionManagementService,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
+    private val auditRepository: AuditRepository,
     httpClient: OkHttpClient,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
@@ -751,6 +765,7 @@ class ChatService(
         approved: Boolean,
         reason: String = "",
         answer: String? = null,
+        via: ToolDecisionVia = ToolDecisionVia.CARD,
     ) {
         val receiptId = terminalResultReceiptId(answer)
         if (receiptId != null) {
@@ -772,13 +787,13 @@ class ChatService(
                     val call = session.state.value.currentMessageNodes.lastOrNull()?.currentMessage?.getTools()
                         ?.find { it.toolName == WORKSPACE_TERMINAL_TOOL_NAME && it.toolCallId == toolCallId && it.terminalRequestId == receiptId }
                     if (call?.isPending != true || call.isExecuted) return@launchWithConversationReference
-                    applyToolApproval(conversationId, toolCallId, approved, reason, answer)?.join()
+                    applyToolApproval(conversationId, toolCallId, approved, reason, answer, via)?.join()
                 } finally {
                     lock.unlock()
                 }
             }
         } else {
-            applyToolApproval(conversationId, toolCallId, approved, reason, answer)
+            applyToolApproval(conversationId, toolCallId, approved, reason, answer, via)
         }
     }
 
@@ -795,6 +810,7 @@ class ChatService(
         approved: Boolean,
         reason: String,
         answer: String?,
+        via: ToolDecisionVia,
     ): Job? {
         val session = getOrCreateSession(conversationId)
         val receiptId = terminalResultReceiptId(answer)
@@ -854,8 +870,10 @@ class ChatService(
                                                 "Workspace Shell was disabled after this call was created. Please request it again."
                                             } else workspaceToolTargetError(part, currentTarget)
                                         } else null
-                                        part.copy(approvalState = staleReason?.let { ToolApprovalState.Denied(it) }
-                                            ?: newApprovalState)
+                                        part.recordCardDecision(
+                                            staleReason?.let { ToolApprovalState.Denied(it) } ?: newApprovalState,
+                                            via, Clock.System.now().toEpochMilliseconds(),
+                                        )
                                     }
 
                                     else -> part
@@ -865,6 +883,7 @@ class ChatService(
                     )
                 }
                 val updatedConversation = conversation.copy(messageNodes = updatedNodes)
+                auditRepository.recordDecisions(updatedConversation, conversation)
                 saveConversation(conversationId, updatedConversation)
 
                 // Check if there are still pending tools
@@ -913,6 +932,7 @@ class ChatService(
                     currentTarget = target,
                     shellEnabled = assistant.workspaceShellEnabled,
                 )
+                auditRepository.recordDecisions(updatedConversation, conversation)
                 saveConversation(conversationId, updatedConversation)
 
                 if (!updatedConversation.hasPendingToolApprovals()) {
@@ -1261,6 +1281,7 @@ class ChatService(
             shellEnabled = assistant.workspaceShellEnabled,
             shellApprovalRequired = assistant.workspaceShellApprovalRequired,
             shellApprovalTarget = assistant.workspaceShellApprovalTarget,
+            shellApprovalVia = assistant.workspaceShellApprovalVia,
             workspaceRepository = workspaceRepository,
             cwd = cwd,
             conversationId = conversationId,
@@ -1289,6 +1310,7 @@ class ChatService(
         }
 
         val updatedConversation = currentConversation.updateMessage(lastMessage.id) { updatedMessage }
+        auditRepository.recordDecisions(updatedConversation, currentConversation)
         saveConversation(conversationId, updatedConversation)
     }
 
@@ -1894,7 +1916,7 @@ internal fun Settings.withWorkspaceShellAllowedFor(
             target.workspaceId == candidate.workspaceId?.toString() &&
             target.scopeId == candidate.workspaceScopeId?.toString()
         ) {
-            candidate.withWorkspaceShellApproval(required = false, target = target)
+            candidate.withWorkspaceShellApproval(required = false, target = target, via = ToolDecisionVia.STANDING_ALWAYS_ALLOW)
         } else {
             candidate
         }

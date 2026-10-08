@@ -71,6 +71,7 @@ val dataSourceModule = module {
                 Migration_27_28,
                 Migration_28_29,
                 Migration_29_30,
+                me.ayuilos.miffan.data.db.migrations.Migration_30_31,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
@@ -186,6 +187,7 @@ val dataSourceModule = module {
             json = get(),
             memoryRepo = get(),
             workspaceManager = get(),
+            auditRepository = get(),
         )
     }
 

@@ -9,7 +9,7 @@ import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 
 /** A model supplies only tool name/input. The app attaches this target after receiving the call. */
 internal fun captureWorkspaceToolTarget(call: UIMessagePart.Tool, definition: Tool?): UIMessagePart.Tool =
-    if (call.toolName in WORKSPACE_TOOL_NAMES) {
+    if (call.toolName in WORKSPACE_TOOL_NAMES || call.toolName.startsWith(COMPUTER_TOOL_PREFIX)) {
         call.copy(workspaceTarget = definition?.workspaceTarget)
     } else call
 
@@ -38,7 +38,7 @@ internal class WorkspaceToolTargetBinder(
         newToolCount = last.parts.drop(firstNewPartIndex).count { it is UIMessagePart.Tool }
         var changed = false
         val parts = last.parts.mapIndexed { index, part ->
-            if (index < firstNewPartIndex || part !is UIMessagePart.Tool || !part.toolName.startsWith("workspace_")) {
+            if (index < firstNewPartIndex || part !is UIMessagePart.Tool || (!part.toolName.startsWith("workspace_") && !part.toolName.startsWith(COMPUTER_TOOL_PREFIX))) {
                 part
             } else {
                 if (index !in capturedTargets && part.toolName in definitionsByName) {

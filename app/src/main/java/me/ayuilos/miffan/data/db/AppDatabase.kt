@@ -46,8 +46,9 @@ import me.ayuilos.miffan.utils.JsonInstant
         SshKeyEntity::class,
         FolderEntity::class,
         RevisionEntity::class,
+        me.ayuilos.miffan.data.db.entity.AuditEventEntity::class,
     ],
-    version = 30,
+    version = 31,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -90,6 +91,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sshKeyDao(): SshKeyDAO
 
     abstract fun folderDao(): FolderDAO
+
+    abstract fun auditDao(): me.ayuilos.miffan.data.db.dao.AuditDAO
 
     abstract fun revisionDao(): RevisionDAO
 }

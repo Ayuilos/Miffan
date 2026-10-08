@@ -83,6 +83,7 @@ internal fun Assistant.keepingPermissionsOf(current: Assistant): Assistant = cop
     workspaceShellApprovalRequired = current.workspaceShellApprovalRequired,
     workspacePermissionRevision = current.workspacePermissionRevision,
     workspaceShellApprovalTarget = current.workspaceShellApprovalTarget,
+    workspaceShellApprovalVia = current.workspaceShellApprovalVia,
 )
 
 /** Timeline notices for changes the assistant made itself (settings and memories). */

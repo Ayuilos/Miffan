@@ -234,8 +234,8 @@ class AgentThreadVM(
     }
 
     /** Approves or declines a tool call that waits for the user (for example turning on web search). */
-    fun answerToolApproval(item: TimelineItem.Message, toolCallId: String, approved: Boolean) {
-        viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved) }
+    fun answerToolApproval(item: TimelineItem.Message, toolCallId: String, approved: Boolean, via: me.rerere.ai.ui.ToolDecisionVia = me.rerere.ai.ui.ToolDecisionVia.CARD) {
+        viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved, via = via) }
     }
 
     /** Answers a tool call that asks the user a question. */

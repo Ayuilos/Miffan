@@ -103,6 +103,7 @@ val appModule = module {
             extensionManagementService = get(),
             workspaceRepository = get(),
             folderRepository = get(),
+            auditRepository = get(),
             httpClient = get(),
         )
     }

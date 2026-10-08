@@ -335,6 +335,7 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("net.sf.kxml:kxml2:2.3.0")

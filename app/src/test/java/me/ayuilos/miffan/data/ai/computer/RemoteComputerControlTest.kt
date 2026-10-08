@@ -7,6 +7,20 @@ import org.junit.Test
 
 class RemoteComputerControlTest {
     @Test
+    fun recordsOnlyRealUserTransitions() = runBlocking {
+        val events = mutableListOf<Pair<String, Boolean>>()
+        val control = RemoteComputerControl { host, taken -> events += host to taken }
+        control.userHandsBack("host")
+        control.userTakesOver("host")
+        control.userTakesOver("host")
+        control.userHandsBack("host")
+        control.userHandsBack("host")
+        control.partnerActs("host") { control.userTakesOver("host") }
+        control.userHandsBack("host")
+        assertEquals(listOf("host" to true, "host" to false, "host" to true, "host" to false), events)
+    }
+
+    @Test
     fun partnerIsMarkedWhileActingAndReleasedAfter() = runBlocking {
         val control = RemoteComputerControl()
         val seen = control.partnerActs("host") { control.controller("host") }

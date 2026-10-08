@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.tools
 
+import me.rerere.ai.ui.ToolDecisionVia
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -58,6 +59,7 @@ suspend fun createWorkspaceTools(
     workspaceRepository: WorkspaceRepository,
     cwd: String? = null,
     conversationId: String? = null,
+    shellApprovalVia: ToolDecisionVia? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
     val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
@@ -83,7 +85,10 @@ suspend fun createWorkspaceTools(
         add(createFetchUrlTool(workspaceId, scopeId, workspaceRepository, target))
         add(createPublishFilesTool(workspaceId, scopeId, workspaceRepository, target))
         if (shellEnabled) {
-            add(createShellTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, shellCwd, target))
+            add(createShellTool(workspaceId, scopeId, ::needsApproval, workspaceRepository, shellCwd, target).copy(autoApprovedBy = {
+                if (needsApproval(WORKSPACE_SHELL_TOOL_NAME)) null
+                else shellApprovalVia ?: ToolDecisionVia.STANDING_ALWAYS_ALLOW
+            }))
             if (workspace.isRemote && conversationId != null) add(createTerminalTool(snapshot, shellCwd))
         }
     }

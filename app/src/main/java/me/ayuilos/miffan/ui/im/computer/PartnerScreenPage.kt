@@ -123,7 +123,7 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
                     onApproval = { id, approved ->
                         // Allowing an action hands the desktop back to the partner.
                         if (approved) vm.handBackToPartner()
-                        thread.answerToolApproval(item, id, approved)
+                        thread.answerToolApproval(item, id, approved, via = me.rerere.ai.ui.ToolDecisionVia.PARTNER_SCREEN)
                     }, compact = true)
             }
             errors.lastOrNull()?.let { error ->

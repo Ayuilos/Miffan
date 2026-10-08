@@ -32,6 +32,7 @@ internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRe
                         workspaceShellApprovalRequired = previous.workspaceShellApprovalRequired,
                         workspacePermissionRevision = previous.workspacePermissionRevision,
                         workspaceShellApprovalTarget = previous.workspaceShellApprovalTarget,
+                        workspaceShellApprovalVia = previous.workspaceShellApprovalVia,
                         computerUse = previous.computerUse) != previous) add(ImRevisionChange(R.string.im_p5_other_settings))
             }
         }

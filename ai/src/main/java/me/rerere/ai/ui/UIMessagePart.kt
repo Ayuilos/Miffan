@@ -201,6 +201,7 @@ sealed class UIMessagePart {
         val workspaceTarget: WorkspaceToolTargetSnapshot? = null,
         // App-owned receipt for a user-run terminal command; never supplied by the model.
         val terminalRequestId: String? = null,
+        val approvalRecord: ToolApprovalRecord? = null,
         override var metadata: JsonObject? = null
     ) : UIMessagePart() {
         /** Whether the tool has been executed (has output) */
@@ -225,6 +226,7 @@ sealed class UIMessagePart {
                 output = output + other.output,
                 approvalState = approvalState,
                 workspaceTarget = workspaceTarget ?: other.workspaceTarget,
+                approvalRecord = approvalRecord ?: other.approvalRecord,
                 metadata = if (other.metadata != null) other.metadata else metadata,
             )
         }

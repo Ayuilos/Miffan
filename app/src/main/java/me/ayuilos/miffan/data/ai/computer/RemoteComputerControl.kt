@@ -13,7 +13,7 @@ enum class RemoteController { IDLE, PARTNER, USER }
  * tools). The user always wins: touching the screen while the partner acts hands control to
  * the user, and the partner's action tools refuse to run until the user hands it back.
  */
-class RemoteComputerControl {
+class RemoteComputerControl(private val onUserTransition: (String, Boolean) -> Unit = { _, _ -> }) {
     private val _states = MutableStateFlow<Map<String, RemoteController>>(emptyMap())
 
     /** Current controller per host id; absent means [RemoteController.IDLE]. */
@@ -22,11 +22,11 @@ class RemoteComputerControl {
     fun controller(hostId: String): RemoteController = _states.value[hostId] ?: RemoteController.IDLE
 
     /** The user touched the screen or typed while the partner was (or might be) acting. */
-    fun userTakesOver(hostId: String) = set(hostId, RemoteController.USER)
+    fun userTakesOver(hostId: String) = userTransition(hostId, true)
 
     /** The user pressed "hand back" or left the screen page. */
     fun userHandsBack(hostId: String) {
-        _states.update { if (it[hostId] == RemoteController.USER) it - hostId else it }
+        userTransition(hostId, false)
     }
 
     /**
@@ -50,7 +50,17 @@ class RemoteComputerControl {
         }
     }
 
-    private fun set(hostId: String, controller: RemoteController) {
-        _states.update { it + (hostId to controller) }
+    private fun userTransition(hostId: String, takeover: Boolean) {
+        while (true) {
+            val before = _states.value
+            if ((before[hostId] == RemoteController.USER) == takeover) return
+            val after = if (takeover) before + (hostId to RemoteController.USER) else before - hostId
+            if (_states.compareAndSet(before, after)) {
+                // Never emit inside StateFlow.update: its lambda may be retried.
+                runCatching { onUserTransition(hostId, takeover) }
+                    .onFailure { android.util.Log.w("RemoteComputerControl", "Audit callback failed", it) }
+                return
+            }
+        }
     }
 }

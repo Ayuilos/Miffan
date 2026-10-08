@@ -119,9 +119,9 @@ class ThreadService(
     }
 
     /** Approves, declines or answers a tool call waiting for the user, loading its segment first. */
-    suspend fun answerTool(assistantId: Uuid, segmentId: Uuid, toolCallId: String, approved: Boolean, answer: String? = null) {
+    suspend fun answerTool(assistantId: Uuid, segmentId: Uuid, toolCallId: String, approved: Boolean, answer: String? = null, via: me.rerere.ai.ui.ToolDecisionVia = me.rerere.ai.ui.ToolDecisionVia.CARD) {
         chatService.openThreadSegment(segmentId, assistantId)
-        chatService.handleToolApproval(segmentId, toolCallId, approved, answer = answer)
+        chatService.handleToolApproval(segmentId, toolCallId, approved, answer = answer, via = via)
     }
 
     suspend fun stop(segmentId: Uuid) = chatService.stopGeneration(segmentId)
