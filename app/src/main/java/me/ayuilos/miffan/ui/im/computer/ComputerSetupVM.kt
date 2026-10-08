@@ -12,12 +12,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.data.ai.computer.ComputerPermissions
+import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
@@ -25,8 +25,6 @@ import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
-import me.ayuilos.miffan.data.model.ComputerUseMode
-import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
@@ -89,6 +87,8 @@ data class ComputerSetupState(
     /** What the partner saw in the read-only check. */
     val partnerView: Bitmap? = null,
     val partnerChecked: Boolean = false,
+    /** The address step edits this host's saved connection details. */
+    val editing: Boolean = false,
 ) {
     val busy: Boolean get() = task != null
     val isMac: Boolean get() = probe?.os == "macos"
@@ -126,11 +126,16 @@ class ComputerSetupVM(
     private val screens: RemoteScreenRepository,
     private val registry: RemoteComputerRegistry,
     private val settingsStore: SettingsStore,
+    private val partnerComputers: PartnerComputers,
 ) : ViewModel() {
     /** The partner this setup is for; null when opened from "my computers". */
     val assistantId: Uuid? get() = args.assistantId
 
-    private val _state = MutableStateFlow(ComputerSetupState())
+    private val _state = MutableStateFlow(
+        if (args.hostId != null && args.edit) ComputerSetupState(
+            step = ComputerSetupStep.ADDRESS, hostId = args.hostId, editing = true,
+        ) else ComputerSetupState(),
+    )
     val state: StateFlow<ComputerSetupState> = _state.asStateFlow()
 
     /** Computers Miffan already knows; the user may pick one instead of adding a new one. */
@@ -154,6 +159,10 @@ class ComputerSetupVM(
 
     private var job: Job? = null
 
+    init {
+        if (args.hostId != null && !args.edit) chooseHost(args.hostId)
+    }
+
     /** The exact command [installCuaDriver] runs, for the confirmation dialog. */
     fun cuaInstallCommand(): String = RemoteScreenRepository.cuaDriverCommand(upgradePath())
 
@@ -164,7 +173,8 @@ class ComputerSetupVM(
         if (_state.value.busy) return
         _state.update {
             val previous = when (it.step) {
-                ComputerSetupStep.ADDRESS, ComputerSetupStep.VERIFY, ComputerSetupStep.PREPARE -> ComputerSetupStep.CHOOSE
+                ComputerSetupStep.ADDRESS, ComputerSetupStep.VERIFY, ComputerSetupStep.PREPARE ->
+                    if (it.editing) ComputerSetupStep.ADDRESS else ComputerSetupStep.CHOOSE
                 ComputerSetupStep.MAC_ACCOUNT -> ComputerSetupStep.PREPARE
                 ComputerSetupStep.TEST -> if (it.isMac) ComputerSetupStep.MAC_ACCOUNT else ComputerSetupStep.PREPARE
                 ComputerSetupStep.BIND -> ComputerSetupStep.TEST
@@ -198,14 +208,23 @@ class ComputerSetupVM(
      */
     fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?) =
         run(ComputerSetupTask.READING_FINGERPRINT) {
-            val host = when (auth) {
-                is ComputerSetupAuth.Password -> workspaces.createHost(name, address, port, username,
-                    authentication = RemoteAuthentication.Password(auth.value))
-                is ComputerSetupAuth.AppKey -> workspaces.createHost(name, address, port, username, sshKeyId = auth.keyId)
-                null -> TODO("data layer")
+            val host = if (_state.value.editing) {
+                val hostId = requireNotNull(_state.value.hostId)
+                check(workspaces.updateHost(hostId, name, address, port, username,
+                    authentication = (auth as? ComputerSetupAuth.Password)?.let { RemoteAuthentication.Password(it.value) },
+                    sshKeyId = (auth as? ComputerSetupAuth.AppKey)?.keyId,
+                )) { "Computer not found" }
+                requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" }
+            } else {
+                when (auth) {
+                    is ComputerSetupAuth.Password -> workspaces.createHost(name, address, port, username,
+                        authentication = RemoteAuthentication.Password(auth.value))
+                    is ComputerSetupAuth.AppKey -> workspaces.createHost(name, address, port, username, sshKeyId = auth.keyId)
+                    null -> error("Sign-in method required")
+                }
             }
             _state.update { it.copy(hostId = host.id) }
-            readFingerprint(host)
+            if (host.trustedHostKeySha256 == null) readFingerprint(host) else connectAndProbe(host.id)
         }
 
     /** Reads the fingerprint again, e.g. after the user compared it with the computer. */
@@ -294,18 +313,16 @@ class ComputerSetupVM(
      * Partners already bound to a workspace of the computer being set up; the bind step shows them as
      * already using it.
      */
-    val boundPartnerIds: StateFlow<Set<Uuid>> = MutableStateFlow(emptySet<Uuid>()).asStateFlow() // TODO data layer
+    val boundPartnerIds: StateFlow<Set<Uuid>> = combine(
+        settingsStore.settingsFlow, workspaces.listFlow(), _state,
+    ) { settings, list, state ->
+        val hostId = state.hostId ?: return@combine emptySet()
+        val workspaceIds = list.filter { it.isRemote && it.remoteHostId == hostId }.map { it.id }.toSet()
+        settings.assistants.filter { it.workspaceId?.toString() in workspaceIds }.map { it.id }.toSet()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
-    fun bind(assistantIds: Set<Uuid>): Unit = TODO("data layer")
-
-    private fun bindOld() = run(ComputerSetupTask.BINDING) {
-        val workspaceId = Uuid.parse(requireNotNull(_state.value.workspaceId))
-        settingsStore.update { settings ->
-            settings.copy(assistants = settings.assistants.map {
-                if (it.id != assistantId) it
-                else it.withWorkspaceBinding(workspaceId).copy(computerUse = ComputerUseMode.ASK)
-            })
-        }
+    fun bind(assistantIds: Set<Uuid>): Unit = run(ComputerSetupTask.BINDING) {
+        partnerComputers.bind(requireNotNull(_state.value.hostId), assistantIds)
         _state.update { it.copy(step = ComputerSetupStep.DONE) }
     }
 
@@ -322,18 +339,9 @@ class ComputerSetupVM(
     private suspend fun connectAndProbe(hostId: String) {
         _state.update { it.copy(task = ComputerSetupTask.CONNECTING) }
         check(workspaces.testHost(hostId)) { "Connection failed" }
-        val workspaceId = ensureWorkspace(currentHost())
+        val workspaceId = partnerComputers.ensureComputerWorkspace(hostId)
         _state.update { it.copy(workspaceId = workspaceId, step = ComputerSetupStep.PREPARE) }
         probe()
-    }
-
-    /** The host's first remote workspace, or a new one rooted at the account's home directory. */
-    private suspend fun ensureWorkspace(host: RemoteHostEntity): String {
-        workspaces.listFlow().first().firstOrNull { it.remoteHostId == host.id }?.let { return it.id }
-        val home = workspaces.remoteHome(host.id)
-        val name = generateSequence(1) { it + 1 }.map { if (it == 1) host.name else "${host.name} $it" }
-            .first { !workspaces.isNameTaken(it, null) }
-        return workspaces.createRemoteWorkspace(name, host.id, home).id
     }
 
     private suspend fun probe() {

@@ -49,7 +49,7 @@ val viewModelModule = module {
     viewModelOf(::ImSearchVM)
     viewModel<ImMemoryVM> { params -> ImMemoryVM(params.get(), get(), get(), get(), get()) }
     viewModel<ImRevisionVM> { params -> ImRevisionVM(params.get(), params.get(), get(), get(), get()) }
-    viewModel<ComputerSetupVM> { params -> ComputerSetupVM(params.get(), get(), get(), get(), get()) }
+    viewModel<ComputerSetupVM> { params -> ComputerSetupVM(params.get(), get(), get(), get(), get(), get()) }
     viewModel<ImPartnerVM> { params -> ImPartnerVM(params.get(), get(), get(), get(), get(), get(), get()) }
     viewModel<AgentThreadVM> { params ->
         AgentThreadVM(

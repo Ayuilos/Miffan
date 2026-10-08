@@ -3,9 +3,15 @@ package me.ayuilos.miffan.data.ai.computer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
+import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.ComputerUseMode
+import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import kotlin.uuid.Uuid
@@ -54,29 +60,97 @@ class PartnerComputers(
     private val workspaces: WorkspaceRepository,
 ) {
     /** Every remote host, sorted by name. */
-    fun observeAll(): Flow<List<KnownComputer>> = TODO("data layer")
+    fun observeAll(): Flow<List<KnownComputer>> = combine(
+        settingsStore.settingsFlow,
+        workspaces.listFlow(),
+        workspaces.listHostsFlow(),
+    ) { settings, workspaceList, hosts ->
+        hosts.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+            .map { knownComputer(it, workspaceList, settings.assistants) }
+    }.distinctUntilChanged()
 
     /** One remote host; null once it is deleted. */
-    fun observeComputer(hostId: String): Flow<KnownComputer?> = TODO("data layer")
+    fun observeComputer(hostId: String): Flow<KnownComputer?> = observeAll()
+        .map { computers -> computers.find { it.hostId == hostId } }
+        .distinctUntilChanged()
 
     /**
      * The workspace easy chat uses for [hostId], creating one rooted at the account's home
      * directory when the host has none (this connects over SSH).
      */
-    suspend fun ensureComputerWorkspace(hostId: String): String = TODO("data layer")
+    suspend fun ensureComputerWorkspace(hostId: String): String {
+        computerWorkspace(hostId, workspaces.listFlow().first(), settingsStore.settingsFlow.value.assistants)
+            ?.let { return it.id }
+        val host = requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" }
+        val home = workspaces.remoteHome(host.id)
+        val name = generateSequence(1) { it + 1 }.map { if (it == 1) host.name else "${host.name} $it" }
+            .first { !workspaces.isNameTaken(it, null) }
+        return workspaces.createRemoteWorkspace(name, host.id, home).id
+    }
 
     /**
      * Gives the computer to [assistantIds]: binds each to [ensureComputerWorkspace] with computer use
      * set to ask first. Partners already bound to a workspace of this host keep their binding and mode.
      */
-    suspend fun bind(hostId: String, assistantIds: Collection<Uuid>): Unit = TODO("data layer")
+    suspend fun bind(hostId: String, assistantIds: Collection<Uuid>): Unit {
+        if (assistantIds.isEmpty()) return
+        val workspaceId = Uuid.parse(ensureComputerWorkspace(hostId))
+        val hostWorkspaceIds = workspaces.listFlow().first()
+            .filter { it.isRemote && it.remoteHostId == hostId }.map { it.id }.toSet()
+        val selectedIds = assistantIds.toSet()
+        settingsStore.update { settings ->
+            settings.copy(assistants = settings.assistants.map { assistant ->
+                if (assistant.id !in selectedIds || assistant.workspaceId?.toString() in hostWorkspaceIds) assistant
+                else assistant.withWorkspaceBinding(workspaceId).copy(computerUse = ComputerUseMode.ASK)
+            })
+        }
+    }
 
     /**
      * Deletes the computer: its easy-chat workspace (unbinding the partners on it), then the host and
      * its saved credentials. Throws [ComputerHasWorkspacesException] without changing anything when the
      * host has other workspaces.
      */
-    suspend fun delete(hostId: String): Unit = TODO("data layer")
+    suspend fun delete(hostId: String): Unit {
+        val workspaceList = workspaces.listFlow().first()
+        val workspace = computerWorkspace(hostId, workspaceList, settingsStore.settingsFlow.value.assistants)
+        val otherCount = workspaceList.count { it.isRemote && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
+        if (otherCount > 0) throw ComputerHasWorkspacesException(otherCount)
+        workspace?.let { workspaces.delete(it.id) }
+        workspaces.deleteHost(hostId)
+    }
+
+    private fun computerWorkspace(
+        hostId: String,
+        workspaceList: List<WorkspaceEntity>,
+        assistants: List<Assistant>,
+    ): WorkspaceEntity? {
+        val partnerCounts = assistants.mapNotNull { it.workspaceId?.toString() }.groupingBy { it }.eachCount()
+        return workspaceList.filter { it.isRemote && it.remoteHostId == hostId }.minWithOrNull(
+            compareByDescending<WorkspaceEntity> { partnerCounts[it.id] ?: 0 }
+                .thenBy { it.createdAt }.thenBy { it.id },
+        )
+    }
+
+    private fun knownComputer(
+        host: RemoteHostEntity,
+        workspaceList: List<WorkspaceEntity>,
+        assistants: List<Assistant>,
+    ): KnownComputer {
+        val hostWorkspaces = workspaceList.filter { it.isRemote && it.remoteHostId == host.id }
+        val workspace = computerWorkspace(host.id, hostWorkspaces, assistants)
+        val workspaceIds = hostWorkspaces.map { it.id }.toSet()
+        return KnownComputer(
+            hostId = host.id,
+            name = host.name,
+            address = "${host.username}@${host.host}" + if (host.port != 22) ":${host.port}" else "",
+            platform = RemoteScreenPlatform.parse(host.screenPlatform),
+            screenEnabled = host.screenEnabled,
+            workspaceId = workspace?.id,
+            otherWorkspaceCount = hostWorkspaces.size - if (workspace != null) 1 else 0,
+            partnerIds = assistants.filter { it.workspaceId?.toString() in workspaceIds }.map { it.id },
+        )
+    }
 
     /** Null when the partner is unbound or bound to a local workspace. */
     fun observe(assistantId: Uuid): Flow<PartnerComputer?> = combine(
