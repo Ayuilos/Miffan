@@ -108,7 +108,7 @@ private fun ImRevisionEntry(revision: Revision, parent: Revision?, current: Bool
                 }
                 Text(stringResource(origin), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val labels = mutableListOf<String>()
-                for (change in changes) labels += if (change.detail == null) stringResource(change.label) else stringResource(change.label, change.detail)
+                for (change in changes) labels += change.text(standalone = false)
                 val text = if (labels.isNotEmpty()) labels.joinToString("、") else revision.summary.ifBlank { stringResource(origin) }
                 Text(text, style = MaterialTheme.typography.titleMedium)
                 Icon(if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -128,7 +128,7 @@ private fun ImRevisionEntry(revision: Revision, parent: Revision?, current: Bool
                     }
                     if (differences.isEmpty()) Text(stringResource(R.string.im_p5_diff_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else changes.forEach { change ->
-                    Text(if (change.detail == null) stringResource(R.string.im_p5_changed, stringResource(change.label)) else stringResource(change.label, change.detail),
+                    Text(change.text(standalone = true),
                         style = MaterialTheme.typography.bodyMedium)
                 }
                 if (!current) {
@@ -139,3 +139,20 @@ private fun ImRevisionEntry(revision: Revision, parent: Revision?, current: Bool
         }
     }
 }
+
+/**
+ * A plain label reads "Changed: X" on its own line ([standalone]); labels with an argument and
+ * whole-sentence labels read the same everywhere.
+ */
+@Composable
+private fun ImRevisionChange.text(standalone: Boolean): String = when {
+    detailRes != null -> stringResource(label, stringResource(detailRes))
+    detail != null -> stringResource(label, detail)
+    standalone && label !in sentenceLabels -> stringResource(R.string.im_p5_changed, stringResource(label))
+    else -> stringResource(label)
+}
+
+private val sentenceLabels = setOf(
+    R.string.im_revision_workspace_removed, R.string.im_revision_workspace_bound,
+    R.string.im_revision_shell_always, R.string.im_revision_shell_always_removed,
+)

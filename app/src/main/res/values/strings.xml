@@ -2373,4 +2373,15 @@
   <string name="notification_approval_computer" tools:ignore="MissingTranslation">On %1$s: %2$s</string>
   <string name="notification_approval_generic" tools:ignore="MissingTranslation">Use %1$s</string>
   <string name="notification_approval_more" tools:ignore="MissingTranslation">%1$s, and %2$d more</string>
+  <string name="im_revision_workspace_bound" tools:ignore="MissingTranslation">Connected a computer or workspace</string>
+  <string name="im_revision_workspace_removed" tools:ignore="MissingTranslation">Disconnected the computer</string>
+  <string name="im_revision_computer_use" tools:ignore="MissingTranslation">Computer control: %1$s</string>
+  <string name="im_revision_shell" tools:ignore="MissingTranslation">Run commands: %1$s</string>
+  <string name="im_revision_shell_ask" tools:ignore="MissingTranslation">Ask before commands: %1$s</string>
+  <string name="im_revision_shell_always" tools:ignore="MissingTranslation">Always allowed commands on this computer</string>
+  <string name="im_revision_shell_always_removed" tools:ignore="MissingTranslation">Stopped always allowing commands</string>
+  <string name="im_revision_allowed" tools:ignore="MissingTranslation">allowed</string>
+  <string name="im_revision_not_allowed" tools:ignore="MissingTranslation">not allowed</string>
+  <string name="im_revision_on" tools:ignore="MissingTranslation">on</string>
+  <string name="im_revision_off" tools:ignore="MissingTranslation">off</string>
 </resources>

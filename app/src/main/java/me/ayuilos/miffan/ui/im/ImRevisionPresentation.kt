@@ -1,10 +1,13 @@
 package me.ayuilos.miffan.ui.im
 
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.revision.*
 
-internal data class ImRevisionChange(val label: Int, val detail: String? = null)
+/** [label] is a whole sentence, or a format taking [detail] (or the string [detailRes]) as its argument. */
+internal data class ImRevisionChange(val label: Int, val detail: String? = null, val detailRes: Int? = null)
 internal data class ImDiffLine(val text: String, val added: Boolean)
 
 internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRevisionChange> {
@@ -20,9 +23,16 @@ internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRe
                 if (current.learnedPreferences != previous.learnedPreferences) add(ImRevisionChange(R.string.im_p5_preferences))
                 if (current.enableWebSearch != previous.enableWebSearch) add(ImRevisionChange(R.string.im_p5_web))
                 if (current.enableMemory != previous.enableMemory || current.useGlobalMemory != previous.useGlobalMemory) add(ImRevisionChange(R.string.im_p5_remember))
+                addAll(permissionChanges(previous, current))
                 if (current.copy(name = previous.name, avatar = previous.avatar, systemPrompt = previous.systemPrompt,
                         learnedPreferences = previous.learnedPreferences, enableWebSearch = previous.enableWebSearch,
-                        enableMemory = previous.enableMemory, useGlobalMemory = previous.useGlobalMemory) != previous) add(ImRevisionChange(R.string.im_p5_other_settings))
+                        enableMemory = previous.enableMemory, useGlobalMemory = previous.useGlobalMemory,
+                        workspaceId = previous.workspaceId, workspaceScopeId = previous.workspaceScopeId,
+                        workspaceShellEnabled = previous.workspaceShellEnabled,
+                        workspaceShellApprovalRequired = previous.workspaceShellApprovalRequired,
+                        workspacePermissionRevision = previous.workspacePermissionRevision,
+                        workspaceShellApprovalTarget = previous.workspaceShellApprovalTarget,
+                        computerUse = previous.computerUse) != previous) add(ImRevisionChange(R.string.im_p5_other_settings))
             }
         }
         RevisionSubject.MEMORY -> {
@@ -37,6 +47,24 @@ internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRe
             }
         }
     }
+}
+
+/** Permission changes are named one by one: the settings history is where they are audited. */
+private fun permissionChanges(previous: Assistant, current: Assistant): List<ImRevisionChange> = buildList {
+    if (current.workspaceId != previous.workspaceId) {
+        add(ImRevisionChange(if (current.workspaceId == null) R.string.im_revision_workspace_removed else R.string.im_revision_workspace_bound))
+    }
+    if (current.computerUse != previous.computerUse) add(ImRevisionChange(R.string.im_revision_computer_use, detailRes = when (current.computerUse) {
+        ComputerUseMode.ASK -> R.string.computer_use_mode_ask
+        ComputerUseMode.AUTO -> R.string.computer_use_mode_auto
+        ComputerUseMode.OFF -> R.string.computer_use_mode_off
+    }))
+    if (current.workspaceShellEnabled != previous.workspaceShellEnabled) add(ImRevisionChange(R.string.im_revision_shell,
+        detailRes = if (current.workspaceShellEnabled) R.string.im_revision_allowed else R.string.im_revision_not_allowed))
+    if (current.workspaceShellApprovalRequired != previous.workspaceShellApprovalRequired) add(ImRevisionChange(R.string.im_revision_shell_ask,
+        detailRes = if (current.workspaceShellApprovalRequired) R.string.im_revision_on else R.string.im_revision_off))
+    if (current.workspaceShellApprovalTarget != previous.workspaceShellApprovalTarget) add(ImRevisionChange(
+        if (current.workspaceShellApprovalTarget != null) R.string.im_revision_shell_always else R.string.im_revision_shell_always_removed))
 }
 
 /** Compare original prompt/preference lines and individual memory entries, retaining repeated lines. */

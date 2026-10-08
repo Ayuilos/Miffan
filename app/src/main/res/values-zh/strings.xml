@@ -2364,4 +2364,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="notification_approval_computer">在 %1$s 上：%2$s</string>
   <string name="notification_approval_generic">使用 %1$s</string>
   <string name="notification_approval_more">%1$s，另外还有 %2$d 项</string>
+  <string name="im_revision_workspace_bound">连接了电脑或工作区</string>
+  <string name="im_revision_workspace_removed">断开了电脑</string>
+  <string name="im_revision_computer_use">操作电脑：%1$s</string>
+  <string name="im_revision_shell">运行命令：%1$s</string>
+  <string name="im_revision_shell_ask">运行命令前询问：%1$s</string>
+  <string name="im_revision_shell_always">总是允许在这台电脑上运行命令</string>
+  <string name="im_revision_shell_always_removed">不再总是允许运行命令</string>
+  <string name="im_revision_allowed">允许</string>
+  <string name="im_revision_not_allowed">不允许</string>
+  <string name="im_revision_on">开</string>
+  <string name="im_revision_off">关</string>
 </resources>
