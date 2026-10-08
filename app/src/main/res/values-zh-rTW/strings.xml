@@ -1840,6 +1840,14 @@
   <string name="im_p5_history">歷史</string>
   <string name="im_p5_settings_history">設定歷史</string>
   <string name="im_p5_background">聊天背景</string>
+  <string name="im_background_plain">預設</string>
+  <string name="im_background_gradient">流動漸層</string>
+  <string name="im_background_image">圖片</string>
+  <string name="im_background_strength">圖片深淺</string>
+  <string name="im_background_change_image">換一張圖片</string>
+  <string name="im_background_preview_partner">今天過得怎麼樣？</string>
+  <string name="im_background_preview_user">幫我挑個好看的背景</string>
+  <string name="im_background_preview_reply">這張挺溫暖的，試試看吧。</string>
   <string name="im_p5_delete_chats">刪除聊天記錄</string>
   <string name="im_p5_delete_chats_confirm">刪除與這個伙伴的全部聊天記錄？此操作無法復原。</string>
   <string name="im_partner_delete">刪除夥伴</string>

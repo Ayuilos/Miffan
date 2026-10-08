@@ -1852,6 +1852,14 @@
   <string name="im_p5_history">History</string>
   <string name="im_p5_settings_history">Settings history</string>
   <string name="im_p5_background">Chat background</string>
+  <string name="im_background_plain">Plain</string>
+  <string name="im_background_gradient">Flowing</string>
+  <string name="im_background_image">Image</string>
+  <string name="im_background_strength">Image strength</string>
+  <string name="im_background_change_image">Choose another image</string>
+  <string name="im_background_preview_partner">How was your day?</string>
+  <string name="im_background_preview_user">Help me pick a nice background</string>
+  <string name="im_background_preview_reply">This one feels cosy, let\'s try it.</string>
   <string name="im_p5_delete_chats">Delete chat history</string>
   <string name="im_p5_delete_chats_confirm">Delete all chat history with this partner? This cannot be undone.</string>
   <string name="im_partner_delete">Delete partner</string>

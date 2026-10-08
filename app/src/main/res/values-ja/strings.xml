@@ -1842,6 +1842,14 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_history">履歴</string>
   <string name="im_p5_settings_history">設定の履歴</string>
   <string name="im_p5_background">チャットの背景</string>
+  <string name="im_background_plain">標準</string>
+  <string name="im_background_gradient">グラデーション</string>
+  <string name="im_background_image">画像</string>
+  <string name="im_background_strength">画像の濃さ</string>
+  <string name="im_background_change_image">別の画像を選ぶ</string>
+  <string name="im_background_preview_partner">今日はどうだった？</string>
+  <string name="im_background_preview_user">いい感じの背景を選んで</string>
+  <string name="im_background_preview_reply">これは温かみがあるね、試してみよう。</string>
   <string name="im_p5_delete_chats">チャット履歴を削除</string>
   <string name="im_p5_delete_chats_confirm">このパートナーとの履歴をすべて削除しますか？元に戻せません。</string>
   <string name="im_partner_delete">パートナーを削除</string>

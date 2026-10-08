@@ -92,6 +92,7 @@ import me.ayuilos.miffan.ui.im.ImOnboardingPage
 import me.ayuilos.miffan.ui.im.ImSearchPage
 import me.ayuilos.miffan.ui.im.ImMemoryPage
 import me.ayuilos.miffan.ui.im.ImApprovalHistoryPage
+import me.ayuilos.miffan.ui.im.ImChatBackgroundPage
 import me.ayuilos.miffan.ui.im.ImRevisionHistoryPage
 import me.ayuilos.miffan.ui.im.ImPartnerProfilePage
 import me.ayuilos.miffan.ui.im.ImChatRedirect
@@ -449,6 +450,7 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ComputerSetup> { key -> ComputerSetupPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ApprovalHistory> { key -> ImApprovalHistoryPage(Uuid.parse(key.assistantId)) }
+                            entry<Screen.ImChatBackground> { key -> ImChatBackgroundPage(key.assistantId) }
                             entry<Screen.Thread> { key ->
                                 AgentThreadPage(
                                     assistantId = Uuid.parse(key.assistantId),
@@ -761,6 +763,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class ApprovalHistory(val assistantId: String) : Screen
+
+    @Serializable
+    data class ImChatBackground(val assistantId: String) : Screen
 
     @Serializable
     data class Chat(

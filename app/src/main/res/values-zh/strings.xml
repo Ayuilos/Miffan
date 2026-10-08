@@ -1845,6 +1845,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_p5_history">历史</string>
   <string name="im_p5_settings_history">设定历史</string>
   <string name="im_p5_background">聊天背景</string>
+  <string name="im_background_plain">默认</string>
+  <string name="im_background_gradient">流动渐变</string>
+  <string name="im_background_image">图片</string>
+  <string name="im_background_strength">图片深浅</string>
+  <string name="im_background_change_image">换一张图片</string>
+  <string name="im_background_preview_partner">今天过得怎么样？</string>
+  <string name="im_background_preview_user">帮我挑个好看的背景</string>
+  <string name="im_background_preview_reply">这张挺温暖的，试试看吧。</string>
   <string name="im_p5_delete_chats">删除聊天记录</string>
   <string name="im_p5_delete_chats_confirm">删除与这个伙伴的全部聊天记录？此操作无法撤销。</string>
   <string name="im_partner_delete">删除伙伴</string>

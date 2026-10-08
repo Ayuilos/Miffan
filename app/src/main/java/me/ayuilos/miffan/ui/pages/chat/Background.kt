@@ -11,11 +11,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 
 @Composable
 fun AssistantBackground(setting: Settings, modifier: Modifier) {
-    val assistant = setting.getCurrentAssistant()
+    AssistantBackground(setting.getCurrentAssistant(), modifier)
+}
+
+/** The chat background [assistant] chose: a moving gradient, an image, or nothing. */
+@Composable
+fun AssistantBackground(assistant: Assistant, modifier: Modifier) {
     if (assistant.useGradientBackground) {
         MeshGradientBackground(modifier = modifier)
         return

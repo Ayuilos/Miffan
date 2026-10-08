@@ -1842,6 +1842,14 @@
   <string name="im_p5_history">История</string>
   <string name="im_p5_settings_history">История настроек</string>
   <string name="im_p5_background">Фон чата</string>
+  <string name="im_background_plain">Обычный</string>
+  <string name="im_background_gradient">Градиент</string>
+  <string name="im_background_image">Картинка</string>
+  <string name="im_background_strength">Насыщенность картинки</string>
+  <string name="im_background_change_image">Выбрать другую картинку</string>
+  <string name="im_background_preview_partner">Как прошёл день?</string>
+  <string name="im_background_preview_user">Помоги выбрать красивый фон</string>
+  <string name="im_background_preview_reply">Этот выглядит уютно, давай попробуем.</string>
   <string name="im_p5_delete_chats">Удалить историю чата</string>
   <string name="im_p5_delete_chats_confirm">Удалить всю переписку с партнёром? Отменить это нельзя.</string>
   <string name="im_partner_delete">Удалить партнёра</string>

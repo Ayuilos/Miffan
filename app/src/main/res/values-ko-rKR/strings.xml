@@ -1842,6 +1842,14 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_history">기록</string>
   <string name="im_p5_settings_history">설정 기록</string>
   <string name="im_p5_background">채팅 배경</string>
+  <string name="im_background_plain">기본</string>
+  <string name="im_background_gradient">흐르는 그라데이션</string>
+  <string name="im_background_image">이미지</string>
+  <string name="im_background_strength">이미지 진하기</string>
+  <string name="im_background_change_image">다른 이미지 선택</string>
+  <string name="im_background_preview_partner">오늘 하루 어땠어?</string>
+  <string name="im_background_preview_user">예쁜 배경 좀 골라 줘</string>
+  <string name="im_background_preview_reply">이거 따뜻한 느낌이야, 한번 써 봐.</string>
   <string name="im_p5_delete_chats">채팅 기록 삭제</string>
   <string name="im_p5_delete_chats_confirm">이 파트너와의 모든 대화를 삭제할까요? 되돌릴 수 없어요.</string>
   <string name="im_partner_delete">파트너 삭제</string>

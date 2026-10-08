@@ -52,6 +52,7 @@ import me.rerere.hugeicons.stroke.Filter
 import me.rerere.hugeicons.stroke.MoreHorizontal
 import me.rerere.hugeicons.stroke.Computer
 import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
+import me.ayuilos.miffan.ui.pages.chat.AssistantBackground
 import me.rerere.hugeicons.stroke.Reply
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.ui.context.LocalNavController
@@ -279,6 +280,7 @@ fun AgentThreadPage(
     CompositionLocalProvider(LocalThreadPartnerTransition provides ThreadPartnerTransition(this,
         handOff = welcome != null && welcomeDecided && status != null)) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
             if (welcomeDecided) {
