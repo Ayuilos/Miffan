@@ -1,11 +1,17 @@
 package me.ayuilos.miffan.ui.im.thread
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -83,7 +89,10 @@ internal fun ThreadWelcomeHero(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            ThreadWelcomeMascot(assistant, phase, Modifier.size(168.dp))
+            // The space stays while the partner is away in the status row, so the page does not jump.
+            Box(Modifier.size(168.dp)) {
+                ThreadPartnerHome(Modifier.fillMaxSize()) { modifier -> ThreadWelcomeMascot(assistant, phase, modifier) }
+            }
             AnimatedVisibility(historyHidden, exit = fadeOut() + shrinkVertically()) {
                 FilledTonalButton(onClick = onShowHistory, modifier = Modifier.padding(top = 20.dp)) {
                     Icon(HugeIcons.Clock02, null, Modifier.size(18.dp))
@@ -137,4 +146,41 @@ private fun threadLastChatTime(at: Instant): String {
     val date = at.atZone(ZoneId.systemDefault())
     val skeleton = if (date.year == now.atZone(ZoneId.systemDefault()).year) "MMMd" else "yMMMd"
     return date.format(DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton), locale))
+}
+
+/**
+ * While the thread welcomes the user back, the big partner and the avatar of the live status row are
+ * one character: when the partner starts working it flies from the welcome down to the status row,
+ * and returns when the work is done. [handOff] is true while the status row owns the character.
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+internal class ThreadPartnerTransition(val scope: SharedTransitionScope, val handOff: Boolean)
+
+internal val LocalThreadPartnerTransition = staticCompositionLocalOf<ThreadPartnerTransition?> { null }
+
+private const val PARTNER_ELEMENT = "thread-partner"
+
+/** The welcome's place for the partner; empty while the status row holds it. */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+internal fun ThreadPartnerHome(modifier: Modifier, content: @Composable (Modifier) -> Unit) {
+    val transition = LocalThreadPartnerTransition.current ?: return content(modifier)
+    AnimatedVisibility(!transition.handOff, modifier, enter = fadeIn(), exit = fadeOut()) {
+        with(transition.scope) {
+            content(Modifier.sharedElement(rememberSharedContentState(PARTNER_ELEMENT), this@AnimatedVisibility).fillMaxSize())
+        }
+    }
+}
+
+/** The status row's avatar; during a welcome it is the same character that left the welcome. */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+internal fun ThreadPartnerHandOff(modifier: Modifier, content: @Composable (Modifier) -> Unit) {
+    val transition = LocalThreadPartnerTransition.current?.takeIf { it.handOff } ?: return content(modifier)
+    val visible = remember { MutableTransitionState(false) }.apply { targetState = true }
+    AnimatedVisibility(visible, modifier, enter = fadeIn(), exit = fadeOut()) {
+        with(transition.scope) {
+            content(Modifier.sharedElement(rememberSharedContentState(PARTNER_ELEMENT), this@AnimatedVisibility).fillMaxSize())
+        }
+    }
 }

@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -61,6 +64,7 @@ import org.koin.core.parameter.parametersOf
 import java.time.Instant
 import kotlin.uuid.Uuid
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun AgentThreadPage(
     assistantId: Uuid,
@@ -257,8 +261,9 @@ fun AgentThreadPage(
                 onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
-                computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) })
-            is TimelineItem.Typing -> ThreadTyping()
+                computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
+                assistant = assistant)
+            is TimelineItem.Typing -> ThreadTyping(assistant)
             is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
                 onView = { viewingNotice = item.notice },
                 onUndo = {
@@ -269,6 +274,10 @@ fun AgentThreadPage(
         }
     }
     val welcome = welcomeAt()
+    SharedTransitionLayout {
+    // During a welcome the big partner moves into the live status row while the partner works.
+    CompositionLocalProvider(LocalThreadPartnerTransition provides ThreadPartnerTransition(this,
+        handOff = welcome != null && welcomeDecided && status != null)) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
@@ -378,5 +387,7 @@ fun AgentThreadPage(
             onClick = { highlighted = null; followLatest = true; scope.launch { scrollToLatest(animate = true) } },
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = bottomChrome + 8.dp))
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottomChrome))
+    }
+    }
     }
 }

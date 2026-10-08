@@ -15,6 +15,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
 import me.ayuilos.miffan.ui.components.message.ChatMessageToolStep
 import me.ayuilos.miffan.ui.components.message.ThinkingStep
 import me.ayuilos.miffan.ui.components.ui.ChainOfThought
@@ -126,5 +128,20 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
                 OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
             }
         }
+    }
+}
+
+/**
+ * What the partner is doing right now, outside any bubble: its avatar, animated for the phase, then
+ * the status. While the thread welcomes the user back, the big partner from the welcome flies here.
+ */
+@Composable
+internal fun ThreadLiveStatusRow(assistant: Assistant?, phase: AssistantGenerationPhase, @StringRes label: Int) {
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp, start = 2.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        ThreadPartnerHandOff(Modifier.size(32.dp)) { modifier ->
+            ThreadAvatar(assistant, phase.takeIf { it != AssistantGenerationPhase.None } ?: AssistantGenerationPhase.Waiting, modifier = modifier)
+        }
+        ThreadLiveStatus(label)
     }
 }

@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
 import me.ayuilos.miffan.ui.components.richtext.workspaceImageContext
 import me.ayuilos.miffan.ui.components.richtext.withWorkspaceImages
 import me.ayuilos.miffan.data.ai.tools.workspaceArtifacts
@@ -109,6 +110,7 @@ internal fun ThreadMessageBubble(
     onToolAnswer: (String, String) -> Unit = { _, _ -> },
     computer: PartnerComputer? = null,
     onComputerScreen: () -> Unit = {},
+    assistant: Assistant? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     val clipboard = LocalClipboard.current
@@ -140,8 +142,10 @@ internal fun ThreadMessageBubble(
         }
     }
     // A finished reply made only of process (thinking, tool calls) has nothing to show in easy mode.
-    if (!visible && status == null && evidence == null && item.quote == null) return
-    Row(Modifier.fillMaxWidth().padding(top = if (item.groupedWithPrevious) 4.dp else 16.dp),
+    // Progress ("thinking", "working on it") is not part of the reply; it gets its own line below.
+    val showBubble = visible || evidence != null || item.quote != null
+    if (!showBubble && status == null) return
+    if (showBubble) Row(Modifier.fillMaxWidth().padding(top = if (item.groupedWithPrevious) 4.dp else 16.dp),
         horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
         Box(Modifier.widthIn(max = threadBubbleMaxWidth())) {
             Surface(shape = RoundedCornerShape(20.dp),
@@ -186,7 +190,6 @@ internal fun ThreadMessageBubble(
                         else if (!item.streaming && evidence.tools.none { it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending })
                             ThreadComputerSummary(evidence, computerName, computerAvailable, onComputerScreen)
                     }
-                    status?.let { ThreadLiveStatus(it) }
                 }
             }
             val text = item.message.previewText()
@@ -208,6 +211,7 @@ internal fun ThreadMessageBubble(
             }
         }
     }
+    status?.let { ThreadLiveStatusRow(assistant, assistantGenerationPhase(item.message, loading = true), it) }
 }
 
 /** The single entry point for acting on a message: long press opens the same kind of sheet as professional mode. */
@@ -233,12 +237,8 @@ internal fun ThreadAction(icon: ImageVector, label: String, onClick: () -> Unit)
 }
 
 @Composable
-internal fun ThreadTyping() {
-    Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-            Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) { ThreadLiveStatus(R.string.im_thread_status_thinking) }
-        }
-    }
+internal fun ThreadTyping(assistant: Assistant?) {
+    ThreadLiveStatusRow(assistant, AssistantGenerationPhase.Waiting, R.string.im_thread_status_thinking)
 }
 
 @Composable
