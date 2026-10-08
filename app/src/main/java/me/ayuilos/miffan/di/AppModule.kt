@@ -76,6 +76,7 @@ val appModule = module {
     // createdAtStart 保证进程启动即订阅，否则后台生成的事件会因无订阅者而丢失
     single(createdAtStart = true) {
         ChatNotificationManager(
+            conversationRepo = get(),
             context = get(),
             appScope = get(),
             eventBus = get(),

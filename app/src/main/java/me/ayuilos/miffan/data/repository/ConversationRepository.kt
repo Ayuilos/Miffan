@@ -299,6 +299,11 @@ class ConversationRepository(
             }
         }
 
+    /** Observe persisted approval changes/deletion, never the per-token in-memory stream. */
+    fun observeConversation(uuid: Uuid): Flow<Conversation?> = database.invalidationTracker
+        .createFlow("conversationentity", "message_node")
+        .map { database.withTransaction { getConversationById(uuid) } }
+
     suspend fun getConversationById(uuid: Uuid): Conversation? {
         val entity = conversationDAO.getConversationById(uuid.toString())
         return if (entity != null) {

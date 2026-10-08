@@ -16,7 +16,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.PartnerComputer
 import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
 import me.ayuilos.miffan.ui.components.message.ComputerToolStatus
-import me.ayuilos.miffan.ui.components.message.computerActionTitle
+import me.ayuilos.miffan.utils.computerActionTitle
 import me.ayuilos.miffan.ui.components.message.computerToolNeedsForegroundWarning
 import me.ayuilos.miffan.ui.components.message.computerToolStatus
 import me.ayuilos.miffan.ui.components.message.tools.DefaultToolPreview

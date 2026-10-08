@@ -2351,4 +2351,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_disconnect_confirm">연결 해제</string>
   <string name="chat_message_tool_replied_in_chat">실행 안 됨: 채팅에서 대신 답변했어요</string>
   <string name="terminal_command_title_replied_in_chat">실행 안 됨: 채팅에서 답변했어요</string>
+  <string name="notification_channel_approval">확인을 기다려요</string>
+  <string name="notification_approval_title">%1$s이(가) 허락을 기다려요</string>
+  <string name="notification_approval_shell">명령 실행: %1$s</string>
+  <string name="notification_approval_computer">%1$s에서: %2$s</string>
+  <string name="notification_approval_generic">%1$s 사용</string>
+  <string name="notification_approval_more">%1$s 외 %2$d개</string>
 </resources>

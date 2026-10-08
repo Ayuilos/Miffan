@@ -2349,4 +2349,10 @@
   <string name="im_computer_disconnect_confirm">中斷連線</string>
   <string name="chat_message_tool_replied_in_chat">未執行：你改在聊天中回覆了</string>
   <string name="terminal_command_title_replied_in_chat">未執行：你在聊天中回覆了</string>
+  <string name="notification_channel_approval">等你確認</string>
+  <string name="notification_approval_title">%1$s 需要你的允許</string>
+  <string name="notification_approval_shell">執行指令：%1$s</string>
+  <string name="notification_approval_computer">在 %1$s 上：%2$s</string>
+  <string name="notification_approval_generic">使用 %1$s</string>
+  <string name="notification_approval_more">%1$s，另外還有 %2$d 項</string>
 </resources>

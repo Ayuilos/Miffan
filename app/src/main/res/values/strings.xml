@@ -2367,4 +2367,10 @@
   <string name="im_computer_disconnect_confirm" tools:ignore="MissingTranslation">Disconnect</string>
   <string name="chat_message_tool_replied_in_chat" tools:ignore="MissingTranslation">Not run: you replied in chat instead</string>
   <string name="terminal_command_title_replied_in_chat" tools:ignore="MissingTranslation">Not run: you replied in chat</string>
+  <string name="notification_channel_approval" tools:ignore="MissingTranslation">Waiting for your OK</string>
+  <string name="notification_approval_title" tools:ignore="MissingTranslation">%1$s needs your OK</string>
+  <string name="notification_approval_shell" tools:ignore="MissingTranslation">Run command: %1$s</string>
+  <string name="notification_approval_computer" tools:ignore="MissingTranslation">On %1$s: %2$s</string>
+  <string name="notification_approval_generic" tools:ignore="MissingTranslation">Use %1$s</string>
+  <string name="notification_approval_more" tools:ignore="MissingTranslation">%1$s, and %2$d more</string>
 </resources>

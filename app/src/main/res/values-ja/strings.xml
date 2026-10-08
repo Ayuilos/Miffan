@@ -2351,4 +2351,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_disconnect_confirm">切断</string>
   <string name="chat_message_tool_replied_in_chat">未実行：チャットで返信しました</string>
   <string name="terminal_command_title_replied_in_chat">未実行：チャットで返信しました</string>
+  <string name="notification_channel_approval">確認待ち</string>
+  <string name="notification_approval_title">%1$s が許可を求めています</string>
+  <string name="notification_approval_shell">コマンドを実行：%1$s</string>
+  <string name="notification_approval_computer">%1$s で：%2$s</string>
+  <string name="notification_approval_generic">%1$s を使用</string>
+  <string name="notification_approval_more">%1$s、ほか %2$d 件</string>
 </resources>

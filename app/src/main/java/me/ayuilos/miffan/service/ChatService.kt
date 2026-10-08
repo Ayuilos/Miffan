@@ -942,7 +942,7 @@ class ChatService(
         val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
             ?: error(context.getString(R.string.chat_page_select_model_first))
 
-        val senderName = if (assistant.useAssistantAvatar) {
+        val senderName = if (settings.isImMode || assistant.useAssistantAvatar) {
             assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
         } else {
             model.displayName
@@ -1116,7 +1116,7 @@ class ChatService(
                         )
                     }
                 },
-            ).onCompletion {
+            ).onCompletion { cause ->
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
                     messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
@@ -1125,16 +1125,18 @@ class ChatService(
                     updateAt = Instant.now()
                 )
                 updateConversation(conversationId, updatedConversation)
-
-                // 生成结束：取消 Live Update 通知，后台时发送完成通知
-                appEventBus.emit(
-                    AppEvent.ChatGenerationEnded(
-                        conversationId = conversationId,
-                        senderName = senderName,
-                        contentPreview = updatedConversation.currentMessages.lastOrNull()
-                            ?.toText()?.take(50)?.trim() ?: "",
+                if (cause == null) {
+                    // Observe only persisted approvals, outside the streaming hot path.
+                    saveConversation(conversationId, updatedConversation)
+                    appEventBus.emit(
+                        AppEvent.ChatGenerationEnded(
+                            conversationId = conversationId,
+                            senderName = senderName,
+                            contentPreview = updatedConversation.currentMessages.lastOrNull()?.toText()?.take(50)?.trim() ?: "",
+                            pendingApprovals = updatedConversation.pendingApprovalTools(),
+                        )
                     )
-                )
+                }
             }.collect { chunk ->
                 when (chunk) {
                     is GenerationChunk.Messages -> {
@@ -1165,8 +1167,6 @@ class ChatService(
             Logging.log(TAG, it.stackTraceToString())
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
-            saveConversation(conversationId, finalConversation)
-
             currentCoroutineContext().ensureActive()
             finalConversation.completedAssistantReplyId(initialConversation)?.let { messageId ->
                 _assistantReplyCompleted.tryEmit(

@@ -2358,4 +2358,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_disconnect_confirm">断开</string>
   <string name="chat_message_tool_replied_in_chat">未执行：你在聊天里回复了</string>
   <string name="terminal_command_title_replied_in_chat">未运行：你在聊天里回复了</string>
+  <string name="notification_channel_approval">等你确认</string>
+  <string name="notification_approval_title">%1$s 需要你的允许</string>
+  <string name="notification_approval_shell">运行命令：%1$s</string>
+  <string name="notification_approval_computer">在 %1$s 上：%2$s</string>
+  <string name="notification_approval_generic">使用 %1$s</string>
+  <string name="notification_approval_more">%1$s，另外还有 %2$d 项</string>
 </resources>

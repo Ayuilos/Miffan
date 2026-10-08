@@ -2351,4 +2351,10 @@
   <string name="im_computer_disconnect_confirm">Отключить</string>
   <string name="chat_message_tool_replied_in_chat">Не выполнено: вы ответили в чате</string>
   <string name="terminal_command_title_replied_in_chat">Не выполнено: вы ответили в чате</string>
+  <string name="notification_channel_approval">Ждём вашего разрешения</string>
+  <string name="notification_approval_title">%1$s ждёт вашего разрешения</string>
+  <string name="notification_approval_shell">Выполнить команду: %1$s</string>
+  <string name="notification_approval_computer">На %1$s: %2$s</string>
+  <string name="notification_approval_generic">Использовать %1$s</string>
+  <string name="notification_approval_more">%1$s и ещё %2$d</string>
 </resources>

@@ -9,12 +9,17 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.AppScope
+import me.ayuilos.miffan.CHAT_APPROVAL_NOTIFICATION_CHANNEL_ID
 import me.ayuilos.miffan.CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID
 import me.ayuilos.miffan.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.ayuilos.miffan.R
@@ -24,7 +29,7 @@ import me.ayuilos.miffan.data.event.AppEvent
 import me.ayuilos.miffan.data.event.AppEventBus
 import me.ayuilos.miffan.utils.cancelNotification
 import me.ayuilos.miffan.utils.sendNotification
-import java.util.concurrent.ConcurrentHashMap
+import me.ayuilos.miffan.data.repository.ConversationRepository
 import kotlin.uuid.Uuid
 
 // Live Update 通知节流间隔：流式输出每个chunk都会触发一次更新，
@@ -37,27 +42,40 @@ private const val LIVE_UPDATE_NOTIFICATION_THROTTLE_MS = 1000L
  */
 class ChatNotificationManager(
     private val context: Application,
-    appScope: AppScope,
+    private val appScope: AppScope,
+    private val conversationRepo: ConversationRepository,
     eventBus: AppEventBus,
     private val settingsStore: SettingsStore,
 ) {
     private val isForeground = MutableStateFlow(false)
-    private val liveUpdateLastSentAt = ConcurrentHashMap<Uuid, Long>()
+    private val liveUpdateLastSentAt = mutableMapOf<Uuid, Long>()
+    // Accessed only on AppScope's main dispatcher, including lifecycle callbacks.
+    private val liveUpdates = linkedMapOf<Uuid, AppEvent.ChatGenerationUpdate>()
+    private val approvalObservers = mutableMapOf<Uuid, Job>()
 
     init {
         // ProcessLifecycleOwner 要求在主线程注册观察者
         appScope.launch {
-            ProcessLifecycleOwner.get().lifecycle.addObserver(
+            val lifecycle = ProcessLifecycleOwner.get().lifecycle
+            isForeground.value = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            lifecycle.addObserver(
                 LifecycleEventObserver { _, event ->
                     when (event) {
                         Lifecycle.Event.ON_START -> isForeground.value = true
-                        Lifecycle.Event.ON_STOP -> isForeground.value = false
+                        Lifecycle.Event.ON_STOP -> {
+                            isForeground.value = false
+                            // A tool/network pause may produce no new chunks after the app is hidden.
+                            liveUpdates.values.lastOrNull()?.let { update ->
+                                liveUpdateLastSentAt.remove(update.conversationId)
+                                handleGenerationUpdate(update)
+                            }
+                        }
                         else -> {}
                     }
                 }
             )
         }
-        appScope.launch(Dispatchers.Default) {
+        appScope.launch {
             eventBus.events.collect { event ->
                 when (event) {
                     is AppEvent.ChatGenerationUpdate -> handleGenerationUpdate(event)
@@ -69,6 +87,7 @@ class ChatNotificationManager(
     }
 
     private fun handleGenerationUpdate(event: AppEvent.ChatGenerationUpdate) {
+        liveUpdates[event.conversationId] = event
         if (isForeground.value) return
         val displaySetting = settingsStore.settingsFlow.value.displaySetting
         if (!displaySetting.enableNotificationOnMessageGeneration) return
@@ -85,10 +104,49 @@ class ChatNotificationManager(
     private fun handleGenerationEnded(event: AppEvent.ChatGenerationEnded) {
         cancelLiveUpdateNotification(event.conversationId)
 
+        if (event.pendingApprovals.isNotEmpty()) {
+            observeApprovalNotification(event.conversationId, event.senderName)
+            return
+        }
+        cancelApprovalNotification(event.conversationId)
         val contentPreview = event.contentPreview ?: return
         if (isForeground.value) return
         if (!settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration) return
         sendGenerationDoneNotification(event.conversationId, event.senderName, contentPreview)
+    }
+
+    private fun observeApprovalNotification(conversationId: Uuid, senderName: String) {
+        approvalObservers.remove(conversationId)?.cancel()
+        val job = appScope.launch(start = CoroutineStart.LAZY) {
+            // Read the persisted state, not an old event payload: an answer may already have arrived.
+            combine(
+                conversationRepo.observeConversation(conversationId)
+                    .map { it?.pendingApprovalTools().orEmpty() }.distinctUntilChanged(),
+                isForeground,
+            ) { tools, foreground -> tools to foreground }.collect { (tools, foreground) ->
+                val summary = approvalNotificationSummary(tools) { id, args -> context.getString(id, *args.toTypedArray()) }
+                if (summary == null) {
+                    cancelApprovalNotification(conversationId)
+                } else if (!foreground) {
+                    context.sendNotification(CHAT_APPROVAL_NOTIFICATION_CHANNEL_ID, approvalNotificationId(conversationId)) {
+                        title = context.getString(R.string.notification_approval_title, senderName)
+                        content = summary
+                        autoCancel = true
+                        onlyAlertOnce = true
+                        useDefaults = true
+                        category = NotificationCompat.CATEGORY_MESSAGE
+                        contentIntent = getPendingIntent(context, conversationId)
+                    }
+                }
+            }
+        }
+        approvalObservers[conversationId] = job
+        job.start()
+    }
+
+    private fun cancelApprovalNotification(conversationId: Uuid) {
+        approvalObservers.remove(conversationId)?.cancel()
+        context.cancelNotification(approvalNotificationId(conversationId))
     }
 
     private fun sendGenerationDoneNotification(
@@ -179,9 +237,14 @@ class ChatNotificationManager(
     }
 
     private fun cancelLiveUpdateNotification(conversationId: Uuid) {
+        liveUpdates.remove(conversationId)
         liveUpdateLastSentAt.remove(conversationId)
         // 前台服务持有通知时系统会保留它；启动失败时则清理普通 ongoing 通知。
         context.cancelNotification(ChatGenerationForegroundService.NOTIFICATION_ID)
+        liveUpdates.values.lastOrNull()?.let { remaining ->
+            liveUpdateLastSentAt.remove(remaining.conversationId)
+            handleGenerationUpdate(remaining)
+        }
     }
 
     private fun getPendingIntent(context: Context, conversationId: Uuid): PendingIntent {

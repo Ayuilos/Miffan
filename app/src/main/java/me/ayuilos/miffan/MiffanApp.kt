@@ -48,6 +48,7 @@ import org.koin.core.context.startKoin
 
 private const val TAG = "MiffanApp"
 
+const val CHAT_APPROVAL_NOTIFICATION_CHANNEL_ID = "chat_approval"
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
@@ -266,6 +267,13 @@ class MiffanApp : Application() {
             .setVibrationEnabled(true)
             .build()
         notificationManager.createNotificationChannel(chatCompletedChannel)
+
+        notificationManager.createNotificationChannel(
+            NotificationChannelCompat.Builder(CHAT_APPROVAL_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
+                .setName(getString(R.string.notification_channel_approval))
+                .setVibrationEnabled(true)
+                .build()
+        )
 
         val chatLiveUpdateChannel = NotificationChannelCompat
             .Builder(

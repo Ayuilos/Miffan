@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.event
 
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
 
 sealed class AppEvent {
@@ -29,5 +30,6 @@ sealed class AppEvent {
         val conversationId: Uuid,
         val senderName: String,
         val contentPreview: String?,
+        val pendingApprovals: List<UIMessagePart.Tool> = emptyList(),
     ) : AppEvent()
 }
