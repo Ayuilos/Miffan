@@ -56,6 +56,8 @@ import dev.chrisbanes.haze.blur.material3.Material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.components.ui.EdgeBlurScrim
+import me.ayuilos.miffan.ui.components.ui.EdgeScrimPosition
 import me.ayuilos.miffan.ui.components.ui.GlassShadow
 import me.ayuilos.miffan.ui.hooks.rememberIsPlayStoreVersion
 import me.rerere.hugeicons.HugeIcons
@@ -109,6 +111,9 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     ImTab.ME -> ImMeTab(vm, contentPadding, availableUpdate)
                 }
             }
+            // Lists scroll under the transparent status bar; the fade stays inside the titles' top padding.
+            EdgeBlurScrim(hazeState, EdgeScrimPosition.Top, innerPadding.calculateTopPadding() + 8.dp,
+                Modifier.align(Alignment.TopCenter))
             ImFloatingTabBar(
                 selected = tab,
                 onSelect = { tab = it },
