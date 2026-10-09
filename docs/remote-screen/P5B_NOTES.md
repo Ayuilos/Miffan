@@ -72,3 +72,17 @@ ci、daily-build、release 均在 Gradle 前安装 NDK 28.2.13676358/CMake 3.22.
 本次补充测试覆盖 DER/PEM 摘要区别、GNOME/KDE 首次与复用返回同一指纹、非自有配置无指纹、损坏证书拒绝、旧 helper 缺失字段、非法指纹拒绝、已有 pin 优先、Connected 前不写入、失败/取消不写入，以及数据库并发确认和 SSH revision 的保护。仓库端到端 instrumentation 已更新为断言首次自动固定，再验证正确 pin 重连及错误 pin 不被覆盖；本次不重启或改动远端 GNOME 服务，完整界面流程由 Claude 接续验收。
 
 追加验证通过：`./gradlew test` 全模块 JVM 测试（App 667 项，零失败），App Kotlin/debug APK/androidTest APK 构建，`sh -n` 与 helper 隔离夹具，以及 emulator-5560 上匹配 APK 的 Room 三项测试（含首次 pin 条件写入）。未修改 ui/ 或文案文件；自动固定接口与证书变化后的用户确认接口分离。
+
+## 界面联调后追加：活动屏幕立即重连
+
+Claude 在 GNOME 真机服务 + emulator-5560 的界面联调确认首次画面、`Miffan UI` + Return、NLA/AVC420/硬件解码统计成功。随后发现已连接时菜单 Reconnect 先 close 再 open 会报 JSch `session is down`，失败页 Retry 则成功。
+
+关闭租约没有销毁父 SSH，池也会剔除已断开的会话。问题在 `RemoteChannelStream.close` 同步调用 JSch `channel.disconnect()`：它不是纯本地关闭，会发送 SSH CLOSE 包。Android 主线程禁止网络时，JSch 会在发送失败后静默吞掉异常；编码已推进的密码状态令随后复用的 SSH 失效。本地真实 JSch/Apache SSHD 夹具在 socket 输出层模拟这项网络禁令，旧关闭实现后下一条命令失败，新实现连续立即重开成功。依据：[JSch Channel.close/disconnect](https://github.com/mwiede/jsch/blob/jsch-2.28.7/src/main/java/com/jcraft/jsch/Channel.java)、[Session._write 的 encode/put 顺序](https://github.com/mwiede/jsch/blob/jsch-2.28.7/src/main/java/com/jcraft/jsch/Session.java)。远端 sshd 检查未发现协议错误记录，不能单凭服务端日志排除此客户端故障。
+
+修复只改传输层：raw channel 和 PTY 的 close 立即标记对象关闭，真正发送 CLOSE、关闭 input/output/errors 在独立 SupervisorJob + Dispatchers.IO 中完成，不受已取消的屏幕 scope 影响。没有关闭父 SSH、没有修改租约/池策略、没有自动重试请求、没有在 UI 添加延迟。RDP/VNC 都使用这一条原始 SSH 通道清理路径。
+
+VNC 对照使用本地完整 RFB 3.8/None 握手，经实际 SSH direct-tcpip 连续三次 Connected→主线程 close→立即重新打开与执行命令，通过。临时恢复旧同步通道关闭时，此 VNC 夹具同样通过，未复现 RDP 的稳定故障；VNC 的 reader/writer 协程取消可能先从 IO 发起 shutdown，不能据此断言 VNC 在所有调度下都有或都没有同样问题。共用修复保证调用主线程不再发送 CLOSE/EOF，保留 VNC 行为。
+
+Android instrumentation 使用原 P5b 手机内测试公钥和临时 host/workspace，并断言各轮复用同一个 SSH 对象，经 SSH cat channel 完成五次主线程 StrictMode detectNetwork + penaltyDeathOnNetwork 下 close→立即 execute/open，全部通过；只测试共用 SSH 关闭/池复用，不代替完整 RDP 界面验收。未运行 helper rdp start、未改远端桌面、钱包、密码或 TLS 文件。测试后清理临时数据库对象，界面主机和原证书 pin 保留。
+
+追加回归构建：`./gradlew test :app:assembleDebug :app:assembleDebugAndroidTest` 通过；App 667 项、workspace 179 项（SSH 传输测试 15 项，含两项新用例）零失败。emulator-5560 已安装本次 debug APK；完整 RDP 菜单 Reconnect 由 Claude 接续复测。

@@ -26,6 +26,10 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** Credentials are supplied by the caller when a session opens; do not persist them in this module. */
 sealed interface RemoteAuthentication {
@@ -651,12 +655,7 @@ class RemoteTerminalSession internal constructor(
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
-            try {
-                channel.disconnect()
-            } finally {
-                runCatching { input.close() }
-                runCatching { output.close() }
-            }
+            closeSshChannelOnIo(channel, input, output)
         }
     }
 }
@@ -675,12 +674,25 @@ class RemoteChannelStream internal constructor(
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
-            try {
-                channel.disconnect()
-            } finally {
-                runCatching { input.close() }
-                runCatching { output.close() }
-            }
+            closeSshChannelOnIo(channel, input, output, errors)
+        }
+    }
+}
+
+private val sshChannelCleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+/**
+ * JSch disconnect sends SSH CLOSE, and OutputStream.close may send EOF. A main-thread
+ * network exception is swallowed by JSch after packet encoding has advanced cipher state,
+ * leaving the shared SSH session unusable. Logical closure above is immediate; all network
+ * cleanup runs on IO, independently of the cancelled viewer/terminal scope.
+ */
+private fun closeSshChannelOnIo(channel: Channel, input: InputStream, output: OutputStream, errors: InputStream? = null) {
+    sshChannelCleanup.launch {
+        try { channel.disconnect() } finally {
+            runCatching { input.close() }
+            runCatching { output.close() }
+            runCatching { errors?.close() }
         }
     }
 }
