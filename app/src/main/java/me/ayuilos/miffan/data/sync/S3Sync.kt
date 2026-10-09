@@ -11,6 +11,7 @@ import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.files.FileFolders
 import me.ayuilos.miffan.data.files.SkillPaths
 import me.ayuilos.miffan.data.datastore.Settings
+import kotlinx.coroutines.flow.first
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.withoutProviderSecrets
 import me.ayuilos.miffan.data.datastore.migration.SettingsJsonMigrator
@@ -124,8 +125,9 @@ class S3Sync(
             addVirtualFileToZip(
                 zipOut = zipOut,
                 name = "settings.json",
-                content = json.encodeToString(
-                    settingsStore.settingsFlow.value.withoutProviderSecrets()
+                content = json.encodeBackupSettings(
+                    settingsStore.settingsFlow.value.withoutProviderSecrets(),
+                    settingsStore.launchCountFlow.first(),
                 )
             )
 
@@ -211,7 +213,7 @@ class S3Sync(
                             try {
                                 val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
                                 val settings = json.decodeFromString<Settings>(migratedJson)
-                                withContext(RevisionOrigin(RevisionAuthor.BACKUP)) { settingsStore.update(settings) }
+                                withContext(RevisionOrigin(RevisionAuthor.BACKUP)) { settingsStore.restoreSettings(settings, json.backupLaunchCount(migratedJson)) }
                                 Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
                             } catch (e: Exception) {
                                 Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)

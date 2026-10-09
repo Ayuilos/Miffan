@@ -472,7 +472,8 @@ private fun ChatListNormal(
                                 node = node,
                                 branchIndex = conversation.getSiblings(node.id).indexOfFirst { it.id == node.id },
                                 branchCount = conversation.getSiblings(node.id).size,
-                                model = node.currentMessage.modelId?.let(modelById::get),
+                                model = node.currentMessage.modelId?.let(modelById::get)
+                                    ?: node.currentMessage.snapshotModel(),
                                 assistant = assistant,
                                 loading = loading && index == lastMessageIndex,
                                 mascotState = if (index == lastMessageIndex) {

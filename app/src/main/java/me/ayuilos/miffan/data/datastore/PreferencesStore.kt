@@ -14,8 +14,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import io.pebbletemplates.pebble.PebbleEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.sync.Mutex
@@ -217,14 +220,18 @@ class SettingsStore(
     private val assistantRevisions by lazy { runCatching { get<AssistantRevisionRecorder>() }.getOrNull() }
     private val providerSecretCipher = ProviderSecretCipher()
 
-    val settingsFlowRaw = dataStore.data
+    private val preferencesFlow = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
             } else {
                 throw exception
             }
-        }.map { preferences ->
+        }
+
+    val settingsFlowRaw = preferencesFlow
+        .distinctUntilChanged { old, new -> old.asMap() - LAUNCH_COUNT == new.asMap() - LAUNCH_COUNT }
+        .map { preferences ->
             val (searchServicesJson, searchServiceSelected) = dropRemovedSearchServices(
                 services = preferences[SEARCH_SERVICES]?.let { JsonInstant.parseToJsonElement(it).jsonArray }
                     ?: JsonArray(emptyList()),
@@ -324,7 +331,6 @@ class SettingsStore(
                 backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
-                launchCount = preferences[LAUNCH_COUNT] ?: 0,
             )
         }
         .map {
@@ -433,9 +439,18 @@ class SettingsStore(
         .onEach {
             get<PebbleEngine>().templateCache.invalidateAll()
         }
+        // 整份设置的 JSON 解码很重，收集方多在主线程，不能让它们各自在自己的线程上解码
+        .flowOn(Dispatchers.Default)
+
+    // 启动次数每次启动都会变，不放进 Settings，否则刚进入应用所有读取设置的界面就要重组一遍
+    val launchCountFlow: Flow<Int> = preferencesFlow
+        .map { preferences -> preferences[LAUNCH_COUNT] ?: 0 }
+        .distinctUntilChanged()
 
     val settingsFlow = settingsFlowRaw
         .distinctUntilChanged()
+        // 整份设置的比较也留在后台线程
+        .flowOn(Dispatchers.Default)
         .toMutableStateFlow(scope, Settings.dummy())
 
     suspend fun update(settings: Settings) {
@@ -444,7 +459,7 @@ class SettingsStore(
         }
     }
 
-    private suspend fun updateUnlocked(settings: Settings): Boolean {
+    private suspend fun updateUnlocked(settings: Settings, launchCount: Int? = null): Boolean {
         if (settings.init) {
             Log.w(TAG, "Cannot update dummy settings")
             return false
@@ -517,7 +532,7 @@ class SettingsStore(
             preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
             preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
-            preferences[LAUNCH_COUNT] = settings.launchCount
+            if (launchCount != null) preferences[LAUNCH_COUNT] = launchCount
         }
         // Publish only after DataStore has committed successfully. This prevents observers from
         // seeing a configuration that is later rolled back because persistence failed.
@@ -540,6 +555,23 @@ class SettingsStore(
             if (current != expected) return@withLock false
             updateUnlocked(fn(current))
         }
+    }
+
+    suspend fun incrementLaunchCount(): Int {
+        var count = 0
+        dataStore.edit { preferences ->
+            count = (preferences[LAUNCH_COUNT] ?: 0) + 1
+            preferences[LAUNCH_COUNT] = count
+        }
+        return count
+    }
+
+    suspend fun restoreSettings(settings: Settings, launchCount: Int) {
+        updateMutex.withLock { updateUnlocked(settings, launchCount) }
+    }
+
+    suspend fun setLaunchCount(count: Int) {
+        dataStore.edit { preferences -> preferences[LAUNCH_COUNT] = count }
     }
 
     suspend fun updateAssistant(assistantId: Uuid) {
@@ -684,7 +716,6 @@ data class Settings(
     val webServerAccessPassword: String = "",
     val webServerLocalhostOnly: Boolean = false,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
-    val launchCount: Int = 0,
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

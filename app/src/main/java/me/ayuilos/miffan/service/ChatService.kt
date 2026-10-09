@@ -123,6 +123,7 @@ import me.ayuilos.miffan.utils.toLocalString
 import java.time.LocalDate
 import me.ayuilos.miffan.data.model.recentChatsReferenceEnabled
 import me.ayuilos.miffan.data.thread.ThreadContext
+import me.ayuilos.miffan.data.model.fillModelSnapshots
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.ComputerUseMode
@@ -1663,7 +1664,7 @@ class ChatService(
             return // 新会话且为空时不保存
         }
 
-        val updatedConversation = conversation.copy()
+        val updatedConversation = conversation.fillModelSnapshots(settingsStore.settingsFlow.first { !it.init })
         updateConversation(conversationId, updatedConversation)
 
         if (!exists) {
@@ -1743,6 +1744,8 @@ class ChatService(
         val editedMessage = UIMessage(
             role = sourceNode.role,
             parts = processedParts,
+            modelId = sourceNode.message.modelId,
+            modelSnapshot = sourceNode.message.modelSnapshot,
         )
         val editedNode = MessageNode(
             message = editedMessage,

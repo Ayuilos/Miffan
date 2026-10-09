@@ -7,6 +7,8 @@ import kotlinx.serialization.Transient
 import me.ayuilos.miffan.data.datastore.DEFAULT_ASSISTANT_ID
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.ModelSnapshot
+import me.ayuilos.miffan.data.datastore.Settings
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.util.InstantSerializer
 import java.time.Instant
@@ -326,4 +328,17 @@ private fun UIMessagePart.fileUri(): Uri? = when (this) {
     is UIMessagePart.Video -> url.takeIf { it.startsWith("file://") }?.toUri()
     is UIMessagePart.Audio -> url.takeIf { it.startsWith("file://") }?.toUri()
     else -> null
+}
+
+/** Fill snapshots across every branch when saving, without changing the conversation tree. */
+fun Conversation.fillModelSnapshots(settings: Settings): Conversation {
+    val models = settings.providers.flatMap { it.models }.associateBy { it.id }
+    val nodes = messageNodes.map { node ->
+        val message = node.message
+        val model = message.modelId?.let(models::get)
+        if (message.modelSnapshot != null || model == null) node else node.withMessage(
+            message.copy(modelSnapshot = ModelSnapshot(modelId = model.modelId, displayName = model.displayName))
+        )
+    }
+    return if (nodes == messageNodes) this else copy(messageNodes = nodes)
 }
