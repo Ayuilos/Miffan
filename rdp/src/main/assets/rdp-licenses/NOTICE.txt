@@ -1,0 +1,5 @@
+Miffan RDP includes FreeRDP / WinPR 3.32.1 and OpenSSL 3.5.9,
+licensed under the Apache License 2.0. See the accompanying license files.
+FreeRDP: https://www.freerdp.com/ and https://github.com/FreeRDP/FreeRDP
+OpenSSL: https://www.openssl.org/
+The native bridge is maintained by Miffan. No FreeRDP client UI is included.

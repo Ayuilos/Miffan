@@ -1,0 +1,25 @@
+--- a/libfreerdp/codec/h264_mediacodec.c
++++ b/libfreerdp/codec/h264_mediacodec.c
+@@ -22,0 +23,4 @@
++#include <winpr/sysinfo.h>
++
++/* Supplied by the JNI owner; all decoding runs on its session thread. */
++extern BOOL miffan_rdp_decode_cancelled(void);
+@@ -280,0 +285 @@
++	const UINT64 deadline = GetTickCount64() + 5000;
+@@ -285,0 +291,2 @@
++			if (miffan_rdp_decode_cancelled() || GetTickCount64() >= deadline)
++				return -1;
+@@ -287 +294 @@
+-			const ssize_t inputBufferId = AMediaCodec_dequeueInputBuffer(sys->decoder, -1);
++			const ssize_t inputBufferId = AMediaCodec_dequeueInputBuffer(sys->decoder, 100000);
+@@ -292 +299,2 @@
+-				// TODO: sleep?
++				if (inputBufferId != AMEDIACODEC_INFO_TRY_AGAIN_LATER)
++					return -1;
+@@ -326,0 +335,2 @@
++			if (miffan_rdp_decode_cancelled() || GetTickCount64() >= deadline)
++				return -1;
+@@ -328 +338 @@
+-			ssize_t outputBufferId = AMediaCodec_dequeueOutputBuffer(sys->decoder, &bufferInfo, -1);
++			ssize_t outputBufferId = AMediaCodec_dequeueOutputBuffer(sys->decoder, &bufferInfo, 100000);
