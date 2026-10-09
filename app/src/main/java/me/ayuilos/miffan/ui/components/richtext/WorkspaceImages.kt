@@ -82,7 +82,7 @@ fun embeddedWorkspaceImagePaths(text: String, context: WorkspaceImageContext?): 
 class WorkspaceImageFetcher(
     private val uri: coil3.Uri,
     private val options: Options,
-    private val workspaces: WorkspaceRepository,
+    private val workspaces: () -> WorkspaceRepository,
     private val cacheDir: File,
 ) : Fetcher {
     override suspend fun fetch(): FetchResult = withContext(Dispatchers.IO) {
@@ -96,7 +96,7 @@ class WorkspaceImageFetcher(
             val partial = File(cacheDir, file.name + ".part")
             try {
                 partial.outputStream().use { out ->
-                    workspaces.exportRootfsArtifact(workspaceId, path, LimitedOutputStream(out, MAX_WORKSPACE_IMAGE_BYTES), scopeId)
+                    workspaces().exportRootfsArtifact(workspaceId, path, LimitedOutputStream(out, MAX_WORKSPACE_IMAGE_BYTES), scopeId)
                 }
                 check(partial.renameTo(file)) { "Could not cache $path" }
             } finally {
@@ -110,7 +110,8 @@ class WorkspaceImageFetcher(
         )
     }
 
-    class Factory(private val workspaces: WorkspaceRepository, private val cacheDir: File) : Fetcher.Factory<coil3.Uri> {
+    // Resolve the repository inside fetch() on IO, only for an uncached workspace image.
+    class Factory(private val workspaces: () -> WorkspaceRepository, private val cacheDir: File) : Fetcher.Factory<coil3.Uri> {
         override fun create(data: coil3.Uri, options: Options, imageLoader: ImageLoader): Fetcher? =
             if (data.scheme == WORKSPACE_IMAGE_SCHEME) WorkspaceImageFetcher(data, options, workspaces, cacheDir) else null
     }

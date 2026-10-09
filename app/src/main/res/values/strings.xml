@@ -2157,6 +2157,36 @@
   <string name="workspace_screen_mode_direct" tools:ignore="MissingTranslation">Direct touch mode; switch to touchpad</string>
   <string name="workspace_screen_keyboard" tools:ignore="MissingTranslation">Toggle keyboard</string>
   <string name="workspace_screen_actions" tools:ignore="MissingTranslation">Screen actions</string>
+  <string name="workspace_screen_help" tools:ignore="MissingTranslation">How to use</string>
+  <string name="workspace_screen_help_direct_tab" tools:ignore="MissingTranslation">Direct touch</string>
+  <string name="workspace_screen_help_trackpad_tab" tools:ignore="MissingTranslation">Touchpad</string>
+  <string name="workspace_screen_help_direct_intro" tools:ignore="MissingTranslation">Wherever you touch is where you act on the computer\'s screen.</string>
+  <string name="workspace_screen_help_trackpad_intro" tools:ignore="MissingTranslation">Use the phone like a laptop touchpad: a pointer is shown on the screen, and your finger moves the pointer.</string>
+  <string name="workspace_screen_help_switch_mode" tools:ignore="MissingTranslation">Switch between direct touch and touchpad with the mode button at the top.</string>
+  <string name="workspace_screen_help_tap" tools:ignore="MissingTranslation">Tap</string>
+  <string name="workspace_screen_help_click" tools:ignore="MissingTranslation">Click</string>
+  <string name="workspace_screen_help_double_tap" tools:ignore="MissingTranslation">Double-tap</string>
+  <string name="workspace_screen_help_double_click" tools:ignore="MissingTranslation">Double-click</string>
+  <string name="workspace_screen_help_long_press" tools:ignore="MissingTranslation">Touch and hold</string>
+  <string name="workspace_screen_help_right_click" tools:ignore="MissingTranslation">Right-click</string>
+  <string name="workspace_screen_help_long_press_drag" tools:ignore="MissingTranslation">Touch, hold and drag</string>
+  <string name="workspace_screen_help_drag" tools:ignore="MissingTranslation">Drag, to select text or move a window</string>
+  <string name="workspace_screen_help_one_finger_slide" tools:ignore="MissingTranslation">Slide one finger</string>
+  <string name="workspace_screen_help_move_pointer" tools:ignore="MissingTranslation">Move the pointer</string>
+  <string name="workspace_screen_help_double_tap_drag" tools:ignore="MissingTranslation">Double-tap and drag on the second tap</string>
+  <string name="workspace_screen_help_two_finger_tap" tools:ignore="MissingTranslation">Tap with two fingers</string>
+  <string name="workspace_screen_help_two_finger_slide" tools:ignore="MissingTranslation">Slide two fingers</string>
+  <string name="workspace_screen_help_scroll" tools:ignore="MissingTranslation">Scroll</string>
+  <string name="workspace_screen_help_pinch" tools:ignore="MissingTranslation">Pinch in or out</string>
+  <string name="workspace_screen_help_zoom_mac" tools:ignore="MissingTranslation">Zoom out or in on the Mac (⌘− / ⌘+)</string>
+  <string name="workspace_screen_help_zoom_other" tools:ignore="MissingTranslation">Zoom out or in on the computer (Ctrl− / Ctrl+)</string>
+  <string name="workspace_screen_help_mission_control" tools:ignore="MissingTranslation">Mission Control</string>
+  <string name="workspace_screen_help_app_windows" tools:ignore="MissingTranslation">Show all windows of the current app</string>
+  <string name="workspace_screen_help_zoom_buttons" tools:ignore="MissingTranslation">+ and − in the corner</string>
+  <string name="workspace_screen_help_view_zoom_direct" tools:ignore="MissingTranslation">Enlarge or shrink the picture on your phone; when enlarged, drag one finger to look around</string>
+  <string name="workspace_screen_help_view_zoom_trackpad" tools:ignore="MissingTranslation">Enlarge or shrink the picture on your phone; when enlarged, the view follows the pointer</string>
+  <string name="workspace_screen_view_zoom_in" tools:ignore="MissingTranslation">Enlarge view</string>
+  <string name="workspace_screen_view_zoom_out" tools:ignore="MissingTranslation">Shrink view</string>
   <string name="workspace_screen_fps_saver" tools:ignore="MissingTranslation">Data saver · 5 fps</string>
   <string name="workspace_screen_fps_standard" tools:ignore="MissingTranslation">Standard · 10 fps</string>
   <string name="workspace_screen_fps_smooth" tools:ignore="MissingTranslation">Smooth · 20 fps</string>
@@ -2473,4 +2503,11 @@
   <string name="im_computer_save_continue" tools:ignore="MissingTranslation">Save and check</string>
   <string name="im_computer_retry" tools:ignore="MissingTranslation">Retry</string>
   <string name="im_computer_open_details" tools:ignore="MissingTranslation">Computer details</string>
+  <string name="workspace_screen_desktop_left">Desktop on the left</string>
+  <string name="workspace_screen_desktop_right">Desktop on the right</string>
+  <string name="workspace_screen_mac_controls">Desktops and windows</string>
+  <string name="workspace_screen_desktop_short">Desktop</string>
+  <string name="workspace_screen_app_windows_short">App windows</string>
+  <string name="workspace_screen_help_mac_controls">Desktop button in the corner</string>
+  <string name="workspace_screen_help_mac_controls_action">Switch desktops, open Mission Control or show the current app\'s windows, like a four-finger swipe on a Mac trackpad</string>
 </resources>

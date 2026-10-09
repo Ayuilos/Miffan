@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.edit
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,10 +46,10 @@ import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 import me.ayuilos.miffan.utils.fileSizeToString
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.Keyboard
 import me.rerere.hugeicons.stroke.MoreVertical
-import me.rerere.hugeicons.stroke.Mouse01
+import me.rerere.hugeicons.stroke.Touch01
+import me.rerere.hugeicons.stroke.Touchpad01
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -102,8 +104,20 @@ internal fun RemoteScreenScaffold(
     var trackpad by rememberSaveable { mutableStateOf(false) }
     var keyboard by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var help by remember { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable { mutableStateOf(false) }
     val connected = state is RemoteScreenUiState.Connected
+    val macOS = platform == RemoteScreenPlatform.MACOS
+    // Each input mode explains its gestures once, the first time it is used on a live screen.
+    LaunchedEffect(connected, trackpad) {
+        if (!connected) return@LaunchedEffect
+        val hints = context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE)
+        val key = if (trackpad) "help_seen_trackpad" else "help_seen_direct"
+        if (!hints.getBoolean(key, false)) {
+            hints.edit { putBoolean(key, true) }
+            help = true
+        }
+    }
 
     RemoteScreenVisibility(vm)
     BackHandler { if (keyboard) keyboard = false else onBack() }
@@ -152,7 +166,7 @@ internal fun RemoteScreenScaffold(
                 navigationIcon = { BackButton(onClick = onBack) },
                 actions = {
                     IconButton(enabled = connected, onClick = { trackpad = !trackpad }) {
-                        Icon(if (trackpad) HugeIcons.Mouse01 else HugeIcons.Computer,
+                        Icon(if (trackpad) HugeIcons.Touchpad01 else HugeIcons.Touch01,
                             contentDescription = stringResource(if (trackpad) R.string.workspace_screen_mode_trackpad else R.string.workspace_screen_mode_direct),
                             tint = if (trackpad) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -171,6 +185,8 @@ internal fun RemoteScreenScaffold(
                                     trailingIcon = { if (fps == value) Text("✓") },
                                     onClick = { vm.setMaxFps(value); menu = false })
                             }
+                            DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_help)) },
+                                onClick = { menu = false; help = true })
                             DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_reconnect)) },
                                 onClick = { menu = false; vm.reconnect() })
                             DropdownMenuItem(text = { Text(settingsLabel) },
@@ -197,8 +213,12 @@ internal fun RemoteScreenScaffold(
                 RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
             }
-            if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = platform == RemoteScreenPlatform.MACOS)
+            if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = macOS)
             bottom()
         }
     }
+    if (help) RemoteScreenGestureHelp(trackpad = trackpad, macOS = macOS, onDismiss = { help = false })
 }
+
+private const val SCREEN_HINTS = "remote_screen_hints"
+

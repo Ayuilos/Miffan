@@ -79,6 +79,7 @@ internal fun ThreadWelcomeHero(
     phase: AssistantGenerationPhase,
     historyHidden: Boolean,
     fill: Boolean,
+    partnerGone: Boolean,
     onShowHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -89,9 +90,12 @@ internal fun ThreadWelcomeHero(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // The space stays while the partner is away in the status row, so the page does not jump.
-            Box(Modifier.size(168.dp)) {
-                ThreadPartnerHome(Modifier.fillMaxSize()) { modifier -> ThreadWelcomeMascot(assistant, phase, modifier) }
+            // The space stays while the partner works in the status row, so the page does not jump, and
+            // closes once that work is done: the partner has joined the conversation.
+            AnimatedVisibility(!partnerGone, exit = fadeOut() + shrinkVertically()) {
+                Box(Modifier.size(168.dp)) {
+                    ThreadPartnerHome(Modifier.fillMaxSize()) { modifier -> ThreadWelcomeMascot(assistant, phase, modifier) }
+                }
             }
             AnimatedVisibility(historyHidden, exit = fadeOut() + shrinkVertically()) {
                 FilledTonalButton(onClick = onShowHistory, modifier = Modifier.padding(top = 20.dp)) {
@@ -150,8 +154,8 @@ private fun threadLastChatTime(at: Instant): String {
 
 /**
  * While the thread welcomes the user back, the big partner and the avatar of the live status row are
- * one character: when the partner starts working it flies from the welcome down to the status row,
- * and returns when the work is done. [handOff] is true while the status row owns the character.
+ * one character: when the partner starts working it flies from the welcome down to the status row and
+ * does not return. [handOff] stays true from then on, so the welcome's place for it stays empty.
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal class ThreadPartnerTransition(val scope: SharedTransitionScope, val handOff: Boolean)

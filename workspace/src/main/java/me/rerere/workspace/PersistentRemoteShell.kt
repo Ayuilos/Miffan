@@ -29,6 +29,7 @@ class PersistentRemoteShell(
     private class Invocation(val onOutput: suspend (ByteArray) -> Unit) {
         val protocol = PersistentShellProtocol(UUID.randomUUID().toString().replace("-", ""))
         val completed = CompletableDeferred<Int>()
+        val started = CompletableDeferred<Unit>()
         val ready = Channel<Unit>(Channel.CONFLATED)
         private val captured = ByteArrayOutputStream()
         private var truncated = false
@@ -61,6 +62,7 @@ class PersistentRemoteShell(
                     val invocation = active ?: continue
                     val chunk = invocation.protocol.feed(buffer.copyOf(count))
                     if (chunk.ready) invocation.ready.trySend(Unit)
+                    if (chunk.started) invocation.started.complete(Unit)
                     if (chunk.output.isNotEmpty()) {
                         invocation.append(chunk.output)
                         invocation.onOutput(chunk.output)
@@ -103,6 +105,9 @@ class PersistentRemoteShell(
             }
             runInterruptible(Dispatchers.IO) { write(invocation.protocol.invocation().toByteArray()) }
             dispatched = true
+            // BEGIN confirms the remote parser consumed the wrapper. Before that, shells
+            // such as dash can read ahead and strand keyboard bytes in their parser buffer.
+            invocation.started.await()
             onReady()
             invocation.result(invocation.completed.await(), timedOut.get())
         } catch (cancelled: CancellationException) {
@@ -138,6 +143,7 @@ class PersistentRemoteShell(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         active?.completed?.complete(-1)
+        active?.started?.completeExceptionally(IllegalStateException("Terminal session is closed"))
         active?.ready?.close()
         // Closing the transport must unblock a reader suspended in InputStream.read().
         try { closeTransport() } finally {

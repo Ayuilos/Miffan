@@ -90,7 +90,7 @@ private fun ComputerTestPreview(workspaceId: String, busy: Boolean, onRecheck: (
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(ratio.coerceIn(0.5f, 2.4f)).clip(MaterialTheme.shapes.large)) {
-                RemoteScreenViewport(screen, false, Modifier.fillMaxSize()) { failed ->
+                RemoteScreenViewport(screen, false, Modifier.fillMaxSize(), zoomControls = false) { failed ->
                     RemoteScreenFailureContent(failed, true, screen::reconnect, onSettings = onRecheck,
                         failureText = (failed as? RemoteScreenUiState.Failed)?.error?.let { computerErrorMessage(resources, it) },
                         settingsText = stringResource(R.string.im_computer_recheck))

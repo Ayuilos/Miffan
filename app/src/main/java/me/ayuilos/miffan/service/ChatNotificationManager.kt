@@ -43,10 +43,13 @@ private const val LIVE_UPDATE_NOTIFICATION_THROTTLE_MS = 1000L
 class ChatNotificationManager(
     private val context: Application,
     private val appScope: AppScope,
-    private val conversationRepo: ConversationRepository,
+    conversationRepo: () -> ConversationRepository,
     eventBus: AppEventBus,
-    private val settingsStore: SettingsStore,
+    settingsStore: () -> SettingsStore,
 ) {
+    // Keep event subscriptions eager without opening the database/settings graph at process start.
+    private val conversationRepo by lazy(conversationRepo)
+    private val settingsStore by lazy(settingsStore)
     private val isForeground = MutableStateFlow(false)
     private val liveUpdateLastSentAt = mutableMapOf<Uuid, Long>()
     // Accessed only on AppScope's main dispatcher, including lifecycle callbacks.

@@ -108,6 +108,10 @@ fun AgentThreadPage(
     var welcomeDecided by rememberSaveable { mutableStateOf(focusMessageId != null) }
     var welcomeCutoff by rememberSaveable { mutableStateOf<Long?>(null) }
     var historyShown by rememberSaveable { mutableStateOf(false) }
+    // Once the partner leaves the welcome to work it stays with the conversation, and when that work
+    // ends the welcome shrinks to a marker instead of taking the partner back.
+    var partnerLeft by rememberSaveable { mutableStateOf(false) }
+    var welcomeSettled by rememberSaveable { mutableStateOf(false) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
@@ -141,6 +145,10 @@ fun AgentThreadPage(
             welcomeDecided = true
             if (generating.isEmpty()) welcomeCutoff = ThreadWelcome.cutoff(timeline, Instant.now())?.toEpochMilli()
         }
+    }
+    LaunchedEffect(status != null) {
+        if (welcomeAt() == null) return@LaunchedEffect
+        if (status != null) partnerLeft = true else if (partnerLeft) welcomeSettled = true
     }
     LaunchedEffect(timeline, topics) {
         timeline.filterIsInstance<TimelineItem.Message>().forEach { message ->
@@ -276,9 +284,9 @@ fun AgentThreadPage(
     }
     val welcome = welcomeAt()
     SharedTransitionLayout {
-    // During a welcome the big partner moves into the live status row while the partner works.
+    // During a welcome the big partner moves into the live status row when the partner starts working.
     CompositionLocalProvider(LocalThreadPartnerTransition provides ThreadPartnerTransition(this,
-        handOff = welcome != null && welcomeDecided && status != null)) {
+        handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
@@ -295,6 +303,7 @@ fun AgentThreadPage(
                     item(key = "welcome") {
                         val fill = !historyShown && history == items.size && visibleErrors.isEmpty()
                         ThreadWelcomeHero(assistant, welcome, headerPhase, historyHidden = !historyShown, fill = fill,
+                            partnerGone = welcomeSettled,
                             onShowHistory = ::showHistory,
                             modifier = if (fill) Modifier.fillParentMaxHeight() else Modifier)
                     }

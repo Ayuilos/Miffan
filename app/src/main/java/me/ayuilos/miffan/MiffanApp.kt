@@ -32,6 +32,7 @@ import me.ayuilos.miffan.di.viewModelModule
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.datastore.awaitLoadedSettings
 import me.ayuilos.miffan.service.WebServerService
 import me.ayuilos.miffan.utils.LauncherIconManager
 import me.ayuilos.miffan.utils.CrashHandler
@@ -106,11 +107,11 @@ class MiffanApp : Application() {
     }
 
     private fun startModelCatalog() {
-        val repository = get<ModelCatalogRepository>()
         get<AppScope>().launch(Dispatchers.IO) {
+            val repository = get<ModelCatalogRepository>()
             val store = get<SettingsStore>()
             repository.awaitLoaded()
-            store.settingsFlow.first { !it.init }
+            store.settingsFlow.awaitLoadedSettings()
             repository.catalog.collect { catalog ->
                 try {
                     // Settings writes persist every field, so skip the write when nothing needs repair.
@@ -126,12 +127,12 @@ class MiffanApp : Application() {
             }
         }
         get<AppScope>().launch(Dispatchers.IO) {
-            repository.refreshIfStale()
+            get<ModelCatalogRepository>().refreshIfStale()
         }
     }
 
     private fun incrementLaunchCount() {
-        get<AppScope>().launch {
+        get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
                 val store = get<SettingsStore>()
                 val count = store.incrementLaunchCount()
@@ -172,7 +173,7 @@ class MiffanApp : Application() {
     private fun migrateLegacySkills() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
-                val settings = get<SettingsStore>().settingsFlow.first()
+                val settings = get<SettingsStore>().settingsFlow.awaitLoadedSettings()
                 val workspaces = get<WorkspaceRepository>().listFlow().first().associateBy { it.id }
                 val skillManager = get<SkillManager>()
                 settings.assistants.forEach { assistant ->
@@ -222,7 +223,7 @@ class MiffanApp : Application() {
         get<AppScope>().launch {
             runCatching {
                 delay(500)
-                val settings = get<SettingsStore>().settingsFlow.first { !it.init }
+                val settings = get<SettingsStore>().settingsFlow.awaitLoadedSettings()
                 if (settings.webServerEnabled) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                         ContextCompat.checkSelfPermission(

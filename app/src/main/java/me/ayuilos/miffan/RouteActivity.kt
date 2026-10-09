@@ -229,7 +229,7 @@ class RouteActivity : ComponentActivity() {
                                 add(GifDecoder.Factory())
                             }
                             add(SvgDecoder.Factory(scaleToDensity = true))
-                            add(WorkspaceImageFetcher.Factory(workspaceRepository, File(context.cacheDir, "workspace-images")))
+                            add(WorkspaceImageFetcher.Factory({ workspaceRepository }, File(context.cacheDir, "workspace-images")))
                         }
                         .build()
                 }
