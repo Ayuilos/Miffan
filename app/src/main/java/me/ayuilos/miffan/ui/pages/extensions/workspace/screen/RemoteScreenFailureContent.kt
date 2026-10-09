@@ -45,7 +45,7 @@ internal fun RemoteScreenFailureContent(
     // Problems fixed on the computer itself: the user acts there, then retries here.
     val retryOnly = unavailable?.problem in setOf(RemoteScreenProblem.NO_GRAPHICAL_SESSION, RemoteScreenProblem.VNC_START_FAILED,
         RemoteScreenProblem.RDP_START_FAILED, RemoteScreenProblem.RDP_ALREADY_CONFIGURED, RemoteScreenProblem.RDP_KEYRING_LOCKED,
-        RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE)
+        RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE, RemoteScreenProblem.RDP_CERTIFICATE_CHANGED)
     val missingServer = unavailable?.problem == RemoteScreenProblem.NO_VNC_SERVER || unavailable?.problem == RemoteScreenProblem.NO_RDP_SERVER
     val changedCertificate = (error as? RemoteRdpCertificateChangedException)?.takeIf { it.actualSha256 != null }
     var confirmTrust by remember(error) { mutableStateOf(false) }
@@ -89,9 +89,11 @@ internal fun RemoteScreenFailureContent(
         AlertDialog(onDismissRequest = { confirmTrust = false },
             title = { Text(stringResource(R.string.workspace_screen_rdp_trust_title)) },
             text = {
-                Text(stringResource(R.string.workspace_screen_rdp_trust_message,
-                    groupedFingerprint(changedCertificate.expectedSha256), groupedFingerprint(actual)),
-                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.workspace_screen_rdp_trust_hint))
+                    FingerprintBlock(stringResource(R.string.workspace_screen_rdp_fingerprint_before), changedCertificate.expectedSha256)
+                    FingerprintBlock(stringResource(R.string.workspace_screen_rdp_fingerprint_now), actual)
+                }
             },
             confirmButton = {
                 TextButton(onClick = { confirmTrust = false; onTrustCertificate(actual) }) {
@@ -103,6 +105,12 @@ internal fun RemoteScreenFailureContent(
     }
 }
 
-/** SHA-256 hex in groups of four so two fingerprints can be compared by eye. */
-private fun groupedFingerprint(sha256: String): String =
-    sha256.replace(":", "").uppercase().chunked(4).joinToString(" ")
+/** SHA-256 hex as four aligned rows of four groups, so two fingerprints can be compared row by row. */
+@Composable
+private fun FingerprintBlock(label: String, sha256: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(sha256.replace(":", "").uppercase().chunked(4).chunked(4).joinToString("\n") { it.joinToString(" ") },
+            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
+    }
+}

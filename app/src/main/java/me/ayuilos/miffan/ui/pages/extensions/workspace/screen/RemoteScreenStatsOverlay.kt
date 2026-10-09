@@ -41,7 +41,8 @@ internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = M
         }
     }
     val s = stats
-    val r = rdp
+    // Before RDP finishes its handshake the stats hold placeholders; show the waiting line instead.
+    val r = rdp?.takeIf { it.security != "Unknown" }
     val text = if (r != null) buildString {
         // RDP is paced and encoded by the server; what matters here is the codec and who decodes it.
         append("RDP · %s · %s".format(r.security, r.encoding))

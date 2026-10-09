@@ -2216,7 +2216,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_rdp_certificate_changed">这台电脑的远程桌面证书和上次连接时不一样了。如果你重装过系统或重置过远程桌面，可以信任新证书；否则可能有别的东西在冒充这台电脑。</string>
   <string name="workspace_screen_rdp_trust">信任新证书</string>
   <string name="workspace_screen_rdp_trust_title">信任新证书？</string>
-  <string name="workspace_screen_rdp_trust_message">只有在你知道证书为什么变化时才这样做。\n\n之前：%1$s\n现在：%2$s</string>
+  <string name="workspace_screen_rdp_trust_hint">只有在你知道证书为什么变化时才这样做。</string>
+  <string name="workspace_screen_rdp_fingerprint_before">之前</string>
+  <string name="workspace_screen_rdp_fingerprint_now">现在</string>
   <string name="workspace_screen_rdp_running">%1$s 正在运行</string>
   <string name="workspace_screen_rdp_autostart">%1$s，连接时由 Miffan 启动</string>
   <string name="workspace_screen_clipboard_rdp">由远程桌面提供</string>

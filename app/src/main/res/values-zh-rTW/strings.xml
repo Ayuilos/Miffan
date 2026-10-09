@@ -2182,7 +2182,9 @@
   <string name="workspace_screen_rdp_certificate_changed">這台電腦的遠端桌面憑證與上次連線時不同。如果你重灌過系統或重設過遠端桌面，可以信任新憑證；否則可能有其他東西在冒充這台電腦。</string>
   <string name="workspace_screen_rdp_trust">信任新憑證</string>
   <string name="workspace_screen_rdp_trust_title">要信任新憑證嗎？</string>
-  <string name="workspace_screen_rdp_trust_message">只有在你知道憑證為什麼改變時才這樣做。\n\n之前：%1$s\n現在：%2$s</string>
+  <string name="workspace_screen_rdp_trust_hint">只有在你知道憑證為什麼改變時才這樣做。</string>
+  <string name="workspace_screen_rdp_fingerprint_before">之前</string>
+  <string name="workspace_screen_rdp_fingerprint_now">現在</string>
   <string name="workspace_screen_rdp_running">%1$s 正在執行</string>
   <string name="workspace_screen_rdp_autostart">%1$s，連線時由 Miffan 啟動</string>
   <string name="workspace_screen_clipboard_rdp">由遠端桌面提供</string>

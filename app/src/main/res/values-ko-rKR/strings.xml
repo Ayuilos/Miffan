@@ -2184,7 +2184,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_rdp_certificate_changed">이 컴퓨터의 원격 데스크톱 인증서가 지난번 연결 때와 달라요. 시스템을 다시 설치했거나 원격 데스크톱을 재설정했다면 새 인증서를 신뢰해도 돼요. 그렇지 않다면 무언가가 이 컴퓨터를 사칭하고 있을 수 있어요.</string>
   <string name="workspace_screen_rdp_trust">새 인증서 신뢰</string>
   <string name="workspace_screen_rdp_trust_title">새 인증서를 신뢰할까요?</string>
-  <string name="workspace_screen_rdp_trust_message">인증서가 바뀐 이유를 알고 있을 때만 진행하세요.\n\n이전: %1$s\n현재: %2$s</string>
+  <string name="workspace_screen_rdp_trust_hint">인증서가 바뀐 이유를 알고 있을 때만 진행하세요.</string>
+  <string name="workspace_screen_rdp_fingerprint_before">이전</string>
+  <string name="workspace_screen_rdp_fingerprint_now">현재</string>
   <string name="workspace_screen_rdp_running">%1$s 실행 중</string>
   <string name="workspace_screen_rdp_autostart">%1$s, 연결할 때 Miffan이 시작</string>
   <string name="workspace_screen_clipboard_rdp">원격 데스크톱에서 제공</string>

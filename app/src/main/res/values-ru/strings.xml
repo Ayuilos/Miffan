@@ -2184,7 +2184,9 @@
   <string name="workspace_screen_rdp_certificate_changed">Сертификат удалённого рабочего стола этого компьютера отличается от сертификата при прошлом подключении. Если вы переустанавливали систему или сбрасывали удалённый рабочий стол, новому сертификату можно доверять. Иначе что-то может выдавать себя за этот компьютер.</string>
   <string name="workspace_screen_rdp_trust">Доверять новому сертификату</string>
   <string name="workspace_screen_rdp_trust_title">Доверять новому сертификату?</string>
-  <string name="workspace_screen_rdp_trust_message">Делайте это, только если знаете, почему сертификат изменился.\n\nРаньше: %1$s\nСейчас: %2$s</string>
+  <string name="workspace_screen_rdp_trust_hint">Делайте это, только если знаете, почему сертификат изменился.</string>
+  <string name="workspace_screen_rdp_fingerprint_before">Раньше</string>
+  <string name="workspace_screen_rdp_fingerprint_now">Сейчас</string>
   <string name="workspace_screen_rdp_running">%1$s работает</string>
   <string name="workspace_screen_rdp_autostart">%1$s, запускается Miffan при подключении</string>
   <string name="workspace_screen_clipboard_rdp">Предоставляется удалённым рабочим столом</string>

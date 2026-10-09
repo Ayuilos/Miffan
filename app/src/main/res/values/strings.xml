@@ -2224,7 +2224,9 @@
   <string name="workspace_screen_rdp_certificate_changed" tools:ignore="MissingTranslation">This computer\'s remote desktop certificate is not the one from your last connection. If you reinstalled the system or reset remote desktop, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
   <string name="workspace_screen_rdp_trust" tools:ignore="MissingTranslation">Trust new certificate</string>
   <string name="workspace_screen_rdp_trust_title" tools:ignore="MissingTranslation">Trust the new certificate?</string>
-  <string name="workspace_screen_rdp_trust_message" tools:ignore="MissingTranslation">Only do this if you know why it changed.\n\nBefore: %1$s\nNow: %2$s</string>
+  <string name="workspace_screen_rdp_trust_hint" tools:ignore="MissingTranslation">Only do this if you know why it changed.</string>
+  <string name="workspace_screen_rdp_fingerprint_before" tools:ignore="MissingTranslation">Before</string>
+  <string name="workspace_screen_rdp_fingerprint_now" tools:ignore="MissingTranslation">Now</string>
   <string name="workspace_screen_rdp_running" tools:ignore="MissingTranslation">%1$s is running</string>
   <string name="workspace_screen_rdp_autostart" tools:ignore="MissingTranslation">%1$s, started by Miffan when you connect</string>
   <string name="workspace_screen_clipboard_rdp" tools:ignore="MissingTranslation">Provided by remote desktop</string>

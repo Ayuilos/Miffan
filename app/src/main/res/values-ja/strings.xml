@@ -2184,7 +2184,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_rdp_certificate_changed">このコンピューターのリモートデスクトップ証明書が、前回の接続時と異なります。システムを再インストールしたりリモートデスクトップをリセットしたりした場合は、新しい証明書を信頼できます。そうでなければ、何かがこのコンピューターになりすましている可能性があります。</string>
   <string name="workspace_screen_rdp_trust">新しい証明書を信頼</string>
   <string name="workspace_screen_rdp_trust_title">新しい証明書を信頼しますか？</string>
-  <string name="workspace_screen_rdp_trust_message">証明書が変わった理由がわかっている場合にのみ行ってください。\n\n以前：%1$s\n現在：%2$s</string>
+  <string name="workspace_screen_rdp_trust_hint">証明書が変わった理由がわかっている場合にのみ行ってください。</string>
+  <string name="workspace_screen_rdp_fingerprint_before">以前</string>
+  <string name="workspace_screen_rdp_fingerprint_now">現在</string>
   <string name="workspace_screen_rdp_running">%1$s が実行中</string>
   <string name="workspace_screen_rdp_autostart">%1$s（接続時に Miffan が起動）</string>
   <string name="workspace_screen_clipboard_rdp">リモートデスクトップが提供</string>
