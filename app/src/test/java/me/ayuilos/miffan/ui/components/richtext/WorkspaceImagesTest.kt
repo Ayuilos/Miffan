@@ -1,11 +1,30 @@
 package me.ayuilos.miffan.ui.components.richtext
 
+import coil3.ImageLoader
+import coil3.request.Options
+import coil3.toUri
+import io.mockk.mockk
+import java.io.File
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkspaceImagesTest {
     private val context = WorkspaceImageContext("ws-1", null, "/home/me", "msg-1")
+
+    @Test
+    fun imageFactoryDoesNotInitializeWorkspaceRecoveryDuringCoilSetup() {
+        val factory = WorkspaceImageFetcher.Factory(
+            workspaces = { error("Workspace graph must only be resolved inside fetch on IO") },
+            cacheDir = File("unused-cache"),
+        )
+        val options = mockk<Options>()
+        val loader = mockk<ImageLoader>()
+        assertNull(factory.create("https://example.com/avatar.png".toUri(), options, loader))
+        assertNotNull(factory.create("miffan-workspace://file?w=ws-1&p=shot.png".toUri(), options, loader))
+    }
 
     @Test
     fun workspacePathsBecomeWorkspaceUris() {
