@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -31,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
 import androidx.compose.ui.platform.LocalResources
@@ -106,12 +108,13 @@ internal fun RemoteScreenScaffold(
     var menu by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable { mutableStateOf(false) }
+    val hints = remember(context) { context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE) }
+    var perfOverlay by remember { mutableStateOf(hints.getBoolean(PERF_OVERLAY, false)) }
     val connected = state is RemoteScreenUiState.Connected
     val macOS = platform == RemoteScreenPlatform.MACOS
     // Each input mode explains its gestures once, the first time it is used on a live screen.
     LaunchedEffect(connected, trackpad) {
         if (!connected) return@LaunchedEffect
-        val hints = context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE)
         val key = if (trackpad) "help_seen_trackpad" else "help_seen_direct"
         if (!hints.getBoolean(key, false)) {
             hints.edit { putBoolean(key, true) }
@@ -160,7 +163,14 @@ internal fun RemoteScreenScaffold(
                                 RemoteScreenUiState.Connecting -> R.string.im_computer_connecting
                                 else -> R.string.im_computer_disconnected
                             }), bytes.fileSizeToString()),
-                            style = MaterialTheme.typography.bodySmall)
+                            style = MaterialTheme.typography.bodySmall,
+                            // Hidden diagnostics switch: no menu entry, since few people need it.
+                            modifier = Modifier.pointerInput(Unit) {
+                                detectTapGestures(onLongPress = {
+                                    perfOverlay = !perfOverlay
+                                    hints.edit { putBoolean(PERF_OVERLAY, perfOverlay) }
+                                })
+                            })
                     }
                 },
                 navigationIcon = { BackButton(onClick = onBack) },
@@ -212,6 +222,7 @@ internal fun RemoteScreenScaffold(
                 }
                 RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                if (perfOverlay) RemoteScreenStatsOverlay(vm, Modifier.align(Alignment.BottomStart).padding(8.dp))
             }
             if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = macOS)
             bottom()
@@ -221,4 +232,5 @@ internal fun RemoteScreenScaffold(
 }
 
 private const val SCREEN_HINTS = "remote_screen_hints"
+private const val PERF_OVERLAY = "perf_overlay"
 

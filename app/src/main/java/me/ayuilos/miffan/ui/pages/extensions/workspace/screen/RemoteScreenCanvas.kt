@@ -89,6 +89,7 @@ internal fun RemoteScreenCanvas(
         // The VM mutates the same Bitmap. Reading this State here invalidates drawing each frame
         // without recomposing the page or allocating another framebuffer.
         frameVersion.value
+        vm.framesDrawn.incrementAndGet()
         val topLeft = input.topLeft
         val scale = input.scale
         drawImage(image, dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),

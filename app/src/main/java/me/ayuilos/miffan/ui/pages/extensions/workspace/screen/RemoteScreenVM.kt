@@ -3,6 +3,7 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.util.Log
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import androidx.lifecycle.ViewModel
@@ -28,6 +29,7 @@ import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.rerere.workspace.screen.Framebuffer
 import me.rerere.workspace.screen.RemoteScreenFrameSink
 import me.rerere.workspace.screen.RemoteScreenOptions
+import me.rerere.workspace.screen.RemoteScreenStats
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RfbJpegDecoder
 import me.rerere.workspace.screen.RfbCursor
@@ -117,6 +119,13 @@ class RemoteScreenVM(
     private val _maxFps = MutableStateFlow(if (metered) 10 else 20)
     /** Frame-rate cap; kept across reconnects and applied to every new session. */
     val maxFps: StateFlow<Int> = _maxFps.asStateFlow()
+
+    private val _stats = MutableStateFlow<RemoteScreenStats?>(null)
+    /** Rolling session statistics for the performance overlay; null until connected. */
+    val stats: StateFlow<RemoteScreenStats?> = _stats.asStateFlow()
+
+    /** Frames the canvas actually drew; the overlay compares it with decoded updates. */
+    val framesDrawn = java.util.concurrent.atomic.AtomicLong()
 
     private val _hostId = MutableStateFlow<String?>(null)
 
@@ -295,7 +304,9 @@ class RemoteScreenVM(
                 _hostId.value = opened.hostId
                 _platform.value = opened.platform
                 opened.session.setPaused(!visible)
+                opened.session.statsLogger = { Log.d(PERF_TAG, it.toString()) }
                 opened.session.start(viewModelScope)
+                launch { opened.session.stats.collect { _stats.value = it } }
                 val openedAt = SystemClock.elapsedRealtime()
                 launch {
                     // Servers send their current clipboard right after connecting; only later copies are news.
@@ -331,6 +342,7 @@ class RemoteScreenVM(
 
     private fun close() {
         _cursor.value = RemoteCursor.Unknown
+        _stats.value = null
         connectJob?.cancel()
         connectJob = null
         connection?.close()
@@ -380,3 +392,4 @@ class RemoteScreenVM(
 }
 
 private const val INITIAL_CLIPBOARD_MILLIS = 3_000L
+private const val PERF_TAG = "RemoteScreenPerf"
