@@ -49,6 +49,11 @@ interface RemoteHostDAO {
     @Query("UPDATE remote_hosts SET rdp_certificate_sha256 = :pin, updated_at = :updatedAt WHERE id = :id")
     suspend fun pinRdpCertificate(id: String, pin: String, updatedAt: Long): Int
 
+    /** Never replace a concurrent confirmation or pin a different SSH host identity. */
+    @Query("""UPDATE remote_hosts SET rdp_certificate_sha256 = :pin, updated_at = :updatedAt
+        WHERE id = :id AND rdp_certificate_sha256 IS NULL AND connection_revision = :revision""")
+    suspend fun pinFirstRdpCertificate(id: String, pin: String, revision: String, updatedAt: Long): Int
+
     @Query("DELETE FROM remote_hosts WHERE id = :id")
     suspend fun deleteById(id: String): Int
 }

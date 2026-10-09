@@ -12,7 +12,7 @@
 #   miffan rdp start        password on stdin; safe per-user RDP startup (JSON)
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=7
+MIFFAN_HELPER_VERSION=8
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -335,12 +335,31 @@ rdp_dimensions() {
 
 rdp_json() {
     rdp_dimensions
+    rdp_error=${1:-}
+    rdp_fingerprint=""
+    # Only successful helper-owned starts attest the certificate used by both servers.
+    if [ -z "$rdp_error" ]; then
+        rdp_fingerprint=$(rdp_certificate_sha256) || rdp_error=rdp_start_failed
+    fi
     # Only fixed diagnostics leave the helper. Never return upstream credential output.
-    printf '{"server":%s,"port":%s,"username":%s,"desktop":%s,"mode":%s,"error":%s,"log":%s,"width":%s,"height":%s}\n' \
+    printf '{"server":%s,"port":%s,"username":%s,"desktop":%s,"mode":%s,"error":%s,"log":%s,"width":%s,"height":%s,"certificate_sha256":%s}\n' \
         "$(json_or_null "$rdp_server")" "${rdp_port:-null}" "$(json_or_null "${rdp_user:-}")" \
         "$(json_or_null "${XDG_CURRENT_DESKTOP:-}")" "$(json_or_null "${rdp_mode:-}")" \
-        "$(json_or_null "${1:-}")" "$(json_or_null "${2:-}")" "$rdp_width" "$rdp_height"
+        "$(json_or_null "$rdp_error")" "$(json_or_null "${2:-}")" "$rdp_width" "$rdp_height" "$(json_or_null "$rdp_fingerprint")"
+    [ -z "$rdp_error" ]
 }
+
+rdp_certificate_sha256() (
+    # Decode first: a failed x509 command must never attest the digest of empty input.
+    der="$rdp_dir/start.lock/cert.der"
+    trap 'rm -f "$der"' 0
+    openssl x509 -in "$rdp_dir/cert.pem" -outform DER -out "$der" 2>/dev/null || return 1
+    fingerprint=$(openssl dgst -sha256 -r "$der" 2>/dev/null) || return 1
+    fingerprint=${fingerprint%% *}
+    case "$fingerprint" in *[!0-9a-f]*) return 1 ;; esac
+    [ "${#fingerprint}" -eq 64 ] || return 1
+    printf '%s' "$fingerprint"
+)
 
 rdp_probe_json() {
     rdp_env
@@ -428,7 +447,7 @@ rdp_gnome() {
     rdp_digest=$(printf '%s' "$rdp_secret" | openssl dgst -sha256 | sed 's/^.*= //')
     if [ -f "$rdp_owner" ] && [ "$rdp_digest" = "$(cat "$rdp_owner.digest" 2>/dev/null)" ] && port_listening "$rdp_port"; then
         unset rdp_secret
-        rdp_json; return 0
+        rdp_json; return $?
     fi
     # grdctl uses separate buffered GIO readers for username and password. A canonical
     # PTY keeps each read to one line (a plain pipe may lose its prefetched second line).
@@ -500,7 +519,7 @@ rdp_kde() {
         fi
         if [ "$rdp_digest" = "$(cat "$rdp_owner.digest" 2>/dev/null)" ] && port_listening "$rdp_port"; then
             unset rdp_secret
-            rdp_json; return 0
+            rdp_json; return $?
         fi
     elif [ "$(systemctl --user show miffan-rdp-kde.service -p LoadState --value 2>/dev/null)" = loaded ]; then
         rdp_json rdp_already_configured; return 1
@@ -532,7 +551,7 @@ rdp_kde() {
 rdp_wait() {
     attempt=0
     while [ "$attempt" -lt 80 ]; do
-        if port_listening "$rdp_port"; then rdp_json; return 0; fi
+        if port_listening "$rdp_port"; then rdp_json; return $?; fi
         sleep 0.1
         attempt=$((attempt + 1))
     done

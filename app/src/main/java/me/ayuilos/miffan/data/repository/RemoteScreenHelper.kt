@@ -35,7 +35,11 @@ internal fun parseRdpStart(output: String): RemoteMachineProbe.Rdp {
     if (problem != null) throw RemoteScreenUnavailableException(problem, desktop = status.desktop)
     if (status.server !in setOf("gnome-remote-desktop", "krdp") || status.port !in 1024..65535 || status.username.isNullOrBlank() || status.mode !in setOf("headless", "user"))
         throw RemoteScreenUnavailableException(RemoteScreenProblem.RDP_START_FAILED)
-    return status
+    return status.copy(certificateSha256 = status.certificateSha256?.let {
+        runCatching { normalizeRdpFingerprint(it) }.getOrElse {
+            throw RemoteScreenUnavailableException(RemoteScreenProblem.RDP_START_FAILED)
+        }
+    })
 }
 
 internal fun normalizeRdpFingerprint(value: String): String = value.replace(":", "").lowercase().also {

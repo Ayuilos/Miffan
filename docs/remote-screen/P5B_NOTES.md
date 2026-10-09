@@ -5,7 +5,7 @@
 - `RemoteScreenConnection.session` 为 `RemoteDesktopSession`，`protocol` 是 VNC/RDP；start、pause、pointer、key、tapKey、typeText、sendClipboard、close 统一。SSH lease 的释放行为保持不变。
 - `VncDesktopSession.delegate` 暴露原 VNC 会话；`stats`、`statsLogger`、`clipboard`、`state` 直接委托原对象，maxFps 原样传递。RDP 的 `setMaxFps` 忽略，`rdpStats` 暴露实际编码、安全协议、解码器、帧率和字节数；兼容 `stats` 仅映射帧率与编码，RDP 不调用 VNC 的 `statsLogger`。
 - 配置增加 `RemoteScreenProtocol.AUTO/VNC/RDP`、脚本报告的 `rdpUsername`、`rdpCertificateSha256`。`updateConfig` 的新参数均可选，原 VNC 调用方式仍有效；RDP 用户名由脚本固定为 `miffan-<uid>`，密码由手机自动生成。VNC 的 auth/password 控件不用于 RDP。
-- 首次 `open` 返回的会话尚未 start。start 后界面观察 `certificateSha256: StateFlow<String?>`；首次成功不写入固定值。用户明确确认后调用 `pinRdpCertificate(hostId, sha256)`，该操作关闭此主机现有连接，应重新连接。只接受完整 SHA-256 十六进制值（允许大小写及冒号），不自动更换已固定指纹。
+- 首次 `open` 返回的会话尚未 start。helper v8 经固定主机密钥的 SSH 报告自有证书的 DER SHA-256；没有已有 pin 时直接作为 `RdpOptions.certificateSha256` 严格校验，进入 Connected 且实际指纹相同后自动固定，无需首次手动确认。已有 pin 始终优先，不匹配仍报证书变化且不自动更新。旧 helper/手动端点没有报告指纹时保留 TOFU：只暴露 `certificateSha256: StateFlow<String?>`，不自动固定，由界面处理。用户明确确认证书或替换变化后的证书仍调用 `pinRdpCertificate(hostId, sha256)`，该接口保留关闭现有连接、随后重连的语义。只接受完整 SHA-256 十六进制值（允许大小写及冒号）。
 - 已固定指纹变化时，`Closed.error` 是 `RemoteRdpCertificateChangedException`，含 expected/actual，并对应 `RDP_CERTIFICATE_CHANGED`。界面可以展示比较结果并要求用户明确确认；不得捕获后自动调用 pin。
 - `typeText` 返回 false 时没有发送任何前缀，也没有令会话失败。RDP 仅直接发送可打印 ASCII、Tab、CR/LF；超过 1024 个 UTF-16 单元或队列容量不足也返回 false。中文、其他非布局字符、长文本请 `sendClipboard(text)` 后发送 Ctrl+V。
 - RDP 的 `setRemoteClipboard` 转到活动会话的 cliprdr。`sendClipboard` 异步设置 Unicode 文本，native 在 FormatList ACK 前保持输入队列等待，避免紧跟的粘贴快捷键先于剪贴板声明。远端复制的 Unicode 文本通过 `clipboard` 发出，界面负责写到 Android 系统剪贴板。
@@ -18,9 +18,9 @@ Room 31→32 使用 AutoMigration，附版本 32 schema 与 `Migration_31_32_Tes
 
 RDP 密码为 SecureRandom 32 字节的 64 位十六进制字符串，独立 AES-GCM/Android Keystore 命名空间 `remote-rdp-credentials`，位于 noBackupFilesDir。与 VNC 凭据同 hostId 但不共用文件或密钥；删除主机时两者均清理。协议切换不会误删 RDP 密码。密码不在 Room、配置 DTO、备份、日志或模型上下文中。
 
-## helper v7
+## helper v8
 
-`miffan rdp start` 从 stdin 读取手机密码，输出一行 JSON `{server,port,username,desktop,mode,error,log}`；日志只输出固定诊断，不输出原始 credential 工具结果。`probe` 增加 RDP server/version/running；AUTO Helper 下 GNOME/KDE/Plasma 使用 RDP，其他桌面与手动 VNC 端点保持 VNC。
+`miffan rdp start` 从 stdin 读取手机密码，输出一行 JSON `{server,port,username,desktop,mode,error,log,width,height,certificate_sha256}`；日志只输出固定诊断，不输出原始 credential 工具结果。`probe` 增加 RDP server/version/running；AUTO Helper 下 GNOME/KDE/Plasma 使用 RDP，其他桌面与手动 VNC 端点保持 VNC。
 
 证书及私钥长期保存在 `~/.miffan/rdp/`（目录 0700，文件 0600），有效期十年；已有证书不因重连而重建，缺一半的文件对报错。启动有目录锁。成功启动记录 helper ownership；相同密码/端口的活动 GNOME 服务复用，避免再次连接重启服务。密码比对摘要只保存在用户私有 ownership metadata 中，不返回 App。
 
@@ -62,3 +62,13 @@ ci、daily-build、release 均在 Gradle 前安装 NDK 28.2.13676358/CMake 3.22.
 3. KDE：安全配置路径与夹具通过；按用户最新决定，真实 Plasma 会话下的端到端验证待 P5c。
 4. RDP 密码 argv 安全审计：GNOME 实测通过，KDE 夹具验证 stdin-only，产品代码没有 -u/-p 密码路径。
 5. notes：已记录界面接口、迁移、证书固定、脚本行为、安全检查、CI、未覆盖事项。CI 的 hosted 冷/热缓存执行、真实 KDE 和动态尺寸仍未实测；AVC444 延续 P5a 的未验证状态。
+
+## 审查后追加：经 SSH 认证的首次证书固定
+
+按审查后的新要求，helper v8 在成功启动/复用自有 GNOME 或 KDE 服务时，解码 `~/.miffan/rdp/cert.pem` 为 DER 后返回小写、无冒号的 64 位 `certificate_sha256`，与 native `RdpSession.certificateSha256` 格式相同。不对已有外部配置或失败启动做证书背书；DER 解码失败返回 `rdp_start_failed`，不返回空输入的摘要。临时 DER 位于私有 start.lock 中并及时清理；已有 PEM 不重建。
+
+仓库选择已有 pin，否则选择 SSH helper 指纹。新指纹送入 native 严格比对，只有 Connected 且实际指纹一致才调用独立 `pinFirstRdpCertificate`，不调用用户确认接口、不关闭成功连接。条件 SQL 要求 pin 仍为 null 且 SSH connectionRevision 未变化，防止并发连接、用户确认或主机配置编辑覆盖已建立的信任。未收到指纹、认证失败、证书不匹配、断开或取消均不自动固定。helper 报告了格式错误的指纹时拒绝连接，不能降级成 TOFU。
+
+本次补充测试覆盖 DER/PEM 摘要区别、GNOME/KDE 首次与复用返回同一指纹、非自有配置无指纹、损坏证书拒绝、旧 helper 缺失字段、非法指纹拒绝、已有 pin 优先、Connected 前不写入、失败/取消不写入，以及数据库并发确认和 SSH revision 的保护。仓库端到端 instrumentation 已更新为断言首次自动固定，再验证正确 pin 重连及错误 pin 不被覆盖；本次不重启或改动远端 GNOME 服务，完整界面流程由 Claude 接续验收。
+
+追加验证通过：`./gradlew test` 全模块 JVM 测试（App 667 项，零失败），App Kotlin/debug APK/androidTest APK 构建，`sh -n` 与 helper 隔离夹具，以及 emulator-5560 上匹配 APK 的 Room 三项测试（含首次 pin 条件写入）。未修改 ui/ 或文案文件；自动固定接口与证书变化后的用户确认接口分离。

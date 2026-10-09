@@ -94,7 +94,8 @@ class RdpRepositoryInstrumentedTest {
             assertEquals(0, permissions.exitCode)
             assertEquals(listOf("700", "600", "600"), permissions.stdout.trim().lines())
             Log.i("MiffanP5bTest", "Remote process argv contains no generated RDP password; certificate permissions 700/600/600")
-            assertNull(screens.getConfig(host.id)?.rdpCertificateSha256)
+            withTimeout(5000) { while (screens.getConfig(host.id)?.rdpCertificateSha256 == null) delay(50) }
+            assertEquals(pin, screens.getConfig(host.id)?.rdpCertificateSha256)
             session.pointer(width / 2, height / 2, 1); session.pointer(width / 2, height / 2, 0)
             session.key(RfbKeys.CONTROL_L, true); session.tapKey('a'.code); session.key(RfbKeys.CONTROL_L, false)
             assertFalse(session.typeText("中文输入"))
@@ -114,7 +115,7 @@ class RdpRepositoryInstrumentedTest {
                 assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
             } } finally { bitmap.recycle() }
             Log.i("MiffanP5bTest", "stats=${session.rdpStats?.value}; pin=$pin; bytes=${session.bytesReceived}")
-            assertTrue(screens.pinRdpCertificate(host.id, pin))
+            connection.close()
             assertEquals(pin, screens.getConfig(host.id)?.rdpCertificateSha256)
             val pinned = screens.open(workspace.id, sink, null)
             try {

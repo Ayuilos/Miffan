@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Hermetic helper safety checks; no server, credentials, or user configuration is touched."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -69,11 +70,6 @@ elif name=='timeout':
 elif name=='script':
     assert args[:5]==['--quiet','--return','--echo','never','--command'] and args[-1]=='/dev/null'
     sys.exit(subprocess.call(args[5].split(),stdin=sys.stdin,stdout=sys.stdout,stderr=sys.stderr))
-elif name=='openssl':
-    if args==['dgst','-sha256']:
-        import hashlib
-        print('SHA2-256(stdin)= '+hashlib.sha256(sys.stdin.buffer.read()).hexdigest()); sys.exit(0)
-    for flag in ['-keyout','-out']: Path(args[args.index(flag)+1]).write_text('test fixture\n')
 else: sys.exit(2)
 '''.replace('import json, os, sys', 'import json, os, sys, subprocess')
 
@@ -84,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     mock = bindir / "mock"
     mock.write_text(MOCK)
     mock.chmod(0o755)
-    for name in ["uname", "pgrep", "systemctl", "grdctl", "nc", "script", "openssl", "timeout", "krdpserver", "qdbus6", "kwallet-query", "systemd-run"]:
+    for name in ["uname", "pgrep", "systemctl", "grdctl", "nc", "script", "timeout", "krdpserver", "qdbus6", "kwallet-query", "systemd-run"]:
         (bindir / name).symlink_to(mock)
     secret = "testOnlyGeneratedPassword0123456789AB"
     # HOME here belongs only to this disposable subprocess, never the agent shell.
@@ -100,10 +96,16 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     assert result.returncode==0, status
     assert status['mode']=='headless' and 20000<=status['port']<60000
     assert status['error'] is None and status['username'].startswith('miffan-')
-    identity=(root/'.miffan/rdp/cert.pem').read_bytes()
+    cert=root/'.miffan/rdp/cert.pem'
+    identity=cert.read_bytes()
+    der=subprocess.check_output(['openssl','x509','-in',str(cert),'-outform','DER'])
+    expected_pin=hashlib.sha256(der).hexdigest()
+    assert status['certificate_sha256']==expected_pin
+    assert expected_pin!=hashlib.sha256(identity).hexdigest(), 'Must hash DER, not PEM'
     result, second = start()
     assert result.returncode==0 and second['port']==status['port'], second
-    assert identity==(root/'.miffan/rdp/cert.pem').read_bytes()
+    assert identity==cert.read_bytes()
+    assert second['certificate_sha256']==expected_pin
     for p in [root/'.miffan',root/'.miffan/rdp']:
         assert p.stat().st_mode & 0o777==0o700
     for p in [root/'.miffan/rdp/cert.pem',root/'.miffan/rdp/key.pem']:
@@ -113,6 +115,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     result, status=start()
     assert result.returncode!=0 and status['error']=='rdp_already_configured',status
     assert before==(root/'state.json').read_bytes()
+    assert status['certificate_sha256'] is None, 'Do not attest unowned configurations'
     result, status=start('short')
     assert result.returncode!=0 and status['error']=='rdp_start_failed'
     assert secret not in (root/'argv.jsonl').read_text()
@@ -127,9 +130,15 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     (root/'state.json').write_text(json.dumps({'wallet_exists':True,'wallet_open':True}))
     result, status=start()
     assert result.returncode==0 and status['server']=='krdp',status
+    assert status['certificate_sha256']==expected_pin
     assert json.loads((root/'state.json').read_text())['wallet_written']
     result, reused=start()
     assert result.returncode==0 and reused['port']==status['port'],reused
+    assert reused['certificate_sha256']==expected_pin
+    cert.write_text('invalid certificate')
+    result, failed=start()
+    assert result.returncode!=0 and failed['error']=='rdp_start_failed',failed
+    assert failed['certificate_sha256'] is None, 'Failed decoding must not attest an empty-input hash'
     assert (root/'.miffan/rdp/krdp-config/krdpserverrc').stat().st_mode & 0o777==0o600
     assert secret not in (root/'argv.jsonl').read_text()
-    print('PASS: stdin-only credentials, ownership refusal, persistent identity, permissions, bounded password, KWallet refusal and secure startup')
+    print('PASS: stdin-only credentials, ownership refusal, persistent identity, permissions, bounded password, KWallet refusal and secure startup, DER fingerprint and fail-closed attestation')

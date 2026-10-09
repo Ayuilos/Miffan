@@ -55,4 +55,24 @@ class Migration_31_32_Test {
         } finally { db.close() }
     }
 
+    @Test fun firstPinIsConditionalAndCannotOverrideConcurrentConfirmationOrHostEdit() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,
+            AppDatabase::class.java).build()
+        try {
+            val dao = db.remoteHostDao()
+            val host = RemoteHostEntity("first-pin", "name", "localhost", 22, "user", "key",
+                trustedHostKeySha256 = "ssh-pin", createdAt = 1, updatedAt = 1)
+            dao.insert(host)
+            val pin = "ab".repeat(32)
+            assertEquals(0, dao.pinFirstRdpCertificate(host.id, pin, "different-revision", 2))
+            assertNull(dao.getById(host.id)?.rdpCertificateSha256)
+            assertEquals(1, dao.pinFirstRdpCertificate(host.id, pin, host.connectionRevision, 3))
+            assertEquals(0, dao.pinFirstRdpCertificate(host.id, "cd".repeat(32), host.connectionRevision, 4))
+            val confirmed = "ef".repeat(32)
+            dao.pinRdpCertificate(host.id, confirmed, 5)
+            assertEquals(0, dao.pinFirstRdpCertificate(host.id, pin, host.connectionRevision, 6))
+            assertEquals(confirmed, dao.getById(host.id)?.rdpCertificateSha256)
+        } finally { db.close() }
+    }
+
 }

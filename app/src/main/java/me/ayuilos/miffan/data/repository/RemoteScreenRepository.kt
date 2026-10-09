@@ -6,6 +6,7 @@ import java.io.Closeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
@@ -92,6 +93,7 @@ data class RemoteMachineProbe(
         val port: Int? = null, val username: String? = null, val desktop: String? = null,
         val mode: String? = null, val error: String? = null, val log: String? = null,
         val width: Int? = null, val height: Int? = null,
+        @SerialName("certificate_sha256") val certificateSha256: String? = null,
     )
 
     @Serializable
@@ -190,7 +192,7 @@ class RemoteScreenRepository(
         return true
     }
 
-    /** Explicit user confirmation only: never called automatically after a connection. */
+    /** Explicit confirmation/replacement. Helper-attested first pins use a separate conditional write. */
     suspend fun pinRdpCertificate(hostId: String, sha256: String): Boolean {
         val pin = normalizeRdpFingerprint(sha256)
         val updated = hostDao.pinRdpCertificate(hostId, pin, System.currentTimeMillis()) > 0
@@ -243,13 +245,18 @@ class RemoteScreenRepository(
                 val password = credentials.getOrCreateRdp(host.id)
                 val started = startHelperRdp(ssh, password)
                 rdpUsername = started.username
+                val expectedPin = expectedRdpCertificate(host.rdpCertificateSha256, started.certificateSha256)
                 val stream = ssh.openLoopbackStream(requireNotNull(started.port))
                 try {
                     val size = if (started.mode == "headless") 1920 to 1080 else
                         (started.width?.takeIf { it in 320..8192 } ?: 1920) to (started.height?.takeIf { it in 240..8192 } ?: 1080)
                     RdpDesktopSession(RdpSession(stream.input, stream.output, stream,
                         RdpCredentials(requireNotNull(started.username), password),
-                        RdpOptions(size.first, size.second, host.rdpCertificateSha256, rdpSecurityForServer(started.server)), sink), host.rdpCertificateSha256)
+                        RdpOptions(size.first, size.second, expectedPin, rdpSecurityForServer(started.server)), sink), expectedPin,
+                        onCertificateVerified = if (host.rdpCertificateSha256 == null && expectedPin != null) { pin ->
+                            hostDao.pinFirstRdpCertificate(host.id, pin, host.connectionRevision, System.currentTimeMillis())
+                            Unit
+                        } else null)
                 } catch (error: Throwable) { stream.close(); throw error }
             } else {
                 var auth = when (RemoteScreenAuth.parse(host.screenAuth)) {

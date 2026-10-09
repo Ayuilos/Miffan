@@ -23,9 +23,16 @@ class RemoteScreenHelperTest {
         val status = parseRdpStart("""{"server":"gnome-remote-desktop","port":45891,"username":"miffan-1001","mode":"headless","desktop":"GNOME","error":null,"log":null}""")
         assertEquals(45891, status.port)
         assertEquals("headless", status.mode)
+        assertNull(status.certificateSha256) // Legacy helpers retain TOFU.
         for (output in listOf("not JSON", "{}", """{"port":22,"username":"user","mode":"user"}""",
             """{"port":65536,"username":"user","mode":"user"}"""))
             assertThrows(RemoteScreenUnavailableException::class.java) { parseRdpStart(output) }
+    }
+    @Test fun helperCertificateIsNormalizedAndMalformedAttestationFailsClosed() {
+        fun output(fingerprint: String) = """{"server":"krdp","port":45891,"username":"miffan-1001","mode":"user","certificate_sha256":"$fingerprint"}"""
+        assertEquals("ab".repeat(32), parseRdpStart(output("AB:".repeat(31) + "AB")).certificateSha256)
+        for (bad in listOf("", "ab", "gg".repeat(32)))
+            assertThrows(RemoteScreenUnavailableException::class.java) { parseRdpStart(output(bad)) }
     }
     @Test fun errorsHaveStableTypesWithoutEchoingSecretServerOutput() {
         for ((code, problem) in mapOf("rdp_already_configured" to RemoteScreenProblem.RDP_ALREADY_CONFIGURED,

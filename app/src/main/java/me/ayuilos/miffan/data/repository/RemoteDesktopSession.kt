@@ -2,6 +2,9 @@ package me.ayuilos.miffan.data.repository
 
 import java.io.Closeable
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,7 +59,11 @@ class VncDesktopSession(val delegate: RemoteScreenSession) : RemoteDesktopSessio
     override fun close() = delegate.close()
 }
 
-class RdpDesktopSession(val delegate: RdpSession, expectedPin: String?) : RemoteDesktopSession {
+class RdpDesktopSession(
+    val delegate: RdpSession, private val expectedPin: String?,
+    private val onCertificateVerified: (suspend (String) -> Unit)? = null,
+) : RemoteDesktopSession {
+    private var certificateObserver: Job? = null
     override val protocol = RemoteDesktopProtocol.RDP
     override val state: StateFlow<RemoteScreenState> = MappedStateFlow(delegate.state) { value ->
         if (value is RemoteScreenState.Closed && value.error is SecurityException && expectedPin != null)
@@ -71,14 +78,25 @@ class RdpDesktopSession(val delegate: RdpSession, expectedPin: String?) : Remote
         RemoteScreenStats(fps = it.framesPerSecond, encodings = setOf(it.encoding))
     }
     override var statsLogger: ((RemoteScreenStats) -> Unit)? = null
-    override fun start(scope: CoroutineScope) = delegate.start(scope)
+    override fun start(scope: CoroutineScope) {
+        check(certificateObserver == null) { "Session already started" }
+        val observer = if (expectedPin != null && onCertificateVerified != null) {
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                persistVerifiedRdpCertificate(state, certificateSha256, expectedPin, onCertificateVerified)
+            }
+        } else null
+        try {
+            delegate.start(scope)
+            certificateObserver = observer
+        } catch (error: Throwable) { observer?.cancel(); throw error }
+    }
     override fun setPaused(paused: Boolean) = delegate.setPaused(paused)
     override fun setMaxFps(fps: Int) {} // RDP is server-paced.
     override fun pointer(x: Int, y: Int, buttons: Int) = delegate.pointer(x, y, buttons)
     override fun key(keysym: Int, down: Boolean) = delegate.key(keysym, down)
     override fun typeText(text: String) = delegate.typeText(text)
     override fun sendClipboard(text: String) = delegate.sendClipboard(text)
-    override fun close() = delegate.close()
+    override fun close() { certificateObserver?.cancel(); delegate.close() }
 }
 
 /** Lazy mapping retains StateFlow's current value without another lifetime or background job. */
