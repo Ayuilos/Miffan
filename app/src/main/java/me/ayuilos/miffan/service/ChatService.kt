@@ -96,6 +96,7 @@ import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 import me.ayuilos.miffan.data.datastore.getCurrentChatModel
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.fillModelSnapshots
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.AssistantAffectScope
 import me.ayuilos.miffan.data.model.MessageNode
@@ -1436,7 +1437,7 @@ class ChatService(
             return // 新会话且为空时不保存
         }
 
-        val updatedConversation = conversation.copy()
+        val updatedConversation = conversation.fillModelSnapshots(settingsStore.settingsFlow.first { !it.init })
         updateConversation(conversationId, updatedConversation)
 
         if (!exists) {
@@ -1516,6 +1517,8 @@ class ChatService(
         val editedMessage = UIMessage(
             role = sourceNode.role,
             parts = processedParts,
+            modelId = sourceNode.message.modelId,
+            modelSnapshot = sourceNode.message.modelSnapshot,
         )
         val editedNode = MessageNode(
             message = editedMessage,

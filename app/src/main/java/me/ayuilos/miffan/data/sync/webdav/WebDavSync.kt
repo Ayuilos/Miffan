@@ -9,6 +9,9 @@ import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.files.FileFolders
 import me.ayuilos.miffan.data.files.SkillPaths
 import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.sync.encodeBackupSettings
+import me.ayuilos.miffan.data.sync.backupLaunchCount
+import kotlinx.coroutines.flow.first
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.withoutProviderSecrets
 import me.ayuilos.miffan.data.datastore.WebDavConfig
@@ -145,8 +148,9 @@ class WebDavSync(
             addVirtualFileToZip(
                 zipOut = zipOut,
                 name = "settings.json",
-                content = json.encodeToString(
-                    settingsStore.settingsFlow.value.withoutProviderSecrets()
+                content = json.encodeBackupSettings(
+                    settingsStore.settingsFlow.value.withoutProviderSecrets(),
+                    settingsStore.launchCountFlow.first(),
                 )
             )
 
@@ -232,7 +236,7 @@ class WebDavSync(
                             try {
                                 val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
                                 val settings = json.decodeFromString<Settings>(migratedJson)
-                                settingsStore.update(settings)
+                                settingsStore.restoreSettings(settings, json.backupLaunchCount(migratedJson))
                                 Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
                             } catch (e: Exception) {
                                 Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)
