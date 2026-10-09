@@ -75,8 +75,8 @@ Updates:
 1. 版本号同时作为 Release 标题和 tag；tag 不加 `v`。
 2. 确认目标 commit 已存在于 `origin`，且相同 tag 或 Release 尚不存在。不要覆盖、移动或删除已有 tag/Release。
 3. 从 `app/release/` 中只选择 `arm64-v8a` APK。若没有唯一候选，停止并请用户指出正确文件。
-4. 在临时目录创建带版本号的上传副本，文件名使用 `<项目名>-<版本号>-arm64-v8a.apk`；不要改动或上传其他架构的 APK。
-5. 使用 `gh release create` 在目标 commit 上创建 Release，标题为版本号，正文必须是用户最后确认的双语更新日志，并上传该 APK。
-6. 发布后用 `gh release view` 核对 tag、目标 commit、Release 正文和唯一的 arm64 资源；向用户返回 Release 链接与资源文件名。
+4. 在临时目录创建带版本号的上传副本，文件名使用 `<项目名>-<版本号>-arm64-v8a.apk`，并在同一目录用 `shasum -a 256 <文件名> > <文件名>.sha256` 生成校验文件；不要改动或上传其他架构的 APK。
+5. 使用 `gh release create` 在目标 commit 上创建 Release，标题为版本号，正文必须是用户最后确认的双语更新日志，并在同一条命令里同时上传 APK 和 `.sha256` 校验文件。本仓库的 Release 发布后不可修改：之后无法补传文件，删除后同一版本号也不能再用；下载站同步流程缺少校验文件会失败。
+6. 发布后用 `gh release view` 核对 tag、目标 commit、Release 正文、唯一的 arm64 APK 及其 `.sha256`，并确认 “Publish APK to R2” 工作流成功；向用户返回 Release 链接与资源文件名。
 
 任何发布前检查失败时停止，不得用强制覆盖、删 tag 或替换已有 Release 的方式继续。
