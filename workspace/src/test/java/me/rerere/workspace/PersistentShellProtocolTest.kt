@@ -23,4 +23,27 @@ class PersistentShellProtocolTest {
         val protocol = PersistentShellProtocol("t")
         assertEquals("Password: ", protocol.feed("\u001eMIFFAN_t_BEGIN\u001fPassword: ".toByteArray()).output.toString(Charsets.UTF_8))
     }
+
+    @Test fun uploadAcknowledgementDoesNotMeanInvocationHasStarted() {
+        val protocol = PersistentShellProtocol("token")
+        val upload = protocol.feed("\u001eMIFFAN_token_READY\u001f".toByteArray())
+        assertTrue(upload.ready)
+        assertFalse(upload.started)
+        val begin = "\u001eMIFFAN_token_BEGIN\u001f".toByteArray()
+        begin.dropLast(1).forEach {
+            assertFalse(protocol.feed(byteArrayOf(it)).started)
+        }
+        val started = protocol.feed(byteArrayOf(begin.last()))
+        assertTrue(started.started)
+        assertFalse(started.ready)
+        assertTrue(started.output.isEmpty())
+    }
+
+    @Test fun fastCommandAcknowledgesStartEvenWhenEndArrivesInTheSameRead() {
+        val protocol = PersistentShellProtocol("token")
+        val chunk = protocol.feed("\u001eMIFFAN_token_BEGIN\u001f\u001eMIFFAN_token_END:0\u001f".toByteArray())
+        assertTrue(chunk.started)
+        assertEquals(0, chunk.exitCode)
+        assertTrue(chunk.output.isEmpty())
+    }
 }

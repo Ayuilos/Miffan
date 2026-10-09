@@ -9,7 +9,12 @@ internal class PersistentShellProtocol(private val token: String) {
     private var started = false
     private var finished = false
 
-    data class Chunk(val output: ByteArray, val exitCode: Int? = null, val ready: Boolean = false)
+    data class Chunk(
+        val output: ByteArray,
+        val exitCode: Int? = null,
+        val ready: Boolean = false,
+        val started: Boolean = false,
+    )
 
     @Synchronized
     fun feed(bytes: ByteArray): Chunk {
@@ -39,13 +44,13 @@ internal class PersistentShellProtocol(private val token: String) {
                     finished = true
                     val output = pending.substring(0, index).toByteArray(Charsets.ISO_8859_1)
                     pending.clear()
-                    return Chunk(output, code, becameReady)
+                    return Chunk(output, code, becameReady, started = true)
                 }
             }
             if (pending.length - index <= end.length + 8) {
                 val output = pending.substring(0, index).toByteArray(Charsets.ISO_8859_1)
                 pending.delete(0, index)
-                return Chunk(output, ready = becameReady)
+                return Chunk(output, ready = becameReady, started = true)
             }
         }
         // Emit prompts immediately; retain only bytes that could actually be a split marker.
@@ -54,7 +59,7 @@ internal class PersistentShellProtocol(private val token: String) {
         val count = pending.length - keep
         val output = pending.substring(0, count).toByteArray(Charsets.ISO_8859_1)
         pending.delete(0, count)
-        return Chunk(output, ready = becameReady)
+        return Chunk(output, ready = becameReady, started = true)
     }
 
     @Synchronized

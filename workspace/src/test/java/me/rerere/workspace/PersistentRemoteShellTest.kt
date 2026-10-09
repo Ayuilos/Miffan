@@ -1,6 +1,11 @@
 package me.rerere.workspace
 
+import java.io.File
+import java.io.FilterOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.file.Files
+import java.util.concurrent.LinkedBlockingQueue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -8,11 +13,34 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 
-class PersistentRemoteShellTest {
-    private fun shell(): PersistentRemoteShell {
-        val process = ProcessBuilder("/bin/sh").redirectErrorStream(true).start()
-        return PersistentRemoteShell(process.inputStream, process.outputStream, {
+@RunWith(Parameterized::class)
+class PersistentRemoteShellTest(private val executable: String) {
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "{0}")
+        fun shells(): List<Array<String>> = listOf("/bin/sh", "/bin/dash")
+            .filter { File(it).canExecute() }
+            .distinctBy { File(it).canonicalPath }
+            .map { arrayOf(it) }
+    }
+
+    private fun shell(pauseAfterUpload: Boolean = false): PersistentRemoteShell {
+        val process = ProcessBuilder(executable).redirectErrorStream(true).start()
+        val output = if (pauseAfterUpload) object : FilterOutputStream(process.outputStream) {
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                val text = bytes.copyOfRange(offset, offset + length).toString(Charsets.UTF_8)
+                // Keep the remote parser busy after READY. Input sent before BEGIN will
+                // share its next read with the wrapper, exposing dash's stdin read-ahead.
+                val delayed = if (text.contains("_READY")) {
+                    text.removeSuffix("\n") + "; sleep 0.1\n"
+                } else text
+                out.write(delayed.toByteArray())
+            }
+        } else process.outputStream
+        return PersistentRemoteShell(process.inputStream, output, {
             process.destroyForcibly()
             process.inputStream.close()
             process.outputStream.close()
@@ -91,6 +119,56 @@ class PersistentRemoteShellTest {
             requireNotNull(oldKeyboard).invoke("old password\n".toByteArray())
             shell.inputWriter().invoke("new input\n".toByteArray())
             assertEquals("new input", withTimeout(5_000) { next.await() }.stdout)
+        }
+    }
+
+    @Test fun inputSentFromReadyIsNotBufferedByTheShellParser() = runBlocking {
+        shell(pauseAfterUpload = true).use { shell ->
+            val result = withTimeout(5_000) {
+                shell.execute("read -r value; printf '%s' \"\$value\"",
+                    onReady = { shell.inputWriter().invoke("immediate input\n".toByteArray()) })
+            }
+            assertEquals(0, result.exitCode)
+            assertEquals("immediate input", result.stdout)
+            assertEquals("alive", shell.execute("printf alive").stdout)
+        }
+    }
+
+    @Test fun closingBeforeBeginUnblocksExecutionWithoutOfferingAKeyboard() = runBlocking {
+        val received = LinkedBlockingQueue<ByteArray>()
+        val input = object : InputStream() {
+            override fun read(): Int = error("Use bulk reads")
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                val chunk = received.take()
+                if (chunk.isEmpty()) return -1
+                check(chunk.size <= length)
+                chunk.copyInto(bytes, offset)
+                return chunk.size
+            }
+        }
+        lateinit var shell: PersistentRemoteShell
+        val output = object : OutputStream() {
+            override fun write(value: Int) = error("Use bulk writes")
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                val text = bytes.copyOfRange(offset, offset + length).toString(Charsets.UTF_8)
+                val token = Regex("MIFFAN_([0-9a-f]+)_READY").find(text)?.groupValues?.get(1)
+                if (token != null) {
+                    received.put("\u001eMIFFAN_${token}_READY\u001f".toByteArray())
+                } else {
+                    // Close synchronously during dispatch, before any remote BEGIN.
+                    shell.close()
+                }
+            }
+        }
+        shell = PersistentRemoteShell(input, output, { received.offer(byteArrayOf()) })
+        shell.use {
+            var offeredKeyboard = false
+            val result = withTimeout(5_000) {
+                shell.execute("read -r value", onReady = { offeredKeyboard = true })
+            }
+            assertEquals(-1, result.exitCode)
+            assertFalse(offeredKeyboard)
+            assertFalse(shell.isOpen)
         }
     }
 
