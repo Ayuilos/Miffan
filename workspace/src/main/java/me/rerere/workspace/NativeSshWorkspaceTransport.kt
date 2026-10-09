@@ -2,6 +2,7 @@ package me.rerere.workspace
 
 import com.jcraft.jsch.ChannelDirectStreamLocal
 import com.jcraft.jsch.ChannelDirectTCPIP
+import com.jcraft.jsch.ChannelWindow
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.Channel
 import com.jcraft.jsch.ChannelSftp
@@ -327,6 +328,7 @@ class RemoteWorkspaceSession internal constructor(
             channel.setPort(port)
             channel.setOrgIPAddress("127.0.0.1")
             channel.setOrgPort(0)
+            ChannelWindow.widen(channel, STREAM_WINDOW_BYTES, STREAM_PACKET_BYTES)
             val input = channel.inputStream
             val output = channel.outputStream
             channel.connect(channelTimeoutMillis)
@@ -348,6 +350,7 @@ class RemoteWorkspaceSession internal constructor(
         val channel = session.openChannel("direct-streamlocal@openssh.com") as ChannelDirectStreamLocal
         try {
             channel.setSocketPath(path)
+            ChannelWindow.widen(channel, STREAM_WINDOW_BYTES, STREAM_PACKET_BYTES)
             val input = channel.inputStream
             val output = channel.outputStream
             channel.connect(channelTimeoutMillis)
@@ -754,3 +757,7 @@ private fun copyBounded(input: InputStream, output: OutputStream, maxBytes: Long
 private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 
 private const val MAX_LIST_ENTRIES = 500
+
+/** Receive window for forwarded streams: 4 MiB keeps a LAN or Tailscale link full (128 KiB managed ~4 MB/s). */
+private const val STREAM_WINDOW_BYTES = 4 * 1024 * 1024
+private const val STREAM_PACKET_BYTES = 32 * 1024
