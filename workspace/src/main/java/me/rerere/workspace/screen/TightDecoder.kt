@@ -26,6 +26,9 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?, private val forma
     var decodeNanos = 0L
         private set
 
+    var jpegRects = 0L
+        private set
+
     val supportsJpeg: Boolean get() = jpeg != null
 
     fun decode(input: DataInputStream, fb: Framebuffer, x: Int, y: Int, w: Int, h: Int) {
@@ -39,6 +42,7 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?, private val forma
                 decodeNanos += System.nanoTime() - started
             }
             JPEG -> {
+                jpegRects++
                 val length = compactLength(input)
                 ensureCompressed(length)
                 input.readFully(compressed, 0, length)
@@ -74,6 +78,7 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?, private val forma
             val length = compactLength(input)
             ensureCompressed(length)
             input.readFully(compressed, 0, length)
+            val inflateStarted = System.nanoTime()
             val inflater = streams[stream]
             inflater.setInput(compressed, 0, length)
             var read = 0
@@ -82,6 +87,7 @@ internal class TightDecoder(private val jpeg: RfbJpegDecoder?, private val forma
                 if (n == 0 && (inflater.needsInput() || inflater.finished())) throw IOException("Truncated Tight data")
                 read += n
             }
+            decodeNanos += System.nanoTime() - inflateStarted
         }
         val started = System.nanoTime()
         val pixels = fb.pixels

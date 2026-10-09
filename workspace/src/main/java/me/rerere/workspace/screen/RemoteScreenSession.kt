@@ -4,21 +4,23 @@ import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
 
 data class RemoteScreenOptions(
     /** JPEG quality 0..9 for Tight; null asks for lossless encodings only. */
@@ -26,6 +28,8 @@ data class RemoteScreenOptions(
     val maxFps: Int = 15,
     /** 16-bit colour: lossless encodings (macOS screen sharing) send a third fewer bytes. */
     val lowColor: Boolean = false,
+    /** 1 keeps serial request/decode/upload; 2 overlaps the next request with this update. */
+    val pipelineDepth: Int = 2,
 )
 
 sealed interface RemoteScreenState {
@@ -39,7 +43,7 @@ sealed interface RemoteScreenState {
 
 /**
  * Receives pixels on the session's reader thread, in output (possibly downscaled) coordinates.
- * Implementations must not block for long: the next frame is requested only after they return.
+ * Implementations must not block for long: decode and upload still share one reader coroutine.
  */
 interface RemoteScreenFrameSink {
     /** Called before the first frame and after every server resize; all pixels follow. */
@@ -67,6 +71,7 @@ class RemoteScreenSession(
     private val jpeg: RfbJpegDecoder?,
     options: RemoteScreenOptions,
     private val sink: RemoteScreenFrameSink,
+    private val nanoTime: () -> Long = System::nanoTime,
 ) : Closeable {
     private sealed interface Input {
         data class Pointer(val x: Int, val y: Int, val buttons: Int) : Input
@@ -82,7 +87,19 @@ class RemoteScreenSession(
     /** Text the remote side put on its clipboard (UTF-8 when the server sends it, else ISO-8859-1). */
     val clipboard: SharedFlow<String> = _clipboard.asSharedFlow()
 
-    private val paused = MutableStateFlow(false)
+    private val _stats = MutableStateFlow(RemoteScreenStats(
+        pixelFormat = if (options.lowColor) RfbPixelFormat.RGB565 else RfbPixelFormat.RGB888,
+    ))
+    /** Rolling statistics over the last [RemoteScreenStats.WINDOW_MILLIS]; updated about twice a second. */
+    val stats: StateFlow<RemoteScreenStats> = _stats.asStateFlow()
+
+    /** Called about every two seconds on the reader; null uses java.util.logging. */
+    @Volatile var statsLogger: ((RemoteScreenStats) -> Unit)? = null
+
+    private val paused = AtomicBoolean(false)
+    private val resumeVersion = AtomicLong()
+    private val controls = Channel<Unit>(Channel.CONFLATED)
+    private val pipelineDepth = options.pipelineDepth.also { require(it in 1..2) { "pipelineDepth must be 1 or 2" } }
     @Volatile private var maxFps = options.maxFps.coerceIn(1, 60)
     private val jpegQuality = options.jpegQuality
     private val pixelFormat = if (options.lowColor) RfbPixelFormat.RGB565 else RfbPixelFormat.RGB888
@@ -93,7 +110,7 @@ class RemoteScreenSession(
     private var writer: Job? = null
 
     /** Bytes received from the server, for data-usage display. */
-    val bytesReceived: Long get() = client?.bytesRead ?: 0L
+    val bytesReceived: Long get() = client?.bytesReceived ?: 0L
 
     fun start(scope: CoroutineScope) {
         check(reader == null) { "Session already started" }
@@ -101,11 +118,13 @@ class RemoteScreenSession(
     }
 
     fun setPaused(value: Boolean) {
-        paused.value = value
+        if (paused.getAndSet(value) && !value) resumeVersion.incrementAndGet()
+        controls.trySend(Unit)
     }
 
     fun setMaxFps(value: Int) {
         maxFps = value.coerceIn(1, 60)
+        controls.trySend(Unit)
     }
 
     /** [x]/[y] are server pixels; [buttons] is the RFB mask (1 left, 2 middle, 4 right, 8/16 wheel). */
@@ -137,9 +156,10 @@ class RemoteScreenSession(
         inputs.trySend(Input.Clipboard(text))
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun runReader(scope: CoroutineScope) {
         try {
-            val rfb = RfbClient(input, output, credentials, jpeg, pixelFormat)
+            val rfb = RfbClient(input, output, credentials, jpeg, pixelFormat, nanoTime)
             client = rfb
             val info = rfb.handshake(RfbClient.defaultEncodings(jpegQuality = if (jpeg != null) jpegQuality else null))
             var scale = ScreenScaler.scaleFor(info.width, info.height)
@@ -147,39 +167,102 @@ class RemoteScreenSession(
             writer = scope.launch { runWriter(rfb) }
             announceSize(rfb.framebuffer, scale)
 
-            var incremental = false
-            var lastRequest = 0L
+            val pacer = ScreenRequestPacer(pipelineDepth)
+            val window = ScreenStatsWindow(nanoTime(), rfb.bytesReceived)
+            var lastPublish = nanoTime()
+            var lastLog = lastPublish
+            var handledResume = 0L
             var buffer = IntArray(0)
-            while (scope.isActive && !closed.get()) {
-                paused.first { !it }
-                val interval = 1000L / maxFps
-                val wait = lastRequest + interval - System.currentTimeMillis()
-                if (wait > 0) delay(wait)
-                lastRequest = System.currentTimeMillis()
+            fun request(atHeader: Boolean = false) {
+                val version = resumeVersion.get()
+                val incremental = pacer.request(nanoTime(), maxFps, paused.get(), atHeader, version != handledResume) ?: return
                 rfb.requestUpdate(incremental)
-                incremental = true
-                var event = rfb.readMessage()
-                while (event !is RfbEvent.FramebufferUpdated) {
-                    if (event is RfbEvent.CutText) _clipboard.tryEmit(event.text)
-                    event = rfb.readMessage()
+                handledResume = version
+            }
+            fun publish() {
+                val now = nanoTime()
+                if (now - lastPublish < 500_000_000L) return
+                val snapshot = window.snapshot(now, rfb.bytesReceived, scale, pixelFormat, pacer.outstanding)
+                _stats.value = snapshot
+                lastPublish = now
+                if (now - lastLog >= 2_000_000_000L) {
+                    lastLog = now
+                    // A diagnostic callback must never terminate the screen connection.
+                    runCatching {
+                        statsLogger?.invoke(snapshot) ?: java.util.logging.Logger
+                            .getLogger(RemoteScreenSession::class.java.name).info(snapshot.toString())
+                    }
                 }
+            }
+            request()
+            while (scope.isActive && !closed.get()) {
+                // Only the one-byte header read is asynchronous. Body reads, decode, scale,
+                // uploads and all update requests stay on this reader, with no frame queue.
+                val pendingHeader = scope.async(Dispatchers.IO) { runCatching { rfb.readMessageHeader() } }
+                var header: RfbClient.MessageHeader? = null
+                while (header == null && scope.isActive && !closed.get()) {
+                    request()
+                    publish()
+                    val now = nanoTime()
+                    val waitNanos = minOf(
+                        (lastPublish + 500_000_000L - now).coerceAtLeast(0),
+                        pacer.waitNanos(now, maxFps, paused.get(), resumeVersion.get() != handledResume),
+                    )
+                    select<Unit> {
+                        pendingHeader.onAwait { header = it.getOrThrow() }
+                        controls.onReceive { }
+                        // Sleep until a request/statistics deadline; controls wake us immediately.
+                        onTimeout((waitNanos / 1_000_000L + 1).coerceAtLeast(1)) { }
+                    }
+                }
+                val received = header ?: break
+                val latency = if (received.type == 0) pacer.latency(received.receivedNanos) else null
+                val decodeBefore = rfb.decodeNanos
+                if (received.type == 0) request(atHeader = true)
+                val event = rfb.readMessage(received)
+                if (event !is RfbEvent.FramebufferUpdated) {
+                    if (event is RfbEvent.CutText) _clipboard.tryEmit(event.text)
+                    continue
+                }
+                // A header is a reply even when it contains no pixels or only a cursor.
+                pacer.complete()
+                val readTime = rfb.readNanos - received.readBefore
+                val decodeTime = rfb.decodeNanos - decodeBefore
+                val updateBytes = rfb.bytesRead - received.bytesBefore
+                var scaleTime = 0L
+                var sinkTime = 0L
                 event.cursor?.let(sink::onCursor)
                 val fb = rfb.framebuffer
                 val dirty = if (event.resized) {
+                    pacer.resized(nanoTime())
                     scale = ScreenScaler.scaleFor(fb.width, fb.height)
                     _state.value = RemoteScreenState.Connected(info.name, fb.width, fb.height, scale)
                     announceSize(fb, scale)
                     listOf(RfbRect(0, 0, fb.width, fb.height))
                 } else ScreenScaler.merge(event.rects)
+                var displayed = false
                 for (rect in dirty) {
                     val out = ScreenScaler.outputRect(rect, scale, fb.width, fb.height)
                     val size = out.width * out.height
                     if (size == 0) continue
+                    displayed = true
                     if (buffer.size < size) buffer = IntArray(size)
+                    var started = nanoTime()
                     ScreenScaler.copy(fb, scale, out, buffer)
+                    scaleTime += nanoTime() - started
+                    started = nanoTime()
                     sink.onPixels(out, buffer)
+                    sinkTime += nanoTime() - started
                 }
+                val started = nanoTime()
                 sink.onFrameComplete()
+                sinkTime += nanoTime() - started
+                window.add(ScreenStatsWindow.Update(
+                    nanoTime(), updateBytes, latency, readTime, decodeTime, scaleTime, sinkTime,
+                    event.rects.sumOf { it.width.toLong() * it.height }, displayed,
+                    if (event.hasTightJpeg) event.encodings + RfbClient.ENCODING_TIGHT_JPEG else event.encodings,
+                ))
+                publish()
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -214,6 +297,7 @@ class RemoteScreenSession(
     }
 
     private fun shutdown() {
+        _stats.value = _stats.value.copy(outstandingRequests = 0)
         inputs.close()
         writer?.cancel()
         runCatching { transport.close() }
