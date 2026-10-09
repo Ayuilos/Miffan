@@ -28,15 +28,17 @@ extern "C" JavaVM* jniVm;
 #include <freerdp/update.h>
 #include <winpr/synch.h>
 #include <winpr/path.h>
+#include "clipboard.h"
 
 struct Session {
     rdpContext base;
     JNIEnv* env;
     jobject owner;
     HANDLE event;
-    jmethodID read, write, wait, closed, paused, command, certificate, size, pixels, frame, cursor, encoding, failure, stats;
+    jmethodID read, write, wait, closed, paused, command, certificate, size, pixels, frame, cursor, encoding, failure, stats, takeClipboard, clipboardReceived, clipboardFailure;
     pcRdpgfxSurfaceCommand surfaceCommand;
     std::string* decoder;
+    Clipboard* clipboard;
     bool callbackFailed;
     int buttons;
 };
@@ -235,9 +237,81 @@ static UINT surfaceCommand(RdpgfxClientContext* gfx, const RDPGFX_SURFACE_COMMAN
     s->env->DeleteLocalRef(enc); if (decoder) s->env->DeleteLocalRef(decoder);
     return exception(s) ? ERROR_INTERNAL_ERROR : result;
 }
+static bool clipboardEvents(Session* s) {
+    auto* clip = s->clipboard;
+    auto text = static_cast<jstring>(s->env->CallObjectMethod(s->owner, s->takeClipboard));
+    if (exception(s)) return false;
+    if (text) {
+        const jchar* chars = s->env->GetStringChars(text, nullptr);
+        if (!chars) { exception(s); s->env->DeleteLocalRef(text); return false; }
+        clip->local.assign(reinterpret_cast<const char16_t*>(chars), s->env->GetStringLength(text));
+        s->env->ReleaseStringChars(text, chars);
+        s->env->DeleteLocalRef(text);
+        clip->hasLocal = true; clip->dirty = true; clip->deadline = GetTickCount64() + 10000;
+    }
+    if ((clip->dirty || clip->awaitingAck) && clip->deadline && GetTickCount64() >= clip->deadline) return false;
+    if (!clip->context) return true;
+    std::deque<Clipboard::Event> events;
+    { std::lock_guard<std::mutex> lock(clip->mutex); events.swap(clip->events); clip->queuedBytes = 0; }
+    for (auto& event : events) {
+        UINT result = CHANNEL_RC_OK;
+        switch (event.type) {
+            case 1: {
+                CLIPRDR_GENERAL_CAPABILITY_SET general{};
+                general.capabilitySetType = CB_CAPSTYPE_GENERAL;
+                general.capabilitySetLength = CB_CAPSTYPE_GENERAL_LEN;
+                general.version = CB_CAPS_VERSION_2;
+                general.generalFlags = CB_USE_LONG_FORMAT_NAMES;
+                CLIPRDR_CAPABILITIES capabilities{};
+                capabilities.common.msgType = CB_CLIP_CAPS;
+                capabilities.cCapabilitiesSets = 1;
+                capabilities.capabilitySets = reinterpret_cast<CLIPRDR_CAPABILITY_SET*>(&general);
+                result = clip->context->ClientCapabilities(clip->context, &capabilities);
+                clip->ready = true; clip->dirty = true;
+                break;
+            }
+            case 2: {
+                CLIPRDR_FORMAT_LIST_RESPONSE response{};
+                response.common.msgType = CB_FORMAT_LIST_RESPONSE;
+                response.common.msgFlags = CB_RESPONSE_OK;
+                result = clip->context->ClientFormatListResponse(clip->context, &response);
+                clip->refresh = event.value != 0;
+                if (clip->refresh && !clip->requested && result == CHANNEL_RC_OK) result = clip->request();
+                break;
+            }
+            case 3: result = clip->respond(event.value); break;
+            case 5:
+                clip->awaitingAck = false;
+                if (!event.value) return false;
+                break;
+            case 4: {
+                if (!clip->requested) break;
+                clip->requested = false;
+                if (event.value) {
+                    std::u16string content;
+                    for (size_t i = 0; i + 1 < event.data.size(); i += 2) {
+                        char16_t c = event.data[i] | (event.data[i+1] << 8);
+                        if (!c) break;
+                        content.push_back(c);
+                    }
+                    auto value = s->env->NewString(reinterpret_cast<const jchar*>(content.data()), static_cast<jsize>(content.size()));
+                    if (!value) { exception(s); return false; }
+                    s->env->CallVoidMethod(s->owner, s->clipboardReceived, value);
+                    s->env->DeleteLocalRef(value);
+                    if (exception(s)) return false;
+                }
+                if (clip->refresh) result = clip->request();
+                break;
+            }
+        }
+        if (result != CHANNEL_RC_OK) return false;
+    }
+    return !clip->ready || !clip->dirty || clip->awaitingAck || clip->advertise() == CHANNEL_RC_OK;
+}
 static void connected(void* context,const ChannelConnectedEventArgs* e) {
     auto* s = session(static_cast<rdpContext*>(context));
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Channel connected: %s",e->name);
+    if (strcmp(e->name, "cliprdr") == 0) s->clipboard->attach(static_cast<CliprdrClientContext*>(e->pInterface));
     if (strcmp(e->name,RDPGFX_DVC_CHANNEL_NAME)==0) {
         auto* gfx = static_cast<RdpgfxClientContext*>(e->pInterface);
         if (gdi_graphics_pipeline_init(s->base.gdi,gfx)) {
@@ -247,6 +321,10 @@ static void connected(void* context,const ChannelConnectedEventArgs* e) {
 }
 static void disconnected(void* context,const ChannelDisconnectedEventArgs* e) {
     auto* c = static_cast<rdpContext*>(context);
+    if (strcmp(e->name, "cliprdr") == 0) {
+        static_cast<CliprdrClientContext*>(e->pInterface)->custom = nullptr;
+        session(c)->clipboard->context = nullptr;
+    }
     if (strcmp(e->name,RDPGFX_DVC_CHANNEL_NAME)==0) gdi_graphics_pipeline_uninit(c->gdi,static_cast<RdpgfxClientContext*>(e->pInterface));
 }
 static BOOL preConnect(freerdp* instance) {
@@ -303,7 +381,10 @@ static bool inputs(Session* s) {
         } else if (data[0]==2) {
             ok=freerdp_input_send_keyboard_event(in,(data[2] ? 0 : KBD_FLAGS_RELEASE) | ((data[1]&0x100) ? KBD_FLAGS_EXTENDED : 0),data[1]&0xff);
         } else if (data[0]==3) {
-            ok=freerdp_input_send_unicode_keyboard_event(in,0,data[1]) && freerdp_input_send_unicode_keyboard_event(in,KBD_FLAGS_RELEASE,data[1]);
+            if (data[1] == '\n' || data[1] == '\r' || data[1] == '\t') {
+                const UINT8 code = data[1] == '\t' ? 0x0f : 0x1c;
+                ok = freerdp_input_send_keyboard_event(in, 0, code) && freerdp_input_send_keyboard_event(in, KBD_FLAGS_RELEASE, code);
+            } else ok=freerdp_input_send_unicode_keyboard_event(in,0,data[1]) && freerdp_input_send_unicode_keyboard_event(in,KBD_FLAGS_RELEASE,data[1]);
         }
         if (!ok) return false;
     }
@@ -335,7 +416,7 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     }
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Context ready");
     auto* s=session(instance->context);
-    s->env=env; s->owner=owner; s->decoder=new std::string();
+    s->env=env; s->owner=owner; s->decoder=new std::string(); s->clipboard=new Clipboard();
     // The stream has no fd. A signaled WinPR event makes pending BIO reads pollable; the loop
     // sleeps at most 10ms. TLS handshake waits use the stream condition variable instead.
     s->event=CreateEvent(nullptr,TRUE,TRUE,nullptr);
@@ -346,6 +427,8 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     METHOD(certificate,"verifyCertificate","(Ljava/lang/String;)Z"); METHOD(size,"onSize","(IILjava/lang/String;)V");
     METHOD(pixels,"onPixels","(IIII[I)V"); METHOD(frame,"onFrame","()V"); METHOD(cursor,"onCursor","(IIII[I)V");
     METHOD(encoding,"onEncoding","(Ljava/lang/String;Ljava/lang/String;)V"); METHOD(failure,"onFailure","(J)V"); METHOD(stats,"publishStats","()V");
+    METHOD(clipboardFailure,"onClipboardFailure","()V");
+    METHOD(takeClipboard,"takeClipboard","()Ljava/lang/String;"); METHOD(clipboardReceived,"onClipboard","(Ljava/lang/String;)V");
 #undef METHOD
     env->DeleteLocalRef(cls);
     auto* settings=instance->context->settings;
@@ -386,7 +469,11 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
                 if (!instance->context->update->SuppressOutput(instance->context,paused ? 0 : 1,&area)) break;
                 wasPaused=paused;
             }
-            if (!inputs(s) || !freerdp_check_event_handles(instance->context)) break;
+            if (!clipboardEvents(s)) {
+                if (!s->callbackFailed) env->CallVoidMethod(owner, s->clipboardFailure);
+                break;
+            }
+            if ((!s->clipboard->dirty && !s->clipboard->awaitingAck && !inputs(s)) || !freerdp_check_event_handles(instance->context)) break;
             env->CallVoidMethod(owner,s->stats);
             if(exception(s)) break;
             Sleep(10);
@@ -399,7 +486,7 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     bool disconnectedOk=freerdp_disconnect(instance); (void)disconnectedOk;
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Freeing graphics");
     gdi_free(instance);
-    CloseHandle(s->event); delete s->decoder;
+    CloseHandle(s->event); delete s->decoder; delete s->clipboard;
     active=nullptr; runtimeDirectory.clear();
     freerdp_context_free(instance); freerdp_free(instance);
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Native session released");

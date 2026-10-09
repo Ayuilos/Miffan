@@ -11,6 +11,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +42,10 @@ class RdpSession(
     val state: StateFlow<RemoteScreenState> = mutableState.asStateFlow()
     private val fingerprint = MutableStateFlow<String?>(null)
     val certificateSha256: StateFlow<String?> = fingerprint.asStateFlow()
+    private val remoteClipboard = MutableSharedFlow<String>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val clipboard: SharedFlow<String> = remoteClipboard.asSharedFlow()
+    private var clipboardToSend: String? = null
+    val bytesReceived: Long get() = synchronized(bufferLock) { received }
     private val mutableStats = MutableStateFlow(RdpStats())
     val stats: StateFlow<RdpStats> = mutableStats.asStateFlow()
     private val closed = AtomicBoolean()
@@ -99,9 +107,27 @@ class RdpSession(
     fun key(keysym: Int, down: Boolean) {
         RdpKeys.scancode(keysym)?.let { enqueue(intArrayOf(2, it, if (down) 1 else 0)) }
     }
-    /** UTF-16 units, including surrogate pairs, are sent as Unicode down/up events. */
-    fun typeText(text: String) { text.forEach { enqueue(intArrayOf(3, it.code)) } }
-    private fun enqueue(command: IntArray) {
+    /** Rejects unsupported/long text atomically, without sending a prefix or closing the session. */
+    fun typeText(text: String): Boolean = synchronized(commands) {
+        if (closed.get() || !RdpText.canTypeDirectly(text) || commands.remainingCapacity() < text.length) return false
+        text.forEach { commands.offer(intArrayOf(3, it.code)) }
+        true
+    }
+    fun sendClipboard(text: String) {
+        RdpText.requireClipboardSize(text)
+        synchronized(commands) {
+            if (closed.get()) return
+            clipboardToSend = text // coalesce; keep at most one bounded clipboard in memory
+        }
+    }
+    private fun takeClipboard(): String? = synchronized(commands) {
+        clipboardToSend.also { clipboardToSend = null }
+    }
+    private fun onClipboardFailure() {
+        if (!closed.get() && failure == null) failure = IllegalStateException("RDP clipboard negotiation failed")
+    }
+    private fun onClipboard(text: String) { if (!closed.get()) remoteClipboard.tryEmit(text) }
+    private fun enqueue(command: IntArray) = synchronized(commands) {
         if (!closed.get() && !commands.offer(command)) {
             failure = IllegalStateException("RDP input queue overflow")
         }
@@ -156,7 +182,7 @@ class RdpSession(
     }
     private fun isClosed() = closed.get() || failure != null
     private fun isPaused() = paused
-    private fun nextCommand(): IntArray? = commands.poll()
+    private fun nextCommand(): IntArray? = synchronized(commands) { commands.poll() }
     private fun verifyCertificate(actual: String): Boolean {
         fingerprint.value = actual
         return CertificateFingerprint.matches(options.certificateSha256, actual).also {
@@ -205,7 +231,7 @@ class RdpSession(
         if (!closed.compareAndSet(false, true)) return
         runCatching { transport.close() }
         synchronized(bufferLock) { bufferLock.notifyAll() }
-        commands.clear()
+        synchronized(commands) { commands.clear(); clipboardToSend = null }
         mutableState.value = RemoteScreenState.Closed(failure)
         cancellation?.cancel()
     }

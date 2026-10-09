@@ -85,7 +85,7 @@ class RdpInstrumentedTest {
                 if (frame.count > 0 && pixels.any { (it and 0xffffff) != 0 }) frame.countDown()
             } }
         }
-        val credentials = RdpCredentials(requireNotNull(args.getString("$desktop.username")), requireNotNull(args.getString("$desktop.password")))
+        val credentials = RdpCredentials(requireNotNull(args.getString("$desktop.username")), org.json.JSONObject(File(instrumentation.targetContext.cacheDir, "rdp-test-credentials.json").readText()).getString("$desktop.password"))
         val security = when (args.getString("$desktop.security")) { "tls" -> RdpSecurity.TLS; "nla" -> RdpSecurity.NLA; else -> RdpSecurity.AUTO }
         val session = RdpSession(socket.getInputStream(), socket.getOutputStream(), socket, credentials, RdpOptions(security = security), sink)
         val out = File(instrumentation.targetContext.getExternalFilesDir(null), "rdp-test").apply { mkdirs() }
@@ -116,7 +116,12 @@ class RdpInstrumentedTest {
             session.pointer(x,y,1); session.pointer(x,y,0)
             session.key(RfbKeys.CONTROL_L,true); session.key('a'.code,true)
             session.key('a'.code,false); session.key(RfbKeys.CONTROL_L,false)
-            session.typeText(args.getString("input.text", "Miffan P5A 中文输入"))
+            val text = requireNotNull(args.getString("input.text", "Miffan P5A 中文输入"))
+            if (!session.typeText(text)) {
+                session.sendClipboard(text)
+                session.key(RfbKeys.CONTROL_L, true); session.key('v'.code, true)
+                session.key('v'.code, false); session.key(RfbKeys.CONTROL_L, false)
+            }
             Thread.sleep(3000)
             saveFrame("input")
             Log.i("MiffanRdpTest", "$desktop sending Return after Unicode text")

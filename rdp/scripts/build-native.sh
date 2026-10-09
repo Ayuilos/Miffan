@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEPS="$ROOT/.deps"
-SDK="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}"
+SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 NDK="${ANDROID_NDK_HOME:-$SDK/ndk/28.2.13676358}"
 CMAKE="${CMAKE:-$SDK/cmake/3.22.1/bin/cmake}"
 NINJA="$(dirname "$CMAKE")/ninja"

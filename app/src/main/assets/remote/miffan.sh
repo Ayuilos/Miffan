@@ -9,9 +9,10 @@
 #   miffan cua              run `cua-driver mcp` (MCP over stdio) inside the session
 #   miffan vnc start|stop|status
 #                           manage a VNC server only this user can reach (JSON on stdout)
+#   miffan rdp start        password on stdin; safe per-user RDP startup (JSON)
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=6
+MIFFAN_HELPER_VERSION=7
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -35,7 +36,7 @@ json_or_null() {
 
 # --- Graphical session discovery (Linux) -------------------------------------------------
 
-SESSION_VARS="WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE NIRI_SOCKET SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE XAUTHORITY"
+SESSION_VARS="WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE KDE_SESSION_VERSION NIRI_SOCKET SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE XAUTHORITY"
 
 # Prints KEY=VALUE lines for the session variables. The systemd user manager usually has them
 # (desktops import their environment there); otherwise borrow them from a running process of
@@ -292,6 +293,273 @@ clip() {
     esac
 }
 
+# --- RDP -------------------------------------------------------------------------------
+
+rdp_env() {
+    load_session_env >/dev/null 2>&1 || :
+    [ -n "${XDG_RUNTIME_DIR:-}" ] || export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+    if [ -z "${XDG_CURRENT_DESKTOP:-}" ]; then
+        if pgrep -u "$(id -u)" -x gnome-shell >/dev/null 2>&1; then
+            export XDG_CURRENT_DESKTOP=GNOME
+        elif pgrep -u "$(id -u)" -f '(^|/)kwin_wayland([[:space:]]|$)' >/dev/null 2>&1; then
+            export XDG_CURRENT_DESKTOP=KDE
+        fi
+    fi
+}
+
+rdp_kind() {
+    [ "$(os)" = linux ] || { echo none; return; }
+    case "${XDG_CURRENT_DESKTOP:-}" in
+        *GNOME*|*gnome*) command -v grdctl >/dev/null 2>&1 && { echo gnome-remote-desktop; return; } ;;
+        *KDE*|*kde*|*Plasma*) command -v krdpserver >/dev/null 2>&1 && { echo krdp; return; } ;;
+    esac
+    echo none
+}
+
+rdp_dimensions() {
+    rdp_width=null
+    rdp_height=null
+    if [ "${rdp_mode:-}" = headless ]; then
+        rdp_width=1920; rdp_height=1080
+    elif [ -n "${DISPLAY:-}" ] && command -v xrandr >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+        geometry=$(timeout 2 xrandr --current 2>/dev/null | awk '/ connected/ {
+            for (i=1; i<=NF; i++) if ($i ~ /^[0-9]+x[0-9]+[+]/) { split($i,d,/[x+]/); print d[1],d[2]; exit }
+        }')
+        if [ -n "$geometry" ]; then
+            rdp_width=${geometry%% *}; rdp_height=${geometry#* }
+            case "$rdp_width:$rdp_height" in *[!0-9:]*) rdp_width=null; rdp_height=null ;; esac
+        fi
+    fi
+}
+
+rdp_json() {
+    rdp_dimensions
+    # Only fixed diagnostics leave the helper. Never return upstream credential output.
+    printf '{"server":%s,"port":%s,"username":%s,"desktop":%s,"mode":%s,"error":%s,"log":%s,"width":%s,"height":%s}\n' \
+        "$(json_or_null "$rdp_server")" "${rdp_port:-null}" "$(json_or_null "${rdp_user:-}")" \
+        "$(json_or_null "${XDG_CURRENT_DESKTOP:-}")" "$(json_or_null "${rdp_mode:-}")" \
+        "$(json_or_null "${1:-}")" "$(json_or_null "${2:-}")" "$rdp_width" "$rdp_height"
+}
+
+rdp_probe_json() {
+    rdp_env
+    rdp_server=$(rdp_kind)
+    rdp_version=""
+    rdp_running=false
+    case "$rdp_server" in
+        gnome-remote-desktop)
+            rdp_version=$(grdctl --version 2>/dev/null | head -n 1)
+            pgrep -u "$(id -u)" -f '(^|/)gnome-remote-desktop-daemon([[:space:]]|$)' >/dev/null 2>&1 && rdp_running=true
+            ;;
+        krdp)
+            rdp_version=$(krdpserver --version 2>/dev/null | head -n 1)
+            pgrep -u "$(id -u)" -x krdpserver >/dev/null 2>&1 && rdp_running=true
+            ;;
+    esac
+    printf '{"server":%s,"version":%s,"running":%s}\n' \
+        "$(json_or_null "$rdp_server")" "$(json_or_null "$rdp_version")" "$rdp_running"
+}
+
+rdp_random_port() {
+    n=0
+    while [ "$n" -lt 32 ]; do
+        candidate=$((20000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 40000))
+        if ! port_listening "$candidate"; then printf '%s\n' "$candidate"; return 0; fi
+        n=$((n + 1))
+    done
+    return 1
+}
+
+rdp_certificate() {
+    # Certificate identity persists across starts; never silently replace a partial pair.
+    if [ -f "$rdp_dir/cert.pem" ] && [ -f "$rdp_dir/key.pem" ]; then
+        chmod 600 "$rdp_dir/cert.pem" "$rdp_dir/key.pem"
+        return
+    fi
+    [ ! -e "$rdp_dir/cert.pem" ] && [ ! -e "$rdp_dir/key.pem" ] || return 1
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=Miffan-RDP \
+        -keyout "$rdp_dir/key.new" -out "$rdp_dir/cert.new" >/dev/null 2>&1 || return 1
+    chmod 600 "$rdp_dir/key.new" "$rdp_dir/cert.new" || return 1
+    mv "$rdp_dir/key.new" "$rdp_dir/key.pem" && mv "$rdp_dir/cert.new" "$rdp_dir/cert.pem"
+}
+
+grd() {
+    if [ "$rdp_mode" = headless ]; then grdctl --headless "$@"; else grdctl "$@"; fi
+}
+
+rdp_gnome() {
+    rdp_mode=user
+    if pgrep -u "$(id -u)" -f '(^|/)gnome-shell .*--headless' >/dev/null 2>&1; then rdp_mode=headless; fi
+    rdp_unit=gnome-remote-desktop.service
+    [ "$rdp_mode" != headless ] || rdp_unit=gnome-remote-desktop-headless.service
+    rdp_owner="$rdp_dir/gnome-$rdp_mode.owner"
+    if [ "$rdp_mode" = user ]; then
+        command -v gdbus >/dev/null 2>&1 || { rdp_json credential_setup_unavailable; return 1; }
+        locked=$(gdbus call --session --dest org.freedesktop.secrets \
+            --object-path /org/freedesktop/secrets/aliases/default \
+            --method org.freedesktop.DBus.Properties.Get org.freedesktop.Secret.Collection Locked 2>/dev/null) || {
+                rdp_json keyring_locked 'Unlock the session keyring first'; return 1;
+            }
+        printf '%s' "$locked" | grep -q false || { rdp_json keyring_locked; return 1; }
+    fi
+    # Refuse both running and configured services unless this helper created this mode.
+    if [ ! -f "$rdp_owner" ]; then
+        if pgrep -u "$(id -u)" -f '(^|/)gnome-remote-desktop-daemon([[:space:]]|$)' >/dev/null 2>&1 || \
+            grd status 2>/dev/null | grep -Eq 'Status:[[:space:]]+enabled|TLS (certificate|key):[[:space:]]+[^[:space:]]|Username:[[:space:]]+\(hidden\)'; then
+            rdp_json rdp_already_configured 'Existing GNOME RDP configuration is not owned by Miffan'; return 1
+        fi
+    else
+        # A user changing the owned configuration revokes ownership: do not overwrite it.
+        rdp_port=$(cat "$rdp_owner")
+        case "$rdp_port" in ''|*[!0-9]*) rdp_json rdp_already_configured; return 1 ;; esac
+        owned_status=$(grd status 2>/dev/null) || { rdp_json rdp_start_failed; return 1; }
+        if ! printf '%s\n' "$owned_status" | grep -F "TLS certificate: $rdp_dir/cert.pem" >/dev/null || \
+            ! printf '%s\n' "$owned_status" | grep -F "TLS key: $rdp_dir/key.pem" >/dev/null || \
+            ! printf '%s\n' "$owned_status" | grep -Eq "Port:[[:space:]]+$rdp_port$"; then
+            rdp_json rdp_already_configured 'GNOME configuration changed outside Miffan'; return 1
+        fi
+    fi
+    command -v systemctl >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 || {
+        rdp_json credential_setup_unavailable; return 1;
+    }
+    rdp_certificate || { rdp_json rdp_start_failed 'Certificate creation failed'; return 1; }
+    [ -n "${rdp_port:-}" ] || rdp_port=$(rdp_random_port) || { rdp_json rdp_start_failed; return 1; }
+    rdp_digest=$(printf '%s' "$rdp_secret" | openssl dgst -sha256 | sed 's/^.*= //')
+    if [ -f "$rdp_owner" ] && [ "$rdp_digest" = "$(cat "$rdp_owner.digest" 2>/dev/null)" ] && port_listening "$rdp_port"; then
+        unset rdp_secret
+        rdp_json; return 0
+    fi
+    # grdctl uses separate buffered GIO readers for username and password. A canonical
+    # PTY keeps each read to one line (a plain pipe may lose its prefetched second line).
+    # Disable echo and discard all transcript/output; neither argv nor logs contain secrets.
+    command -v script >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1 || {
+        rdp_json credential_setup_unavailable 'util-linux script and timeout are required'; return 1;
+    }
+    unset ENV BASH_ENV SCRIPT_DEBUG ULPTY_DEBUG
+    export SHELL=/bin/sh
+    credential_command='grdctl rdp set-credentials'
+    [ "$rdp_mode" != headless ] || credential_command='grdctl --headless rdp set-credentials'
+    if ! printf '%s\n%s\n' "$rdp_user" "$rdp_secret" | timeout 15 script --quiet --return --echo never --command "$credential_command" /dev/null >/dev/null 2>&1; then
+        rdp_json keyring_locked 'Credential store unavailable or locked'; return 1
+    fi
+    unset rdp_secret
+    # Record ownership of partial setup; failure must never affect another service.
+    printf '%s\n' "$rdp_port" > "$rdp_owner"
+    if ! grd rdp set-tls-cert "$rdp_dir/cert.pem" >/dev/null 2>&1 || \
+        ! grd rdp set-tls-key "$rdp_dir/key.pem" >/dev/null 2>&1 || \
+        ! grd rdp set-port "$rdp_port" >/dev/null 2>&1 || \
+        ! grd rdp disable-port-negotiation >/dev/null 2>&1 || \
+        ! grd rdp disable-view-only >/dev/null 2>&1; then
+        rdp_json rdp_start_failed 'GRD configuration failed'; return 1
+    fi
+    # GRD always authenticates with NLA. The standard unit is now exclusively helper-owned.
+    printf '%s\n' "$rdp_port" > "$rdp_owner"
+    grd rdp enable >/dev/null 2>&1 && systemctl --user restart "$rdp_unit" >/dev/null 2>&1 || {
+        rdp_json rdp_start_failed 'GRD service startup failed'; return 1;
+    }
+    if rdp_wait; then printf '%s\n' "$rdp_digest" > "$rdp_owner.digest"; else return 1; fi
+}
+
+rdp_kde() {
+    rdp_mode=user
+    wallet_query=$(command -v kwallet-query 2>/dev/null || command -v kwallet6-query 2>/dev/null)
+    [ -n "$wallet_query" ] && command -v qdbus6 >/dev/null 2>&1 && \
+        command -v timeout >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 && \
+        command -v systemd-run >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 || {
+            rdp_json credential_setup_unavailable 'KWallet CLI and qdbus6 are required'; return 1;
+        }
+    rdp_config="$rdp_dir/krdp-config"
+    rdp_owner="$rdp_dir/krdp.owner"
+    # An independent XDG_CONFIG_HOME prevents changing the user's KRDP settings.
+    if [ ! -f "$rdp_owner" ] && { pgrep -u "$(id -u)" -x krdpserver >/dev/null 2>&1 || \
+        [ -s "${XDG_CONFIG_HOME:-$HOME/.config}/krdpserverrc" ]; }; then
+        rdp_json rdp_already_configured 'Existing KDE RDP configuration is not owned by Miffan'; return 1
+    fi
+    owned_pid=$(systemctl --user show miffan-rdp-kde.service -p MainPID --value 2>/dev/null)
+    for active_pid in $(pgrep -u "$(id -u)" -x krdpserver 2>/dev/null); do
+        if [ ! -f "$rdp_owner" ] || [ "$active_pid" != "$owned_pid" ]; then
+            rdp_json rdp_already_configured; return 1
+        fi
+    done
+    wallet=$(timeout 3 qdbus6 org.kde.kwalletd6 /modules/kwalletd6 org.kde.KWallet.networkWallet 2>/dev/null) || {
+        rdp_json keyring_locked; return 1;
+    }
+    [ -n "$wallet" ] && [ "$(timeout 3 qdbus6 org.kde.kwalletd6 /modules/kwalletd6 org.kde.KWallet.isOpen "$wallet" 2>/dev/null)" = true ] || {
+        rdp_json keyring_locked 'Unlock KWallet first'; return 1;
+    }
+    rdp_digest=$(printf '%s' "$rdp_secret" | openssl dgst -sha256 | sed 's/^.*= //')
+    if [ -f "$rdp_owner" ]; then
+        rdp_port=$(cat "$rdp_owner")
+        case "$rdp_port" in ''|*[!0-9]*) rdp_json rdp_already_configured; return 1 ;; esac
+        if ! grep -Fx "Users=$rdp_user" "$rdp_config/krdpserverrc" >/dev/null 2>&1 || \
+            ! grep -Fx "ListenPort=$rdp_port" "$rdp_config/krdpserverrc" >/dev/null 2>&1 || \
+            ! grep -Fx "Certificate=$rdp_dir/cert.pem" "$rdp_config/krdpserverrc" >/dev/null 2>&1 || \
+            ! grep -Fx "CertificateKey=$rdp_dir/key.pem" "$rdp_config/krdpserverrc" >/dev/null 2>&1; then
+            rdp_json rdp_already_configured 'KRDP configuration changed outside Miffan'; return 1
+        fi
+        if [ "$rdp_digest" = "$(cat "$rdp_owner.digest" 2>/dev/null)" ] && port_listening "$rdp_port"; then
+            unset rdp_secret
+            rdp_json; return 0
+        fi
+    elif [ "$(systemctl --user show miffan-rdp-kde.service -p LoadState --value 2>/dev/null)" = loaded ]; then
+        rdp_json rdp_already_configured; return 1
+    fi
+    # QtKeychain ReadPasswordJob("KRDP"): folder KRDP, entry username, text/password type.
+    if ! printf '%s\n' "$rdp_secret" | timeout 5 "$wallet_query" -w "$rdp_user" -f KRDP "$wallet" >/dev/null 2>&1; then
+        rdp_json keyring_locked 'KWallet write denied'; return 1
+    fi
+    unset rdp_secret
+    rdp_certificate || { rdp_json rdp_start_failed 'Certificate creation failed'; return 1; }
+    mkdir -p "$rdp_config" && chmod 700 "$rdp_config" || return 1
+    [ -n "$rdp_port" ] || rdp_port=$(rdp_random_port) || { rdp_json rdp_start_failed; return 1; }
+    printf '[General]\nUsers=%s\nSystemUserEnabled=false\nListenPort=%s\nCertificate=%s/cert.pem\nCertificateKey=%s/key.pem\nAutogenerateCertificates=false\n' \
+        "$rdp_user" "$rdp_port" "$rdp_dir" "$rdp_dir" > "$rdp_config/krdpserverrc"
+    # Only restart our named transient unit, never krdp.service or another PID.
+    if [ -f "$rdp_owner" ] && [ "$(systemctl --user show miffan-rdp-kde.service -p LoadState --value 2>/dev/null)" = loaded ]; then
+        systemctl --user stop miffan-rdp-kde.service >/dev/null 2>&1 || { rdp_json rdp_start_failed; return 1; }
+        systemctl --user reset-failed miffan-rdp-kde.service >/dev/null 2>&1 || :
+    fi
+    systemd-run --user --unit=miffan-rdp-kde --collect --quiet \
+        --setenv="XDG_CONFIG_HOME=$rdp_config" --setenv=XDG_CURRENT_DESKTOP=KDE --setenv=KDE_SESSION_VERSION=6 \
+        --setenv=QTKEYCHAIN_BACKEND=kwallet6 --setenv="WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}" \
+        --setenv="DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" \
+        krdpserver --address 127.0.0.1 --plasma >/dev/null 2>&1 || { rdp_json rdp_start_failed 'KRDP startup failed'; return 1; }
+    printf '%s\n' "$rdp_port" > "$rdp_owner"
+    if rdp_wait; then printf '%s\n' "$rdp_digest" > "$rdp_owner.digest"; else return 1; fi
+}
+
+rdp_wait() {
+    attempt=0
+    while [ "$attempt" -lt 80 ]; do
+        if port_listening "$rdp_port"; then rdp_json; return 0; fi
+        sleep 0.1
+        attempt=$((attempt + 1))
+    done
+    rdp_json rdp_start_failed 'RDP listener did not become ready'; return 1
+}
+
+rdp_start() (
+    # Subshell contains the secret and cleanup traps, independent of other helper commands.
+    set +x
+    umask 077
+    export LC_ALL=C
+    rdp_env
+    rdp_server=$(rdp_kind)
+    rdp_user="miffan-$(id -u)"
+    rdp_dir="$HOME/.miffan/rdp"
+    rdp_port=""
+    [ "$rdp_server" != none ] || { rdp_json no_rdp_server; exit 1; }
+    IFS= read -r rdp_secret || { rdp_json rdp_start_failed 'Password must be provided on stdin'; exit 1; }
+    case "$rdp_secret" in *[!a-zA-Z0-9]*) rdp_json rdp_start_failed 'Invalid generated password'; exit 1 ;; esac
+    [ "${#rdp_secret}" -ge 32 ] && [ "${#rdp_secret}" -le 256 ] || { rdp_json rdp_start_failed 'Invalid generated password length'; exit 1; }
+    mkdir -p "$rdp_dir" && chmod 700 "$HOME/.miffan" "$rdp_dir" || { rdp_json rdp_start_failed; exit 1; }
+    mkdir "$rdp_dir/start.lock" 2>/dev/null || { rdp_json rdp_start_failed 'Another RDP start is in progress'; exit 1; }
+    trap 'unset rdp_secret; rmdir "$rdp_dir/start.lock" 2>/dev/null' 0
+    trap 'exit 1' 1 2 15
+    case "$rdp_server" in gnome-remote-desktop) rdp_gnome ;; krdp) rdp_kde ;; esac
+)
+
 # --- probe -------------------------------------------------------------------------------
 
 probe() {
@@ -302,6 +570,7 @@ probe() {
     elif load_session_env; then
         has_session=true
     fi
+    [ "$platform" != linux ] || rdp_env
     type=$(session_type)
     desktop=""
     if [ "$platform" = macos ]; then desktop=macos; else desktop="${XDG_CURRENT_DESKTOP:-}"; fi
@@ -317,7 +586,7 @@ probe() {
         "$MIFFAN_HELPER_VERSION" "$platform" "$(json_str "$(uname -m)")" "$has_session" "$type" "$(json_or_null "$desktop")"
     printf '"cua":{"path":%s,"version":%s,"min":"%s","ok":%s},' \
         "$(json_or_null "$cua")" "$(json_or_null "$version")" "$MIFFAN_CUA_MIN_VERSION" "$meets"
-    printf '"vnc":%s,"clipboard":%s}\n' "$(vnc_status_json)" "$(json_or_null "${clipboard##*/}")"
+    printf '"rdp":%s,"vnc":%s,"clipboard":%s}\n' "$(rdp_probe_json)" "$(vnc_status_json)" "$(json_or_null "${clipboard##*/}")"
 }
 
 case "${1:-}" in
@@ -342,6 +611,9 @@ case "${1:-}" in
             *) echo "usage: miffan vnc start|stop|status" >&2; exit 2 ;;
         esac
         ;;
+    rdp)
+        case "${2:-}" in start) rdp_start ;; *) echo "usage: miffan rdp start" >&2; exit 2 ;; esac
+        ;;
     clip) clip ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|clip" >&2; exit 2 ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|clip" >&2; exit 2 ;;
 esac

@@ -10,6 +10,10 @@ import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.RemoteScreenProtocol
+import me.rerere.rdp.RdpSession
+import me.rerere.rdp.RdpOptions
+import me.rerere.rdp.RdpCredentials
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.rerere.workspace.RemoteWorkspaceSession
@@ -28,6 +32,9 @@ data class RemoteHostScreenConfig(
     val username: String,
     val platform: RemoteScreenPlatform,
     val hasPassword: Boolean,
+    val protocol: RemoteScreenProtocol = RemoteScreenProtocol.AUTO,
+    val rdpUsername: String = "",
+    val rdpCertificateSha256: String? = null,
 )
 
 enum class RemoteScreenPlatform { UNKNOWN, MACOS, LINUX;
@@ -46,16 +53,20 @@ enum class RemoteScreenProblem {
     NO_GRAPHICAL_SESSION,
     /** No supported VNC server is installed for the session type (see [RemoteScreenUnavailableException.detail]). */
     NO_VNC_SERVER,
-    VNC_START_FAILED,
+    VNC_START_FAILED, NO_RDP_SERVER, RDP_START_FAILED, RDP_ALREADY_CONFIGURED,
+    RDP_KEYRING_LOCKED, RDP_CREDENTIAL_SETUP_UNAVAILABLE, RDP_CERTIFICATE_CHANGED,
 }
 
-class RemoteScreenUnavailableException(
+open class RemoteScreenUnavailableException(
     val problem: RemoteScreenProblem,
     /** Extra context from the remote helper, such as the session type or a log tail. */
     val detail: String? = null,
     /** The remote desktop name (for example `GNOME`, `KDE`, `niri`) when the helper knows it. */
     val desktop: String? = null,
 ) : IllegalStateException("${problem.name}${detail?.let { ": $it" }.orEmpty()}")
+
+class RemoteRdpCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
+    RemoteScreenUnavailableException(RemoteScreenProblem.RDP_CERTIFICATE_CHANGED, "RDP certificate fingerprint changed")
 
 /** `miffan probe` output; see `assets/remote/miffan.sh`. */
 @Serializable
@@ -67,12 +78,21 @@ data class RemoteMachineProbe(
     val cua: Cua,
     val vnc: Vnc,
     val clipboard: String? = null,
+    val rdp: Rdp = Rdp(),
 ) {
     @Serializable
     data class Session(val present: Boolean, val type: String, val desktop: String? = null)
 
     @Serializable
     data class Cua(val path: String? = null, val version: String? = null, val min: String, val ok: Boolean)
+
+    @Serializable
+    data class Rdp(
+        val server: String? = null, val version: String? = null, val running: Boolean = false,
+        val port: Int? = null, val username: String? = null, val desktop: String? = null,
+        val mode: String? = null, val error: String? = null, val log: String? = null,
+        val width: Int? = null, val height: Int? = null,
+    )
 
     @Serializable
     data class Vnc(
@@ -91,16 +111,18 @@ data class RemoteMachineProbe(
 /** Result of a remote install or upgrade the user confirmed; [output] is the command's tail. */
 data class RemoteCommandOutcome(val success: Boolean, val output: String)
 
-/** A VNC viewer bound to a workspace's SSH lease. Call [RemoteScreenSession.start] once. */
+/** A desktop viewer bound to a workspace's SSH lease. Call [RemoteDesktopSession.start] once. */
 class RemoteScreenConnection internal constructor(
     val hostId: String,
     val platform: RemoteScreenPlatform,
-    private val handle: LeasedRemote<RemoteScreenSession>,
+    val workspaceId: String,
+    private val handle: LeasedRemote<RemoteDesktopSession>,
     private val onClose: (RemoteScreenConnection) -> Unit,
 ) : Closeable {
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    val session: RemoteScreenSession get() = handle.value
+    val session: RemoteDesktopSession get() = handle.value
+    val certificateSha256 get() = session.certificateSha256
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
@@ -147,27 +169,33 @@ class RemoteScreenRepository(
         auth: RemoteScreenAuth,
         username: String,
         password: String?,
+        protocol: RemoteScreenProtocol? = null,
+        rdpUsername: String? = null,
     ): Boolean {
-        val host = hostDao.getById(hostId) ?: return false
+        if (hostDao.getById(hostId) == null) return false
         val finalUser = username.trim()
         require(finalUser.none { it == '\u0000' || it == '\n' }) { "Invalid screen username" }
         require(password == null || password.isNotEmpty()) { "Password is empty" }
+        require(rdpUsername == null || rdpUsername.none { it == '\u0000' || it == '\n' || it == '\r' })
         withContext(Dispatchers.IO) {
             when {
-                auth == RemoteScreenAuth.NONE -> credentials.delete(hostId)
+                auth == RemoteScreenAuth.NONE -> credentials.deleteVnc(hostId)
                 password != null -> credentials.save(hostId, password)
                 credentials.load(hostId) == null -> throw IllegalArgumentException("Screen password required")
             }
         }
-        hostDao.update(host.copy(
-            screenEnabled = enabled,
-            screenEndpoint = endpoint.storageValue,
-            screenAuth = auth.storageName,
-            screenUsername = finalUser,
-            updatedAt = System.currentTimeMillis(),
-        ))
+        hostDao.updateScreenConfig(hostId, enabled, endpoint.storageValue, auth.storageName, finalUser,
+            protocol?.storageName, rdpUsername?.trim(), System.currentTimeMillis())
         closeHost(hostId)
         return true
+    }
+
+    /** Explicit user confirmation only: never called automatically after a connection. */
+    suspend fun pinRdpCertificate(hostId: String, sha256: String): Boolean {
+        val pin = normalizeRdpFingerprint(sha256)
+        val updated = hostDao.pinRdpCertificate(hostId, pin, System.currentTimeMillis()) > 0
+        if (updated) closeHost(hostId)
+        return updated
     }
 
     /** Called when the host is deleted; the host row itself is removed by [WorkspaceRepository]. */
@@ -193,44 +221,63 @@ class RemoteScreenRepository(
         if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
         val endpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
-        val rfbCredentials = when (RemoteScreenAuth.parse(host.screenAuth)) {
-            RemoteScreenAuth.NONE -> null
-            RemoteScreenAuth.VNC_PASSWORD -> RfbCredentials(password = loadPassword(host.id))
-            RemoteScreenAuth.MACOS_ACCOUNT -> RfbCredentials(
-                username = host.screenUsername.ifBlank { host.username },
-                password = loadPassword(host.id),
-            )
-        }
         var detected: RemoteScreenPlatform? = null
-        val handle = workspaces.openLeasedRemote(workspaceId) { ssh ->
-            if (RemoteScreenPlatform.parse(host.screenPlatform) == RemoteScreenPlatform.UNKNOWN) {
-                detected = when (ssh.execute("uname -s", timeoutMillis = 10_000).stdout.trim()) {
+        var rdpUsername: String? = null
+        val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
+            val selection = RemoteScreenProtocol.parse(host.screenProtocol)
+            // Manual VNC endpoints keep working without installing a helper or probing a desktop.
+            val machine = if (endpoint == RemoteScreenEndpoint.Helper || selection == RemoteScreenProtocol.RDP) {
+                ensureHelper(ssh)
+                val result = ssh.execute("$HELPER probe", timeoutMillis = 20_000)
+                parseHelperProbe(result.stdout)
+            } else null
+            detected = machine?.let { RemoteScreenPlatform.parse(it.os) }
+                ?: RemoteScreenPlatform.parse(host.screenPlatform).takeIf { it != RemoteScreenPlatform.UNKNOWN }
+                ?: when (ssh.execute("uname -s", timeoutMillis = 10_000).stdout.trim()) {
                     "Darwin" -> RemoteScreenPlatform.MACOS
                     "Linux" -> RemoteScreenPlatform.LINUX
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
-            }
-            var credentials = rfbCredentials
-            val target = when (endpoint) {
-                RemoteScreenEndpoint.Helper -> startHelperVnc(ssh).let { (started, password) ->
-                    // A helper-generated password replaces "no auth"; macOS keeps the account.
-                    if (password != null && credentials == null) credentials = RfbCredentials(password = password)
-                    started
+            val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
+            if (protocol == RemoteDesktopProtocol.RDP) {
+                val password = credentials.getOrCreateRdp(host.id)
+                val started = startHelperRdp(ssh, password)
+                rdpUsername = started.username
+                val stream = ssh.openLoopbackStream(requireNotNull(started.port))
+                try {
+                    val size = if (started.mode == "headless") 1920 to 1080 else
+                        (started.width?.takeIf { it in 320..8192 } ?: 1920) to (started.height?.takeIf { it in 240..8192 } ?: 1080)
+                    RdpDesktopSession(RdpSession(stream.input, stream.output, stream,
+                        RdpCredentials(requireNotNull(started.username), password),
+                        RdpOptions(size.first, size.second, host.rdpCertificateSha256, rdpSecurityForServer(started.server)), sink), host.rdpCertificateSha256)
+                } catch (error: Throwable) { stream.close(); throw error }
+            } else {
+                var auth = when (RemoteScreenAuth.parse(host.screenAuth)) {
+                    RemoteScreenAuth.NONE -> null
+                    RemoteScreenAuth.VNC_PASSWORD -> RfbCredentials(password = credentials.load(host.id) ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.PASSWORD_MISSING))
+                    RemoteScreenAuth.MACOS_ACCOUNT -> RfbCredentials(host.screenUsername.ifBlank { host.username },
+                        (credentials.load(host.id) ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.PASSWORD_MISSING)))
                 }
-                else -> endpoint
+                val target = when (endpoint) {
+                    RemoteScreenEndpoint.Helper -> startHelperVnc(ssh).let { (started, password) ->
+                        if (password != null && auth == null) auth = RfbCredentials(password = password)
+                        started
+                    }
+                    else -> endpoint
+                }
+                val stream = when (target) {
+                    is RemoteScreenEndpoint.Tcp -> ssh.openLoopbackStream(target.port)
+                    is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(target.path)
+                    RemoteScreenEndpoint.Helper -> throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
+                }
+                VncDesktopSession(RemoteScreenSession(stream.input, stream.output, stream, auth, jpeg, options, sink))
             }
-            val stream = when (target) {
-                is RemoteScreenEndpoint.Tcp -> ssh.openLoopbackStream(target.port)
-                is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(target.path)
-                RemoteScreenEndpoint.Helper -> throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
-            }
-            RemoteScreenSession(stream.input, stream.output, stream, credentials, jpeg, options, sink)
         }
         detected?.takeIf { it != RemoteScreenPlatform.UNKNOWN }?.let { platform ->
-            hostDao.getById(host.id)?.let { hostDao.update(it.copy(screenPlatform = platform.storageName)) }
+            hostDao.updateDetectedScreen(host.id, platform.storageName, rdpUsername)
         }
         val platform = detected ?: RemoteScreenPlatform.parse(host.screenPlatform)
-        val connection = RemoteScreenConnection(host.id, platform, handle) { closed ->
+        val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle) { closed ->
             synchronized(lock) {
                 open[host.id]?.remove(closed)
                 if (open[host.id].isNullOrEmpty()) open.remove(host.id)
@@ -240,12 +287,12 @@ class RemoteScreenRepository(
         return connection
     }
 
-    /**
-     * Puts [text] on the remote clipboard over SSH so it can be pasted with the platform
-     * shortcut; VNC key events cannot carry most non-Latin text. The helper finds the graphical
-     * session (Wayland, X11 or macOS) and its clipboard tool.
-     */
+    /** Uses cliprdr for an active RDP session; VNC retains the SSH session clipboard helper. */
     suspend fun setRemoteClipboard(workspaceId: String, @Suppress("UNUSED_PARAMETER") platform: RemoteScreenPlatform, text: String): Boolean {
+        val rdp = synchronized(lock) { open.values.flatten().firstOrNull {
+            it.workspaceId == workspaceId && it.session.protocol == RemoteDesktopProtocol.RDP
+        } }
+        if (rdp != null) { rdp.session.sendClipboard(text); return true }
         withRemote(workspaceId) { ssh ->
             ensureHelper(ssh)
             val result = ssh.execute("$HELPER clip", timeoutMillis = 10_000,
@@ -337,6 +384,14 @@ class RemoteScreenRepository(
         return started to status.password
     }
 
+    private fun startHelperRdp(ssh: RemoteWorkspaceSession, password: String): RemoteMachineProbe.Rdp {
+        val result = ssh.execute("$HELPER rdp start", timeoutMillis = 30_000,
+            stdin = ByteArrayInputStream((password + "\n").toByteArray(Charsets.UTF_8)))
+        val status = parseRdpStart(result.stdout)
+        if (result.exitCode != 0 || result.timedOut) throw RemoteScreenUnavailableException(RemoteScreenProblem.RDP_START_FAILED)
+        return status
+    }
+
     private suspend fun <T> withRemote(workspaceId: String, block: (RemoteWorkspaceSession) -> T): T {
         var value: Result<T>? = null
         workspaces.openLeasedRemote(workspaceId) { ssh ->
@@ -386,5 +441,7 @@ class RemoteScreenRepository(
         username = screenUsername,
         platform = RemoteScreenPlatform.parse(screenPlatform),
         hasPassword = hasPassword,
+        protocol = RemoteScreenProtocol.parse(screenProtocol), rdpUsername = rdpUsername,
+        rdpCertificateSha256 = rdpCertificateSha256,
     )
 }

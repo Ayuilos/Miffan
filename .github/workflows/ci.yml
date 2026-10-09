@@ -44,6 +44,25 @@ jobs:
         working-directory: web-ui
         run: pnpm install --frozen-lockfile
 
+      - name: Set up Android native toolchain
+        run: sdkmanager 'ndk;28.2.13676358' 'cmake;3.22.1'
+
+      - name: Cache RDP native libraries
+        id: rdp-native
+        uses: actions/cache@v5
+        with:
+          path: rdp/build/native
+          key: rdp-native-${{ runner.os }}-ndk28.2.13676358-8803dd26ec9660550252f255cf2d672a785ddd8f544bb475834993e96807c87f-603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a-${{ hashFiles('rdp/scripts/build-native.sh', 'rdp/scripts/fetch-sources.sh', 'rdp/scripts/patches/**') }}
+
+      - name: Build pinned RDP native libraries
+        if: steps.rdp-native.outputs.cache-hit != 'true'
+        run: |
+          rdp/scripts/fetch-sources.sh
+          rdp/scripts/build-native.sh
+
+      - name: Verify remote helper safety
+        run: python3 rdp/scripts/test-helper.py
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 

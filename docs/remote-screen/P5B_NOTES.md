@@ -1,0 +1,64 @@
+# P5b：App 数据层、远端启动与 CI
+
+## 界面接口
+
+- `RemoteScreenConnection.session` 为 `RemoteDesktopSession`，`protocol` 是 VNC/RDP；start、pause、pointer、key、tapKey、typeText、sendClipboard、close 统一。SSH lease 的释放行为保持不变。
+- `VncDesktopSession.delegate` 暴露原 VNC 会话；`stats`、`statsLogger`、`clipboard`、`state` 直接委托原对象，maxFps 原样传递。RDP 的 `setMaxFps` 忽略，`rdpStats` 暴露实际编码、安全协议、解码器、帧率和字节数；兼容 `stats` 仅映射帧率与编码，RDP 不调用 VNC 的 `statsLogger`。
+- 配置增加 `RemoteScreenProtocol.AUTO/VNC/RDP`、脚本报告的 `rdpUsername`、`rdpCertificateSha256`。`updateConfig` 的新参数均可选，原 VNC 调用方式仍有效；RDP 用户名由脚本固定为 `miffan-<uid>`，密码由手机自动生成。VNC 的 auth/password 控件不用于 RDP。
+- 首次 `open` 返回的会话尚未 start。start 后界面观察 `certificateSha256: StateFlow<String?>`；首次成功不写入固定值。用户明确确认后调用 `pinRdpCertificate(hostId, sha256)`，该操作关闭此主机现有连接，应重新连接。只接受完整 SHA-256 十六进制值（允许大小写及冒号），不自动更换已固定指纹。
+- 已固定指纹变化时，`Closed.error` 是 `RemoteRdpCertificateChangedException`，含 expected/actual，并对应 `RDP_CERTIFICATE_CHANGED`。界面可以展示比较结果并要求用户明确确认；不得捕获后自动调用 pin。
+- `typeText` 返回 false 时没有发送任何前缀，也没有令会话失败。RDP 仅直接发送可打印 ASCII、Tab、CR/LF；超过 1024 个 UTF-16 单元或队列容量不足也返回 false。中文、其他非布局字符、长文本请 `sendClipboard(text)` 后发送 Ctrl+V。
+- RDP 的 `setRemoteClipboard` 转到活动会话的 cliprdr。`sendClipboard` 异步设置 Unicode 文本，native 在 FormatList ACK 前保持输入队列等待，避免紧跟的粘贴快捷键先于剪贴板声明。远端复制的 Unicode 文本通过 `clipboard` 发出，界面负责写到 Android 系统剪贴板。
+- 剪贴板上限为 4 MiB（RDP 的 UTF-16LE 连终止 NUL），拒绝包含 NUL 的文本。待发送文本合并为最近一次，native 接收队列限制 32 条且合计 4 MiB；close/取消清理待发送值并断开通道。暂不支持文件、HTML、图片剪贴板及动态分辨率 disp。helper 在可用时报告 xrandr 会话尺寸，无头固定 1920×1080，未报告尺寸时仓库使用 1920×1080。
+- 脚本错误映射：`RDP_ALREADY_CONFIGURED` 提示已有配置不会覆盖；`RDP_KEYRING_LOCKED` 提示解锁；`RDP_CREDENTIAL_SETUP_UNAVAILABLE` 提示缺少安全凭据工具；`NO_RDP_SERVER`、`RDP_START_FAILED` 提示安装或启动失败。原始凭据相关 stderr/log 不拼进异常。
+
+## 迁移与凭据
+
+Room 31→32 使用 AutoMigration，附版本 32 schema 与 `Migration_31_32_Test`（迁移及旧快照更新不能撤销 pin 两项实测通过）。旧主机默认 protocol=auto、rdpUsername 为空、证书 pin 为 null，VNC 端点/认证/用户名以及 SSH 固定值保留。SSH 配置、屏幕配置和探测更新使用局部 SQL，避免覆盖并发确认的证书 pin；端口不进数据库。
+
+RDP 密码为 SecureRandom 32 字节的 64 位十六进制字符串，独立 AES-GCM/Android Keystore 命名空间 `remote-rdp-credentials`，位于 noBackupFilesDir。与 VNC 凭据同 hostId 但不共用文件或密钥；删除主机时两者均清理。协议切换不会误删 RDP 密码。密码不在 Room、配置 DTO、备份、日志或模型上下文中。
+
+## helper v7
+
+`miffan rdp start` 从 stdin 读取手机密码，输出一行 JSON `{server,port,username,desktop,mode,error,log}`；日志只输出固定诊断，不输出原始 credential 工具结果。`probe` 增加 RDP server/version/running；AUTO Helper 下 GNOME/KDE/Plasma 使用 RDP，其他桌面与手动 VNC 端点保持 VNC。
+
+证书及私钥长期保存在 `~/.miffan/rdp/`（目录 0700，文件 0600），有效期十年；已有证书不因重连而重建，缺一半的文件对报错。启动有目录锁。成功启动记录 helper ownership；相同密码/端口的活动 GNOME 服务复用，避免再次连接重启服务。密码比对摘要只保存在用户私有 ownership metadata 中，不返回 App。
+
+GNOME 使用 user/headless 模式，按 gnome-shell --headless 判断；随机 20000–59999 端口，禁用端口协商和 view-only，GRD 认证固定 NLA。仅重启 helper 已认领的对应用户 unit。现有 GRD 进程、非空 TLS 设置或已配置用户名会返回 already_configured；已认领配置的证书/密钥路径或端口被外部改变也拒绝覆盖。用户模式先查询 Secret Service 的 Locked 属性，锁定时不会绕过钥匙串。
+
+`grdctl rdp set-credentials` 使用零位置参数，用户名及密码均经 stdin。上游为两个 prompt 分别创建 buffered GIO reader，普通 pipe 可能把第二行预读后丢掉，因此借助 util-linux `script --echo never` 的 canonical PTY，禁止 echo，transcript 明确指向 `/dev/null`，所有输出丢弃；15 秒 timeout。不设置密码环境变量，不把密码拼入任何外部命令 argv。
+
+KDE 使用独立 `XDG_CONFIG_HOME=~/.miffan/rdp/krdp-config` 的 krdpserverrc，General/Users 指定脚本用户名，SystemUserEnabled=false；QtKeychain `ReadPasswordJob("KRDP")` 使用 KWallet folder=KRDP、entry=username、Password 类型。`kwallet-query -w username -f KRDP wallet` 只通过 stdin 接密码，预先确认已有 wallet 已解锁，不创建无密码钱包。缺少 qdbus6、kwallet-query/kwallet6-query、timeout 或可用钱包时明确报错。
+
+krdp 只通过命名 transient unit `miffan-rdp-kde.service` 启动，参数 `--address 127.0.0.1 --plasma`；无 -u/-p。拒绝覆盖已有 krdp 进程/用户配置，仅停止自己 unit 的旧实例。krdp 6.7.5 的 `RdpConnection::initialize` 明确设置 NlaSecurity=false；配置用户和 PAM 都没有改变这一点，因此 KDE 连接明确选 TLS（包含证书校验），GNOME 明确选 NLA，不做失败后降级。
+
+依据：[krdp 用户配置入口](https://github.com/KDE/krdp/blob/v6.7.5/server/main.cpp)、[krdp TLS/NLA 设置](https://github.com/KDE/krdp/blob/v6.7.5/src/RdpConnection.cpp#L333)、[QtKeychain KWallet 映射](https://github.com/frankosterfeld/qtkeychain/blob/0.16.0/qtkeychain/keychain_unix.cpp)、[kwallet-query stdin 写入](https://github.com/KDE/kwallet/blob/master/src/runtime/kwallet-query/src/querydriver.cpp)、[grdctl stdin prompt](https://github.com/GNOME/gnome-remote-desktop/blob/master/src/grd-ctl.c)、[script echo/transcript 选项](https://github.com/util-linux/util-linux/blob/master/term-utils/script.1.adoc)。
+
+## 构建与 CI
+
+ci、daily-build、release 均在 Gradle 前安装 NDK 28.2.13676358/CMake 3.22.1，缓存 `rdp/build/native`。key 包含两个源码完整 SHA-256、NDK 版本、runner OS、native builder、source downloader 和全部补丁内容；无宽松 restore-key。cache miss 执行 fetch-sources.sh 的固定上游 URL 下载及校验，再 build-native.sh 编译两个 ABI。cache hit 不下载源码；本地 build-native.sh 继续只使用已有 .deps 包，不隐式联网。ANDROID_HOME/ANDROID_SDK_ROOT 都可定位 SDK。
+
+静态检查：三个 YAML 经 Ruby Psych 解析；核对 builder/downloader/cache 三处源码 hash 一致、native build 排在 Gradle 前；bash -n 与 sh -n 通过。本机未安装 actionlint/shellcheck，未宣称运行这两个工具。GitHub runner 的冷缓存下载/编译及热缓存复用尚待实际 CI 验证。CI 另外运行隔离 helper 安全夹具。
+
+## 验收记录
+
+- 规定的 :rdp:testDebugUnitTest（7 项）、:app:testDebugUnitTest（662 项）、:app:compileDebugKotlin 已通过；:rdp:lintDebug 无问题；会话适配器、文本边界、脚本输出解析测试已新增。
+- app debug + androidTest、两个 ABI 的 JNI 桥接编译通过。
+- emulator-5560 上 Room 31→32 迁移测试通过，保留旧 VNC 配置并默认不固定证书。
+- SSH 密钥由 debug App 内生成，私钥未导出，公钥由 Claude 安装；经 App 仓库层直连 Tailscale SSH，再 direct-tcpip 到远端 loopback。已有 GNOME 配置的拒绝覆盖测试通过（约 23:38），没有改其凭据。
+- `python3 rdp/scripts/test-helper.py` 的隔离 fixture 检查通过：密码只在 stdin、argv 不含密码、证书保留、权限、幂等启动、已有配置拒绝、短密码拒绝、钱包缺失/锁定拒绝与 KDE 安全启动。它不替代真实 GRD/KWallet 验收。
+- GNOME 全项通过：23:45:49 脚本启动 headless GRD，随机端口 20448，NLA，关闭端口协商，VNC disabled；1920×1080 非空画面，实际 AVC420、c2.goldfish.h264.decoder（模拟器报告 hardware=true），收到约 401 kB。23:45:56.297 客户端发 Return，23:45:57.190 远端 zenity 输出 `Miffan P5B 中文输入` 并退出。客户端断言 Ctrl+A/Ctrl+C 的 cliprdr 回传也是完整的同一字符串。
+- GNOME 正确 pin 重连通过；错误 pin 以 RemoteRdpCertificateChangedException 拒绝，数据库错误 pin 未被自动改回。重新连接复用同一密码/证书/服务，没有再重启 GRD。
+- 安全审计：instrumentation 经 SSH 执行 `ps -eo args`，在内存中与手机凭据比较，断言不含生成的 RDP 密码，不打印原始进程列表或密码。Claude 另检查 `ps -eo user,args`：GRD 只有 `/usr/lib/gnome-remote-desktop-daemon --headless`，无 grdctl 密码参数；目录 0700，cert/key/owner/digest/credentials.ini 0600。代码仅 stdin/钥匙串传密，不使用 krdp -p。
+- KDE 安全路径已实现，夹具验证安全启动及钱包缺失/锁定的 keyring_locked 输出。真实 Plasma 会话下的端到端验证待 P5c（用户最终决定）。本次测试账号没有钱包，也没有持久 Secret Service default collection；不使用临时 session collection 代替产品路径，不创建无密码钱包。Claude 的无头 PAM 初始化尝试被其权限系统拦截，未创建钱包，未绕过拦截。
+- GNOME 无头会话保持运行，helper 的 GRD 服务已由 Claude 在 KDE 准备阶段停止；测试参数仍 active=gnome，P5a 备份保留。
+- 旧的 P5a test-emulator.py 也改为经 stdin 将测试密码写入 debug App 私有 cache（0600），不再传 instrumentation 密码参数，结束清理；文本遇到 typeText=false 时走 cliprdr 粘贴。
+- 本阶段未修改 ui/ 源文件，未复制或读取 Mac 私钥，未重新下载本地 FreeRDP/OpenSSL 包，未提交 .deps/ 测试参数。
+
+## 按规格清单自检
+
+1. JVM 测试、app Kotlin 编译、适配器/文本/解析测试及 Room 迁移：通过；两个 Room instrumentation 用匹配 APK 在 emulator-5560 通过。
+2. GNOME App 仓库层 SSH direct-tcpip、脚本传密和启动、画面、ASCII、中文粘贴、Return：通过，远端日志与客户端剪贴板断言相互印证。
+3. KDE：安全配置路径与夹具通过；按用户最新决定，真实 Plasma 会话下的端到端验证待 P5c。
+4. RDP 密码 argv 安全审计：GNOME 实测通过，KDE 夹具验证 stdin-only，产品代码没有 -u/-p 密码路径。
+5. notes：已记录界面接口、迁移、证书固定、脚本行为、安全检查、CI、未覆盖事项。CI 的 hosted 冷/热缓存执行、真实 KDE 和动态尺寸仍未实测；AVC444 延续 P5a 的未验证状态。
