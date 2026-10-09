@@ -2166,18 +2166,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_help_one_finger_slide">单指滑动</string>
   <string name="workspace_screen_help_move_pointer">移动指针</string>
   <string name="workspace_screen_help_double_tap_drag">点按两下，第二下按住拖动</string>
-  <string name="workspace_screen_help_three_finger_drag">三指拖动</string>
   <string name="workspace_screen_help_two_finger_tap">双指轻点</string>
   <string name="workspace_screen_help_two_finger_slide">双指滑动</string>
   <string name="workspace_screen_help_scroll">滚动</string>
   <string name="workspace_screen_help_pinch">双指捏合或张开</string>
   <string name="workspace_screen_help_zoom_mac">缩小或放大 Mac 里的内容（⌘− / ⌘+）</string>
   <string name="workspace_screen_help_zoom_other">缩小或放大电脑里的内容（Ctrl− / Ctrl+）</string>
-  <string name="workspace_screen_help_four_left_right">四指左右滑动</string>
-  <string name="workspace_screen_help_switch_desktop">切换桌面</string>
-  <string name="workspace_screen_help_four_up">四指上滑</string>
   <string name="workspace_screen_help_mission_control">调度中心</string>
-  <string name="workspace_screen_help_four_down">四指下滑</string>
   <string name="workspace_screen_help_app_windows">显示当前应用的所有窗口</string>
   <string name="workspace_screen_help_zoom_buttons">右下角的 + 和 −</string>
   <string name="workspace_screen_help_view_zoom_direct">放大或缩小手机上的画面；放大后单指拖动查看其他区域</string>
@@ -2499,4 +2494,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_save_continue">保存并检查</string>
   <string name="im_computer_retry">重试</string>
   <string name="im_computer_open_details">电脑详情</string>
+  <string name="workspace_screen_desktop_left">切换到左边的桌面</string>
+  <string name="workspace_screen_desktop_right">切换到右边的桌面</string>
+  <string name="workspace_screen_mac_controls">桌面与窗口</string>
+  <string name="workspace_screen_desktop_short">桌面</string>
+  <string name="workspace_screen_app_windows_short">应用窗口</string>
+  <string name="workspace_screen_help_mac_controls">右下角的桌面按钮</string>
+  <string name="workspace_screen_help_mac_controls_action">切换桌面、打开调度中心或显示当前应用的所有窗口，相当于 Mac 触控板上的四指滑动</string>
 </resources>

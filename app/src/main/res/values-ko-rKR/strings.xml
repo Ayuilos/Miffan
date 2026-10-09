@@ -2426,18 +2426,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_help_one_finger_slide">한 손가락으로 밀기</string>
   <string name="workspace_screen_help_move_pointer">포인터 이동</string>
   <string name="workspace_screen_help_double_tap_drag">두 번 탭하고 두 번째에 누른 채 드래그</string>
-  <string name="workspace_screen_help_three_finger_drag">세 손가락으로 드래그</string>
   <string name="workspace_screen_help_two_finger_tap">두 손가락으로 탭</string>
   <string name="workspace_screen_help_two_finger_slide">두 손가락으로 밀기</string>
   <string name="workspace_screen_help_scroll">스크롤</string>
   <string name="workspace_screen_help_pinch">두 손가락을 오므리거나 벌리기</string>
   <string name="workspace_screen_help_zoom_mac">Mac의 내용을 축소하거나 확대(⌘− / ⌘+)</string>
   <string name="workspace_screen_help_zoom_other">컴퓨터의 내용을 축소하거나 확대(Ctrl− / Ctrl+)</string>
-  <string name="workspace_screen_help_four_left_right">네 손가락으로 좌우 스와이프</string>
-  <string name="workspace_screen_help_switch_desktop">데스크톱 전환</string>
-  <string name="workspace_screen_help_four_up">네 손가락으로 위로 스와이프</string>
   <string name="workspace_screen_help_mission_control">Mission Control</string>
-  <string name="workspace_screen_help_four_down">네 손가락으로 아래로 스와이프</string>
   <string name="workspace_screen_help_app_windows">현재 앱의 모든 창 보기</string>
   <string name="workspace_screen_help_zoom_buttons">오른쪽 아래의 + 와 −</string>
   <string name="workspace_screen_help_view_zoom_direct">휴대폰의 화면을 확대하거나 축소합니다. 확대한 뒤에는 한 손가락으로 드래그해 둘러봅니다</string>
@@ -2492,4 +2487,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_save_continue">저장 후 확인</string>
   <string name="im_computer_retry">다시 시도</string>
   <string name="im_computer_open_details">컴퓨터 세부 정보</string>
+  <string name="workspace_screen_desktop_left">왼쪽 데스크톱으로</string>
+  <string name="workspace_screen_desktop_right">오른쪽 데스크톱으로</string>
+  <string name="workspace_screen_mac_controls">데스크톱과 창</string>
+  <string name="workspace_screen_desktop_short">데스크톱</string>
+  <string name="workspace_screen_app_windows_short">앱 창</string>
+  <string name="workspace_screen_help_mac_controls">오른쪽 아래 데스크톱 버튼</string>
+  <string name="workspace_screen_help_mac_controls_action">데스크톱 전환, Mission Control 열기, 현재 앱의 모든 창 보기. Mac 트랙패드의 네 손가락 스와이프와 같습니다</string>
 </resources>

@@ -38,7 +38,6 @@ private fun gestureRows(trackpad: Boolean, macOS: Boolean): List<GestureRow> = b
         add(R.string.workspace_screen_help_tap to R.string.workspace_screen_help_click)
         add(R.string.workspace_screen_help_double_tap to R.string.workspace_screen_help_double_click)
         add(R.string.workspace_screen_help_double_tap_drag to R.string.workspace_screen_help_drag)
-        add(R.string.workspace_screen_help_three_finger_drag to R.string.workspace_screen_help_drag)
     } else {
         add(R.string.workspace_screen_help_tap to R.string.workspace_screen_help_click)
         add(R.string.workspace_screen_help_double_tap to R.string.workspace_screen_help_double_click)
@@ -49,13 +48,9 @@ private fun gestureRows(trackpad: Boolean, macOS: Boolean): List<GestureRow> = b
     add(R.string.workspace_screen_help_two_finger_slide to R.string.workspace_screen_help_scroll)
     add(R.string.workspace_screen_help_pinch to
         if (macOS) R.string.workspace_screen_help_zoom_mac else R.string.workspace_screen_help_zoom_other)
-    if (macOS) {
-        add(R.string.workspace_screen_help_four_left_right to R.string.workspace_screen_help_switch_desktop)
-        add(R.string.workspace_screen_help_four_up to R.string.workspace_screen_help_mission_control)
-        add(R.string.workspace_screen_help_four_down to R.string.workspace_screen_help_app_windows)
-    }
     add(R.string.workspace_screen_help_zoom_buttons to
         if (trackpad) R.string.workspace_screen_help_view_zoom_trackpad else R.string.workspace_screen_help_view_zoom_direct)
+    if (macOS) add(R.string.workspace_screen_help_mac_controls to R.string.workspace_screen_help_mac_controls_action)
 }
 
 /** What every gesture does in each input mode; opened from the menu and once per mode. */

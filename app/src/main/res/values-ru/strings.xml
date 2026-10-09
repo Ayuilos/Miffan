@@ -2426,18 +2426,13 @@
   <string name="workspace_screen_help_one_finger_slide">Провести одним пальцем</string>
   <string name="workspace_screen_help_move_pointer">Перемещение указателя</string>
   <string name="workspace_screen_help_double_tap_drag">Двойное касание, на втором удерживать и тянуть</string>
-  <string name="workspace_screen_help_three_finger_drag">Перетаскивание тремя пальцами</string>
   <string name="workspace_screen_help_two_finger_tap">Касание двумя пальцами</string>
   <string name="workspace_screen_help_two_finger_slide">Провести двумя пальцами</string>
   <string name="workspace_screen_help_scroll">Прокрутка</string>
   <string name="workspace_screen_help_pinch">Свести или развести пальцы</string>
   <string name="workspace_screen_help_zoom_mac">Уменьшить или увеличить содержимое на Mac (⌘− / ⌘+)</string>
   <string name="workspace_screen_help_zoom_other">Уменьшить или увеличить содержимое на компьютере (Ctrl− / Ctrl+)</string>
-  <string name="workspace_screen_help_four_left_right">Провести четырьмя пальцами влево или вправо</string>
-  <string name="workspace_screen_help_switch_desktop">Переключить рабочий стол</string>
-  <string name="workspace_screen_help_four_up">Провести четырьмя пальцами вверх</string>
   <string name="workspace_screen_help_mission_control">Mission Control</string>
-  <string name="workspace_screen_help_four_down">Провести четырьмя пальцами вниз</string>
   <string name="workspace_screen_help_app_windows">Показать все окна текущего приложения</string>
   <string name="workspace_screen_help_zoom_buttons">+ и − в углу</string>
   <string name="workspace_screen_help_view_zoom_direct">Увеличить или уменьшить картинку на телефоне; при увеличении перетаскивайте одним пальцем, чтобы осмотреться</string>
@@ -2492,4 +2487,11 @@
   <string name="im_computer_save_continue">Сохранить и проверить</string>
   <string name="im_computer_retry">Повторить</string>
   <string name="im_computer_open_details">Сведения о компьютере</string>
+  <string name="workspace_screen_desktop_left">Рабочий стол слева</string>
+  <string name="workspace_screen_desktop_right">Рабочий стол справа</string>
+  <string name="workspace_screen_mac_controls">Рабочие столы и окна</string>
+  <string name="workspace_screen_desktop_short">Раб. стол</string>
+  <string name="workspace_screen_app_windows_short">Окна</string>
+  <string name="workspace_screen_help_mac_controls">Кнопка рабочих столов в углу</string>
+  <string name="workspace_screen_help_mac_controls_action">Переключить рабочий стол, открыть Mission Control или показать окна текущего приложения — как жест четырьмя пальцами на трекпаде Mac</string>
 </resources>

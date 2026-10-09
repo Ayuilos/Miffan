@@ -2424,18 +2424,13 @@
   <string name="workspace_screen_help_one_finger_slide">單指滑動</string>
   <string name="workspace_screen_help_move_pointer">移動指標</string>
   <string name="workspace_screen_help_double_tap_drag">點按兩下，第二下按住拖曳</string>
-  <string name="workspace_screen_help_three_finger_drag">三指拖曳</string>
   <string name="workspace_screen_help_two_finger_tap">雙指輕點</string>
   <string name="workspace_screen_help_two_finger_slide">雙指滑動</string>
   <string name="workspace_screen_help_scroll">捲動</string>
   <string name="workspace_screen_help_pinch">雙指捏合或張開</string>
   <string name="workspace_screen_help_zoom_mac">縮小或放大 Mac 裡的內容（⌘− / ⌘+）</string>
   <string name="workspace_screen_help_zoom_other">縮小或放大電腦裡的內容（Ctrl− / Ctrl+）</string>
-  <string name="workspace_screen_help_four_left_right">四指左右滑動</string>
-  <string name="workspace_screen_help_switch_desktop">切換桌面</string>
-  <string name="workspace_screen_help_four_up">四指上滑</string>
   <string name="workspace_screen_help_mission_control">指揮中心</string>
-  <string name="workspace_screen_help_four_down">四指下滑</string>
   <string name="workspace_screen_help_app_windows">顯示目前 App 的所有視窗</string>
   <string name="workspace_screen_help_zoom_buttons">右下角的 + 和 −</string>
   <string name="workspace_screen_help_view_zoom_direct">放大或縮小手機上的畫面；放大後單指拖曳查看其他區域</string>
@@ -2490,4 +2485,11 @@
   <string name="im_computer_save_continue">儲存並檢查</string>
   <string name="im_computer_retry">重試</string>
   <string name="im_computer_open_details">電腦詳細資訊</string>
+  <string name="workspace_screen_desktop_left">切換到左邊的桌面</string>
+  <string name="workspace_screen_desktop_right">切換到右邊的桌面</string>
+  <string name="workspace_screen_mac_controls">桌面與視窗</string>
+  <string name="workspace_screen_desktop_short">桌面</string>
+  <string name="workspace_screen_app_windows_short">App 視窗</string>
+  <string name="workspace_screen_help_mac_controls">右下角的桌面按鈕</string>
+  <string name="workspace_screen_help_mac_controls_action">切換桌面、打開指揮中心或顯示目前 App 的所有視窗，相當於 Mac 觸控板上的四指滑動</string>
 </resources>

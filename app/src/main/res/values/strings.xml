@@ -2174,18 +2174,13 @@
   <string name="workspace_screen_help_one_finger_slide" tools:ignore="MissingTranslation">Slide one finger</string>
   <string name="workspace_screen_help_move_pointer" tools:ignore="MissingTranslation">Move the pointer</string>
   <string name="workspace_screen_help_double_tap_drag" tools:ignore="MissingTranslation">Double-tap and drag on the second tap</string>
-  <string name="workspace_screen_help_three_finger_drag" tools:ignore="MissingTranslation">Drag with three fingers</string>
   <string name="workspace_screen_help_two_finger_tap" tools:ignore="MissingTranslation">Tap with two fingers</string>
   <string name="workspace_screen_help_two_finger_slide" tools:ignore="MissingTranslation">Slide two fingers</string>
   <string name="workspace_screen_help_scroll" tools:ignore="MissingTranslation">Scroll</string>
   <string name="workspace_screen_help_pinch" tools:ignore="MissingTranslation">Pinch in or out</string>
   <string name="workspace_screen_help_zoom_mac" tools:ignore="MissingTranslation">Zoom out or in on the Mac (⌘− / ⌘+)</string>
   <string name="workspace_screen_help_zoom_other" tools:ignore="MissingTranslation">Zoom out or in on the computer (Ctrl− / Ctrl+)</string>
-  <string name="workspace_screen_help_four_left_right" tools:ignore="MissingTranslation">Swipe four fingers left or right</string>
-  <string name="workspace_screen_help_switch_desktop" tools:ignore="MissingTranslation">Switch desktops</string>
-  <string name="workspace_screen_help_four_up" tools:ignore="MissingTranslation">Swipe four fingers up</string>
   <string name="workspace_screen_help_mission_control" tools:ignore="MissingTranslation">Mission Control</string>
-  <string name="workspace_screen_help_four_down" tools:ignore="MissingTranslation">Swipe four fingers down</string>
   <string name="workspace_screen_help_app_windows" tools:ignore="MissingTranslation">Show all windows of the current app</string>
   <string name="workspace_screen_help_zoom_buttons" tools:ignore="MissingTranslation">+ and − in the corner</string>
   <string name="workspace_screen_help_view_zoom_direct" tools:ignore="MissingTranslation">Enlarge or shrink the picture on your phone; when enlarged, drag one finger to look around</string>
@@ -2508,4 +2503,11 @@
   <string name="im_computer_save_continue" tools:ignore="MissingTranslation">Save and check</string>
   <string name="im_computer_retry" tools:ignore="MissingTranslation">Retry</string>
   <string name="im_computer_open_details" tools:ignore="MissingTranslation">Computer details</string>
+  <string name="workspace_screen_desktop_left">Desktop on the left</string>
+  <string name="workspace_screen_desktop_right">Desktop on the right</string>
+  <string name="workspace_screen_mac_controls">Desktops and windows</string>
+  <string name="workspace_screen_desktop_short">Desktop</string>
+  <string name="workspace_screen_app_windows_short">App windows</string>
+  <string name="workspace_screen_help_mac_controls">Desktop button in the corner</string>
+  <string name="workspace_screen_help_mac_controls_action">Switch desktops, open Mission Control or show the current app\'s windows, like a four-finger swipe on a Mac trackpad</string>
 </resources>

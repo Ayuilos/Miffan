@@ -2426,18 +2426,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_help_one_finger_slide">1本指でスライド</string>
   <string name="workspace_screen_help_move_pointer">ポインタを移動</string>
   <string name="workspace_screen_help_double_tap_drag">ダブルタップして2回目で押したままドラッグ</string>
-  <string name="workspace_screen_help_three_finger_drag">3本指でドラッグ</string>
   <string name="workspace_screen_help_two_finger_tap">2本指でタップ</string>
   <string name="workspace_screen_help_two_finger_slide">2本指でスライド</string>
   <string name="workspace_screen_help_scroll">スクロール</string>
   <string name="workspace_screen_help_pinch">ピンチイン・ピンチアウト</string>
   <string name="workspace_screen_help_zoom_mac">Mac 上の表示を縮小・拡大（⌘− / ⌘+）</string>
   <string name="workspace_screen_help_zoom_other">パソコン上の表示を縮小・拡大（Ctrl− / Ctrl+）</string>
-  <string name="workspace_screen_help_four_left_right">4本指で左右にスワイプ</string>
-  <string name="workspace_screen_help_switch_desktop">デスクトップを切り替え</string>
-  <string name="workspace_screen_help_four_up">4本指で上にスワイプ</string>
   <string name="workspace_screen_help_mission_control">Mission Control</string>
-  <string name="workspace_screen_help_four_down">4本指で下にスワイプ</string>
   <string name="workspace_screen_help_app_windows">使用中のアプリのウインドウをすべて表示</string>
   <string name="workspace_screen_help_zoom_buttons">右下の + と −</string>
   <string name="workspace_screen_help_view_zoom_direct">スマホ上の表示を拡大・縮小。拡大中は1本指でドラッグして見回せます</string>
@@ -2492,4 +2487,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_save_continue">保存して確認</string>
   <string name="im_computer_retry">再試行</string>
   <string name="im_computer_open_details">コンピューターの詳細</string>
+  <string name="workspace_screen_desktop_left">左のデスクトップへ</string>
+  <string name="workspace_screen_desktop_right">右のデスクトップへ</string>
+  <string name="workspace_screen_mac_controls">デスクトップとウインドウ</string>
+  <string name="workspace_screen_desktop_short">デスクトップ</string>
+  <string name="workspace_screen_app_windows_short">アプリのウインドウ</string>
+  <string name="workspace_screen_help_mac_controls">右下のデスクトップボタン</string>
+  <string name="workspace_screen_help_mac_controls_action">デスクトップの切り替え、Mission Control、使用中のアプリのウインドウ表示。Mac のトラックパッドの4本指スワイプと同じです</string>
 </resources>

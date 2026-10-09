@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,10 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -39,7 +44,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import me.rerere.workspace.screen.RfbKeys
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -56,10 +66,12 @@ internal fun RemoteScreenCanvas(
     modifier: Modifier = Modifier,
     zoomControls: Boolean = true,
 ) {
+    var macExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val image = remember(bitmap) { bitmap.asImageBitmap() }
-    val input = remember(bitmap.width, bitmap.height, trackpad, macOS, vm) {
-        ScreenGestures(context, bitmap.width, bitmap.height, trackpad, macOS, vm)
+    val scope = rememberCoroutineScope()
+    val input = remember(bitmap.width, bitmap.height, trackpad, vm) {
+        ScreenGestures(context, bitmap.width, bitmap.height, trackpad, vm, scope)
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(input, lifecycle) {
@@ -71,6 +83,8 @@ internal fun RemoteScreenCanvas(
     }
     Box(modifier) {
     Canvas(Modifier.fillMaxSize().onSizeChanged { input.resize(Size(it.width.toFloat(), it.height.toFloat())) }
+        // Touching the picture folds the desktop shortcuts away, without taking the touch.
+        .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); macExpanded = false } }
         .pointerInteropFilter { input.event(it) }) {
         // The VM mutates the same Bitmap. Reading this State here invalidates drawing each frame
         // without recomposing the page or allocating another framebuffer.
@@ -99,10 +113,20 @@ internal fun RemoteScreenCanvas(
         }
     }
     // Pinching is the computer's own zoom, so enlarging the picture on the phone has buttons.
-    if (zoomControls) RemoteScreenZoomControls(
+    if (zoomControls) RemoteScreenControls(
         canZoomOut = input.zoomed,
         onZoomIn = { input.zoomStep(zoomIn = true) },
         onZoomOut = { input.zoomStep(zoomIn = false) },
+        onMacShortcut = if (macOS) { shortcut ->
+            vm.key(when (shortcut) {
+                MacShortcut.DESKTOP_LEFT -> RfbKeys.LEFT
+                MacShortcut.DESKTOP_RIGHT -> RfbKeys.RIGHT
+                MacShortcut.MISSION_CONTROL -> RfbKeys.UP
+                MacShortcut.APP_WINDOWS -> RfbKeys.DOWN
+            }, setOf(RemoteModifier.CONTROL))
+        } else null,
+        macExpanded = macExpanded,
+        onMacExpandedChange = { macExpanded = it },
         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
     )
     }
@@ -138,9 +162,10 @@ private class ScreenGestures(
     private val width: Int,
     private val height: Int,
     private val trackpad: Boolean,
-    private val macOS: Boolean,
     private val vm: RemoteScreenVM,
+    private val scope: CoroutineScope,
 ) {
+    private var fling: Job? = null
     private var viewport by mutableStateOf(Size.Zero)
     private var zoom by mutableFloatStateOf(1f)
     private var pan by mutableStateOf(Offset.Zero)
@@ -214,7 +239,35 @@ private class ScreenGestures(
         dragging = false
     }
 
+    /** Momentum after a two-finger scroll, like a trackpad: keep scrolling and slow down. */
+    private fun startFling(velocityX: Float, velocityY: Float) {
+        fling?.cancel()
+        fling = scope.launch {
+            val step = MultiTouchClassifier.SCROLL_STEP_DP * density
+            var vx = velocityX
+            var vy = velocityY
+            var wheelX = 0f
+            var wheelY = 0f
+            while (hypot(vx, vy) > FLING_STOP_DP_PER_MS * density) {
+                delay(FLING_FRAME_MS)
+                // Fingers moving up scroll content down, with the live scroll's sign and gain.
+                val gain = MultiTouchClassifier.acceleration(hypot(vx, vy), density)
+                wheelX -= vx * FLING_FRAME_MS * gain
+                wheelY -= vy * FLING_FRAME_MS * gain
+                val vertical = (wheelY / step).toInt().coerceIn(-MAX_FLING_NOTCHES, MAX_FLING_NOTCHES)
+                val horizontal = (wheelX / step).toInt().coerceIn(-MAX_FLING_NOTCHES, MAX_FLING_NOTCHES)
+                if (vertical != 0) vm.scroll(vertical)
+                if (horizontal != 0) vm.scroll(horizontal, horizontal = true)
+                wheelX -= horizontal * step
+                wheelY -= vertical * step
+                vx *= FLING_DECAY
+                vy *= FLING_DECAY
+            }
+        }
+    }
+
     fun cancel() {
+        fling?.cancel()
         release()
         classifier = null
         val time = SystemClock.uptimeMillis()
@@ -243,19 +296,7 @@ private class ScreenGestures(
             // The keyboard shortcut apps use for zoom: Command on a Mac, Ctrl elsewhere.
             is MultiTouchAction.Zoom -> vm.key(if (action.zoomIn) KEY_EQUAL else KEY_MINUS, setOf(RemoteModifier.COMMAND))
             MultiTouchAction.RightClick -> if (!movedBeforeMulti) click(RemoteMouseButton.RIGHT, at = multiCenter)
-            MultiTouchAction.DragStart -> if (!dragging) {
-                vm.press(RemoteMouseButton.LEFT, true)
-                dragging = true
-            }
-            is MultiTouchAction.DragMove -> movePointerBy(Offset(action.dx, action.dy))
-            MultiTouchAction.DragEnd -> release()
-            // macOS: four fingers left shows the desktop to the right, as on a trackpad.
-            is MultiTouchAction.Swipe -> vm.key(when (action.direction) {
-                SwipeDirection.LEFT -> RfbKeys.RIGHT
-                SwipeDirection.RIGHT -> RfbKeys.LEFT
-                SwipeDirection.UP -> RfbKeys.UP
-                SwipeDirection.DOWN -> RfbKeys.DOWN
-            }, setOf(RemoteModifier.CONTROL))
+            is MultiTouchAction.Fling -> startFling(action.velocityX, action.velocityY)
         }
     }
 
@@ -263,6 +304,8 @@ private class ScreenGestures(
         val point = Offset(e.x, e.y)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                // Touching the glass stops momentum, as on a trackpad.
+                fling?.cancel()
                 vm.takeControl()
                 release()
                 down = point
@@ -283,7 +326,7 @@ private class ScreenGestures(
                     multi = true
                     movedBeforeMulti = moved
                     multiCenter = center(e)
-                    classifier = MultiTouchClassifier(slop, density, threeFingerDrag = trackpad, fourFingerSwipe = macOS)
+                    classifier = MultiTouchClassifier(slop, density)
                     // Scroll and right-click act where the fingers are, unless a pointer is shown.
                     if (trackpad) vm.movePointer(pointer.x, pointer.y)
                     else {
@@ -291,11 +334,11 @@ private class ScreenGestures(
                         if (inside(target)) vm.movePointer(target.x, target.y)
                     }
                 }
-                classifier?.let { perform(it.pointersDown(xs(e), ys(e))) }
+                classifier?.pointersDown(xs(e), ys(e), e.eventTime)
             }
             MotionEvent.ACTION_MOVE -> {
                 if (multi) {
-                    classifier?.let { perform(it.move(xs(e), ys(e))) }
+                    classifier?.let { perform(it.move(xs(e), ys(e), e.eventTime)) }
                 } else {
                     val delta = point - last
                     if ((point - down).getDistance() > slop) moved = true
@@ -318,7 +361,7 @@ private class ScreenGestures(
             MotionEvent.ACTION_POINTER_UP -> Unit // The classifier rebases on the next move; wait for all fingers.
             MotionEvent.ACTION_UP -> {
                 if (multi) {
-                    classifier?.let { perform(it.end()) }
+                    classifier?.let { perform(it.end(e.eventTime)) }
                     classifier = null
                     release()
                 } else {
@@ -341,6 +384,12 @@ private class ScreenGestures(
 
     companion object {
         const val MAX_VIEW_ZOOM = 5f
+        const val FLING_FRAME_MS = 16L
+        /** Per-frame velocity kept: a quick flick glides for well over a second, like a trackpad. */
+        const val FLING_DECAY = 0.975f
+        const val FLING_STOP_DP_PER_MS = 0.01f
+        /** Keeps one frame from flooding the connection with wheel events. */
+        const val MAX_FLING_NOTCHES = 40
         const val VIEW_ZOOM_STEP = 1.5f
         const val KEY_EQUAL = 0x003D
         const val KEY_MINUS = 0x002D
