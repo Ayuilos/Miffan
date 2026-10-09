@@ -30,6 +30,7 @@ import me.rerere.workspace.screen.Framebuffer
 import me.rerere.workspace.screen.RemoteScreenFrameSink
 import me.rerere.workspace.screen.RemoteScreenOptions
 import me.rerere.workspace.screen.RemoteScreenStats
+import me.rerere.rdp.RdpStats
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RfbJpegDecoder
 import me.rerere.workspace.screen.RfbCursor
@@ -124,6 +125,10 @@ class RemoteScreenVM(
     /** Rolling session statistics for the performance overlay; null until connected. */
     val stats: StateFlow<RemoteScreenStats?> = _stats.asStateFlow()
 
+    private val _rdpStats = MutableStateFlow<RdpStats?>(null)
+    /** RDP's own numbers (codec, decoder); null on VNC connections. */
+    val rdpStats: StateFlow<RdpStats?> = _rdpStats.asStateFlow()
+
     /** Frames the canvas actually drew; the overlay compares it with decoded updates. */
     val framesDrawn = java.util.concurrent.atomic.AtomicLong()
 
@@ -209,6 +214,25 @@ class RemoteScreenVM(
     fun setVisible(value: Boolean) {
         visible = value
         connection?.session?.setPaused(!value)
+    }
+
+    /**
+     * The user confirmed that this computer's RDP certificate changed for a reason they know;
+     * pin the new one and connect again. Never called without that confirmation.
+     */
+    fun trustCertificate(sha256: String) {
+        val hostId = _hostId.value ?: return
+        viewModelScope.launch {
+            try {
+                repository.pinRdpCertificate(hostId, sha256)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _state.value = RemoteScreenUiState.Failed(error)
+                return@launch
+            }
+            reconnect()
+        }
     }
 
     fun setMaxFps(fps: Int) {
@@ -307,6 +331,7 @@ class RemoteScreenVM(
                 opened.session.statsLogger = { Log.d(PERF_TAG, it.toString()) }
                 opened.session.start(viewModelScope)
                 launch { opened.session.stats.collect { _stats.value = it } }
+                opened.session.rdpStats?.let { flow -> launch { flow.collect { _rdpStats.value = it } } }
                 val openedAt = SystemClock.elapsedRealtime()
                 launch {
                     // Servers send their current clipboard right after connecting; only later copies are news.
@@ -343,6 +368,7 @@ class RemoteScreenVM(
     private fun close() {
         _cursor.value = RemoteCursor.Unknown
         _stats.value = null
+        _rdpStats.value = null
         connectJob?.cancel()
         connectJob = null
         connection?.close()

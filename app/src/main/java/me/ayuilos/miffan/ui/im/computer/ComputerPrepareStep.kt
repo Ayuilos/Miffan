@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenRdpInstallGuidance
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServer
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServerLabel
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.usesRdp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,9 +26,9 @@ import me.rerere.hugeicons.stroke.InformationCircle
 internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     var installCommand by remember(state.hostId) { mutableStateOf<String?>(null) }
     val probe = state.probe
-    val unsupported = !state.isMac && probe?.session?.type == "wayland" &&
-        probe.session.desktop?.let { it.contains("gnome", true) || it.contains("kde", true) } == true
-    val clipboard = probe?.clipboard?.takeIf { it.isNotBlank() }
+    val rdp = probe?.usesRdp == true
+    // RDP carries the clipboard itself, so GNOME and KDE need no clipboard tool.
+    val clipboard = if (rdp) stringResource(R.string.workspace_screen_clipboard_rdp) else probe?.clipboard?.takeIf { it.isNotBlank() }
     val upgrade = probe?.cua?.path != null
     ComputerSetupStepLayout(
         title = stringResource(R.string.im_computer_prepare),
@@ -42,13 +46,13 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
                 when {
                     !state.screenServiceReady -> stringResource(R.string.im_computer_no_screen_service)
                     state.isMac -> stringResource(R.string.im_computer_mac_screen_sharing)
+                    rdp -> probe.rdpServer?.let { rdpServerLabel(it) }.orEmpty()
                     else -> probe.vnc.server.orEmpty()
                 }) {
                 when {
                     state.screenServiceReady -> Unit
                     state.isMac -> Text(stringResource(R.string.im_computer_mac_sharing_help), style = MaterialTheme.typography.bodyMedium)
-                    unsupported -> Text(stringResource(R.string.im_computer_unsupported_desktop), style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error)
+                    rdp -> RemoteScreenRdpInstallGuidance(probe.session.desktop)
                     else -> RemoteScreenVncInstallGuidance(probe.session.type, probe.session.desktop)
                 }
             }

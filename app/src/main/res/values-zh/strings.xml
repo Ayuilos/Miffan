@@ -2188,6 +2188,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <!-- P2 screen setup is scoped to English and Simplified Chinese. -->
   <string name="workspace_screen_automatic">自动（推荐）</string>
   <string name="workspace_screen_automatic_help">Miffan 会在远端安装小脚本 ~/.miffan/bin/miffan，用于找到桌面会话并启动只有本账户能连接的屏幕服务；连接全程经过 SSH。</string>
+  <string name="workspace_screen_automatic_rdp">GNOME 和 KDE 桌面使用系统自带的远程桌面（RDP），登录密码由 Miffan 随机生成，只保存在这台手机上。</string>
   <string name="workspace_screen_environment">检测环境</string>
   <string name="workspace_screen_probe">检测环境</string>
   <string name="workspace_screen_probe_help">检测时会在远端安装或更新 Miffan 脚本，并检查桌面、屏幕服务和输入工具。</string>
@@ -2205,6 +2206,20 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_vnc">屏幕服务</string>
   <string name="workspace_screen_macos_sharing_help">在“系统设置 → 通用 → 共享”中打开“屏幕共享”，并在屏幕设置中选择 macOS 账户认证。</string>
   <string name="workspace_screen_vnc_missing">没有可用的屏幕服务。</string>
+  <string name="workspace_screen_rdp_gnome">GNOME 远程桌面</string>
+  <string name="workspace_screen_rdp_kde">KDE 远程桌面（krdp）</string>
+  <string name="workspace_screen_install_rdp">请在电脑上安装 %1$s，然后重新检测。</string>
+  <string name="workspace_screen_rdp_missing">这台电脑是 GNOME 或 KDE 桌面，需要先安装系统自带的远程桌面服务。</string>
+  <string name="workspace_screen_rdp_already_configured">这台电脑在 Miffan 之外已经开启了远程桌面，Miffan 没有改动它。如果要交给 Miffan 管理，请先在电脑的系统设置里关闭远程桌面，再重试。</string>
+  <string name="workspace_screen_rdp_keyring_locked">电脑上的钥匙串（密码库）还锁着。请在电脑上登录桌面让它解锁，然后重试。</string>
+  <string name="workspace_screen_rdp_credentials_unavailable">电脑上缺少 Miffan 安全保存远程桌面密码所需的工具。</string>
+  <string name="workspace_screen_rdp_certificate_changed">这台电脑的远程桌面证书和上次连接时不一样了。如果你重装过系统或重置过远程桌面，可以信任新证书；否则可能有别的东西在冒充这台电脑。</string>
+  <string name="workspace_screen_rdp_trust">信任新证书</string>
+  <string name="workspace_screen_rdp_trust_title">信任新证书？</string>
+  <string name="workspace_screen_rdp_trust_message">只有在你知道证书为什么变化时才这样做。\n\n之前：%1$s\n现在：%2$s</string>
+  <string name="workspace_screen_rdp_running">%1$s 正在运行</string>
+  <string name="workspace_screen_rdp_autostart">%1$s，连接时由 Miffan 启动</string>
+  <string name="workspace_screen_clipboard_rdp">由远程桌面提供</string>
   <string name="workspace_screen_vnc_running">%1$s · 正在运行</string>
   <string name="workspace_screen_vnc_autostart">%1$s · 已就绪，打开屏幕时会自动启动</string>
   <string name="workspace_screen_session_unsupported">此桌面会话暂不支持自动准备屏幕服务。</string>

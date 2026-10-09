@@ -2196,6 +2196,7 @@
   <!-- P2 screen setup is scoped to English and Simplified Chinese. -->
   <string name="workspace_screen_automatic" tools:ignore="MissingTranslation">Automatic (recommended)</string>
   <string name="workspace_screen_automatic_help" tools:ignore="MissingTranslation">Miffan installs a small helper at ~/.miffan/bin/miffan on the remote computer. It finds your desktop session and starts a screen service only your account can connect to. The entire connection goes through SSH.</string>
+  <string name="workspace_screen_automatic_rdp" tools:ignore="MissingTranslation">GNOME and KDE desktops use their own remote desktop (RDP). Miffan generates its password and keeps it only on this phone.</string>
   <string name="workspace_screen_environment" tools:ignore="MissingTranslation">Environment check</string>
   <string name="workspace_screen_probe" tools:ignore="MissingTranslation">Check environment</string>
   <string name="workspace_screen_probe_help" tools:ignore="MissingTranslation">This check installs or updates the Miffan helper on the remote computer and checks the desktop, screen service and input tools.</string>
@@ -2213,6 +2214,20 @@
   <string name="workspace_screen_vnc" tools:ignore="MissingTranslation">Screen service</string>
   <string name="workspace_screen_macos_sharing_help" tools:ignore="MissingTranslation">Enable Screen Sharing in System Settings → General → Sharing, and choose macOS account authentication in screen settings.</string>
   <string name="workspace_screen_vnc_missing" tools:ignore="MissingTranslation">No supported screen service is available.</string>
+  <string name="workspace_screen_rdp_gnome" tools:ignore="MissingTranslation">GNOME Remote Desktop</string>
+  <string name="workspace_screen_rdp_kde" tools:ignore="MissingTranslation">KDE Remote Desktop (krdp)</string>
+  <string name="workspace_screen_install_rdp" tools:ignore="MissingTranslation">Install %1$s on the computer, then check again.</string>
+  <string name="workspace_screen_rdp_missing" tools:ignore="MissingTranslation">This GNOME or KDE desktop needs its own remote desktop service installed first.</string>
+  <string name="workspace_screen_rdp_already_configured" tools:ignore="MissingTranslation">Remote desktop was already turned on on this computer, outside Miffan. Miffan left it untouched. To let Miffan manage it, turn remote desktop off in the computer\'s settings and retry.</string>
+  <string name="workspace_screen_rdp_keyring_locked" tools:ignore="MissingTranslation">The computer\'s keyring is locked. Sign in to the desktop on the computer so it unlocks, then retry.</string>
+  <string name="workspace_screen_rdp_credentials_unavailable" tools:ignore="MissingTranslation">The computer is missing the tools Miffan needs to store the remote desktop password safely.</string>
+  <string name="workspace_screen_rdp_certificate_changed" tools:ignore="MissingTranslation">This computer\'s remote desktop certificate is not the one from your last connection. If you reinstalled the system or reset remote desktop, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
+  <string name="workspace_screen_rdp_trust" tools:ignore="MissingTranslation">Trust new certificate</string>
+  <string name="workspace_screen_rdp_trust_title" tools:ignore="MissingTranslation">Trust the new certificate?</string>
+  <string name="workspace_screen_rdp_trust_message" tools:ignore="MissingTranslation">Only do this if you know why it changed.\n\nBefore: %1$s\nNow: %2$s</string>
+  <string name="workspace_screen_rdp_running" tools:ignore="MissingTranslation">%1$s is running</string>
+  <string name="workspace_screen_rdp_autostart" tools:ignore="MissingTranslation">%1$s, started by Miffan when you connect</string>
+  <string name="workspace_screen_clipboard_rdp" tools:ignore="MissingTranslation">Provided by remote desktop</string>
   <string name="workspace_screen_vnc_running" tools:ignore="MissingTranslation">%1$s · running</string>
   <string name="workspace_screen_vnc_autostart" tools:ignore="MissingTranslation">%1$s · ready; starts automatically when you open the screen</string>
   <string name="workspace_screen_session_unsupported" tools:ignore="MissingTranslation">Automatic screen setup is not supported for this desktop session.</string>

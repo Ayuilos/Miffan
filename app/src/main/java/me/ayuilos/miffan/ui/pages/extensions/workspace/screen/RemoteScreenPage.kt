@@ -218,6 +218,7 @@ internal fun RemoteScreenScaffold(
                         onSettings = { onSettings?.invoke() },
                         failureText = (failed as? RemoteScreenUiState.Failed)?.error?.let(failureText),
                         settingsText = settingsLabel,
+                        onTrustCertificate = vm::trustCertificate,
                     )
                 }
                 RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy,

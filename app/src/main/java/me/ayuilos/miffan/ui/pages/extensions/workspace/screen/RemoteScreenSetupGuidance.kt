@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenProblem
 import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
 import me.rerere.hugeicons.HugeIcons
@@ -49,7 +50,12 @@ internal fun remoteScreenSetupError(resources: Resources, error: Throwable): Str
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.workspace_screen_no_session)
         RemoteScreenProblem.NOT_ENABLED, RemoteScreenProblem.BAD_ENDPOINT, RemoteScreenProblem.PASSWORD_MISSING ->
             resources.getString(R.string.workspace_screen_config_incomplete)
-        RemoteScreenProblem.VNC_START_FAILED -> resources.getString(R.string.workspace_screen_start_failed)
+        RemoteScreenProblem.VNC_START_FAILED, RemoteScreenProblem.RDP_START_FAILED -> resources.getString(R.string.workspace_screen_start_failed)
+        RemoteScreenProblem.NO_RDP_SERVER -> resources.getString(R.string.workspace_screen_rdp_missing)
+        RemoteScreenProblem.RDP_ALREADY_CONFIGURED -> resources.getString(R.string.workspace_screen_rdp_already_configured)
+        RemoteScreenProblem.RDP_KEYRING_LOCKED -> resources.getString(R.string.workspace_screen_rdp_keyring_locked)
+        RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE -> resources.getString(R.string.workspace_screen_rdp_credentials_unavailable)
+        RemoteScreenProblem.RDP_CERTIFICATE_CHANGED -> resources.getString(R.string.workspace_screen_rdp_certificate_changed)
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
 
@@ -82,10 +88,6 @@ internal fun RemoteScreenVncInstallGuidance(sessionType: String?, desktop: Strin
             Text(stringResource(R.string.workspace_screen_install_vnc, server))
             RemoteScreenCopyCommand("Arch Linux", "sudo pacman -S $server")
             RemoteScreenCopyCommand("Debian / Ubuntu", "sudo apt install $server")
-        }
-        if (desktop?.contains("gnome", ignoreCase = true) == true ||
-            desktop?.contains("kde", ignoreCase = true) == true) {
-            Text(stringResource(R.string.workspace_screen_desktop_validation), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -130,5 +132,36 @@ internal fun RemoteScreenLog(text: String, initiallyExpanded: Boolean = false) {
                     fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+/** GNOME and KDE sessions are shown over RDP (see `rdp_kind` in miffan.sh); other desktops use VNC. */
+internal val RemoteMachineProbe.usesRdp: Boolean
+    get() = os == "linux" && session.desktop?.let { desktop ->
+        RDP_DESKTOPS.any { desktop.contains(it, ignoreCase = true) }
+    } == true
+
+/** The installed RDP server, or null when the desktop needs one installed. */
+internal val RemoteMachineProbe.rdpServer: String?
+    get() = rdp.server?.takeIf { it.isNotBlank() && it != "none" }
+
+private val RDP_DESKTOPS = listOf("gnome", "kde", "plasma")
+
+/** The desktop's own remote desktop service, by the name users see in their package manager. */
+@Composable
+internal fun rdpServerLabel(server: String): String = when (server) {
+    "gnome-remote-desktop" -> stringResource(R.string.workspace_screen_rdp_gnome)
+    "krdp" -> stringResource(R.string.workspace_screen_rdp_kde)
+    else -> server
+}
+
+@Composable
+internal fun RemoteScreenRdpInstallGuidance(desktop: String?) {
+    val kde = desktop?.let { it.contains("kde", true) || it.contains("plasma", true) } == true
+    val pkg = if (kde) "krdp" else "gnome-remote-desktop"
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.workspace_screen_install_rdp, pkg))
+        RemoteScreenCopyCommand("Arch Linux", "sudo pacman -S $pkg")
+        RemoteScreenCopyCommand("Debian / Ubuntu", "sudo apt install $pkg")
     }
 }

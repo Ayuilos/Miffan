@@ -26,6 +26,7 @@ import me.rerere.workspace.screen.RfbPixelFormat
 @Composable
 internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = Modifier) {
     val stats by vm.stats.collectAsStateWithLifecycle()
+    val rdp by vm.rdpStats.collectAsStateWithLifecycle()
     var drawnFps by remember { mutableDoubleStateOf(0.0) }
     LaunchedEffect(vm) {
         var count = vm.framesDrawn.get()
@@ -40,7 +41,14 @@ internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = M
         }
     }
     val s = stats
-    val text = if (s == null) "等待连接…" else buildString {
+    val r = rdp
+    val text = if (r != null) buildString {
+        // RDP is paced and encoded by the server; what matters here is the codec and who decodes it.
+        append("RDP · %s · %s".format(r.security, r.encoding))
+        append("\n%.1f fps · 共 %d 帧 · 绘制 %.1f fps".format(r.framesPerSecond, r.frames, drawnFps))
+        append("\n解码器 %s%s".format(r.decoder ?: "—", when (r.h264HardwareAccelerated) { true -> "（硬件）"; false -> "（软件）"; null -> "" }))
+        append("\n已收 %s · 已发 %s".format(kb(r.bytesReceived.toDouble()), kb(r.bytesSent.toDouble())))
+    } else if (s == null) "等待连接…" else buildString {
         append("%.1f fps · %s/s · %s".format(s.fps, kb(s.bytesPerSecond), s.encodings.joinToString("+").ifEmpty { "—" }))
         if (s.scale > 1) append(" · ${s.scale}× 降采样")
         if (s.pixelFormat == RfbPixelFormat.RGB565) append(" · 16 位色")

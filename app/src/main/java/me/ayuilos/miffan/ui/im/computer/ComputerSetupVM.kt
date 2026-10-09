@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServer
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.usesRdp
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.lifecycle.ViewModel
@@ -95,8 +97,13 @@ data class ComputerSetupState(
     val isMac: Boolean get() = probe?.os == "macos"
 
     val sessionReady: Boolean get() = probe?.session?.present == true
-    /** A VNC server exists; macOS Screen Sharing must also be switched on (the helper cannot start it). */
-    val screenServiceReady: Boolean get() = probe?.vnc?.let { vnc ->
+    /**
+     * GNOME and KDE need their RDP server installed (Miffan starts it); other desktops need a VNC
+     * server, and macOS Screen Sharing must also be switched on (the helper cannot start it).
+     */
+    val screenServiceReady: Boolean get() = probe?.let { probe ->
+        if (probe.usesRdp) return@let probe.rdpServer != null
+        val vnc = probe.vnc
         vnc.server != null && vnc.server != "none" && (vnc.server != "macos-screen-sharing" || vnc.running)
     } == true
     val cuaReady: Boolean get() = probe?.cua?.ok == true

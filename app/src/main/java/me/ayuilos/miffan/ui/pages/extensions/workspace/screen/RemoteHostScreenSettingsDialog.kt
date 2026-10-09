@@ -189,8 +189,12 @@ fun RemoteHostScreenSettingsDialog(
                                 supportingText = { Text(stringResource(R.string.workspace_screen_port_hint)) },
                                 isError = validPort == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                            ScreenConnectionMode.AUTOMATIC -> Text(stringResource(R.string.workspace_screen_automatic_help),
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ScreenConnectionMode.AUTOMATIC -> {
+                                Text(stringResource(R.string.workspace_screen_automatic_help),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.workspace_screen_automatic_rdp),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                     SettingsCard {
