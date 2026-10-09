@@ -2,6 +2,9 @@ package me.ayuilos.miffan.ui.components.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -121,12 +124,19 @@ fun EdgeBlurScrim(hazeState: HazeState, position: EdgeScrimPosition, height: Dp,
         colorEffects(emptyList())
         progressive(HazeProgressive.verticalGradient(startIntensity = if (top) 1f else 0f, endIntensity = if (top) 0f else 1f))
     }
-    val fade = listOf(page.copy(alpha = 0.8f), page.copy(alpha = 0f))
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val fade = if (top) {
+        // Status bar icons need a steady backdrop; only the chrome below them stays see-through.
+        val band = if (height > 0.dp) (statusBar / height).coerceIn(0f, 1f) else 0f
+        Brush.verticalGradient(0f to page.copy(alpha = 0.96f), band to page.copy(alpha = 0.9f), 1f to page.copy(alpha = 0f))
+    } else {
+        Brush.verticalGradient(listOf(page.copy(alpha = 0f), page.copy(alpha = 0.8f)))
+    }
     Box(
         modifier
             .fillMaxWidth()
             .height(height)
             .hazeBlur(input = HazeInput.Sources(hazeState), style = style)
-            .background(Brush.verticalGradient(if (top) fade else fade.reversed()))
+            .background(fade)
     )
 }
