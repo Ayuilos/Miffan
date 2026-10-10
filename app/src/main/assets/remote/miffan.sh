@@ -14,7 +14,7 @@
 #                           inspect Sunshine; explicit backed-up encryption enforcement
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=11
+MIFFAN_HELPER_VERSION=12
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -291,6 +291,8 @@ clip() {
         */wl-copy) wl-copy >/dev/null 2>&1 ;;
         xclip) xclip -selection clipboard >/dev/null 2>&1 ;;
         xsel) xsel --clipboard --input >/dev/null 2>&1 ;;
+        # pbcopy decodes stdin by locale; an SSH command has no LANG, and then it stores nothing.
+        */pbcopy) LANG=en_US.UTF-8 LC_CTYPE=UTF-8 "$tool" ;;
         *) "$tool" ;;
     esac
 }
