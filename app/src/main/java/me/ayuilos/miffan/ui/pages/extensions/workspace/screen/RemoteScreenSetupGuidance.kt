@@ -65,6 +65,9 @@ internal fun remoteSshError(resources: Resources, error: Throwable): String? {
     val ssh = chain.firstOrNull { it is JSchException }?.message.orEmpty()
     return when {
         ssh.contains("auth", ignoreCase = true) -> resources.getString(R.string.workspace_screen_ssh_auth)
+        // SSH is fine but nothing accepts the forwarded connection, typically a fixed VNC port
+        // left over from another desktop.
+        ssh.contains("channel is not opened", ignoreCase = true) -> resources.getString(R.string.workspace_screen_port_closed)
         chain.any { it is SocketTimeoutException } || ssh.contains("timeout", ignoreCase = true) ->
             resources.getString(R.string.workspace_screen_ssh_timeout)
         chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException } ||

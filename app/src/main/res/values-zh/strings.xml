@@ -2206,6 +2206,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_vnc">屏幕服务</string>
   <string name="workspace_screen_macos_sharing_help">在“系统设置 → 通用 → 共享”中打开“屏幕共享”，并在屏幕设置中选择 macOS 账户认证。</string>
   <string name="workspace_screen_vnc_missing">没有可用的屏幕服务。</string>
+  <string name="workspace_screen_port_closed">电脑上没有屏幕服务在接收连接。如果你换了桌面，请在屏幕设置里把连接方式改成“自动”。</string>
   <string name="workspace_screen_rdp_gnome">GNOME 远程桌面</string>
   <string name="workspace_screen_rdp_kde">KDE 远程桌面（krdp）</string>
   <string name="workspace_screen_install_rdp">请在电脑上安装 %1$s，然后重新检测。</string>
