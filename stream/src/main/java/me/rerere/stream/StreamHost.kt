@@ -27,7 +27,7 @@ class StreamHost(internal val connector: StreamTcpConnector, internal val identi
     @Volatile private var pendingUntil = 0L
     /** Sunshine's pending RTSP key cannot be replaced until its control connection or timeout. */
     val retryAfterMillis: Long get() = ((pendingUntil - System.nanoTime()) / 1_000_000).coerceAtLeast(0)
-    internal fun deferLaunch(launchedAt: Long) { pendingUntil = maxOf(pendingUntil, launchedAt + 11_000_000_000L) }
+    internal fun deferLaunch(httpCompletedAt: Long) { pendingUntil = maxOf(pendingUntil, httpCompletedAt + 11_000_000_000L) }
     internal fun controlEstablished() { pendingUntil = 0 }
     private suspend fun <T> io(block: (TcpBridge) -> T): T = withContext(Dispatchers.IO) {
         val bridge = TcpBridge(connector)

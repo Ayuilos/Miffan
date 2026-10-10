@@ -106,7 +106,13 @@ class StreamInstrumentedTest {
         } finally { scope.cancel(); instrumentation.runOnMainSync { activity.finish() } }
     }
     @Test fun streamAcceptance(): Unit = runBlocking {
-        val host = StreamHost(connector(), identity(), requireNotNull(prefs.getString("pin", null)))
+        val retryArmed = java.util.concurrent.atomic.AtomicBoolean()
+        val retryTcpAt = java.util.concurrent.atomic.AtomicLong()
+        val underlying = connector()
+        val host = StreamHost(StreamTcpConnector { port ->
+            if (retryArmed.get()) retryTcpAt.compareAndSet(0, System.nanoTime())
+            underlying.open(port)
+        }, identity(), requireNotNull(prefs.getString("pin", null)))
         val apps = host.apps(); val app = apps.firstOrNull { it.name == "Desktop" } ?: apps.first()
         val activity = instrumentation.startActivitySync(Intent(context, StreamTestActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as StreamTestActivity
         assertTrue(activity.ready.await(5, TimeUnit.SECONDS))
@@ -136,8 +142,14 @@ class StreamInstrumentedTest {
             val s = session("100.64.0.5"); running = s
             val retryWait = host.retryAfterMillis
             Log.i("StreamAcceptance", "START codec=$codec retryWaitMs=$retryWait software=${s.allowSoftwareDecoder}")
+            val retryStart = System.nanoTime(); retryArmed.set(retryWait > 0)
             s.start(scope); waitState(s)
             assertEquals("Startup failed: ${s.state.value}; ${s.stats.value}", StreamState.Streaming, s.state.value)
+            if (retryWait > 0) {
+                val actualWait = (retryTcpAt.get() - retryStart) / 1_000_000.0
+                assertTrue("New TCP opened before pending expiry: $actualWait < $retryWait", actualWait >= retryWait - 50)
+                Log.i("StreamAcceptance", "RETRY_WAIT expectedMs=$retryWait actualBeforeTcpMs=$actualWait")
+            }
             val busy = session("100.64.0.5"); busy.start(scope)
             assertEquals(StreamFailureReason.BUSY, (busy.state.value as StreamState.Failed).reason); busy.close()
             s.mouseMove(5, 0); Thread.sleep(100); s.mouseMove(-5, 0)

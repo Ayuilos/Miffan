@@ -48,7 +48,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
     @Volatile private var nativeEstablished = false
     @Volatile private var connectionDeadline = Long.MAX_VALUE
     @Volatile private var decoderConfiguring = false
-    private var launchedAt = 0L
+    private var launchCompletedAt = 0L
     private var controlReady = false
 
     init { require(StreamProtocol.numericAddress(udpAddress)) { "UDP address must be numeric IPv4 or IPv6" } }
@@ -89,7 +89,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
             connectionDeadline = System.nanoTime() + config.connectTimeoutMillis * 1_000_000
             var codecs = config.codecs
             while (!closed.get() && failure == null) {
-                stage = 0; launchedAt = 0; controlReady = false; nativeEstablished = false; decoderFailure = false; stop = CountDownLatch(1); decoder = StreamDecoder(this)
+                stage = 0; launchCompletedAt = 0; controlReady = false; nativeEstablished = false; decoderFailure = false; stop = CountDownLatch(1); decoder = StreamDecoder(this)
                 val info = StreamProtocol.server(host.request("serverinfo", bridge = bridge,
                     timeout = remaining(connectionDeadline)))
                 if (!info.paired) throw StreamException(StreamFailureReason.HOST_REJECTED)
@@ -97,12 +97,16 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
                 val iv = ByteArray(16); random.nextBytes(iv); iv.fill(0, 4)
                 val keyId = ((iv[0].toInt() and 255) shl 24) or ((iv[1].toInt() and 255) shl 16) or
                     ((iv[2].toInt() and 255) shl 8) or (iv[3].toInt() and 255)
-                launchedAt = System.nanoTime()
-                val response = host.request(if (info.currentApp != 0) "resume" else "launch", mapOf(
+                val response = try { host.request(if (info.currentApp != 0) "resume" else "launch", mapOf(
                     "appid" to app.id.toString(), "mode" to "${config.width}x${config.height}x${config.fps}",
                     "additionalStates" to "1", "sops" to "0", "rikey" to StreamProtocol.hex(key), "rikeyid" to keyId.toString(),
                     "localAudioPlayMode" to "0", "surroundAudioInfo" to "196610", "remoteControllersBitmap" to "0",
                     "gcmap" to "0", "corever" to "1"), bridge = bridge, timeout = remaining(connectionDeadline))
+                } finally {
+                    // Start after the response, not before a potentially slow forwarded HTTP request.
+                    // If the reply is lost, use the request's end as a conservative anchor.
+                    launchCompletedAt = System.nanoTime()
+                }
                 if (response.value("gamesession") == "0" || response.value("resume") == "0") throw StreamException(StreamFailureReason.HOST_REJECTED)
                 val url = response.value("sessionUrl0")
                 if (!url.startsWith("rtspenc://")) throw StreamException(StreamFailureReason.ENCRYPTION_REQUIRED)
@@ -114,7 +118,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
                         (if (StreamCodec.H264 in codecs) 1 else 0) or (if (StreamCodec.HEVC in codecs) 0x100 else 0), key, iv)
                 } finally { nativeActive = false; key.fill(0); iv.fill(0) }
                 decoder?.close(); decoder = null; bridge.close(); bridge.awaitStopped(2000)
-                if (!controlReady && launchedAt != 0L) host.deferLaunch(launchedAt)
+                if (!controlReady && launchCompletedAt != 0L) host.deferLaunch(launchCompletedAt)
                 val wasStreaming = mutableState.value is StreamState.Streaming
                 if (decoderFailure && wasStreaming) connectionDeadline = System.nanoTime() + config.connectTimeoutMillis * 1_000_000
                 if (decoderFailure && StreamCodec.HEVC in codecs && StreamCodec.H264 in codecs && !closed.get() && System.nanoTime() < connectionDeadline) {
@@ -129,7 +133,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
             if (!closed.get() && failure == null) failure = if (e is StreamException) StreamState.Failed(e.reason, e.stage, e.code)
                 else StreamState.Failed(StreamFailureReason.TCP_RTSP, stage, -203)
         } finally {
-            if (!controlReady && launchedAt != 0L) host.deferLaunch(launchedAt)
+            if (!controlReady && launchCompletedAt != 0L) host.deferLaunch(launchCompletedAt)
             releaseAllInput(); bridge.close(); bridge.awaitStopped(2000); decoder?.close(); decoder = null
             mutableState.value = failure ?: StreamState.Closed
             synchronized(processLock) { if (active === this) active = null }

@@ -52,20 +52,23 @@ python3 stream/scripts/test-emulator.py stream --codec h264 --fallback --timeout
 
 | 编码 / 测试时间 | 收帧 / 渲染帧 | 收帧 / 渲染 fps | 解码均值 / 最大 ms | 丢帧 | 有效码率 Kbps | RTT ms | 音频包 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| HEVC / 17:46:41 最终 APK | 305 / 72 | 9.56 / 2.26 | 1572.55 / 2900.30 | 1982 | 1346.90 | 40 | 6430 |
+| HEVC / 17:52:58 退避修正后 | 266 / 47 | 8.45 / 1.49 | 2239.80 / 5239.60 | 1954 | 1171.41 | 69 | 6269 |
 | H.264 / 最终诊断 APK | 94 / 69 | 2.97 / 2.18 | 820.60 / 4339.03 | 1757 | 555.71 | 234 | 4899 |
 
 - 两轮 `videoEncrypted/audioEncrypted/controlEncrypted` 全为 true；空音频回调持续收包。小幅鼠标 +5/-5、独立 Shift、BUSY 拒绝及 Surface 恢复均通过，截图可见主机桌面；没有向主机输入文字或快捷键。
 - HEVC 为 `c2.android.hevc.decoder`，仅测试打开软件解码例外；该模拟器无可用 HEVC 硬件 decoder。H.264 为 `c2.goldfish.h264.decoder`，Android 报告 hardwareAccelerated=true。两个 codec 都未公布 LowLatency feature；lowLatency=false。模拟器结果不替代物理手机硬件/低延迟验收。
 - 不可达 `192.0.2.1` 候选在约 4.2 秒内返回 UDP_UNREACHABLE（stage 8、-202），包括停止清理；立即创建/启动正确候选，无 BUSY 或旧回调干扰，自动退避后成功。已有应用使用 resume，全程未调用 cancel/unpair，没有 SSH 或改动主机配置。
 - 主机协调方确认编码器和控制流无错误、转发正常；同主机同 Tailscale 路径的 P6a Mac probe 可达约 58.8 fps。结合本轮丢帧与慢解码，模拟器用户态 UDP 转发/解码吞吐是限制的候选原因，不将其当作已证明的唯一原因。
-- 原生日志仅按固定格式计数 `fecFailureEvents`（不可恢复帧/块事件，非精确包丢失率）和 `idrRequestsSent`（实际发出的 IDR 请求）；不展开原生日志的可变参数。最终 1080p60 复验中 H.264 分别为 123 / 50、HEVC 为 0 / 190；HEVC 没有 FEC 不可恢复事件但解码输入经常不足，不能把全部丢帧归为网络包损失。
+- 原生日志仅按固定格式计数 `fecFailureEvents`（不可恢复帧/块事件，非精确包丢失率）和 `idrRequestsSent`（实际发出的 IDR 请求）；不展开原生日志的可变参数。上表 1080p60 复验中 H.264 分别为 123 / 50、HEVC 为 1 / 172；此前 17:46 HEVC 一轮为 0 / 190，解码输入经常不足，不能把全部丢帧归为网络包损失。
 - 17:43 的 1280×720@30、5000 Kbps 对照（HEVC 硬件不可用后自动回退 H.264）通过 30 秒、三路加密和 Surface 替换：514 收帧 / 441 渲染，16.45 / 14.05 fps，解码均值 179.68 ms / 最大 735.44 ms，丢帧 504，有效码率 1924.23 Kbps，RTT 59 ms，音频 6198 包，FEC 不可恢复事件 15、IDR 请求 53。低负载有明显改善但仍不等于稳定 30 fps，真机与更长时间验收留给 P6c。
 
 ## API 补充与边界
 
 - `StreamConfig.connectTimeoutMillis`（默认 4000）和 `StreamSession.awaitStopped(timeoutMillis)` 为规格所需候选期限与清理等待的补充。
-- Sunshine 在控制 UDP 尚未连通时，已有 pending RTSP 密钥不会被新的 resume 替换，主机约 10 秒后才丢弃；立刻发送新密钥会造成 RTSP 失败。库记住失败 launch 的时间，对同一个 StreamHost 的下一次 start 自动等到 launch 后 11 秒再发新请求（本机约额外 7 秒），以 `host.retryAfterMillis` 和 stats 同名字段暴露等待。此等待不计入实际建流期限；因此“立即 start”成立，“立即重新 launch 且总耗时 4 秒成功”在该主机上不成立。P6c 选择候选应复用同一个 StreamHost，并呈现此等待。
+- Sunshine 在控制 UDP 尚未连通时，已有 pending RTSP 密钥不会被新的 resume 替换。主机日志为 17:20:36.419 创建不可达候选会话，17:20:39.448 报 `Failed to verify RTSP message tag`；中间没有客户端连接或 pending 结束日志。这支持 P6A_NOTES 3.3 的单 pending 判断：新 resume 的 RTSP 被旧 launch event 的密钥验 tag，而不是按主机策略拒绝请求；control 未建立时不会调用 launch_session_clear，须等默认 ping_timeout 约 10 秒。
+- 库对未建立 control 的失败会话，从 launch/resume **HTTP 返回后**起算 10 秒 + 1 秒余量，对同一个 StreamHost 的下一次 start 自动等待后再打开 TCP/发新请求；HTTP 异常或回复丢失时，保守地从请求异常结束时起算。不能从发送请求前起算，否则慢转发会吃掉余量。以 `host.retryAfterMillis` 和 stats 同名字段暴露等待，不调用 cancel，也不以缺失的服务端结束日志作为完成信号。
+- 17:52 的修正后复测：错误 UDP 候选 4085.80 ms 后以 UDP_UNREACHABLE（stage 8、-202）停止；17:52:17.367 立即 start 正确候选时剩余退避 8098 ms。验收 connector 实测首个新 TCP open 距 start 为 8117.30 ms，断言未提前打开连接通过；17:52:28.235 已进入 Streaming，随后加密 HEVC 持续至少 30 秒，Surface 替换恢复，测试 `OK (1 test)`。同轮 5 项 JVM 测试及测试 APK 双 ABI 构建通过。
+- 退避等待不计入实际建流期限；因此“立即 start”成立，“立即重新 launch 且总耗时 4 秒成功”在该主机上不成立。等待与当前候选失败前已耗时合计到 HTTP 返回后的 11 秒；默认实际建流总期限为 4000 ms，可通过 `connectTimeoutMillis` 配置。P6c 选择候选应复用同一个 StreamHost，并呈现此等待。若主机 ping_timeout 改为非默认值，固定的 11 秒窗口需相应调整。
 - 模拟器正确候选显式设为 15000 ms；默认 4000 ms 保留且错误 UDP 候选仍使用 4000 ms。冷 codec 初始化、转发 RTSP 和首帧曾超过默认期限；这不是默认 4 秒成功的验收。编码回退对照显式使用 30000 ms，初始 HEVC/H.264 回退共享预算。
 - HEVC 自动回退仅当调用方同时允许 HEVC/H264；仅允许 HEVC 时将解码失败明确返回。初次建流的回退仍使用同一个总期限；已经 Streaming 后发生持续解码故障，再建流使用新的建流期限。
 - `allowSoftwareDecoder` 仅为模块 internal 的模拟器测试开关，生产 API 不暴露；默认要求硬件解码。若验收模拟器只有软件 codec，应明确记为模拟器限制，不能视作物理 Android 硬件解码验收。
