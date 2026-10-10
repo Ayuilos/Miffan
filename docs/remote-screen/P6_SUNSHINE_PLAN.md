@@ -63,10 +63,11 @@ TCP 走隧道时，客户端看到的主机地址是本地转发地址，主机�
 | 阶段 | 内容 | 交付 |
 | --- | --- | --- |
 | P6a 验证（已完成 2026-10-10） | ① 地址分离：TCP 经 SSH、UDP 直连，Sunshine 能否认出同一会话，common-c 需要怎样的补丁。② 强制加密下视频、音频、输入都加密，降级会被拒绝。先读源码，再在用户授权后对 CachyOS 上的 Sunshine 实测 | 结论文档 + 补丁草案；不可行时回到“TCP 也直连”的方案并重新评估安全 |
-| P6b 原生库 | `stream` 模块：common-c 构建、JNI、HTTP / 配对、Surface 解码、输入；模拟器经 SSH 连测试机 | 模拟器上能看、能点、能打字 |
-| P6c 接入 App | 主机配置增加高性能模式；路径选择与回退；屏幕页 Surface 渲染；统计浮层；中文与剪贴板桥 | 真机连 KDE / niri / GNOME，延迟与官方 Moonlight 相当 |
-| P6d 自动配对与引导 | 经 SSH 探测 Sunshine、核对证书、定向批准 Miffan 的配对请求；没有管理凭据时提供一次手动 PIN；加密配置变更的确认界面；云服务器放行端口的引导 | 轻松模式下一步接入 |
-| P6e Mac | macOS 上的 Sunshine：TCC 授权引导、Retina 坐标、Command 键、锁屏恢复 | Mac 高性能模式 |
+| P6b 原生库（已完成） | `stream` 模块：common-c 构建、JNI、HTTP / 配对、Surface 解码、输入；模拟器经 SSH 连测试机 | 模拟器上能看、能点、能打字 |
+| P6c 接入 App（已完成，真机通过） | 主机配置增加高性能模式；路径选择与回退；屏幕页 Surface 渲染；统计浮层；中文与剪贴板桥 | 真机连 KDE / niri / GNOME，延迟与官方 Moonlight 相当 |
+| P6d 自动配对与引导（部分完成） | 已做：经 SSH 探测 Sunshine、核对证书、手动 PIN 配对、加密配置变更的确认、轻松模式入口（准备步骤 + 屏幕页提示）。未做：有管理凭据时定向自动批准配对、云服务器放行端口的引导 | 轻松模式下一步接入 |
+| P6e 屏幕页改进（已完成） | 画面三档（替代帧率菜单）、移动数据省流、状态行与连接详情、本次用普通连接、全屏横屏、声音、触控板指针预测、CI 补上 stream 源码 | 见 `P6E_SPEC.md` / `P6E_NOTES.md` |
+| P6f Mac | macOS 上的 Sunshine：helper 的 macOS 探测与加密设置、TCC 授权引导、Retina 坐标、Command 键、锁屏恢复 | Mac 高性能模式 |
 
 分工：非 UI 部分（原生库、JNI、配对、helper、验证）交给 Codex，在独立 worktree 中完成；屏幕页、设置、引导等 UI 由 Claude 负责。
 
