@@ -35,6 +35,8 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenProblem
 import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
+import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
+import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Tick01
@@ -45,7 +47,8 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 internal fun remoteScreenSetupError(resources: Resources, error: Throwable): String =
-    when ((error as? RemoteScreenUnavailableException)?.problem) {
+    if (error is RemoteStreamCertificateChangedException) resources.getString(R.string.workspace_screen_stream_certificate_changed)
+    else when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_WORKSPACE -> resources.getString(R.string.workspace_screen_no_workspace)
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.workspace_screen_no_session)
         RemoteScreenProblem.NOT_ENABLED, RemoteScreenProblem.BAD_ENDPOINT, RemoteScreenProblem.PASSWORD_MISSING ->
@@ -58,6 +61,19 @@ internal fun remoteScreenSetupError(resources: Resources, error: Throwable): Str
         RemoteScreenProblem.RDP_CERTIFICATE_CHANGED -> resources.getString(R.string.workspace_screen_rdp_certificate_changed)
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
+
+/** Why high-performance mode was not used, as the clause the fallback message wraps. */
+internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFallbackReason): String = resources.getString(when (reason) {
+    RemoteStreamFallbackReason.SUNSHINE_MISSING -> R.string.workspace_screen_stream_reason_missing
+    RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING -> R.string.workspace_screen_stream_reason_not_running
+    RemoteStreamFallbackReason.NOT_PAIRED -> R.string.workspace_screen_stream_reason_not_paired
+    RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED -> R.string.workspace_screen_stream_reason_encryption
+    RemoteStreamFallbackReason.UDP_UNREACHABLE -> R.string.workspace_screen_stream_reason_udp
+    RemoteStreamFallbackReason.HOST_REJECTED -> R.string.workspace_screen_stream_reason_rejected
+    RemoteStreamFallbackReason.DECODER_UNSUPPORTED -> R.string.workspace_screen_stream_reason_decoder
+    RemoteStreamFallbackReason.LOCAL_NETWORK_PERMISSION -> R.string.workspace_screen_stream_reason_local_network
+    RemoteStreamFallbackReason.OTHER -> R.string.workspace_screen_stream_reason_other
+})
 
 /**
  * SSH works but nothing accepts the forwarded screen connection, typically a fixed VNC port left

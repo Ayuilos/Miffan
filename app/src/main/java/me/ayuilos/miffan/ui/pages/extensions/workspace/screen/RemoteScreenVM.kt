@@ -27,6 +27,14 @@ import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.repository.RemoteScreenConnection
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
+import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
+import me.ayuilos.miffan.data.repository.RemoteStreamFallback
+import me.ayuilos.miffan.data.repository.RemoteSurfaceTarget
+import me.ayuilos.miffan.data.repository.pinStreamCertificate
+import me.ayuilos.miffan.data.repository.streamFallback
+import me.ayuilos.miffan.data.repository.streamStats
+import me.ayuilos.miffan.data.repository.surface
+import me.rerere.stream.StreamStats
 import me.rerere.workspace.screen.Framebuffer
 import me.rerere.workspace.screen.RemoteScreenFrameSink
 import me.rerere.workspace.screen.RemoteScreenOptions
@@ -43,7 +51,7 @@ import me.rerere.workspace.screen.RfbRect
 sealed interface RemoteScreenUiState {
     data object Connecting : RemoteScreenUiState
 
-    /** [width]/[height] are bitmap pixels; input coordinates use the same space. */
+    /** [width]/[height] are bitmap (or stream video) pixels; input coordinates use the same space. */
     data class Connected(val name: String, val width: Int, val height: Int) : RemoteScreenUiState
 
     data class Failed(val error: Throwable) : RemoteScreenUiState
@@ -65,6 +73,8 @@ sealed interface RemoteScreenNotice {
     data class ClipboardFailed(val error: Throwable) : RemoteScreenNotice
     /** The remote side copied text (Latin-1 only through standard RFB). */
     data class RemoteClipboard(val text: String) : RemoteScreenNotice
+    /** High-performance mode was on but this connection uses VNC or RDP instead. */
+    data class StreamFallback(val fallback: RemoteStreamFallback) : RemoteScreenNotice
 }
 
 data class RemoteScreenArgs(val workspaceId: String)
@@ -134,6 +144,17 @@ class RemoteScreenVM(
     private val _rdpStats = MutableStateFlow<RdpStats?>(null)
     /** RDP's own numbers (codec, decoder); null on VNC connections. */
     val rdpStats: StateFlow<RdpStats?> = _rdpStats.asStateFlow()
+
+    private val _video = MutableStateFlow<RemoteSurfaceTarget?>(null)
+    /**
+     * Set while a high-performance (Sunshine) stream is connected: it decodes into a Surface the
+     * page provides, so [bitmap] stays null and input coordinates are video pixels.
+     */
+    val video: StateFlow<RemoteSurfaceTarget?> = _video.asStateFlow()
+
+    private val _streamStats = MutableStateFlow<StreamStats?>(null)
+    /** The stream's own numbers; null unless [video] is set. */
+    val streamStats: StateFlow<StreamStats?> = _streamStats.asStateFlow()
 
     /** Frames the canvas actually drew; the overlay compares it with decoded updates. */
     val framesDrawn = java.util.concurrent.atomic.AtomicLong()
@@ -233,14 +254,15 @@ class RemoteScreenVM(
     }
 
     /**
-     * The user confirmed that this computer's RDP certificate changed for a reason they know;
-     * pin the new one and connect again. Never called without that confirmation.
+     * The user confirmed that this computer's RDP or Sunshine certificate changed for a reason
+     * they know; pin the new one and connect again. Never called without that confirmation.
      */
     fun trustCertificate(sha256: String) {
         val hostId = _hostId.value ?: return
+        val stream = (_state.value as? RemoteScreenUiState.Failed)?.error is RemoteStreamCertificateChangedException
         viewModelScope.launch {
             try {
-                repository.pinRdpCertificate(hostId, sha256)
+                if (stream) repository.pinStreamCertificate(hostId, sha256) else repository.pinRdpCertificate(hostId, sha256)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
@@ -376,11 +398,19 @@ class RemoteScreenVM(
                 connection = opened
                 _hostId.value = opened.hostId
                 _platform.value = opened.platform
+                opened.streamFallback?.let { _notices.tryEmit(RemoteScreenNotice.StreamFallback(it)) }
+                opened.session.surface?.let { target ->
+                    // The pointer is part of the video picture; a local arrow would show it twice.
+                    _cursor.value = RemoteCursor.Hidden
+                    scale = 1
+                    _video.value = target
+                }
                 opened.session.setPaused(!visible)
                 opened.session.statsLogger = { Log.d(PERF_TAG, it.toString()) }
                 opened.session.start(viewModelScope)
                 launch { opened.session.stats.collect { _stats.value = it } }
                 opened.session.rdpStats?.let { flow -> launch { flow.collect { _rdpStats.value = it } } }
+                opened.session.streamStats?.let { flow -> launch { flow.collect { _streamStats.value = it } } }
                 val openedAt = SystemClock.elapsedRealtime()
                 launch {
                     // Servers send their current clipboard right after connecting; only later copies are news.
@@ -420,6 +450,8 @@ class RemoteScreenVM(
         _cursor.value = RemoteCursor.Unknown
         _stats.value = null
         _rdpStats.value = null
+        _streamStats.value = null
+        _video.value = null
         connectJob?.cancel()
         connectJob = null
         connection?.close()

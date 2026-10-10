@@ -328,6 +328,7 @@ dependencies {
     implementation(project(":material3"))
     implementation(project(":workspace"))
     implementation(project(":rdp"))
+    implementation(project(":stream"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
     implementation(kotlin("reflect"))
 

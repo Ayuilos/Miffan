@@ -27,28 +27,49 @@ import me.rerere.workspace.screen.RfbPixelFormat
 internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = Modifier) {
     val stats by vm.stats.collectAsStateWithLifecycle()
     val rdp by vm.rdpStats.collectAsStateWithLifecycle()
+    val stream by vm.streamStats.collectAsStateWithLifecycle()
     var drawnFps by remember { mutableDoubleStateOf(0.0) }
     var receiveRate by remember { mutableDoubleStateOf(0.0) }
+    // The stream reports totals since its first frame; per-second rates come from their deltas.
+    var streamReceivedFps by remember { mutableDoubleStateOf(0.0) }
+    var streamRenderedFps by remember { mutableDoubleStateOf(0.0) }
     LaunchedEffect(vm) {
         var count = vm.framesDrawn.get()
         var received = vm.rdpStats.value?.bytesReceived ?: 0L
+        var streamReceived = vm.streamStats.value?.receivedFrames ?: 0L
+        var streamRendered = vm.streamStats.value?.renderedFrames ?: 0L
         var at = System.nanoTime()
         while (true) {
             delay(1_000)
             val nowCount = vm.framesDrawn.get()
             val nowReceived = vm.rdpStats.value?.bytesReceived ?: 0L
+            val nowStreamReceived = vm.streamStats.value?.receivedFrames ?: 0L
+            val nowStreamRendered = vm.streamStats.value?.renderedFrames ?: 0L
             val now = System.nanoTime()
             drawnFps = (nowCount - count) * 1e9 / (now - at)
             receiveRate = (nowReceived - received).coerceAtLeast(0) * 1e9 / (now - at)
+            streamReceivedFps = (nowStreamReceived - streamReceived).coerceAtLeast(0) * 1e9 / (now - at)
+            streamRenderedFps = (nowStreamRendered - streamRendered).coerceAtLeast(0) * 1e9 / (now - at)
             count = nowCount
             received = nowReceived
+            streamReceived = nowStreamReceived
+            streamRendered = nowStreamRendered
             at = now
         }
     }
     val s = stats
+    val v = stream?.takeIf { it.codec != null }
     // Before RDP finishes its handshake the stats hold placeholders; show the waiting line instead.
     val r = rdp?.takeIf { it.security != "Unknown" }
-    val text = if (r != null) buildString {
+    val text = if (v != null) buildString {
+        // Sunshine encodes on the computer's GPU; the phone decodes straight into the screen.
+        append("Sunshine · %s · %d×%d@%d".format(v.codec?.name ?: "—", v.width, v.height, v.fps))
+        append("\n收帧 %.1f fps · 显示 %.1f fps · 丢帧 %d".format(streamReceivedFps, streamRenderedFps, v.droppedFrames))
+        append("\n解码 均 %.1f / 峰 %.0f ms · RTT %s".format(v.decodeMeanMs, v.decodeMaxMs, v.rttMs?.let { "$it ms" } ?: "—"))
+        append("\n码率 %.1f Mbps · FEC 失败 %d · 请求关键帧 %d".format(v.bitrateKbps / 1000, v.fecFailureEvents, v.idrRequestsSent))
+        append("\n加密 视频 %s · 音频 %s · 控制 %s".format(yes(v.videoEncrypted), yes(v.audioEncrypted), yes(v.controlEncrypted)))
+        append("\n%s%s · 低延迟 %s".format(v.decoderName ?: "—", if (v.hardwareAccelerated) "（硬件）" else "（软件）", yes(v.lowLatency)))
+    } else if (r != null) buildString {
         // RDP is paced and encoded by the server; the stages below show where a frame spends its time.
         append("RDP · %s · %s · %d×%d".format(r.security, r.encoding, r.width, r.height))
         append("\n%.1f fps · 解码 %.1f fps · 绘制 %.1f fps".format(r.framesPerSecond, r.decodeFramesPerSecond, drawnFps))
@@ -78,6 +99,8 @@ internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = M
         modifier = modifier.background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
             .padding(horizontal = 8.dp, vertical = 6.dp))
 }
+
+private fun yes(value: Boolean) = if (value) "✓" else "✗"
 
 private fun kb(bytes: Double): String =
     if (bytes >= 1024 * 1024) "%.1f MB".format(bytes / (1024 * 1024)) else "%.0f KB".format(bytes / 1024)

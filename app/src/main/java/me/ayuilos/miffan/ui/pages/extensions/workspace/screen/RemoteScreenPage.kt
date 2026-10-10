@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -43,6 +46,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
+import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
+import me.ayuilos.miffan.data.repository.RemoteStreamPermissions
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
@@ -110,6 +115,10 @@ internal fun RemoteScreenScaffold(
     var help by remember { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable { mutableStateOf(false) }
     val hints = remember(context) { context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE) }
+    // Local-network access is asked for only after a stream needed it, then the screen reconnects.
+    val localNetwork = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) vm.reconnect()
+    }
     var perfOverlay by remember { mutableStateOf(hints.getBoolean(PERF_OVERLAY, false)) }
     val connected = state is RemoteScreenUiState.Connected
     val macOS = platform == RemoteScreenPlatform.MACOS
@@ -138,6 +147,23 @@ internal fun RemoteScreenScaffold(
                 when (notice) {
                     RemoteScreenNotice.TextNotTypable -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_text_unsupported))
                     is RemoteScreenNotice.ClipboardFailed -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_paste_failed))
+                    is RemoteScreenNotice.StreamFallback -> {
+                        val reason = notice.fallback.reason
+                        val permission = RemoteStreamPermissions.localNetwork
+                            .takeIf { reason == RemoteStreamFallbackReason.LOCAL_NETWORK_PERMISSION }
+                        val fixInSettings = onSettings != null && reason in STREAM_SETTINGS_FIXES
+                        val result = snackbar.showSnackbar(
+                            resources.getString(R.string.workspace_screen_stream_fallback, streamFallbackReason(resources, reason)),
+                            actionLabel = when {
+                                permission != null -> resources.getString(R.string.workspace_screen_stream_allow_local_network)
+                                fixInSettings -> settingsLabel
+                                else -> null
+                            },
+                            withDismissAction = true, duration = SnackbarDuration.Long)
+                        if (result == SnackbarResult.ActionPerformed) {
+                            if (permission != null) localNetwork.launch(permission) else onSettings?.invoke()
+                        }
+                    }
                     // Copying to the phone is the user's call: the computer's clipboard can hold anything.
                     is RemoteScreenNotice.RemoteClipboard -> {
                         val result = snackbar.showSnackbar(resources.getString(R.string.workspace_screen_clipboard_new),
@@ -233,6 +259,12 @@ internal fun RemoteScreenScaffold(
     }
     if (help) RemoteScreenGestureHelp(trackpad = trackpad, macOS = macOS, onDismiss = { help = false })
 }
+
+/** Fallbacks the user can fix from the computer's screen settings (pairing, encryption, Sunshine itself). */
+private val STREAM_SETTINGS_FIXES = setOf(
+    RemoteStreamFallbackReason.SUNSHINE_MISSING, RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING,
+    RemoteStreamFallbackReason.NOT_PAIRED, RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED,
+)
 
 private const val SCREEN_HINTS = "remote_screen_hints"
 private const val PERF_OVERLAY = "perf_overlay"

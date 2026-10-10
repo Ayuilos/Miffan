@@ -26,6 +26,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.repository.RemoteRdpCertificateChangedException
 import me.ayuilos.miffan.data.repository.RemoteScreenProblem
 import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
+import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
 
 @Composable
 internal fun RemoteScreenFailureContent(
@@ -36,7 +37,7 @@ internal fun RemoteScreenFailureContent(
     modifier: Modifier = Modifier,
     failureText: String? = null,
     settingsText: String? = null,
-    /** Pins a changed RDP certificate after the user confirmed it; null hides the action. */
+    /** Pins a changed RDP or Sunshine certificate after the user confirmed it; null hides the action. */
     onTrustCertificate: ((String) -> Unit)? = null,
     /** Switches a fixed endpoint nothing listens on to automatic connection; null hides the action. */
     onUseAutomatic: (() -> Unit)? = null,
@@ -45,11 +46,15 @@ internal fun RemoteScreenFailureContent(
     val error = (state as? RemoteScreenUiState.Failed)?.error
     val unavailable = error as? RemoteScreenUnavailableException
     // Problems fixed on the computer itself: the user acts there, then retries here.
-    val retryOnly = unavailable?.problem in setOf(RemoteScreenProblem.NO_GRAPHICAL_SESSION, RemoteScreenProblem.VNC_START_FAILED,
+    val retryOnly = error is RemoteStreamCertificateChangedException || unavailable?.problem in setOf(RemoteScreenProblem.NO_GRAPHICAL_SESSION, RemoteScreenProblem.VNC_START_FAILED,
         RemoteScreenProblem.RDP_START_FAILED, RemoteScreenProblem.RDP_ALREADY_CONFIGURED, RemoteScreenProblem.RDP_KEYRING_LOCKED,
         RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE, RemoteScreenProblem.RDP_CERTIFICATE_CHANGED)
     val missingServer = unavailable?.problem == RemoteScreenProblem.NO_VNC_SERVER || unavailable?.problem == RemoteScreenProblem.NO_RDP_SERVER
-    val changedCertificate = (error as? RemoteRdpCertificateChangedException)?.takeIf { it.actualSha256 != null }
+    val changedCertificate = when (error) {
+        is RemoteRdpCertificateChangedException -> error.actualSha256?.let { CertificateChange(error.expectedSha256, it) }
+        is RemoteStreamCertificateChangedException -> error.actualSha256?.let { CertificateChange(error.expectedSha256, it) }
+        else -> null
+    }
     var confirmTrust by remember(error) { mutableStateOf(false) }
     // Unspecified unavailable problems keep P1's settings action; ordinary failures still retry.
     val settingsOnly = unavailable != null && !retryOnly && !missingServer
@@ -90,13 +95,13 @@ internal fun RemoteScreenFailureContent(
         }
     }
     if (confirmTrust && changedCertificate != null && onTrustCertificate != null) {
-        val actual = requireNotNull(changedCertificate.actualSha256)
+        val actual = changedCertificate.actual
         AlertDialog(onDismissRequest = { confirmTrust = false },
             title = { Text(stringResource(R.string.workspace_screen_rdp_trust_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.workspace_screen_rdp_trust_hint))
-                    FingerprintBlock(stringResource(R.string.workspace_screen_rdp_fingerprint_before), changedCertificate.expectedSha256)
+                    FingerprintBlock(stringResource(R.string.workspace_screen_rdp_fingerprint_before), changedCertificate.expected)
                     FingerprintBlock(stringResource(R.string.workspace_screen_rdp_fingerprint_now), actual)
                 }
             },
@@ -109,6 +114,8 @@ internal fun RemoteScreenFailureContent(
         )
     }
 }
+
+private data class CertificateChange(val expected: String, val actual: String)
 
 /** SHA-256 hex as four aligned rows of four groups, so two fingerprints can be compared row by row. */
 @Composable

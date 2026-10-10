@@ -34,7 +34,7 @@ import me.rerere.hugeicons.stroke.CheckmarkCircle01
 import me.rerere.hugeicons.stroke.Unavailable
 
 private data class CuaInstallRequest(val upgradePath: String?, val cua: RemoteMachineProbe.Cua)
-private enum class EnvironmentStatus { OK, ACTION_NEEDED, UNSUPPORTED }
+internal enum class EnvironmentStatus { OK, ACTION_NEEDED, UNSUPPORTED }
 
 @Composable
 internal fun RemoteScreenEnvironmentPanel(
@@ -171,7 +171,7 @@ internal fun RemoteScreenEnvironmentPanel(
 }
 
 @Composable
-private fun EnvironmentRow(label: String, status: EnvironmentStatus, detail: String) {
+internal fun EnvironmentRow(label: String, status: EnvironmentStatus, detail: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Icon(when (status) {
             EnvironmentStatus.OK -> HugeIcons.CheckmarkCircle01
