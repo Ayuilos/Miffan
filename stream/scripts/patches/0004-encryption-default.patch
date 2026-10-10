@@ -3,8 +3,11 @@ explicitly; the public Kotlin API has no option to turn it off.
 
 --- a/src/Misc.c
 +++ b/src/Misc.c
-@@ -143,3 +143,4 @@
+@@ -142,6 +142,7 @@
+ 
  void LiInitializeServerInformation(PSERVER_INFORMATION serverInfo) {
      memset(serverInfo, 0, sizeof(*serverInfo));
 +    serverInfo->requireEncryptedStreams = true;
  }
+ 
+ uint64_t LiGetMillis(void) {
