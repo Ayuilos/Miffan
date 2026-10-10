@@ -323,11 +323,14 @@ class RemoteWorkspaceSession internal constructor(
      * Opens a direct-tcpip stream to [port] on the remote host's loopback interface. Nothing
      * listens on the device, so other local apps cannot reach the forwarded service.
      */
-    fun openLoopbackStream(port: Int): RemoteChannelStream {
+    fun openLoopbackStream(port: Int, timeoutMillis: Int = channelTimeoutMillis): RemoteChannelStream {
         require(port in 1..65535) { "Invalid port" }
+        require(timeoutMillis > 0)
         checkOpen()
         val channel = session.openChannel("direct-tcpip") as ChannelDirectTCPIP
+        val owner = operation.get()
         try {
+            owner?.install(channel)
             channel.setHost("127.0.0.1")
             channel.setPort(port)
             channel.setOrgIPAddress("127.0.0.1")
@@ -335,12 +338,12 @@ class RemoteWorkspaceSession internal constructor(
             ChannelWindow.widen(channel, STREAM_WINDOW_BYTES, STREAM_PACKET_BYTES)
             val input = channel.inputStream
             val output = channel.outputStream
-            channel.connect(channelTimeoutMillis)
+            channel.connect(timeoutMillis)
             return RemoteChannelStream(this, channel, input, output, null)
         } catch (error: Throwable) {
             runCatching { channel.disconnect() }
             throw error
-        }
+        } finally { owner?.release(channel) }
     }
 
     /**

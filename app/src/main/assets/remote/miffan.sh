@@ -10,9 +10,11 @@
 #   miffan vnc start|stop|status
 #                           manage a VNC server only this user can reach (JSON on stdout)
 #   miffan rdp start        password on stdin; safe per-user RDP startup (JSON)
+#   miffan sunshine probe|enforce-encryption
+#                           inspect Sunshine; explicit backed-up encryption enforcement
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=9
+MIFFAN_HELPER_VERSION=10
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -599,6 +601,185 @@ rdp_start() (
     case "$rdp_server" in gnome-remote-desktop) rdp_gnome ;; krdp) rdp_kde ;; esac
 )
 
+# --- Sunshine (read-only probe; explicit, backed-up encryption change) --------------------
+
+sunshine() {
+    case "$1" in probe|enforce-encryption) ;; *) echo 'usage: miffan sunshine probe|enforce-encryption' >&2; return 2 ;; esac
+    if ! command -v python3 >/dev/null 2>&1; then
+        printf '{"success":false,"detail":"python3 is required for Sunshine inspection"}\n'
+        return 1
+    fi
+    python3 - "$1" <<'SUNSHINE_PY'
+import datetime, hashlib, ipaddress, json, os, pathlib, re, shlex, shutil, subprocess, sys, tempfile
+
+def run(args):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=10, env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+def output(args):
+    result = run(args)
+    return result.stdout.strip() if result and result.returncode == 0 else ''
+
+def reply(success, detail):
+    print(json.dumps(dict(success=success, detail=detail)))
+
+mode = sys.argv[1]
+units = set()
+for args in (['systemctl', '--user', 'list-units', '--all', '--type=service', '--no-legend', '--plain'],
+             ['systemctl', '--user', 'list-unit-files', '--type=service', '--no-legend']):
+    for line in output(args).splitlines():
+        name = line.split()[0] if line.split() else ''
+        if 'sunshine' in name.lower() and name.endswith('.service'):
+            units.add(name)
+active_units = sorted(name for name in units if output(['systemctl', '--user', 'is-active', name]) == 'active')
+unit = active_units[0] if len(active_units) == 1 else (next(iter(units)) if len(units) == 1 else None)
+running = bool(active_units)
+binary = shutil.which('sunshine')
+installed = binary is not None or bool(units)
+# Never run Sunshine, even --version: it loads config and rotates a live instance's logs.
+version = None
+packages = [(['pacman', '-Q', 'sunshine'], 'pacman'),
+            (['dpkg-query', '-W', '-f=${Version}', 'sunshine'], 'plain'),
+            (['rpm', '-q', '--qf', '%{VERSION}', 'sunshine'], 'plain'),
+            (['flatpak', 'info', 'dev.lizardbyte.app.Sunshine'], 'flatpak')]
+for command, kind in packages:
+    value = output(command)
+    if not value: continue
+    if kind == 'pacman':
+        fields = value.split()
+        value = fields[1] if len(fields) == 2 and fields[0] == 'sunshine' else ''
+    elif kind == 'flatpak':
+        match = re.search(r'^\s*Version:\s*(.+)$', value, re.MULTILINE)
+        value = match.group(1).strip() if match else ''
+    if value:
+        version = value; installed = True; break
+appdata = pathlib.Path(os.environ.get('XDG_CONFIG_HOME', str(pathlib.Path.home() / '.config'))) / 'sunshine'
+config = appdata / 'sunshine.conf'
+args = []
+configuration_known = False
+if unit:
+    try:
+        if running:
+            pid = output(['systemctl', '--user', 'show', unit, '--property=MainPID', '--value'])
+            command = pathlib.Path('/proc/' + pid + '/cmdline').read_bytes().decode().split('\0')
+            cwd = pathlib.Path(os.readlink('/proc/' + pid + '/cwd'))
+        else:
+            description = output(['systemctl', '--user', 'show', unit, '--property=ExecStart', '--value'])
+            match = re.search(r'argv\[\]=(.*?)\s*;', description)
+            command = shlex.split(match.group(1)) if match else []
+            working = output(['systemctl', '--user', 'show', unit, '--property=WorkingDirectory', '--value'])
+            cwd = pathlib.Path(working) if working else pathlib.Path.home()
+        # Refuse to modify a guessed config for a wrapper, Flatpak launcher or unknown unit.
+        if command and pathlib.Path(command[0]).name == 'sunshine':
+            configuration_known = True
+            for arg in command[1:]:
+                if arg.startswith('--'): break
+                args.append(arg)
+                if arg and not arg.startswith('-') and '=' not in arg:
+                    candidate = pathlib.Path(arg)
+                    config = candidate if candidate.is_absolute() else cwd / candidate
+    except (OSError, UnicodeError, ValueError):
+        pass
+if mode == 'enforce-encryption' and not configuration_known:
+    reply(False, 'Cannot verify the Sunshine user unit configuration'); sys.exit(1)
+try:
+    content = config.read_text() if config.exists() else ''
+except OSError:
+    content = ''
+values = {}
+for line in content.splitlines():
+    line = line.split('#', 1)[0]
+    match = re.match(r'^\s*([a-zA-Z0-9_]+)\s*=\s*(.*?)\s*$', line)
+    if match: values[match[1]] = match[2]
+overrides = dict(arg.split('=', 1) for arg in args if '=' in arg)
+values.update(overrides)
+def integer(name, default):
+    try: return int(values.get(name, default))
+    except ValueError: return None
+# These sockets are created by stream::start_broadcast on the first session reference and
+# released by end_broadcast on the last. Pending sessions count as active for safe restart.
+base = integer('port', 47989)
+ports = {base + offset for offset in (9, 10, 11)} if base is not None else {47998, 47999, 48000}
+ss = run(['ss', '-H', '-uanp'])
+active_stream = False
+if ss is None or ss.returncode != 0:
+    active_stream = running  # Unknown is conservatively busy: never restart blindly.
+else:
+    for line in ss.stdout.splitlines():
+        columns = line.split()
+        local = columns[3] if len(columns) > 3 else ''
+        try: port = int(local.rsplit(':', 1)[-1])
+        except ValueError: continue
+        if port in ports and ('sunshine' in line.lower() or 'users:' not in line):
+            active_stream = True
+cert = pathlib.Path(values.get('cert', str(appdata / 'credentials/cacert.pem')))
+if not cert.is_absolute(): cert = appdata / cert
+certificate_sha256 = None
+try:
+    der = subprocess.run(['openssl', 'x509', '-in', str(cert), '-outform', 'DER'], capture_output=True, timeout=10)
+    if der.returncode == 0: certificate_sha256 = hashlib.sha256(der.stdout).hexdigest()
+except (OSError, subprocess.TimeoutExpired): pass
+candidates = []
+try:
+    interfaces = json.loads(output(['ip', '-j', '-4', 'address', 'show']))
+    for interface in interfaces:
+        name = interface.get('ifname', '')
+        if re.match(r'^(lo|docker|br-|virbr|veth|cni|podman|lxc)', name): continue
+        # A Linux bridge can have an arbitrary name; inspect its sysfs type too.
+        if pathlib.Path('/sys/class/net', name, 'bridge').exists(): continue
+        for item in interface.get('addr_info', []):
+            ip = ipaddress.IPv4Address(item['local'])
+            if any(ip in net for net in map(ipaddress.ip_network, ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10'])):
+                if str(ip) not in candidates: candidates.append(str(ip))
+except (ValueError, KeyError, TypeError): pass
+if mode == 'probe':
+    print(json.dumps(dict(installed=installed, version=version, running=running,
+        lan_encryption_mode=integer('lan_encryption_mode', 0), wan_encryption_mode=integer('wan_encryption_mode', 1),
+        certificate_sha256=certificate_sha256, active_stream=active_stream, candidates=candidates)))
+    sys.exit(0)
+if not installed or not unit:
+    reply(False, 'No unambiguous Sunshine user unit found'); sys.exit(1)
+if active_stream:
+    reply(False, 'Sunshine has an active or pending stream; encryption was not changed'); sys.exit(1)
+if any(key in overrides for key in ('lan_encryption_mode', 'wan_encryption_mode')):
+    reply(False, 'Encryption is overridden on the Sunshine command line'); sys.exit(1)
+if not config.is_file() or config.is_symlink():
+    reply(False, 'Sunshine configuration must be an existing regular file'); sys.exit(1)
+try:
+    if config.read_text() != content:
+        reply(False, 'Sunshine configuration changed during inspection'); sys.exit(1)
+    backup = str(config) + '.bak-miffan-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    shutil.copy2(config, backup)
+    # Preserve unrelated settings and comments, remove every duplicate of these two keys.
+    lines = [line for line in content.splitlines() if not re.match(r'^\s*(lan_encryption_mode|wan_encryption_mode)\s*=', line)]
+    lines += ['lan_encryption_mode = 2', 'wan_encryption_mode = 2']
+    fd, temporary = tempfile.mkstemp(prefix='.miffan-sunshine-', dir=config.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write('\n'.join(lines) + '\n'); stream.flush(); os.fsync(stream.fileno())
+        shutil.copymode(config, temporary)
+        # Recheck just before replacement/restart: a stream could have started during the backup.
+        check = run(['ss', '-H', '-uanp'])
+        if not check or check.returncode != 0 or any(re.search(r':(' + '|'.join(map(str, ports)) + r')\s', line) for line in check.stdout.splitlines()):
+            reply(False, 'Stream activity changed or cannot be verified; configuration was not changed'); sys.exit(1)
+        if config.read_text() != content:
+            reply(False, 'Sunshine configuration changed; no settings were replaced'); sys.exit(1)
+        os.replace(temporary, config)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
+    check = run(['ss', '-H', '-uanp'])
+    if not check or check.returncode != 0 or any(re.search(r':(' + '|'.join(map(str, ports)) + r')\s', line) for line in check.stdout.splitlines()):
+        reply(False, 'Encryption saved with backup; stream activity prevents restart'); sys.exit(1)
+    restarted = run(['systemctl', '--user', 'restart', unit])
+    success = bool(restarted and restarted.returncode == 0)
+    reply(success, 'Encryption enforced; Sunshine restarted' if success else 'Encryption saved with backup; Sunshine restart failed')
+except OSError:
+    reply(False, 'Could not back up or update Sunshine configuration'); sys.exit(1)
+SUNSHINE_PY
+}
+
 # --- probe -------------------------------------------------------------------------------
 
 probe() {
@@ -653,6 +834,7 @@ case "${1:-}" in
     rdp)
         case "${2:-}" in start) rdp_start ;; *) echo "usage: miffan rdp start" >&2; exit 2 ;; esac
         ;;
+    sunshine) sunshine "${2:-probe}" ;;
     clip) clip ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|clip" >&2; exit 2 ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip" >&2; exit 2 ;;
 esac

@@ -39,9 +39,21 @@ interface RemoteHostDAO {
     @Query("""UPDATE remote_hosts SET screen_enabled = :enabled, screen_endpoint = :endpoint,
         screen_auth = :auth, screen_username = :username,
         screen_protocol = COALESCE(:protocol, screen_protocol),
-        rdp_username = COALESCE(:rdpUsername, rdp_username), updated_at = :updatedAt WHERE id = :id""")
+        rdp_username = COALESCE(:rdpUsername, rdp_username),
+        stream_enabled = COALESCE(:streamEnabled, stream_enabled), updated_at = :updatedAt WHERE id = :id""")
     suspend fun updateScreenConfig(id: String, enabled: Boolean, endpoint: String, auth: String,
-        username: String, protocol: String?, rdpUsername: String?, updatedAt: Long): Int
+        username: String, protocol: String?, rdpUsername: String?, updatedAt: Long, streamEnabled: Boolean? = null): Int
+
+    @Query("UPDATE remote_hosts SET stream_enabled = :enabled, updated_at = :updatedAt WHERE id = :id")
+    suspend fun setStreamEnabled(id: String, enabled: Boolean, updatedAt: Long): Int
+
+    @Query("UPDATE remote_hosts SET stream_certificate_sha256 = :pin, updated_at = :updatedAt WHERE id = :id")
+    suspend fun pinStreamCertificate(id: String, pin: String, updatedAt: Long): Int
+
+    /** Pairing cannot overwrite a concurrent trust decision or a changed SSH identity. */
+    @Query("""UPDATE remote_hosts SET stream_certificate_sha256 = :pin, updated_at = :updatedAt
+        WHERE id = :id AND connection_revision = :revision AND stream_certificate_sha256 IS :expectedPin""")
+    suspend fun pinPairedStreamCertificate(id: String, pin: String, revision: String, expectedPin: String?, updatedAt: Long): Int
 
     @Query("UPDATE remote_hosts SET screen_platform = :platform, rdp_username = COALESCE(:username, rdp_username) WHERE id = :id")
     suspend fun updateDetectedScreen(id: String, platform: String, username: String?): Int
