@@ -22,10 +22,16 @@ extern "C" {
 
 static JavaVM* vm;
 static jobject owner;
-static jmethodID openMethod, setupMethod, frameMethod, eventMethod, stoppedMethod;
+static jmethodID openMethod, setupMethod, frameMethod, eventMethod, stoppedMethod, audioSetupMethod, audioDataMethod, receivedMethod;
 static std::mutex inputMutex;
 static bool acceptingInput;
-static std::atomic<long long> audioPackets{0};
+static std::atomic<long long> audioPackets{0}, receivedBytes{0};
+static void receivedMedia(int bytes) { receivedBytes += bytes; }
+static void publishReceived(JNIEnv* e) {
+    auto count = receivedBytes.exchange(0);
+    if (count > 0) e->CallVoidMethod(owner, receivedMethod, (jlong)count);
+    if (e->ExceptionCheck()) e->ExceptionClear();
+}
 static std::atomic<long long> fecFailureEvents{0}, idrRequestsSent{0};
 static JNIEnv* env(bool& attached) {
     JNIEnv* e = nullptr; attached = vm->GetEnv((void**)&e, JNI_VERSION_1_6) != JNI_OK;
@@ -78,8 +84,31 @@ static void silentLog(const char* format, ...) {
     if (strncmp(format, "Unrecoverable frame ", 20) == 0) ++fecFailureEvents;
     if (strcmp(format, "IDR frame request sent\n") == 0) ++idrRequestsSent;
 }
-static int audioInit(int, const POPUS_MULTISTREAM_CONFIGURATION, void*, int) { return 0; }
-static void audioData(char*, int) { ++audioPackets; }
+static int audioInit(int, const POPUS_MULTISTREAM_CONFIGURATION config, void*, int) {
+    bool attached; auto e = env(attached);
+    auto mapping = e->NewByteArray(config->channelCount);
+    if (mapping) {
+        e->SetByteArrayRegion(mapping, 0, config->channelCount, (jbyte*)config->mapping);
+        e->CallVoidMethod(owner, audioSetupMethod, config->sampleRate, config->channelCount,
+            config->streams, config->coupledStreams, config->samplesPerFrame, mapping);
+        e->DeleteLocalRef(mapping);
+    }
+    if (e->ExceptionCheck()) e->ExceptionClear();
+    detach(attached); return 0; // Audio failure never tears down video; disabled audio still decrypts.
+}
+static void audioData(char* data, int length) {
+    ++audioPackets;
+    if (length <= 0 || length > 65536) return;
+    bool attached; auto e = env(attached);
+    auto bytes = e->NewByteArray(length);
+    if (bytes) {
+        e->SetByteArrayRegion(bytes, 0, length, (jbyte*)data);
+        e->CallVoidMethod(owner, audioDataMethod, bytes);
+        e->DeleteLocalRef(bytes);
+    }
+    if (e->ExceptionCheck()) e->ExceptionClear();
+    detach(attached);
+}
 static std::string str(JNIEnv* e, jstring s) { const char* p = e->GetStringUTFChars(s, nullptr); std::string r(p); e->ReleaseStringUTFChars(s, p); return r; }
 static void fail(JNIEnv* e, const char* message) { auto c = e->FindClass("java/io/IOException"); e->ThrowNew(c, message); e->DeleteLocalRef(c); }
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* v, void*) { vm = v; return JNI_VERSION_1_6; }
@@ -180,11 +209,14 @@ JNI(run) jint JNICALL Java_me_rerere_stream_StreamNative_run(JNIEnv* e, jobject,
     owner = e->NewGlobalRef(session); auto cls = e->GetObjectClass(session);
     openMethod = e->GetMethodID(cls, "openTcp", "(I)I"); setupMethod = e->GetMethodID(cls, "setupDecoder", "(IIII)Z");
     frameMethod = e->GetMethodID(cls, "submitFrame", "([BJIZ)Z"); eventMethod = e->GetMethodID(cls, "nativeEvent", "(III)V");
-    stoppedMethod = e->GetMethodID(cls, "waitForStop", "()V"); e->DeleteLocalRef(cls);
-    audioPackets = 0; fecFailureEvents = 0; idrRequestsSent = 0;
+    stoppedMethod = e->GetMethodID(cls, "waitForStop", "()V");
+    audioSetupMethod = e->GetMethodID(cls, "setupAudio", "(IIIII[B)V");
+    audioDataMethod = e->GetMethodID(cls, "submitAudio", "([B)V");
+    receivedMethod = e->GetMethodID(cls, "receivedUdpBytes", "(J)V"); e->DeleteLocalRef(cls);
+    receivedBytes = 0; audioPackets = 0; fecFailureEvents = 0; idrRequestsSent = 0;
     SERVER_INFORMATION server; LiInitializeServerInformation(&server);
     server.address = a.c_str(); server.serverInfoAppVersion = v.c_str(); server.serverInfoGfeVersion = g.c_str();
-    server.serverCodecModeSupport = codecSupport; server.rtspSessionUrl = u.c_str(); server.requireEncryptedStreams = true; server.openRtspTcp = openTcp;
+    server.serverCodecModeSupport = codecSupport; server.rtspSessionUrl = u.c_str(); server.requireEncryptedStreams = true; server.openRtspTcp = openTcp; server.receivedMediaBytes = receivedMedia;
     STREAM_CONFIGURATION config; LiInitializeStreamConfiguration(&config);
     config.width = w; config.height = h; config.fps = fps; config.bitrate = bitrate; config.packetSize = 1024;
     config.streamingRemotely = STREAM_CFG_REMOTE; config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
@@ -204,6 +236,7 @@ JNI(run) jint JNICALL Java_me_rerere_stream_StreamNative_run(JNIEnv* e, jobject,
         LiStopConnection();
     }
     { std::lock_guard<std::mutex> lock(inputMutex); acceptingInput = false; }
+    publishReceived(e);
     OPENSSL_cleanse(config.remoteInputAesKey, 16);
     e->DeleteGlobalRef(owner); owner = nullptr; return r;
 }
@@ -225,6 +258,7 @@ JNI(input) jint JNICALL Java_me_rerere_stream_StreamNative_input(JNIEnv*, jobjec
 }
 JNI(networkStats) jlongArray JNICALL Java_me_rerere_stream_StreamNative_networkStats(JNIEnv* e, jobject) {
     std::lock_guard<std::mutex> lock(inputMutex);
+    publishReceived(e);
     P6A_NEGOTIATION n{}; uint32_t rtt = 0, variance = 0;
     if (acceptingInput) LiGetP6aNegotiation(&n);
     bool have = acceptingInput && LiGetEstimatedRttInfo(&rtt, &variance);

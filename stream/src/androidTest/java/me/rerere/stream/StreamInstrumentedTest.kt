@@ -105,6 +105,79 @@ class StreamInstrumentedTest {
             nextScope.cancel()
         } finally { scope.cancel(); instrumentation.runOnMainSync { activity.finish() } }
     }
+    /** P6e receive-only acceptance: no keys, clipboard, pointer or host configuration changes. */
+    @Test fun audioAndTrafficAcceptance(): Unit = runBlocking {
+        val pin = requireNotNull(prefs.getString("pin", null)) { "Test identity needs pairing" }
+        val host = StreamHost(connector(), identity(), pin)
+        val app = host.apps().first { it.name == "Desktop" }
+        val activity = instrumentation.startActivitySync(Intent(context, StreamTestActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as StreamTestActivity
+        assertTrue(activity.ready.await(5, TimeUnit.SECONDS))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val s = StreamSession(host, app, "100.64.0.5", StreamConfig(
+            args.getString("width", "1280")!!.toInt(), args.getString("height", "720")!!.toInt(),
+            args.getString("fps", "30")!!.toInt(), args.getString("bitrate", "4000")!!.toInt(),
+            setOf(StreamCodec.H264), args.getString("timeout", "10000")!!.toLong()),
+            activity.view.holder.surface, activity).apply { allowSoftwareDecoder = args.getString("software", "false") == "true" }
+        val audio = requireNotNull(s.audio)
+        fun waitUntil(label: String, timeout: Long = 10000, predicate: () -> Boolean) {
+            val until = System.nanoTime() + timeout * 1_000_000
+            while (!predicate() && System.nanoTime() < until) Thread.sleep(20)
+            assertTrue("$label: ${s.state.value} ${s.stats.value}", predicate())
+        }
+        try {
+            assertFalse(audio.enabled.value); s.start(scope)
+            waitUntil("stream startup", 30000) { s.state.value != StreamState.Connecting }
+            assertEquals(StreamState.Streaming, s.state.value)
+            val mutedBytes = s.bytesReceived
+            Thread.sleep(1000)
+            assertTrue(s.bytesReceived > mutedBytes)
+            assertTrue(s.stats.value.audioPackets > 0)
+            assertFalse(s.stats.value.audioTrackActive); assertEquals(0L, s.stats.value.audioWrittenFrames)
+            audio.setEnabled(true)
+            assertTrue("Focus denied: ${s.stats.value}", audio.enabled.value)
+            waitUntil("AudioTrack playback head advances") { s.stats.value.audioPlayedFrames > 0 }
+            Thread.sleep(5000)
+            assertTrue(s.stats.value.audioTrackActive)
+            assertTrue(s.stats.value.audioWrittenFrames > 0)
+            assertNotNull(s.stats.value.audioDecoderName)
+            Log.i("StreamAcceptance", "P6E_AUDIO_ON bytes=${s.bytesReceived} ${s.stats.value}")
+            audio.setEnabled(false)
+            assertFalse(audio.enabled.value); assertFalse(s.stats.value.audioTrackActive)
+            val written = s.stats.value.audioWrittenFrames
+            val played = s.stats.value.audioPlayedFrames
+            val bytes = s.bytesReceived; val packets = s.stats.value.audioPackets
+            Thread.sleep(1500)
+            assertEquals(written, s.stats.value.audioWrittenFrames)
+            assertEquals(played, s.stats.value.audioPlayedFrames)
+            assertTrue(s.bytesReceived > bytes); assertTrue(s.stats.value.audioPackets > packets)
+            Log.i("StreamAcceptance", "P6E_AUDIO_OFF bytes=${s.bytesReceived} ${s.stats.value}")
+            // Exercise re-enable and focus loss, without sending anything to the host.
+            audio.setEnabled(true)
+            waitUntil("playback resumes") { s.stats.value.audioPlayedFrames > played }
+            val manager = activity.getSystemService(android.media.AudioManager::class.java)
+            val competing = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).build())
+                .build()
+            try {
+                assertEquals(android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED, manager.requestAudioFocus(competing))
+                waitUntil("focus loss releases playback") { !audio.enabled.value && !s.stats.value.audioTrackActive }
+                assertFalse(s.stats.value.audioTrackActive)
+                val stoppedWrites = s.stats.value.audioWrittenFrames
+                Thread.sleep(200)
+                assertEquals(stoppedWrites, s.stats.value.audioWrittenFrames)
+                Log.i("StreamAcceptance", "P6E_FOCUS_LOST ${s.stats.value}")
+            } finally { manager.abandonAudioFocusRequest(competing) }
+            audio.setEnabled(true)
+            waitUntil("track recreated after focus loss") { s.stats.value.audioTrackActive }
+        } finally {
+            s.close(); assertTrue(s.awaitStopped()); scope.cancel()
+            assertFalse(audio.enabled.value); assertFalse(s.stats.value.audioTrackActive)
+            Log.i("StreamAcceptance", "P6E_AUDIO_CLOSED bytes=${s.bytesReceived} ${s.stats.value}")
+            instrumentation.runOnMainSync { activity.finish() }
+        }
+    }
+
     @Test fun streamAcceptance(): Unit = runBlocking {
         val retryArmed = java.util.concurrent.atomic.AtomicBoolean()
         val retryTcpAt = java.util.concurrent.atomic.AtomicLong()

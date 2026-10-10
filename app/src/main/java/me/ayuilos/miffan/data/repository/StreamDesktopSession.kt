@@ -35,6 +35,10 @@ class StreamDesktopSession internal constructor(
     private data class ClipboardWrite(val text: String, val paste: Boolean)
     private val writes = Channel<ClipboardWrite>(32)
     private val input = StreamDesktopInput(delegate::mousePosition, delegate::mouseButton, delegate::scroll, delegate::key)
+    override val audio: RemoteAudioControl = object : RemoteAudioControl {
+        override val enabled = requireNotNull(delegate.audio).enabled
+        override fun setEnabled(enabled: Boolean) { delegate.audio?.setEnabled(enabled) }
+    }
     override val protocol = RemoteDesktopProtocol.STREAM
     override val surface: RemoteSurfaceTarget get() = this
     override val streamStats get() = delegate.stats
@@ -51,7 +55,7 @@ class StreamDesktopSession internal constructor(
         }
     }
     override val clipboard = MutableSharedFlow<String>()
-    override val bytesReceived: Long get() = 0 // The library publishes media bitrate rather than a byte counter.
+    override val bytesReceived: Long get() = delegate.bytesReceived
     override val certificateSha256: StateFlow<String?> = MutableStateFlow(fingerprint)
     override val rdpStats: StateFlow<me.rerere.rdp.RdpStats>? = null
     override val stats: StateFlow<RemoteScreenStats> = MappedStateFlow(delegate.stats) {

@@ -5,6 +5,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import me.rerere.stream.StreamFailureReason
+import me.rerere.stream.StreamConfig
 
 @Serializable
 data class RemoteStreamStatus(
@@ -71,3 +72,31 @@ internal fun verifyStreamCertificate(stored: String?, actual: String?) {
 /** An earlier matching SSH attestation is not the actual certificate seen by a later TLS failure. */
 internal fun streamCertificateFailure(expected: String?, attested: String?): RemoteStreamCertificateChangedException =
     RemoteStreamCertificateChangedException(expected.orEmpty(), attested?.takeIf { it != expected })
+
+/** User-selected picture quality; RDP remains server-paced. */
+enum class RemoteScreenQuality { SAVER, BALANCED, BEST }
+
+data class RemoteStreamRequest(
+    val quality: RemoteScreenQuality = RemoteScreenQuality.BALANCED,
+    val skip: Boolean = false,
+)
+
+internal fun RemoteStreamRequest.requested(hostEnabled: Boolean): Boolean = hostEnabled && !skip
+
+/** Guard the entire Sunshine attempt, including its probe, when this connection opts out. */
+internal suspend fun attemptRemoteStream(requested: Boolean, attempt: suspend () -> StreamOpenResult): StreamOpenResult =
+    if (requested) attempt() else StreamOpenResult()
+
+internal fun RemoteScreenQuality.streamConfig(hostWidth: Int? = null, hostHeight: Int? = null): StreamConfig {
+    val nominal = when (this) {
+        RemoteScreenQuality.SAVER -> StreamConfig(1280, 720, 30, 4_000)
+        RemoteScreenQuality.BALANCED -> StreamConfig(1920, 1080, 60, 10_000)
+        RemoteScreenQuality.BEST -> StreamConfig(2560, 1440, 60, 20_000)
+    }
+    if (this != RemoteScreenQuality.BEST || hostWidth == null || hostHeight == null ||
+        hostWidth !in 16..8192 || hostHeight !in 9..8192) return nominal
+    val scale = minOf(1.0, hostWidth.toDouble() / nominal.width, hostHeight.toDouble() / nominal.height)
+    // Preserve 16:9 exactly, including displays smaller than the usual 720p tier.
+    val units = (160 * scale).toInt().coerceAtLeast(1)
+    return nominal.copy(width = units * 16, height = units * 9)
+}

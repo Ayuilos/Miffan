@@ -134,6 +134,8 @@ class RemoteScreenConnection internal constructor(
     val workspaceId: String,
     private val handle: LeasedRemote<RemoteDesktopSession>,
     val streamFallback: RemoteStreamFallback? = null,
+    val streamRequested: Boolean = false,
+    val streamAddress: String? = null,
     private val onClose: (RemoteScreenConnection) -> Unit,
 ) : Closeable {
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -162,7 +164,7 @@ class RemoteScreenRepository(
     context: Context,
 ) {
     private val streamRoutes = RemoteStreamRoutes(context)
-    private val streams = RemoteStreamEngine(RemoteStreamIdentityStore(context), streamRoutes)
+    private val streams = RemoteStreamEngine(RemoteStreamIdentityStore(context), streamRoutes, context.applicationContext)
     private val helperScript: ByteArray = assets.open(HELPER_ASSET).use { it.readBytes() }
     private val helperVersion: String = Regex("""MIFFAN_HELPER_VERSION=(\d+)""")
         .find(helperScript.toString(Charsets.UTF_8))?.groupValues?.get(1)
@@ -338,6 +340,7 @@ class RemoteScreenRepository(
         sink: RemoteScreenFrameSink,
         jpeg: RfbJpegDecoder?,
         options: RemoteScreenOptions = RemoteScreenOptions(),
+        stream: RemoteStreamRequest = RemoteStreamRequest(),
     ): RemoteScreenConnection {
         val workspace = workspaceDao.getById(workspaceId)?.takeIf { it.isRemote }
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
@@ -348,6 +351,8 @@ class RemoteScreenRepository(
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
         var detected: RemoteScreenPlatform? = null
         var rdpUsername: String? = null
+        val streamRequested = stream.requested(host.streamEnabled)
+        var streamAddress: String? = null
         var streamFallback: RemoteStreamFallback? = null
         val callerJob = currentCoroutineContext()[Job]
         val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
@@ -366,23 +371,25 @@ class RemoteScreenRepository(
                     "Linux" -> RemoteScreenPlatform.LINUX
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
-            if (host.streamEnabled && detected == RemoteScreenPlatform.LINUX) {
-                val attempt = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+            val attempt = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+                attemptRemoteStream(streamRequested) {
+                    if (detected != RemoteScreenPlatform.LINUX) return@attemptRemoteStream StreamOpenResult(
+                        fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux"))
                     try {
                         ensureHelper(ssh)
                         val deadline = System.nanoTime() + 20_000_000_000L
                         val probe = sunshineProbe(ssh)
                         val remaining = (deadline - System.nanoTime()) / 1_000_000
-                        streams.open(ssh, host, probe, { text -> writeStreamClipboard(ssh, text) }, remaining)
+                        streams.open(ssh, host, probe, { text -> writeStreamClipboard(ssh, text) }, remaining,
+                            stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height))
                     } catch (error: RemoteStreamCertificateChangedException) { throw error }
                     catch (error: CancellationException) { throw error }
                     catch (_: Exception) { StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER)) }
                 }
-                streamFallback = attempt.fallback
-                if (attempt.session != null) return@openLeasedRemote attempt.session
-            } else if (host.streamEnabled) {
-                streamFallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux")
             }
+            streamFallback = attempt.fallback
+            streamAddress = attempt.address
+            if (attempt.session != null) return@openLeasedRemote attempt.session
             val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
             if (protocol == RemoteDesktopProtocol.RDP) {
                 val password = credentials.getOrCreateRdp(host.id)
@@ -428,7 +435,7 @@ class RemoteScreenRepository(
                 hostDao.updateDetectedScreen(host.id, platform.storageName, rdpUsername)
             }
             val platform = detected ?: RemoteScreenPlatform.parse(host.screenPlatform)
-            val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle, streamFallback) { closed ->
+            val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle, streamFallback, streamRequested, streamAddress) { closed ->
                 synchronized(lock) {
                     open[host.id]?.remove(closed)
                     if (open[host.id].isNullOrEmpty()) open.remove(host.id)

@@ -48,6 +48,9 @@ data class StreamStats(
     val renderedFps: Double = 0.0, val decodeMeanMs: Double = 0.0, val decodeMaxMs: Double = 0.0,
     val droppedFrames: Long = 0, val bitrateKbps: Double = 0.0, val rttMs: Int? = null,
     val decoderName: String? = null, val lowLatency: Boolean = false, val hardwareAccelerated: Boolean = false,
+    val audioDecoderName: String? = null, val audioTrackActive: Boolean = false,
+    val audioWrittenFrames: Long = 0, val audioPlayedFrames: Long = 0,
+    val audioBacklogDrops: Long = 0, val audioError: String? = null,
     val audioPackets: Long = 0, val retryAfterMillis: Long = 0,
     val fecFailureEvents: Long = 0, val idrRequestsSent: Long = 0,
 )
