@@ -51,7 +51,6 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
-import me.ayuilos.miffan.data.repository.streamEnabled
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 
 private enum class ScreenConnectionMode { AUTOMATIC, TCP, UNIX }
