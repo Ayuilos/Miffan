@@ -11,6 +11,9 @@
 extern "C" JavaVM* jniVm;
 #include <freerdp/addin.h>
 #include <media/NdkMediaCodec.h>
+#include <media/NdkMediaFormat.h>
+#include <freerdp/codec/yuv.h>
+#include <freerdp/primitives.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <freerdp/freerdp.h>
@@ -29,6 +32,8 @@ extern "C" JavaVM* jniVm;
 #include <winpr/synch.h>
 #include <winpr/path.h>
 #include "clipboard.h"
+#include "performance.h"
+#include "frame_ack.h"
 
 struct Session {
     rdpContext base;
@@ -37,8 +42,11 @@ struct Session {
     HANDLE event;
     jmethodID read, write, wait, closed, paused, command, certificate, size, pixels, frame, cursor, encoding, failure, stats, takeClipboard, clipboardReceived, clipboardFailure;
     pcRdpgfxSurfaceCommand surfaceCommand;
+    pSendChannelData sendChannelData;
     std::string* decoder;
     Clipboard* clipboard;
+    Performance* perf;
+    jmethodID preferredDecoder, decoderOptions, decoderConfiguration, decoderFailure, performance;
     bool callbackFailed;
     int buttons;
 };
@@ -56,7 +64,17 @@ extern "C" char* __wrap_freerdp_GetConfigFilePath(BOOL system, const char* filen
 }
 extern "C" AMediaCodec* __real_AMediaCodec_createDecoderByType(const char*);
 extern "C" AMediaCodec* __wrap_AMediaCodec_createDecoderByType(const char* mime) {
-    auto* codec = __real_AMediaCodec_createDecoderByType(mime);
+    AMediaCodec* codec = nullptr;
+    if (active) {
+        auto preferred = static_cast<jstring>(active->env->CallObjectMethod(active->owner, active->preferredDecoder));
+        if (preferred) {
+            const char* name = active->env->GetStringUTFChars(preferred, nullptr);
+            if (name) { codec = AMediaCodec_createCodecByName(name); active->env->ReleaseStringUTFChars(preferred, name); }
+            active->env->DeleteLocalRef(preferred);
+        }
+        if (active->env->ExceptionCheck()) return nullptr;
+    }
+    if (!codec) codec = __real_AMediaCodec_createDecoderByType(mime);
     using GetName = media_status_t (*)(AMediaCodec*, char**);
     using ReleaseName = void (*)(AMediaCodec*, char*);
     auto getName = reinterpret_cast<GetName>(dlsym(RTLD_DEFAULT, "AMediaCodec_getName"));
@@ -82,6 +100,145 @@ static bool stopped(Session* s) {
 }
 extern "C" BOOL miffan_rdp_decode_cancelled(void) {
     return active && stopped(active);
+}
+static void publishPerformance(Session* s) {
+    auto& p = *s->perf;
+    uint64_t now = perfNow();
+    if (now - p.window < 2000000000ULL || stopped(s)) return;
+    double values[] = {p.decode.last, p.decode.mean(), p.decode.maximum, static_cast<double>(p.decoded),
+        p.windowDecoded * 1e9 / (now - p.window), static_cast<double>(p.inFlight), static_cast<double>(p.peak),
+        static_cast<double>(p.timeouts), p.yuv.last, p.yuv.mean(), p.yuv.maximum,
+        p.sink.last, p.sink.mean(), p.sink.maximum, p.ack.last, p.ack.mean(), p.ack.maximum,
+        p.neon ? 1.0 : 0.0, p.submitted ? (now - p.submitted) / 1e6 : 0.0,
+        p.ackQueue.last, p.ackQueue.mean(), p.ackQueue.maximum};
+    auto array = s->env->NewDoubleArray(22);
+    if (!array) { exception(s); return; }
+    s->env->SetDoubleArrayRegion(array, 0, 22, values);
+    s->env->CallVoidMethod(s->owner, s->performance, array);
+    s->env->DeleteLocalRef(array);
+    if (exception(s)) return;
+    s->env->CallVoidMethod(s->owner, s->stats);
+    exception(s);
+    p.decode.resetWindow(); p.yuv.resetWindow(); p.sink.resetWindow(); p.ack.resetWindow(); p.ackQueue.resetWindow();
+    p.windowDecoded = 0; p.peak = p.inFlight; p.window = now;
+}
+extern "C" void miffan_rdp_perf_event(int event) {
+    if (!active) return;
+    auto& p = *active->perf;
+    const auto now = perfNow();
+    switch (event) {
+        case 0: p.submitted = now; p.peak = std::max(p.peak, ++p.inFlight); break;
+        case 1:
+            if (p.submitted) p.decode.add(now - p.submitted);
+            p.submitted = 0; p.inFlight = std::max(0, p.inFlight - 1); ++p.decoded; ++p.windowDecoded;
+            break;
+        case 2: ++p.timeouts; break;
+        case 4:
+            publishPerformance(active);
+            active->env->CallVoidMethod(active->owner, active->decoderFailure);
+            exception(active);
+            return;
+    }
+    // A stalled decoder must still expose in-flight/timeout diagnostics.
+    publishPerformance(active);
+}
+extern "C" void miffan_rdp_frame_ack_queued(UINT32 frameId) {
+    if (!active) return;
+    auto& p = *active->perf;
+    if (p.surface) {
+        // Bound diagnostic metadata independently of protocol queues.
+        if (p.pendingAcks.size() >= 256) p.pendingAcks.pop_front();
+        p.pendingAcks.push_back({frameId, p.surface, perfNow()});
+    }
+    p.surface = 0;
+}
+static BOOL sendChannelData(freerdp* instance, UINT16 channelId, const BYTE* data, size_t size) {
+    auto* s = session(instance->context);
+    auto id = frameAckId(data, size);
+    auto ok = s->sendChannelData(instance, channelId, data, size);
+    if (ok && id) {
+        auto& p = *s->perf;
+        auto found = std::find_if(p.pendingAcks.begin(), p.pendingAcks.end(),
+            [&](const Performance::PendingAck& ack) { return ack.id == *id; });
+        if (found != p.pendingAcks.end()) {
+            auto now = perfNow();
+            p.ack.add(now - found->surface);
+            p.ackQueue.add(now - found->queued);
+            p.pendingAcks.erase(found);
+        }
+    }
+    return ok;
+}
+extern "C" media_status_t miffan_rdp_configure_decoder(AMediaCodec** decoder, AMediaFormat* base) {
+    if (!active) return AMediaCodec_configure(*decoder, base, nullptr, nullptr, 0);
+    auto* s = active;
+    auto name = s->env->NewStringUTF(s->decoder->c_str());
+    int flags = s->env->CallIntMethod(s->owner, s->decoderOptions, name);
+    s->env->DeleteLocalRef(name);
+    if (exception(s)) return AMEDIA_ERROR_UNKNOWN;
+    const std::string actualName = *s->decoder;
+    media_status_t status = AMEDIA_ERROR_UNKNOWN;
+    // Recreate the same decoder after a failed configure (state is not reliably reusable).
+    // Remove order, vendor latency, standard latency, then priority; plain config is last.
+    for (;;) {
+        auto format = AMediaFormat_new();
+        if (!format) return AMEDIA_ERROR_UNKNOWN;
+        int32_t width = 320, height = 240, color = 19;
+        AMediaFormat_getInt32(base, AMEDIAFORMAT_KEY_WIDTH, &width);
+        AMediaFormat_getInt32(base, AMEDIAFORMAT_KEY_HEIGHT, &height);
+        AMediaFormat_getInt32(base, AMEDIAFORMAT_KEY_COLOR_FORMAT, &color);
+        AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, "video/avc");
+        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_WIDTH, width);
+        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_HEIGHT, height);
+        AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, color);
+        if (flags & 1) AMediaFormat_setInt32(format, "priority", 0);
+        if (flags & 2) AMediaFormat_setInt32(format, "low-latency", 1);
+        if (flags & 4) AMediaFormat_setInt32(format, "vendor.qti-ext-dec-low-latency.enable", 1);
+        if (flags & 8) AMediaFormat_setInt32(format, "vendor.qti-ext-dec-picture-order.enable", 1);
+        status = AMediaCodec_configure(*decoder, format, nullptr, nullptr, 0);
+        AMediaFormat_delete(format);
+        __android_log_print(ANDROID_LOG_INFO, "RemoteScreenPerf", "RDP decoder=%s configure flags=%d status=%d", actualName.c_str(), flags, status);
+        if (status == AMEDIA_OK || flags == 0) break;
+        AMediaCodec_delete(*decoder);
+        *decoder = actualName == "MediaCodec (name unavailable)" || actualName.empty()
+            ? __real_AMediaCodec_createDecoderByType("video/avc")
+            : AMediaCodec_createCodecByName(actualName.c_str());
+        if (!*decoder) return AMEDIA_ERROR_UNKNOWN;
+        if (flags & 8) flags &= ~8;
+        else if (flags & 4) flags &= ~4;
+        else if (flags & 2) flags &= ~2;
+        else flags = 0;
+    }
+    std::string configuration = flags == 0 ? "plain" : "priority=0";
+    if (flags & 2) configuration += ",low-latency=1";
+    if (flags & 4) configuration += ",qti-low-latency=1";
+    if (flags & 8) configuration += ",qti-picture-order=1";
+    if (status == AMEDIA_OK) {
+        auto configured = s->env->NewStringUTF(configuration.c_str());
+        s->env->CallVoidMethod(s->owner, s->decoderConfiguration, configured);
+        s->env->DeleteLocalRef(configured);
+        if (exception(s)) return AMEDIA_ERROR_UNKNOWN;
+    }
+    return status;
+}
+extern "C" BOOL __real_yuv420_context_decode(YUV_CONTEXT*, const BYTE* const*, const UINT32*, UINT32,
+    DWORD, BYTE*, UINT32, const RECTANGLE_16*, UINT32);
+extern "C" BOOL __wrap_yuv420_context_decode(YUV_CONTEXT* c, const BYTE* const* data, const UINT32* stride,
+    UINT32 height, DWORD format, BYTE* dest, UINT32 step, const RECTANGLE_16* rects, UINT32 count) {
+    auto start = perfNow();
+    auto ok = __real_yuv420_context_decode(c, data, stride, height, format, dest, step, rects, count);
+    if (active) active->perf->yuv.add(perfNow() - start);
+    return ok;
+}
+extern "C" BOOL __real_yuv444_context_decode(YUV_CONTEXT*, BYTE, const BYTE* const*, const UINT32*, UINT32,
+    BYTE* const*, const UINT32*, DWORD, BYTE*, UINT32, const RECTANGLE_16*, UINT32);
+extern "C" BOOL __wrap_yuv444_context_decode(YUV_CONTEXT* c, BYTE type, const BYTE* const* data,
+    const UINT32* stride, UINT32 height, BYTE* const* yuvDest, const UINT32* dstStride, DWORD format,
+    BYTE* dest, UINT32 step, const RECTANGLE_16* rects, UINT32 count) {
+    auto start = perfNow();
+    auto ok = __real_yuv444_context_decode(c, type, data, stride, height, yuvDest, dstStride, format, dest, step, rects, count);
+    if (active) active->perf->yuv.add(perfNow() - start);
+    return ok;
 }
 static int readLayer(void* context, void* data, int bytes) {
     auto* s = static_cast<Session*>(context);
@@ -159,6 +316,7 @@ static BOOL beginPaint(rdpContext*) { return TRUE; }
 static BOOL endPaint(rdpContext* c) {
     auto* s = session(c);
     if (stopped(s)) return FALSE;
+    auto sinkStart = perfNow();
     auto* gdi = c->gdi;
     auto* window = gdi->primary->hdc->hwnd;
     bool paused = s->env->CallBooleanMethod(s->owner, s->paused);
@@ -184,7 +342,7 @@ static BOOL endPaint(rdpContext* c) {
         painted = true;
     }
     window->invalid->null = TRUE; window->ninvalid = 0;
-    if (painted) { s->env->CallVoidMethod(s->owner, s->frame); if (exception(s)) return FALSE; }
+    if (painted) { s->env->CallVoidMethod(s->owner, s->frame); if (exception(s)) return FALSE; s->perf->sink.add(perfNow() - sinkStart); }
     return TRUE;
 }
 struct Pointer { rdpPointer base; BYTE* pixels; };
@@ -217,11 +375,7 @@ static BOOL pointerDefault(rdpContext* c) {
     return cursor(session(c),16,24,0,0,reinterpret_cast<BYTE*>(data));
 }
 static BOOL pointerPosition(rdpContext*,UINT32,UINT32) { return TRUE; }
-static UINT surfaceCommand(RdpgfxClientContext* gfx, const RDPGFX_SURFACE_COMMAND* cmd) {
-    auto* gdi = static_cast<rdpGdi*>(gfx->custom);
-    auto* s = session(gdi->context);
-    auto result = s->surfaceCommand(gfx, cmd);
-    if (result != CHANNEL_RC_OK || stopped(s)) return result;
+static bool publishEncoding(Session* s, const RDPGFX_SURFACE_COMMAND* cmd) {
     const char* encoding = "Unknown";
     switch (cmd->codecId) {
         case RDPGFX_CODECID_AVC420: encoding="AVC420"; break;
@@ -235,7 +389,15 @@ static UINT surfaceCommand(RdpgfxClientContext* gfx, const RDPGFX_SURFACE_COMMAN
     auto decoder = avc && !s->decoder->empty() ? s->env->NewStringUTF(s->decoder->c_str()) : nullptr;
     s->env->CallVoidMethod(s->owner,s->encoding,enc,decoder);
     s->env->DeleteLocalRef(enc); if (decoder) s->env->DeleteLocalRef(decoder);
-    return exception(s) ? ERROR_INTERNAL_ERROR : result;
+    return !exception(s);
+}
+static UINT surfaceCommand(RdpgfxClientContext* gfx, const RDPGFX_SURFACE_COMMAND* cmd) {
+    auto* s = session(static_cast<rdpGdi*>(gfx->custom)->context);
+    if (!s->perf->surface) s->perf->surface = perfNow();
+    if (!publishEncoding(s, cmd)) return ERROR_INTERNAL_ERROR;
+    auto result = s->surfaceCommand(gfx, cmd);
+    if (result != CHANNEL_RC_OK || stopped(s)) return result;
+    return publishEncoding(s, cmd) ? result : ERROR_INTERNAL_ERROR;
 }
 static bool clipboardEvents(Session* s) {
     auto* clip = s->clipboard;
@@ -416,12 +578,17 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     }
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Context ready");
     auto* s=session(instance->context);
-    s->env=env; s->owner=owner; s->decoder=new std::string(); s->clipboard=new Clipboard();
+    s->env=env; s->owner=owner; s->decoder=new std::string(); s->clipboard=new Clipboard(); s->perf=new Performance();
     // The stream has no fd. A signaled WinPR event makes pending BIO reads pollable; the loop
     // sleeps at most 10ms. TLS handshake waits use the stream condition variable instead.
     s->event=CreateEvent(nullptr,TRUE,TRUE,nullptr);
     auto cls=env->GetObjectClass(owner);
 #define METHOD(field,name,sig) s->field=env->GetMethodID(cls,name,sig)
+    METHOD(preferredDecoder,"preferredDecoder","()Ljava/lang/String;");
+    METHOD(decoderOptions,"decoderOptions","(Ljava/lang/String;)I");
+    METHOD(decoderConfiguration,"onDecoderConfiguration","(Ljava/lang/String;)V");
+    METHOD(decoderFailure,"onDecoderFailure","()V");
+    METHOD(performance,"onPerformance","([D)V");
     METHOD(read,"readTransport","([B)I"); METHOD(write,"writeTransport","([B)Z"); METHOD(wait,"waitTransport","(I)Z");
     METHOD(closed,"isClosed","()Z"); METHOD(paused,"isPaused","()Z"); METHOD(command,"nextCommand","()[I");
     METHOD(certificate,"verifyCertificate","(Ljava/lang/String;)Z"); METHOD(size,"onSize","(IILjava/lang/String;)V");
@@ -455,7 +622,17 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     rdpTransportIo io=*freerdp_get_io_callbacks(instance->context);
     io.ConnectLayer=connectLayer;
     configured=freerdp_set_io_callbacks(instance->context,&io) && configured;
+    s->sendChannelData=instance->SendChannelData; instance->SendChannelData=sendChannelData;
     active=s;
+    // Confirm the runtime primitive actually selected, not just arm64 build flags.
+    auto* prims = primitives_get();
+    auto* generic = primitives_get_generic();
+#if defined(__aarch64__)
+    s->perf->neon = IsProcessorFeaturePresent(PF_ARM_NEON_INSTRUCTIONS_AVAILABLE) &&
+        prims->YUV420ToRGB_8u_P3AC4R != generic->YUV420ToRGB_8u_P3AC4R;
+#else
+    (void)prims; (void)generic;
+#endif
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Connecting (configured=%d)",configured);
     bool success=configured && !exception(s) && freerdp_connect(instance);
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Connect returned %d",success);
@@ -474,6 +651,7 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
                 break;
             }
             if ((!s->clipboard->dirty && !s->clipboard->awaitingAck && !inputs(s)) || !freerdp_check_event_handles(instance->context)) break;
+            publishPerformance(s);
             env->CallVoidMethod(owner,s->stats);
             if(exception(s)) break;
             Sleep(10);
@@ -486,7 +664,7 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     bool disconnectedOk=freerdp_disconnect(instance); (void)disconnectedOk;
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Freeing graphics");
     gdi_free(instance);
-    CloseHandle(s->event); delete s->decoder; delete s->clipboard;
+    CloseHandle(s->event); delete s->decoder; delete s->clipboard; delete s->perf;
     active=nullptr; runtimeDirectory.clear();
     freerdp_context_free(instance); freerdp_free(instance);
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Native session released");

@@ -1,7 +1,12 @@
 package me.rerere.rdp
 
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
 import android.media.MediaCodecList
+import android.media.MediaFormat
+import android.util.Log
 import android.os.Build
+import java.util.Locale
 import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
@@ -195,7 +200,7 @@ class RdpSession(
         mutableState.update { current ->
             if (current is RemoteScreenState.Closed) current else RemoteScreenState.Connected("RDP", width, height, 1)
         }
-        mutableStats.value = mutableStats.value.copy(security = security)
+        mutableStats.value = mutableStats.value.copy(security = security, width = width, height = height)
     }
     private fun onPixels(x: Int, y: Int, width: Int, height: Int, pixels: IntArray) {
         if (!paused && !closed.get()) sink.onPixels(RfbRect(x, y, width, height), pixels)
@@ -214,12 +219,84 @@ class RdpSession(
         } else null
         mutableStats.value = mutableStats.value.copy(encoding = encoding, decoder = decoder, h264HardwareAccelerated = hardware)
     }
+    // Called only on the RDP worker. Probe vendor parameters before configuring the NDK codec.
+    // API 31 enumeration is essential for Codec2: never infer OMX-era keys from the name.
+    private fun preferredDecoder(): String? {
+        if (!options.lowLatency || Build.VERSION.SDK_INT < 30) return null
+        return runCatching {
+            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull {
+                !it.isEncoder && !it.isAlias && it.supportedTypes.any { type -> type == "video/avc" } &&
+                    it.getCapabilitiesForType("video/avc").let { caps ->
+                        caps.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency) &&
+                            caps.videoCapabilities?.isSizeSupported(options.width, options.height) == true
+                    }
+            }?.name
+        }.getOrNull()
+    }
+    private fun decoderOptions(name: String): Int {
+        val feature = if (Build.VERSION.SDK_INT >= 30) runCatching {
+            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { it.name == name }
+                ?.getCapabilitiesForType("video/avc")
+                ?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
+        }.getOrNull() else null
+        mutableStats.value = mutableStats.value.copy(lowLatencySupported = feature)
+        if (!options.lowLatency) return 0
+        var flags = 1 // KEY_PRIORITY=0 (API 23+)
+        if (feature == true) flags = flags or 2
+        if (Build.VERSION.SDK_INT >= 31 && (name.startsWith("c2.qti.") || name.startsWith("OMX.qcom."))) {
+            runCatching {
+                val probe = MediaCodec.createByCodecName(name)
+                try {
+                    val parameters = probe.supportedVendorParameters
+                    if ("vendor.qti-ext-dec-low-latency.enable" in parameters &&
+                        probe.getParameterDescriptor("vendor.qti-ext-dec-low-latency.enable")?.type == MediaFormat.TYPE_INTEGER) flags = flags or 4
+                    if ("vendor.qti-ext-dec-picture-order.enable" in parameters &&
+                        probe.getParameterDescriptor("vendor.qti-ext-dec-picture-order.enable")?.type == MediaFormat.TYPE_INTEGER) flags = flags or 8
+                    val latencyParameters = parameters.filter { "latency" in it || "picture-order" in it }.sorted()
+                    Log.i("RemoteScreenPerf", "RDP decoder=$name vendorLatencyParameters=$latencyParameters")
+                    Log.i("RemoteScreenPerf", "RDP decoder=$name FEATURE_LowLatency=$feature qtiLow=${flags and 4 != 0} qtiOrder=${flags and 8 != 0}")
+                } finally { probe.release() }
+            }.onFailure { Log.i("RemoteScreenPerf", "RDP vendor parameter query unavailable for $name") }
+        }
+        return flags
+    }
+    private fun onDecoderFailure() {
+        if (!closed.get() && failure == null) failure = IllegalStateException("MediaCodec timed out waiting for an RDP frame (5 seconds)")
+    }
+    private fun onDecoderConfiguration(configuration: String) {
+        mutableStats.value = mutableStats.value.copy(decoderConfiguration = configuration)
+    }
+    private var lastPerfLog = System.nanoTime()
+    private fun onPerformance(values: DoubleArray) {
+        check(values.size == 22)
+        mutableStats.value = mutableStats.value.copy(
+            decodeMs = values[0], decodeMeanMs = values[1], decodeMaxMs = values[2],
+            decodedFrames = values[3].toLong(), decodeFramesPerSecond = values[4],
+            inFlightFrames = values[5].toInt(), peakInFlightFrames = values[6].toInt(),
+            outputWaitTimeouts = values[7].toLong(),
+            yuvToRgbMs = values[8], yuvToRgbMeanMs = values[9], yuvToRgbMaxMs = values[10],
+            sinkMs = values[11], sinkMeanMs = values[12], sinkMaxMs = values[13],
+            surfaceToAckMs = values[14], surfaceToAckMeanMs = values[15], surfaceToAckMaxMs = values[16],
+            neonYuv = values[17] == 1.0, pendingDecodeMs = values[18],
+            ackQueueMs = values[19], ackQueueMeanMs = values[20], ackQueueMaxMs = values[21],
+        )
+    }
     private fun publishStats() {
         val now = System.nanoTime()
         val elapsed = now - windowStart
         if (elapsed < 500_000_000) return
         mutableStats.value = mutableStats.value.copy(frames = frames, framesPerSecond = windowFrames * 1e9 / elapsed,
             bytesReceived = synchronized(bufferLock) { received }, bytesSent = sent)
+        if (now - lastPerfLog >= 2_000_000_000L) {
+            val s = mutableStats.value
+            fun ms(last: Double, mean: Double, max: Double) = String.format(Locale.ROOT, "%.2f/%.2f/%.2f", last, mean, max)
+            Log.i("RemoteScreenPerf", "RDP ${s.width}x${s.height} ${s.security} ${s.encoding} decoder=${s.decoder} config=${s.decoderConfiguration} " +
+                String.format(Locale.ROOT, "fps=%.2f decodeFps=%.2f ", s.framesPerSecond, s.decodeFramesPerSecond) +
+                "decodeMs(last/mean/max)=${ms(s.decodeMs,s.decodeMeanMs,s.decodeMaxMs)} inFlight=${s.inFlightFrames}/${s.peakInFlightFrames} pendingDecodeMs=${String.format(Locale.ROOT, "%.2f", s.pendingDecodeMs)} outputTimeouts=${s.outputWaitTimeouts} " +
+                "yuvMs=${ms(s.yuvToRgbMs,s.yuvToRgbMeanMs,s.yuvToRgbMaxMs)} neon=${s.neonYuv} sinkMs=${ms(s.sinkMs,s.sinkMeanMs,s.sinkMaxMs)} " +
+                "surfaceToAckMs=${ms(s.surfaceToAckMs,s.surfaceToAckMeanMs,s.surfaceToAckMaxMs)} ackQueueMs=${ms(s.ackQueueMs,s.ackQueueMeanMs,s.ackQueueMaxMs)}")
+            lastPerfLog = now
+        }
         windowFrames = 0
         windowStart = now
     }

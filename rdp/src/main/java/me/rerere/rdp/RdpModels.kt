@@ -14,6 +14,8 @@ data class RdpOptions(
     val certificateSha256: String? = null,
     /** AUTO offers NLA and TLS; use TLS for krdp installations with no NLA SAM account. */
     val security: RdpSecurity = RdpSecurity.AUTO,
+    /** Diagnostic A/B switch; production connections should keep low latency enabled. */
+    val lowLatency: Boolean = true,
 ) {
     init {
         require(width in 320..8192 && height in 240..8192)
@@ -31,6 +33,36 @@ data class RdpStats(
     /** null until a decoder is used or when Android cannot classify the codec. */
     val h264HardwareAccelerated: Boolean? = null,
     val security: String = "Unknown",
+    val width: Int = 0,
+    val height: Int = 0,
+    val decodedFrames: Long = 0,
+    val decodeFramesPerSecond: Double = 0.0,
+    val decodeMs: Double = 0.0,
+    val decodeMeanMs: Double = 0.0,
+    val decodeMaxMs: Double = 0.0,
+    val inFlightFrames: Int = 0,
+    val peakInFlightFrames: Int = 0,
+    /** Age of the queued access unit when it has not produced output yet. */
+    val pendingDecodeMs: Double = 0.0,
+    val outputWaitTimeouts: Long = 0,
+    val yuvToRgbMs: Double = 0.0,
+    val yuvToRgbMeanMs: Double = 0.0,
+    val yuvToRgbMaxMs: Double = 0.0,
+    /** Includes JNI allocation/copy, onPixels and onFrameComplete; excludes later GPU upload. */
+    val sinkMs: Double = 0.0,
+    val sinkMeanMs: Double = 0.0,
+    val sinkMaxMs: Double = 0.0,
+    /** First surface command in a frame to successful FrameAcknowledge transport send (including channel queue). */
+    val surfaceToAckMs: Double = 0.0,
+    val surfaceToAckMeanMs: Double = 0.0,
+    val surfaceToAckMaxMs: Double = 0.0,
+    val ackQueueMs: Double = 0.0,
+    val ackQueueMeanMs: Double = 0.0,
+    val ackQueueMaxMs: Double = 0.0,
+    val lowLatencySupported: Boolean? = null,
+    /** Requested keys accepted by configure; acceptance does not prove driver behavior. */
+    val decoderConfiguration: String = "Unconfigured",
+    val neonYuv: Boolean? = null,
 )
 
 internal object CertificateFingerprint {

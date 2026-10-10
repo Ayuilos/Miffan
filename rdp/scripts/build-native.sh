@@ -14,9 +14,15 @@ check FreeRDP-3.32.1.tar.gz 8803dd26ec9660550252f255cf2d672a785ddd8f544bb4758349
 check openssl-3.5.9.tar.gz 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 [[ -d "$DEPS/FreeRDP-3.32.1" ]] || tar -xzf "$DEPS/FreeRDP-3.32.1.tar.gz" -C "$DEPS"
 [[ -d "$DEPS/openssl-3.5.9" ]] || tar -xzf "$DEPS/openssl-3.5.9.tar.gz" -C "$DEPS"
-if ! grep -q miffan_rdp_decode_cancelled "$DEPS/FreeRDP-3.32.1/libfreerdp/codec/h264_mediacodec.c"; then
-  patch --batch -p1 -d "$DEPS/FreeRDP-3.32.1" < "$ROOT/rdp/scripts/patches/0001-mediacodec-cancellation.patch"
-fi
+# Recreate only sources touched by patches from the already verified archive. Applying
+# all patches in order is reproducible and also handles edits to an existing patch.
+PATCHED_SOURCES=(libfreerdp/codec/h264_mediacodec.c channels/rdpgfx/client/rdpgfx_main.c)
+for SOURCE in "${PATCHED_SOURCES[@]}"; do
+  tar -xzf "$DEPS/FreeRDP-3.32.1.tar.gz" -C "$DEPS" "FreeRDP-3.32.1/$SOURCE"
+done
+for PATCH in "$ROOT/rdp/scripts/patches/"*.patch; do
+  patch --batch --fuzz=0 -p1 -d "$DEPS/FreeRDP-3.32.1" < "$PATCH"
+done
 case "$(uname -s)" in Darwin) HOST=darwin-x86_64;; Linux) HOST=linux-x86_64;; *) exit 1;; esac
 export ANDROID_NDK_ROOT="$NDK"
 export PATH="$NDK/toolchains/llvm/prebuilt/$HOST/bin:$PATH"

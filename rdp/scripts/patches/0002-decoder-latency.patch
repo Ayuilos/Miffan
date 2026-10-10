@@ -1,0 +1,113 @@
+--- a/libfreerdp/codec/h264_mediacodec.c
++++ b/libfreerdp/codec/h264_mediacodec.c
+@@ -24,12 +24,16 @@
+ 
+ /* Supplied by the JNI owner; all decoding runs on its session thread. */
+ extern BOOL miffan_rdp_decode_cancelled(void);
++/* JNI owner hooks. No protocol callbacks or reentrant FreeRDP work while decoding. */
++extern void miffan_rdp_perf_event(int event);
+ 
+ #include <freerdp/log.h>
+ #include <freerdp/codec/h264.h>
+ 
+ #include <media/NdkMediaCodec.h>
+ #include <media/NdkMediaFormat.h>
++
++extern media_status_t miffan_rdp_configure_decoder(AMediaCodec** decoder, AMediaFormat* format);
+ 
+ #include "h264.h"
+ 
+@@ -283,13 +287,19 @@
+ 	}
+ 
+ 	const UINT64 deadline = GetTickCount64() + 5000;
++	BOOL submitted = FALSE;
+ 	while (true)
+ 	{
+ 		UINT32 inputBufferCurrnetOffset = 0;
+ 		while (inputBufferCurrnetOffset < SrcSize)
+ 		{
+-			if (miffan_rdp_decode_cancelled() || GetTickCount64() >= deadline)
+-				return -1;
++			if (miffan_rdp_decode_cancelled())
++				return -1;
++			if (GetTickCount64() >= deadline)
++			{
++				miffan_rdp_perf_event(4); /* fail closed; GDI otherwise ignores codec errors */
++				return -1;
++			}
+ 			UINT32 numberOfBytesToCopy = SrcSize - inputBufferCurrnetOffset;
+ 			const ssize_t inputBufferId = AMediaCodec_dequeueInputBuffer(sys->decoder, 100000);
+ 			if (inputBufferId < 0)
+@@ -321,6 +331,11 @@
+ 			memcpy(inputBuffer, &pSrcData[inputBufferCurrnetOffset], numberOfBytesToCopy);
+ 			inputBufferCurrnetOffset += numberOfBytesToCopy;
+ 
++			if (!submitted)
++			{
++				miffan_rdp_perf_event(0); /* first byte queued for this access unit */
++				submitted = TRUE;
++			}
+ 			const media_status_t status = AMediaCodec_queueInputBuffer(
+ 			    sys->decoder, inputBufferId, 0, numberOfBytesToCopy, 0, 0);
+ 			if (status != AMEDIA_OK)
+@@ -332,12 +347,18 @@
+ 
+ 		while (true)
+ 		{
+-			if (miffan_rdp_decode_cancelled() || GetTickCount64() >= deadline)
+-				return -1;
++			if (miffan_rdp_decode_cancelled())
++				return -1;
++			if (GetTickCount64() >= deadline)
++			{
++				miffan_rdp_perf_event(4); /* fail closed; GDI otherwise ignores codec errors */
++				return -1;
++			}
+ 			AMediaCodecBufferInfo bufferInfo = WINPR_C_ARRAY_INIT;
+ 			ssize_t outputBufferId = AMediaCodec_dequeueOutputBuffer(sys->decoder, &bufferInfo, 100000);
+ 			if (outputBufferId >= 0)
+ 			{
++				miffan_rdp_perf_event(1); /* output available, before CPU conversion */
+ 				sys->currentOutputBufferIndex = outputBufferId;
+ 
+ 				size_t outputBufferSize = 0;
+@@ -381,6 +402,7 @@
+ 			}
+ 			else if (outputBufferId == AMEDIACODEC_INFO_TRY_AGAIN_LATER)
+ 			{
++				miffan_rdp_perf_event(2);
+ 				WLog_Print(h264->log, WLOG_WARN,
+ 				           "AMediaCodec_dequeueOutputBuffer need to try again later");
+ 				// TODO: sleep?
+@@ -497,7 +519,7 @@
+ 	set_mediacodec_format(h264, &sys->inputFormat,
+ 	                      mediacodec_format_new(h264->log, sys->width, sys->height));
+ 
+-	status = AMediaCodec_configure(sys->decoder, sys->inputFormat, nullptr, nullptr, 0);
++	status = miffan_rdp_configure_decoder(&sys->decoder, sys->inputFormat);
+ 	if (status != AMEDIA_OK)
+ 	{
+ 		WLog_Print(h264->log, WLOG_ERROR, "AMediaCodec_configure failed: %d", status);
+--- a/channels/rdpgfx/client/rdpgfx_main.c
++++ b/channels/rdpgfx/client/rdpgfx_main.c
+@@ -601,6 +601,8 @@
+  *
+  * @return 0 on success, otherwise a Win32 error code
+  */
++extern void miffan_rdp_frame_ack_queued(UINT32 frameId);
++
+ static UINT rdpgfx_send_frame_acknowledge_pdu(RdpgfxClientContext* context,
+                                               const RDPGFX_FRAME_ACKNOWLEDGE_PDU* pdu)
+ {
+@@ -644,7 +646,10 @@
+ 	                                 nullptr);
+ 
+ 	if (error == CHANNEL_RC_OK) /* frame successfully acked */
++	{
+ 		gfx->UnacknowledgedFrames--;
++		miffan_rdp_frame_ack_queued(pdu->frameId);
++	}
+ 
+ fail:
+ 	Stream_Free(s, TRUE);
