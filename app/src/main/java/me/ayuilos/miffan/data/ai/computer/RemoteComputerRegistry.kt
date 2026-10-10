@@ -31,6 +31,7 @@ import kotlinx.io.buffered
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -41,6 +42,7 @@ import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.rerere.workspace.RemoteChannelStream
 
 private const val TAG = "RemoteComputer"
+private const val START_SESSION = "start_session"
 
 /** macOS privacy grants cua-driver needs to read and operate the desktop. */
 data class ComputerPermissions(val accessibility: Boolean, val screenRecording: Boolean) {
@@ -76,6 +78,8 @@ class RemoteComputerRegistry(
     ) {
         @Volatile var lastUsed = System.currentTimeMillis()
         val alive: Boolean get() = handle.value.isConnected
+        /** Older drivers have no start_session; their sessions never end on their own. */
+        val canStartSession: Boolean get() = capabilities.tools.any { it.name == START_SESSION }
     }
 
     private val lock = Mutex()
@@ -99,17 +103,46 @@ class RemoteComputerRegistry(
 
     /**
      * Calls a cua-driver tool with this connection's session label. A connection that died is
-     * replaced once; a call that already reached the remote side is never replayed.
+     * replaced once; a call that already reached the remote side is never replayed, except one the
+     * driver refused because the session had ended: it acted on nothing, so it runs again once the
+     * session is started again.
      */
     suspend fun call(workspaceId: String, name: String, arguments: JsonObject): CallToolResult {
         val current = connection(workspaceId)
+        val result = callOnce(current, name, arguments)
+        if (name == START_SESSION || !result.sessionEnded() || !current.canStartSession) return result
+        Log.i(TAG, "cua-driver session ${current.label} had ended; starting it again for $name")
+        val started = callOnce(current, START_SESSION, JsonObject(emptyMap()))
+        return if (started.isError == true) result else callOnce(current, name, arguments)
+    }
+
+    /**
+     * Makes sure this workspace's driver session can take calls, starting it again if the driver
+     * ended it (it ends idle sessions, and later calls never revive them). Returns the session label.
+     */
+    suspend fun ensureSession(workspaceId: String): String {
+        val current = connection(workspaceId)
+        if (current.canStartSession) {
+            val result = callOnce(current, START_SESSION, JsonObject(emptyMap()))
+            check(result.isError != true) { result.errorText() }
+        }
+        return current.label
+    }
+
+    private suspend fun callOnce(current: Connection, name: String, arguments: JsonObject): CallToolResult {
         current.lastUsed = System.currentTimeMillis()
+        val started = current.lastUsed
         val withSession = JsonObject(arguments + ("session" to JsonPrimitive(current.label)))
         return current.client.callTool(
             request = CallToolRequest(params = CallToolRequestParams(name = name, arguments = withSession)),
             options = RequestOptions(timeout = 120.seconds),
-        ).also { current.lastUsed = System.currentTimeMillis() }
+        ).also {
+            current.lastUsed = System.currentTimeMillis()
+            // Durations per call tell a slow driver apart from a slow model when a task drags.
+            Log.i(TAG, "$name took ${current.lastUsed - started} ms${if (it.isError == true) " (error)" else ""}")
+        }
     }
+
 
     /** Reads one of cua-driver's skill resources (e.g. `skill://cua-driver/WORKFLOW.md`). */
     suspend fun readResource(workspaceId: String, uri: String): String {
@@ -145,9 +178,7 @@ class RemoteComputerRegistry(
      */
     suspend fun desktopScreenshot(workspaceId: String): ByteArray? {
         val result = call(workspaceId, "get_desktop_state", buildJsonObject { put("max_image_dimension", 1280) })
-        check(result.isError != true) {
-            result.content.filterIsInstance<TextContent>().joinToString("\n") { it.text }.ifBlank { "cua-driver error" }
-        }
+        check(result.isError != true) { result.errorText() }
         return result.content.filterIsInstance<ImageContent>().lastOrNull()
             ?.let { Base64.decode(it.data, Base64.DEFAULT) }
     }
@@ -203,4 +234,16 @@ class RemoteComputerRegistry(
         runCatching { connection.client.close() }
         runCatching { connection.handle.close() }
     }
+}
+
+private fun CallToolResult.errorText() =
+    content.filterIsInstance<TextContent>().joinToString("\n") { it.text }.ifBlank { "cua-driver error" }
+
+/** The driver's refusal for a session that ended; it names start_session as the way back. */
+internal fun CallToolResult.sessionEnded(): Boolean {
+    if (isError != true) return false
+    val code = (structuredContent?.get("code") as? JsonPrimitive)?.contentOrNull
+    if (code != null && code.contains("session") && code.contains("end")) return true
+    val text = errorText()
+    return "has ended" in text && START_SESSION in text
 }
