@@ -28,15 +28,20 @@ internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = M
     val stats by vm.stats.collectAsStateWithLifecycle()
     val rdp by vm.rdpStats.collectAsStateWithLifecycle()
     var drawnFps by remember { mutableDoubleStateOf(0.0) }
+    var receiveRate by remember { mutableDoubleStateOf(0.0) }
     LaunchedEffect(vm) {
         var count = vm.framesDrawn.get()
+        var received = vm.rdpStats.value?.bytesReceived ?: 0L
         var at = System.nanoTime()
         while (true) {
             delay(1_000)
             val nowCount = vm.framesDrawn.get()
+            val nowReceived = vm.rdpStats.value?.bytesReceived ?: 0L
             val now = System.nanoTime()
             drawnFps = (nowCount - count) * 1e9 / (now - at)
+            receiveRate = (nowReceived - received).coerceAtLeast(0) * 1e9 / (now - at)
             count = nowCount
+            received = nowReceived
             at = now
         }
     }
@@ -44,11 +49,18 @@ internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = M
     // Before RDP finishes its handshake the stats hold placeholders; show the waiting line instead.
     val r = rdp?.takeIf { it.security != "Unknown" }
     val text = if (r != null) buildString {
-        // RDP is paced and encoded by the server; what matters here is the codec and who decodes it.
-        append("RDP · %s · %s".format(r.security, r.encoding))
-        append("\n%.1f fps · 共 %d 帧 · 绘制 %.1f fps".format(r.framesPerSecond, r.frames, drawnFps))
-        append("\n解码器 %s%s".format(r.decoder ?: "—", when (r.h264HardwareAccelerated) { true -> "（硬件）"; false -> "（软件）"; null -> "" }))
-        append("\n已收 %s · 已发 %s".format(kb(r.bytesReceived.toDouble()), kb(r.bytesSent.toDouble())))
+        // RDP is paced and encoded by the server; the stages below show where a frame spends its time.
+        append("RDP · %s · %s · %d×%d".format(r.security, r.encoding, r.width, r.height))
+        append("\n%.1f fps · 解码 %.1f fps · 绘制 %.1f fps".format(r.framesPerSecond, r.decodeFramesPerSecond, drawnFps))
+        append("\n解码 均 %.0f / 峰 %.0f ms · 未出帧 %.0f ms · 超时 %d".format(
+            r.decodeMeanMs, r.decodeMaxMs, r.pendingDecodeMs, r.outputWaitTimeouts))
+        append("\n转换 %.0f · 复制 %.0f · 至确认 %.0f · 确认排队 %.0f ms".format(
+            r.yuvToRgbMeanMs, r.sinkMeanMs, r.surfaceToAckMeanMs, r.ackQueueMeanMs))
+        append("\n接收 %s/s · 在途 %d / 峰 %d".format(kb(receiveRate), r.inFlightFrames, r.peakInFlightFrames))
+        append("\n%s%s · 低延迟 %s".format(r.decoder ?: "—",
+            when (r.h264HardwareAccelerated) { true -> "（硬件）"; false -> "（软件）"; null -> "" },
+            when (r.lowLatencySupported) { true -> "支持"; false -> "不支持"; null -> "—" }))
+        append("\n已配置 %s".format(r.decoderConfiguration))
     } else if (s == null) "等待连接…" else buildString {
         append("%.1f fps · %s/s · %s".format(s.fps, kb(s.bytesPerSecond), s.encodings.joinToString("+").ifEmpty { "—" }))
         if (s.scale > 1) append(" · ${s.scale}× 降采样")
