@@ -66,4 +66,32 @@ Command/Option/Control 不需要互换；VM 的平台快捷键应发 SUPER_L。F
 
 Sunshine 的启动、强制加密、图形权限和 PIN 由用户在 Claude pane 安排。测试 APK 已交付；配对脚本 `test-emulator.py pair --mac --certificate-sha256 <公共指纹>` 在 pane 用隐藏输入接收 PIN，PIN 不放进 argv/日志。测试身份私钥只由 Android 自行生成/保存，不复制 Sunshine credentials。只使用 emulator-5560，Mac 验收命令为 `test-emulator.py mac --software --width 1280 --height 720 --fps 30 --bitrate 4000 --timeout 10000`。
 
-等待 pane 通知 Sunshine/加密/配对就绪；未把准备好的测试当作端到端通过。
+### Mac 安全模式端到端结果（2026-10-10）
+
+Claude pane 通知：用户已启动 Sunshine（VideoToolbox H.264/HEVC），LAN/WAN 加密改为 2/2 且原配置已备份，独立 Mac 测试身份在 20:16:25 配对成功。Codex 没有自己执行本机 start/enforce-encryption/wake/open-settings 或退出 Sunshine。
+
+执行：
+
+```sh
+python3 stream/scripts/test-emulator.py mac --software --width 1280 --height 720 --fps 30 --bitrate 4000 --timeout 10000
+```
+
+只使用 emulator-5560，TCP/UDP 均为 10.0.2.2；主机输入仅为鼠标 +5px/-5px，没有文字、按键、快捷键或 clipboard 操作。Android instrumentation 的 `macReceiveOnlyAcceptance` 返回 **OK (1 test)**，测试总时长 **31.18 秒**。已查看截图，能看到 Mac GUI 内容，画面非黑屏；测试 Activity 的竖屏 Surface 会拉伸横屏画面，该截图不代表正式 viewer 的布局验收。
+
+| 验证点 | 实测结果 |
+| --- | --- |
+| 编码/尺寸/请求参数 | H.264，1280×720，请求 30 fps / 4000 Kbps |
+| 视频/音频/控制加密 | 三个 encrypted 标志均为 true |
+| 视频最终统计 | receivedFrames=404，renderedFrames=380，累计 receivedFps=19.17 / renderedFps=17.97 |
+| 解码/网络最终统计 | c2.goldfish.h264.decoder（模拟器），decodeMeanMs=112.34，decodeMaxMs=2659.36，droppedFrames=277，rttMs=3，fecFailureEvents=0，idrRequestsSent=24 |
+| 收流总量 | bytesReceived=3,903,032，audioPackets=3087 |
+| 音频打开（20:18:12） | c2.android.opus.decoder，AudioTrack active=true，writtenFrames=246360，playedFrames=219376，audioError=null |
+| 静音（20:18:13） | active=false，written/played 均保持 246360/219376，流量与音频包继续增加 |
+| 焦点丢失与重开 | 焦点丢失释放 AudioTrack，重开后 track 重新创建，相关断言通过 |
+| 关闭清理 | awaitStopped 通过；audio enabled=false、active=false；最终 writtenFrames=259640、playedFrames=220464，audioError=null |
+
+验收前只读 probe：running=true、加密 2/2、证书 SHA-256 与配对指纹 `2694e7d0dddb25095c2e7b63c7624c01fa8693b696f2c5f77ad898ede54ed391` 一致、active_stream=false；验收期间 probe 正确报告 active_stream=true；结束后复核回到 false，Sunshine 仍运行、加密和指纹不变。显示器和两项授权仍为 null、permissions_from_log=false，成功收流也不冒充 OS 权限查询结果。
+
+本次使用模拟器 decoder 例外参数，虽 backend 自报 hardwareAccelerated=true，但 goldfish 是模拟器后端。初始解码峰值约 2.66 秒、277 个 droppedFrames，累计渲染仅约 18 fps；**通过的是音画、加密、播放控制与生命周期功能验收，不能据此宣称达到请求的 30 fps 或真实手机性能验收通过**。没有实测 HEVC、绝对坐标、非主屏输入、Cmd+V；后两项限制/离线键位结果仍见前文。相对鼠标只按约定发送 5px 往返，未以本机光标观测断言辅助功能授权。
+
+本地验收产物（build 目录，不提交主机桌面截图）：`stream/build/test-output/mac-h264.txt`（instrumentation）、`p6f-mac.txt`（最终统计）、`p6f-mac.png`（画面截图）。本次日志中 `P6F_MAC_VIDEO` 及复用的 `P6E_AUDIO_ON/OFF/FOCUS_LOST/CLOSED` 属于同一测试 PID 7291，时间为 20:17:59–20:18:14。
