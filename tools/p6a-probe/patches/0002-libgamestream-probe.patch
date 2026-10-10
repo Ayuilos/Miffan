@@ -1,0 +1,682 @@
+P6a probe libgamestream adaptation, based on embedded f32e415.
+Use a probe-owned OpenSSL TLS transport to verify the exact DER SHA-256 before
+sending any HTTPS request (the macOS system curl TLS backend is not OpenSSL).
+Pairing uses authenticated PIN exchange to obtain the in-memory certificate pin.
+No HTTP fallback during stream; use the local forwarded HTTPS port; no cancel
+or unpair functions or automatic unpair; random client identity; PEM-only keys.
+Fix resume XML selection, malformed pairing length checks, and validate the PIN
+challenge hash before the final pinned HTTPS request. Pair names are CLI-validated.
+
+--- a/client.c
++++ b/client.c
+@@ -18,6 +18,7 @@
+  */
+ 
+ #include "http.h"
++#include "transport.h"
+ #include "xml.h"
+ #include "mkcert.h"
+ #include "client.h"
+@@ -93,7 +94,13 @@
+ 
+   FILE *fd = fopen(uniqueFilePath, "r");
+   if (fd == NULL || fread(unique_id, UNIQUEID_CHARS, 1, fd) != 1) {
+-    snprintf(unique_id,UNIQUEID_CHARS+1,"0123456789ABCDEF");
++    unsigned char id[UNIQUEID_BYTES];
++    if (RAND_bytes(id, sizeof(id)) != 1) {
++      if (fd) fclose(fd);
++      return GS_FAILED;
++    }
++    for (int i = 0; i < UNIQUEID_BYTES; i++)
++      snprintf(unique_id + 2*i, 3, "%02x", id[i]);
+ 
+     if (fd)
+       fclose(fd);
+@@ -122,10 +129,11 @@
+     CERT_KEY_PAIR cert = mkcert_generate();
+     printf("done\n");
+ 
+-    char p12FilePath[PATH_MAX];
+-    snprintf(p12FilePath, PATH_MAX, "%s/%s", keyDirectory, P12_FILE_NAME);
+-
+-    mkcert_save(certificateFilePath, p12FilePath, keyFilePath, cert);
++    if (cert.x509 == NULL || cert.pkey == NULL ||
++        probe_write_identity(keyDirectory, cert.x509, cert.pkey) != GS_OK) {
++      mkcert_free(cert);
++      return GS_FAILED;
++    }
+     mkcert_free(cert);
+     fd = fopen(certificateFilePath, "r");
+   }
+@@ -145,6 +153,11 @@
+   int c;
+   int length = 0;
+   while ((c = fgetc(fd)) != EOF) {
++    if ((size_t)length + 3 > sizeof(cert_hex)) {
++      fclose(fd);
++      gs_error = "Client certificate too large";
++      return GS_INVALID;
++    }
+     sprintf(cert_hex + length, "%02x", c);
+     length += 2;
+   }
+@@ -158,9 +171,12 @@
+     return GS_FAILED;
+   }
+ 
+-  PEM_read_PrivateKey(fd, &privateKey, NULL, NULL);
++  privateKey = PEM_read_PrivateKey(fd, NULL, NULL, NULL);
+   fclose(fd);
+-
++  if (privateKey == NULL || X509_check_private_key(cert, privateKey) != 1) {
++    gs_error = "Client certificate/private key mismatch";
++    return GS_FAILED;
++  }
+   return GS_OK;
+ }
+ 
+@@ -237,16 +253,10 @@
+   server->serverMajorVersion = atoi(server->serverInfo.serverInfoAppVersion);
+   server->isNvidiaSoftware = strstr(stateText, "MJOLNIR") != NULL;
+ 
+-  server->httpsPort = atoi(httpsPortText);
++  server->httpsPort = probe_https_port; // Local SSH forward, never the advertised remote port.
+   if (!server->httpsPort)
+     server->httpsPort = 47984;
+ 
+-  if (strstr(stateText, "_SERVER_BUSY") == NULL) {
+-    // After GFE 2.8, current game remains set even after streaming
+-    // has ended. We emulate the old behavior by forcing it to zero
+-    // if streaming is not active.
+-    server->currentGame = 0;
+-  }
+   ret = GS_OK;
+ 
+   cleanup:
+@@ -270,23 +280,8 @@
+ 
+ static int load_server_status(PSERVER_DATA server) {
+   int ret;
+-  int i;
+-
+-  /* Fetch the HTTPS port if we don't have one yet */
+-  if (!server->httpsPort) {
+-    ret = load_serverinfo(server, false);
+-    if (ret != GS_OK)
+-      return ret;
+-  }
+-
+-  // Modern GFE versions don't allow serverinfo to be fetched over HTTPS if the client
+-  // is not already paired. Since we can't pair without knowing the server version, we
+-  // make another request over HTTP if the HTTPS request fails. We can't just use HTTP
+-  // for everything because it doesn't accurately tell us if we're paired.
+-  ret = GS_INVALID;
+-  for (i = 0; i < 2 && ret != GS_OK; i++) {
+-    ret = load_serverinfo(server, i == 0);
+-  }
++  // Pairing has no trusted TLS identity yet; stream never falls back to HTTP.
++  ret = load_serverinfo(server, !probe_pairing);
+ 
+   if (ret == GS_OK && !server->unsupported) {
+     if (server->serverMajorVersion > MAX_SUPPORTED_GFE_VERSION) {
+@@ -301,20 +296,22 @@
+   return ret;
+ }
+ 
+-static void bytes_to_hex(unsigned char *in, char *out, size_t len) {
+-  for (int i = 0; i < len; i++) {
++static void bytes_to_hex(const void *bytes, char *out, size_t len) {
++  const unsigned char *in = bytes;
++  for (size_t i = 0; i < len; i++) {
+     sprintf(out + i * 2, "%02x", in[i]);
+   }
+   out[len * 2] = 0;
+ }
+ 
+-static void hex_to_bytes(const char *in, unsigned char* out, size_t len) {
+-  for (int count = 0; count < len; count += 2) {
++static void hex_to_bytes(const char *in, void* bytes, size_t len) {
++  unsigned char *out = bytes;
++  for (size_t count = 0; count < len; count += 2) {
+     sscanf(&in[count], "%2hhx", &out[count / 2]);
+   }
+ }
+ 
+-static int sign_it(const char *msg, size_t mlen, unsigned char **sig, size_t *slen, EVP_PKEY *pkey) {
++static int sign_it(const void *msg, size_t mlen, unsigned char **sig, size_t *slen, EVP_PKEY *pkey) {
+   int result = GS_FAILED;
+ 
+   *sig = NULL;
+@@ -372,7 +369,7 @@
+     mdctx = EVP_MD_CTX_create();
+     EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, pubKey);
+     EVP_DigestVerifyUpdate(mdctx, data, dataLength);
+-    int result = EVP_DigestVerifyFinal(mdctx, signature, signatureLength);
++    int result = EVP_DigestVerifyFinal(mdctx, (unsigned char*)signature, signatureLength);
+ 
+     X509_free(x509);
+     EVP_PKEY_free(pubKey);
+@@ -403,24 +400,6 @@
+   EVP_DecryptUpdate(cipher, plaintext, &plaintextLen, ciphertext, ciphertextLen);
+ 
+   EVP_CIPHER_CTX_free(cipher);
+-}
+-
+-int gs_unpair(PSERVER_DATA server) {
+-  int ret = GS_OK;
+-  char url[4096];
+-  uuid_t uuid;
+-  char uuid_str[UUID_STRLEN];
+-  PHTTP_DATA data = http_create_data();
+-  if (data == NULL)
+-    return GS_OUT_OF_MEMORY;
+-
+-  uuid_generate_random(uuid);
+-  uuid_unparse(uuid, uuid_str);
+-  snprintf(url, sizeof(url), "http://%s:%u/unpair?uniqueid=%s&uuid=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str);
+-  ret = http_request(url, data);
+-
+-  http_free_data(data);
+-  return ret;
+ }
+ 
+ int gs_pair(PSERVER_DATA server, char* pin) {
+@@ -431,7 +410,7 @@
+   uuid_t uuid;
+   char uuid_str[UUID_STRLEN];
+   char* plaincert = NULL;
+-  char* challenge_response = NULL;
++  unsigned char* challenge_response = NULL;
+   char* pairing_secret = NULL;
+   char* client_pairing_secret = NULL;
+   char* client_pairing_secret_hex = NULL;
+@@ -450,14 +429,14 @@
+ 
+   uuid_generate_random(uuid);
+   uuid_unparse(uuid, uuid_str);
+-  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&phrase=getservercert&salt=%s&clientcert=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, salt_hex, cert_hex);
++  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&phrase=getservercert&salt=%s&clientcert=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, probe_client_name, salt_hex, cert_hex);
+   data = http_create_data();
+   if (data == NULL)
+     return GS_OUT_OF_MEMORY;
+   else if ((ret = http_request(url, data)) != GS_OK)
+     goto cleanup;
+ 
+-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
++  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
+     goto cleanup;
+   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
+     goto cleanup;
+@@ -475,7 +454,13 @@
+ 
+ 
+   size_t plaincertlen = strlen(result)/2;
++  if (plaincertlen == 0 || strlen(result) % 2 != 0 ||
++      strspn(result, "0123456789abcdefABCDEF") != strlen(result)) {
++    ret = GS_INVALID;
++    goto cleanup;
++  }
+   plaincert = malloc(plaincertlen + 1);
++  if (plaincert == NULL) { ret = GS_OUT_OF_MEMORY; goto cleanup; }
+   hex_to_bytes(result, plaincert, plaincertlen*2);
+   plaincert[plaincertlen] = 0;
+ 
+@@ -499,13 +484,13 @@
+ 
+   uuid_generate_random(uuid);
+   uuid_unparse(uuid, uuid_str);
+-  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&clientchallenge=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, challenge_hex);
++  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&clientchallenge=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, probe_client_name, challenge_hex);
+   if ((ret = http_request(url, data)) != GS_OK)
+     goto cleanup;
+ 
+   free(result);
+   result = NULL;
+-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
++  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
+     goto cleanup;
+   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
+     goto cleanup;
+@@ -523,27 +508,28 @@
+     goto cleanup;
+   }
+ 
+-  char challenge_response_data_enc[64];
+-  char challenge_response_data[sizeof(challenge_response_data_enc)];
+-
+-  if (strlen(result) / 2 > sizeof(challenge_response_data_enc)) {
++  unsigned char challenge_response_data_enc[64];
++  unsigned char challenge_response_data[sizeof(challenge_response_data_enc)];
++
++  if (strlen(result) != (size_t)(hash_length + 16) * 2 ||
++      strspn(result, "0123456789abcdefABCDEF") != strlen(result)) {
+     gs_error = "Server challenge response too big";
+     ret = GS_FAILED;
+     goto cleanup;
+   }
+ 
+   hex_to_bytes(result, challenge_response_data_enc, strlen(result));
+-  decrypt(challenge_response_data_enc, sizeof(challenge_response_data_enc), aes_key, challenge_response_data);
+-
+-  char client_secret_data[16];
++  decrypt(challenge_response_data_enc, hash_length + 16, aes_key, challenge_response_data);
++
++  unsigned char client_secret_data[16];
+   RAND_bytes(client_secret_data, sizeof(client_secret_data));
+ 
+   const ASN1_BIT_STRING *asnSignature;
+   X509_get0_signature(&asnSignature, NULL, cert);
+ 
+   challenge_response = malloc(16 + ASN1_STRING_length(asnSignature) + sizeof(client_secret_data));
+-  char challenge_response_hash[32];
+-  char challenge_response_hash_enc[sizeof(challenge_response_hash)];
++  unsigned char challenge_response_hash[32];
++  unsigned char challenge_response_hash_enc[sizeof(challenge_response_hash)];
+   char challenge_response_hex[SIZEOF_AS_HEX_STR(challenge_response_hash_enc)];
+   memcpy(challenge_response, challenge_response_data + hash_length, 16);
+   memcpy(challenge_response + 16, ASN1_STRING_get0_data(asnSignature), ASN1_STRING_length(asnSignature));
+@@ -558,13 +544,13 @@
+ 
+   uuid_generate_random(uuid);
+   uuid_unparse(uuid, uuid_str);
+-  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&serverchallengeresp=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, challenge_response_hex);
++  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&serverchallengeresp=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, probe_client_name, challenge_response_hex);
+   if ((ret = http_request(url, data)) != GS_OK)
+     goto cleanup;
+ 
+   free(result);
+   result = NULL;
+-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
++  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
+     goto cleanup;
+   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
+     goto cleanup;
+@@ -583,7 +569,8 @@
+   }
+ 
+   size_t pairing_secret_len = strlen(result) / 2;
+-  if (pairing_secret_len <= 16) {
++  if (pairing_secret_len <= 16 || strlen(result) % 2 != 0 ||
++      strspn(result, "0123456789abcdefABCDEF") != strlen(result)) {
+     ret = GS_INVALID;
+     goto cleanup;
+   }
+@@ -592,6 +579,29 @@
+   hex_to_bytes(result, pairing_secret, pairing_secret_len*2);
+   if (!verifySignature(pairing_secret, 16, pairing_secret+16, pairing_secret_len-16, plaincert)) {
+     gs_error = "MITM attack detected";
++    ret = GS_FAILED;
++    goto cleanup;
++  }
++
++  // Authenticate the PIN challenge as well as the server secret signature.
++  BIO *server_bio = BIO_new_mem_buf(plaincert, -1);
++  X509 *server_cert = server_bio ? PEM_read_bio_X509(server_bio, NULL, NULL, NULL) : NULL;
++  BIO_free(server_bio);
++  if (server_cert == NULL) { ret = GS_INVALID; goto cleanup; }
++  const ASN1_BIT_STRING *server_sig;
++  X509_get0_signature(&server_sig, NULL, server_cert);
++  size_t input_size = 32 + (size_t)ASN1_STRING_length(server_sig);
++  unsigned char *input = malloc(input_size);
++  if (input == NULL) { X509_free(server_cert); ret = GS_OUT_OF_MEMORY; goto cleanup; }
++  memcpy(input, challenge_data, 16);
++  memcpy(input + 16, ASN1_STRING_get0_data(server_sig), ASN1_STRING_length(server_sig));
++  memcpy(input + input_size - 16, pairing_secret, 16);
++  unsigned char expected_hash[32];
++  SHA256(input, input_size, expected_hash);
++  free(input);
++  X509_free(server_cert);
++  if (CRYPTO_memcmp(expected_hash, challenge_response_data, 32) != 0) {
++    gs_error = "Pairing PIN challenge mismatch";
+     ret = GS_FAILED;
+     goto cleanup;
+   }
+@@ -609,16 +619,17 @@
+   memcpy(client_pairing_secret, client_secret_data, sizeof(client_secret_data));
+   memcpy(client_pairing_secret + sizeof(client_secret_data), signature, s_len);
+   bytes_to_hex(client_pairing_secret, client_pairing_secret_hex, sizeof(client_secret_data) + s_len);
++  OPENSSL_free(signature);
+ 
+   uuid_generate_random(uuid);
+   uuid_unparse(uuid, uuid_str);
+-  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&clientpairingsecret=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, client_pairing_secret_hex);
++  snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&clientpairingsecret=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, probe_client_name, client_pairing_secret_hex);
+   if ((ret = http_request(url, data)) != GS_OK)
+     goto cleanup;
+ 
+   free(result);
+   result = NULL;
+-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
++  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
+     goto cleanup;
+   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
+     goto cleanup;
+@@ -631,13 +642,14 @@
+ 
+   uuid_generate_random(uuid);
+   uuid_unparse(uuid, uuid_str);
+-  snprintf(url, url_max_len, "https://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&phrase=pairchallenge", server->serverInfo.address, server->httpsPort, unique_id, uuid_str);
++  if (probe_pair_certificate(plaincert) != GS_OK) { ret = GS_FAILED; goto cleanup; }
++  snprintf(url, url_max_len, "https://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&phrase=pairchallenge", server->serverInfo.address, server->httpsPort, unique_id, uuid_str, probe_client_name);
+   if ((ret = http_request(url, data)) != GS_OK)
+     goto cleanup;
+ 
+   free(result);
+   result = NULL;
+-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
++  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
+     goto cleanup;
+   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
+     goto cleanup;
+@@ -651,9 +663,6 @@
+   server->paired = true;
+ 
+   cleanup:
+-  if (ret != GS_OK)
+-    gs_unpair(server);
+-
+   free(url);
+   free(plaincert);
+   free(challenge_response);
+@@ -666,7 +675,7 @@
+ 
+   // If we failed when attempting to pair with a game running, that's likely the issue.
+   // Sunshine supports pairing with an active session, but GFE does not.
+-  if (ret != GS_OK && server->currentGame != 0) {
++  if (ret != GS_OK && server->isNvidiaSoftware && server->currentGame != 0) {
+     gs_error = "The computer is currently in a game. You must close the game before pairing.";
+     ret = GS_WRONG_STATE;
+   }
+@@ -706,8 +715,8 @@
+   PDISPLAY_MODE mode = server->modes;
+   bool correct_mode = false;
+   while (mode != NULL) {
+-    if (mode->width == config->width && mode->height == config->height) {
+-      if (mode->refresh == config->fps)
++    if (mode->width == (unsigned int)config->width && mode->height == (unsigned int)config->height) {
++      if (mode->refresh == (unsigned int)config->fps)
+         correct_mode = true;
+     }
+ 
+@@ -717,12 +726,18 @@
+   if (!correct_mode && !server->unsupported)
+     return GS_NOT_SUPPORTED_MODE;
+ 
+-  RAND_bytes(config->remoteInputAesKey, sizeof(config->remoteInputAesKey));
++  if (RAND_bytes((unsigned char*)config->remoteInputAesKey, sizeof(config->remoteInputAesKey)) != 1) {
++    gs_error = "Session key generation failed";
++    return GS_FAILED;
++  }
+   memset(config->remoteInputAesIv, 0, sizeof(config->remoteInputAesIv));
+ 
+   char url[4096];
+   u_int32_t rikeyid = 0;
+-  RAND_bytes(config->remoteInputAesIv, sizeof(rikeyid));
++  if (RAND_bytes((unsigned char*)config->remoteInputAesIv, sizeof(rikeyid)) != 1) {
++    gs_error = "Session key ID generation failed";
++    return GS_FAILED;
++  }
+   memcpy(&rikeyid, config->remoteInputAesIv, sizeof(rikeyid));
+   rikeyid = htonl(rikeyid);
+   char rikey_hex[SIZEOF_AS_HEX_STR(config->remoteInputAesKey)];
+@@ -741,7 +756,7 @@
+   uuid_generate_random(uuid);
+   uuid_unparse(uuid, uuid_str);
+   int surround_info = SURROUNDAUDIOINFO_FROM_AUDIO_CONFIGURATION(config->audioConfiguration);
+-  snprintf(url, sizeof(url), "https://%s:%u/%s?uniqueid=%s&uuid=%s&appid=%d&mode=%dx%dx%d&additionalStates=1&sops=%d&rikey=%s&rikeyid=%d&localAudioPlayMode=%d&surroundAudioInfo=%d&remoteControllersBitmap=%d&gcmap=%d%s%s",
++  snprintf(url, sizeof(url), "https://%s:%u/%s?uniqueid=%s&uuid=%s&appid=%d&mode=%dx%dx%d&additionalStates=1&sops=%d&rikey=%s&rikeyid=%u&localAudioPlayMode=%d&surroundAudioInfo=%d&remoteControllersBitmap=%d&gcmap=%d%s%s",
+            server->serverInfo.address, server->httpsPort, server->currentGame ? "resume" : "launch", unique_id, uuid_str, appId, config->width, config->height, fps, sops, rikey_hex, rikeyid, localaudio, surround_info, gamepad_mask, gamepad_mask,
+            (config->supportedVideoFormats & VIDEO_FORMAT_MASK_10BIT) ? "&hdrMode=1&clientHdrCapVersion=0&clientHdrCapSupportedFlagsInUint32=0&clientHdrCapMetaDataId=NV_STATIC_METADATA_TYPE_1&clientHdrCapDisplayData=0x0x0x0x0x0x0x0x0x0x0" : "",
+            LiGetLaunchUrlQueryParameters());
+@@ -752,11 +767,11 @@
+ 
+   if ((ret = xml_status(data->memory, data->size)) != GS_OK)
+     goto cleanup;
+-  else if ((ret = xml_search(data->memory, data->size, "gamesession", &result)) != GS_OK &&
+-           (ret = xml_search(data->memory, data->size, "resume", &result)) != GS_OK)
+-    goto cleanup;
+-
+-  if (!strcmp(result, "0")) {
++  if ((ret = xml_search(data->memory, data->size,
++      strstr(url, "/resume?") ? "resume" : "gamesession", &result)) != GS_OK)
++    goto cleanup;
++
++  if (result[0] == 0 || !strcmp(result, "0")) {
+     ret = GS_FAILED;
+     goto cleanup;
+   }
+@@ -777,40 +792,6 @@
+   return ret;
+ }
+ 
+-int gs_quit_app(PSERVER_DATA server) {
+-  int ret = GS_OK;
+-  char url[4096];
+-  uuid_t uuid;
+-  char uuid_str[UUID_STRLEN];
+-  char* result = NULL;
+-  PHTTP_DATA data = http_create_data();
+-  if (data == NULL)
+-    return GS_OUT_OF_MEMORY;
+-
+-  uuid_generate_random(uuid);
+-  uuid_unparse(uuid, uuid_str);
+-  snprintf(url, sizeof(url), "https://%s:%u/cancel?uniqueid=%s&uuid=%s", server->serverInfo.address, server->httpsPort, unique_id, uuid_str);
+-  if ((ret = http_request(url, data)) != GS_OK)
+-    goto cleanup;
+-
+-  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
+-    goto cleanup;
+-  else if ((ret = xml_search(data->memory, data->size, "cancel", &result)) != GS_OK)
+-    goto cleanup;
+-
+-  if (strcmp(result, "0") == 0) {
+-    ret = GS_FAILED;
+-    goto cleanup;
+-  }
+-
+-  cleanup:
+-  if (result != NULL)
+-    free(result);
+-
+-  http_free_data(data);
+-  return ret;
+-}
+-
+ int gs_init(PSERVER_DATA server, char *address, unsigned short httpPort, const char *keyDirectory, int log_level, bool unsupported) {
+   mkdirtree(keyDirectory);
+   if (load_unique_id(keyDirectory) != GS_OK)
+@@ -819,12 +800,13 @@
+   if (load_cert(keyDirectory))
+     return GS_FAILED;
+ 
+-  http_init(keyDirectory, log_level);
++  if (http_init(keyDirectory, log_level) != GS_OK)
++    return GS_FAILED;
+ 
+   LiInitializeServerInformation(&server->serverInfo);
+   server->serverInfo.address = address;
+   server->unsupported = unsupported;
+   server->httpPort = httpPort ? httpPort : 47989;
+-  server->httpsPort = 0; /* Populated by load_server_status() */
++  server->httpsPort = probe_https_port;
+   return load_server_status(server);
+ }
+--- a/mkcert.c
++++ b/mkcert.c
+@@ -38,9 +38,10 @@
+ 
+     bio_err = BIO_new_fp(stderr, BIO_NOCLOSE);
+ 
+-    mkcert(&x509, &pkey, NUM_BITS, SERIAL, NUM_YEARS);
++    if (!mkcert(&x509, &pkey, NUM_BITS, SERIAL, NUM_YEARS))
++      return (CERT_KEY_PAIR) {NULL, NULL, NULL};
+ 
+-    p12 = PKCS12_create("limelight", "GameStream", pkey, x509, NULL, 0, 0, 0, 0, 0);
++    // Probe writes only the client PEM certificate and private key.
+ 
+     BIO_free(bio_err);
+ 
+--- a/http.c
++++ b/http.c
+@@ -1,132 +1,16 @@
+-/*
+- * This file is part of Moonlight Embedded.
+- *
+- * Copyright (C) 2015 Iwan Timmer
+- *
+- * Moonlight is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License as published by
+- * the Free Software Foundation; either version 3 of the License, or
+- * (at your option) any later version.
+- *
+- * Moonlight is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with Moonlight; if not, see <http://www.gnu.org/licenses/>.
+- */
+-
++/* P6a probe transport. GPL-3.0-or-later, same terms as libgamestream. */
+ #include "http.h"
+ #include "errors.h"
+-
+-#include <stdbool.h>
+-#include <string.h>
+-#include <curl/curl.h>
+-
+-static CURL *curl;
+-
+-static bool debug;
+-
+-static size_t _write_curl(void *contents, size_t size, size_t nmemb, void *userp)
+-{
+-  size_t realsize = size * nmemb;
+-  PHTTP_DATA mem = (PHTTP_DATA)userp;
+-
+-  mem->memory = realloc(mem->memory, mem->size + realsize + 1);
+-  if(mem->memory == NULL)
+-    return 0;
+-
+-  memcpy(&(mem->memory[mem->size]), contents, realsize);
+-  mem->size += realsize;
+-  mem->memory[mem->size] = 0;
+-
+-  return realsize;
++#include "transport.h"
++#include <stdlib.h>
++int http_init(const char* keyDirectory, int logLevel) {
++  return probe_http_init(keyDirectory);
+ }
+-
+-int http_init(const char* keyDirectory, int logLevel) {
+-  curl = curl_easy_init();
+-  debug = logLevel >= 2;
+-  if (!curl)
+-    return GS_FAILED;
+-
+-  char certificateFilePath[4096];
+-  snprintf(certificateFilePath, sizeof(certificateFilePath), "%s/%s", keyDirectory, CERTIFICATE_FILE_NAME);
+-
+-  char keyFilePath[4096];
+-  snprintf(keyFilePath, sizeof(keyFilePath), "%s/%s", keyDirectory, KEY_FILE_NAME);
+-
+-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+-  curl_easy_setopt(curl, CURLOPT_SSLENGINE_DEFAULT, 1L);
+-  curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE,"PEM");
+-  curl_easy_setopt(curl, CURLOPT_SSLCERT, certificateFilePath);
+-  curl_easy_setopt(curl, CURLOPT_SSLKEYTYPE, "PEM");
+-  curl_easy_setopt(curl, CURLOPT_SSLKEY, keyFilePath);
+-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _write_curl);
+-  curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+-  curl_easy_setopt(curl, CURLOPT_SSL_SESSIONID_CACHE, 0L);
+-
+-  return GS_OK;
++int http_request(char* url, PHTTP_DATA data) {
++  return probe_http_request(url, data);
+ }
+-
+-int http_request(char* url, PHTTP_DATA data) {
+-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, data);
+-  curl_easy_setopt(curl, CURLOPT_URL, url);
+-#ifdef __FreeBSD__
+-  curl_easy_setopt(curl, CURLOPT_FORBID_REUSE, 1);
+-#endif
+-
+-  if (debug)
+-    printf("Request %s\n", url);
+-
+-  if (data->size > 0) {
+-    free(data->memory);
+-    data->memory = malloc(1);
+-    if(data->memory == NULL)
+-      return GS_OUT_OF_MEMORY;
+-
+-    data->size = 0;
+-  }
+-  CURLcode res = curl_easy_perform(curl);
+-
+-  if(res != CURLE_OK) {
+-    gs_error = curl_easy_strerror(res);
+-    return GS_FAILED;
+-  } else if (data->memory == NULL) {
+-    return GS_OUT_OF_MEMORY;
+-  }
+-
+-  if (debug)
+-    printf("Response:\n%s\n\n", data->memory);
+-
+-  return GS_OK;
++void http_cleanup(void) { probe_http_cleanup(); }
++PHTTP_DATA http_create_data(void) { return calloc(1, sizeof(HTTP_DATA)); }
++void http_free_data(PHTTP_DATA data) {
++  if (data) { free(data->memory); free(data); }
+ }
+-
+-void http_cleanup() {
+-  curl_easy_cleanup(curl);
+-}
+-
+-PHTTP_DATA http_create_data() {
+-  PHTTP_DATA data = malloc(sizeof(HTTP_DATA));
+-  if (data == NULL)
+-    return NULL;
+-
+-  data->memory = malloc(1);
+-  if(data->memory == NULL) {
+-    free(data);
+-    return NULL;
+-  }
+-  data->size = 0;
+-
+-  return data;
+-}
+-
+-void http_free_data(PHTTP_DATA data) {
+-  if (data != NULL) {
+-    if (data->memory != NULL)
+-      free(data->memory);
+-
+-    free(data);
+-  }
+-}
+--- a/http.h
++++ b/http.h
+@@ -33,3 +33,5 @@
+ PHTTP_DATA http_create_data();
+ int http_request(char* url, PHTTP_DATA data);
+ void http_free_data(PHTTP_DATA data);
++
++void http_cleanup(void);
+--- a/client.h
++++ b/client.h
+@@ -45,6 +45,4 @@
+ int gs_init(PSERVER_DATA server, char* address, unsigned short httpPort, const char *keyDirectory, int logLevel, bool unsupported);
+ int gs_start_app(PSERVER_DATA server, PSTREAM_CONFIGURATION config, int appId, bool sops, bool localaudio, int gamepad_mask);
+ int gs_applist(PSERVER_DATA server, PAPP_LIST *app_list);
+-int gs_unpair(PSERVER_DATA server);
+ int gs_pair(PSERVER_DATA server, char* pin);
+-int gs_quit_app(PSERVER_DATA server);
