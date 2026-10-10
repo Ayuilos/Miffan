@@ -1,0 +1,62 @@
+--- a/libfreerdp/codec/h264_mediacodec.c
++++ b/libfreerdp/codec/h264_mediacodec.c
+@@ -26,6 +26,8 @@
+ extern BOOL miffan_rdp_decode_cancelled(void);
+ /* JNI owner hooks. No protocol callbacks or reentrant FreeRDP work while decoding. */
+ extern void miffan_rdp_perf_event(int event);
++extern UINT64 miffan_rdp_clock_ns(void);
++extern void miffan_rdp_codec_timing(int type, UINT64 ns);
+ 
+ #include <freerdp/log.h>
+ #include <freerdp/codec/h264.h>
+@@ -211,6 +213,8 @@
+ 	}
+ 
++	const UINT64 releaseStart = miffan_rdp_clock_ns();
+ 	status = AMediaCodec_releaseOutputBuffer(sys->decoder, sys->currentOutputBufferIndex, FALSE);
++	miffan_rdp_codec_timing(3, miffan_rdp_clock_ns() - releaseStart);
+ 	if (status != AMEDIA_OK)
+ 	{
+ 		WLog_Print(h264->log, WLOG_ERROR, "Error AMediaCodec_releaseOutputBuffer %d", status);
+@@ -301,7 +304,9 @@
+ 				return -1;
+ 			}
+ 			UINT32 numberOfBytesToCopy = SrcSize - inputBufferCurrnetOffset;
++			const UINT64 inputStart = miffan_rdp_clock_ns();
+ 			const ssize_t inputBufferId = AMediaCodec_dequeueInputBuffer(sys->decoder, 100000);
++			miffan_rdp_codec_timing(0, miffan_rdp_clock_ns() - inputStart);
+ 			if (inputBufferId < 0)
+ 			{
+ 				WLog_Print(h264->log, WLOG_ERROR, "AMediaCodec_dequeueInputBuffer failed [%d]",
+@@ -336,8 +341,10 @@
+ 				miffan_rdp_perf_event(0); /* first byte queued for this access unit */
+ 				submitted = TRUE;
+ 			}
++			const UINT64 queueStart = miffan_rdp_clock_ns();
+ 			const media_status_t status = AMediaCodec_queueInputBuffer(
+ 			    sys->decoder, inputBufferId, 0, numberOfBytesToCopy, 0, 0);
++			miffan_rdp_codec_timing(4, miffan_rdp_clock_ns() - queueStart);
+ 			if (status != AMEDIA_OK)
+ 			{
+ 				WLog_Print(h264->log, WLOG_ERROR, "Error AMediaCodec_queueInputBuffer %d", status);
+@@ -355,7 +362,9 @@
+ 				return -1;
+ 			}
+ 			AMediaCodecBufferInfo bufferInfo = WINPR_C_ARRAY_INIT;
++			const UINT64 outputStart = miffan_rdp_clock_ns();
+ 			ssize_t outputBufferId = AMediaCodec_dequeueOutputBuffer(sys->decoder, &bufferInfo, 100000);
++			miffan_rdp_codec_timing(1, miffan_rdp_clock_ns() - outputStart);
+ 			if (outputBufferId >= 0)
+ 			{
+ 				miffan_rdp_perf_event(1); /* output available, before CPU conversion */
+@@ -363,8 +372,10 @@
+ 
+ 				size_t outputBufferSize = 0;
+ 				uint8_t* outputBuffer = nullptr;
++				const UINT64 accessStart = miffan_rdp_clock_ns();
+ 				outputBuffer =
+ 				    AMediaCodec_getOutputBuffer(sys->decoder, outputBufferId, &outputBufferSize);
++				miffan_rdp_codec_timing(2, miffan_rdp_clock_ns() - accessStart);
+ 				sys->currentOutputBufferIndex = outputBufferId;
+ 
+ 				if (outputBufferSize !=

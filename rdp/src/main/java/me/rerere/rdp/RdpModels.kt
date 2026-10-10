@@ -16,6 +16,11 @@ data class RdpOptions(
     val security: RdpSecurity = RdpSecurity.AUTO,
     /** Diagnostic A/B switch; production connections should keep low latency enabled. */
     val lowLatency: Boolean = true,
+    /** Diagnostic switches for measuring each latency change independently. */
+    val eventDriven: Boolean = true,
+    val ackBeforeSink: Boolean = true,
+    val directBitmap: Boolean = true,
+    val liveNetworkStats: Boolean = true,
 ) {
     init {
         require(width in 320..8192 && height in 240..8192)
@@ -63,6 +68,41 @@ data class RdpStats(
     /** Requested keys accepted by configure; acceptance does not prove driver behavior. */
     val decoderConfiguration: String = "Unconfigured",
     val neonYuv: Boolean? = null,
+    /** First SurfaceCommand to EndFrame callback entry; includes earlier command processing. */
+    val frameDataMs: Double = 0.0,
+    val frameDataMeanMs: Double = 0.0,
+    val frameDataMaxMs: Double = 0.0,
+    val surfaceWorkMs: Double = 0.0,
+    val surfaceWorkMeanMs: Double = 0.0,
+    val surfaceWorkMaxMs: Double = 0.0,
+    val loopWaitMs: Double = 0.0,
+    val loopWaitMeanMs: Double = 0.0,
+    val loopWaitMaxMs: Double = 0.0,
+    /** EndFrame GDI work, excluding synchronous sink copying. */
+    val composeMs: Double = 0.0,
+    val composeMeanMs: Double = 0.0,
+    val composeMaxMs: Double = 0.0,
+    val inputWaitMs: Double = 0.0,
+    val inputWaitMeanMs: Double = 0.0,
+    val inputWaitMaxMs: Double = 0.0,
+    val outputWaitMs: Double = 0.0,
+    val outputWaitMeanMs: Double = 0.0,
+    val outputWaitMaxMs: Double = 0.0,
+    val outputAccessMs: Double = 0.0,
+    val outputAccessMeanMs: Double = 0.0,
+    val outputAccessMaxMs: Double = 0.0,
+    val outputReleaseMs: Double = 0.0,
+    val outputReleaseMeanMs: Double = 0.0,
+    val outputReleaseMaxMs: Double = 0.0,
+    val inputQueueMs: Double = 0.0,
+    val inputQueueMeanMs: Double = 0.0,
+    val inputQueueMaxMs: Double = 0.0,
+    val transportReadCalls: Long = 0,
+    val transportReadBytes: Long = 0,
+    val frameReadCalls: Long = 0,
+    val directBitmapFrames: Long = 0,
+    /** Actual ACK transport sends completed while this frame still had a deferred sink. */
+    val ackBeforeSinkFrames: Long = 0,
 )
 
 internal object CertificateFingerprint {

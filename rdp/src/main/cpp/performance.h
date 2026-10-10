@@ -23,6 +23,11 @@ struct Performance {
     struct PendingAck { uint32_t id; uint64_t surface, queued; };
     std::deque<PendingAck> pendingAcks;
     Timing decode, yuv, sink, ack, ackQueue;
+    Timing frameData, surfaceWork, loopWait, compose;
+    Timing inputWait, outputWait, outputAccess, outputRelease, inputQueue;
+    uint64_t frameWorkNs = 0, frameWaitNs = 0, sinkTotalNs = 0;
+    uint64_t directFrames = 0, ackBeforeSinkFrames = 0;
+    uint64_t transportCalls = 0, transportBytes = 0, frameReadStart = 0, frameReads = 0;
     uint64_t submitted = 0, surface = 0, window = perfNow();
     uint64_t decoded = 0, windowDecoded = 0, timeouts = 0;
     int inFlight = 0, peak = 0;

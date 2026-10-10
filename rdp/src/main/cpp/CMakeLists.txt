@@ -13,5 +13,5 @@ target_include_directories(miffanrdp PRIVATE "${NATIVE}/include/freerdp3" "${NAT
 target_link_libraries(miffanrdp PRIVATE -Wl,--start-group
     "${NATIVE}/lib/libfreerdp-client3.a" "${NATIVE}/lib/libfreerdp3.a" "${NATIVE}/lib/libwinpr3.a"
     "${NATIVE}/lib/libssl.a" "${NATIVE}/lib/libcrypto.a" -Wl,--end-group
-    mediandk android log z dl)
+    mediandk jnigraphics android log z dl)
 target_link_options(miffanrdp PRIVATE -Wl,--wrap=AMediaCodec_createDecoderByType -Wl,--wrap=yuv420_context_decode -Wl,--wrap=yuv444_context_decode -Wl,--wrap=GetKnownPath -Wl,--wrap=freerdp_GetConfigFilePath -Wl,-z,max-page-size=16384 -Wl,--exclude-libs,ALL)

@@ -61,6 +61,62 @@ class RdpInstrumentedTest {
         assertTrue(session.state.value is RemoteScreenState.Closed)
     }
 
+    @Test fun receivedCounterPublishesBeforeAnyFrame() {
+        for (live in listOf(false, true)) {
+            val release = CountDownLatch(1)
+            val read = CountDownLatch(1)
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val input = object : java.io.InputStream() {
+                var delivered = false
+                override fun read(): Int = error("Bulk reads only")
+                override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                    if (delivered) { release.await(); return -1 }
+                    delivered = true
+                    val size = minOf(length, 1024)
+                    bytes.fill(0, offset, offset + size)
+                    read.countDown()
+                    return size
+                }
+            }
+            val session = RdpSession(input, java.io.ByteArrayOutputStream(),
+                java.io.Closeable { release.countDown() }, RdpCredentials("unused", "unused"), RdpOptions(liveNetworkStats = live), noOpSink)
+            try {
+                session.start(scope)
+                assertTrue(read.await(5, TimeUnit.SECONDS))
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                while (session.bytesReceived == 0L && System.nanoTime() < deadline) Thread.sleep(10)
+                assertEquals(1024L, session.bytesReceived)
+                Thread.sleep(600) // cover the publication interval, while no frame can arrive
+                Log.i("RemoteScreenPerf", "RDP no-frame counter live=$live raw=${session.bytesReceived} stats=${session.stats.value.bytesReceived}")
+                assertEquals(if (live) 1024L else 0L, session.stats.value.bytesReceived)
+                assertEquals(0L, session.stats.value.frames)
+            } finally {
+                session.close(); scope.cancel()
+                assertTrue(session.awaitStopped(10000))
+            }
+        }
+    }
+
+    @Test fun rejectedBitmapReleasesLeaseAndFallsBack() {
+        val bitmap = Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888)
+        var released = 0
+        val sink = object : RdpBitmapFrameSink {
+            override fun onSize(width: Int, height: Int, scale: Int) {}
+            override fun onPixels(rect: RfbRect, pixels: IntArray) {}
+            override fun onFrameComplete() {}
+            override fun acquireBitmap(width: Int, height: Int) = bitmap
+            override fun releaseBitmap(bitmap: Bitmap) { released++ }
+        }
+        val session = RdpSession(java.io.ByteArrayInputStream(byteArrayOf()), java.io.ByteArrayOutputStream(),
+            java.io.Closeable {}, RdpCredentials("unused", "unused"), RdpOptions(), sink)
+        try {
+            val acquire = RdpSession::class.java.getDeclaredMethod("acquireBitmap", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            acquire.isAccessible = true
+            assertNull(acquire.invoke(session, 2560, 1440))
+            assertEquals(1, released)
+        } finally { session.close(); bitmap.recycle() }
+    }
+
     @Test fun streamHandshakeFrameAndInput() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val args = InstrumentationRegistry.getArguments()

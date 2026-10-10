@@ -12,6 +12,7 @@ extern "C" JavaVM* jniVm;
 #include <freerdp/addin.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
+#include <android/bitmap.h>
 #include <freerdp/codec/yuv.h>
 #include <freerdp/primitives.h>
 #include <openssl/pem.h>
@@ -34,6 +35,7 @@ extern "C" JavaVM* jniVm;
 #include "clipboard.h"
 #include "performance.h"
 #include "frame_ack.h"
+#include "bitmap_copy.h"
 
 struct Session {
     rdpContext base;
@@ -42,10 +44,14 @@ struct Session {
     HANDLE event;
     jmethodID read, write, wait, closed, paused, command, certificate, size, pixels, frame, cursor, encoding, failure, stats, takeClipboard, clipboardReceived, clipboardFailure;
     pcRdpgfxSurfaceCommand surfaceCommand;
+    pcRdpgfxEndFrame endFrame;
     pSendChannelData sendChannelData;
     std::string* decoder;
     Clipboard* clipboard;
     Performance* perf;
+    jmethodID acquireBitmap, releaseBitmap;
+    jmethodID wakeReady, workAvailable, eventDriven, ackBeforeSink;
+    bool earlyAck, deferSink, pendingSink;
     jmethodID preferredDecoder, decoderOptions, decoderConfiguration, decoderFailure, performance;
     bool callbackFailed;
     int buttons;
@@ -110,17 +116,41 @@ static void publishPerformance(Session* s) {
         static_cast<double>(p.timeouts), p.yuv.last, p.yuv.mean(), p.yuv.maximum,
         p.sink.last, p.sink.mean(), p.sink.maximum, p.ack.last, p.ack.mean(), p.ack.maximum,
         p.neon ? 1.0 : 0.0, p.submitted ? (now - p.submitted) / 1e6 : 0.0,
-        p.ackQueue.last, p.ackQueue.mean(), p.ackQueue.maximum};
-    auto array = s->env->NewDoubleArray(22);
+        p.ackQueue.last, p.ackQueue.mean(), p.ackQueue.maximum,
+        p.frameData.last, p.frameData.mean(), p.frameData.maximum,
+        p.surfaceWork.last, p.surfaceWork.mean(), p.surfaceWork.maximum,
+        p.loopWait.last, p.loopWait.mean(), p.loopWait.maximum,
+        p.compose.last, p.compose.mean(), p.compose.maximum,
+        p.inputWait.last, p.inputWait.mean(), p.inputWait.maximum,
+        p.outputWait.last, p.outputWait.mean(), p.outputWait.maximum,
+        p.outputAccess.last, p.outputAccess.mean(), p.outputAccess.maximum,
+        p.outputRelease.last, p.outputRelease.mean(), p.outputRelease.maximum,
+        p.inputQueue.last, p.inputQueue.mean(), p.inputQueue.maximum,
+        static_cast<double>(p.transportCalls), static_cast<double>(p.transportBytes), static_cast<double>(p.frameReads), static_cast<double>(p.directFrames), static_cast<double>(p.ackBeforeSinkFrames)};
+    auto array = s->env->NewDoubleArray(54);
     if (!array) { exception(s); return; }
-    s->env->SetDoubleArrayRegion(array, 0, 22, values);
+    s->env->SetDoubleArrayRegion(array, 0, 54, values);
     s->env->CallVoidMethod(s->owner, s->performance, array);
     s->env->DeleteLocalRef(array);
     if (exception(s)) return;
     s->env->CallVoidMethod(s->owner, s->stats);
     exception(s);
     p.decode.resetWindow(); p.yuv.resetWindow(); p.sink.resetWindow(); p.ack.resetWindow(); p.ackQueue.resetWindow();
+    p.frameData.resetWindow(); p.surfaceWork.resetWindow(); p.loopWait.resetWindow(); p.compose.resetWindow();
+    p.inputWait.resetWindow(); p.outputWait.resetWindow(); p.outputAccess.resetWindow(); p.outputRelease.resetWindow(); p.inputQueue.resetWindow();
     p.windowDecoded = 0; p.peak = p.inFlight; p.window = now;
+}
+extern "C" uint64_t miffan_rdp_clock_ns(void) { return perfNow(); }
+extern "C" void miffan_rdp_codec_timing(int type, uint64_t ns) {
+    if (!active) return;
+    auto& p = *active->perf;
+    switch (type) {
+        case 0: p.inputWait.add(ns); break;
+        case 1: p.outputWait.add(ns); break;
+        case 2: p.outputAccess.add(ns); break;
+        case 3: p.outputRelease.add(ns); break;
+        case 4: p.inputQueue.add(ns); break;
+    }
 }
 extern "C" void miffan_rdp_perf_event(int event) {
     if (!active) return;
@@ -162,6 +192,7 @@ static BOOL sendChannelData(freerdp* instance, UINT16 channelId, const BYTE* dat
             [&](const Performance::PendingAck& ack) { return ack.id == *id; });
         if (found != p.pendingAcks.end()) {
             auto now = perfNow();
+            if (s->earlyAck && s->pendingSink) ++p.ackBeforeSinkFrames;
             p.ack.add(now - found->surface);
             p.ackQueue.add(now - found->queued);
             p.pendingAcks.erase(found);
@@ -247,7 +278,10 @@ static int readLayer(void* context, void* data, int bytes) {
     if (!array) { exception(s); errno = ENOMEM; return -1; }
     int result = s->env->CallIntMethod(s->owner, s->read, array);
     if (exception(s)) result = -1;
-    if (result > 0) s->env->GetByteArrayRegion(array, 0, result, static_cast<jbyte*>(data));
+    if (result > 0) {
+        s->env->GetByteArrayRegion(array, 0, result, static_cast<jbyte*>(data));
+        ++s->perf->transportCalls; s->perf->transportBytes += result;
+    }
     s->env->DeleteLocalRef(array);
     if (result == 0) { errno = EAGAIN; return -1; }
     if (result < 0) return 0; // orderly EOF
@@ -313,16 +347,71 @@ static BOOL resize(rdpContext* c) {
     announce(session(c)); return !session(c)->callbackFailed;
 }
 static BOOL beginPaint(rdpContext*) { return TRUE; }
+static void releaseBitmap(Session* s, jobject bitmap) {
+    // Always release the sink lease, including an NDK JNI failure, preserving its exception.
+    auto thrown = s->env->ExceptionOccurred();
+    if (thrown) s->env->ExceptionClear();
+    s->env->CallVoidMethod(s->owner, s->releaseBitmap, bitmap);
+    s->env->DeleteLocalRef(bitmap);
+    if (thrown) {
+        if (s->env->ExceptionCheck()) s->env->ExceptionClear();
+        s->env->Throw(thrown); s->env->DeleteLocalRef(thrown);
+    }
+}
+// -1 failure, 0 fallback, 1 bitmap handled. Only dirty rectangles are touched.
+static int paintBitmap(Session* s, rdpGdi* gdi, bool* painted) {
+    auto bitmap = s->env->CallObjectMethod(s->owner, s->acquireBitmap, gdi->width, gdi->height);
+    if (exception(s)) return -1;
+    if (!bitmap) return 0;
+    AndroidBitmapInfo info = {};
+    void* address = nullptr;
+    bool valid = AndroidBitmap_getInfo(s->env, bitmap, &info) == ANDROID_BITMAP_RESULT_SUCCESS &&
+        info.format == ANDROID_BITMAP_FORMAT_RGBA_8888 && info.width == gdi->width && info.height == gdi->height &&
+        info.stride >= info.width * 4;
+    bool locked = valid && AndroidBitmap_lockPixels(s->env, bitmap, &address) == ANDROID_BITMAP_RESULT_SUCCESS;
+    bool ok = true;
+    if (locked) {
+        auto* window = gdi->primary->hdc->hwnd;
+        for (int i = 0; i < window->ninvalid; ++i) {
+            auto r = window->cinvalid[i];
+            int x = std::max(0, r.x), y = std::max(0, r.y);
+            int w = std::min(static_cast<int>(gdi->width), r.x+r.w) - x;
+            int h = std::min(static_cast<int>(gdi->height), r.y+r.h) - y;
+            if (w <= 0 || h <= 0) continue;
+            if (gdi->dstFormat == PIXEL_FORMAT_BGRA32 || gdi->dstFormat == PIXEL_FORMAT_BGRX32) {
+                copyOpaqueBgraToRgba(static_cast<BYTE*>(address) + y * info.stride + x * 4, info.stride,
+                    gdi->primary_buffer + y * gdi->stride + x * 4, gdi->stride, w, h);
+            } else {
+                ok = freerdp_image_copy(static_cast<BYTE*>(address), PIXEL_FORMAT_RGBA32, info.stride, x, y,
+                    w, h, gdi->primary_buffer, gdi->dstFormat, gdi->stride, x, y, nullptr, FREERDP_FLIP_NONE);
+                if (!ok) break;
+                for (int row = 0; row < h; ++row) {
+                    auto* alpha = static_cast<BYTE*>(address) + (y + row) * info.stride + x * 4 + 3;
+                    for (int col = 0; col < w; ++col) alpha[col * 4] = 0xff;
+                }
+            }
+            *painted = true;
+        }
+        ok = AndroidBitmap_unlockPixels(s->env, bitmap) == ANDROID_BITMAP_RESULT_SUCCESS && ok;
+    }
+    releaseBitmap(s, bitmap);
+    if (exception(s) || !ok) return -1;
+    if (locked && *painted) ++s->perf->directFrames;
+    return locked ? 1 : 0;
+}
 static BOOL endPaint(rdpContext* c) {
     auto* s = session(c);
     if (stopped(s)) return FALSE;
+    if (s->deferSink) { s->pendingSink = true; return TRUE; }
     auto sinkStart = perfNow();
     auto* gdi = c->gdi;
     auto* window = gdi->primary->hdc->hwnd;
     bool paused = s->env->CallBooleanMethod(s->owner, s->paused);
     if (exception(s)) return FALSE;
     bool painted = false;
-    for (int i = 0; !paused && i < window->ninvalid; ++i) {
+    int direct = !paused && window->ninvalid > 0 ? paintBitmap(s, gdi, &painted) : 0;
+    if (direct < 0) return FALSE;
+    for (int i = 0; !paused && !direct && i < window->ninvalid; ++i) {
         auto r = window->cinvalid[i];
         int x = std::max(0, r.x), y = std::max(0, r.y);
         int w = std::min(static_cast<int>(gdi->width), r.x+r.w) - x;
@@ -342,7 +431,7 @@ static BOOL endPaint(rdpContext* c) {
         painted = true;
     }
     window->invalid->null = TRUE; window->ninvalid = 0;
-    if (painted) { s->env->CallVoidMethod(s->owner, s->frame); if (exception(s)) return FALSE; s->perf->sink.add(perfNow() - sinkStart); }
+    if (painted) { s->env->CallVoidMethod(s->owner, s->frame); if (exception(s)) return FALSE; auto ns = perfNow() - sinkStart; s->perf->sink.add(ns); s->perf->sinkTotalNs += ns; }
     return TRUE;
 }
 struct Pointer { rdpPointer base; BYTE* pixels; };
@@ -393,11 +482,49 @@ static bool publishEncoding(Session* s, const RDPGFX_SURFACE_COMMAND* cmd) {
 }
 static UINT surfaceCommand(RdpgfxClientContext* gfx, const RDPGFX_SURFACE_COMMAND* cmd) {
     auto* s = session(static_cast<rdpGdi*>(gfx->custom)->context);
-    if (!s->perf->surface) s->perf->surface = perfNow();
+    if (!s->perf->surface) {
+        s->perf->surface = perfNow(); s->perf->frameWorkNs = s->perf->frameWaitNs = 0;
+        s->perf->frameReadStart = s->perf->transportCalls;
+    }
     if (!publishEncoding(s, cmd)) return ERROR_INTERNAL_ERROR;
+    auto workStart = perfNow();
     auto result = s->surfaceCommand(gfx, cmd);
+    s->perf->frameWorkNs += perfNow() - workStart;
     if (result != CHANNEL_RC_OK || stopped(s)) return result;
     return publishEncoding(s, cmd) ? result : ERROR_INTERNAL_ERROR;
+}
+static UINT endFrame(RdpgfxClientContext* gfx, const RDPGFX_END_FRAME_PDU* frame) {
+    auto* s = session(static_cast<rdpGdi*>(gfx->custom)->context);
+    auto& p = *s->perf;
+    auto start = perfNow();
+    if (p.surface) {
+        p.frameData.add(start - p.surface); p.surfaceWork.add(p.frameWorkNs); p.loopWait.add(p.frameWaitNs);
+        p.frameReads = p.transportCalls - p.frameReadStart;
+    }
+    auto sinkBefore = p.sinkTotalNs;
+    s->deferSink = s->earlyAck;
+    auto status = s->endFrame(gfx, frame);
+    s->deferSink = false;
+    auto elapsed = perfNow() - start;
+    auto sinkNs = p.sinkTotalNs - sinkBefore;
+    p.compose.add(elapsed >= sinkNs ? elapsed - sinkNs : 0);
+    return status;
+}
+// This drains ONLY already-enqueued static-channel writes. It never processes
+// incoming PDUs or registered channel callbacks (which would reenter FreeRDP).
+extern "C" BOOL miffan_freerdp_flush_channel_writes(freerdp*);
+extern "C" UINT miffan_rdp_frame_completed(void) {
+    if (!active) return CHANNEL_RC_OK;
+    auto* s = active;
+    if (s->earlyAck) {
+        if (!miffan_freerdp_flush_channel_writes(s->base.instance)) return ERROR_INTERNAL_ERROR;
+        if (s->pendingSink) {
+            s->pendingSink = false;
+            if (!endPaint(&s->base)) return ERROR_INTERNAL_ERROR;
+        }
+    }
+    s->perf->surface = 0;
+    return CHANNEL_RC_OK;
 }
 static bool clipboardEvents(Session* s) {
     auto* clip = s->clipboard;
@@ -478,6 +605,7 @@ static void connected(void* context,const ChannelConnectedEventArgs* e) {
         auto* gfx = static_cast<RdpgfxClientContext*>(e->pInterface);
         if (gdi_graphics_pipeline_init(s->base.gdi,gfx)) {
             s->surfaceCommand=gfx->SurfaceCommand; gfx->SurfaceCommand=surfaceCommand;
+            s->endFrame=gfx->EndFrame; gfx->EndFrame=endFrame;
         }
     }
 }
@@ -552,6 +680,9 @@ static bool inputs(Session* s) {
     }
     return true;
 }
+extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeSignal(JNIEnv*, jobject, jlong handle) {
+    if (handle) SetEvent(reinterpret_cast<HANDLE>(handle));
+}
 extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv* env,jobject owner,jstring username,jstring password,jstring domain,jint width,jint height,jint security,jstring directory) {
     const char* dir = env->GetStringUTFChars(directory,nullptr);
     if (!dir) return;
@@ -579,11 +710,17 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Context ready");
     auto* s=session(instance->context);
     s->env=env; s->owner=owner; s->decoder=new std::string(); s->clipboard=new Clipboard(); s->perf=new Performance();
-    // The stream has no fd. A signaled WinPR event makes pending BIO reads pollable; the loop
-    // sleeps at most 10ms. TLS handshake waits use the stream condition variable instead.
+    // Reader/input producers signal this manual event. FreeRDP's reread event also
+    // wakes the loop when a PDU or TLS bytes remain buffered. Handshake waits use Kotlin's condition.
     s->event=CreateEvent(nullptr,TRUE,TRUE,nullptr);
     auto cls=env->GetObjectClass(owner);
 #define METHOD(field,name,sig) s->field=env->GetMethodID(cls,name,sig)
+    METHOD(acquireBitmap,"acquireBitmap","(II)Landroid/graphics/Bitmap;");
+    METHOD(releaseBitmap,"releaseBitmap","(Landroid/graphics/Bitmap;)V");
+    METHOD(wakeReady,"onWakeReady","(J)V");
+    METHOD(workAvailable,"workAvailable","()Z");
+    METHOD(eventDriven,"eventDriven","()Z");
+    METHOD(ackBeforeSink,"ackBeforeSink","()Z");
     METHOD(preferredDecoder,"preferredDecoder","()Ljava/lang/String;");
     METHOD(decoderOptions,"decoderOptions","(Ljava/lang/String;)I");
     METHOD(decoderConfiguration,"onDecoderConfiguration","(Ljava/lang/String;)V");
@@ -624,6 +761,9 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     configured=freerdp_set_io_callbacks(instance->context,&io) && configured;
     s->sendChannelData=instance->SendChannelData; instance->SendChannelData=sendChannelData;
     active=s;
+    env->CallVoidMethod(owner, s->wakeReady, reinterpret_cast<jlong>(s->event));
+    bool eventDriven = env->CallBooleanMethod(owner, s->eventDriven);
+    s->earlyAck = env->CallBooleanMethod(owner, s->ackBeforeSink);
     // Confirm the runtime primitive actually selected, not just arm64 build flags.
     auto* prims = primitives_get();
     auto* generic = primitives_get_generic();
@@ -654,7 +794,22 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
             publishPerformance(s);
             env->CallVoidMethod(owner,s->stats);
             if(exception(s)) break;
-            Sleep(10);
+            auto waitStart = perfNow();
+            if (eventDriven) {
+                // Reset BEFORE checking Kotlin predicates: a concurrent producer either
+                // leaves a pending predicate or signals after reset, so no wake is lost.
+                ResetEvent(s->event);
+                bool ready = env->CallBooleanMethod(owner, s->workAvailable);
+                if (exception(s)) break;
+                if (!ready) {
+                    HANDLE events[64] = {};
+                    auto count = freerdp_get_event_handles(instance->context, events, 64);
+                    if (!count) break;
+                    auto result = WaitForMultipleObjects(count, events, FALSE, 50);
+                    if (result == WAIT_FAILED) break;
+                }
+            } else Sleep(10);
+            if (s->perf->surface) s->perf->frameWaitNs += perfNow() - waitStart;
         }
     }
     if (!s->callbackFailed && !stopped(s)) env->CallVoidMethod(owner,s->failure,static_cast<jlong>(freerdp_get_last_error(instance->context)));
@@ -664,6 +819,7 @@ extern "C" JNIEXPORT void JNICALL Java_me_rerere_rdp_RdpSession_nativeRun(JNIEnv
     bool disconnectedOk=freerdp_disconnect(instance); (void)disconnectedOk;
     __android_log_print(ANDROID_LOG_INFO,"MiffanRdp","Freeing graphics");
     gdi_free(instance);
+    env->CallVoidMethod(owner, s->wakeReady, static_cast<jlong>(0));
     CloseHandle(s->event); delete s->decoder; delete s->clipboard; delete s->perf;
     active=nullptr; runtimeDirectory.clear();
     freerdp_context_free(instance); freerdp_free(instance);

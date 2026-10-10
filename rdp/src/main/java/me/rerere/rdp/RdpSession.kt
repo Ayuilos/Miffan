@@ -1,6 +1,7 @@
 package me.rerere.rdp
 
 import android.media.MediaCodec
+import android.graphics.Bitmap
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
@@ -63,8 +64,31 @@ class RdpSession(
     private var eof = false
     private var received = 0L
     private var sent = 0L
+    private var lastNetworkPublish = 0L
     @Volatile private var failure: Throwable? = null
     @Volatile private var paused = false
+    private val wakeLock = Any()
+    private var wakeHandle = 0L
+    private var wakeGeneration = 0L
+    private var observedGeneration = 0L
+    // The worker unregisters under this same lock before destroying the WinPR handle.
+    private fun signalWork() = synchronized(wakeLock) {
+        wakeGeneration++
+        if (wakeHandle != 0L) nativeSignal(wakeHandle)
+    }
+    private fun onWakeReady(handle: Long) = synchronized(wakeLock) {
+        wakeHandle = handle
+        if (handle != 0L) nativeSignal(handle)
+    }
+    private fun workAvailable(): Boolean {
+        val bytes = synchronized(bufferLock) { count > 0 || eof }
+        val changed = synchronized(wakeLock) {
+            (observedGeneration != wakeGeneration).also { observedGeneration = wakeGeneration }
+        }
+        return bytes || changed || isClosed()
+    }
+    private fun eventDriven() = options.eventDriven
+    private fun ackBeforeSink() = options.ackBeforeSink
     private val commands = ArrayBlockingQueue<IntArray>(4096)
     private var cancellation: Job? = null
     @Volatile private var reader: Thread? = null
@@ -107,16 +131,20 @@ class RdpSession(
         if (closed.get()) cancellation?.cancel()
     }
 
-    fun setPaused(paused: Boolean) { this.paused = paused }
+    fun setPaused(paused: Boolean) { this.paused = paused; signalWork() }
     fun pointer(x: Int, y: Int, buttons: Int) = enqueue(intArrayOf(1, x.coerceIn(0, 65535), y.coerceIn(0, 65535), buttons and 127))
     fun key(keysym: Int, down: Boolean) {
         RdpKeys.scancode(keysym)?.let { enqueue(intArrayOf(2, it, if (down) 1 else 0)) }
     }
     /** Rejects unsupported/long text atomically, without sending a prefix or closing the session. */
-    fun typeText(text: String): Boolean = synchronized(commands) {
-        if (closed.get() || !RdpText.canTypeDirectly(text) || commands.remainingCapacity() < text.length) return false
-        text.forEach { commands.offer(intArrayOf(3, it.code)) }
-        true
+    fun typeText(text: String): Boolean {
+        val accepted = synchronized(commands) {
+            if (closed.get() || !RdpText.canTypeDirectly(text) || commands.remainingCapacity() < text.length) return false
+            text.forEach { commands.offer(intArrayOf(3, it.code)) }
+            true
+        }
+        if (accepted) signalWork()
+        return accepted
     }
     fun sendClipboard(text: String) {
         RdpText.requireClipboardSize(text)
@@ -124,6 +152,7 @@ class RdpSession(
             if (closed.get()) return
             clipboardToSend = text // coalesce; keep at most one bounded clipboard in memory
         }
+        signalWork()
     }
     private fun takeClipboard(): String? = synchronized(commands) {
         clipboardToSend.also { clipboardToSend = null }
@@ -136,6 +165,7 @@ class RdpSession(
         if (!closed.get() && !commands.offer(command)) {
             failure = IllegalStateException("RDP input queue overflow")
         }
+        signalWork()
     }
 
     private fun pump() {
@@ -147,12 +177,20 @@ class RdpSession(
                 var offset = 0
                 synchronized(bufferLock) {
                     received += length
+                    // Receive counters also advance while the worker is decoding or no
+                    // EndPaint occurs. CAS updates preserve concurrently published timings.
+                    val now = System.nanoTime()
+                    if (options.liveNetworkStats && now - lastNetworkPublish >= 500_000_000L) {
+                        mutableStats.update { it.copy(bytesReceived = received) }
+                        lastNetworkPublish = now
+                    }
                     while (offset < length && !closed.get()) {
                         while (count == buffer.size && !closed.get()) bufferLock.wait()
                         val tail = (head + count) % buffer.size
                         val copy = minOf(length - offset, buffer.size - count, buffer.size - tail)
                         chunk.copyInto(buffer, tail, offset, offset + copy)
                         count += copy
+                        signalWork()
                         offset += copy
                         bufferLock.notifyAll()
                     }
@@ -162,6 +200,7 @@ class RdpSession(
             if (!closed.get()) failure = error
         } finally {
             synchronized(bufferLock) { eof = true; bufferLock.notifyAll() }
+            signalWork()
         }
     }
 
@@ -200,8 +239,18 @@ class RdpSession(
         mutableState.update { current ->
             if (current is RemoteScreenState.Closed) current else RemoteScreenState.Connected("RDP", width, height, 1)
         }
-        mutableStats.value = mutableStats.value.copy(security = security, width = width, height = height)
+        mutableStats.update { it.copy(security = security, width = width, height = height) }
     }
+    private fun acquireBitmap(width: Int, height: Int): Bitmap? {
+        if (!options.directBitmap || paused || closed.get()) return null
+        val direct = sink as? RdpBitmapFrameSink ?: return null
+        val bitmap = direct.acquireBitmap(width, height) ?: return null
+        if (!bitmap.isRecycled && bitmap.isMutable && bitmap.config == Bitmap.Config.ARGB_8888 &&
+            bitmap.width == width && bitmap.height == height) return bitmap
+        direct.releaseBitmap(bitmap)
+        return null
+    }
+    private fun releaseBitmap(bitmap: Bitmap) { (sink as RdpBitmapFrameSink).releaseBitmap(bitmap) }
     private fun onPixels(x: Int, y: Int, width: Int, height: Int, pixels: IntArray) {
         if (!paused && !closed.get()) sink.onPixels(RfbRect(x, y, width, height), pixels)
     }
@@ -217,7 +266,7 @@ class RdpSession(
         val hardware = if (decoder != null && Build.VERSION.SDK_INT >= 29) {
             MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { it.name == decoder }?.isHardwareAccelerated
         } else null
-        mutableStats.value = mutableStats.value.copy(encoding = encoding, decoder = decoder, h264HardwareAccelerated = hardware)
+        mutableStats.update { it.copy(encoding = encoding, decoder = decoder, h264HardwareAccelerated = hardware) }
     }
     // Called only on the RDP worker. Probe vendor parameters before configuring the NDK codec.
     // API 31 enumeration is essential for Codec2: never infer OMX-era keys from the name.
@@ -239,7 +288,7 @@ class RdpSession(
                 ?.getCapabilitiesForType("video/avc")
                 ?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
         }.getOrNull() else null
-        mutableStats.value = mutableStats.value.copy(lowLatencySupported = feature)
+        mutableStats.update { it.copy(lowLatencySupported = feature) }
         if (!options.lowLatency) return 0
         var flags = 1 // KEY_PRIORITY=0 (API 23+)
         if (feature == true) flags = flags or 2
@@ -264,12 +313,12 @@ class RdpSession(
         if (!closed.get() && failure == null) failure = IllegalStateException("MediaCodec timed out waiting for an RDP frame (5 seconds)")
     }
     private fun onDecoderConfiguration(configuration: String) {
-        mutableStats.value = mutableStats.value.copy(decoderConfiguration = configuration)
+        mutableStats.update { it.copy(decoderConfiguration = configuration) }
     }
     private var lastPerfLog = System.nanoTime()
     private fun onPerformance(values: DoubleArray) {
-        check(values.size == 22)
-        mutableStats.value = mutableStats.value.copy(
+        check(values.size == 54)
+        mutableStats.update { it.copy(
             decodeMs = values[0], decodeMeanMs = values[1], decodeMaxMs = values[2],
             decodedFrames = values[3].toLong(), decodeFramesPerSecond = values[4],
             inFlightFrames = values[5].toInt(), peakInFlightFrames = values[6].toInt(),
@@ -279,14 +328,25 @@ class RdpSession(
             surfaceToAckMs = values[14], surfaceToAckMeanMs = values[15], surfaceToAckMaxMs = values[16],
             neonYuv = values[17] == 1.0, pendingDecodeMs = values[18],
             ackQueueMs = values[19], ackQueueMeanMs = values[20], ackQueueMaxMs = values[21],
-        )
+            frameDataMs = values[22], frameDataMeanMs = values[23], frameDataMaxMs = values[24],
+            surfaceWorkMs = values[25], surfaceWorkMeanMs = values[26], surfaceWorkMaxMs = values[27],
+            loopWaitMs = values[28], loopWaitMeanMs = values[29], loopWaitMaxMs = values[30],
+            composeMs = values[31], composeMeanMs = values[32], composeMaxMs = values[33],
+            inputWaitMs = values[34], inputWaitMeanMs = values[35], inputWaitMaxMs = values[36],
+            outputWaitMs = values[37], outputWaitMeanMs = values[38], outputWaitMaxMs = values[39],
+            outputAccessMs = values[40], outputAccessMeanMs = values[41], outputAccessMaxMs = values[42],
+            outputReleaseMs = values[43], outputReleaseMeanMs = values[44], outputReleaseMaxMs = values[45],
+            inputQueueMs = values[46], inputQueueMeanMs = values[47], inputQueueMaxMs = values[48],
+            transportReadCalls = values[49].toLong(), transportReadBytes = values[50].toLong(), frameReadCalls = values[51].toLong(), directBitmapFrames = values[52].toLong(), ackBeforeSinkFrames = values[53].toLong(),
+        ) }
     }
     private fun publishStats() {
         val now = System.nanoTime()
         val elapsed = now - windowStart
+        if (options.liveNetworkStats) mutableStats.update { it.copy(bytesReceived = bytesReceived, bytesSent = sent) }
         if (elapsed < 500_000_000) return
-        mutableStats.value = mutableStats.value.copy(frames = frames, framesPerSecond = windowFrames * 1e9 / elapsed,
-            bytesReceived = synchronized(bufferLock) { received }, bytesSent = sent)
+        mutableStats.update { it.copy(frames = frames, framesPerSecond = windowFrames * 1e9 / elapsed,
+            bytesReceived = synchronized(bufferLock) { received }, bytesSent = sent) }
         if (now - lastPerfLog >= 2_000_000_000L) {
             val s = mutableStats.value
             fun ms(last: Double, mean: Double, max: Double) = String.format(Locale.ROOT, "%.2f/%.2f/%.2f", last, mean, max)
@@ -294,7 +354,12 @@ class RdpSession(
                 String.format(Locale.ROOT, "fps=%.2f decodeFps=%.2f ", s.framesPerSecond, s.decodeFramesPerSecond) +
                 "decodeMs(last/mean/max)=${ms(s.decodeMs,s.decodeMeanMs,s.decodeMaxMs)} inFlight=${s.inFlightFrames}/${s.peakInFlightFrames} pendingDecodeMs=${String.format(Locale.ROOT, "%.2f", s.pendingDecodeMs)} outputTimeouts=${s.outputWaitTimeouts} " +
                 "yuvMs=${ms(s.yuvToRgbMs,s.yuvToRgbMeanMs,s.yuvToRgbMaxMs)} neon=${s.neonYuv} sinkMs=${ms(s.sinkMs,s.sinkMeanMs,s.sinkMaxMs)} " +
-                "surfaceToAckMs=${ms(s.surfaceToAckMs,s.surfaceToAckMeanMs,s.surfaceToAckMaxMs)} ackQueueMs=${ms(s.ackQueueMs,s.ackQueueMeanMs,s.ackQueueMaxMs)}")
+                "surfaceToAckMs=${ms(s.surfaceToAckMs,s.surfaceToAckMeanMs,s.surfaceToAckMaxMs)} ackQueueMs=${ms(s.ackQueueMs,s.ackQueueMeanMs,s.ackQueueMaxMs)} " +
+                "frameDataMs=${ms(s.frameDataMs,s.frameDataMeanMs,s.frameDataMaxMs)} surfaceWorkMs=${ms(s.surfaceWorkMs,s.surfaceWorkMeanMs,s.surfaceWorkMaxMs)} " +
+                "loopWaitMs=${ms(s.loopWaitMs,s.loopWaitMeanMs,s.loopWaitMaxMs)} composeMs=${ms(s.composeMs,s.composeMeanMs,s.composeMaxMs)} " +
+                "inputWaitMs=${ms(s.inputWaitMs,s.inputWaitMeanMs,s.inputWaitMaxMs)} outputWaitMs=${ms(s.outputWaitMs,s.outputWaitMeanMs,s.outputWaitMaxMs)} " +
+                "outputAccessMs=${ms(s.outputAccessMs,s.outputAccessMeanMs,s.outputAccessMaxMs)} outputReleaseMs=${ms(s.outputReleaseMs,s.outputReleaseMeanMs,s.outputReleaseMaxMs)} " +
+                "inputQueueMs=${ms(s.inputQueueMs,s.inputQueueMeanMs,s.inputQueueMaxMs)} reads=${s.transportReadCalls} frameReads=${s.frameReadCalls} bitmapFrames=${s.directBitmapFrames} ackBeforeSinkFrames=${s.ackBeforeSinkFrames} rx=${s.bytesReceived}")
             lastPerfLog = now
         }
         windowFrames = 0
@@ -306,6 +371,7 @@ class RdpSession(
     /** Closes the owned transport to unblock both IO threads; native cleanup happens on the worker. */
     @Synchronized override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        signalWork()
         runCatching { transport.close() }
         synchronized(bufferLock) { bufferLock.notifyAll() }
         synchronized(commands) { commands.clear(); clipboardToSend = null }
@@ -318,6 +384,7 @@ class RdpSession(
         listOfNotNull(worker, reader).forEach { it.join(((deadline - System.nanoTime()) / 1_000_000).coerceAtLeast(1)) }
         return worker?.isAlive != true && reader?.isAlive != true
     }
+    private external fun nativeSignal(handle: Long)
     private external fun nativeRun(username: String, password: String, domain: String, width: Int, height: Int, security: Int, directory: String)
     private object Native { fun load() { System.loadLibrary("miffanrdp") } }
 }

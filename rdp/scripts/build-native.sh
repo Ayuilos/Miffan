@@ -16,7 +16,7 @@ check openssl-3.5.9.tar.gz 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c
 [[ -d "$DEPS/openssl-3.5.9" ]] || tar -xzf "$DEPS/openssl-3.5.9.tar.gz" -C "$DEPS"
 # Recreate only sources touched by patches from the already verified archive. Applying
 # all patches in order is reproducible and also handles edits to an existing patch.
-PATCHED_SOURCES=(libfreerdp/codec/h264_mediacodec.c channels/rdpgfx/client/rdpgfx_main.c)
+PATCHED_SOURCES=(libfreerdp/codec/h264_mediacodec.c channels/rdpgfx/client/rdpgfx_main.c libfreerdp/core/client.c)
 for SOURCE in "${PATCHED_SOURCES[@]}"; do
   tar -xzf "$DEPS/FreeRDP-3.32.1.tar.gz" -C "$DEPS" "FreeRDP-3.32.1/$SOURCE"
 done
