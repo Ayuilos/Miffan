@@ -2218,6 +2218,8 @@
   <string name="workspace_screen_stream_reason_local_network">у Miffan нет разрешения на доступ к локальной сети</string>
   <string name="workspace_screen_stream_reason_other">подключение не удалось</string>
   <string name="workspace_screen_stream_certificate_changed">Сертификат Sunshine на этом компьютере отличается от того, с которым выполнялось сопряжение. Если вы переустанавливали Sunshine или сбрасывали его учётные данные, можно доверять новому сертификату. Иначе кто-то может выдавать себя за этот компьютер.</string>
+  <string name="workspace_screen_stream_suggest">На этом компьютере можно включить режим высокой производительности для более плавного изображения.</string>
+  <string name="workspace_screen_stream_suggest_dismiss">Больше не предлагать</string>
   <string name="workspace_screen_rdp_gnome">Удалённый рабочий стол GNOME</string>
   <string name="workspace_screen_rdp_kde">Удалённый рабочий стол KDE (krdp)</string>
   <string name="workspace_screen_install_rdp">Установите %1$s на компьютер и проверьте ещё раз.</string>
@@ -2305,6 +2307,11 @@
   <string name="im_computer_choose">Выбрать компьютер</string>
   <string name="im_computer_clipboard">Буфер обмена (необязательно)</string>
   <string name="im_computer_clipboard_optional">Необязательно; установите инструмент для буфера обмена, чтобы вводить китайский и другие нелатинские тексты.</string>
+  <string name="im_computer_stream">Более плавное изображение</string>
+  <string name="im_computer_stream_optional">Необязательно. Если на компьютере установлен Sunshine, изображение плавнее и откликается быстрее.</string>
+  <string name="im_computer_stream_available">На этом компьютере есть Sunshine: изображение может быть плавнее и быстрее.</string>
+  <string name="im_computer_stream_enabled">Включено</string>
+  <string name="im_computer_stream_enable">Включить</string>
   <string name="im_computer_computer">компьютер</string>
   <string name="im_computer_connect">Подключить компьютер</string>
   <string name="im_computer_connect_for">Подключить компьютер для %1$s</string>

@@ -2218,6 +2218,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_stream_reason_local_network">Miffan にローカルネットワークへのアクセス権限がありません</string>
   <string name="workspace_screen_stream_reason_other">接続に失敗しました</string>
   <string name="workspace_screen_stream_certificate_changed">このパソコンの Sunshine の証明書が、ペアリングしたときのものと違います。Sunshine を再インストールしたり認証情報をリセットしたりした場合は、新しい証明書を信頼できます。そうでなければ、何かがこのパソコンになりすましている可能性があります。</string>
+  <string name="workspace_screen_stream_suggest">このパソコンは高性能モードでより滑らかに表示できます。</string>
+  <string name="workspace_screen_stream_suggest_dismiss">今後表示しない</string>
   <string name="workspace_screen_rdp_gnome">GNOME リモートデスクトップ</string>
   <string name="workspace_screen_rdp_kde">KDE リモートデスクトップ（krdp）</string>
   <string name="workspace_screen_install_rdp">コンピューターに %1$s をインストールしてから、もう一度確認してください。</string>
@@ -2305,6 +2307,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_choose">コンピューターを選択</string>
   <string name="im_computer_clipboard">クリップボード（任意）</string>
   <string name="im_computer_clipboard_optional">任意です。クリップボードツールをインストールすると、中国語などのラテン文字以外を入力できます。</string>
+  <string name="im_computer_stream">より滑らかな画面</string>
+  <string name="im_computer_stream_optional">任意。パソコンに Sunshine を入れると、画面がより滑らかになり遅延も減ります。</string>
+  <string name="im_computer_stream_available">このパソコンには Sunshine があり、画面をより滑らかに、遅延を少なくできます。</string>
+  <string name="im_computer_stream_enabled">有効</string>
+  <string name="im_computer_stream_enable">有効にする</string>
   <string name="im_computer_computer">コンピューター</string>
   <string name="im_computer_connect">コンピューターを接続</string>
   <string name="im_computer_connect_for">%1$s 用のコンピューターを接続</string>

@@ -31,6 +31,7 @@ import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
@@ -84,6 +85,8 @@ data class ComputerSetupState(
     val hostKeyChanged: Boolean = false,
     val workspaceId: String? = null,
     val probe: RemoteMachineProbe? = null,
+    /** The host identity [probe] was read from; high-performance setup refuses a different one. */
+    val hostRevision: String? = null,
     val install: RemoteCommandOutcome? = null,
     /** macOS grants of the remote cua-driver; null on Linux or before checking. */
     val permissions: ComputerPermissions? = null,
@@ -166,6 +169,21 @@ class ComputerSetupVM(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var job: Job? = null
+
+    private val streamSetup = RemoteStreamSetupController(screens, viewModelScope)
+    /** Optional high-performance mode for the computer being set up; see [RemoteStreamSetupController]. */
+    val streamSetups = streamSetup.states
+
+    private fun withProbedHost(action: (hostId: String, revision: String) -> Unit) {
+        val state = _state.value
+        action(state.hostId ?: return, state.hostRevision ?: return)
+    }
+    fun checkStream() = withProbedHost(streamSetup::check)
+    fun pairStream() = withProbedHost(streamSetup::pair)
+    fun cancelStreamPairing() = streamSetup.cancelPairing()
+    /** Called only from the confirmation that shows exactly what changes on the computer. */
+    fun enforceStreamEncryption() = withProbedHost(streamSetup::enforceEncryption)
+    fun enableStream() = withProbedHost { hostId, _ -> streamSetup.setEnabled(hostId, true) }
 
     init {
         if (args.hostId != null && !args.edit) chooseHost(args.hostId)
@@ -364,7 +382,9 @@ class ComputerSetupVM(
         _state.update { it.copy(task = ComputerSetupTask.PREPARING) }
         val host = currentHost()
         val probe = screens.probeHost(host.id, host.connectionRevision)
-        _state.update { it.copy(probe = probe, step = ComputerSetupStep.PREPARE) }
+        _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision, step = ComputerSetupStep.PREPARE) }
+        // Sunshine is optional and Linux-only for now; its check runs beside the required ones.
+        if (probe.os == "linux") streamSetup.check(host.id, host.connectionRevision)
     }
 
     private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path

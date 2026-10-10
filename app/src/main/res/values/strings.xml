@@ -2258,6 +2258,8 @@
   <string name="workspace_screen_stream_reason_local_network" tools:ignore="MissingTranslation">Miffan has no permission to reach the local network</string>
   <string name="workspace_screen_stream_reason_other" tools:ignore="MissingTranslation">the connection failed</string>
   <string name="workspace_screen_stream_certificate_changed" tools:ignore="MissingTranslation">This computer\'s Sunshine certificate is not the one you paired with. If you reinstalled Sunshine or reset its credentials, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
+  <string name="workspace_screen_stream_suggest" tools:ignore="MissingTranslation">This computer can show a smoother picture with high-performance mode.</string>
+  <string name="workspace_screen_stream_suggest_dismiss" tools:ignore="MissingTranslation">Don\'t suggest again</string>
   <string name="workspace_screen_rdp_gnome" tools:ignore="MissingTranslation">GNOME Remote Desktop</string>
   <string name="workspace_screen_rdp_kde" tools:ignore="MissingTranslation">KDE Remote Desktop (krdp)</string>
   <string name="workspace_screen_install_rdp" tools:ignore="MissingTranslation">Install %1$s on the computer, then check again.</string>
@@ -2347,6 +2349,11 @@
   <string name="im_computer_choose" tools:ignore="MissingTranslation">Choose a computer</string>
   <string name="im_computer_clipboard" tools:ignore="MissingTranslation">Clipboard (optional)</string>
   <string name="im_computer_clipboard_optional" tools:ignore="MissingTranslation">Optional; install a clipboard tool to type Chinese and other non-Latin text.</string>
+  <string name="im_computer_stream" tools:ignore="MissingTranslation">Smoother picture</string>
+  <string name="im_computer_stream_optional" tools:ignore="MissingTranslation">Optional. With Sunshine installed on the computer, the picture is smoother and responds faster.</string>
+  <string name="im_computer_stream_available" tools:ignore="MissingTranslation">Sunshine is on this computer and can make the picture smoother and faster.</string>
+  <string name="im_computer_stream_enabled" tools:ignore="MissingTranslation">On</string>
+  <string name="im_computer_stream_enable" tools:ignore="MissingTranslation">Turn on</string>
   <string name="im_computer_computer" tools:ignore="MissingTranslation">computer</string>
   <string name="im_computer_connect" tools:ignore="MissingTranslation">Connect computer</string>
   <string name="im_computer_connect_for" tools:ignore="MissingTranslation">Connect a computer for %1$s</string>

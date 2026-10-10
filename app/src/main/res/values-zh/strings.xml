@@ -2250,6 +2250,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_stream_reason_local_network">Miffan 没有访问局域网的权限</string>
   <string name="workspace_screen_stream_reason_other">连接失败</string>
   <string name="workspace_screen_stream_certificate_changed">这台电脑的 Sunshine 证书和配对时的不一样了。如果你重装过 Sunshine 或重置过它的凭据，可以信任新证书；否则可能有别的东西在冒充这台电脑。</string>
+  <string name="workspace_screen_stream_suggest">这台电脑可以开启高性能模式，画面更流畅。</string>
+  <string name="workspace_screen_stream_suggest_dismiss">不再提示</string>
   <string name="workspace_screen_rdp_gnome">GNOME 远程桌面</string>
   <string name="workspace_screen_rdp_kde">KDE 远程桌面（krdp）</string>
   <string name="workspace_screen_install_rdp">请在电脑上安装 %1$s，然后重新检测。</string>
@@ -2339,6 +2341,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_choose">选择一台电脑</string>
   <string name="im_computer_clipboard">剪贴板（可选）</string>
   <string name="im_computer_clipboard_optional">不影响继续；安装剪贴板工具后才能输入中文等非拉丁文字。</string>
+  <string name="im_computer_stream">更流畅的画面</string>
+  <string name="im_computer_stream_optional">可选。电脑上装了 Sunshine 后，画面会更流畅、延迟更低。</string>
+  <string name="im_computer_stream_available">这台电脑装了 Sunshine，可以让画面更流畅、延迟更低。</string>
+  <string name="im_computer_stream_enabled">已启用</string>
+  <string name="im_computer_stream_enable">启用</string>
   <string name="im_computer_computer">电脑</string>
   <string name="im_computer_connect">连接电脑</string>
   <string name="im_computer_connect_for">为 %1$s 连接电脑</string>

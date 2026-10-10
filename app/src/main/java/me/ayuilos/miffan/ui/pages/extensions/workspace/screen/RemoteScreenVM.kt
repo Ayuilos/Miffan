@@ -27,6 +27,7 @@ import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.repository.RemoteScreenConnection
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
 import me.ayuilos.miffan.data.repository.RemoteStreamFallback
 import me.ayuilos.miffan.data.repository.RemoteSurfaceTarget
@@ -98,6 +99,7 @@ sealed interface RemoteCursor {
 class RemoteScreenVM(
     private val args: RemoteScreenArgs,
     private val repository: RemoteScreenRepository,
+    private val workspaces: WorkspaceRepository,
     private val control: RemoteComputerControl,
     context: Context,
 ) : ViewModel() {
@@ -151,6 +153,19 @@ class RemoteScreenVM(
     private val _streamStats = MutableStateFlow<StreamStats?>(null)
     /** The stream's own numbers; null unless [video] is set. */
     val streamStats: StateFlow<StreamStats?> = _streamStats.asStateFlow()
+
+    private val streamSetup = RemoteStreamSetupController(repository, viewModelScope)
+    /** Sunshine on this computer, read once to suggest high-performance mode; see [streamSuggestion]. */
+    val streamSetups = streamSetup.states
+
+    private val hints = appContext.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE)
+    private val _streamSuggestion = MutableStateFlow<StreamSuggestion?>(null)
+    /**
+     * Set when a plain VNC/RDP connection runs on a Linux computer whose Sunshine could make it
+     * smoother; the page shows a dismissible suggestion while the check says so.
+     */
+    val streamSuggestion: StateFlow<StreamSuggestion?> = _streamSuggestion.asStateFlow()
+    private var streamChecked = false
 
     /** Frames the canvas actually drew; the overlay compares it with decoded updates. */
     val framesDrawn = java.util.concurrent.atomic.AtomicLong()
@@ -301,6 +316,37 @@ class RemoteScreenVM(
         }
     }
 
+    /** Reads Sunshine once per page, only for plain connections the user has not declined to improve. */
+    private fun suggestStream(opened: RemoteScreenConnection) {
+        if (streamChecked || opened.session.surface != null || opened.streamFallback != null) return
+        if (opened.platform != RemoteScreenPlatform.LINUX || hints.getBoolean(streamDismissedKey(opened.hostId), false)) return
+        streamChecked = true
+        viewModelScope.launch {
+            val host = runCatching { workspaces.getHostById(opened.hostId) }.getOrNull() ?: return@launch
+            _streamSuggestion.value = StreamSuggestion(host.id, host.connectionRevision)
+            streamSetup.check(host.id, host.connectionRevision)
+        }
+    }
+
+    fun dismissStreamSuggestion() {
+        val suggestion = _streamSuggestion.value ?: return
+        hints.edit().putBoolean(streamDismissedKey(suggestion.hostId), true).apply()
+        _streamSuggestion.value = null
+    }
+
+    fun pairStream() = _streamSuggestion.value?.let { streamSetup.pair(it.hostId, it.revision) }
+    fun cancelStreamPairing() = streamSetup.cancelPairing()
+    /** Called only from the confirmation that shows exactly what changes on the computer. */
+    fun enforceStreamEncryption() = _streamSuggestion.value?.let { streamSetup.enforceEncryption(it.hostId, it.revision) }
+    fun enableStream() = _streamSuggestion.value?.let { streamSetup.setEnabled(it.hostId, true) }
+
+    /** The suggestion's flow ended; once the mode is on, reconnect to use it. */
+    fun finishStreamSuggestion(enabled: Boolean) {
+        if (!enabled) return
+        _streamSuggestion.value = null
+        reconnect()
+    }
+
     fun setMaxFps(fps: Int) {
         _maxFps.value = fps
         connection?.session?.setMaxFps(fps)
@@ -420,6 +466,7 @@ class RemoteScreenVM(
                         is RemoteScreenState.Connected -> {
                             serverWidth = state.width
                             serverHeight = state.height
+                            suggestStream(opened)
                             _state.value = RemoteScreenUiState.Connected(
                                 state.name, (state.width + state.scale - 1) / state.scale,
                                 (state.height + state.scale - 1) / state.scale,
@@ -495,6 +542,14 @@ class RemoteScreenVM(
         }
     }
 }
+
+/** The host a [RemoteScreenVM.streamSuggestion] is about, and the identity it was checked against. */
+data class StreamSuggestion(val hostId: String, val revision: String)
+
+private fun streamDismissedKey(hostId: String) = "stream_suggestion_dismissed_$hostId"
+
+/** Shared with the page's one-time hints. */
+internal const val SCREEN_HINTS = "remote_screen_hints"
 
 private const val INITIAL_CLIPBOARD_MILLIS = 3_000L
 private const val PERF_TAG = "RemoteScreenPerf"

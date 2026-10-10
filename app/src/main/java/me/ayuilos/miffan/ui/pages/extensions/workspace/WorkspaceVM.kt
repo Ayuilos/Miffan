@@ -19,9 +19,7 @@ import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnvironmentPhase
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnvironmentState
-import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupPhase
-import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupState
-import me.ayuilos.miffan.data.repository.RemoteStreamPairing
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RootfsInstallProgress
@@ -67,77 +65,17 @@ class WorkspaceVM(
         }
     }
 
-    private val _streamSetups = MutableStateFlow<Map<String, RemoteStreamSetupState>>(emptyMap())
-    /** High-performance mode setup per host; see [RemoteStreamSetupState]. */
-    val streamSetups = _streamSetups.asStateFlow()
-    private var pairing: RemoteStreamPairing? = null
-    private var pairingCancelled = false
+    private val streamSetup = RemoteStreamSetupController(screenRepository, viewModelScope)
+    /** High-performance mode setup per host; see [RemoteStreamSetupController]. */
+    val streamSetups = streamSetup.states
 
-    private fun updateStreamSetup(hostId: String, change: (RemoteStreamSetupState) -> RemoteStreamSetupState) =
-        _streamSetups.update { it + (hostId to change(it[hostId] ?: RemoteStreamSetupState())) }
-
-    /** Reads Sunshine's state on the computer: installed, running, encryption, pairing. */
-    fun checkStream(host: RemoteHostEntity) {
-        val previous = _streamSetups.value[host.id] ?: RemoteStreamSetupState()
-        if (previous.busy) return
-        // A result from an earlier host identity must not describe the edited host.
-        val retained = if (previous.connectionRevision == host.connectionRevision) previous else RemoteStreamSetupState()
-        _streamSetups.update { it + (host.id to retained.copy(connectionRevision = host.connectionRevision,
-            phase = RemoteStreamSetupPhase.CHECKING, error = null)) }
-        runOperation({ screenRepository.streamStatus(host.id, host.connectionRevision) }) { result ->
-            updateStreamSetup(host.id) { it.copy(phase = RemoteStreamSetupPhase.IDLE,
-                status = result.getOrNull(), error = result.exceptionOrNull()) }
-        }
-    }
-
-    /** Starts pairing; the PIN appears in [streamSetups] until the user types it into Sunshine. */
-    fun pairStream(host: RemoteHostEntity) {
-        val previous = _streamSetups.value[host.id] ?: return
-        if (previous.busy || previous.connectionRevision != host.connectionRevision) return
-        updateStreamSetup(host.id) { it.copy(phase = RemoteStreamSetupPhase.PAIRING, pin = null, pairingError = null, paired = false) }
-        pairingCancelled = false
-        viewModelScope.launch {
-            val result = try {
-                screenRepository.startStreamPairing(host.id, host.connectionRevision).use { started ->
-                    pairing = started
-                    updateStreamSetup(host.id) { it.copy(pin = started.pin) }
-                    Result.success(started.await())
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                Result.failure(error)
-            } finally {
-                pairing = null
-            }
-            // Closing the PIN dialog is not a failure worth reporting.
-            updateStreamSetup(host.id) { it.copy(phase = RemoteStreamSetupPhase.IDLE, pin = null,
-                pairingError = result.exceptionOrNull()?.takeUnless { pairingCancelled }, paired = result.isSuccess) }
-            if (result.isSuccess) checkStream(host)
-        }
-    }
-
-    /** The user closed the PIN dialog: stop waiting for Sunshine. */
-    fun cancelStreamPairing() {
-        pairingCancelled = true
-        pairing?.close()
-    }
-
+    fun checkStream(host: RemoteHostEntity) = streamSetup.check(host.id, host.connectionRevision)
+    fun pairStream(host: RemoteHostEntity) = streamSetup.pair(host.id, host.connectionRevision)
+    fun cancelStreamPairing() = streamSetup.cancelPairing()
     /** Called only from the confirmation that shows exactly what changes on the computer. */
-    fun enforceStreamEncryption(host: RemoteHostEntity) {
-        val previous = _streamSetups.value[host.id] ?: return
-        if (previous.busy || previous.connectionRevision != host.connectionRevision) return
-        updateStreamSetup(host.id) { it.copy(phase = RemoteStreamSetupPhase.ENFORCING, enforcement = null, enforcementError = null) }
-        runOperation({ screenRepository.enforceStreamEncryption(host.id, host.connectionRevision) }) { result ->
-            updateStreamSetup(host.id) { it.copy(phase = RemoteStreamSetupPhase.IDLE,
-                enforcement = result.getOrNull(), enforcementError = result.exceptionOrNull()) }
-            checkStream(host)
-        }
-    }
-
-    fun setStreamEnabled(hostId: String, enabled: Boolean, onResult: (Result<Boolean>) -> Unit) {
-        runOperation({ screenRepository.setStreamEnabled(hostId, enabled) }, onResult)
-    }
+    fun enforceStreamEncryption(host: RemoteHostEntity) = streamSetup.enforceEncryption(host.id, host.connectionRevision)
+    fun setStreamEnabled(hostId: String, enabled: Boolean, onResult: (Result<Boolean>) -> Unit) =
+        streamSetup.setEnabled(hostId, enabled, onResult)
 
     /** Called only by the environment panel's explicit install/upgrade confirmation. */
     fun installScreenCuaDriver(host: RemoteHostEntity, upgradePath: String?) {

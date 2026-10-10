@@ -118,32 +118,75 @@ internal fun RemoteStreamSettings(
         TextButton(enabled = !busy, onClick = { vm.checkStream(host) }) { Text(stringResource(R.string.workspace_screen_stream_check)) }
     }
     if (confirmEncryption && status != null) {
-        AlertDialog(
-            onDismissRequest = { confirmEncryption = false },
-            title = { Text(stringResource(R.string.workspace_screen_stream_enforce_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(stringResource(R.string.workspace_screen_stream_enforce_disclosure))
-                    if (status.activeStream) Text(stringResource(R.string.workspace_screen_stream_enforce_busy), color = MaterialTheme.colorScheme.error)
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = !busy && !status.activeStream, onClick = {
-                    confirmEncryption = false
-                    vm.enforceStreamEncryption(host)
-                }) { Text(stringResource(R.string.workspace_screen_stream_enforce)) }
-            },
-            dismissButton = { TextButton(onClick = { confirmEncryption = false }) { Text(stringResource(R.string.common_cancel)) } },
-        )
+        RemoteStreamEncryptionDialog(activeStream = status.activeStream, enabled = !busy,
+            onConfirm = { confirmEncryption = false; vm.enforceStreamEncryption(host) },
+            onDismiss = { confirmEncryption = false })
     }
     if (state.phase == RemoteStreamSetupPhase.PAIRING && state.connectionRevision == host.connectionRevision) {
         RemoteStreamPairingDialog(pin = state.pin, onCancel = vm::cancelStreamPairing)
     }
 }
 
+/** States exactly what changes in Sunshine before the user allows it. */
+@Composable
+internal fun RemoteStreamEncryptionDialog(activeStream: Boolean, enabled: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.workspace_screen_stream_enforce_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.workspace_screen_stream_enforce_disclosure))
+                if (activeStream) Text(stringResource(R.string.workspace_screen_stream_enforce_busy), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = enabled && !activeStream, onClick = onConfirm) { Text(stringResource(R.string.workspace_screen_stream_enforce)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
+/**
+ * One "Enable" for people who do not want the details: require encryption (after the user
+ * confirms exactly that change), pair, then switch the mode on. Each step runs at most once, so
+ * a refused confirmation, a cancelled PIN or a failure ends the flow through [onFinished].
+ */
+@Composable
+internal fun RemoteStreamEnableFlow(
+    state: RemoteStreamSetupState,
+    onEnforce: () -> Unit,
+    onPair: () -> Unit,
+    onCancelPairing: () -> Unit,
+    onEnable: () -> Unit,
+    /** True when high-performance mode ended up switched on. */
+    onFinished: (Boolean) -> Unit,
+) {
+    var askEncryption by remember { mutableStateOf(false) }
+    var enforced by remember { mutableStateOf(false) }
+    var paired by remember { mutableStateOf(false) }
+    var switched by remember { mutableStateOf(false) }
+    val status = state.status
+    LaunchedEffect(state.phase, status, state.enabled) {
+        if (state.busy || status == null || askEncryption) return@LaunchedEffect
+        when {
+            !status.installed || !status.running -> onFinished(false)
+            !status.encryptionEnforced -> if (enforced) onFinished(false) else askEncryption = true
+            !status.paired -> if (paired) onFinished(false) else { paired = true; onPair() }
+            state.enabled != true -> if (switched) onFinished(false) else { switched = true; onEnable() }
+            else -> onFinished(true)
+        }
+    }
+    if (askEncryption && status != null) {
+        RemoteStreamEncryptionDialog(activeStream = status.activeStream, enabled = !state.busy,
+            onConfirm = { askEncryption = false; enforced = true; onEnforce() },
+            onDismiss = { askEncryption = false; onFinished(false) })
+    }
+    if (state.phase == RemoteStreamSetupPhase.PAIRING) RemoteStreamPairingDialog(pin = state.pin, onCancel = onCancelPairing)
+}
+
 /** Shows the PIN to type into Sunshine's web page and waits; only cancelling closes it early. */
 @Composable
-private fun RemoteStreamPairingDialog(pin: String?, onCancel: () -> Unit) {
+internal fun RemoteStreamPairingDialog(pin: String?, onCancel: () -> Unit) {
     AlertDialog(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),

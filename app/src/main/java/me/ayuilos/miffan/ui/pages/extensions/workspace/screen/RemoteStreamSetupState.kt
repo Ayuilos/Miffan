@@ -11,6 +11,8 @@ data class RemoteStreamSetupState(
     val connectionRevision: String? = null,
     val phase: RemoteStreamSetupPhase = RemoteStreamSetupPhase.IDLE,
     val status: RemoteStreamStatus? = null,
+    /** The saved high-performance switch for this host, read with [status]. */
+    val enabled: Boolean? = null,
     val error: Throwable? = null,
     /** The PIN to type into Sunshine while [phase] is PAIRING. */
     val pin: String? = null,
@@ -21,6 +23,9 @@ data class RemoteStreamSetupState(
     val enforcementError: Throwable? = null,
 ) {
     val busy: Boolean get() = phase != RemoteStreamSetupPhase.IDLE
+
+    /** Sunshine on this computer is fully usable: running, encrypted, this phone paired. */
+    val streamReady: Boolean get() = status?.let { it.installed && it.running && it.encryptionEnforced && it.paired } == true
 }
 
 enum class RemoteStreamSetupPhase { IDLE, CHECKING, PAIRING, ENFORCING }

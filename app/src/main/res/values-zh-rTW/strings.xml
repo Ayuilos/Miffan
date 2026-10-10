@@ -2216,6 +2216,8 @@
   <string name="workspace_screen_stream_reason_local_network">Miffan 沒有存取區域網路的權限</string>
   <string name="workspace_screen_stream_reason_other">連線失敗</string>
   <string name="workspace_screen_stream_certificate_changed">這台電腦的 Sunshine 憑證和配對時的不一樣了。如果你重新安裝過 Sunshine 或重設過它的憑證資料，可以信任新憑證；否則可能有其他東西在冒充這台電腦。</string>
+  <string name="workspace_screen_stream_suggest">這台電腦可以開啟高效能模式，畫面更流暢。</string>
+  <string name="workspace_screen_stream_suggest_dismiss">不再提示</string>
   <string name="workspace_screen_rdp_gnome">GNOME 遠端桌面</string>
   <string name="workspace_screen_rdp_kde">KDE 遠端桌面（krdp）</string>
   <string name="workspace_screen_install_rdp">請在電腦上安裝 %1$s，然後重新檢查。</string>
@@ -2303,6 +2305,11 @@
   <string name="im_computer_choose">選擇一台電腦</string>
   <string name="im_computer_clipboard">剪貼簿（選用）</string>
   <string name="im_computer_clipboard_optional">不影響繼續；安裝剪貼簿工具後，才能輸入中文等非拉丁文字。</string>
+  <string name="im_computer_stream">更流暢的畫面</string>
+  <string name="im_computer_stream_optional">可選。電腦上裝了 Sunshine 後，畫面會更流暢、延遲更低。</string>
+  <string name="im_computer_stream_available">這台電腦裝了 Sunshine，可以讓畫面更流暢、延遲更低。</string>
+  <string name="im_computer_stream_enabled">已啟用</string>
+  <string name="im_computer_stream_enable">啟用</string>
   <string name="im_computer_computer">電腦</string>
   <string name="im_computer_connect">連接電腦</string>
   <string name="im_computer_connect_for">為 %1$s 連接電腦</string>

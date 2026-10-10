@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -249,8 +250,11 @@ internal fun RemoteScreenScaffold(
                         onUseAutomatic = if (canUseAutomatic) vm::useAutomaticConnection else null,
                     )
                 }
-                RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy)
+                    RemoteStreamSuggestion(vm)
+                }
                 if (perfOverlay) RemoteScreenStatsOverlay(vm, Modifier.align(Alignment.BottomStart).padding(8.dp))
             }
             if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = macOS)
@@ -266,6 +270,5 @@ private val STREAM_SETTINGS_FIXES = setOf(
     RemoteStreamFallbackReason.NOT_PAIRED, RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED,
 )
 
-private const val SCREEN_HINTS = "remote_screen_hints"
 private const val PERF_OVERLAY = "perf_overlay"
 

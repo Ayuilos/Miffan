@@ -2218,6 +2218,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_stream_reason_local_network">Miffan에 로컬 네트워크 접근 권한이 없습니다</string>
   <string name="workspace_screen_stream_reason_other">연결에 실패했습니다</string>
   <string name="workspace_screen_stream_certificate_changed">이 컴퓨터의 Sunshine 인증서가 페어링할 때와 다릅니다. Sunshine을 다시 설치했거나 자격 증명을 초기화했다면 새 인증서를 신뢰해도 됩니다. 그렇지 않다면 무언가가 이 컴퓨터를 사칭하고 있을 수 있습니다.</string>
+  <string name="workspace_screen_stream_suggest">이 컴퓨터는 고성능 모드로 더 부드러운 화면을 볼 수 있습니다.</string>
+  <string name="workspace_screen_stream_suggest_dismiss">다시 제안하지 않기</string>
   <string name="workspace_screen_rdp_gnome">GNOME 원격 데스크톱</string>
   <string name="workspace_screen_rdp_kde">KDE 원격 데스크톱(krdp)</string>
   <string name="workspace_screen_install_rdp">컴퓨터에 %1$s을(를) 설치한 뒤 다시 확인하세요.</string>
@@ -2305,6 +2307,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_choose">컴퓨터 선택</string>
   <string name="im_computer_clipboard">클립보드(선택 사항)</string>
   <string name="im_computer_clipboard_optional">선택 사항 · 중국어 등 라틴 문자 이외의 텍스트를 입력하려면 클립보드 도구를 설치하세요.</string>
+  <string name="im_computer_stream">더 부드러운 화면</string>
+  <string name="im_computer_stream_optional">선택 사항입니다. 컴퓨터에 Sunshine을 설치하면 화면이 더 부드럽고 지연이 줄어듭니다.</string>
+  <string name="im_computer_stream_available">이 컴퓨터에 Sunshine이 있어 화면을 더 부드럽고 빠르게 만들 수 있습니다.</string>
+  <string name="im_computer_stream_enabled">사용 중</string>
+  <string name="im_computer_stream_enable">켜기</string>
   <string name="im_computer_computer">컴퓨터</string>
   <string name="im_computer_connect">컴퓨터 연결</string>
   <string name="im_computer_connect_for">%1$s용 컴퓨터 연결</string>
