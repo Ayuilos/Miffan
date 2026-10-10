@@ -14,7 +14,7 @@
 #                           inspect Sunshine; explicit backed-up encryption enforcement
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=12
+MIFFAN_HELPER_VERSION=13
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -288,7 +288,9 @@ clip() {
     # wl-copy and xclip stay in the background to own the selection; detach them from our
     # stdout/stderr or the SSH channel would stay open until they exit.
     case "$tool" in
-        */wl-copy) wl-copy >/dev/null 2>&1 ;;
+        # wl-copy guesses the type from the content and labels one character as
+        # application/octet-stream, which browsers will not paste; always offer text.
+        */wl-copy) wl-copy --type 'text/plain;charset=utf-8' >/dev/null 2>&1 ;;
         xclip) xclip -selection clipboard >/dev/null 2>&1 ;;
         xsel) xsel --clipboard --input >/dev/null 2>&1 ;;
         # pbcopy decodes stdin by locale; an SSH command has no LANG, and then it stores nothing.
