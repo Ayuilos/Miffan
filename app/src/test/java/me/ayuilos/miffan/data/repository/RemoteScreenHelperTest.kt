@@ -50,6 +50,18 @@ class RemoteScreenHelperTest {
         assertEquals(me.rerere.rdp.RdpSecurity.NLA, rdpSecurityForServer("gnome-remote-desktop"))
         assertEquals(me.rerere.rdp.RdpSecurity.TLS, rdpSecurityForServer("krdp"))
     }
+    @Test fun kdeCredentialFailureRejectsEndpointAndPreservesDesktopWithoutLeakingDiagnostics() {
+        for (code in listOf("keyring_locked", "credential_setup_unavailable")) {
+            val error = assertThrows(RemoteScreenUnavailableException::class.java) {
+                parseRdpStart("""{"server":"krdp","port":45891,"username":"miffan-1001","mode":"user","desktop":"KDE:Plasma","error":"$code","log":"raw-secret-tool-output","certificate_sha256":"${"ab".repeat(32)}"}""")
+            }
+            assertEquals(if (code == "keyring_locked") RemoteScreenProblem.RDP_KEYRING_LOCKED
+                else RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE, error.problem)
+            assertEquals("KDE:Plasma", error.desktop)
+            assertNull(error.detail)
+            assertFalse(error.message.orEmpty().contains("raw-secret-tool-output"))
+        }
+    }
     @Test fun fingerprintNormalizationIsStrict() {
         assertEquals("ab".repeat(32), normalizeRdpFingerprint("AB:".repeat(31) + "AB"))
         for (bad in listOf("", "ab", "gg".repeat(32), "ab".repeat(33)))

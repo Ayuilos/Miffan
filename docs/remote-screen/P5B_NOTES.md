@@ -86,3 +86,33 @@ VNC 对照使用本地完整 RFB 3.8/None 握手，经实际 SSH direct-tcpip �
 Android instrumentation 使用原 P5b 手机内测试公钥和临时 host/workspace，并断言各轮复用同一个 SSH 对象，经 SSH cat channel 完成五次主线程 StrictMode detectNetwork + penaltyDeathOnNetwork 下 close→立即 execute/open，全部通过；只测试共用 SSH 关闭/池复用，不代替完整 RDP 界面验收。未运行 helper rdp start、未改远端桌面、钱包、密码或 TLS 文件。测试后清理临时数据库对象，界面主机和原证书 pin 保留。
 
 追加回归构建：`./gradlew test :app:assembleDebug :app:assembleDebugAndroidTest` 通过；App 667 项、workspace 179 项（SSH 传输测试 15 项，含两项新用例）零失败。emulator-5560 已安装本次 debug APK；完整 RDP 菜单 Reconnect 由 Claude 接续复测。
+
+## KDE Secret Service 修复（helper v9，2026-10-10）
+
+根因依据本次真机复现记录：混装 GNOME/KDE 时，PAM 启动的 gnome-keyring-daemon 先获得 `org.freedesktop.secrets`，默认 login 集合已解锁；ksecretd 的 kdewallet 虽也已解锁，却不是该总线名的提供者。KWallet 6.30 的 kwalletd6 是 Secret Service 之上的兼容外壳，在当前提供者中找不到 kdewallet，所以旧 helper 的 `networkWallet/isOpen` 判断及 kwallet-query 写入失败。`keyring_locked` 在这里实际指向了错误的钱包路径。
+
+helper 升至 v9，KDE 改用 `gdbus` 对当前 `org.freedesktop.secrets` 调用 `ReadAlias("default")`，再查询返回集合的 `org.freedesktop.Secret.Collection.Locked`。只接受存在的持久集合及明确的布尔 false；默认别名缺失、锁定、D-Bus/属性查询失败或格式不符返回 `keyring_locked`，session 集合也不作后备。不创建集合、不初始化无密码钱包、不主动调用 Unlock。缺少 secret-tool/gdbus 等必要工具返回 `credential_setup_unavailable`。本次没有扩展 probe 输出或修改 GNOME 路径。
+
+写入通过 `printf '%s' "$rdp_secret" | timeout 5 secret-tool store`，属性如下；密码不进入 argv、环境变量、配置或日志。secret-tool 非 TTY 路径读取整个 stdin，不剥离换行，因此这里必须用无末尾换行的 printf。
+
+| 属性 | 值及来源 |
+| --- | --- |
+| `xdg:schema` | `org.qt.keychain`，QtKeychain 的 schema 名 |
+| `user` | `miffan-<uid>`，即 krdp 的 `ReadPasswordJob` key |
+| `server` | `KRDP`，即 `ReadPasswordJob("KRDP")` service |
+| `type` | `plaintext`，QtKeychain 文本密码的首轮查找类型；不是 `password` 或 `base64` |
+
+已按 [QtKeychain 0.17 libsecret.cpp](https://github.com/frankosterfeld/qtkeychain/blob/0.17.0/qtkeychain/libsecret.cpp#L8) 的 schema、`findPassword`（L185–203）及 `writePassword`（L211–232）逐项核对。schema 使用 `SECRET_SCHEMA_DONT_MATCH_NAME`，所以读取按 user/server/type 匹配、不要求 xdg:schema；写入仍显式保存 QtKeychain 的 schema 元属性，与其正常写入格式一致。libsecret 的 [属性序列化](https://github.com/GNOME/libsecret/blob/0.21.7/libsecret/secret-attributes.c#L19) 负责写入 xdg:schema；[krdp 6.7.5 main.cpp](https://github.com/KDE/krdp/blob/v6.7.5/server/main.cpp#L94) 确认 service 为 KRDP、key 为配置用户名。[QtKeychain 后端选择](https://github.com/frankosterfeld/qtkeychain/blob/0.17.0/qtkeychain/keychain_unix.cpp#L116) 确认 `QTKEYCHAIN_BACKEND=libsecret` 可覆盖 Plasma 对 KWallet 的默认偏好。
+
+`--collection` 传入已检查的具体对象路径，不使用 default 别名作为写入目标。[secret-tool 源码](https://github.com/GNOME/libsecret/blob/0.21.7/tool/secret-tool.c#L228) 确认支持绝对集合路径、stdin 按字节读取及属性原样传递；[libsecret store](https://github.com/GNOME/libsecret/blob/0.21.7/libsecret/secret-methods.c#L965) 仅在目标为 default 别名且缺失时尝试创建默认集合，具体路径可避免这种隐式创建。只读检查与写入并非原子操作：若集合恰在两者之间被锁定，上游 libsecret store 的 `SECRET_ERROR_IS_LOCKED` 分支可能请求 Unlock；secret-tool 没有禁用该分支的 CLI 选项，5 秒 timeout 仅限制等待。夹具验证的是预检时已锁定则绝不执行 store，不宣称已消除此上游竞态。
+
+混装环境中，写入与 krdp 读取均经过当前总线名所有者（例如 gnome-keyring 的 login 集合），不再要求它具有 kdewallet。纯 KDE 环境中，若 ksecretd 持有 `org.freedesktop.secrets` 且 default 指向已解锁的 kdewallet，同一路径直接写入该集合。两种环境均要求用户事先有已解锁的默认集合，不设置或更换默认别名。移除 KWallet 后备，避免重新落入总线所有权与钱包名不一致的问题，或让写入端与读取端选择不同后端；旧 KWallet 条目不迁移、不删除，App 已有密码由 stdin 重新写入。
+
+krdp 保持独立 `XDG_CONFIG_HOME`、`SystemUserEnabled=false`、`--address 127.0.0.1 --plasma`、命名 transient unit，参数仍没有 -u/-p。用户已有配置、非自有进程/同名单元及被外部修改的自有配置均拒绝覆盖。证书、owner/digest 与原端口保留；成功启动另记录 0600 的 `krdp.owner.backend=libsecret`。v8 没有此记录，即使密码摘要和端口相同也先写入 Secret Service 并只重启自己的 unit，随后 v9 相同密码启动继续幂等复用。
+
+本次按规格验收清单自检：
+
+1. `python3 rdp/scripts/test-helper.py`、`sh -n app/src/main/assets/remote/miffan.sh`、`git diff --check` 通过。隔离夹具覆盖 login/kdewallet 默认集合写入、精确属性及无换行 stdin、argv 无密码、缺失/锁定/session 集合、查询失败/异常类型、写入拒绝的 stderr 不外泄、缺少工具、libsecret 环境、v8 活动实例迁移、v9 幂等、配置拒绝、权限和持久 DER 指纹。不访问真实 D-Bus 或凭据存储，不替代实际 QtKeychain/Secret Service 集成验证。
+2. `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` 通过，App 668 项测试，零失败/错误/跳过；新增 KDE 凭据错误用例确认即使响应带端点和指纹，错误仍拒绝连接、保留桌面信息且不泄露原始诊断。
+3. 未连接 `ayuilos@100.64.0.5` 或任何用户真实账号。真实 Plasma 登录会话下的读取、RDP 认证及画面由 Claude 和用户继续验证；包含上述上游锁定竞态的边界，未宣称真机验收通过。
+4. 未修改 `app/.../ui/`，未合并、rebase 或推送其他分支。源码依据、根因、两类提供者行为与未覆盖事项已记录于本节。

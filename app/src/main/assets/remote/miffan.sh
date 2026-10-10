@@ -12,7 +12,7 @@
 #   miffan rdp start        password on stdin; safe per-user RDP startup (JSON)
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=8
+MIFFAN_HELPER_VERSION=9
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -482,11 +482,10 @@ rdp_gnome() {
 
 rdp_kde() {
     rdp_mode=user
-    wallet_query=$(command -v kwallet-query 2>/dev/null || command -v kwallet6-query 2>/dev/null)
-    [ -n "$wallet_query" ] && command -v qdbus6 >/dev/null 2>&1 && \
+    command -v secret-tool >/dev/null 2>&1 && command -v gdbus >/dev/null 2>&1 && \
         command -v timeout >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 && \
         command -v systemd-run >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 || {
-            rdp_json credential_setup_unavailable 'KWallet CLI and qdbus6 are required'; return 1;
+            rdp_json credential_setup_unavailable 'secret-tool, gdbus and systemd tools are required'; return 1;
         }
     rdp_config="$rdp_dir/krdp-config"
     rdp_owner="$rdp_dir/krdp.owner"
@@ -501,11 +500,8 @@ rdp_kde() {
             rdp_json rdp_already_configured; return 1
         fi
     done
-    wallet=$(timeout 3 qdbus6 org.kde.kwalletd6 /modules/kwalletd6 org.kde.KWallet.networkWallet 2>/dev/null) || {
-        rdp_json keyring_locked; return 1;
-    }
-    [ -n "$wallet" ] && [ "$(timeout 3 qdbus6 org.kde.kwalletd6 /modules/kwalletd6 org.kde.KWallet.isOpen "$wallet" 2>/dev/null)" = true ] || {
-        rdp_json keyring_locked 'Unlock KWallet first'; return 1;
+    rdp_collection=$(rdp_kde_collection) || {
+        rdp_json keyring_locked 'Unlock the default session keyring first'; return 1;
     }
     rdp_digest=$(printf '%s' "$rdp_secret" | openssl dgst -sha256 | sed 's/^.*= //')
     if [ -f "$rdp_owner" ]; then
@@ -517,16 +513,22 @@ rdp_kde() {
             ! grep -Fx "CertificateKey=$rdp_dir/key.pem" "$rdp_config/krdpserverrc" >/dev/null 2>&1; then
             rdp_json rdp_already_configured 'KRDP configuration changed outside Miffan'; return 1
         fi
-        if [ "$rdp_digest" = "$(cat "$rdp_owner.digest" 2>/dev/null)" ] && port_listening "$rdp_port"; then
+        # A v8-owned unit still uses kwallet6; migrate it even if its password is unchanged.
+        if [ "$(cat "$rdp_owner.backend" 2>/dev/null)" = libsecret ] && \
+            [ "$rdp_digest" = "$(cat "$rdp_owner.digest" 2>/dev/null)" ] && port_listening "$rdp_port"; then
             unset rdp_secret
             rdp_json; return $?
         fi
     elif [ "$(systemctl --user show miffan-rdp-kde.service -p LoadState --value 2>/dev/null)" = loaded ]; then
         rdp_json rdp_already_configured; return 1
     fi
-    # QtKeychain ReadPasswordJob("KRDP"): folder KRDP, entry username, text/password type.
-    if ! printf '%s\n' "$rdp_secret" | timeout 5 "$wallet_query" -w "$rdp_user" -f KRDP "$wallet" >/dev/null 2>&1; then
-        rdp_json keyring_locked 'KWallet write denied'; return 1
+    # QtKeychain 0.17 libsecret.cpp: org.qt.keychain schema, user=key, server=service,
+    # type=plaintext. secret-tool reads ALL stdin bytes, so do not append a newline.
+    # Pin the existing collection path, never let libsecret create a missing default alias.
+    if ! printf '%s' "$rdp_secret" | timeout 5 secret-tool store --label="KRDP/$rdp_user" \
+        --collection="$rdp_collection" xdg:schema org.qt.keychain user "$rdp_user" \
+        server KRDP type plaintext >/dev/null 2>&1; then
+        rdp_json keyring_locked 'Secret Service write denied'; return 1
     fi
     unset rdp_secret
     rdp_certificate || { rdp_json rdp_start_failed 'Certificate creation failed'; return 1; }
@@ -541,12 +543,30 @@ rdp_kde() {
     fi
     systemd-run --user --unit=miffan-rdp-kde --collect --quiet \
         --setenv="XDG_CONFIG_HOME=$rdp_config" --setenv=XDG_CURRENT_DESKTOP=KDE --setenv=KDE_SESSION_VERSION=6 \
-        --setenv=QTKEYCHAIN_BACKEND=kwallet6 --setenv="WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}" \
+        --setenv=QTKEYCHAIN_BACKEND=libsecret --setenv="WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}" \
         --setenv="DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" \
         krdpserver --address 127.0.0.1 --plasma >/dev/null 2>&1 || { rdp_json rdp_start_failed 'KRDP startup failed'; return 1; }
     printf '%s\n' "$rdp_port" > "$rdp_owner"
-    if rdp_wait; then printf '%s\n' "$rdp_digest" > "$rdp_owner.digest"; else return 1; fi
+    if rdp_wait; then
+        printf '%s\n' "$rdp_digest" > "$rdp_owner.digest"
+        printf '%s\n' libsecret > "$rdp_owner.backend"
+    else return 1; fi
 }
+
+rdp_kde_collection() (
+    # Read-only preflight on the active Secret Service, regardless of desktop/provider.
+    # ReadAlias returns '/' when absent. No CreateCollection, Unlock or session fallback.
+    alias=$(timeout 3 gdbus call --session --dest org.freedesktop.secrets \
+        --object-path /org/freedesktop/secrets \
+        --method org.freedesktop.Secret.Service.ReadAlias default 2>/dev/null) || return 1
+    collection=$(printf '%s' "$alias" | sed -n "s|^(objectpath '\(/org/freedesktop/secrets/collection/[a-zA-Z0-9_/]*\)',)$|\1|p")
+    [ -n "$collection" ] && [ "$collection" != /org/freedesktop/secrets/collection/session ] || return 1
+    locked=$(timeout 3 gdbus call --session --dest org.freedesktop.secrets \
+        --object-path "$collection" --method org.freedesktop.DBus.Properties.Get \
+        org.freedesktop.Secret.Collection Locked 2>/dev/null) || return 1
+    [ "$locked" = '(<false>,)' ] || return 1
+    printf '%s' "$collection"
+)
 
 rdp_wait() {
     attempt=0
