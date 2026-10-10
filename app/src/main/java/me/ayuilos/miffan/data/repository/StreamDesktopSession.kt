@@ -26,6 +26,7 @@ class StreamDesktopSession internal constructor(
     fingerprint: String,
     private val name: String,
     private val writeClipboard: (String) -> Unit,
+    platform: RemoteScreenPlatform = RemoteScreenPlatform.LINUX,
 ) : RemoteDesktopSession, RemoteSurfaceTarget {
     private val closed = AtomicBoolean()
     private val started = AtomicBoolean()
@@ -34,7 +35,7 @@ class StreamDesktopSession internal constructor(
     private var paused = false
     private data class ClipboardWrite(val text: String, val paste: Boolean)
     private val writes = Channel<ClipboardWrite>(32)
-    private val input = StreamDesktopInput(delegate::mousePosition, delegate::mouseButton, delegate::scroll, delegate::key)
+    private val input = StreamDesktopInput(delegate::mousePosition, delegate::mouseButton, delegate::scroll, delegate::key, platform)
     override val audio: RemoteAudioControl = object : RemoteAudioControl {
         override val enabled = requireNotNull(delegate.audio).enabled
         override fun setEnabled(enabled: Boolean) { delegate.audio?.setEnabled(enabled) }

@@ -46,7 +46,8 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
         verifyCertificate(row.streamCertificateSha256, probe)
         val paired = if (probe.installed && probe.running) withTimeout(10_000) { host(ssh, row.streamCertificateSha256).serverInfo().paired } else false
         return RemoteStreamStatus(probe.installed, probe.version, probe.running, probe.encryptionEnforced, paired,
-            probe.activeStream, candidates(row, probe).addresses)
+            probe.activeStream, candidates(row, probe).addresses, probe.displayAsleep,
+            probe.permissions?.screenRecording, probe.permissions?.accessibility, probe.permissionsFromLog == true)
     }
     private suspend fun candidates(row: RemoteHostEntity, probe: SunshineProbe, network: StreamNetworkSnapshot = routes.snapshot()): StreamCandidates = withContext(Dispatchers.IO) {
         orderStreamCandidates(routes.cached(row.id, row.connectionRevision, network.key), probe.candidates,
@@ -54,7 +55,8 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
     }
 
     suspend fun open(ssh: RemoteWorkspaceSession, row: RemoteHostEntity, probe: SunshineProbe,
-        writeClipboard: (String) -> Unit, budgetMillis: Long = 20_000, config: StreamConfig = RemoteScreenQuality.BALANCED.streamConfig()): StreamOpenResult {
+        writeClipboard: (String) -> Unit, budgetMillis: Long = 20_000, config: StreamConfig = RemoteScreenQuality.BALANCED.streamConfig(),
+        platform: RemoteScreenPlatform = RemoteScreenPlatform.LINUX): StreamOpenResult {
         verifyCertificate(row.streamCertificateSha256, probe)
         streamPreflightFallback(probe)?.let { return StreamOpenResult(fallback = RemoteStreamFallback(it)) }
         val attempted = mutableListOf<String>()
@@ -96,7 +98,7 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
                             StreamState.Streaming -> {
                                 delegate.setSurface(null)
                                 val session = StreamDesktopSession(delegate, lifetime, row.streamCertificateSha256,
-                                    row.name.ifBlank { app.name }, writeClipboard)
+                                    row.name.ifBlank { app.name }, writeClipboard, platform)
                                 if (routes.snapshot().key == network.key)
                                     routes.success(row.id, row.connectionRevision, network.key, address)
                                 accepted = session

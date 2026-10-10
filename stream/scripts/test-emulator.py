@@ -3,8 +3,10 @@
 import argparse, getpass, os, pathlib, shlex, subprocess, socket, ssl, tempfile, threading
 root = pathlib.Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser()
-p.add_argument('mode', choices=['pair', 'pin', 'stream', 'lifecycle', 'strict', 'audio'])
-p.add_argument('--codec', choices=['hevc', 'h264'], default='hevc')
+p.add_argument('mode', choices=['pair', 'pin', 'stream', 'lifecycle', 'strict', 'audio', 'mac'])
+p.add_argument('--mac', action='store_true', help='Use a separate Mac pairing identity (pair mode only)')
+p.add_argument('--certificate-sha256', help='Public host certificate fingerprint required for Mac pairing')
+p.add_argument('--codec', choices=['hevc', 'h264'])
 p.add_argument('--candidate', action='store_true')
 p.add_argument('--software', action='store_true', help='Explicit emulator-only software decoder exception')
 p.add_argument('--timeout', type=int, default=4000, help='Good candidate startup deadline in milliseconds')
@@ -14,6 +16,11 @@ p.add_argument('--height', type=int, default=1080)
 p.add_argument('--fps', type=int, default=60)
 p.add_argument('--bitrate', type=int, default=15000, help='Requested bitrate in Kbps')
 a = p.parse_args()
+a.codec = a.codec or ('h264' if a.mode == 'mac' else 'hevc')
+if a.mode == 'mac' and a.codec != 'h264': p.error('mac receive-only acceptance currently uses H.264')
+if a.mac and a.mode != 'pair': p.error('--mac is only used with pair; use mac mode for receive-only acceptance')
+if a.mac and (not a.certificate_sha256 or len(a.certificate_sha256) != 64 or any(c not in '0123456789abcdef' for c in a.certificate_sha256)):
+    p.error('Mac pairing requires a lowercase public --certificate-sha256')
 sdk = pathlib.Path(os.environ.get('ANDROID_SDK_ROOT') or os.environ.get('ANDROID_HOME') or pathlib.Path.home() / 'Library/Android/sdk')
 adb = [str(sdk / 'platform-tools/adb'), '-s', 'emulator-5560']
 subprocess.run(adb + ['install', '-r', str(root / 'stream/build/outputs/apk/androidTest/debug/stream-debug-androidTest.apk')], check=True)
@@ -40,13 +47,15 @@ if a.mode == 'pin':
                     received.append(secure.recv(8192))
         except Exception as e: errors.append(type(e).__name__)
     server_thread = threading.Thread(target=serve, daemon=True); server_thread.start()
-method = {'pair': 'pairNewIdentity', 'pin': 'certificatePinRejects', 'stream': 'streamAcceptance', 'lifecycle': 'cancellationReleasesProcessSlot', 'strict': 'strictEncryptionRejectsPlainRtsp', 'audio': 'audioAndTrafficAcceptance'}[a.mode]
+method = {'pair': 'pairNewIdentity', 'pin': 'certificatePinRejects', 'stream': 'streamAcceptance', 'lifecycle': 'cancellationReleasesProcessSlot', 'strict': 'strictEncryptionRejectsPlainRtsp', 'audio': 'audioAndTrafficAcceptance', 'mac': 'macReceiveOnlyAcceptance'}[a.mode]
 cmd = ['am', 'instrument', '-w', '-r', '-e', 'class', 'me.rerere.stream.StreamInstrumentedTest#' + method,
     '-e', 'codec', a.codec, '-e', 'candidate', str(a.candidate).lower(), '-e', 'software', str(a.software).lower(),
     '-e', 'timeout', str(a.timeout), '-e', 'fallback', str(a.fallback).lower(),
     '-e', 'width', str(a.width), '-e', 'height', str(a.height), '-e', 'fps', str(a.fps), '-e', 'bitrate', str(a.bitrate),
     'me.rerere.stream.test/androidx.test.runner.AndroidJUnitRunner']
 if server: cmd[3:3] = ['-e', 'pinServerPort', str(server.getsockname()[1])]
+if a.mac or a.mode == 'mac': cmd[3:3] = ['-e', 'mac', 'true']
+if a.certificate_sha256: cmd[3:3] = ['-e', 'expectedSha256', a.certificate_sha256]
 result = subprocess.run(adb + ['shell', shlex.join(cmd)], capture_output=True, text=True)
 output = result.stdout + result.stderr
 if a.mode == 'pair': output = output.replace(pin, '<redacted>')
@@ -62,3 +71,7 @@ if a.mode == 'stream':
     for suffix in ['txt', 'png']:
         subprocess.run(adb + ['pull', '/sdcard/Android/data/me.rerere.stream.test/files/p6b-' + a.codec.upper() + '.' + suffix,
             str(out / ('stats-' + a.codec + '.' + suffix))], check=True)
+if a.mode == 'mac':
+    for suffix in ['txt', 'png']:
+        subprocess.run(adb + ['pull', '/sdcard/Android/data/me.rerere.stream.test/files/p6f-mac.' + suffix,
+            str(out / ('p6f-mac.' + suffix))], check=True)

@@ -288,12 +288,25 @@ class RemoteScreenRepository(
         }
     }
 
-    suspend fun enforceStreamEncryption(hostId: String, expectedRevision: String): RemoteCommandOutcome {
+    suspend fun startSunshine(hostId: String, expectedRevision: String): RemoteCommandOutcome =
+        sunshineCommand(hostId, expectedRevision, "start")
+
+    suspend fun openSunshinePermissionSettings(hostId: String, expectedRevision: String,
+        permission: RemoteSunshinePermission): RemoteCommandOutcome = sunshineCommand(hostId, expectedRevision,
+        "open-settings " + when (permission) {
+            RemoteSunshinePermission.SCREEN_RECORDING -> "screen"
+            RemoteSunshinePermission.ACCESSIBILITY -> "accessibility"
+        })
+
+    suspend fun enforceStreamEncryption(hostId: String, expectedRevision: String): RemoteCommandOutcome =
+        sunshineCommand(hostId, expectedRevision, "enforce-encryption")
+
+    private suspend fun sunshineCommand(hostId: String, expectedRevision: String, command: String): RemoteCommandOutcome {
         val workspaceId = workspaceOnHost(hostId, expectedRevision)
         return withStreamRemote(workspaceId) { ssh ->
             ensureRevision(hostId, expectedRevision)
             ensureHelper(ssh)
-            val result = ssh.execute("$HELPER sunshine enforce-encryption", timeoutMillis = 30_000)
+            val result = ssh.execute("$HELPER sunshine $command", timeoutMillis = 30_000)
             val status = parseSunshineCommand(result.stdout)
             RemoteCommandOutcome(status.success && result.exitCode == 0 && !result.timedOut, status.detail)
         }
@@ -373,15 +386,30 @@ class RemoteScreenRepository(
                 }
             val attempt = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
                 attemptRemoteStream(streamRequested) {
-                    if (detected != RemoteScreenPlatform.LINUX) return@attemptRemoteStream StreamOpenResult(
-                        fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux"))
+                    if (detected !in setOf(RemoteScreenPlatform.LINUX, RemoteScreenPlatform.MACOS)) return@attemptRemoteStream StreamOpenResult(
+                        fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux or macOS"))
                     try {
                         ensureHelper(ssh)
                         val deadline = System.nanoTime() + 20_000_000_000L
-                        val probe = sunshineProbe(ssh)
+                        val initial = sunshineProbe(ssh)
+                        streams.verifyCertificate(host.streamCertificateSha256, initial)
+                        val platform = requireNotNull(detected)
+                        val probe = prepareStreamProbe(platform, initial) {
+                            val result = ssh.execute("$HELPER sunshine wake", timeoutMillis = 10_000)
+                            if (result.exitCode == 0 && !result.timedOut) parseSunshineCommand(result.stdout)
+                            else SunshineCommand(false, "Display wake failed", true)
+                        }
                         val remaining = (deadline - System.nanoTime()) / 1_000_000
-                        streams.open(ssh, host, probe, { text -> writeStreamClipboard(ssh, text) }, remaining,
-                            stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height))
+                        val opened = streams.open(ssh, host, probe, { text -> writeStreamClipboard(ssh, text) }, remaining,
+                            stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height), platform)
+                        if (platform == RemoteScreenPlatform.MACOS && opened.fallback != null) {
+                            // A capture denial can appear only after attempting to build a stream.
+                            val diagnostic = try { sunshineProbe(ssh) }
+                            catch (error: CancellationException) { throw error }
+                            catch (_: Exception) { return@attemptRemoteStream opened }
+                            streams.verifyCertificate(host.streamCertificateSha256, diagnostic)
+                            opened.copy(fallback = streamDiagnosticFallback(diagnostic, opened.fallback))
+                        } else opened
                     } catch (error: RemoteStreamCertificateChangedException) { throw error }
                     catch (error: CancellationException) { throw error }
                     catch (_: Exception) { StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER)) }

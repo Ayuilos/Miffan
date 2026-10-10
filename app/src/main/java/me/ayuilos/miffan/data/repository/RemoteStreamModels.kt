@@ -12,7 +12,13 @@ data class RemoteStreamStatus(
     val installed: Boolean, val version: String?, val running: Boolean,
     val encryptionEnforced: Boolean, val paired: Boolean, val activeStream: Boolean,
     val candidates: List<String>,
+    val displayAsleep: Boolean? = null,
+    val screenRecording: Boolean? = null,
+    val accessibility: Boolean? = null,
+    val permissionsFromLog: Boolean = false,
 )
+
+enum class RemoteSunshinePermission { SCREEN_RECORDING, ACCESSIBILITY }
 
 interface RemoteStreamPairing : Closeable {
     val pin: String
@@ -22,7 +28,7 @@ interface RemoteStreamPairing : Closeable {
 data class RemoteStreamFallback(val reason: RemoteStreamFallbackReason, val detail: String? = null)
 enum class RemoteStreamFallbackReason {
     SUNSHINE_MISSING, SUNSHINE_NOT_RUNNING, NOT_PAIRED, ENCRYPTION_NOT_ENFORCED,
-    UDP_UNREACHABLE, HOST_REJECTED, DECODER_UNSUPPORTED, LOCAL_NETWORK_PERMISSION, OTHER,
+    UDP_UNREACHABLE, HOST_REJECTED, DECODER_UNSUPPORTED, LOCAL_NETWORK_PERMISSION, MAC_PERMISSIONS, DISPLAY_ASLEEP, OTHER,
 }
 class RemoteStreamCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
     RemoteScreenUnavailableException(RemoteScreenProblem.STREAM_CERTIFICATE_CHANGED, "Sunshine certificate fingerprint changed")
@@ -35,11 +41,20 @@ internal data class SunshineProbe(
     @SerialName("certificate_sha256") val certificateSha256: String? = null,
     @SerialName("active_stream") val activeStream: Boolean,
     val candidates: List<String> = emptyList(),
+    @SerialName("display_asleep") val displayAsleep: Boolean? = null,
+    val permissions: SunshinePermissions? = null,
+    @SerialName("permissions_from_log") val permissionsFromLog: Boolean? = null,
 ) {
     val encryptionEnforced get() = lanEncryptionMode == 2 && wanEncryptionMode == 2
 }
 @Serializable
-internal data class SunshineCommand(val success: Boolean, val detail: String)
+internal data class SunshinePermissions(
+    @SerialName("screen_recording") val screenRecording: Boolean? = null,
+    val accessibility: Boolean? = null,
+)
+@Serializable
+internal data class SunshineCommand(val success: Boolean, val detail: String,
+    @SerialName("display_asleep") val displayAsleep: Boolean? = null)
 private val streamJson = Json { ignoreUnknownKeys = true }
 internal fun parseSunshineProbe(output: String): SunshineProbe =
     streamJson.decodeFromString<SunshineProbe>(output.trim().lineSequence().last()).let {
@@ -51,11 +66,29 @@ internal fun parseSunshineCommand(output: String): SunshineCommand =
 
 internal fun streamPreflightFallback(probe: SunshineProbe, paired: Boolean? = null): RemoteStreamFallbackReason? = when {
     !probe.installed -> RemoteStreamFallbackReason.SUNSHINE_MISSING
+    probe.permissions?.let { it.screenRecording == false || it.accessibility == false } == true -> RemoteStreamFallbackReason.MAC_PERMISSIONS
     !probe.running -> RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING
+    probe.displayAsleep == true -> RemoteStreamFallbackReason.DISPLAY_ASLEEP
     !probe.encryptionEnforced -> RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED
     paired == false -> RemoteStreamFallbackReason.NOT_PAIRED
     else -> null
 }
+
+/** Unknown permission/display state never becomes a denial. */
+internal fun streamDiagnosticFallback(probe: SunshineProbe, original: RemoteStreamFallback): RemoteStreamFallback = when {
+    original.reason !in setOf(RemoteStreamFallbackReason.HOST_REJECTED, RemoteStreamFallbackReason.UDP_UNREACHABLE,
+        RemoteStreamFallbackReason.OTHER) -> original
+    probe.permissions?.let { it.screenRecording == false || it.accessibility == false } == true ->
+        RemoteStreamFallback(RemoteStreamFallbackReason.MAC_PERMISSIONS)
+    probe.displayAsleep == true -> RemoteStreamFallback(RemoteStreamFallbackReason.DISPLAY_ASLEEP)
+    else -> original
+}
+
+/** Wake only an explicitly sleeping, running Mac before starting a stream. */
+internal suspend fun prepareStreamProbe(platform: RemoteScreenPlatform, probe: SunshineProbe,
+    wake: suspend () -> SunshineCommand): SunshineProbe =
+    if (platform == RemoteScreenPlatform.MACOS && probe.installed && probe.running && probe.displayAsleep == true)
+        probe.copy(displayAsleep = wake().displayAsleep ?: true) else probe
 internal fun streamFailureFallback(reason: StreamFailureReason): RemoteStreamFallbackReason = when (reason) {
     StreamFailureReason.ENCRYPTION_REQUIRED -> RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED
     StreamFailureReason.HOST_REJECTED -> RemoteStreamFallbackReason.HOST_REJECTED
