@@ -30,3 +30,25 @@ OPPO Find X6 Pro（骁龙 8 Gen 2）经 Tailscale + SSH 连接 CachyOS 上的 GN
 2. 模拟器 `emulator-5560`：用 P5a 的 instrumentation 方式连 CachyOS 测试账号 `miffanrdp` 的 GNOME 无头会话。请求 **2560×1440**，在桌面上持续制造画面变化（需要时让 Claude 在远端开一个持续刷新的窗口），记录改动前后的帧率和各段耗时。需要 Claude 启动 GNOME 无头会话、隧道或在远端放内容时，按之前的方式通知 Claude。
 3. 真机上的效果只能由用户测：完成后告诉 Claude，由 Claude 打包发给用户。不要连接用户自己的账号（ayuilos@100.64.0.5）。
 4. notes：测量方法、改动前后的数据、每个改动的依据（附出处）、仍未解决的问题。
+
+## 第二轮（2026-10-10 11:55 真机数据）
+
+用户 OPPO Find X6 Pro 连 GNOME 真实会话（2560×1440，NLA/AVC420，播放视频），浮层读数：
+
+- 解码器 `c2.qti.avc.decoder.low_latency`（硬件），低延迟支持，已配置 `priority=0,low-latency=1,qti-picture-order=1`
+- 2.0 fps · 解码 2.0 fps · 绘制 4.0 fps
+- 解码 均 40 / 峰 48 ms · 未出帧 0 ms · 超时 0 · 在途 0 / 峰 1
+- 转换 17 · 复制 41 · 至确认 244 · 确认排队 3 ms
+- 接收 0 KB/s（浮层用 `bytesReceived` 差值计算，显然没有更新，是 bug；同期手机状态栏约 170 KB/s）
+
+结论：攒帧已消除。服务端按 FrameAcknowledge 节流，surface→ACK 244 ms 决定了帧率和延迟；其中解码+转换+复制约 100 ms，约 140 ms 不明。
+
+要做的（按顺序，每步都要有前后数据）：
+
+1. 在 surface→ACK 里拆出“帧的数据收齐”（第一个 SurfaceCommand 到 EndFrame 到达）和事件循环等待。去掉固定 10 ms 轮询，改为数据到达或命令入队即唤醒；验证这 140 ms 是否就在这里。
+2. FrameAcknowledge 不要等 sink：GDI 合成完成（帧已解码进帧缓冲）就可以确认，复制到界面放在确认之后或另一线程。确认 RDPGFX 语义允许（FreeRDP 和 MS-RDPEGFX 规范依据），不能在解码完成前确认。
+3. sink：在 JNI 里直接写入 App 的 `Bitmap`（`AndroidBitmap_lockPixels`），只写脏矩形，不再每帧分配 `IntArray` 再由 Kotlin `setPixels`。需要和 `RemoteScreenFrameSink` 协调：可以给 sink 增加一个可选的“直接写位图”路径，VNC 不受影响；界面侧（VM 持有的 Bitmap、frameVersion 失效）的改动列在 notes 里，由 Claude 接。
+4. 修 `bytesReceived`（浮层的接收速率一直是 0）。
+5. 解码 40 ms：查清楚是硬件本身还是同步提交/取出与输出缓冲读取的开销（例如输出缓冲是否为不可缓存内存，读 YUV 是否慢），给出能否改进的判断；如需改用 Surface/AImageReader 输出，先写方案再动手。
+
+模拟器上用同样的 SSH 路径、2560×1440、持续刷新内容测前后对比；真机由 Claude 打包给用户。
