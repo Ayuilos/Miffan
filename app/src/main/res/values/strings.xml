@@ -2187,9 +2187,6 @@
   <string name="workspace_screen_help_view_zoom_trackpad" tools:ignore="MissingTranslation">Enlarge or shrink the picture on your phone; when enlarged, the view follows the pointer</string>
   <string name="workspace_screen_view_zoom_in" tools:ignore="MissingTranslation">Enlarge view</string>
   <string name="workspace_screen_view_zoom_out" tools:ignore="MissingTranslation">Shrink view</string>
-  <string name="workspace_screen_fps_saver" tools:ignore="MissingTranslation">Data saver · 5 fps</string>
-  <string name="workspace_screen_fps_standard" tools:ignore="MissingTranslation">Standard · 10 fps</string>
-  <string name="workspace_screen_fps_smooth" tools:ignore="MissingTranslation">Smooth · 20 fps</string>
   <string name="workspace_screen_metered" tools:ignore="MissingTranslation">You are using a mobile or metered network. Viewing the screen uses data.</string>
   <string name="workspace_screen_paste_failed" tools:ignore="MissingTranslation">Could not paste on the remote computer</string>
   <string name="workspace_screen_text_unsupported" tools:ignore="MissingTranslation">This platform cannot type this text yet</string>
@@ -2260,6 +2257,29 @@
   <string name="workspace_screen_stream_certificate_changed" tools:ignore="MissingTranslation">This computer\'s Sunshine certificate is not the one you paired with. If you reinstalled Sunshine or reset its credentials, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
   <string name="workspace_screen_stream_suggest" tools:ignore="MissingTranslation">This computer can show a smoother picture with high-performance mode.</string>
   <string name="workspace_screen_stream_suggest_dismiss" tools:ignore="MissingTranslation">Don\'t suggest again</string>
+  <string name="workspace_screen_mode_stream" tools:ignore="MissingTranslation">High performance</string>
+  <string name="workspace_screen_quality_saver" tools:ignore="MissingTranslation">Data saver</string>
+  <string name="workspace_screen_quality_balanced" tools:ignore="MissingTranslation">Balanced</string>
+  <string name="workspace_screen_quality_best" tools:ignore="MissingTranslation">Sharpest</string>
+  <string name="workspace_screen_quality_fps" tools:ignore="MissingTranslation">Up to %1$d fps</string>
+  <string name="workspace_screen_quality_server" tools:ignore="MissingTranslation">Picture set by the computer (RDP)</string>
+  <string name="workspace_screen_audio" tools:ignore="MissingTranslation">Sound</string>
+  <string name="workspace_screen_stream_skip" tools:ignore="MissingTranslation">Use the normal connection this time</string>
+  <string name="workspace_screen_stream_retry" tools:ignore="MissingTranslation">Reconnect with high-performance mode</string>
+  <string name="workspace_screen_fullscreen" tools:ignore="MissingTranslation">Full screen</string>
+  <string name="workspace_screen_fullscreen_exit" tools:ignore="MissingTranslation">Exit full screen</string>
+  <string name="workspace_screen_stream_metered" tools:ignore="MissingTranslation">You are on mobile data. High-performance mode at \"%1$s\" can use up to about %2$s GB per hour. Change the picture from the menu at the top right.</string>
+  <string name="workspace_screen_details" tools:ignore="MissingTranslation">Connection details</string>
+  <string name="workspace_screen_details_mode" tools:ignore="MissingTranslation">Connection</string>
+  <string name="workspace_screen_details_stream" tools:ignore="MissingTranslation">High-performance mode (Sunshine)</string>
+  <string name="workspace_screen_details_rdp" tools:ignore="MissingTranslation">Remote Desktop (RDP)</string>
+  <string name="workspace_screen_details_path" tools:ignore="MissingTranslation">Picture path</string>
+  <string name="workspace_screen_details_path_stream" tools:ignore="MissingTranslation">Direct UDP to %1$s, encrypted</string>
+  <string name="workspace_screen_details_path_ssh" tools:ignore="MissingTranslation">Through the encrypted SSH tunnel</string>
+  <string name="workspace_screen_details_stream_skipped" tools:ignore="MissingTranslation">The normal connection was chosen for this visit</string>
+  <string name="workspace_screen_details_stream_fallback" tools:ignore="MissingTranslation">Not used: %1$s</string>
+  <string name="workspace_screen_details_stream_off" tools:ignore="MissingTranslation">Off. You can turn it on in this computer\'s screen settings.</string>
+  <string name="workspace_screen_details_usage" tools:ignore="MissingTranslation">Data used</string>
   <string name="workspace_screen_rdp_gnome" tools:ignore="MissingTranslation">GNOME Remote Desktop</string>
   <string name="workspace_screen_rdp_kde" tools:ignore="MissingTranslation">KDE Remote Desktop (krdp)</string>
   <string name="workspace_screen_install_rdp" tools:ignore="MissingTranslation">Install %1$s on the computer, then check again.</string>

@@ -20,6 +20,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,6 +92,15 @@ internal fun RemoteScreenCanvas(
     val input = remember(width, height, trackpad, vm) {
         ScreenGestures(context, width, height, trackpad, vm, scope)
     }
+    // A stream draws the real pointer into the video, a network round trip after the finger
+    // moves; a faint ring at the predicted spot bridges that gap and fades once the finger rests.
+    val predicted = remember(input) { Animatable(0f) }
+    LaunchedEffect(input, input.lastMoved) {
+        if (video == null || !trackpad || input.lastMoved == 0L) return@LaunchedEffect
+        predicted.snapTo(1f)
+        delay(ScreenGestures.PREDICTED_POINTER_HOLD_MS)
+        predicted.animateTo(0f, tween(ScreenGestures.PREDICTED_POINTER_FADE_MS))
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(input, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -114,6 +127,7 @@ internal fun RemoteScreenCanvas(
                 dstSize = IntSize(max(1, (width * scale).roundToInt()), max(1, (height * scale).roundToInt())),
                 filterQuality = FilterQuality.Medium)
         }
+        if (trackpad && video != null && predicted.value > 0f) drawPredictedPointer(input.toViewport(input.pointer), predicted.value)
         if (trackpad) {
             val tip = input.toViewport(input.pointer)
             when (val shape = cursor.value) {
@@ -210,6 +224,13 @@ private class VideoPlacement {
     }
 }
 
+/** Where the touchpad will put the pointer, ahead of the video: a ring that reads on light and dark desktops. */
+private fun DrawScope.drawPredictedPointer(center: Offset, alpha: Float) {
+    val radius = 7.dp.toPx()
+    drawCircle(Color.Black.copy(alpha = 0.3f * alpha), radius, center, style = Stroke(width = 4.dp.toPx()))
+    drawCircle(Color.White.copy(alpha = 0.9f * alpha), radius, center, style = Stroke(width = 2.dp.toPx()))
+}
+
 /**
  * A desktop arrow pointer whose tip is the click point, at a fixed on-screen size regardless of
  * zoom: black with a white outline, like the macOS cursor.
@@ -248,6 +269,9 @@ private class ScreenGestures(
     private var zoom by mutableFloatStateOf(1f)
     private var pan by mutableStateOf(Offset.Zero)
     var pointer by mutableStateOf(Offset(width / 2f, height / 2f))
+        private set
+    /** Uptime of the last touchpad movement; 0 until the finger first moves the pointer. */
+    var lastMoved by mutableLongStateOf(0L)
         private set
     private val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val density = context.resources.displayMetrics.density
@@ -289,6 +313,7 @@ private class ScreenGestures(
         val speed = delta.getDistance() / max(1f, density)
         val acceleration = (1f + speed / 24f).coerceAtMost(3f)
         move(pointer + delta / scale * acceleration)
+        lastMoved = SystemClock.uptimeMillis()
         followPointer()
     }
     private fun followPointer() {
@@ -462,6 +487,8 @@ private class ScreenGestures(
 
     companion object {
         const val MAX_VIEW_ZOOM = 5f
+        const val PREDICTED_POINTER_HOLD_MS = 250L
+        const val PREDICTED_POINTER_FADE_MS = 300
         const val FLING_FRAME_MS = 16L
         /** Per-frame velocity kept: a quick flick glides for well over a second, like a trackpad. */
         const val FLING_DECAY = 0.975f
