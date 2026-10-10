@@ -26,7 +26,13 @@ interface RemoteSurfaceTarget {
     fun setSurface(surface: android.view.Surface?)
 }
 
+interface RemoteAudioControl {
+    val enabled: StateFlow<Boolean>
+    fun setEnabled(enabled: Boolean)
+}
+
 interface RemoteDesktopSession : Closeable {
+    val audio: RemoteAudioControl? get() = null
     val surface: RemoteSurfaceTarget? get() = null
     val streamStats: StateFlow<me.rerere.stream.StreamStats>? get() = null
     val protocol: RemoteDesktopProtocol

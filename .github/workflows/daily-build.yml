@@ -81,6 +81,19 @@ jobs:
           rdp/scripts/fetch-sources.sh
           rdp/scripts/build-native.sh
 
+      # Stream links the OpenSSL static archives prepared by RDP above.
+      - name: Cache pinned stream source archives
+        uses: actions/cache@v5
+        with:
+          path: |
+            .deps/p6a/common-c.tar.gz
+            .deps/p6a/common-c/enet.tar.gz
+            .deps/p6a/common-c/nanors.tar.gz
+          key: stream-sources-${{ runner.os }}-${{ hashFiles('stream/scripts/fetch-sources.sh') }}
+
+      - name: Fetch and verify pinned stream sources
+        run: stream/scripts/fetch-sources.sh
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 

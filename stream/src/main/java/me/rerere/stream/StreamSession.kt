@@ -1,6 +1,8 @@
 package me.rerere.stream
 
+import android.content.Context
 import android.view.Surface
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -18,11 +20,15 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreamSession(private val host: StreamHost, private val app: StreamApp, private val udpAddress: String,
-    private val config: StreamConfig, surface: Surface) : Closeable {
+    private val config: StreamConfig, surface: Surface, audioContext: Context? = null) : Closeable {
     private val mutableState = MutableStateFlow<StreamState>(StreamState.Connecting)
     val state: StateFlow<StreamState> = mutableState.asStateFlow()
     private val mutableStats = MutableStateFlow(StreamStats())
     val stats: StateFlow<StreamStats> = mutableStats.asStateFlow()
+    private val received = AtomicLong()
+    /** Video + audio UDP payloads including RTP/encryption/FEC; excludes IP/UDP headers and TCP. */
+    val bytesReceived: Long get() = received.get()
+    val audio: StreamAudioControl? = audioContext?.let { StreamAudioControl(it.applicationContext) { change -> mutableStats.update(change) } }
     private val started = AtomicBoolean()
     private val closed = AtomicBoolean()
     private val finished = CountDownLatch(1)
@@ -57,7 +63,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
         check(!closed.get() && started.compareAndSet(false, true)) { "Session already started or closed" }
         synchronized(processLock) {
             if (active != null) {
-                mutableState.value = StreamState.Failed(StreamFailureReason.BUSY, 0, -201); finished.countDown(); return
+                audio?.close(); mutableState.value = StreamState.Failed(StreamFailureReason.BUSY, 0, -201); finished.countDown(); return
             }
             active = this
         }
@@ -134,7 +140,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
                 else StreamState.Failed(StreamFailureReason.TCP_RTSP, stage, -203)
         } finally {
             if (!controlReady && launchCompletedAt != 0L) host.deferLaunch(launchCompletedAt)
-            releaseAllInput(); bridge.close(); bridge.awaitStopped(2000); decoder?.close(); decoder = null
+            audio?.close(); releaseAllInput(); bridge.close(); bridge.awaitStopped(2000); decoder?.close(); decoder = null
             mutableState.value = failure ?: StreamState.Closed
             synchronized(processLock) { if (active === this) active = null }
             finished.countDown(); watchdog.join(1000); watcher?.cancel()
@@ -143,6 +149,11 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
     private fun remaining(deadline: Long) = ((deadline - System.nanoTime()) / 1_000_000).coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
     private fun interruptOwned() = synchronized(processLock) { if (active === this && nativeActive) StreamNative.interrupt() }
     // JNI callbacks, only called while this session owns common-c.
+    private fun receivedUdpBytes(bytes: Long) { received.addAndGet(bytes) }
+    private fun setupAudio(rate: Int, channels: Int, streams: Int, coupled: Int, samples: Int, mapping: ByteArray) {
+        audio?.configure(StreamOpusConfig(rate, channels, streams, coupled, samples, mapping))
+    }
+    private fun submitAudio(data: ByteArray) { audio?.packet(data) }
     private fun openTcp(port: Int): Int = if (closed.get() || failure != null || decoderFailure) -1 else bridge.open(port)
     private fun setupDecoder(format: Int, width: Int, height: Int, fps: Int): Boolean {
         mutableStats.update { it.copy(codec = if (format and 0x100 != 0) StreamCodec.HEVC else StreamCodec.H264, width = width, height = height, fps = fps) }
@@ -240,7 +251,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
     }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        releaseAllInput(); stop.countDown(); bridge.close(); interruptOwned()
+        audio?.close(); releaseAllInput(); stop.countDown(); bridge.close(); interruptOwned()
         if (!started.get()) { mutableState.value = StreamState.Closed; finished.countDown() }
     }
     /** Wait off the UI thread before starting another candidate. */

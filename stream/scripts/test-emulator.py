@@ -3,7 +3,7 @@
 import argparse, getpass, os, pathlib, shlex, subprocess, socket, ssl, tempfile, threading
 root = pathlib.Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser()
-p.add_argument('mode', choices=['pair', 'pin', 'stream', 'lifecycle', 'strict'])
+p.add_argument('mode', choices=['pair', 'pin', 'stream', 'lifecycle', 'strict', 'audio'])
 p.add_argument('--codec', choices=['hevc', 'h264'], default='hevc')
 p.add_argument('--candidate', action='store_true')
 p.add_argument('--software', action='store_true', help='Explicit emulator-only software decoder exception')
@@ -40,7 +40,7 @@ if a.mode == 'pin':
                     received.append(secure.recv(8192))
         except Exception as e: errors.append(type(e).__name__)
     server_thread = threading.Thread(target=serve, daemon=True); server_thread.start()
-method = {'pair': 'pairNewIdentity', 'pin': 'certificatePinRejects', 'stream': 'streamAcceptance', 'lifecycle': 'cancellationReleasesProcessSlot', 'strict': 'strictEncryptionRejectsPlainRtsp'}[a.mode]
+method = {'pair': 'pairNewIdentity', 'pin': 'certificatePinRejects', 'stream': 'streamAcceptance', 'lifecycle': 'cancellationReleasesProcessSlot', 'strict': 'strictEncryptionRejectsPlainRtsp', 'audio': 'audioAndTrafficAcceptance'}[a.mode]
 cmd = ['am', 'instrument', '-w', '-r', '-e', 'class', 'me.rerere.stream.StreamInstrumentedTest#' + method,
     '-e', 'codec', a.codec, '-e', 'candidate', str(a.candidate).lower(), '-e', 'software', str(a.software).lower(),
     '-e', 'timeout', str(a.timeout), '-e', 'fallback', str(a.fallback).lower(),

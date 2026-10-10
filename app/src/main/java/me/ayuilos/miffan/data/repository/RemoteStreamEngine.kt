@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.repository
 
+import android.content.Context
 import android.graphics.ImageFormat
 import android.media.ImageReader
 import android.os.Handler
@@ -29,9 +30,9 @@ import me.rerere.stream.StreamTcpChannel
 import me.rerere.stream.StreamTcpConnector
 import me.rerere.workspace.RemoteWorkspaceSession
 
-internal data class StreamOpenResult(val session: StreamDesktopSession? = null, val fallback: RemoteStreamFallback? = null)
+internal data class StreamOpenResult(val session: StreamDesktopSession? = null, val fallback: RemoteStreamFallback? = null, val address: String? = null)
 
-internal class RemoteStreamEngine(private val identities: RemoteStreamIdentityStore, private val routes: RemoteStreamRoutes) {
+internal class RemoteStreamEngine(private val identities: RemoteStreamIdentityStore, private val routes: RemoteStreamRoutes, private val context: Context) {
     private val pendingUntil = ConcurrentHashMap<String, Long>()
     fun host(ssh: RemoteWorkspaceSession, pin: String?): StreamHost = StreamHost(StreamTcpConnector { port ->
         // :stream routes every HTTP/HTTPS/RTSP TCP port through this connector.
@@ -53,7 +54,7 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
     }
 
     suspend fun open(ssh: RemoteWorkspaceSession, row: RemoteHostEntity, probe: SunshineProbe,
-        writeClipboard: (String) -> Unit, budgetMillis: Long = 20_000): StreamOpenResult {
+        writeClipboard: (String) -> Unit, budgetMillis: Long = 20_000, config: StreamConfig = RemoteScreenQuality.BALANCED.streamConfig()): StreamOpenResult {
         verifyCertificate(row.streamCertificateSha256, probe)
         streamPreflightFallback(probe)?.let { return StreamOpenResult(fallback = RemoteStreamFallback(it)) }
         val attempted = mutableListOf<String>()
@@ -85,11 +86,11 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
                     val drain = HandlerThread("StreamPreflightSurface").apply { start() }
                     var reader: ImageReader? = null
                     try {
-                        reader = ImageReader.newInstance(1920, 1080, ImageFormat.PRIVATE, 2)
+                        reader = ImageReader.newInstance(config.width, config.height, ImageFormat.PRIVATE, 2)
                         reader.setOnImageAvailableListener({ source ->
                             runCatching { source.acquireLatestImage()?.close() }
                         }, Handler(drain.looper))
-                        delegate = StreamSession(host!!, app, address, StreamConfig(1920, 1080, 60, 15_000), reader.surface)
+                        delegate = StreamSession(host!!, app, address, config, reader.surface, context)
                         delegate.start(lifetime)
                         when (val state = delegate.state.first { it !is StreamState.Connecting }) {
                             StreamState.Streaming -> {
@@ -100,7 +101,7 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
                                     routes.success(row.id, row.connectionRevision, network.key, address)
                                 accepted = session
                                 handedOff = true
-                                return@withTimeout StreamOpenResult(session = session)
+                                return@withTimeout StreamOpenResult(session = session, address = address)
                             }
                             is StreamState.Failed -> {
                                 if (state.reason == StreamFailureReason.CERTIFICATE_MISMATCH)

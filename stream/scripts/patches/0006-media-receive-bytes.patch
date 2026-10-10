@@ -1,0 +1,62 @@
+P6e: count received video/audio UDP payloads before decrypt/validation/FEC.
+
+--- a/src/Limelight.h
++++ b/src/Limelight.h
+@@ -550,6 +550,9 @@
+     // Reject missing RTSP, video, audio, or control-v2 encryption support.
+     // The caller must also request ENCFLG_AUDIO | ENCFLG_VIDEO.
+     bool requireEncryptedStreams;
++
++    // Application-layer video/audio UDP payloads, before validation/decryption/FEC.
++    void (*receivedMediaBytes)(int bytes);
+ 
+     // Owned connected fd from the caller; no direct TCP when installed.
+     int (*openRtspTcp)(unsigned short remotePort);
+--- a/src/Limelight-internal.h
++++ b/src/Limelight-internal.h
+@@ -14,6 +14,7 @@
+ #include <enet/enet.h>
+ 
+ // Common globals
++extern void (*ReceivedMediaBytes)(int bytes);
+ extern char* RemoteAddrString;
+ extern struct sockaddr_storage RemoteAddr;
+ extern struct sockaddr_storage RtspTcpAddr;
+--- a/src/Connection.c
++++ b/src/Connection.c
+@@ -8,6 +8,7 @@
+ static int terminationCallbackErrorCode;
+ 
+ // Common globals
++void (*ReceivedMediaBytes)(int bytes);
+ char* RemoteAddrString;
+ struct sockaddr_storage RemoteAddr;
+ struct sockaddr_storage RtspTcpAddr;
+@@ -276,6 +277,7 @@
+     AudioEncryptionEnabled = false;
+     memcpy(&StreamConfig, streamConfig, sizeof(StreamConfig));
+     RemoteAddrString = strdup(serverInfo->address);
++    ReceivedMediaBytes = serverInfo->receivedMediaBytes;
+ 
+     // The values in RTSP SETUP will be used to populate these.
+     VideoPortNumber = 0;
+--- a/src/VideoStream.c
++++ b/src/VideoStream.c
+@@ -138,6 +138,7 @@
+                             encrypted ? encryptedBuffer : buffer,
+                             receiveSize,
+                             useSelect);
++        if (err > 0 && ReceivedMediaBytes != NULL) ReceivedMediaBytes(err);
+         if (err < 0) {
+             Limelog("Video Receive: recvUdpSocket() failed: %d\n", (int)LastSocketError());
+             ListenerCallbacks.connectionTerminated(LastSocketFail());
+--- a/src/AudioStream.c
++++ b/src/AudioStream.c
+@@ -268,6 +268,7 @@
+         }
+ 
+         packet->header.size = recvUdpSocket(rtpSocket, &packet->data[0], MAX_PACKET_SIZE, useSelect);
++        if (packet->header.size > 0 && ReceivedMediaBytes != NULL) ReceivedMediaBytes(packet->header.size);
+         if (packet->header.size < 0) {
+             Limelog("Audio Receive: recvUdpSocket() failed: %d\n", (int)LastSocketError());
+             ListenerCallbacks.connectionTerminated(LastSocketFail());
