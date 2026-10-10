@@ -56,7 +56,10 @@ internal fun RemoteScreenStatsOverlay(vm: RemoteScreenVM, modifier: Modifier = M
             r.decodeMeanMs, r.decodeMaxMs, r.pendingDecodeMs, r.outputWaitTimeouts))
         append("\n转换 %.0f · 复制 %.0f · 至确认 %.0f · 确认排队 %.0f ms".format(
             r.yuvToRgbMeanMs, r.sinkMeanMs, r.surfaceToAckMeanMs, r.ackQueueMeanMs))
-        append("\n接收 %s/s · 在途 %d / 峰 %d".format(kb(receiveRate), r.inFlightFrames, r.peakInFlightFrames))
+        append("\n收齐 %.0f · 命令 %.0f · 循环等待 %.0f · 合成 %.0f · 等输出 %.0f ms".format(
+            r.frameDataMeanMs, r.surfaceWorkMeanMs, r.loopWaitMeanMs, r.composeMeanMs, r.outputWaitMeanMs))
+        append("\n接收 %s/s · 在途 %d / 峰 %d · 直写 %d 帧".format(kb(receiveRate), r.inFlightFrames,
+            r.peakInFlightFrames, r.directBitmapFrames))
         append("\n%s%s · 低延迟 %s".format(r.decoder ?: "—",
             when (r.h264HardwareAccelerated) { true -> "（硬件）"; false -> "（软件）"; null -> "" },
             when (r.lowLatencySupported) { true -> "支持"; false -> "不支持"; null -> "—" }))

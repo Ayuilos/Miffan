@@ -31,6 +31,7 @@ import me.rerere.workspace.screen.Framebuffer
 import me.rerere.workspace.screen.RemoteScreenFrameSink
 import me.rerere.workspace.screen.RemoteScreenOptions
 import me.rerere.workspace.screen.RemoteScreenStats
+import me.rerere.rdp.RdpBitmapFrameSink
 import me.rerere.rdp.RdpStats
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RfbJpegDecoder
@@ -178,7 +179,17 @@ class RemoteScreenVM(
     private var visible = true
     private var connectJob: Job? = null
 
-    private val sink = object : RemoteScreenFrameSink {
+    /**
+     * RDP writes dirty rectangles straight into [bitmap] from native code. Every callback runs on
+     * the session worker and the bitmap is only replaced in onSize on that same thread, never
+     * recycled, so a lease needs no lock beyond matching the current size.
+     */
+    private val sink = object : RdpBitmapFrameSink {
+        override fun acquireBitmap(width: Int, height: Int): Bitmap? =
+            _bitmap.value?.takeIf { it.width == width && it.height == height && it.isMutable && !it.isRecycled }
+
+        override fun releaseBitmap(bitmap: Bitmap) = Unit
+
         override fun onSize(width: Int, height: Int, scale: Int) {
             this@RemoteScreenVM.scale = scale
             _bitmap.value = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
