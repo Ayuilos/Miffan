@@ -34,7 +34,7 @@ import me.rerere.hugeicons.stroke.CheckmarkCircle01
 import me.rerere.hugeicons.stroke.Unavailable
 
 private data class CuaInstallRequest(val upgradePath: String?, val cua: RemoteMachineProbe.Cua)
-private enum class EnvironmentStatus { OK, ACTION_NEEDED, UNSUPPORTED }
+internal enum class EnvironmentStatus { OK, ACTION_NEEDED, UNSUPPORTED }
 
 @Composable
 internal fun RemoteScreenEnvironmentPanel(
@@ -85,24 +85,38 @@ internal fun RemoteScreenEnvironmentPanel(
                 else -> EnvironmentStatus.OK
             }, if (probe.session.present) listOfNotNull(probe.session.type, probe.session.desktop?.takeIf { it.isNotBlank() }).joinToString(" · ")
                 else resources.getString(R.string.workspace_screen_no_session))
-            val server = probe.vnc.server?.takeIf { it != "none" && it.isNotBlank() }
-            val macScreenSharing = server == "macos-screen-sharing"
-            EnvironmentRow(stringResource(R.string.workspace_screen_vnc), when {
-                macScreenSharing && !probe.vnc.running -> EnvironmentStatus.ACTION_NEEDED
-                server == null && !supportedSession -> EnvironmentStatus.UNSUPPORTED
-                server == null -> EnvironmentStatus.ACTION_NEEDED
-                else -> EnvironmentStatus.OK
-            }, when {
-                macScreenSharing && !probe.vnc.running -> resources.getString(R.string.workspace_screen_macos_sharing_help)
-                server == null -> resources.getString(R.string.workspace_screen_vnc_missing)
-                probe.vnc.running -> resources.getString(R.string.workspace_screen_vnc_running, server)
-                else -> resources.getString(R.string.workspace_screen_vnc_autostart, server)
-            })
-            probe.vnc.endpoint?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            if (server == null && probe.os == "linux") {
-                RemoteScreenVncInstallGuidance(probe.session.type, probe.session.desktop)
+            if (probe.usesRdp) {
+                val rdpServer = probe.rdpServer
+                EnvironmentRow(stringResource(R.string.workspace_screen_vnc),
+                    if (rdpServer != null) EnvironmentStatus.OK else EnvironmentStatus.ACTION_NEEDED,
+                    when {
+                        rdpServer == null -> resources.getString(R.string.workspace_screen_rdp_missing)
+                        probe.rdp.running -> stringResource(R.string.workspace_screen_rdp_running, rdpServerLabel(rdpServer))
+                        else -> stringResource(R.string.workspace_screen_rdp_autostart, rdpServerLabel(rdpServer))
+                    })
+                if (rdpServer == null) RemoteScreenRdpInstallGuidance(probe.session.desktop)
+            } else {
+                val server = probe.vnc.server?.takeIf { it != "none" && it.isNotBlank() }
+                val macScreenSharing = server == "macos-screen-sharing"
+                EnvironmentRow(stringResource(R.string.workspace_screen_vnc), when {
+                    macScreenSharing && !probe.vnc.running -> EnvironmentStatus.ACTION_NEEDED
+                    server == null && !supportedSession -> EnvironmentStatus.UNSUPPORTED
+                    server == null -> EnvironmentStatus.ACTION_NEEDED
+                    else -> EnvironmentStatus.OK
+                }, when {
+                    macScreenSharing && !probe.vnc.running -> resources.getString(R.string.workspace_screen_macos_sharing_help)
+                    server == null -> resources.getString(R.string.workspace_screen_vnc_missing)
+                    probe.vnc.running -> resources.getString(R.string.workspace_screen_vnc_running, server)
+                    else -> resources.getString(R.string.workspace_screen_vnc_autostart, server)
+                })
+                probe.vnc.endpoint?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (server == null && probe.os == "linux") {
+                    RemoteScreenVncInstallGuidance(probe.session.type, probe.session.desktop)
+                }
             }
-            val clipboard = probe.clipboard?.takeIf { it.isNotBlank() }
+            // RDP carries the clipboard itself, so GNOME and KDE need no clipboard tool.
+            val clipboard = if (probe.usesRdp) resources.getString(R.string.workspace_screen_clipboard_rdp)
+                else probe.clipboard?.takeIf { it.isNotBlank() }
             EnvironmentRow(stringResource(R.string.workspace_screen_clipboard), when {
                 clipboard != null -> EnvironmentStatus.OK
                 probe.os == "linux" -> EnvironmentStatus.ACTION_NEEDED
@@ -157,7 +171,7 @@ internal fun RemoteScreenEnvironmentPanel(
 }
 
 @Composable
-private fun EnvironmentRow(label: String, status: EnvironmentStatus, detail: String) {
+internal fun EnvironmentRow(label: String, status: EnvironmentStatus, detail: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Icon(when (status) {
             EnvironmentStatus.OK -> HugeIcons.CheckmarkCircle01

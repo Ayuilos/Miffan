@@ -1,15 +1,32 @@
 package me.ayuilos.miffan.data.repository
 
 import android.content.res.AssetManager
+import android.content.Context
+import android.os.Build
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import java.security.SecureRandom
 import java.io.ByteArrayInputStream
 import java.io.Closeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.RemoteScreenProtocol
+import me.rerere.rdp.RdpSession
+import me.rerere.rdp.RdpOptions
+import me.rerere.rdp.RdpCredentials
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.rerere.workspace.RemoteWorkspaceSession
@@ -28,6 +45,11 @@ data class RemoteHostScreenConfig(
     val username: String,
     val platform: RemoteScreenPlatform,
     val hasPassword: Boolean,
+    val protocol: RemoteScreenProtocol = RemoteScreenProtocol.AUTO,
+    val rdpUsername: String = "",
+    val rdpCertificateSha256: String? = null,
+    val streamEnabled: Boolean = false,
+    val streamCertificateSha256: String? = null,
 )
 
 enum class RemoteScreenPlatform { UNKNOWN, MACOS, LINUX;
@@ -46,16 +68,20 @@ enum class RemoteScreenProblem {
     NO_GRAPHICAL_SESSION,
     /** No supported VNC server is installed for the session type (see [RemoteScreenUnavailableException.detail]). */
     NO_VNC_SERVER,
-    VNC_START_FAILED,
+    VNC_START_FAILED, NO_RDP_SERVER, RDP_START_FAILED, RDP_ALREADY_CONFIGURED,
+    RDP_KEYRING_LOCKED, RDP_CREDENTIAL_SETUP_UNAVAILABLE, RDP_CERTIFICATE_CHANGED, STREAM_CERTIFICATE_CHANGED,
 }
 
-class RemoteScreenUnavailableException(
+open class RemoteScreenUnavailableException(
     val problem: RemoteScreenProblem,
     /** Extra context from the remote helper, such as the session type or a log tail. */
     val detail: String? = null,
     /** The remote desktop name (for example `GNOME`, `KDE`, `niri`) when the helper knows it. */
     val desktop: String? = null,
 ) : IllegalStateException("${problem.name}${detail?.let { ": $it" }.orEmpty()}")
+
+class RemoteRdpCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
+    RemoteScreenUnavailableException(RemoteScreenProblem.RDP_CERTIFICATE_CHANGED, "RDP certificate fingerprint changed")
 
 /** `miffan probe` output; see `assets/remote/miffan.sh`. */
 @Serializable
@@ -67,12 +93,22 @@ data class RemoteMachineProbe(
     val cua: Cua,
     val vnc: Vnc,
     val clipboard: String? = null,
+    val rdp: Rdp = Rdp(),
 ) {
     @Serializable
     data class Session(val present: Boolean, val type: String, val desktop: String? = null)
 
     @Serializable
     data class Cua(val path: String? = null, val version: String? = null, val min: String, val ok: Boolean)
+
+    @Serializable
+    data class Rdp(
+        val server: String? = null, val version: String? = null, val running: Boolean = false,
+        val port: Int? = null, val username: String? = null, val desktop: String? = null,
+        val mode: String? = null, val error: String? = null, val log: String? = null,
+        val width: Int? = null, val height: Int? = null,
+        @SerialName("certificate_sha256") val certificateSha256: String? = null,
+    )
 
     @Serializable
     data class Vnc(
@@ -91,16 +127,21 @@ data class RemoteMachineProbe(
 /** Result of a remote install or upgrade the user confirmed; [output] is the command's tail. */
 data class RemoteCommandOutcome(val success: Boolean, val output: String)
 
-/** A VNC viewer bound to a workspace's SSH lease. Call [RemoteScreenSession.start] once. */
+/** A desktop viewer bound to a workspace's SSH lease. Call [RemoteDesktopSession.start] once. */
 class RemoteScreenConnection internal constructor(
     val hostId: String,
     val platform: RemoteScreenPlatform,
-    private val handle: LeasedRemote<RemoteScreenSession>,
+    val workspaceId: String,
+    private val handle: LeasedRemote<RemoteDesktopSession>,
+    val streamFallback: RemoteStreamFallback? = null,
+    val streamRequested: Boolean = false,
+    val streamAddress: String? = null,
     private val onClose: (RemoteScreenConnection) -> Unit,
 ) : Closeable {
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    val session: RemoteScreenSession get() = handle.value
+    val session: RemoteDesktopSession get() = handle.value
+    val certificateSha256 get() = session.certificateSha256
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
@@ -120,7 +161,10 @@ class RemoteScreenRepository(
     private val hostDao: RemoteHostDAO,
     private val credentials: RemoteScreenCredentialStore,
     assets: AssetManager,
+    context: Context,
 ) {
+    private val streamRoutes = RemoteStreamRoutes(context)
+    private val streams = RemoteStreamEngine(RemoteStreamIdentityStore(context), streamRoutes, context.applicationContext)
     private val helperScript: ByteArray = assets.open(HELPER_ASSET).use { it.readBytes() }
     private val helperVersion: String = Regex("""MIFFAN_HELPER_VERSION=(\d+)""")
         .find(helperScript.toString(Charsets.UTF_8))?.groupValues?.get(1)
@@ -147,44 +191,169 @@ class RemoteScreenRepository(
         auth: RemoteScreenAuth,
         username: String,
         password: String?,
+        protocol: RemoteScreenProtocol? = null,
+        rdpUsername: String? = null,
     ): Boolean {
-        val host = hostDao.getById(hostId) ?: return false
+        if (hostDao.getById(hostId) == null) return false
         val finalUser = username.trim()
         require(finalUser.none { it == '\u0000' || it == '\n' }) { "Invalid screen username" }
         require(password == null || password.isNotEmpty()) { "Password is empty" }
+        require(rdpUsername == null || rdpUsername.none { it == '\u0000' || it == '\n' || it == '\r' })
         withContext(Dispatchers.IO) {
             when {
-                auth == RemoteScreenAuth.NONE -> credentials.delete(hostId)
+                auth == RemoteScreenAuth.NONE -> credentials.deleteVnc(hostId)
                 password != null -> credentials.save(hostId, password)
                 credentials.load(hostId) == null -> throw IllegalArgumentException("Screen password required")
             }
         }
-        hostDao.update(host.copy(
-            screenEnabled = enabled,
-            screenEndpoint = endpoint.storageValue,
-            screenAuth = auth.storageName,
-            screenUsername = finalUser,
-            updatedAt = System.currentTimeMillis(),
-        ))
+        hostDao.updateScreenConfig(hostId, enabled, endpoint.storageValue, auth.storageName, finalUser,
+            protocol?.storageName, rdpUsername?.trim(), System.currentTimeMillis())
         closeHost(hostId)
         return true
+    }
+
+    /** Updates the independent streaming preference without replacing screen settings or certificate pins. */
+    suspend fun setStreamEnabled(hostId: String, enabled: Boolean): Boolean {
+        val updated = hostDao.setStreamEnabled(hostId, enabled, System.currentTimeMillis()) > 0
+        if (updated) closeHost(hostId)
+        return updated
+    }
+
+    /** Explicit confirmation/replacement. Helper-attested first pins use a separate conditional write. */
+    suspend fun pinRdpCertificate(hostId: String, sha256: String): Boolean {
+        val pin = normalizeRdpFingerprint(sha256)
+        val updated = hostDao.pinRdpCertificate(hostId, pin, System.currentTimeMillis()) > 0
+        if (updated) closeHost(hostId)
+        return updated
+    }
+
+    suspend fun pinStreamCertificate(hostId: String, sha256: String): Boolean {
+        val updated = hostDao.pinStreamCertificate(hostId, normalizeRdpFingerprint(sha256), System.currentTimeMillis()) > 0
+        if (updated) closeHost(hostId)
+        return updated
+    }
+
+    suspend fun streamStatus(hostId: String, expectedRevision: String): RemoteStreamStatus {
+        val workspaceId = workspaceOnHost(hostId, expectedRevision)
+        val row = requireNotNull(hostDao.getById(hostId))
+        return withStreamRemote(workspaceId) { ssh ->
+            ensureRevision(hostId, expectedRevision)
+            ensureHelper(ssh)
+            try { streams.status(ssh, row, sunshineProbe(ssh)) }
+            catch (error: me.rerere.stream.StreamException) {
+                if (error.reason == me.rerere.stream.StreamFailureReason.CERTIFICATE_MISMATCH)
+                    throw streamCertificateFailure(row.streamCertificateSha256, sunshineProbe(ssh).certificateSha256)
+                throw error
+            }
+        }
+    }
+
+    suspend fun startStreamPairing(hostId: String, expectedRevision: String): RemoteStreamPairing {
+        val workspaceId = workspaceOnHost(hostId, expectedRevision)
+        val row = requireNotNull(hostDao.getById(hostId))
+        val pairingPin = SecureRandom().nextInt(10_000).toString().padStart(4, '0')
+        val callerJob = currentCoroutineContext()[Job]
+        val handle = workspaces.openLeasedRemote<RemoteStreamPairing>(workspaceId) { ssh ->
+            runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { ensureRevision(hostId, expectedRevision) }
+            ensureHelper(ssh)
+            val probe = sunshineProbe(ssh)
+            streams.verifyCertificate(row.streamCertificateSha256, probe)
+            check(probe.installed && probe.running) { "Sunshine is not running" }
+            val streamHost = streams.host(ssh, row.streamCertificateSha256)
+            val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val paired = lifetime.async {
+                withTimeout(300_000) {
+                    val pin = try { streamHost.pair(pairingPin, "Miffan (${Build.MODEL})".take(64)) }
+                    catch (error: me.rerere.stream.StreamException) {
+                        if (error.reason == me.rerere.stream.StreamFailureReason.CERTIFICATE_MISMATCH)
+                            throw streamCertificateFailure(row.streamCertificateSha256, probe.certificateSha256)
+                        throw error
+                    }
+                    check(hostDao.pinPairedStreamCertificate(hostId, pin, expectedRevision, row.streamCertificateSha256, System.currentTimeMillis()) == 1) {
+                        "Host identity or certificate trust changed during pairing"
+                    }
+                    pin
+                }
+            }
+            object : RemoteStreamPairing {
+                override val pin = pairingPin
+                override suspend fun await(): String = paired.await()
+                override fun close() { lifetime.cancel() }
+            }
+        }
+        return object : RemoteStreamPairing {
+            override val pin = pairingPin
+            override suspend fun await(): String = try { handle.value.await() } finally { handle.close() }
+            override fun close() = handle.close()
+        }
+    }
+
+    suspend fun startSunshine(hostId: String, expectedRevision: String): RemoteCommandOutcome =
+        sunshineCommand(hostId, expectedRevision, "start")
+
+    suspend fun openSunshinePermissionSettings(hostId: String, expectedRevision: String,
+        permission: RemoteSunshinePermission): RemoteCommandOutcome = sunshineCommand(hostId, expectedRevision,
+        "open-settings " + when (permission) {
+            RemoteSunshinePermission.SCREEN_RECORDING -> "screen"
+            RemoteSunshinePermission.ACCESSIBILITY -> "accessibility"
+        })
+
+    suspend fun enforceStreamEncryption(hostId: String, expectedRevision: String): RemoteCommandOutcome =
+        sunshineCommand(hostId, expectedRevision, "enforce-encryption")
+
+    private suspend fun sunshineCommand(hostId: String, expectedRevision: String, command: String): RemoteCommandOutcome {
+        val workspaceId = workspaceOnHost(hostId, expectedRevision)
+        return withStreamRemote(workspaceId) { ssh ->
+            ensureRevision(hostId, expectedRevision)
+            ensureHelper(ssh)
+            val result = ssh.execute("$HELPER sunshine $command", timeoutMillis = 30_000)
+            val status = parseSunshineCommand(result.stdout)
+            RemoteCommandOutcome(status.success && result.exitCode == 0 && !result.timedOut, status.detail)
+        }
+    }
+
+    private suspend fun ensureRevision(hostId: String, revision: String) {
+        if (hostDao.getById(hostId)?.connectionRevision != revision) throw WorkspaceToolTargetChangedException()
+    }
+
+    private fun sunshineProbe(ssh: RemoteWorkspaceSession): SunshineProbe {
+        val result = ssh.execute("$HELPER sunshine probe", timeoutMillis = 5_000)
+        check(result.exitCode == 0 && !result.timedOut) { "Sunshine probe failed" }
+        return parseSunshineProbe(result.stdout)
+    }
+
+    private fun writeStreamClipboard(ssh: RemoteWorkspaceSession, text: String) {
+        val result = ssh.execute("$HELPER clip", timeoutMillis = 10_000,
+            stdin = ByteArrayInputStream(text.toByteArray(Charsets.UTF_8)))
+        check(result.exitCode == 0 && !result.timedOut) { "Remote clipboard command failed" }
+    }
+
+    private suspend fun <T> withStreamRemote(workspaceId: String, block: suspend (RemoteWorkspaceSession) -> T): T {
+        val callerJob = currentCoroutineContext()[Job]
+        var value: Result<T>? = null
+        workspaces.openLeasedRemote(workspaceId) { ssh ->
+            value = runCatching { runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { block(ssh) } }
+            Closeable {}
+        }.close()
+        return requireNotNull(value).getOrThrow()
     }
 
     /** Called when the host is deleted; the host row itself is removed by [WorkspaceRepository]. */
     suspend fun forgetHost(hostId: String) {
         closeHost(hostId)
-        withContext(Dispatchers.IO) { credentials.delete(hostId) }
+        withContext(Dispatchers.IO) { credentials.delete(hostId); streamRoutes.forget(hostId) }
     }
 
     /**
-     * Opens the screen of the host behind [workspaceId]. The session is not started; the caller
-     * starts it on its own scope and closes the connection when done.
+     * Opens the screen of the host behind [workspaceId]. The caller binds the session to its
+     * scope with start() and closes the connection when done. STREAM preflights before return.
      */
     suspend fun open(
         workspaceId: String,
         sink: RemoteScreenFrameSink,
         jpeg: RfbJpegDecoder?,
         options: RemoteScreenOptions = RemoteScreenOptions(),
+        stream: RemoteStreamRequest = RemoteStreamRequest(),
     ): RemoteScreenConnection {
         val workspace = workspaceDao.getById(workspaceId)?.takeIf { it.isRemote }
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
@@ -193,59 +362,124 @@ class RemoteScreenRepository(
         if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
         val endpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
-        val rfbCredentials = when (RemoteScreenAuth.parse(host.screenAuth)) {
-            RemoteScreenAuth.NONE -> null
-            RemoteScreenAuth.VNC_PASSWORD -> RfbCredentials(password = loadPassword(host.id))
-            RemoteScreenAuth.MACOS_ACCOUNT -> RfbCredentials(
-                username = host.screenUsername.ifBlank { host.username },
-                password = loadPassword(host.id),
-            )
-        }
         var detected: RemoteScreenPlatform? = null
-        val handle = workspaces.openLeasedRemote(workspaceId) { ssh ->
-            if (RemoteScreenPlatform.parse(host.screenPlatform) == RemoteScreenPlatform.UNKNOWN) {
-                detected = when (ssh.execute("uname -s", timeoutMillis = 10_000).stdout.trim()) {
+        var rdpUsername: String? = null
+        val streamRequested = stream.requested(host.streamEnabled)
+        var streamAddress: String? = null
+        var streamFallback: RemoteStreamFallback? = null
+        val callerJob = currentCoroutineContext()[Job]
+        val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
+            runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { ensureRevision(host.id, host.connectionRevision) }
+            val selection = RemoteScreenProtocol.parse(host.screenProtocol)
+            // Manual VNC endpoints keep working without installing a helper or probing a desktop.
+            val machine = if (endpoint == RemoteScreenEndpoint.Helper || selection == RemoteScreenProtocol.RDP) {
+                ensureHelper(ssh)
+                val result = ssh.execute("$HELPER probe", timeoutMillis = 20_000)
+                parseHelperProbe(result.stdout)
+            } else null
+            detected = machine?.let { RemoteScreenPlatform.parse(it.os) }
+                ?: RemoteScreenPlatform.parse(host.screenPlatform).takeIf { it != RemoteScreenPlatform.UNKNOWN }
+                ?: when (ssh.execute("uname -s", timeoutMillis = 10_000).stdout.trim()) {
                     "Darwin" -> RemoteScreenPlatform.MACOS
                     "Linux" -> RemoteScreenPlatform.LINUX
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
-            }
-            var credentials = rfbCredentials
-            val target = when (endpoint) {
-                RemoteScreenEndpoint.Helper -> startHelperVnc(ssh).let { (started, password) ->
-                    // A helper-generated password replaces "no auth"; macOS keeps the account.
-                    if (password != null && credentials == null) credentials = RfbCredentials(password = password)
-                    started
+            val attempt = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+                attemptRemoteStream(streamRequested) {
+                    if (detected !in setOf(RemoteScreenPlatform.LINUX, RemoteScreenPlatform.MACOS)) return@attemptRemoteStream StreamOpenResult(
+                        fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux or macOS"))
+                    try {
+                        ensureHelper(ssh)
+                        val deadline = System.nanoTime() + 20_000_000_000L
+                        val initial = sunshineProbe(ssh)
+                        streams.verifyCertificate(host.streamCertificateSha256, initial)
+                        val platform = requireNotNull(detected)
+                        val probe = prepareStreamProbe(platform, initial) {
+                            val result = ssh.execute("$HELPER sunshine wake", timeoutMillis = 10_000)
+                            if (result.exitCode == 0 && !result.timedOut) parseSunshineCommand(result.stdout)
+                            else SunshineCommand(false, "Display wake failed", true)
+                        }
+                        val remaining = (deadline - System.nanoTime()) / 1_000_000
+                        val opened = streams.open(ssh, host, probe, { text -> writeStreamClipboard(ssh, text) }, remaining,
+                            stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height), platform)
+                        if (platform == RemoteScreenPlatform.MACOS && opened.fallback != null) {
+                            // A capture denial can appear only after attempting to build a stream.
+                            val diagnostic = try { sunshineProbe(ssh) }
+                            catch (error: CancellationException) { throw error }
+                            catch (_: Exception) { return@attemptRemoteStream opened }
+                            streams.verifyCertificate(host.streamCertificateSha256, diagnostic)
+                            opened.copy(fallback = streamDiagnosticFallback(diagnostic, opened.fallback))
+                        } else opened
+                    } catch (error: RemoteStreamCertificateChangedException) { throw error }
+                    catch (error: CancellationException) { throw error }
+                    catch (_: Exception) { StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER)) }
                 }
-                else -> endpoint
             }
-            val stream = when (target) {
-                is RemoteScreenEndpoint.Tcp -> ssh.openLoopbackStream(target.port)
-                is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(target.path)
-                RemoteScreenEndpoint.Helper -> throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
+            streamFallback = attempt.fallback
+            streamAddress = attempt.address
+            if (attempt.session != null) return@openLeasedRemote attempt.session
+            val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
+            if (protocol == RemoteDesktopProtocol.RDP) {
+                val password = credentials.getOrCreateRdp(host.id)
+                val started = startHelperRdp(ssh, password)
+                rdpUsername = started.username
+                val expectedPin = expectedRdpCertificate(host.rdpCertificateSha256, started.certificateSha256)
+                val stream = ssh.openLoopbackStream(requireNotNull(started.port))
+                try {
+                    val size = if (started.mode == "headless") 1920 to 1080 else
+                        (started.width?.takeIf { it in 320..8192 } ?: 1920) to (started.height?.takeIf { it in 240..8192 } ?: 1080)
+                    RdpDesktopSession(RdpSession(stream.input, stream.output, stream,
+                        RdpCredentials(requireNotNull(started.username), password),
+                        RdpOptions(size.first, size.second, expectedPin, rdpSecurityForServer(started.server)), sink), expectedPin,
+                        onCertificateVerified = if (host.rdpCertificateSha256 == null && expectedPin != null) { pin ->
+                            hostDao.pinFirstRdpCertificate(host.id, pin, host.connectionRevision, System.currentTimeMillis())
+                            Unit
+                        } else null)
+                } catch (error: Throwable) { stream.close(); throw error }
+            } else {
+                var auth = when (RemoteScreenAuth.parse(host.screenAuth)) {
+                    RemoteScreenAuth.NONE -> null
+                    RemoteScreenAuth.VNC_PASSWORD -> RfbCredentials(password = credentials.load(host.id) ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.PASSWORD_MISSING))
+                    RemoteScreenAuth.MACOS_ACCOUNT -> RfbCredentials(host.screenUsername.ifBlank { host.username },
+                        (credentials.load(host.id) ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.PASSWORD_MISSING)))
+                }
+                val target = when (endpoint) {
+                    RemoteScreenEndpoint.Helper -> startHelperVnc(ssh).let { (started, password) ->
+                        if (password != null && auth == null) auth = RfbCredentials(password = password)
+                        started
+                    }
+                    else -> endpoint
+                }
+                val stream = when (target) {
+                    is RemoteScreenEndpoint.Tcp -> ssh.openLoopbackStream(target.port)
+                    is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(target.path)
+                    RemoteScreenEndpoint.Helper -> throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
+                }
+                VncDesktopSession(RemoteScreenSession(stream.input, stream.output, stream, auth, jpeg, options, sink))
             }
-            RemoteScreenSession(stream.input, stream.output, stream, credentials, jpeg, options, sink)
         }
-        detected?.takeIf { it != RemoteScreenPlatform.UNKNOWN }?.let { platform ->
-            hostDao.getById(host.id)?.let { hostDao.update(it.copy(screenPlatform = platform.storageName)) }
-        }
-        val platform = detected ?: RemoteScreenPlatform.parse(host.screenPlatform)
-        val connection = RemoteScreenConnection(host.id, platform, handle) { closed ->
-            synchronized(lock) {
-                open[host.id]?.remove(closed)
-                if (open[host.id].isNullOrEmpty()) open.remove(host.id)
+        return try {
+            detected?.takeIf { it != RemoteScreenPlatform.UNKNOWN }?.let { platform ->
+                hostDao.updateDetectedScreen(host.id, platform.storageName, rdpUsername)
             }
-        }
-        synchronized(lock) { open.getOrPut(host.id, ::mutableSetOf) += connection }
-        return connection
+            val platform = detected ?: RemoteScreenPlatform.parse(host.screenPlatform)
+            val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle, streamFallback, streamRequested, streamAddress) { closed ->
+                synchronized(lock) {
+                    open[host.id]?.remove(closed)
+                    if (open[host.id].isNullOrEmpty()) open.remove(host.id)
+                }
+            }
+            synchronized(lock) { open.getOrPut(host.id, ::mutableSetOf) += connection }
+            connection
+        } catch (error: Throwable) { handle.close(); throw error }
     }
 
-    /**
-     * Puts [text] on the remote clipboard over SSH so it can be pasted with the platform
-     * shortcut; VNC key events cannot carry most non-Latin text. The helper finds the graphical
-     * session (Wayland, X11 or macOS) and its clipboard tool.
-     */
+    /** Uses cliprdr for an active RDP session; VNC and STREAM use the SSH clipboard helper. */
     suspend fun setRemoteClipboard(workspaceId: String, @Suppress("UNUSED_PARAMETER") platform: RemoteScreenPlatform, text: String): Boolean {
+        val rdp = synchronized(lock) { open.values.flatten().firstOrNull {
+            it.workspaceId == workspaceId && it.session.protocol == RemoteDesktopProtocol.RDP
+        } }
+        if (rdp != null) { rdp.session.sendClipboard(text); return true }
         withRemote(workspaceId) { ssh ->
             ensureHelper(ssh)
             val result = ssh.execute("$HELPER clip", timeoutMillis = 10_000,
@@ -337,6 +571,14 @@ class RemoteScreenRepository(
         return started to status.password
     }
 
+    private fun startHelperRdp(ssh: RemoteWorkspaceSession, password: String): RemoteMachineProbe.Rdp {
+        val result = ssh.execute("$HELPER rdp start", timeoutMillis = 30_000,
+            stdin = ByteArrayInputStream((password + "\n").toByteArray(Charsets.UTF_8)))
+        val status = parseRdpStart(result.stdout)
+        if (result.exitCode != 0 || result.timedOut) throw RemoteScreenUnavailableException(RemoteScreenProblem.RDP_START_FAILED)
+        return status
+    }
+
     private suspend fun <T> withRemote(workspaceId: String, block: (RemoteWorkspaceSession) -> T): T {
         var value: Result<T>? = null
         workspaces.openLeasedRemote(workspaceId) { ssh ->
@@ -386,5 +628,8 @@ class RemoteScreenRepository(
         username = screenUsername,
         platform = RemoteScreenPlatform.parse(screenPlatform),
         hasPassword = hasPassword,
+        protocol = RemoteScreenProtocol.parse(screenProtocol), rdpUsername = rdpUsername,
+        rdpCertificateSha256 = rdpCertificateSha256,
+        streamEnabled = streamEnabled, streamCertificateSha256 = streamCertificateSha256,
     )
 }

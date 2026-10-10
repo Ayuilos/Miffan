@@ -2,6 +2,7 @@ package me.rerere.workspace
 
 import com.jcraft.jsch.ChannelDirectStreamLocal
 import com.jcraft.jsch.ChannelDirectTCPIP
+import com.jcraft.jsch.ChannelWindow
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.Channel
 import com.jcraft.jsch.ChannelSftp
@@ -25,6 +26,10 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** Credentials are supplied by the caller when a session opens; do not persist them in this module. */
 sealed interface RemoteAuthentication {
@@ -318,23 +323,27 @@ class RemoteWorkspaceSession internal constructor(
      * Opens a direct-tcpip stream to [port] on the remote host's loopback interface. Nothing
      * listens on the device, so other local apps cannot reach the forwarded service.
      */
-    fun openLoopbackStream(port: Int): RemoteChannelStream {
+    fun openLoopbackStream(port: Int, timeoutMillis: Int = channelTimeoutMillis): RemoteChannelStream {
         require(port in 1..65535) { "Invalid port" }
+        require(timeoutMillis > 0)
         checkOpen()
         val channel = session.openChannel("direct-tcpip") as ChannelDirectTCPIP
+        val owner = operation.get()
         try {
+            owner?.install(channel)
             channel.setHost("127.0.0.1")
             channel.setPort(port)
             channel.setOrgIPAddress("127.0.0.1")
             channel.setOrgPort(0)
+            ChannelWindow.widen(channel, STREAM_WINDOW_BYTES, STREAM_PACKET_BYTES)
             val input = channel.inputStream
             val output = channel.outputStream
-            channel.connect(channelTimeoutMillis)
+            channel.connect(timeoutMillis)
             return RemoteChannelStream(this, channel, input, output, null)
         } catch (error: Throwable) {
             runCatching { channel.disconnect() }
             throw error
-        }
+        } finally { owner?.release(channel) }
     }
 
     /**
@@ -348,6 +357,7 @@ class RemoteWorkspaceSession internal constructor(
         val channel = session.openChannel("direct-streamlocal@openssh.com") as ChannelDirectStreamLocal
         try {
             channel.setSocketPath(path)
+            ChannelWindow.widen(channel, STREAM_WINDOW_BYTES, STREAM_PACKET_BYTES)
             val input = channel.inputStream
             val output = channel.outputStream
             channel.connect(channelTimeoutMillis)
@@ -648,12 +658,7 @@ class RemoteTerminalSession internal constructor(
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
-            try {
-                channel.disconnect()
-            } finally {
-                runCatching { input.close() }
-                runCatching { output.close() }
-            }
+            closeSshChannelOnIo(channel, input, output)
         }
     }
 }
@@ -672,12 +677,25 @@ class RemoteChannelStream internal constructor(
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
-            try {
-                channel.disconnect()
-            } finally {
-                runCatching { input.close() }
-                runCatching { output.close() }
-            }
+            closeSshChannelOnIo(channel, input, output, errors)
+        }
+    }
+}
+
+private val sshChannelCleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+/**
+ * JSch disconnect sends SSH CLOSE, and OutputStream.close may send EOF. A main-thread
+ * network exception is swallowed by JSch after packet encoding has advanced cipher state,
+ * leaving the shared SSH session unusable. Logical closure above is immediate; all network
+ * cleanup runs on IO, independently of the cancelled viewer/terminal scope.
+ */
+private fun closeSshChannelOnIo(channel: Channel, input: InputStream, output: OutputStream, errors: InputStream? = null) {
+    sshChannelCleanup.launch {
+        try { channel.disconnect() } finally {
+            runCatching { input.close() }
+            runCatching { output.close() }
+            runCatching { errors?.close() }
         }
     }
 }
@@ -754,3 +772,7 @@ private fun copyBounded(input: InputStream, output: OutputStream, maxBytes: Long
 private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 
 private const val MAX_LIST_ENTRIES = 500
+
+/** Receive window for forwarded streams: 4 MiB keeps a LAN or Tailscale link full (128 KiB managed ~4 MB/s). */
+private const val STREAM_WINDOW_BYTES = 4 * 1024 * 1024
+private const val STREAM_PACKET_BYTES = 32 * 1024

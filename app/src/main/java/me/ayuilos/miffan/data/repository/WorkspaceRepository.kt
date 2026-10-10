@@ -317,7 +317,7 @@ class WorkspaceRepository(
         withContext(Dispatchers.IO) { sshKeyCredentialStore.save(id, material.privateKeyPem) }
         sshKeyDao.update(key.copy(updatedAt = System.currentTimeMillis()))
         hostDao.listFlow().first().filter { it.sshKeyId == id }.forEach { host ->
-            hostDao.update(host.copy(
+            hostDao.updateConnection(host.copy(
                 connectionRevision = UUID.randomUUID().toString(),
                 updatedAt = System.currentTimeMillis(),
             ))
@@ -437,7 +437,7 @@ class WorkspaceRepository(
             credentialStore.save(id, authentication)
         }
         try {
-            hostDao.update(previous.copy(
+            hostDao.updateConnection(previous.copy(
                 name = finalName,
                 host = finalHost,
                 port = port,
@@ -483,7 +483,7 @@ class WorkspaceRepository(
         require(liveKey.sha256Fingerprint == fingerprintSha256) {
             workspaceStrings.getString(R.string.workspace_error_host_key_changed)
         }
-        hostDao.update(host.copy(
+        hostDao.updateConnection(host.copy(
             trustedHostKeySha256 = fingerprintSha256,
             connectionRevision = if (host.trustedHostKeySha256 != fingerprintSha256)
                 UUID.randomUUID().toString() else host.connectionRevision,

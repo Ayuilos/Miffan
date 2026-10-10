@@ -27,6 +27,10 @@ import org.junit.Before
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.io.IOException
+import java.io.DataOutputStream
+import java.net.ServerSocket
+import java.net.InetAddress
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -37,6 +41,14 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import me.rerere.workspace.screen.RemoteScreenSession
+import me.rerere.workspace.screen.RemoteScreenOptions
+import me.rerere.workspace.screen.RemoteScreenFrameSink
+import me.rerere.workspace.screen.RemoteScreenState
+import me.rerere.workspace.screen.RfbRect
 
 class NativeSshWorkspaceTransportTest {
     private lateinit var server: SshServer
@@ -62,6 +74,7 @@ class NativeSshWorkspaceTransportTest {
             port = 0
             keyPairProvider = SimpleGeneratorHostKeyProvider(directory.resolve("hostkey.ser"))
             passwordAuthenticator = { username, password, _ -> username == "test" && password == "secret" }
+            forwardingFilter = org.apache.sshd.server.forward.AcceptAllForwardingFilter.INSTANCE
             subsystemFactories = listOf(SftpSubsystemFactory.Builder().build().apply {
                 addSftpEventListener(object : SftpEventListener {
                     override fun reading(
@@ -94,7 +107,7 @@ class NativeSshWorkspaceTransportTest {
                         return super.open(sender, initialWindowSize, maxPacketSize, buffer)
                     }
                 }
-            })
+            }, org.apache.sshd.server.forward.DirectTcpipFactory.INSTANCE)
             commandFactory = CommandFactory { _, command ->
                 object : Command {
                     private lateinit var input: InputStream
@@ -242,6 +255,111 @@ class NativeSshWorkspaceTransportTest {
         trustedHostKeySha256 = fingerprint,
         remoteRoot = root.toString(),
     )
+
+    private fun withUiNetworkGuard(workspace: RemoteWorkspaceSession, block: (AtomicInteger) -> Unit) {
+        // Model Android's network-on-main-thread guard at the actual SSH socket, after
+        // JSch has encoded the packet. The guard must never run during a UI close.
+        val caller = Thread.currentThread()
+        val forbiddenWrites = AtomicInteger()
+        val sshField = RemoteWorkspaceSession::class.java.getDeclaredField("session").apply { isAccessible = true }
+        val ssh = sshField.get(workspace)
+        val ioField = ssh.javaClass.getDeclaredField("io").apply { isAccessible = true }
+        val io = ioField.get(ssh)
+        val outField = io.javaClass.getDeclaredField("out").apply { isAccessible = true }
+        val socketOutput = outField.get(io) as OutputStream
+        outField.set(io, object : OutputStream() {
+            override fun write(value: Int) = write(byteArrayOf(value.toByte()))
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                if (Thread.currentThread() === caller) {
+                    forbiddenWrites.incrementAndGet()
+                    throw IOException("NetworkOnMainThreadException fixture")
+                }
+                socketOutput.write(bytes, offset, length)
+            }
+            override fun flush() = socketOutput.flush()
+            override fun close() = socketOutput.close()
+        })
+        try { block(forbiddenWrites) } finally { outField.set(io, socketOutput) }
+    }
+
+    private fun <T> ioCall(block: () -> T): T = java.util.concurrent.FutureTask(block).also {
+        Thread(it, "SSH-regression-io").apply { isDaemon = true; start() }
+    }.get(5, TimeUnit.SECONDS)
+
+    @Test fun closingScreenStreamOnUiThreadKeepsSharedSshUsableForImmediateReconnect() {
+        val fingerprint = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port).sha256Fingerprint
+        NativeSshWorkspaceTransport.open(config(fingerprint)).use { workspace ->
+            withUiNetworkGuard(workspace) { forbiddenWrites ->
+                repeat(3) {
+                    val stream = ioCall { workspace.openProcess("cat") }
+                    ioCall {
+                        stream.output.write('x'.code); stream.output.flush()
+                        assertEquals('x'.code, stream.input.read())
+                    }
+                    stream.close()
+                    stream.close()
+                    assertFalse(stream.isConnected)
+                    assertEquals("UI close must not write SSH packets", 0, forbiddenWrites.get())
+                    assertEquals("alive", ioCall { workspace.execute("printf alive").stdout })
+                }
+                assertEquals("UI close must not write SSH packets", 0, forbiddenWrites.get())
+                assertTrue(workspace.isConnected)
+            }
+        }
+    }
+
+    @Test fun connectedVncCanCloseOnUiThreadAndImmediatelyReconnectOverSameSsh() {
+        val fingerprint = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port).sha256Fingerprint
+        ServerSocket(0, 3, InetAddress.getLoopbackAddress()).use { listener ->
+            val vncServer = Thread {
+                runCatching {
+                    repeat(3) {
+                        listener.accept().use { socket ->
+                            DataOutputStream(socket.getOutputStream()).apply {
+                                write("RFB 003.008\n".toByteArray())
+                                writeByte(1); writeByte(1); writeInt(0) // None authentication
+                                writeShort(1); writeShort(1); write(ByteArray(16))
+                                writeInt(4); write("test".toByteArray()); flush()
+                            }
+                            val buffer = ByteArray(1024)
+                            while (socket.getInputStream().read(buffer) >= 0) { }
+                        }
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+            val owner = SupervisorJob()
+            val scope = CoroutineScope(owner + Dispatchers.IO)
+            try {
+                NativeSshWorkspaceTransport.open(config(fingerprint)).use { workspace ->
+                    withUiNetworkGuard(workspace) { forbiddenWrites ->
+                        repeat(3) {
+                            val stream = ioCall { workspace.openLoopbackStream(listener.localPort) }
+                            val ready = CountDownLatch(1)
+                            val sink = object : RemoteScreenFrameSink {
+                                override fun onSize(width: Int, height: Int, scale: Int) { ready.countDown() }
+                                override fun onPixels(rect: RfbRect, pixels: IntArray) { }
+                                override fun onFrameComplete() { }
+                            }
+                            val viewer = RemoteScreenSession(stream.input, stream.output, stream, null, null,
+                                RemoteScreenOptions(), sink)
+                            try {
+                                viewer.start(scope)
+                                assertTrue("VNC handshake: ${viewer.state.value}", ready.await(5, TimeUnit.SECONDS))
+                                assertTrue(viewer.state.value is RemoteScreenState.Connected)
+                            } finally { viewer.close() }
+                            assertEquals("VNC UI close must not write SSH packets", 0, forbiddenWrites.get())
+                            assertEquals("alive", ioCall { workspace.execute("printf alive").stdout })
+                        }
+                        assertTrue(workspace.isConnected)
+                    }
+                }
+            } finally {
+                owner.cancel()
+                listener.close()
+                vncServer.join(2000)
+            }
+        }
+    }
 
     @Test fun generatedPublicKeyAuthenticatesToKeyOnlyServer() {
         val accepted = SshKeyCodec.generate()

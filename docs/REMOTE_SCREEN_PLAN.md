@@ -200,3 +200,12 @@ cua-driver 的 Skill 应从远端读取，不打包进 APP。0.34 通过 MCP `re
 - 接管后的拒绝：开启“操作前询问”时，伙伴的每个动作都要用户点“允许”，而“允许”本身就是交还控制权，所以拒绝只会在关闭询问时出现。真机上没有关闭询问来测：那台桌面上开着用户自己的终端。拒绝逻辑由单元测试覆盖。
 - 尚未验证：macOS 的接入引导（屏幕共享账户、权限请求）、真机性能。
 - 代码在 `feature/remote-screen` 分支，基于 `feature/im-4.0`。
+- 2026-10-09 真机性能（OPPO Find X6 Pro，同一 Wi-Fi，经 Tailscale 连 Mac，播放视频）：
+  - 屏幕页长按顶部连接状态行可显示性能浮层（编码、每帧大小、速率、读取/解码/缩放/上传耗时、绘制帧率），同时每 2 秒写入 Logcat `RemoteScreenPerf`。
+  - 首个瓶颈是 JSch 转发通道的 128 KiB 接收窗口：Mac 到 CachyOS 同一路径上 JSch 隧道 4.3 MB/s，OpenSSH 23 MB/s。转发通道改为 4 MiB 窗口后为 23.9 MB/s；手机上从 3.2 MB/s 升到 8.6 MB/s。
+  - 第二个限制是 Mac 屏幕共享本身：只给 ZRLE 无损、按 Retina 物理像素发送，视频画面每帧 5–7 MB，手机解码约 100–225 ms，因此视频类画面只有约 2 帧/秒。流水线取帧已默认开启（最多 2 个在途请求）。
+  - 用户决定暂时接受现状。真正解决需要在 Mac 上安装自有采集程序（ScreenCaptureKit + 硬件 H.264，手机 MediaCodec 解码，可与 RDP 的 H.264 解码共用），或换支持 JPEG 的 VNC 服务端（macVNC，需源码编译且截屏接口在 macOS 26 上待验证）。
+- 2026-10-09 GNOME / KDE（CachyOS 测试账号 `miffanrdp` 的无头会话）：
+  - GNOME 51：Arch 的 gnome-remote-desktop 编译了 VNC。无头 GNOME + gnome-remote-desktop 的 VNC 可被现有 RFB 客户端查看与操作（VNC 密码、Tight、光标形状、点击、键盘）。注意：无头模式下每个客户端会得到一块新的虚拟显示器（扩展而非镜像），所以 gnome-shell 不能再带 `--virtual-monitor`；新账号需要配置 xkb 输入源，否则字母键无效；它每帧重发整屏（光标闪烁也会），流量偏大；VNC 与 RDP 都监听所有网卡。RDP（NLA + H.264 AVC444）也可用。Debian 等发行版的 gnome-remote-desktop 可能只有 RDP。
+  - KDE（KWin 6.7）：krdp 支持 `--address 127.0.0.1` 与 `--plasma`（直接使用 KWin 协议、不弹门户授权），TLS 安全层登录成功并以 H.264 推流；用命令行 `-u/-p` 时 NLA 登录失败（“user not in SAM”），需改用 krdp 的配置。无 VNC。
+  - 结论：GNOME 可先走 VNC 接入；KDE 与其他发行版的 GNOME 依赖 P5 的 RDP 客户端（需要 H.264 硬解）。

@@ -1,0 +1,21 @@
+P6b Android: RTSP descriptors are AF_UNIX socketpairs. Handle short writes
+and EINTR, and suppress SIGPIPE when cancellation closes the bridge peer.
+
+--- a/src/PlatformSockets.c
++++ b/src/PlatformSockets.c
+@@ -613,11 +613,10 @@
+         int bytesToSend = size - bytesSent > TCPv4_MSS ?
+                           TCPv4_MSS : size - bytesSent;
+ 
+-        if (send(s, &buffer[bytesSent], bytesToSend, 0) < 0) {
+-            return -1;
+-        }
+-
+-        bytesSent += bytesToSend;
++        int sent = send(s, &buffer[bytesSent], bytesToSend, MSG_NOSIGNAL);
++        if (sent < 0 && errno == EINTR) continue;
++        if (sent <= 0) return -1;
++        bytesSent += sent;
+     }
+ 
+     return bytesSent;

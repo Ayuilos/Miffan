@@ -1,0 +1,40 @@
+P6b JNI lifetime: detached AsyncTerm could outlive LiStopConnection and call
+into a freed or subsequent JNI session. Our listener only signals the worker
+(never calls Stop on AsyncTerm), so join it after producer threads stop and
+before platform teardown. The next session must not receive an old callback.
+
+--- a/src/Connection.c
++++ b/src/Connection.c
+@@ -4,6 +4,7 @@
+ static ConnListenerConnectionTerminated originalTerminationCallback;
+ static bool alreadyTerminated;
+ static PLT_THREAD terminationCallbackThread;
++static bool terminationCallbackThreadStarted;
+ static int terminationCallbackErrorCode;
+ 
+ // Common globals
+@@ -133,6 +134,12 @@
+         // Nothing to do
+         stage--;
+     }
++    // All producer threads have stopped. Join AsyncTerm before JNI owner release
++    // and before cleanupPlatform() checks its active-thread count.
++    if (terminationCallbackThreadStarted) {
++        PltJoinThread(&terminationCallbackThread);
++        terminationCallbackThreadStarted = false;
++    }
+     if (stage == STAGE_PLATFORM_INIT) {
+         Limelog("Cleaning up platform...");
+         cleanupPlatform();
+@@ -179,8 +186,9 @@
+         LC_ASSERT(err == 0);
+     }
+ 
+-    // Detach the thread since we never wait on it
+-    PltDetachThread(&terminationCallbackThread);
++    // P6b callbacks only signal the startup worker; they never call Stop here.
++    // Retain the thread so Stop can wait before releasing the JNI session owner.
++    terminationCallbackThreadStarted = err == 0;
+ }
+ 
+ static bool parseRtspPortNumberFromUrl(const char* rtspSessionUrl, uint16_t* port)

@@ -44,7 +44,10 @@ sealed interface RfbEvent {
         val resized: Boolean,
         /** Set when this update changed the pointer shape. */
         val cursor: RfbCursor? = null,
+        /** Tight used its JPEG subencoding in at least one rectangle. */
+        val hasTightJpeg: Boolean = false,
     ) : RfbEvent
+    data object ColorMapUpdated : RfbEvent
     data object Bell : RfbEvent
     data class CutText(val text: String) : RfbEvent
 }
@@ -78,8 +81,10 @@ class RfbClient(
     jpeg: RfbJpegDecoder? = null,
     /** Fixed for the connection so an update already in flight never changes format. */
     private val pixelFormat: RfbPixelFormat = RfbPixelFormat.RGB888,
+    private val nanoTime: () -> Long = System::nanoTime,
 ) {
-    private val counter = CountingInputStream(BufferedInputStream(input, 1 shl 16))
+    private val network = TimedInputStream(input, nanoTime)
+    private val counter = CountingInputStream(BufferedInputStream(network, 1 shl 16))
     private val input = DataInputStream(counter)
     private val output = DataOutputStream(BufferedOutputStream(output))
     private val zrle = ZrleDecoder(pixelFormat)
@@ -87,11 +92,27 @@ class RfbClient(
     lateinit var framebuffer: Framebuffer
         private set
 
-    /** Bytes received from the server so far. */
+    /** Protocol bytes consumed, including skipped padding; used for exact per-update sizes. */
     val bytesRead: Long get() = counter.count
 
+    /** Bytes actually received by the transport, including buffered data. */
+    val bytesReceived: Long get() = network.bytesReceived
+
     /** Client-side inflate + decode time so far, excluding network reads. */
-    val decodeNanos: Long get() = zrle.decodeNanos + tight.decodeNanos
+    var decodeNanos: Long = 0
+        private set
+
+    /** Time in actual transport reads (buffer hits are not timed). */
+    val readNanos: Long get() = network.readNanos
+
+    internal data class MessageHeader(val type: Int, val receivedNanos: Long, val bytesBefore: Long, val readBefore: Long)
+
+    internal fun readMessageHeader(): MessageHeader {
+        val bytes = bytesRead
+        val reads = readNanos
+        val type = input.readUnsignedByte()
+        return MessageHeader(type, network.lastReadNanos, bytes, reads)
+    }
 
     fun handshake(preferredEncodings: IntArray = defaultEncodings(jpegQuality = if (tight.supportsJpeg) 6 else null)): RfbServerInfo {
         val versionBytes = ByteArray(12).also(input::readFully)
@@ -184,13 +205,20 @@ class RfbClient(
 
     /** Blocks until one server message has been applied to [framebuffer]. */
     fun readMessage(): RfbEvent {
-        return when (val type = input.readUnsignedByte()) {
+        while (true) {
+            val event = readMessage(readMessageHeader())
+            if (event != RfbEvent.ColorMapUpdated) return event
+        }
+    }
+
+    internal fun readMessage(header: MessageHeader): RfbEvent {
+        return when (val type = header.type) {
             0 -> readFramebufferUpdate()
             1 -> {
                 input.skipBytes(1)
                 input.readUnsignedShort()
                 input.skipBytes(input.readUnsignedShort() * 6)
-                readMessage()
+                RfbEvent.ColorMapUpdated
             }
             2 -> RfbEvent.Bell
             3 -> {
@@ -210,6 +238,7 @@ class RfbClient(
         val rects = ArrayList<RfbRect>(count)
         var resized = false
         var cursor: RfbCursor? = null
+        var hasTightJpeg = false
         repeat(count) {
             val x = input.readUnsignedShort()
             val y = input.readUnsignedShort()
@@ -218,11 +247,17 @@ class RfbClient(
             val encoding = input.readInt()
             encodings += encoding
             if (encoding != ENCODING_DESKTOP_SIZE && encoding != ENCODING_CURSOR) rects += RfbRect(x, y, w, h)
+            val started = nanoTime()
+            val readsBefore = readNanos
             when (encoding) {
                 ENCODING_RAW -> readRaw(x, y, w, h)
                 ENCODING_COPY_RECT -> copyRect(input.readUnsignedShort(), input.readUnsignedShort(), x, y, w, h)
                 ENCODING_ZRLE -> zrle.decode(input, framebuffer, x, y, w, h)
-                ENCODING_TIGHT -> tight.decode(input, framebuffer, x, y, w, h)
+                ENCODING_TIGHT -> {
+                    val jpegsBefore = tight.jpegRects
+                    tight.decode(input, framebuffer, x, y, w, h)
+                    if (tight.jpegRects != jpegsBefore) hasTightJpeg = true
+                }
                 ENCODING_CURSOR -> cursor = readCursor(x, y, w, h)
                 ENCODING_DESKTOP_SIZE -> {
                     framebuffer.resize(w, h)
@@ -230,8 +265,9 @@ class RfbClient(
                 }
                 else -> throw IOException("Server sent unrequested encoding $encoding")
             }
+            decodeNanos += (nanoTime() - started - (readNanos - readsBefore)).coerceAtLeast(0)
         }
-        return RfbEvent.FramebufferUpdated(rects, encodings, resized, cursor)
+        return RfbEvent.FramebufferUpdated(rects, encodings, resized, cursor, hasTightJpeg)
     }
 
     private fun readRaw(x: Int, y: Int, w: Int, h: Int) {
@@ -316,6 +352,8 @@ class RfbClient(
 
         const val ENCODING_RAW = 0
         const val ENCODING_COPY_RECT = 1
+        /** Statistics marker only; never advertised on the wire. */
+        internal const val ENCODING_TIGHT_JPEG = Int.MIN_VALUE
         const val ENCODING_TIGHT = 7
         const val ENCODING_ZRLE = 16
         const val ENCODING_DESKTOP_SIZE = -223
@@ -342,10 +380,12 @@ private class CountingInputStream(input: InputStream) : FilterInputStream(input)
     @Volatile var count = 0L
         private set
 
-    override fun read(): Int = super.read().also { if (it >= 0) count++ }
+    override fun skip(n: Long): Long = `in`.skip(n).also { count += it }
+
+    override fun read(): Int = `in`.read().also { if (it >= 0) count++ }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int =
-        super.read(b, off, len).also { if (it > 0) count += it }
+        `in`.read(b, off, len).also { if (it > 0) count += it }
 }
 
 private const val MAX_CUT_TEXT = 4 * 1024 * 1024
@@ -362,5 +402,42 @@ internal fun decodeCutText(bytes: ByteArray): String {
         decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
     } catch (_: java.nio.charset.CharacterCodingException) {
         String(bytes, StandardCharsets.ISO_8859_1)
+    }
+}
+
+/** Below buffering: one pair of clock reads per actual transport read, never per pixel. */
+internal class TimedInputStream(input: InputStream, private val nanoTime: () -> Long) : FilterInputStream(input) {
+    @Volatile var readNanos: Long = 0
+        private set
+    @Volatile var bytesReceived: Long = 0
+        private set
+    var lastReadNanos: Long = 0
+        private set
+
+    override fun read(): Int {
+        val started = nanoTime()
+        return try { `in`.read().also { if (it >= 0) bytesReceived++ } } finally { finish(started) }
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        val started = nanoTime()
+        return try { `in`.read(b, off, len).also { if (it > 0) bytesReceived += it } } finally { finish(started) }
+    }
+
+    // Force skips through reads so all received bytes and blocking I/O remain observable.
+    override fun skip(n: Long): Long {
+        var remaining = n.coerceAtLeast(0)
+        val scratch = ByteArray(minOf(remaining, 2048L).toInt())
+        while (remaining > 0) {
+            val read = read(scratch, 0, minOf(remaining, scratch.size.toLong()).toInt())
+            if (read <= 0) break
+            remaining -= read
+        }
+        return n.coerceAtLeast(0) - remaining
+    }
+
+    private fun finish(started: Long) {
+        lastReadNanos = nanoTime()
+        readNanos += lastReadNanos - started
     }
 }

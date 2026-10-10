@@ -32,6 +32,11 @@ data class RemoteHostEntity(
     @ColumnInfo("screen_username", defaultValue = "''") val screenUsername: String = "",
     /** `macos`, `linux`, or blank until detected over SSH. */
     @ColumnInfo("screen_platform", defaultValue = "''") val screenPlatform: String = "",
+    @ColumnInfo("screen_protocol", defaultValue = "'auto'") val screenProtocol: String = "auto",
+    @ColumnInfo("rdp_username", defaultValue = "''") val rdpUsername: String = "",
+    @ColumnInfo("rdp_certificate_sha256") val rdpCertificateSha256: String? = null,
+    @ColumnInfo("stream_enabled", defaultValue = "0") val streamEnabled: Boolean = false,
+    @ColumnInfo("stream_certificate_sha256") val streamCertificateSha256: String? = null,
 )
 
 enum class RemoteScreenAuth { NONE, VNC_PASSWORD, MACOS_ACCOUNT;
@@ -45,7 +50,7 @@ sealed interface RemoteScreenEndpoint {
     data class Tcp(val port: Int) : RemoteScreenEndpoint
     data class Unix(val path: String) : RemoteScreenEndpoint
 
-    /** The Miffan helper starts a per-user VNC server and reports where it listens. */
+    /** The Miffan helper starts a per-user desktop server and reports where it listens. */
     data object Helper : RemoteScreenEndpoint
 
     val storageValue: String get() = when (this) {
@@ -61,5 +66,13 @@ sealed interface RemoteScreenEndpoint {
             value.startsWith("unix:/") -> Unix(value.removePrefix("unix:"))
             else -> null
         }
+    }
+}
+
+/** Stored preference; AUTO uses the helper's desktop detection. */
+enum class RemoteScreenProtocol { AUTO, VNC, RDP;
+    val storageName: String get() = name.lowercase()
+    companion object {
+        fun parse(value: String): RemoteScreenProtocol = entries.firstOrNull { it.storageName == value } ?: AUTO
     }
 }

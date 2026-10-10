@@ -4,6 +4,10 @@ import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -13,10 +17,12 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -31,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
 import androidx.compose.ui.platform.LocalResources
@@ -40,13 +47,20 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.repository.RemoteDesktopProtocol
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
+import me.ayuilos.miffan.data.repository.RemoteScreenQuality
+import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
+import me.ayuilos.miffan.data.repository.RemoteStreamPermissions
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 import me.ayuilos.miffan.utils.fileSizeToString
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Fullscreen
 import me.rerere.hugeicons.stroke.Keyboard
+import me.rerere.hugeicons.stroke.VolumeHigh
+import me.rerere.hugeicons.stroke.VolumeOff
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Touch01
 import me.rerere.hugeicons.stroke.Touchpad01
@@ -98,20 +112,31 @@ internal fun RemoteScreenScaffold(
     val context = LocalContext.current
     val state by vm.state.collectAsStateWithLifecycle()
     val controller by vm.controller.collectAsStateWithLifecycle()
+    val partnerWaiting by vm.partnerWaiting.collectAsStateWithLifecycle()
     val bytes by vm.bytesReceived.collectAsStateWithLifecycle()
-    val fps by vm.maxFps.collectAsStateWithLifecycle()
+    val quality by vm.quality.collectAsStateWithLifecycle()
+    val info by vm.connectionInfo.collectAsStateWithLifecycle()
+    val audio by vm.audio.collectAsStateWithLifecycle()
     val platform by vm.platform.collectAsStateWithLifecycle()
+    val canUseAutomatic by vm.canUseAutomatic.collectAsStateWithLifecycle()
     var trackpad by rememberSaveable { mutableStateOf(false) }
     var keyboard by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
+    var details by remember { mutableStateOf(false) }
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable { mutableStateOf(false) }
+    val hints = remember(context) { context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE) }
+    // Local-network access is asked for only after a stream needed it, then the screen reconnects.
+    val localNetwork = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) vm.reconnect()
+    }
+    var perfOverlay by remember { mutableStateOf(hints.getBoolean(PERF_OVERLAY, false)) }
     val connected = state is RemoteScreenUiState.Connected
     val macOS = platform == RemoteScreenPlatform.MACOS
     // Each input mode explains its gestures once, the first time it is used on a live screen.
     LaunchedEffect(connected, trackpad) {
         if (!connected) return@LaunchedEffect
-        val hints = context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE)
         val key = if (trackpad) "help_seen_trackpad" else "help_seen_direct"
         if (!hints.getBoolean(key, false)) {
             hints.edit { putBoolean(key, true) }
@@ -120,7 +145,14 @@ internal fun RemoteScreenScaffold(
     }
 
     RemoteScreenVisibility(vm)
-    BackHandler { if (keyboard) keyboard = false else onBack() }
+    RemoteScreenFullscreenEffect(fullscreen)
+    BackHandler {
+        when {
+            keyboard -> keyboard = false
+            fullscreen -> fullscreen = false
+            else -> onBack()
+        }
+    }
     LaunchedEffect(vm, state) {
         if (state !is RemoteScreenUiState.Connected) keyboard = false
     }
@@ -134,6 +166,27 @@ internal fun RemoteScreenScaffold(
                 when (notice) {
                     RemoteScreenNotice.TextNotTypable -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_text_unsupported))
                     is RemoteScreenNotice.ClipboardFailed -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_paste_failed))
+                    is RemoteScreenNotice.StreamOnMeteredNetwork -> snackbar.showSnackbar(
+                        resources.getString(R.string.workspace_screen_stream_metered,
+                            remoteScreenQualityLabel(resources, notice.quality), remoteStreamGigabytesPerHour(notice.quality)),
+                        withDismissAction = true, duration = SnackbarDuration.Long)
+                    is RemoteScreenNotice.StreamFallback -> {
+                        val reason = notice.fallback.reason
+                        val permission = RemoteStreamPermissions.localNetwork
+                            .takeIf { reason == RemoteStreamFallbackReason.LOCAL_NETWORK_PERMISSION }
+                        val fixInSettings = onSettings != null && reason in STREAM_SETTINGS_FIXES
+                        val result = snackbar.showSnackbar(
+                            resources.getString(R.string.workspace_screen_stream_fallback, streamFallbackReason(resources, reason)),
+                            actionLabel = when {
+                                permission != null -> resources.getString(R.string.workspace_screen_stream_allow_local_network)
+                                fixInSettings -> settingsLabel
+                                else -> null
+                            },
+                            withDismissAction = true, duration = SnackbarDuration.Long)
+                        if (result == SnackbarResult.ActionPerformed) {
+                            if (permission != null) localNetwork.launch(permission) else onSettings?.invoke()
+                        }
+                    }
                     // Copying to the phone is the user's call: the computer's clipboard can hold anything.
                     is RemoteScreenNotice.RemoteClipboard -> {
                         val result = snackbar.showSnackbar(resources.getString(R.string.workspace_screen_clipboard_new),
@@ -150,17 +203,27 @@ internal fun RemoteScreenScaffold(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            // Full screen keeps only the floating controls over the desktop.
+            if (!fullscreen) TopAppBar(
                 title = {
                     Column {
                         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(stringResource(R.string.im_computer_connection_usage,
-                            stringResource(when (state) {
-                                is RemoteScreenUiState.Connected -> R.string.im_computer_connected
-                                RemoteScreenUiState.Connecting -> R.string.im_computer_connecting
-                                else -> R.string.im_computer_disconnected
-                            }), bytes.fileSizeToString()),
-                            style = MaterialTheme.typography.bodySmall)
+                        val status = stringResource(when (state) {
+                            is RemoteScreenUiState.Connected -> R.string.im_computer_connected
+                            RemoteScreenUiState.Connecting -> R.string.im_computer_connecting
+                            else -> R.string.im_computer_disconnected
+                        })
+                        val mode = info?.takeIf { connected }?.let { remoteScreenModeLabel(resources, it.protocol) }
+                        Text(if (mode != null) "$status · $mode · ${bytes.fileSizeToString()}"
+                            else stringResource(R.string.im_computer_connection_usage, status, bytes.fileSizeToString()),
+                            style = MaterialTheme.typography.bodySmall,
+                            // Tapping explains the connection; a long press is the hidden diagnostics switch.
+                            modifier = Modifier.pointerInput(Unit) {
+                                detectTapGestures(onTap = { if (vm.connectionInfo.value != null) details = true }, onLongPress = {
+                                    perfOverlay = !perfOverlay
+                                    hints.edit { putBoolean(PERF_OVERLAY, perfOverlay) }
+                                })
+                            })
                     }
                 },
                 navigationIcon = { BackButton(onClick = onBack) },
@@ -174,16 +237,45 @@ internal fun RemoteScreenScaffold(
                         Icon(HugeIcons.Keyboard, contentDescription = stringResource(R.string.workspace_screen_keyboard),
                             tint = if (keyboard) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    IconButton(enabled = connected, onClick = { fullscreen = true }) {
+                        Icon(HugeIcons.Fullscreen, contentDescription = stringResource(R.string.workspace_screen_fullscreen))
+                    }
                     androidx.compose.foundation.layout.Box {
                         IconButton(onClick = { menu = true }) {
                             Icon(HugeIcons.MoreVertical, contentDescription = stringResource(R.string.workspace_screen_actions))
                         }
                         DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                            listOf(5 to R.string.workspace_screen_fps_saver, 10 to R.string.workspace_screen_fps_standard,
-                                20 to R.string.workspace_screen_fps_smooth).forEach { (value, label) ->
-                                DropdownMenuItem(text = { Text(stringResource(label)) },
-                                    trailingIcon = { if (fps == value) Text("✓") },
-                                    onClick = { vm.setMaxFps(value); menu = false })
+                            val protocol = info?.protocol
+                            if (protocol == RemoteDesktopProtocol.RDP) {
+                                // RDP paces and encodes on the computer; there is nothing to choose here.
+                                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_quality_server)) },
+                                    enabled = false, onClick = {})
+                            } else RemoteScreenQuality.entries.forEach { level ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(remoteScreenQualityLabel(resources, level))
+                                            Text(remoteScreenQualityDetail(resources, level, protocol), style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    },
+                                    trailingIcon = { if (quality == level) Text("✓") },
+                                    onClick = { vm.setQuality(level); menu = false })
+                            }
+                            HorizontalDivider()
+                            audio?.let { on ->
+                                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_audio)) },
+                                    leadingIcon = { Icon(if (on) HugeIcons.VolumeHigh else HugeIcons.VolumeOff, null) },
+                                    trailingIcon = { if (on) Text("✓") },
+                                    onClick = { vm.setAudio(!on); menu = false })
+                            }
+                            when {
+                                protocol == RemoteDesktopProtocol.STREAM -> DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.workspace_screen_stream_skip)) },
+                                    onClick = { menu = false; vm.reconnectWithStream(false) })
+                                info?.streamSkipped == true || info?.fallback != null -> DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.workspace_screen_stream_retry)) },
+                                    onClick = { menu = false; vm.reconnectWithStream(true) })
                             }
                             DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_help)) },
                                 onClick = { menu = false; help = true })
@@ -208,17 +300,37 @@ internal fun RemoteScreenScaffold(
                         onSettings = { onSettings?.invoke() },
                         failureText = (failed as? RemoteScreenUiState.Failed)?.error?.let(failureText),
                         settingsText = settingsLabel,
+                        onTrustCertificate = vm::trustCertificate,
+                        onUseAutomatic = if (canUseAutomatic) vm::useAutomaticConnection else null,
                     )
                 }
-                RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Full screen shows who drives in its corner controls instead of over the picture.
+                    if (!fullscreen) RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner,
+                        partnerBusy = partnerBusy, partnerWaiting = partnerWaiting)
+                    RemoteStreamSuggestion(vm)
+                }
+                if (perfOverlay) RemoteScreenStatsOverlay(vm, Modifier.align(Alignment.BottomStart).padding(8.dp))
+                if (fullscreen) RemoteScreenFullscreenControls(keyboard, onKeyboard = { if (connected) keyboard = !keyboard },
+                    onExit = { fullscreen = false }, controller = controller, partnerBusy = partnerBusy,
+                    partnerWaiting = partnerWaiting, onHandBack = vm::handBackToPartner,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
             }
             if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = macOS)
-            bottom()
+            if (!fullscreen) bottom()
         }
     }
+    info?.takeIf { details }?.let { RemoteConnectionDetailsDialog(it, bytes, onDismiss = { details = false }) }
     if (help) RemoteScreenGestureHelp(trackpad = trackpad, macOS = macOS, onDismiss = { help = false })
 }
 
-private const val SCREEN_HINTS = "remote_screen_hints"
+/** Fallbacks the user can fix from the computer's screen settings (pairing, encryption, Sunshine itself). */
+private val STREAM_SETTINGS_FIXES = setOf(
+    RemoteStreamFallbackReason.SUNSHINE_MISSING, RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING,
+    RemoteStreamFallbackReason.NOT_PAIRED, RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED,
+    RemoteStreamFallbackReason.MAC_PERMISSIONS,
+)
+
+private const val PERF_OVERLAY = "perf_overlay"
 

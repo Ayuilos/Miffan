@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -34,6 +35,18 @@ import kotlinx.coroutines.delay
 import me.ayuilos.miffan.data.ai.computer.RemoteController
 
 private const val PARTNER_LINGER_MILLIS = 3_000L
+/** How long "you are operating" stays spelled out before only the hand-back button remains. */
+internal const val USER_NOTICE_MILLIS = 2_500L
+
+/**
+ * Who the page should say is driving. The user holding the desktop only matters while the
+ * partner works or is waiting for it back; otherwise it is ordinary use and says nothing.
+ */
+internal fun shownController(controller: RemoteController, partnerBusy: Boolean, partnerWaiting: Boolean): RemoteController = when {
+    controller == RemoteController.IDLE && partnerBusy -> RemoteController.PARTNER
+    controller == RemoteController.USER && !partnerBusy && !partnerWaiting -> RemoteController.IDLE
+    else -> controller
+}
 
 @Composable
 internal fun RemoteScreenControllerBanner(
@@ -41,11 +54,13 @@ internal fun RemoteScreenControllerBanner(
     onHandBack: () -> Unit,
     /** The partner's turn is still running on this computer, between its individual actions. */
     partnerBusy: Boolean = false,
+    /** The partner tried to act while the user held the desktop. */
+    partnerWaiting: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     // The controller is PARTNER only while one action runs (often a few milliseconds), so the
     // banner follows the partner's whole turn when known and lingers after its last action.
-    val raw = if (controller == RemoteController.IDLE && partnerBusy) RemoteController.PARTNER else controller
+    val raw = shownController(controller, partnerBusy, partnerWaiting)
     var shown by remember { mutableStateOf(raw) }
     LaunchedEffect(raw) {
         if (raw == RemoteController.IDLE && shown == RemoteController.PARTNER) delay(PARTNER_LINGER_MILLIS)
@@ -54,6 +69,15 @@ internal fun RemoteScreenControllerBanner(
     // Keep the last visible message during the exit transition.
     var visibleController by remember { mutableStateOf(shown) }
     if (shown != RemoteController.IDLE && visibleController != shown) visibleController = shown
+    // Spelled out when the user takes over or the partner starts waiting, then only "hand back".
+    var spelled by remember { mutableStateOf(true) }
+    LaunchedEffect(shown, partnerWaiting) {
+        spelled = true
+        if (shown == RemoteController.USER) {
+            delay(USER_NOTICE_MILLIS)
+            spelled = false
+        }
+    }
     AnimatedVisibility(
         visible = shown != RemoteController.IDLE,
         modifier = modifier,
@@ -62,8 +86,10 @@ internal fun RemoteScreenControllerBanner(
     ) {
         // A floating pill over the screen: showing or hiding it never moves the picture underneath.
         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = CircleShape, shadowElevation = 3.dp) {
+            val user = visibleController == RemoteController.USER
             Row(
-                modifier = Modifier.padding(start = 16.dp, end = if (visibleController == RemoteController.USER) 4.dp else 16.dp)
+                modifier = Modifier.animateContentSize(tween(150))
+                    .padding(start = if (user && !spelled) 4.dp else 16.dp, end = if (user) 4.dp else 16.dp)
                     .semantics { liveRegion = LiveRegionMode.Polite },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -71,7 +97,7 @@ internal fun RemoteScreenControllerBanner(
                 if (visibleController == RemoteController.PARTNER) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 }
-                Text(
+                if (!user || spelled) Text(
                     stringResource(if (visibleController == RemoteController.PARTNER) {
                         R.string.workspace_screen_partner_operating
                     } else R.string.workspace_screen_user_operating),

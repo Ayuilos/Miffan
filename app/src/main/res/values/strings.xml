@@ -2187,15 +2187,13 @@
   <string name="workspace_screen_help_view_zoom_trackpad" tools:ignore="MissingTranslation">Enlarge or shrink the picture on your phone; when enlarged, the view follows the pointer</string>
   <string name="workspace_screen_view_zoom_in" tools:ignore="MissingTranslation">Enlarge view</string>
   <string name="workspace_screen_view_zoom_out" tools:ignore="MissingTranslation">Shrink view</string>
-  <string name="workspace_screen_fps_saver" tools:ignore="MissingTranslation">Data saver · 5 fps</string>
-  <string name="workspace_screen_fps_standard" tools:ignore="MissingTranslation">Standard · 10 fps</string>
-  <string name="workspace_screen_fps_smooth" tools:ignore="MissingTranslation">Smooth · 20 fps</string>
   <string name="workspace_screen_metered" tools:ignore="MissingTranslation">You are using a mobile or metered network. Viewing the screen uses data.</string>
   <string name="workspace_screen_paste_failed" tools:ignore="MissingTranslation">Could not paste on the remote computer</string>
   <string name="workspace_screen_text_unsupported" tools:ignore="MissingTranslation">This platform cannot type this text yet</string>
   <!-- P2 screen setup is scoped to English and Simplified Chinese. -->
   <string name="workspace_screen_automatic" tools:ignore="MissingTranslation">Automatic (recommended)</string>
   <string name="workspace_screen_automatic_help" tools:ignore="MissingTranslation">Miffan installs a small helper at ~/.miffan/bin/miffan on the remote computer. It finds your desktop session and starts a screen service only your account can connect to. The entire connection goes through SSH.</string>
+  <string name="workspace_screen_automatic_rdp" tools:ignore="MissingTranslation">GNOME and KDE desktops use their own remote desktop (RDP). Miffan generates its password and keeps it only on this phone.</string>
   <string name="workspace_screen_environment" tools:ignore="MissingTranslation">Environment check</string>
   <string name="workspace_screen_probe" tools:ignore="MissingTranslation">Check environment</string>
   <string name="workspace_screen_probe_help" tools:ignore="MissingTranslation">This check installs or updates the Miffan helper on the remote computer and checks the desktop, screen service and input tools.</string>
@@ -2213,6 +2211,106 @@
   <string name="workspace_screen_vnc" tools:ignore="MissingTranslation">Screen service</string>
   <string name="workspace_screen_macos_sharing_help" tools:ignore="MissingTranslation">Enable Screen Sharing in System Settings → General → Sharing, and choose macOS account authentication in screen settings.</string>
   <string name="workspace_screen_vnc_missing" tools:ignore="MissingTranslation">No supported screen service is available.</string>
+  <string name="workspace_screen_port_closed" tools:ignore="MissingTranslation">Nothing on the computer is accepting the screen connection. If you switched desktops, set the connection method to Automatic in the screen settings.</string>
+  <string name="workspace_screen_use_automatic" tools:ignore="MissingTranslation">Use automatic connection</string>
+  <string name="workspace_screen_stream" tools:ignore="MissingTranslation">High-performance mode</string>
+  <string name="workspace_screen_stream_help" tools:ignore="MissingTranslation">Sunshine on the computer encodes the screen with its graphics card, for lower latency and smoother motion. The picture travels straight over the network (UDP) and is always encrypted; when that is not possible, Miffan uses the normal connection. Linux and Mac computers.</string>
+  <string name="workspace_screen_stream_check" tools:ignore="MissingTranslation">Check Sunshine</string>
+  <string name="workspace_screen_stream_checking" tools:ignore="MissingTranslation">Checking Sunshine on the computer…</string>
+  <string name="workspace_screen_stream_enforcing" tools:ignore="MissingTranslation">Changing Sunshine\'s encryption setting…</string>
+  <string name="workspace_screen_stream_sunshine" tools:ignore="MissingTranslation">Sunshine</string>
+  <string name="workspace_screen_stream_missing" tools:ignore="MissingTranslation">Not installed. Install Sunshine on the computer (see docs.lizardbyte.dev), open https://localhost:47990 there once to create its admin account, then check again.</string>
+  <string name="workspace_screen_stream_not_running" tools:ignore="MissingTranslation">Installed but not running. Start Sunshine on the computer, then check again.</string>
+  <string name="workspace_screen_stream_running" tools:ignore="MissingTranslation">Running · %1$s</string>
+  <string name="workspace_screen_stream_encryption" tools:ignore="MissingTranslation">Encryption</string>
+  <string name="workspace_screen_stream_encryption_on" tools:ignore="MissingTranslation">Sunshine requires encryption for every stream.</string>
+  <string name="workspace_screen_stream_encryption_off" tools:ignore="MissingTranslation">Sunshine does not require encryption yet. Miffan only streams when it does.</string>
+  <string name="workspace_screen_stream_enforce" tools:ignore="MissingTranslation">Require encryption</string>
+  <string name="workspace_screen_stream_enforce_title" tools:ignore="MissingTranslation">Require encryption in Sunshine?</string>
+  <string name="workspace_screen_stream_enforce_disclosure" tools:ignore="MissingTranslation">Miffan will change Sunshine\'s settings on this computer: LAN and internet encryption both become \"required\". Your current settings are backed up first, then Sunshine restarts. Recent Moonlight apps support encryption and keep working; older clients without it will no longer connect.</string>
+  <string name="workspace_screen_stream_enforce_busy" tools:ignore="MissingTranslation">Sunshine is streaming right now. Try again when that stream ends.</string>
+  <string name="workspace_screen_stream_enforce_failed" tools:ignore="MissingTranslation">Could not change Sunshine\'s settings.</string>
+  <string name="workspace_screen_stream_pairing" tools:ignore="MissingTranslation">Pairing</string>
+  <string name="workspace_screen_stream_paired" tools:ignore="MissingTranslation">This phone is paired.</string>
+  <string name="workspace_screen_stream_unpaired" tools:ignore="MissingTranslation">This phone is not paired yet.</string>
+  <string name="workspace_screen_stream_pair" tools:ignore="MissingTranslation">Pair</string>
+  <string name="workspace_screen_stream_pair_title" tools:ignore="MissingTranslation">Pair with Sunshine</string>
+  <string name="workspace_screen_stream_pair_steps" tools:ignore="MissingTranslation">On this computer, open Sunshine\'s web page at https://localhost:47990, go to PIN, and enter the number below. Any device name will do, for example Miffan.</string>
+  <string name="workspace_screen_stream_pair_starting" tools:ignore="MissingTranslation">Asking Sunshine to pair…</string>
+  <string name="workspace_screen_stream_pair_waiting" tools:ignore="MissingTranslation">Waiting for the PIN on the computer…</string>
+  <string name="workspace_screen_stream_pair_failed" tools:ignore="MissingTranslation">Pairing did not finish. Check the PIN and try again.</string>
+  <string name="workspace_screen_stream_pair_done" tools:ignore="MissingTranslation">Paired.</string>
+  <string name="workspace_screen_stream_addresses" tools:ignore="MissingTranslation">Addresses</string>
+  <string name="workspace_screen_stream_no_addresses" tools:ignore="MissingTranslation">No address found that the phone could reach.</string>
+  <string name="workspace_screen_stream_firewall" tools:ignore="MissingTranslation">If the picture cannot reach the phone, allow UDP ports 47998–48000 in the computer\'s firewall, or in the security group of a cloud server.</string>
+  <string name="workspace_screen_stream_fallback" tools:ignore="MissingTranslation">High-performance mode was not used: %1$s. Using the normal connection.</string>
+  <string name="workspace_screen_stream_allow_local_network" tools:ignore="MissingTranslation">Allow</string>
+  <string name="workspace_screen_stream_reason_missing" tools:ignore="MissingTranslation">Sunshine is not installed on the computer</string>
+  <string name="workspace_screen_stream_reason_not_running" tools:ignore="MissingTranslation">Sunshine is not running on the computer</string>
+  <string name="workspace_screen_stream_reason_not_paired" tools:ignore="MissingTranslation">this phone is not paired with Sunshine</string>
+  <string name="workspace_screen_stream_reason_encryption" tools:ignore="MissingTranslation">Sunshine does not require encryption</string>
+  <string name="workspace_screen_stream_reason_udp" tools:ignore="MissingTranslation">the picture (UDP) could not reach the phone, likely blocked by a firewall or a cloud security group</string>
+  <string name="workspace_screen_stream_reason_rejected" tools:ignore="MissingTranslation">Sunshine refused the connection</string>
+  <string name="workspace_screen_stream_reason_decoder" tools:ignore="MissingTranslation">this phone cannot decode Sunshine\'s video</string>
+  <string name="workspace_screen_stream_reason_local_network" tools:ignore="MissingTranslation">Miffan has no permission to reach the local network</string>
+  <string name="workspace_screen_stream_reason_other" tools:ignore="MissingTranslation">the connection failed</string>
+  <string name="workspace_screen_stream_certificate_changed" tools:ignore="MissingTranslation">This computer\'s Sunshine certificate is not the one you paired with. If you reinstalled Sunshine or reset its credentials, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
+  <string name="workspace_screen_stream_suggest" tools:ignore="MissingTranslation">This computer can show a smoother picture with high-performance mode.</string>
+  <string name="workspace_screen_stream_suggest_dismiss" tools:ignore="MissingTranslation">Don\'t suggest again</string>
+  <string name="workspace_screen_stream_start" tools:ignore="MissingTranslation">Start Sunshine</string>
+  <string name="workspace_screen_stream_starting" tools:ignore="MissingTranslation">Starting Sunshine…</string>
+  <string name="workspace_screen_stream_start_failed" tools:ignore="MissingTranslation">Could not start Sunshine.</string>
+  <string name="workspace_screen_stream_screen_recording" tools:ignore="MissingTranslation">Screen recording</string>
+  <string name="workspace_screen_stream_accessibility" tools:ignore="MissingTranslation">Accessibility</string>
+  <string name="workspace_screen_stream_permission_granted" tools:ignore="MissingTranslation">Allowed</string>
+  <string name="workspace_screen_stream_screen_denied" tools:ignore="MissingTranslation">Not allowed yet: Sunshine cannot see the screen.</string>
+  <string name="workspace_screen_stream_permission_unknown" tools:ignore="MissingTranslation">Cannot be confirmed remotely. If the picture stays black or input does nothing, check it on the Mac.</string>
+  <string name="workspace_screen_stream_permission_help" tools:ignore="MissingTranslation">On the Mac, open System Settings → Privacy &amp; Security and switch on Sunshine under \"Screen &amp; System Audio Recording\" and under \"Accessibility\", then reopen Sunshine.</string>
+  <string name="workspace_screen_stream_open_settings" tools:ignore="MissingTranslation">Open settings on the Mac</string>
+  <string name="workspace_screen_stream_settings_opened" tools:ignore="MissingTranslation">The settings page is open on the Mac. Switch Sunshine on there.</string>
+  <string name="workspace_screen_stream_open_settings_failed" tools:ignore="MissingTranslation">Could not open the settings on the Mac.</string>
+  <string name="workspace_screen_stream_display_asleep" tools:ignore="MissingTranslation">The Mac\'s display is asleep; it will be woken when you connect.</string>
+  <string name="workspace_screen_stream_reason_mac_permissions" tools:ignore="MissingTranslation">Sunshine on the Mac lacks screen recording or accessibility permission</string>
+  <string name="workspace_screen_stream_reason_display_asleep" tools:ignore="MissingTranslation">the Mac\'s display is asleep and could not be woken</string>
+  <string name="workspace_screen_mode_stream" tools:ignore="MissingTranslation">High performance</string>
+  <string name="workspace_screen_quality_saver" tools:ignore="MissingTranslation">Data saver</string>
+  <string name="workspace_screen_quality_balanced" tools:ignore="MissingTranslation">Balanced</string>
+  <string name="workspace_screen_quality_best" tools:ignore="MissingTranslation">Sharpest</string>
+  <string name="workspace_screen_quality_fps" tools:ignore="MissingTranslation">Up to %1$d fps</string>
+  <string name="workspace_screen_quality_server" tools:ignore="MissingTranslation">Picture set by the computer (RDP)</string>
+  <string name="workspace_screen_audio" tools:ignore="MissingTranslation">Sound</string>
+  <string name="workspace_screen_stream_skip" tools:ignore="MissingTranslation">Use the normal connection this time</string>
+  <string name="workspace_screen_stream_retry" tools:ignore="MissingTranslation">Reconnect with high-performance mode</string>
+  <string name="workspace_screen_fullscreen" tools:ignore="MissingTranslation">Full screen</string>
+  <string name="workspace_screen_fullscreen_exit" tools:ignore="MissingTranslation">Exit full screen</string>
+  <string name="workspace_screen_stream_metered" tools:ignore="MissingTranslation">You are on mobile data. High-performance mode at \"%1$s\" can use up to about %2$s GB per hour. Change the picture from the menu at the top right.</string>
+  <string name="workspace_screen_details" tools:ignore="MissingTranslation">Connection details</string>
+  <string name="workspace_screen_details_mode" tools:ignore="MissingTranslation">Connection</string>
+  <string name="workspace_screen_details_stream" tools:ignore="MissingTranslation">High-performance mode (Sunshine)</string>
+  <string name="workspace_screen_details_rdp" tools:ignore="MissingTranslation">Remote Desktop (RDP)</string>
+  <string name="workspace_screen_details_path" tools:ignore="MissingTranslation">Picture path</string>
+  <string name="workspace_screen_details_path_stream" tools:ignore="MissingTranslation">Direct UDP to %1$s, encrypted</string>
+  <string name="workspace_screen_details_path_ssh" tools:ignore="MissingTranslation">Through the encrypted SSH tunnel</string>
+  <string name="workspace_screen_details_stream_skipped" tools:ignore="MissingTranslation">The normal connection was chosen for this visit</string>
+  <string name="workspace_screen_details_stream_fallback" tools:ignore="MissingTranslation">Not used: %1$s</string>
+  <string name="workspace_screen_details_stream_off" tools:ignore="MissingTranslation">Off. You can turn it on in this computer\'s screen settings.</string>
+  <string name="workspace_screen_details_usage" tools:ignore="MissingTranslation">Data used</string>
+  <string name="workspace_screen_rdp_gnome" tools:ignore="MissingTranslation">GNOME Remote Desktop</string>
+  <string name="workspace_screen_rdp_kde" tools:ignore="MissingTranslation">KDE Remote Desktop (krdp)</string>
+  <string name="workspace_screen_install_rdp" tools:ignore="MissingTranslation">Install %1$s on the computer, then check again.</string>
+  <string name="workspace_screen_rdp_missing" tools:ignore="MissingTranslation">This GNOME or KDE desktop needs its own remote desktop service installed first.</string>
+  <string name="workspace_screen_rdp_already_configured" tools:ignore="MissingTranslation">Remote desktop was already turned on on this computer, outside Miffan. Miffan left it untouched. To let Miffan manage it, turn remote desktop off in the computer\'s settings and retry.</string>
+  <string name="workspace_screen_rdp_keyring_locked" tools:ignore="MissingTranslation">The computer\'s keyring is locked. Sign in to the desktop on the computer so it unlocks, then retry.</string>
+  <string name="workspace_screen_rdp_credentials_unavailable" tools:ignore="MissingTranslation">The computer is missing the tools Miffan needs to store the remote desktop password safely.</string>
+  <string name="workspace_screen_rdp_certificate_changed" tools:ignore="MissingTranslation">This computer\'s remote desktop certificate is not the one from your last connection. If you reinstalled the system or reset remote desktop, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
+  <string name="workspace_screen_rdp_trust" tools:ignore="MissingTranslation">Trust new certificate</string>
+  <string name="workspace_screen_rdp_trust_title" tools:ignore="MissingTranslation">Trust the new certificate?</string>
+  <string name="workspace_screen_rdp_trust_hint" tools:ignore="MissingTranslation">Only do this if you know why it changed.</string>
+  <string name="workspace_screen_rdp_fingerprint_before" tools:ignore="MissingTranslation">Before</string>
+  <string name="workspace_screen_rdp_fingerprint_now" tools:ignore="MissingTranslation">Now</string>
+  <string name="workspace_screen_rdp_running" tools:ignore="MissingTranslation">%1$s is running</string>
+  <string name="workspace_screen_rdp_autostart" tools:ignore="MissingTranslation">%1$s, started by Miffan when you connect</string>
+  <string name="workspace_screen_clipboard_rdp" tools:ignore="MissingTranslation">Provided by remote desktop</string>
   <string name="workspace_screen_vnc_running" tools:ignore="MissingTranslation">%1$s · running</string>
   <string name="workspace_screen_vnc_autostart" tools:ignore="MissingTranslation">%1$s · ready; starts automatically when you open the screen</string>
   <string name="workspace_screen_session_unsupported" tools:ignore="MissingTranslation">Automatic screen setup is not supported for this desktop session.</string>
@@ -2286,6 +2384,11 @@
   <string name="im_computer_choose" tools:ignore="MissingTranslation">Choose a computer</string>
   <string name="im_computer_clipboard" tools:ignore="MissingTranslation">Clipboard (optional)</string>
   <string name="im_computer_clipboard_optional" tools:ignore="MissingTranslation">Optional; install a clipboard tool to type Chinese and other non-Latin text.</string>
+  <string name="im_computer_stream" tools:ignore="MissingTranslation">Smoother picture</string>
+  <string name="im_computer_stream_optional" tools:ignore="MissingTranslation">Optional. With Sunshine installed on the computer, the picture is smoother and responds faster.</string>
+  <string name="im_computer_stream_available" tools:ignore="MissingTranslation">Sunshine is on this computer and can make the picture smoother and faster.</string>
+  <string name="im_computer_stream_enabled" tools:ignore="MissingTranslation">On</string>
+  <string name="im_computer_stream_enable" tools:ignore="MissingTranslation">Turn on</string>
   <string name="im_computer_computer" tools:ignore="MissingTranslation">computer</string>
   <string name="im_computer_connect" tools:ignore="MissingTranslation">Connect computer</string>
   <string name="im_computer_connect_for" tools:ignore="MissingTranslation">Connect a computer for %1$s</string>

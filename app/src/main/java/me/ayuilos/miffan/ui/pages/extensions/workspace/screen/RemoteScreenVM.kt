@@ -3,6 +3,7 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.util.Log
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import androidx.lifecycle.ViewModel
@@ -22,12 +23,24 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteController
+import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.repository.RemoteScreenConnection
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
+import me.ayuilos.miffan.data.repository.RemoteDesktopProtocol
+import me.ayuilos.miffan.data.repository.RemoteScreenQuality
+import me.ayuilos.miffan.data.repository.RemoteStreamRequest
+import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
+import me.ayuilos.miffan.data.repository.RemoteStreamFallback
+import me.ayuilos.miffan.data.repository.RemoteSurfaceTarget
+import me.rerere.stream.StreamStats
 import me.rerere.workspace.screen.Framebuffer
 import me.rerere.workspace.screen.RemoteScreenFrameSink
 import me.rerere.workspace.screen.RemoteScreenOptions
+import me.rerere.workspace.screen.RemoteScreenStats
+import me.rerere.rdp.RdpBitmapFrameSink
+import me.rerere.rdp.RdpStats
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RfbJpegDecoder
 import me.rerere.workspace.screen.RfbCursor
@@ -38,7 +51,7 @@ import me.rerere.workspace.screen.RfbRect
 sealed interface RemoteScreenUiState {
     data object Connecting : RemoteScreenUiState
 
-    /** [width]/[height] are bitmap pixels; input coordinates use the same space. */
+    /** [width]/[height] are bitmap (or stream video) pixels; input coordinates use the same space. */
     data class Connected(val name: String, val width: Int, val height: Int) : RemoteScreenUiState
 
     data class Failed(val error: Throwable) : RemoteScreenUiState
@@ -60,7 +73,24 @@ sealed interface RemoteScreenNotice {
     data class ClipboardFailed(val error: Throwable) : RemoteScreenNotice
     /** The remote side copied text (Latin-1 only through standard RFB). */
     data class RemoteClipboard(val text: String) : RemoteScreenNotice
+    /** High-performance mode was on but this connection uses VNC or RDP instead. */
+    data class StreamFallback(val fallback: RemoteStreamFallback) : RemoteScreenNotice
+    /** The first stream on mobile data: what the chosen picture level may cost per hour. */
+    data class StreamOnMeteredNetwork(val quality: RemoteScreenQuality) : RemoteScreenNotice
 }
+
+/** How the current connection reaches the desktop, for the page's status line and details. */
+data class RemoteConnectionInfo(
+    val protocol: RemoteDesktopProtocol,
+    /** The computer's high-performance switch is on and this connection did not skip it. */
+    val streamRequested: Boolean,
+    /** The UDP address a stream uses. */
+    val streamAddress: String?,
+    /** Why a requested stream was not used. */
+    val fallback: RemoteStreamFallback?,
+    /** The user chose the plain connection for this visit from the menu. */
+    val streamSkipped: Boolean,
+)
 
 data class RemoteScreenArgs(val workspaceId: String)
 
@@ -87,6 +117,7 @@ sealed interface RemoteCursor {
 class RemoteScreenVM(
     private val args: RemoteScreenArgs,
     private val repository: RemoteScreenRepository,
+    private val workspaces: WorkspaceRepository,
     private val control: RemoteComputerControl,
     context: Context,
 ) : ViewModel() {
@@ -114,9 +145,64 @@ class RemoteScreenVM(
     /** True on metered networks; the page may show a data-usage hint. */
     val metered: Boolean = connectivity()?.isActiveNetworkMetered ?: true
 
-    private val _maxFps = MutableStateFlow(if (metered) 10 else 20)
-    /** Frame-rate cap; kept across reconnects and applied to every new session. */
-    val maxFps: StateFlow<Int> = _maxFps.asStateFlow()
+    private val hints = appContext.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE)
+
+    /** Remembered separately for mobile data and other networks; mobile data starts at [RemoteScreenQuality.SAVER]. */
+    private val qualityKey = if (metered) "quality_metered" else "quality_unmetered"
+    private val _quality = MutableStateFlow(
+        hints.getString(qualityKey, null)?.let { saved -> RemoteScreenQuality.entries.firstOrNull { it.name == saved } }
+            ?: if (metered) RemoteScreenQuality.SAVER else RemoteScreenQuality.BALANCED,
+    )
+    /** The picture level; VNC maps it to a frame cap, a stream to resolution and bitrate, RDP ignores it. */
+    val quality: StateFlow<RemoteScreenQuality> = _quality.asStateFlow()
+
+    private val _connectionInfo = MutableStateFlow<RemoteConnectionInfo?>(null)
+    val connectionInfo: StateFlow<RemoteConnectionInfo?> = _connectionInfo.asStateFlow()
+
+    private val _audio = MutableStateFlow<Boolean?>(null)
+    /** Whether the stream's sound plays; null when the connection carries no sound. */
+    val audio: StateFlow<Boolean?> = _audio.asStateFlow()
+
+    /** The plain connection was chosen from the menu; kept until the user asks for the stream again. */
+    private var skipStream = false
+
+    private val _stats = MutableStateFlow<RemoteScreenStats?>(null)
+    /** Rolling session statistics for the performance overlay; null until connected. */
+    val stats: StateFlow<RemoteScreenStats?> = _stats.asStateFlow()
+
+    private val _canUseAutomatic = MutableStateFlow(false)
+    /** The last failure was a fixed endpoint nothing listens on; automatic connection may fix it. */
+    val canUseAutomatic: StateFlow<Boolean> = _canUseAutomatic.asStateFlow()
+
+    private val _rdpStats = MutableStateFlow<RdpStats?>(null)
+    /** RDP's own numbers (codec, decoder); null on VNC connections. */
+    val rdpStats: StateFlow<RdpStats?> = _rdpStats.asStateFlow()
+
+    private val _video = MutableStateFlow<RemoteSurfaceTarget?>(null)
+    /**
+     * Set while a high-performance (Sunshine) stream is connected: it decodes into a Surface the
+     * page provides, so [bitmap] stays null and input coordinates are video pixels.
+     */
+    val video: StateFlow<RemoteSurfaceTarget?> = _video.asStateFlow()
+
+    private val _streamStats = MutableStateFlow<StreamStats?>(null)
+    /** The stream's own numbers; null unless [video] is set. */
+    val streamStats: StateFlow<StreamStats?> = _streamStats.asStateFlow()
+
+    private val streamSetup = RemoteStreamSetupController(repository, viewModelScope)
+    /** Sunshine on this computer, read once to suggest high-performance mode; see [streamSuggestion]. */
+    val streamSetups = streamSetup.states
+
+    private val _streamSuggestion = MutableStateFlow<StreamSuggestion?>(null)
+    /**
+     * Set when a plain VNC/RDP connection runs on a Linux computer whose Sunshine could make it
+     * smoother; the page shows a dismissible suggestion while the check says so.
+     */
+    val streamSuggestion: StateFlow<StreamSuggestion?> = _streamSuggestion.asStateFlow()
+    private var streamChecked = false
+
+    /** Frames the canvas actually drew; the overlay compares it with decoded updates. */
+    val framesDrawn = java.util.concurrent.atomic.AtomicLong()
 
     private val _hostId = MutableStateFlow<String?>(null)
 
@@ -127,6 +213,10 @@ class RemoteScreenVM(
     val controller: StateFlow<RemoteController> = combine(_hostId, control.states) { hostId, states ->
         hostId?.let { states[it] } ?: RemoteController.IDLE
     }.stateIn(viewModelScope, SharingStarted.Eagerly, RemoteController.IDLE)
+
+    /** The partner tried to act while the user held this desktop and is waiting for it back. */
+    val partnerWaiting: StateFlow<Boolean> = combine(_hostId, control.waiting) { hostId, waiting -> hostId in waiting }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun handBackToPartner() {
         _hostId.value?.let(control::userHandsBack)
@@ -159,7 +249,17 @@ class RemoteScreenVM(
     private var visible = true
     private var connectJob: Job? = null
 
-    private val sink = object : RemoteScreenFrameSink {
+    /**
+     * RDP writes dirty rectangles straight into [bitmap] from native code. Every callback runs on
+     * the session worker and the bitmap is only replaced in onSize on that same thread, never
+     * recycled, so a lease needs no lock beyond matching the current size.
+     */
+    private val sink = object : RdpBitmapFrameSink {
+        override fun acquireBitmap(width: Int, height: Int): Bitmap? =
+            _bitmap.value?.takeIf { it.width == width && it.height == height && it.isMutable && !it.isRecycled }
+
+        override fun releaseBitmap(bitmap: Bitmap) = Unit
+
         override fun onSize(width: Int, height: Int, scale: Int) {
             this@RemoteScreenVM.scale = scale
             _bitmap.value = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -202,9 +302,112 @@ class RemoteScreenVM(
         connection?.session?.setPaused(!value)
     }
 
-    fun setMaxFps(fps: Int) {
-        _maxFps.value = fps
-        connection?.session?.setMaxFps(fps)
+    /**
+     * The user confirmed that this computer's RDP or Sunshine certificate changed for a reason
+     * they know; pin the new one and connect again. Never called without that confirmation.
+     */
+    fun trustCertificate(sha256: String) {
+        val hostId = _hostId.value ?: return
+        val stream = (_state.value as? RemoteScreenUiState.Failed)?.error is RemoteStreamCertificateChangedException
+        viewModelScope.launch {
+            try {
+                if (stream) repository.pinStreamCertificate(hostId, sha256) else repository.pinRdpCertificate(hostId, sha256)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _state.value = RemoteScreenUiState.Failed(error)
+                return@launch
+            }
+            reconnect()
+        }
+    }
+
+    /**
+     * Switches this computer from a fixed endpoint to automatic connection, keeping its
+     * authentication, then connects again. Offered only after [canUseAutomatic].
+     */
+    fun useAutomaticConnection() {
+        _canUseAutomatic.value = false
+        viewModelScope.launch {
+            try {
+                val hostId = repository.hostIdOf(args.workspaceId) ?: return@launch
+                val config = repository.getConfig(hostId) ?: return@launch
+                repository.updateConfig(hostId, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
+                    auth = config.auth, username = config.username, password = null)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _state.value = RemoteScreenUiState.Failed(error)
+                return@launch
+            }
+            reconnect()
+        }
+    }
+
+    /** Offers automatic connection when a fixed endpoint turned out to have nothing listening. */
+    private fun checkAutomaticFix(error: Throwable) {
+        if (!isClosedScreenPort(error)) return
+        viewModelScope.launch {
+            val hostId = repository.hostIdOf(args.workspaceId) ?: return@launch
+            val endpoint = runCatching { repository.getConfig(hostId)?.endpoint }.getOrNull() ?: return@launch
+            _canUseAutomatic.value = endpoint != RemoteScreenEndpoint.Helper
+        }
+    }
+
+    /** Reads Sunshine once per page, only for plain connections the user has not declined to improve. */
+    private fun suggestStream(opened: RemoteScreenConnection) {
+        if (streamChecked || opened.session.surface != null || opened.streamFallback != null) return
+        if (opened.platform == RemoteScreenPlatform.UNKNOWN || hints.getBoolean(streamDismissedKey(opened.hostId), false)) return
+        streamChecked = true
+        viewModelScope.launch {
+            val host = runCatching { workspaces.getHostById(opened.hostId) }.getOrNull() ?: return@launch
+            _streamSuggestion.value = StreamSuggestion(host.id, host.connectionRevision)
+            streamSetup.check(host.id, host.connectionRevision)
+        }
+    }
+
+    fun dismissStreamSuggestion() {
+        val suggestion = _streamSuggestion.value ?: return
+        hints.edit().putBoolean(streamDismissedKey(suggestion.hostId), true).apply()
+        _streamSuggestion.value = null
+    }
+
+    fun pairStream() = _streamSuggestion.value?.let { streamSetup.pair(it.hostId, it.revision) }
+    fun cancelStreamPairing() = streamSetup.cancelPairing()
+    /** Called only from the confirmation that shows exactly what changes on the computer. */
+    fun enforceStreamEncryption() = _streamSuggestion.value?.let { streamSetup.enforceEncryption(it.hostId, it.revision) }
+    fun enableStream() = _streamSuggestion.value?.let { streamSetup.setEnabled(it.hostId, true) }
+    fun startSunshine() = _streamSuggestion.value?.let { streamSetup.start(it.hostId, it.revision) }
+
+    /** The suggestion's flow ended; once the mode is on, reconnect to use it. */
+    fun finishStreamSuggestion(enabled: Boolean) {
+        if (!enabled) return
+        _streamSuggestion.value = null
+        reconnect()
+    }
+
+    /** Applies at once on VNC; a stream reconnects with the new resolution and bitrate. */
+    fun setQuality(quality: RemoteScreenQuality) {
+        if (quality == _quality.value) return
+        _quality.value = quality
+        hints.edit().putString(qualityKey, quality.name).apply()
+        val session = connection?.session ?: return
+        when (session.protocol) {
+            RemoteDesktopProtocol.VNC -> session.setMaxFps(vncFps(quality))
+            RemoteDesktopProtocol.STREAM -> reconnect()
+            RemoteDesktopProtocol.RDP -> Unit
+        }
+    }
+
+    /** Reconnects with or without high-performance mode for this visit only; the computer's setting stays. */
+    fun reconnectWithStream(stream: Boolean) {
+        skipStream = !stream
+        reconnect()
+    }
+
+    fun setAudio(enabled: Boolean) {
+        hints.edit().putBoolean(AUDIO_KEY, enabled).apply()
+        connection?.session?.audio?.setEnabled(enabled)
     }
 
     fun movePointer(x: Float, y: Float) {
@@ -281,21 +484,52 @@ class RemoteScreenVM(
 
     private fun connect() {
         _state.value = RemoteScreenUiState.Connecting
+        _canUseAutomatic.value = false
         connectJob = viewModelScope.launch {
             try {
+                val quality = _quality.value
                 val opened = repository.open(
                     args.workspaceId, sink, jpeg,
                     RemoteScreenOptions(
-                        jpegQuality = if (metered) 4 else 6,
-                        maxFps = _maxFps.value,
-                        lowColor = metered,
+                        jpegQuality = if (quality == RemoteScreenQuality.SAVER) 4 else 6,
+                        maxFps = vncFps(quality),
+                        lowColor = quality == RemoteScreenQuality.SAVER,
                     ),
+                    RemoteStreamRequest(quality, skip = skipStream),
                 )
                 connection = opened
                 _hostId.value = opened.hostId
                 _platform.value = opened.platform
+                opened.streamFallback?.let { _notices.tryEmit(RemoteScreenNotice.StreamFallback(it)) }
+                _connectionInfo.value = RemoteConnectionInfo(opened.session.protocol, opened.streamRequested,
+                    opened.streamAddress, opened.streamFallback, skipStream)
+                opened.session.audio?.let { audio ->
+                    if (hints.getBoolean(AUDIO_KEY, false)) audio.setEnabled(true)
+                    launch { audio.enabled.collect { _audio.value = it } }
+                }
+                opened.session.surface?.let { target ->
+                    // The pointer is part of the video picture; a local arrow would show it twice.
+                    _cursor.value = RemoteCursor.Hidden
+                    scale = 1
+                    _video.value = target
+                    // A stream has no frame sink callback; its byte count is sampled instead.
+                    launch {
+                        while (true) {
+                            _bytesReceived.value = opened.session.bytesReceived
+                            kotlinx.coroutines.delay(1_000)
+                        }
+                    }
+                    if (metered && !hints.getBoolean(METERED_STREAM_KEY, false)) {
+                        hints.edit().putBoolean(METERED_STREAM_KEY, true).apply()
+                        _notices.tryEmit(RemoteScreenNotice.StreamOnMeteredNetwork(_quality.value))
+                    }
+                }
                 opened.session.setPaused(!visible)
+                opened.session.statsLogger = { Log.d(PERF_TAG, it.toString()) }
                 opened.session.start(viewModelScope)
+                launch { opened.session.stats.collect { _stats.value = it } }
+                opened.session.rdpStats?.let { flow -> launch { flow.collect { _rdpStats.value = it } } }
+                opened.session.streamStats?.let { flow -> launch { flow.collect { _streamStats.value = it } } }
                 val openedAt = SystemClock.elapsedRealtime()
                 launch {
                     // Servers send their current clipboard right after connecting; only later copies are news.
@@ -309,6 +543,7 @@ class RemoteScreenVM(
                         is RemoteScreenState.Connected -> {
                             serverWidth = state.width
                             serverHeight = state.height
+                            suggestStream(opened)
                             _state.value = RemoteScreenUiState.Connected(
                                 state.name, (state.width + state.scale - 1) / state.scale,
                                 (state.height + state.scale - 1) / state.scale,
@@ -316,6 +551,7 @@ class RemoteScreenVM(
                         }
                         is RemoteScreenState.Closed -> {
                             _state.value = state.error?.let(RemoteScreenUiState::Failed) ?: RemoteScreenUiState.Closed
+                            state.error?.let(::checkAutomaticFix)
                             opened.close()
                             if (connection === opened) connection = null
                         }
@@ -325,12 +561,19 @@ class RemoteScreenVM(
                 throw cancelled
             } catch (error: Throwable) {
                 _state.value = RemoteScreenUiState.Failed(error)
+                checkAutomaticFix(error)
             }
         }
     }
 
     private fun close() {
         _cursor.value = RemoteCursor.Unknown
+        _stats.value = null
+        _rdpStats.value = null
+        _streamStats.value = null
+        _video.value = null
+        _connectionInfo.value = null
+        _audio.value = null
         connectJob?.cancel()
         connectJob = null
         connection?.close()
@@ -379,4 +622,23 @@ class RemoteScreenVM(
     }
 }
 
+/** The host a [RemoteScreenVM.streamSuggestion] is about, and the identity it was checked against. */
+data class StreamSuggestion(val hostId: String, val revision: String)
+
+private fun streamDismissedKey(hostId: String) = "stream_suggestion_dismissed_$hostId"
+
+/** VNC frame caps for each picture level. */
+private fun vncFps(quality: RemoteScreenQuality) = when (quality) {
+    RemoteScreenQuality.SAVER -> 5
+    RemoteScreenQuality.BALANCED -> 10
+    RemoteScreenQuality.BEST -> 20
+}
+
+private const val AUDIO_KEY = "stream_audio"
+private const val METERED_STREAM_KEY = "stream_metered_warned"
+
+/** Shared with the page's one-time hints. */
+internal const val SCREEN_HINTS = "remote_screen_hints"
+
 private const val INITIAL_CLIPBOARD_MILLIS = 3_000L
+private const val PERF_TAG = "RemoteScreenPerf"

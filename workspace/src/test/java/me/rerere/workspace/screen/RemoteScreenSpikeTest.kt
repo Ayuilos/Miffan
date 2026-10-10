@@ -6,6 +6,14 @@ import java.io.File
 import java.io.InputStreamReader
 import java.util.Base64
 import javax.imageio.ImageIO
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
@@ -135,6 +143,52 @@ class RemoteScreenSpikeTest {
                 updates++
             }
             println("incremental: $updates updates in 5s, ${(client.bytesRead - before) / 1024} KiB, encodings=$seen")
+        }
+    }
+
+    /** Opt-in, direct TCP only: never reads SSH keys or credential files. */
+    @Test
+    fun vncSessionBenchmark() = runBlocking {
+        assumeTrue(env("BENCHMARK") != null && env("VNC_PORT") != null)
+        val seconds = (env("SECONDS")?.toLong() ?: 20L).also { require(it in 1..3600) }
+        val maxFps = env("MAX_FPS")?.toInt() ?: 15
+        val host = env("VNC_HOST") ?: "127.0.0.1"
+        val port = env("VNC_PORT")!!.toInt()
+        for (depth in listOf(1, 2)) {
+            java.net.Socket().use { socket ->
+                socket.connect(java.net.InetSocketAddress(host, port), 5_000)
+                socket.soTimeout = 15_000 // bound handshake only; static desktops may stay silent
+                val job = SupervisorJob()
+                val scope = CoroutineScope(job + Dispatchers.IO)
+                val jpeg = if (env("NO_JPEG") != null) null else RfbJpegDecoder { bytes, length, fb, x, y, w, h ->
+                    val image = ImageIO.read(java.io.ByteArrayInputStream(bytes, 0, length))
+                    image.getRGB(0, 0, w, h, fb.pixels, y * fb.width + x, fb.width)
+                }
+                val session = RemoteScreenSession(socket.getInputStream(), socket.getOutputStream(), socket,
+                    RfbCredentials(env("VNC_USER"), env("VNC_PASSWORD")), jpeg,
+                    RemoteScreenOptions(maxFps = maxFps, lowColor = env("LOW_COLOR") != null, pipelineDepth = depth),
+                    object : RemoteScreenFrameSink {
+                        override fun onSize(width: Int, height: Int, scale: Int) {
+                            println("depth=$depth output=${width}x$height scale=$scale")
+                        }
+                        override fun onPixels(rect: RfbRect, pixels: IntArray) {}
+                        override fun onFrameComplete() {}
+                    })
+                session.statsLogger = { println("depth=$depth $it") }
+                try {
+                    session.start(scope)
+                    val connected = withTimeout(15_000) { session.state.first { it !is RemoteScreenState.Connecting } }
+                    check(connected is RemoteScreenState.Connected) { "Connection failed: $connected" }
+                    socket.soTimeout = 0
+                    println("benchmark depth=$depth maxFps=$maxFps seconds=$seconds $connected")
+                    delay(seconds * 1_000)
+                    check(session.state.value is RemoteScreenState.Connected) { "Benchmark disconnected: ${session.state.value}" }
+                    println("benchmark final depth=$depth bytes=${session.bytesReceived} ${session.stats.value}")
+                } finally {
+                    session.close() // unblocks a header read even when no incremental reply arrives
+                    job.cancelAndJoin()
+                }
+            }
         }
     }
 

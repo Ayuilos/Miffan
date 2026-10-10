@@ -41,7 +41,10 @@ internal fun computerErrorMessage(resources: Resources, error: Throwable): Strin
     when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.im_computer_no_desktop)
         RemoteScreenProblem.NO_VNC_SERVER -> resources.getString(R.string.im_computer_no_screen_service)
-        RemoteScreenProblem.VNC_START_FAILED -> resources.getString(R.string.im_computer_screen_start_failed)
+        RemoteScreenProblem.VNC_START_FAILED, RemoteScreenProblem.RDP_START_FAILED -> resources.getString(R.string.im_computer_screen_start_failed)
+        RemoteScreenProblem.NO_RDP_SERVER, RemoteScreenProblem.RDP_ALREADY_CONFIGURED, RemoteScreenProblem.RDP_KEYRING_LOCKED,
+        RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE, RemoteScreenProblem.RDP_CERTIFICATE_CHANGED ->
+            me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteScreenSetupError(resources, error)
         RemoteScreenProblem.NO_WORKSPACE, RemoteScreenProblem.NOT_ENABLED,
         RemoteScreenProblem.BAD_ENDPOINT, RemoteScreenProblem.PASSWORD_MISSING -> resources.getString(R.string.im_computer_setup_needed)
         else -> me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteSshError(resources, error)

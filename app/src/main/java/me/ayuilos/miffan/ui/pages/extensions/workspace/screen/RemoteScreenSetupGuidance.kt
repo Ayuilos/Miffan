@@ -32,8 +32,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenProblem
 import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
+import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
+import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Tick01
@@ -44,14 +47,42 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 internal fun remoteScreenSetupError(resources: Resources, error: Throwable): String =
-    when ((error as? RemoteScreenUnavailableException)?.problem) {
+    if (error is RemoteStreamCertificateChangedException) resources.getString(R.string.workspace_screen_stream_certificate_changed)
+    else when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_WORKSPACE -> resources.getString(R.string.workspace_screen_no_workspace)
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.workspace_screen_no_session)
         RemoteScreenProblem.NOT_ENABLED, RemoteScreenProblem.BAD_ENDPOINT, RemoteScreenProblem.PASSWORD_MISSING ->
             resources.getString(R.string.workspace_screen_config_incomplete)
-        RemoteScreenProblem.VNC_START_FAILED -> resources.getString(R.string.workspace_screen_start_failed)
+        RemoteScreenProblem.VNC_START_FAILED, RemoteScreenProblem.RDP_START_FAILED -> resources.getString(R.string.workspace_screen_start_failed)
+        RemoteScreenProblem.NO_RDP_SERVER -> resources.getString(R.string.workspace_screen_rdp_missing)
+        RemoteScreenProblem.RDP_ALREADY_CONFIGURED -> resources.getString(R.string.workspace_screen_rdp_already_configured)
+        RemoteScreenProblem.RDP_KEYRING_LOCKED -> resources.getString(R.string.workspace_screen_rdp_keyring_locked)
+        RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE -> resources.getString(R.string.workspace_screen_rdp_credentials_unavailable)
+        RemoteScreenProblem.RDP_CERTIFICATE_CHANGED -> resources.getString(R.string.workspace_screen_rdp_certificate_changed)
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
+
+/** Why high-performance mode was not used, as the clause the fallback message wraps. */
+internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFallbackReason): String = resources.getString(when (reason) {
+    RemoteStreamFallbackReason.SUNSHINE_MISSING -> R.string.workspace_screen_stream_reason_missing
+    RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING -> R.string.workspace_screen_stream_reason_not_running
+    RemoteStreamFallbackReason.NOT_PAIRED -> R.string.workspace_screen_stream_reason_not_paired
+    RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED -> R.string.workspace_screen_stream_reason_encryption
+    RemoteStreamFallbackReason.UDP_UNREACHABLE -> R.string.workspace_screen_stream_reason_udp
+    RemoteStreamFallbackReason.HOST_REJECTED -> R.string.workspace_screen_stream_reason_rejected
+    RemoteStreamFallbackReason.DECODER_UNSUPPORTED -> R.string.workspace_screen_stream_reason_decoder
+    RemoteStreamFallbackReason.LOCAL_NETWORK_PERMISSION -> R.string.workspace_screen_stream_reason_local_network
+    RemoteStreamFallbackReason.MAC_PERMISSIONS -> R.string.workspace_screen_stream_reason_mac_permissions
+    RemoteStreamFallbackReason.DISPLAY_ASLEEP -> R.string.workspace_screen_stream_reason_display_asleep
+    RemoteStreamFallbackReason.OTHER -> R.string.workspace_screen_stream_reason_other
+})
+
+/**
+ * SSH works but nothing accepts the forwarded screen connection, typically a fixed VNC port left
+ * over from another desktop. Automatic connection lets the helper start the right service.
+ */
+internal fun isClosedScreenPort(error: Throwable): Boolean =
+    generateSequence(error) { it.cause }.any { it is JSchException && it.message?.contains("channel is not opened", ignoreCase = true) == true }
 
 /** SSH failures in words the user can act on, instead of the transport's raw message. */
 internal fun remoteSshError(resources: Resources, error: Throwable): String? {
@@ -59,6 +90,7 @@ internal fun remoteSshError(resources: Resources, error: Throwable): String? {
     val ssh = chain.firstOrNull { it is JSchException }?.message.orEmpty()
     return when {
         ssh.contains("auth", ignoreCase = true) -> resources.getString(R.string.workspace_screen_ssh_auth)
+        isClosedScreenPort(error) -> resources.getString(R.string.workspace_screen_port_closed)
         chain.any { it is SocketTimeoutException } || ssh.contains("timeout", ignoreCase = true) ->
             resources.getString(R.string.workspace_screen_ssh_timeout)
         chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException } ||
@@ -82,10 +114,6 @@ internal fun RemoteScreenVncInstallGuidance(sessionType: String?, desktop: Strin
             Text(stringResource(R.string.workspace_screen_install_vnc, server))
             RemoteScreenCopyCommand("Arch Linux", "sudo pacman -S $server")
             RemoteScreenCopyCommand("Debian / Ubuntu", "sudo apt install $server")
-        }
-        if (desktop?.contains("gnome", ignoreCase = true) == true ||
-            desktop?.contains("kde", ignoreCase = true) == true) {
-            Text(stringResource(R.string.workspace_screen_desktop_validation), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -130,5 +158,36 @@ internal fun RemoteScreenLog(text: String, initiallyExpanded: Boolean = false) {
                     fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+/** GNOME and KDE sessions are shown over RDP (see `rdp_kind` in miffan.sh); other desktops use VNC. */
+internal val RemoteMachineProbe.usesRdp: Boolean
+    get() = os == "linux" && session.desktop?.let { desktop ->
+        RDP_DESKTOPS.any { desktop.contains(it, ignoreCase = true) }
+    } == true
+
+/** The installed RDP server, or null when the desktop needs one installed. */
+internal val RemoteMachineProbe.rdpServer: String?
+    get() = rdp.server?.takeIf { it.isNotBlank() && it != "none" }
+
+private val RDP_DESKTOPS = listOf("gnome", "kde", "plasma")
+
+/** The desktop's own remote desktop service, by the name users see in their package manager. */
+@Composable
+internal fun rdpServerLabel(server: String): String = when (server) {
+    "gnome-remote-desktop" -> stringResource(R.string.workspace_screen_rdp_gnome)
+    "krdp" -> stringResource(R.string.workspace_screen_rdp_kde)
+    else -> server
+}
+
+@Composable
+internal fun RemoteScreenRdpInstallGuidance(desktop: String?) {
+    val kde = desktop?.let { it.contains("kde", true) || it.contains("plasma", true) } == true
+    val pkg = if (kde) "krdp" else "gnome-remote-desktop"
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.workspace_screen_install_rdp, pkg))
+        RemoteScreenCopyCommand("Arch Linux", "sudo pacman -S $pkg")
+        RemoteScreenCopyCommand("Debian / Ubuntu", "sudo apt install $pkg")
     }
 }

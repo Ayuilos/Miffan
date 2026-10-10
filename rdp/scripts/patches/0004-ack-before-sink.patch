@@ -1,0 +1,45 @@
+--- a/libfreerdp/core/client.c
++++ b/libfreerdp/core/client.c
+@@ -778,6 +778,14 @@
+ 	return status;
+ }
+ 
++/* JNI owner, on the synchronous RDP worker: output only, no channelEvents. */
++BOOL miffan_freerdp_flush_channel_writes(freerdp* instance)
++{
++    WINPR_ASSERT(instance);
++    WINPR_ASSERT(instance->context);
++    return freerdp_channels_process_sync(instance->context->channels, instance);
++}
++
+ /**
+  * called only from main thread
+  */
+--- a/channels/rdpgfx/client/rdpgfx_main.c
++++ b/channels/rdpgfx/client/rdpgfx_main.c
+@@ -602,6 +602,7 @@
+  * @return 0 on success, otherwise a Win32 error code
+  */
+ extern void miffan_rdp_frame_ack_queued(UINT32 frameId);
++extern UINT miffan_rdp_frame_completed(void);
+ 
+ static UINT rdpgfx_send_frame_acknowledge_pdu(RdpgfxClientContext* context,
+                                               const RDPGFX_FRAME_ACKNOWLEDGE_PDU* pdu)
+@@ -1359,7 +1360,7 @@
+ 	gfx->TotalDecodedFrames++;
+ 
+ 	if (!gfx->sendFrameAcks)
+-		return error;
++		return miffan_rdp_frame_completed();
+ 
+ 	ack.frameId = pdu.frameId;
+ 	ack.totalFramesDecoded = gfx->TotalDecodedFrames;
+@@ -1427,6 +1428,8 @@
+ 			break;
+ 	}
+ 
++	if (error == CHANNEL_RC_OK)
++		error = miffan_rdp_frame_completed();
+ 	return error;
+ }
+ 

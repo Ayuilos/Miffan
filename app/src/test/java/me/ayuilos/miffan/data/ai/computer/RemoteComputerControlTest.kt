@@ -1,47 +1,25 @@
 package me.ayuilos.miffan.data.ai.computer
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RemoteComputerControlTest {
-    @Test
-    fun recordsOnlyRealUserTransitions() = runBlocking {
-        val events = mutableListOf<Pair<String, Boolean>>()
-        val control = RemoteComputerControl { host, taken -> events += host to taken }
-        control.userHandsBack("host")
-        control.userTakesOver("host")
-        control.userTakesOver("host")
-        control.userHandsBack("host")
-        control.userHandsBack("host")
-        control.partnerActs("host") { control.userTakesOver("host") }
-        control.userHandsBack("host")
-        assertEquals(listOf("host" to true, "host" to false, "host" to true, "host" to false), events)
-    }
-
-    @Test
-    fun partnerIsMarkedWhileActingAndReleasedAfter() = runBlocking {
+    @Test fun partnerRefusedWhileUserHoldsControlIsWaitingUntilHandBack() = runTest {
         val control = RemoteComputerControl()
-        val seen = control.partnerActs("host") { control.controller("host") }
-        assertEquals(RemoteController.PARTNER, seen)
-        assertEquals(RemoteController.IDLE, control.controller("host"))
-    }
+        assertEquals("ok", control.partnerActs("host") { "ok" })
+        assertTrue(control.waiting.value.isEmpty())
 
-    @Test
-    fun userTakeoverRefusesPartnerUntilHandedBack() = runBlocking {
-        val control = RemoteComputerControl()
         control.userTakesOver("host")
-        assertNull(control.partnerActs("host") { "acted" })
-        control.userHandsBack("host")
-        assertEquals("acted", control.partnerActs("host") { "acted" })
-    }
+        assertTrue("taking over alone is not a reason to tell the user", control.waiting.value.isEmpty())
+        assertNull(control.partnerActs("host") { "blocked" })
+        assertEquals(setOf("host"), control.waiting.value)
+        assertTrue(control.waiting.value.contains("host") && "other" !in control.waiting.value)
 
-    @Test
-    fun takeoverDuringAnActionIsNotOverwrittenWhenItEnds() = runBlocking {
-        val control = RemoteComputerControl()
-        control.partnerActs("host") { control.userTakesOver("host") }
-        assertEquals(RemoteController.USER, control.controller("host"))
-        assertEquals(RemoteController.IDLE, control.controller("other"))
+        control.userHandsBack("host")
+        assertTrue(control.waiting.value.isEmpty())
+        assertEquals("again", control.partnerActs("host") { "again" })
     }
 }

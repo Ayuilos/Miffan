@@ -1,0 +1,104 @@
+P6b: accept connected socketpair descriptors from the caller for every RTSP
+request. Skip TCP probing of the UDP address; keep strict encryption and
+session-ID checks from P6a. No TCP listener or loopback connection is needed.
+
+--- a/src/Connection.c
++++ b/src/Connection.c
+@@ -12,6 +12,7 @@
+ struct sockaddr_storage RtspTcpAddr;
+ SOCKADDR_LEN RtspTcpAddrLen;
+ uint16_t RtspTcpPortNumber;
++int (*OpenRtspTcp)(unsigned short);
+ struct sockaddr_storage LocalAddr;
+ SOCKADDR_LEN AddrLen;
+ int AppVersionQuad[4];
+@@ -294,6 +295,7 @@
+     RtspTcpPortNumber = serverInfo->rtspTcpAddress != NULL ?
+         serverInfo->rtspTcpPort : RtspPortNumber;
+ 
++    OpenRtspTcp = serverInfo->openRtspTcp;
+     alreadyTerminated = false;
+     ConnectionInterrupted = false;
+     
+@@ -360,7 +362,10 @@
+     Limelog("Resolving host name...");
+     ListenerCallbacks.stageStarting(STAGE_NAME_RESOLUTION);
+     LC_ASSERT(RtspPortNumber != 0);
+-    if (serverInfo->rtspTcpAddress != NULL) {
++    if (OpenRtspTcp != NULL) {
++        err = resolveHostName(serverInfo->address, AF_UNSPEC, 0, &RemoteAddr, &AddrLen);
++    }
++    else if (serverInfo->rtspTcpAddress != NULL) {
+         // No TCP probes against the media destination. The app selects one
+         // numeric candidate at a time and keeps the SSH relay alive.
+         err = resolveHostName(serverInfo->address, AF_UNSPEC, 0, &RemoteAddr, &AddrLen);
+--- a/src/Limelight-internal.h
++++ b/src/Limelight-internal.h
+@@ -19,6 +19,7 @@
+ extern struct sockaddr_storage RtspTcpAddr;
+ extern SOCKADDR_LEN RtspTcpAddrLen;
+ extern uint16_t RtspTcpPortNumber;
++extern int (*OpenRtspTcp)(unsigned short);
+ extern struct sockaddr_storage LocalAddr;
+ extern SOCKADDR_LEN AddrLen;
+ extern int AppVersionQuad[4];
+--- a/src/Limelight.h
++++ b/src/Limelight.h
+@@ -550,6 +550,9 @@
+     // Reject missing RTSP, video, audio, or control-v2 encryption support.
+     // The caller must also request ENCFLG_AUDIO | ENCFLG_VIDEO.
+     bool requireEncryptedStreams;
++
++    // Owned connected fd from the caller; no direct TCP when installed.
++    int (*openRtspTcp)(unsigned short remotePort);
+ } SERVER_INFORMATION, *PSERVER_INFORMATION;
+ 
+ // Use this function to zero the server information when allocated on the stack or heap
+--- a/src/RtspConnection.c
++++ b/src/RtspConnection.c
+@@ -404,7 +404,8 @@
+     // returns HTTP 200 OK for the /launch request before the RTSP handshake port
+     // is listening.
+     do {
+-        sock = connectTcpSocket(&RtspTcpAddr, RtspTcpAddrLen, RtspTcpPortNumber, RTSP_CONNECT_TIMEOUT_SEC);
++        sock = OpenRtspTcp ? OpenRtspTcp(RtspPortNumber) :
++            connectTcpSocket(&RtspTcpAddr, RtspTcpAddrLen, RtspTcpPortNumber, RTSP_CONNECT_TIMEOUT_SEC);
+         if (sock == INVALID_SOCKET) {
+             *error = LastSocketError();
+             if (*error == ECONNREFUSED) {
+@@ -953,7 +954,7 @@
+     controlStreamId = APP_VERSION_AT_LEAST(7, 1, 431) ? "streamid=control/13/0" : "streamid=control/1/0";
+     AudioEncryptionEnabled = false;
+     encryptedRtspEnabled = serverInfo->rtspSessionUrl && strstr(serverInfo->rtspSessionUrl, "rtspenc://");
+-    if (serverInfo->rtspTcpAddress != NULL && useEnet) {
++    if ((serverInfo->openRtspTcp != NULL || serverInfo->rtspTcpAddress != NULL) && useEnet) {
+         return ML_ERROR_UNSUPPORTED_TRANSPORT;
+     }
+     if (serverInfo->requireEncryptedStreams &&
+@@ -1226,7 +1227,7 @@
+             memcpy(AudioPingPayload.payload, pingPayload, sizeof(AudioPingPayload.payload));
+         }
+ 
+-        if (serverInfo->rtspTcpAddress != NULL && AudioPingPayload.payload[0] == 0) {
++        if ((serverInfo->openRtspTcp != NULL || serverInfo->rtspTcpAddress != NULL) && AudioPingPayload.payload[0] == 0) {
+             freeMessage(&response);
+             ret = ML_ERROR_UNSUPPORTED_TRANSPORT;
+             goto Exit;
+@@ -1297,7 +1298,7 @@
+             memcpy(VideoPingPayload.payload, pingPayload, sizeof(VideoPingPayload.payload));
+         }
+ 
+-        if (serverInfo->rtspTcpAddress != NULL && VideoPingPayload.payload[0] == 0) {
++        if ((serverInfo->openRtspTcp != NULL || serverInfo->rtspTcpAddress != NULL) && VideoPingPayload.payload[0] == 0) {
+             freeMessage(&response);
+             ret = ML_ERROR_UNSUPPORTED_TRANSPORT;
+             goto Exit;
+@@ -1340,7 +1341,7 @@
+ 
+         // Parse the Sunshine control connect data extension if present
+         connectData = getOptionContent(response.options, "X-SS-Connect-Data");
+-        if (serverInfo->rtspTcpAddress != NULL && (connectData == NULL || connectData[0] == 0)) {
++        if ((serverInfo->openRtspTcp != NULL || serverInfo->rtspTcpAddress != NULL) && (connectData == NULL || connectData[0] == 0)) {
+             freeMessage(&response);
+             ret = ML_ERROR_UNSUPPORTED_TRANSPORT;
+             goto Exit;

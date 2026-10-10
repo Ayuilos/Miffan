@@ -27,12 +27,17 @@ internal fun RemoteScreenViewport(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val bitmap by vm.bitmap.collectAsStateWithLifecycle()
+    val video by vm.video.collectAsStateWithLifecycle()
     val frames = vm.frameVersion.collectAsState()
     val cursor = vm.cursor.collectAsState()
     val platform by vm.platform.collectAsStateWithLifecycle()
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-        if (state is RemoteScreenUiState.Connected) bitmap?.let {
-            RemoteScreenCanvas(it, frames, cursor, trackpad, platform == RemoteScreenPlatform.MACOS, vm, Modifier.fillMaxSize(),
+        val connected = state as? RemoteScreenUiState.Connected
+        // A stream draws into its own Surface; VNC and RDP need their bitmap before anything shows.
+        if (connected != null && (video != null || bitmap != null)) {
+            val pixels = bitmap.takeIf { video == null }
+            RemoteScreenCanvas(pixels?.width ?: connected.width, pixels?.height ?: connected.height, pixels, video,
+                frames, cursor, trackpad, platform == RemoteScreenPlatform.MACOS, vm, Modifier.fillMaxSize(),
                 zoomControls = zoomControls)
         }
         when (val current = state) {

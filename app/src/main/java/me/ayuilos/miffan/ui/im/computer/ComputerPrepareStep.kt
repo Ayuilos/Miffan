@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenRdpInstallGuidance
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServer
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServerLabel
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.usesRdp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,6 +17,14 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenCopyCommand
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenLog
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenVncInstallGuidance
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamEnableFlow
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteSunshinePermissions
+import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupPhase
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupState
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteScreenSetupError
+import androidx.compose.ui.platform.LocalResources
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.CheckmarkCircle01
@@ -21,10 +33,13 @@ import me.rerere.hugeicons.stroke.InformationCircle
 @Composable
 internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     var installCommand by remember(state.hostId) { mutableStateOf<String?>(null) }
+    val streamSetups by vm.streamSetups.collectAsStateWithLifecycle()
+    val stream = state.hostId?.let { streamSetups[it] }?.takeIf { it.connectionRevision == state.hostRevision }
+    var enablingStream by remember(state.hostId) { mutableStateOf(false) }
     val probe = state.probe
-    val unsupported = !state.isMac && probe?.session?.type == "wayland" &&
-        probe.session.desktop?.let { it.contains("gnome", true) || it.contains("kde", true) } == true
-    val clipboard = probe?.clipboard?.takeIf { it.isNotBlank() }
+    val rdp = probe?.usesRdp == true
+    // RDP carries the clipboard itself, so GNOME and KDE need no clipboard tool.
+    val clipboard = if (rdp) stringResource(R.string.workspace_screen_clipboard_rdp) else probe?.clipboard?.takeIf { it.isNotBlank() }
     val upgrade = probe?.cua?.path != null
     ComputerSetupStepLayout(
         title = stringResource(R.string.im_computer_prepare),
@@ -42,13 +57,13 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
                 when {
                     !state.screenServiceReady -> stringResource(R.string.im_computer_no_screen_service)
                     state.isMac -> stringResource(R.string.im_computer_mac_screen_sharing)
+                    rdp -> probe.rdpServer?.let { rdpServerLabel(it) }.orEmpty()
                     else -> probe.vnc.server.orEmpty()
                 }) {
                 when {
                     state.screenServiceReady -> Unit
                     state.isMac -> Text(stringResource(R.string.im_computer_mac_sharing_help), style = MaterialTheme.typography.bodyMedium)
-                    unsupported -> Text(stringResource(R.string.im_computer_unsupported_desktop), style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error)
+                    rdp -> RemoteScreenRdpInstallGuidance(probe.session.desktop)
                     else -> RemoteScreenVncInstallGuidance(probe.session.type, probe.session.desktop)
                 }
             }
@@ -72,7 +87,17 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
                     RemoteScreenCopyCommand("Debian / Ubuntu", "sudo apt install $tool")
                 }
             }
+            // Smoother picture through Sunshine: optional, offered only where it is already installed.
+            if (stream != null && (probe.os == "linux" || probe.os == "macos")) {
+                HorizontalDivider(Modifier.padding(start = 36.dp))
+                StreamCheckRow(stream, macOS = probe.os == "macos", busy = state.busy || enablingStream,
+                    onEnable = { enablingStream = true }, onRecheck = vm::checkStream, onOpenSettings = vm::openSunshineSettings)
+            }
         }
+    }
+    if (enablingStream && stream != null) {
+        RemoteStreamEnableFlow(stream, onStart = vm::startSunshine, onEnforce = vm::enforceStreamEncryption, onPair = vm::pairStream,
+            onCancelPairing = vm::cancelStreamPairing, onEnable = vm::enableStream, onFinished = { enablingStream = false })
     }
     installCommand?.let { command ->
         AlertDialog(onDismissRequest = { installCommand = null },
@@ -91,6 +116,45 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
 }
 
 private enum class CheckStatus { READY, NEEDED, OPTIONAL }
+
+@Composable
+private fun StreamCheckRow(
+    stream: RemoteStreamSetupState,
+    macOS: Boolean,
+    busy: Boolean,
+    onEnable: () -> Unit,
+    onRecheck: () -> Unit,
+    onOpenSettings: (RemoteSunshinePermission) -> Unit,
+) {
+    val resources = LocalResources.current
+    val status = stream.status
+    val enabled = stream.streamReady && stream.enabled == true
+    CheckRow(stringResource(R.string.im_computer_stream), if (enabled) CheckStatus.READY else CheckStatus.OPTIONAL, when {
+        stream.phase == RemoteStreamSetupPhase.CHECKING -> stringResource(R.string.workspace_screen_stream_checking)
+        stream.phase == RemoteStreamSetupPhase.ENFORCING -> stringResource(R.string.workspace_screen_stream_enforcing)
+        stream.phase == RemoteStreamSetupPhase.STARTING -> stringResource(R.string.workspace_screen_stream_starting)
+        status == null -> stream.error?.let { remoteScreenSetupError(resources, it) } ?: stringResource(R.string.im_computer_stream_optional)
+        !status.installed -> stringResource(R.string.im_computer_stream_optional)
+        enabled -> stringResource(R.string.im_computer_stream_enabled)
+        else -> stringResource(R.string.im_computer_stream_available)
+    }) {
+        when {
+            stream.busy -> Unit
+            status == null -> TextButton(enabled = !busy, onClick = onRecheck) { Text(stringResource(R.string.im_computer_recheck)) }
+            !status.installed -> Unit
+            // "Turn on" also starts Sunshine when it is installed but closed.
+            !enabled -> FilledTonalButton(enabled = !busy, onClick = onEnable) { Text(stringResource(R.string.im_computer_stream_enable)) }
+        }
+        // A Mac needs Sunshine's grants switched on at the computer; offer the page where that happens.
+        if (macOS && status?.installed == true && !stream.busy) {
+            RemoteSunshinePermissions(status, stream, enabled = !busy, onOpen = onOpenSettings)
+        }
+        if (stream.pairingError != null) Text(stringResource(R.string.workspace_screen_stream_pair_failed), color = MaterialTheme.colorScheme.error)
+        if (stream.enforcementError != null || stream.enforcement?.success == false) {
+            Text(stringResource(R.string.workspace_screen_stream_enforce_failed), color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
 
 @Composable
 private fun CheckRow(label: String, status: CheckStatus, detail: String, extra: @Composable ColumnScope.() -> Unit = {}) {

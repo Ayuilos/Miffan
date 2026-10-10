@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServer
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.usesRdp
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.lifecycle.ViewModel
@@ -29,6 +31,8 @@ import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
+import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
@@ -82,6 +86,8 @@ data class ComputerSetupState(
     val hostKeyChanged: Boolean = false,
     val workspaceId: String? = null,
     val probe: RemoteMachineProbe? = null,
+    /** The host identity [probe] was read from; high-performance setup refuses a different one. */
+    val hostRevision: String? = null,
     val install: RemoteCommandOutcome? = null,
     /** macOS grants of the remote cua-driver; null on Linux or before checking. */
     val permissions: ComputerPermissions? = null,
@@ -95,8 +101,13 @@ data class ComputerSetupState(
     val isMac: Boolean get() = probe?.os == "macos"
 
     val sessionReady: Boolean get() = probe?.session?.present == true
-    /** A VNC server exists; macOS Screen Sharing must also be switched on (the helper cannot start it). */
-    val screenServiceReady: Boolean get() = probe?.vnc?.let { vnc ->
+    /**
+     * GNOME and KDE need their RDP server installed (Miffan starts it); other desktops need a VNC
+     * server, and macOS Screen Sharing must also be switched on (the helper cannot start it).
+     */
+    val screenServiceReady: Boolean get() = probe?.let { probe ->
+        if (probe.usesRdp) return@let probe.rdpServer != null
+        val vnc = probe.vnc
         vnc.server != null && vnc.server != "none" && (vnc.server != "macos-screen-sharing" || vnc.running)
     } == true
     val cuaReady: Boolean get() = probe?.cua?.ok == true
@@ -159,6 +170,24 @@ class ComputerSetupVM(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var job: Job? = null
+
+    private val streamSetup = RemoteStreamSetupController(screens, viewModelScope)
+    /** Optional high-performance mode for the computer being set up; see [RemoteStreamSetupController]. */
+    val streamSetups = streamSetup.states
+
+    private fun withProbedHost(action: (hostId: String, revision: String) -> Unit) {
+        val state = _state.value
+        action(state.hostId ?: return, state.hostRevision ?: return)
+    }
+    fun checkStream() = withProbedHost(streamSetup::check)
+    fun pairStream() = withProbedHost(streamSetup::pair)
+    fun cancelStreamPairing() = streamSetup.cancelPairing()
+    /** Called only from the confirmation that shows exactly what changes on the computer. */
+    fun enforceStreamEncryption() = withProbedHost(streamSetup::enforceEncryption)
+    fun enableStream() = withProbedHost { hostId, _ -> streamSetup.setEnabled(hostId, true) }
+    fun startSunshine() = withProbedHost(streamSetup::start)
+    fun openSunshineSettings(permission: RemoteSunshinePermission) =
+        withProbedHost { hostId, revision -> streamSetup.openPermissionSettings(hostId, revision, permission) }
 
     init {
         if (args.hostId != null && !args.edit) chooseHost(args.hostId)
@@ -357,7 +386,9 @@ class ComputerSetupVM(
         _state.update { it.copy(task = ComputerSetupTask.PREPARING) }
         val host = currentHost()
         val probe = screens.probeHost(host.id, host.connectionRevision)
-        _state.update { it.copy(probe = probe, step = ComputerSetupStep.PREPARE) }
+        _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision, step = ComputerSetupStep.PREPARE) }
+        // Sunshine is optional (Linux and macOS); its check runs beside the required ones.
+        if (probe.os == "linux" || probe.os == "macos") streamSetup.check(host.id, host.connectionRevision)
     }
 
     private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path

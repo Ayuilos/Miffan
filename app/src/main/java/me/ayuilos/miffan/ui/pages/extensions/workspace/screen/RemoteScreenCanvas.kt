@@ -2,6 +2,10 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.graphics.SurfaceTexture
+import android.view.Surface
+import android.view.TextureView
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -14,7 +18,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,6 +50,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import me.ayuilos.miffan.data.repository.RemoteSurfaceTarget
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -54,10 +65,18 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/**
+ * The remote picture and its gestures. [width]/[height] are the picture's pixels, which are also
+ * the input coordinates: either [bitmap] (VNC, RDP) or [video] (a Sunshine stream decoded into a
+ * Surface) supplies the picture.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun RemoteScreenCanvas(
-    bitmap: Bitmap,
+    width: Int,
+    height: Int,
+    bitmap: Bitmap?,
+    video: RemoteSurfaceTarget?,
     frameVersion: State<Long>,
     cursor: State<RemoteCursor>,
     trackpad: Boolean,
@@ -68,10 +87,19 @@ internal fun RemoteScreenCanvas(
 ) {
     var macExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val image = remember(bitmap) { bitmap.asImageBitmap() }
+    val image = remember(bitmap) { bitmap?.asImageBitmap() }
     val scope = rememberCoroutineScope()
-    val input = remember(bitmap.width, bitmap.height, trackpad, vm) {
-        ScreenGestures(context, bitmap.width, bitmap.height, trackpad, vm, scope)
+    val input = remember(width, height, trackpad, vm) {
+        ScreenGestures(context, width, height, trackpad, vm, scope)
+    }
+    // A stream draws the real pointer into the video, a network round trip after the finger
+    // moves; a faint ring at the predicted spot bridges that gap and fades once the finger rests.
+    val predicted = remember(input) { Animatable(0f) }
+    LaunchedEffect(input, input.lastMoved) {
+        if (video == null || !trackpad || input.lastMoved == 0L) return@LaunchedEffect
+        predicted.snapTo(1f)
+        delay(ScreenGestures.PREDICTED_POINTER_HOLD_MS)
+        predicted.animateTo(0f, tween(ScreenGestures.PREDICTED_POINTER_FADE_MS))
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(input, lifecycle) {
@@ -82,6 +110,8 @@ internal fun RemoteScreenCanvas(
         onDispose { lifecycle.removeObserver(observer); input.cancel() }
     }
     Box(modifier) {
+    // The video sits under the gesture canvas, which stays transparent where there is no bitmap.
+    if (video != null) key(video, width, height) { RemoteVideoSurface(video, width, height, input) }
     Canvas(Modifier.fillMaxSize().onSizeChanged { input.resize(Size(it.width.toFloat(), it.height.toFloat())) }
         // Touching the picture folds the desktop shortcuts away, without taking the touch.
         .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); macExpanded = false } }
@@ -91,9 +121,13 @@ internal fun RemoteScreenCanvas(
         frameVersion.value
         val topLeft = input.topLeft
         val scale = input.scale
-        drawImage(image, dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),
-            dstSize = IntSize(max(1, (bitmap.width * scale).roundToInt()), max(1, (bitmap.height * scale).roundToInt())),
-            filterQuality = FilterQuality.Medium)
+        if (image != null) {
+            vm.framesDrawn.incrementAndGet()
+            drawImage(image, dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),
+                dstSize = IntSize(max(1, (width * scale).roundToInt()), max(1, (height * scale).roundToInt())),
+                filterQuality = FilterQuality.Medium)
+        }
+        if (trackpad && video != null && predicted.value > 0f) drawPredictedPointer(input.toViewport(input.pointer), predicted.value)
         if (trackpad) {
             val tip = input.toViewport(input.pointer)
             when (val shape = cursor.value) {
@@ -130,6 +164,71 @@ internal fun RemoteScreenCanvas(
         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
     )
     }
+}
+
+/**
+ * Shows a decoded stream at the gestures' zoom and pan. The decoder writes [width]×[height] frames
+ * into the TextureView's buffer; a transform maps that buffer onto the same rectangle a bitmap
+ * would occupy, so panning and zooming never resize the view or restart the decoder.
+ */
+@Composable
+private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: Int, input: ScreenGestures) {
+    val placement = remember { VideoPlacement() }
+    AndroidView(
+        factory = { context ->
+            TextureView(context).apply {
+                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                    private var surface: Surface? = null
+                    override fun onSurfaceTextureAvailable(texture: SurfaceTexture, viewWidth: Int, viewHeight: Int) {
+                        texture.setDefaultBufferSize(width, height)
+                        surface = Surface(texture).also(target::setSurface)
+                    }
+                    override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, viewWidth: Int, viewHeight: Int) = Unit
+                    override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
+                        // Detach the decoder before the buffer goes away; the stream itself keeps running.
+                        target.setSurface(null)
+                        surface?.release()
+                        surface = null
+                        return true
+                    }
+                    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+                }
+                addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> placement.apply(view as TextureView) }
+            }
+        },
+        // Reading the gestures' zoom and pan here re-runs this block whenever either changes.
+        update = { view -> placement.set(width * input.scale, height * input.scale, input.topLeft); placement.apply(view) },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+/** Where the video should appear in view pixels; kept so a later layout pass can apply it too. */
+private class VideoPlacement {
+    private val matrix = Matrix()
+    private var shownWidth = 0f
+    private var shownHeight = 0f
+    private var topLeft = Offset.Zero
+
+    fun set(width: Float, height: Float, topLeft: Offset) {
+        shownWidth = width
+        shownHeight = height
+        this.topLeft = topLeft
+    }
+
+    /** A TextureView stretches its buffer over the whole view; this scales it back to the picture's rectangle. */
+    fun apply(view: TextureView) {
+        if (view.width == 0 || view.height == 0 || shownWidth <= 0f || shownHeight <= 0f) return
+        matrix.setScale(shownWidth / view.width, shownHeight / view.height)
+        matrix.postTranslate(topLeft.x, topLeft.y)
+        view.setTransform(matrix)
+    }
+}
+
+/** Where the touchpad will put the pointer, ahead of the video: a ring that reads on light and dark desktops. */
+private fun DrawScope.drawPredictedPointer(center: Offset, alpha: Float) {
+    val radius = 7.dp.toPx()
+    drawCircle(Color.Black.copy(alpha = 0.3f * alpha), radius, center, style = Stroke(width = 4.dp.toPx()))
+    drawCircle(Color.White.copy(alpha = 0.9f * alpha), radius, center, style = Stroke(width = 2.dp.toPx()))
 }
 
 /**
@@ -171,6 +270,9 @@ private class ScreenGestures(
     private var pan by mutableStateOf(Offset.Zero)
     var pointer by mutableStateOf(Offset(width / 2f, height / 2f))
         private set
+    /** Uptime of the last touchpad movement; 0 until the finger first moves the pointer. */
+    var lastMoved by mutableLongStateOf(0L)
+        private set
     private val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val density = context.resources.displayMetrics.density
     private var down = Offset.Zero
@@ -211,6 +313,7 @@ private class ScreenGestures(
         val speed = delta.getDistance() / max(1f, density)
         val acceleration = (1f + speed / 24f).coerceAtMost(3f)
         move(pointer + delta / scale * acceleration)
+        lastMoved = SystemClock.uptimeMillis()
         followPointer()
     }
     private fun followPointer() {
@@ -384,6 +487,8 @@ private class ScreenGestures(
 
     companion object {
         const val MAX_VIEW_ZOOM = 5f
+        const val PREDICTED_POINTER_HOLD_MS = 250L
+        const val PREDICTED_POINTER_FADE_MS = 300
         const val FLING_FRAME_MS = 16L
         /** Per-frame velocity kept: a quick flick glides for well over a second, like a trackpad. */
         const val FLING_DECAY = 0.975f

@@ -68,7 +68,11 @@ fun RemoteHostScreenSettingsDialog(
     var configBusy by remember(host.id) { mutableStateOf(false) }
     val environments by vm.screenEnvironments.collectAsStateWithLifecycle()
     val environment = environments[host.id] ?: RemoteScreenEnvironmentState()
-    val busy = configBusy || environment.busy
+    val streamSetups by vm.streamSetups.collectAsStateWithLifecycle()
+    val streamSetup = streamSetups[host.id] ?: RemoteStreamSetupState()
+    // A Sunshine check may run in the background; pairing and the encryption change block saving.
+    val busy = configBusy || environment.busy ||
+        streamSetup.phase == RemoteStreamSetupPhase.PAIRING || streamSetup.phase == RemoteStreamSetupPhase.ENFORCING
     var active by remember(host.id) { mutableStateOf(true) }
     var error by remember(host.id) { mutableStateOf<String?>(null) }
     var enabled by remember(host.id) { mutableStateOf(false) }
@@ -80,6 +84,8 @@ fun RemoteHostScreenSettingsDialog(
     // Credentials deliberately stay out of rememberSaveable / Android saved state.
     var password by remember(host.id) { mutableStateOf("") }
     var hasPassword by remember(host.id) { mutableStateOf(false) }
+    var streamEnabled by remember(host.id) { mutableStateOf(false) }
+    var savedStreamEnabled by remember(host.id) { mutableStateOf(false) }
     DisposableEffect(host.id) { onDispose { active = false } }
     fun load() {
         error = null
@@ -102,6 +108,8 @@ fun RemoteHostScreenSettingsDialog(
                     auth = config.auth
                     username = config.username
                     hasPassword = config.hasPassword
+                    streamEnabled = config.streamEnabled
+                    savedStreamEnabled = config.streamEnabled
                     loaded = true
                 }
             }, onFailure = { error = it.localizedMessage ?: resources.getString(R.string.workspace_screen_save_failed) })
@@ -118,6 +126,19 @@ fun RemoteHostScreenSettingsDialog(
     val valid = loaded && endpointValid &&
         (auth == RemoteScreenAuth.NONE || hasPassword || password.isNotEmpty())
 
+    // High-performance mode has its own column; it is written after the rest succeeded.
+    fun saveStream() {
+        configBusy = true
+        vm.setStreamEnabled(host.id, streamEnabled) { result ->
+            if (!active) return@setStreamEnabled
+            configBusy = false
+            result.fold(onSuccess = { saved ->
+                if (saved) { savedStreamEnabled = streamEnabled; onSaved(); onDismiss() }
+                else error = resources.getString(R.string.workspace_screen_host_missing)
+            }, onFailure = { error = it.localizedMessage ?: resources.getString(R.string.workspace_screen_save_failed) })
+        }
+    }
+
     fun save() {
         configBusy = true
         error = null
@@ -130,8 +151,11 @@ fun RemoteHostScreenSettingsDialog(
             if (!active) return@updateScreenConfig
             configBusy = false
             result.fold(onSuccess = { saved ->
-                if (saved) { onSaved(); onDismiss() }
-                else error = resources.getString(R.string.workspace_screen_host_missing)
+                when {
+                    !saved -> error = resources.getString(R.string.workspace_screen_host_missing)
+                    streamEnabled == savedStreamEnabled -> { onSaved(); onDismiss() }
+                    else -> saveStream()
+                }
             }, onFailure = { error = it.localizedMessage ?: resources.getString(R.string.workspace_screen_save_failed) })
         }
     }
@@ -189,9 +213,16 @@ fun RemoteHostScreenSettingsDialog(
                                 supportingText = { Text(stringResource(R.string.workspace_screen_port_hint)) },
                                 isError = validPort == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                            ScreenConnectionMode.AUTOMATIC -> Text(stringResource(R.string.workspace_screen_automatic_help),
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ScreenConnectionMode.AUTOMATIC -> {
+                                Text(stringResource(R.string.workspace_screen_automatic_help),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.workspace_screen_automatic_rdp),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
+                    }
+                    SettingsCard {
+                        RemoteStreamSettings(host, streamEnabled, { streamEnabled = it; error = null }, streamSetup, vm, blocked = configBusy)
                     }
                     SettingsCard {
                         Text(stringResource(R.string.workspace_screen_auth), style = MaterialTheme.typography.titleSmall)

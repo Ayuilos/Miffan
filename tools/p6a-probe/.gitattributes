@@ -1,0 +1,2 @@
+# Patch context preserves upstream whitespace so git apply remains exact.
+patches/*.patch whitespace=-blank-at-eol
