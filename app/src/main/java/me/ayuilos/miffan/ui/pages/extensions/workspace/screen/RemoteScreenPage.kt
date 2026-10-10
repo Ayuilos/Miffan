@@ -329,6 +329,7 @@ internal fun RemoteScreenScaffold(
 private val STREAM_SETTINGS_FIXES = setOf(
     RemoteStreamFallbackReason.SUNSHINE_MISSING, RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING,
     RemoteStreamFallbackReason.NOT_PAIRED, RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED,
+    RemoteStreamFallbackReason.MAC_PERMISSIONS,
 )
 
 private const val PERF_OVERLAY = "perf_overlay"

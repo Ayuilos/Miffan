@@ -32,6 +32,7 @@ import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
+import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
@@ -184,6 +185,9 @@ class ComputerSetupVM(
     /** Called only from the confirmation that shows exactly what changes on the computer. */
     fun enforceStreamEncryption() = withProbedHost(streamSetup::enforceEncryption)
     fun enableStream() = withProbedHost { hostId, _ -> streamSetup.setEnabled(hostId, true) }
+    fun startSunshine() = withProbedHost(streamSetup::start)
+    fun openSunshineSettings(permission: RemoteSunshinePermission) =
+        withProbedHost { hostId, revision -> streamSetup.openPermissionSettings(hostId, revision, permission) }
 
     init {
         if (args.hostId != null && !args.edit) chooseHost(args.hostId)
@@ -383,8 +387,8 @@ class ComputerSetupVM(
         val host = currentHost()
         val probe = screens.probeHost(host.id, host.connectionRevision)
         _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision, step = ComputerSetupStep.PREPARE) }
-        // Sunshine is optional and Linux-only for now; its check runs beside the required ones.
-        if (probe.os == "linux") streamSetup.check(host.id, host.connectionRevision)
+        // Sunshine is optional (Linux and macOS); its check runs beside the required ones.
+        if (probe.os == "linux" || probe.os == "macos") streamSetup.check(host.id, host.connectionRevision)
     }
 
     private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path

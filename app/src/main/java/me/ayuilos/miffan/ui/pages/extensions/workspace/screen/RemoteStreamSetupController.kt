@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.RemoteStreamPairing
+import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 
 /**
  * High-performance mode setup shared by the professional settings, the easy-mode wizard and the
@@ -95,6 +96,27 @@ class RemoteStreamSetupController(
             update(hostId) { it.copy(phase = RemoteStreamSetupPhase.IDLE,
                 enforcement = result.getOrNull(), enforcementError = result.exceptionOrNull()) }
             check(hostId, revision)
+        }
+    }
+
+    /** Starts Sunshine on the computer (the user asked for it), then reads its state again. */
+    fun start(hostId: String, revision: String) {
+        val previous = _states.value[hostId] ?: return
+        if (previous.busy || previous.connectionRevision != revision) return
+        update(hostId) { it.copy(phase = RemoteStreamSetupPhase.STARTING, startFailed = false) }
+        launch({ screens.startSunshine(hostId, revision) }) { result ->
+            update(hostId) { it.copy(phase = RemoteStreamSetupPhase.IDLE, startFailed = result.getOrNull()?.success != true) }
+            check(hostId, revision)
+        }
+    }
+
+    /** Opens the macOS privacy page for [permission] on the computer's screen; it changes nothing itself. */
+    fun openPermissionSettings(hostId: String, revision: String, permission: RemoteSunshinePermission) {
+        val previous = _states.value[hostId] ?: return
+        if (previous.busy || previous.connectionRevision != revision) return
+        launch({ screens.openSunshinePermissionSettings(hostId, revision, permission) }) { result ->
+            val opened = result.getOrNull()?.success == true
+            update(hostId) { it.copy(settingsOpened = permission.takeIf { opened }, settingsFailed = !opened) }
         }
     }
 

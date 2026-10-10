@@ -357,7 +357,7 @@ class RemoteScreenVM(
     /** Reads Sunshine once per page, only for plain connections the user has not declined to improve. */
     private fun suggestStream(opened: RemoteScreenConnection) {
         if (streamChecked || opened.session.surface != null || opened.streamFallback != null) return
-        if (opened.platform != RemoteScreenPlatform.LINUX || hints.getBoolean(streamDismissedKey(opened.hostId), false)) return
+        if (opened.platform == RemoteScreenPlatform.UNKNOWN || hints.getBoolean(streamDismissedKey(opened.hostId), false)) return
         streamChecked = true
         viewModelScope.launch {
             val host = runCatching { workspaces.getHostById(opened.hostId) }.getOrNull() ?: return@launch
@@ -377,6 +377,7 @@ class RemoteScreenVM(
     /** Called only from the confirmation that shows exactly what changes on the computer. */
     fun enforceStreamEncryption() = _streamSuggestion.value?.let { streamSetup.enforceEncryption(it.hostId, it.revision) }
     fun enableStream() = _streamSuggestion.value?.let { streamSetup.setEnabled(it.hostId, true) }
+    fun startSunshine() = _streamSuggestion.value?.let { streamSetup.start(it.hostId, it.revision) }
 
     /** The suggestion's flow ended; once the mode is on, reconnect to use it. */
     fun finishStreamSuggestion(enabled: Boolean) {

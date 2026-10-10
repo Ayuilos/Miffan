@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
+import me.ayuilos.miffan.data.repository.RemoteStreamStatus
+import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 
 /**
@@ -44,6 +47,7 @@ internal fun RemoteStreamSettings(
     blocked: Boolean,
 ) {
     val resources = LocalResources.current
+    val macOS = RemoteScreenPlatform.parse(host.screenPlatform) == RemoteScreenPlatform.MACOS
     var confirmEncryption by remember(host.id) { mutableStateOf(false) }
     // A result from an earlier host identity must not offer actions on the edited host.
     val current = state.takeIf { it.connectionRevision == host.connectionRevision }
@@ -60,14 +64,17 @@ internal fun RemoteStreamSettings(
         Text(stringResource(R.string.workspace_screen_stream_help), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!enabled) return@Column
-        if (state.phase == RemoteStreamSetupPhase.CHECKING || state.phase == RemoteStreamSetupPhase.ENFORCING) {
+        if (state.phase in setOf(RemoteStreamSetupPhase.CHECKING, RemoteStreamSetupPhase.ENFORCING, RemoteStreamSetupPhase.STARTING)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                Text(stringResource(if (state.phase == RemoteStreamSetupPhase.ENFORCING)
-                    R.string.workspace_screen_stream_enforcing else R.string.workspace_screen_stream_checking),
-                    style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(when (state.phase) {
+                    RemoteStreamSetupPhase.ENFORCING -> R.string.workspace_screen_stream_enforcing
+                    RemoteStreamSetupPhase.STARTING -> R.string.workspace_screen_stream_starting
+                    else -> R.string.workspace_screen_stream_checking
+                }), style = MaterialTheme.typography.bodySmall)
             }
         }
+        if (current?.startFailed == true) Text(stringResource(R.string.workspace_screen_stream_start_failed), color = MaterialTheme.colorScheme.error)
         current?.error?.let { Text(remoteScreenSetupError(resources, it), color = MaterialTheme.colorScheme.error) }
         current?.enforcement?.takeUnless { it.success }?.let { outcome ->
             Text(stringResource(R.string.workspace_screen_stream_enforce_failed), color = MaterialTheme.colorScheme.error)
@@ -88,6 +95,17 @@ internal fun RemoteStreamSettings(
                     else -> resources.getString(R.string.workspace_screen_stream_running,
                         status.version ?: resources.getString(R.string.workspace_screen_unknown_version))
                 })
+            if (status.installed && !status.running) {
+                TextButton(enabled = !busy, onClick = { vm.startSunshine(host) }) { Text(stringResource(R.string.workspace_screen_stream_start)) }
+            }
+            if (status.installed && macOS) {
+                RemoteSunshinePermissions(status, current, enabled = !busy,
+                    onOpen = { permission -> vm.openSunshineSettings(host, permission) })
+            }
+            if (status.displayAsleep == true) {
+                Text(stringResource(R.string.workspace_screen_stream_display_asleep), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (status.installed) {
                 EnvironmentRow(stringResource(R.string.workspace_screen_stream_encryption),
                     if (status.encryptionEnforced) EnvironmentStatus.OK else EnvironmentStatus.ACTION_NEEDED,
@@ -127,6 +145,44 @@ internal fun RemoteStreamSettings(
     }
 }
 
+/**
+ * Sunshine's two macOS grants. They can only be switched on at the Mac, so each row can open the
+ * right System Settings page there; a value the computer cannot report stays "cannot confirm".
+ */
+@Composable
+internal fun RemoteSunshinePermissions(
+    status: RemoteStreamStatus,
+    state: RemoteStreamSetupState?,
+    enabled: Boolean,
+    onOpen: (RemoteSunshinePermission) -> Unit,
+) {
+    @Composable
+    fun row(permission: RemoteSunshinePermission, label: Int, granted: Boolean?, denied: Int) {
+        EnvironmentRow(stringResource(label), when (granted) {
+            true -> EnvironmentStatus.OK
+            false -> EnvironmentStatus.ACTION_NEEDED
+            null -> EnvironmentStatus.UNSUPPORTED
+        }, stringResource(when (granted) {
+            true -> R.string.workspace_screen_stream_permission_granted
+            false -> denied
+            null -> R.string.workspace_screen_stream_permission_unknown
+        }))
+        if (granted != true) TextButton(enabled = enabled, onClick = { onOpen(permission) }) {
+            Text(stringResource(R.string.workspace_screen_stream_open_settings))
+        }
+    }
+    row(RemoteSunshinePermission.SCREEN_RECORDING, R.string.workspace_screen_stream_screen_recording, status.screenRecording,
+        R.string.workspace_screen_stream_screen_denied)
+    row(RemoteSunshinePermission.ACCESSIBILITY, R.string.workspace_screen_stream_accessibility, status.accessibility,
+        R.string.workspace_screen_stream_permission_unknown)
+    Text(stringResource(R.string.workspace_screen_stream_permission_help), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (state?.settingsOpened != null) Text(stringResource(R.string.workspace_screen_stream_settings_opened),
+        color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+    if (state?.settingsFailed == true) Text(stringResource(R.string.workspace_screen_stream_open_settings_failed),
+        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+}
+
 /** States exactly what changes in Sunshine before the user allows it. */
 @Composable
 internal fun RemoteStreamEncryptionDialog(activeStream: Boolean, enabled: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
@@ -154,6 +210,7 @@ internal fun RemoteStreamEncryptionDialog(activeStream: Boolean, enabled: Boolea
 @Composable
 internal fun RemoteStreamEnableFlow(
     state: RemoteStreamSetupState,
+    onStart: () -> Unit,
     onEnforce: () -> Unit,
     onPair: () -> Unit,
     onCancelPairing: () -> Unit,
@@ -162,6 +219,7 @@ internal fun RemoteStreamEnableFlow(
     onFinished: (Boolean) -> Unit,
 ) {
     var askEncryption by remember { mutableStateOf(false) }
+    var started by remember { mutableStateOf(false) }
     var enforced by remember { mutableStateOf(false) }
     var paired by remember { mutableStateOf(false) }
     var switched by remember { mutableStateOf(false) }
@@ -169,7 +227,9 @@ internal fun RemoteStreamEnableFlow(
     LaunchedEffect(state.phase, status, state.enabled) {
         if (state.busy || status == null || askEncryption) return@LaunchedEffect
         when {
-            !status.installed || !status.running -> onFinished(false)
+            !status.installed -> onFinished(false)
+            // Pressing "Turn on" includes starting Sunshine once if it is installed but closed.
+            !status.running -> if (started) onFinished(false) else { started = true; onStart() }
             !status.encryptionEnforced -> if (enforced) onFinished(false) else askEncryption = true
             !status.paired -> if (paired) onFinished(false) else { paired = true; onPair() }
             state.enabled != true -> if (switched) onFinished(false) else { switched = true; onEnable() }

@@ -20,6 +20,7 @@ import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnvironmentPhase
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnvironmentState
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
+import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RootfsInstallProgress
@@ -74,6 +75,9 @@ class WorkspaceVM(
     fun cancelStreamPairing() = streamSetup.cancelPairing()
     /** Called only from the confirmation that shows exactly what changes on the computer. */
     fun enforceStreamEncryption(host: RemoteHostEntity) = streamSetup.enforceEncryption(host.id, host.connectionRevision)
+    fun startSunshine(host: RemoteHostEntity) = streamSetup.start(host.id, host.connectionRevision)
+    fun openSunshineSettings(host: RemoteHostEntity, permission: RemoteSunshinePermission) =
+        streamSetup.openPermissionSettings(host.id, host.connectionRevision, permission)
     fun setStreamEnabled(hostId: String, enabled: Boolean, onResult: (Result<Boolean>) -> Unit) =
         streamSetup.setEnabled(hostId, enabled, onResult)
 

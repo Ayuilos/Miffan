@@ -2214,7 +2214,7 @@
   <string name="workspace_screen_port_closed" tools:ignore="MissingTranslation">Nothing on the computer is accepting the screen connection. If you switched desktops, set the connection method to Automatic in the screen settings.</string>
   <string name="workspace_screen_use_automatic" tools:ignore="MissingTranslation">Use automatic connection</string>
   <string name="workspace_screen_stream" tools:ignore="MissingTranslation">High-performance mode</string>
-  <string name="workspace_screen_stream_help" tools:ignore="MissingTranslation">Sunshine on the computer encodes the screen with its graphics card, for lower latency and smoother motion. The picture travels straight over the network (UDP) and is always encrypted; when that is not possible, Miffan uses the normal connection. Linux computers for now.</string>
+  <string name="workspace_screen_stream_help" tools:ignore="MissingTranslation">Sunshine on the computer encodes the screen with its graphics card, for lower latency and smoother motion. The picture travels straight over the network (UDP) and is always encrypted; when that is not possible, Miffan uses the normal connection. Linux and Mac computers.</string>
   <string name="workspace_screen_stream_check" tools:ignore="MissingTranslation">Check Sunshine</string>
   <string name="workspace_screen_stream_checking" tools:ignore="MissingTranslation">Checking Sunshine on the computer…</string>
   <string name="workspace_screen_stream_enforcing" tools:ignore="MissingTranslation">Changing Sunshine\'s encryption setting…</string>
@@ -2257,6 +2257,21 @@
   <string name="workspace_screen_stream_certificate_changed" tools:ignore="MissingTranslation">This computer\'s Sunshine certificate is not the one you paired with. If you reinstalled Sunshine or reset its credentials, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
   <string name="workspace_screen_stream_suggest" tools:ignore="MissingTranslation">This computer can show a smoother picture with high-performance mode.</string>
   <string name="workspace_screen_stream_suggest_dismiss" tools:ignore="MissingTranslation">Don\'t suggest again</string>
+  <string name="workspace_screen_stream_start" tools:ignore="MissingTranslation">Start Sunshine</string>
+  <string name="workspace_screen_stream_starting" tools:ignore="MissingTranslation">Starting Sunshine…</string>
+  <string name="workspace_screen_stream_start_failed" tools:ignore="MissingTranslation">Could not start Sunshine.</string>
+  <string name="workspace_screen_stream_screen_recording" tools:ignore="MissingTranslation">Screen recording</string>
+  <string name="workspace_screen_stream_accessibility" tools:ignore="MissingTranslation">Accessibility</string>
+  <string name="workspace_screen_stream_permission_granted" tools:ignore="MissingTranslation">Allowed</string>
+  <string name="workspace_screen_stream_screen_denied" tools:ignore="MissingTranslation">Not allowed yet: Sunshine cannot see the screen.</string>
+  <string name="workspace_screen_stream_permission_unknown" tools:ignore="MissingTranslation">Cannot be confirmed remotely. If the picture stays black or input does nothing, check it on the Mac.</string>
+  <string name="workspace_screen_stream_permission_help" tools:ignore="MissingTranslation">On the Mac, open System Settings → Privacy &amp; Security and switch on Sunshine under \"Screen &amp; System Audio Recording\" and under \"Accessibility\", then reopen Sunshine.</string>
+  <string name="workspace_screen_stream_open_settings" tools:ignore="MissingTranslation">Open settings on the Mac</string>
+  <string name="workspace_screen_stream_settings_opened" tools:ignore="MissingTranslation">The settings page is open on the Mac. Switch Sunshine on there.</string>
+  <string name="workspace_screen_stream_open_settings_failed" tools:ignore="MissingTranslation">Could not open the settings on the Mac.</string>
+  <string name="workspace_screen_stream_display_asleep" tools:ignore="MissingTranslation">The Mac\'s display is asleep; it will be woken when you connect.</string>
+  <string name="workspace_screen_stream_reason_mac_permissions" tools:ignore="MissingTranslation">Sunshine on the Mac lacks screen recording or accessibility permission</string>
+  <string name="workspace_screen_stream_reason_display_asleep" tools:ignore="MissingTranslation">the Mac\'s display is asleep and could not be woken</string>
   <string name="workspace_screen_mode_stream" tools:ignore="MissingTranslation">High performance</string>
   <string name="workspace_screen_quality_saver" tools:ignore="MissingTranslation">Data saver</string>
   <string name="workspace_screen_quality_balanced" tools:ignore="MissingTranslation">Balanced</string>

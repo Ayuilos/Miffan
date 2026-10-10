@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteStreamStatus
+import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 
 /**
  * High-performance mode setup for one host: the Sunshine check, pairing, and the encryption
@@ -21,6 +22,11 @@ data class RemoteStreamSetupState(
     val paired: Boolean = false,
     val enforcement: RemoteCommandOutcome? = null,
     val enforcementError: Throwable? = null,
+    /** Starting Sunshine failed; null after a success or before trying. */
+    val startFailed: Boolean = false,
+    /** The macOS settings page last opened on the computer, for a "go to the Mac" line. */
+    val settingsOpened: RemoteSunshinePermission? = null,
+    val settingsFailed: Boolean = false,
 ) {
     val busy: Boolean get() = phase != RemoteStreamSetupPhase.IDLE
 
@@ -28,4 +34,4 @@ data class RemoteStreamSetupState(
     val streamReady: Boolean get() = status?.let { it.installed && it.running && it.encryptionEnforced && it.paired } == true
 }
 
-enum class RemoteStreamSetupPhase { IDLE, CHECKING, PAIRING, ENFORCING }
+enum class RemoteStreamSetupPhase { IDLE, CHECKING, PAIRING, ENFORCING, STARTING }

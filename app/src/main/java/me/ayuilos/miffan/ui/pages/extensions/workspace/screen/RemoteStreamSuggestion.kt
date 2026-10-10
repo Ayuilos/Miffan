@@ -66,7 +66,7 @@ internal fun RemoteStreamSuggestion(vm: RemoteScreenVM, modifier: Modifier = Mod
         }
     }
     if (enabling && state != null) {
-        RemoteStreamEnableFlow(state, onEnforce = { vm.enforceStreamEncryption() }, onPair = { vm.pairStream() },
+        RemoteStreamEnableFlow(state, onStart = { vm.startSunshine() }, onEnforce = { vm.enforceStreamEncryption() }, onPair = { vm.pairStream() },
             onCancelPairing = vm::cancelStreamPairing, onEnable = { vm.enableStream() },
             onFinished = { enabled -> enabling = false; vm.finishStreamSuggestion(enabled) })
     }
