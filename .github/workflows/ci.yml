@@ -45,7 +45,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Set up Android native toolchain
-        run: sdkmanager 'ndk;28.2.13676358' 'cmake;3.22.1'
+        # GitHub's runners ship sdkmanager under ANDROID_HOME without putting it on PATH.
+        run: yes | "${ANDROID_HOME:?}/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' 'cmake;3.22.1' > /dev/null
 
       - name: Cache RDP native libraries
         id: rdp-native
