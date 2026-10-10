@@ -50,6 +50,15 @@ class Migration_32_33_Test {
             dao.updateDetectedScreen(host.id, "linux", null)
             assertTrue(dao.getById(host.id)!!.streamEnabled)
             assertEquals(pin, dao.getById(host.id)!!.streamCertificateSha256)
+            val beforeToggle = dao.getById(host.id)!!
+            assertEquals(0, dao.setStreamEnabled("missing-host", true, 6))
+            assertEquals(1, dao.setStreamEnabled(host.id, false, 6))
+            assertEquals(beforeToggle.copy(streamEnabled = false, updatedAt = 6), dao.getById(host.id))
+            assertEquals(1, dao.setStreamEnabled(host.id, true, 7))
+            // Editing VNC/RDP settings must preserve the separately saved streaming preference.
+            dao.updateScreenConfig(host.id, false, "helper", "none", "vnc-user", "vnc", null, 8)
+            assertTrue(dao.getById(host.id)!!.streamEnabled)
+            assertEquals(pin, dao.getById(host.id)!!.streamCertificateSha256)
             dao.pinStreamCertificate(host.id, "ef".repeat(32), 6)
             assertEquals(0, dao.pinPairedStreamCertificate(host.id, pin, host.connectionRevision, pin, 7))
         } finally { db.close() }

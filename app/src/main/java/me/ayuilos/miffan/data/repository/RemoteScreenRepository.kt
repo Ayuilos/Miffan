@@ -191,7 +191,6 @@ class RemoteScreenRepository(
         password: String?,
         protocol: RemoteScreenProtocol? = null,
         rdpUsername: String? = null,
-        streamEnabled: Boolean = false,
     ): Boolean {
         if (hostDao.getById(hostId) == null) return false
         val finalUser = username.trim()
@@ -206,9 +205,16 @@ class RemoteScreenRepository(
             }
         }
         hostDao.updateScreenConfig(hostId, enabled, endpoint.storageValue, auth.storageName, finalUser,
-            protocol?.storageName, rdpUsername?.trim(), System.currentTimeMillis(), streamEnabled)
+            protocol?.storageName, rdpUsername?.trim(), System.currentTimeMillis())
         closeHost(hostId)
         return true
+    }
+
+    /** Updates the independent streaming preference without replacing screen settings or certificate pins. */
+    suspend fun setStreamEnabled(hostId: String, enabled: Boolean): Boolean {
+        val updated = hostDao.setStreamEnabled(hostId, enabled, System.currentTimeMillis()) > 0
+        if (updated) closeHost(hostId)
+        return updated
     }
 
     /** Explicit confirmation/replacement. Helper-attested first pins use a separate conditional write. */

@@ -94,7 +94,8 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
                         when (val state = delegate.state.first { it !is StreamState.Connecting }) {
                             StreamState.Streaming -> {
                                 delegate.setSurface(null)
-                                val session = StreamDesktopSession(delegate, lifetime, row.streamCertificateSha256, writeClipboard)
+                                val session = StreamDesktopSession(delegate, lifetime, row.streamCertificateSha256,
+                                    row.name.ifBlank { app.name }, writeClipboard)
                                 if (routes.snapshot().key == network.key)
                                     routes.success(row.id, row.connectionRevision, network.key, address)
                                 accepted = session

@@ -44,6 +44,9 @@ interface RemoteHostDAO {
     suspend fun updateScreenConfig(id: String, enabled: Boolean, endpoint: String, auth: String,
         username: String, protocol: String?, rdpUsername: String?, updatedAt: Long, streamEnabled: Boolean? = null): Int
 
+    @Query("UPDATE remote_hosts SET stream_enabled = :enabled, updated_at = :updatedAt WHERE id = :id")
+    suspend fun setStreamEnabled(id: String, enabled: Boolean, updatedAt: Long): Int
+
     @Query("UPDATE remote_hosts SET stream_certificate_sha256 = :pin, updated_at = :updatedAt WHERE id = :id")
     suspend fun pinStreamCertificate(id: String, pin: String, updatedAt: Long): Int
 

@@ -4,13 +4,14 @@
 
 ## 实现与接口
 
-- 按规格增加 `STREAM`、`RemoteSurfaceTarget` / `RemoteVideoSize`、`streamStats`、主机配置字段、fallback、证书变化异常、状态／配对／显式强制加密方法。UI 接口契约无改名或语义变更；`updateConfig` 的新参数置于末尾，默认关闭，以兼容当前 UI 的旧调用。
+- 按规格增加 `STREAM`、`RemoteSurfaceTarget` / `RemoteVideoSize`、`streamStats`、主机配置字段、fallback、证书变化异常、状态／配对／显式强制加密方法。按 Claude 补充契约提供独立 `setStreamEnabled(hostId, enabled): Boolean`；`updateConfig` 不增加 streamEnabled 参数，编辑 VNC/RDP 设置不会覆盖独立开关。切换开关成功时关闭该主机现有会话；不存在的主机返回 false。app 以 `implementation(project(":stream"))` 依赖串流模块。
 - `open()` 在 Linux 且开关开启时优先 Sunshine。安装／运行／强制加密／配对预检失败保留具体 fallback，再执行原有 VNC/RDP 选择逻辑；证书变化始终抛 `RemoteStreamCertificateChangedException`，不会回退或覆盖 pin。
 - 配对 PIN 用 `SecureRandom` 生成，5 分钟期限；身份为每台安装一份，设备名 `Miffan (<Build.MODEL>)`。由 `:stream` 验证签名与 challenge 后得到 DER SHA-256，并以 SSH `connectionRevision` + 原 pin 条件更新 Room，防止覆盖并发信任决定。`await()` 或 `close()` 释放租约，取消会关闭配对通道；不 cancel、不 unpair。
 - 身份使用独立 Android Keystore AES-GCM key、AAD 和 `AtomicFile` 存于 `noBackupFilesDir/remote-stream/identity.bin`，原子写入且恢复旧版本 AtomicFile 的备份。损坏或无法解密时失败，不静默生成替代身份。身份内容不进入日志／Room。
 - TCP（HTTP/HTTPS/RTSP）全部经 `openLoopbackStream` 到主机 `127.0.0.1`；UDP 使用数字候选。`:stream` 强制加密，无关闭入口。SSH 通道新增可选连接期限，默认保持旧值；STREAM 使用 3 秒，取消现有 workspace operation 时能断开正在建立的通道。
 - `open()` 用临时 `ImageReader(PRIVATE)` Surface 消费解码输出，确认首帧与 Streaming 后交接，释放临时 Surface 并设为 null。`start(scope)` 将已预检的 STREAM 绑定到调用方生命周期，仍只允许调用一次；VNC/RDP 保持延迟启动。关闭／取消会清理独立会话 scope，返回连接前的 Room 更新失败也释放租约。
 - Surface 为 null 或 paused 时继续接收，暂停渲染；恢复调用库的 `setSurface` 重建 codec 并请求 IDR。UI 拥有传入 Surface，数据层不释放它。指针按协商视频尺寸定位，RFB 鼠标／滚轮只在边沿发事件；X11→VK 覆盖 RdpKeys 与当前屏幕键盘，并支持右修饰键 E0、F1–F24 和数字键盘。
+- 串流开始后 `state` 发出 `Connected`，名称使用主机名（空白时使用应用名），宽高与 `videoSize` 同取已协商的 `StreamStats` 尺寸，scale 为 1，供 VM 建立指针坐标系。
 - `typeText` / `sendClipboard` 使用有界串行队列经 SSH `miffan clip` 写入；只有写入成功才发 Ctrl+V，临时释放并恢复物理修饰键。中文不走 Sunshine UTF-8 输入。STREAM 的 `clipboard` 流为空，旧 `stats` 映射渲染 fps／编码，`rdpStats` 为 null。
 
 ## 路由、权限与期限
@@ -44,7 +45,7 @@ adb -s emulator-5560 shell am instrument -w -e disableAnalytics true \
 
 - Gradle 构建通过；app JVM **679 项全部通过**，其中新增 11 项覆盖键盘／修饰键、鼠标边沿、路由／权限／缓存键、helper JSON、fallback、证书异常。workspace JVM 179 项、0 失败，6 项原有环境条件跳过。
 - `bash -n` 通过；本机没有 shellcheck。离线 helper **6 项通过**，覆盖只读 probe、四类包版本 fallback、拒绝运行 Sunshine 二进制、活动流／重启前竞态、备份与保留其他设置。
-- Room 使用自动迁移 32→33，导出 `33.json`；新增迁移测试检查旧 VNC/RDP 设置、默认 stream disabled / unpinned、配对 CAS 与 stale SSH 编辑。在 `emulator-5560`（Android 15、arm64、16 KiB 页面）上，32→33 与 31→32 两组共 **5 项全部通过**。第一次 instrumentation 因冷启动／资源压力发生启动 ANR，预编译目标 Debug 包后重跑正常；没有数据库断言失败。
+- Room 使用自动迁移 32→33，导出 `33.json`；新增迁移测试检查旧 VNC/RDP 设置、默认 stream disabled / unpinned、配对 CAS、stale SSH 编辑、独立开关只修改自身字段以及 VNC/RDP 编辑保留开关。在 `emulator-5560`（Android 15、arm64、16 KiB 页面）上，32→33 与 31→32 两组共 **5 项全部通过**。第一次 instrumentation 因冷启动／资源压力发生启动 ANR，预编译目标 Debug 包后重跑正常；没有数据库断言失败。
 - 协调方以用户账号在 CachyOS 运行只读 probe，exit=0：安装／运行 true，lan/wan 均 2，active_stream=false，候选 `192.168.31.61`、`100.64.0.5`；公开证书指纹与已有 P6b 记录一致。首轮版本读取触发日志轮转的问题已移除，新的包查询分支离线验证通过，按协调方要求未要求再次远端运行。
 
 ## 验收边界

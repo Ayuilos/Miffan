@@ -24,6 +24,7 @@ class StreamDesktopSession internal constructor(
     val delegate: StreamSession,
     private val lifetime: CoroutineScope,
     fingerprint: String,
+    private val name: String,
     private val writeClipboard: (String) -> Unit,
 ) : RemoteDesktopSession, RemoteSurfaceTarget {
     private val closed = AtomicBoolean()
@@ -43,7 +44,7 @@ class StreamDesktopSession internal constructor(
     override val state: StateFlow<RemoteScreenState> = MappedStateFlow(delegate.state) {
         when (it) {
             StreamState.Connecting -> RemoteScreenState.Connecting
-            StreamState.Streaming -> RemoteScreenState.Connected("Sunshine", delegate.stats.value.width, delegate.stats.value.height, 1)
+            StreamState.Streaming -> RemoteScreenState.Connected(name, delegate.stats.value.width, delegate.stats.value.height, 1)
             StreamState.Closed -> RemoteScreenState.Closed(null)
             is StreamState.Failed -> RemoteScreenState.Closed(if (it.reason == StreamFailureReason.CERTIFICATE_MISMATCH)
                 RemoteStreamCertificateChangedException(fingerprint, null) else StreamException(it.reason, it.stage, it.code))
