@@ -125,7 +125,13 @@ internal fun ThreadMessageBubble(
     val evidence = remember(parts) { threadComputerEvidence(parts) }
     val liveComputer = item.streaming && latestComputerAction(parts)?.approvalState !is me.rerere.ai.ui.ToolApprovalState.Pending &&
         latestComputerAction(parts) != null
-    val status = if (liveComputer) null else threadLiveStatus(parts, item.streaming)
+    // A reply paused on an approval is not finished; its summary comes after the user answers.
+    val computerSummary = !liveComputer && evidence != null && evidence.tools.none { it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending }
+    val steps = remember(parts) { if (user) emptyList() else threadSteps(parts) }
+    val recordSteps = steps.worthRecording()
+    val liveStatus = threadLiveStatus(parts, item.streaming)
+    // The record and the live computer card already say what is happening.
+    val status = if (liveComputer || recordSteps && item.streaming) null else liveStatus
     val computerName = evidence?.let { computerTargetName(it.latest, computer, stringResource(R.string.im_computer_computer)) }
     val computerAvailable = evidence?.let { canOpenComputer(it.latest, computer) } == true
     // Files the partner published (screenshots, reports) are part of its answer, not process.
@@ -133,7 +139,8 @@ internal fun ThreadMessageBubble(
         item.message.takeIf { !user }?.workspaceImageContext(null, computer?.workspaceId)
     }
     val published = remember(parts) { !user && parts.any { it is UIMessagePart.Tool && it.workspaceArtifacts().isNotEmpty() } }
-    val visible = published || parts.any { part ->
+    // Edited files are listed once the reply finishes, so they do not count as content while it streams.
+    val visible = (published && !item.streaming) || parts.any { part ->
         when (part) {
             is UIMessagePart.Text -> part.text.isNotBlank()
             is UIMessagePart.Image, is UIMessagePart.Document -> true
@@ -141,9 +148,9 @@ internal fun ThreadMessageBubble(
             else -> false
         }
     }
-    // A finished reply made only of process (thinking, tool calls) has nothing to show in easy mode.
-    // Progress ("thinking", "working on it") is not part of the reply; it gets its own line below.
-    val showBubble = visible || evidence != null || item.quote != null
+    // A reply made only of light process (thinking, a lookup or two) has nothing to show in easy mode;
+    // its progress gets its own line below. Steps that changed something, or many steps, keep a record.
+    val showBubble = visible || liveComputer || computerSummary || recordSteps || item.quote != null
     if (!showBubble && status == null) return
     if (showBubble) Row(Modifier.fillMaxWidth().padding(top = if (item.groupedWithPrevious) 4.dp else 16.dp),
         horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
@@ -165,6 +172,7 @@ internal fun ThreadMessageBubble(
                             }
                         }
                     }
+                    if (recordSteps) ThreadStepRecord(steps, live = item.streaming, liveStatus = liveStatus)
                     parts.forEach { part ->
                         when (part) {
                             is UIMessagePart.Text -> if (part.text.isNotBlank()) MarkdownBlock(part.text.withWorkspaceImages(imageContext),
@@ -186,9 +194,8 @@ internal fun ThreadMessageBubble(
                     if (published && !item.streaming) EditedFilesList(parts, assistant = null, imageContext = imageContext)
                     if (evidence != null && computerName != null) {
                         if (liveComputer) ThreadComputerLiveCard(evidence, computerName, computerAvailable, onComputerScreen)
-                        // A reply paused on an approval is not finished; its summary comes after the user answers.
-                        else if (!item.streaming && evidence.tools.none { it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending })
-                            ThreadComputerSummary(evidence, computerName, computerAvailable, onComputerScreen)
+                        // Still streaming but on other steps: what was done on the computer so far.
+                        else if (computerSummary) ThreadComputerSummary(evidence, computerName, computerAvailable, onComputerScreen)
                     }
                 }
             }

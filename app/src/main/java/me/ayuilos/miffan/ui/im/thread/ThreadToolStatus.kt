@@ -34,12 +34,12 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 
-private const val ASK_USER = "ask_user"
-private const val REQUEST_WEB_SEARCH = "request_web_search"
+internal const val ASK_USER = "ask_user"
+internal const val REQUEST_WEB_SEARCH = "request_web_search"
 
 /**
  * What a streaming reply is doing right now, or null once its own text (or a prompt card) is the feedback.
- * Easy mode never keeps process details after the reply finishes; those belong to professional mode.
+ * Easy mode keeps only a plain step record ([ThreadStepRecord]); process details belong to professional mode.
  */
 @StringRes
 internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): Int? {
