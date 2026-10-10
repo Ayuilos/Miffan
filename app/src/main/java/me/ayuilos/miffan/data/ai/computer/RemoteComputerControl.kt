@@ -21,6 +21,13 @@ class RemoteComputerControl(private val onUserTransition: (String, Boolean) -> U
 
     fun controller(hostId: String): RemoteController = _states.value[hostId] ?: RemoteController.IDLE
 
+    private val _waiting = MutableStateFlow<Set<String>>(emptySet())
+    /**
+     * Hosts where the partner tried to act while the user held control. The screen page tells
+     * the user only then, instead of every time they touch a desktop the partner is not using.
+     */
+    val waiting: StateFlow<Set<String>> = _waiting.asStateFlow()
+
     /** The user touched the screen or typed while the partner was (or might be) acting. */
     fun userTakesOver(hostId: String) = userTransition(hostId, true)
 
@@ -42,7 +49,10 @@ class RemoteComputerControl(private val onUserTransition: (String, Boolean) -> U
                 states + (hostId to RemoteController.PARTNER)
             }
         }
-        if (!allowed) return null
+        if (!allowed) {
+            _waiting.update { it + hostId }
+            return null
+        }
         try {
             return block()
         } finally {
@@ -56,6 +66,7 @@ class RemoteComputerControl(private val onUserTransition: (String, Boolean) -> U
             if ((before[hostId] == RemoteController.USER) == takeover) return
             val after = if (takeover) before + (hostId to RemoteController.USER) else before - hostId
             if (_states.compareAndSet(before, after)) {
+                if (!takeover) _waiting.update { it - hostId }
                 // Never emit inside StateFlow.update: its lambda may be retried.
                 runCatching { onUserTransition(hostId, takeover) }
                     .onFailure { android.util.Log.w("RemoteComputerControl", "Audit callback failed", it) }

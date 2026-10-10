@@ -112,6 +112,7 @@ internal fun RemoteScreenScaffold(
     val context = LocalContext.current
     val state by vm.state.collectAsStateWithLifecycle()
     val controller by vm.controller.collectAsStateWithLifecycle()
+    val partnerWaiting by vm.partnerWaiting.collectAsStateWithLifecycle()
     val bytes by vm.bytesReceived.collectAsStateWithLifecycle()
     val quality by vm.quality.collectAsStateWithLifecycle()
     val info by vm.connectionInfo.collectAsStateWithLifecycle()
@@ -305,12 +306,16 @@ internal fun RemoteScreenScaffold(
                 }
                 Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy)
+                    // Full screen shows who drives in its corner controls instead of over the picture.
+                    if (!fullscreen) RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner,
+                        partnerBusy = partnerBusy, partnerWaiting = partnerWaiting)
                     RemoteStreamSuggestion(vm)
                 }
                 if (perfOverlay) RemoteScreenStatsOverlay(vm, Modifier.align(Alignment.BottomStart).padding(8.dp))
                 if (fullscreen) RemoteScreenFullscreenControls(keyboard, onKeyboard = { if (connected) keyboard = !keyboard },
-                    onExit = { fullscreen = false }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
+                    onExit = { fullscreen = false }, controller = controller, partnerBusy = partnerBusy,
+                    partnerWaiting = partnerWaiting, onHandBack = vm::handBackToPartner,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
             }
             if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = macOS)
             if (!fullscreen) bottom()

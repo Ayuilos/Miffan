@@ -214,6 +214,10 @@ class RemoteScreenVM(
         hostId?.let { states[it] } ?: RemoteController.IDLE
     }.stateIn(viewModelScope, SharingStarted.Eagerly, RemoteController.IDLE)
 
+    /** The partner tried to act while the user held this desktop and is waiting for it back. */
+    val partnerWaiting: StateFlow<Boolean> = combine(_hostId, control.waiting) { hostId, waiting -> hostId in waiting }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     fun handBackToPartner() {
         _hostId.value?.let(control::userHandsBack)
     }
