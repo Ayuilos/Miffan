@@ -6,6 +6,7 @@
   <string name="about_page_title">アプリについて</string>
   <string name="about_page_version">バージョン</string>
   <string name="about_page_website">ウェブサイト</string>
+  <string name="about_page_docs">使い方ガイド</string>
   <string name="add">追加</string>
   <string name="app_name">Miffan</string>
   <string name="asr_button_content_description">音声認識</string>
