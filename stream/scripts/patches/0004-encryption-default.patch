@@ -1,0 +1,10 @@
+P6b: strict encryption is the default in this Android fork. JNI also sets it
+explicitly; the public Kotlin API has no option to turn it off.
+
+--- a/src/Misc.c
++++ b/src/Misc.c
+@@ -143,3 +143,4 @@
+ void LiInitializeServerInformation(PSERVER_INFORMATION serverInfo) {
+     memset(serverInfo, 0, sizeof(*serverInfo));
++    serverInfo->requireEncryptedStreams = true;
+ }

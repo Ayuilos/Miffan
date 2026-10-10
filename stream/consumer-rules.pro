@@ -1,0 +1,3 @@
+-keep class me.rerere.stream.StreamNative { *; }
+-keepclassmembers class me.rerere.stream.StreamSession { *; }
+-keepclassmembers class me.rerere.stream.TcpBridge { *; }

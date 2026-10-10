@@ -1,0 +1,263 @@
+P6a probe patch, based on common-c f900dd4.
+Refines P6A_NOTES Appendix A: reset negotiation snapshots on each attempt;
+add a read-only negotiated-state API; remove implicit startup mouse movement.
+No dependency originals are edited. Strict encryption and split transport remain
+opt-in SERVER_INFORMATION fields; relay address/port are independent of UDP.
+
+--- a/src/Connection.c
++++ b/src/Connection.c
+@@ -9,6 +9,9 @@
+ // Common globals
+ char* RemoteAddrString;
+ struct sockaddr_storage RemoteAddr;
++struct sockaddr_storage RtspTcpAddr;
++SOCKADDR_LEN RtspTcpAddrLen;
++uint16_t RtspTcpPortNumber;
+ struct sockaddr_storage LocalAddr;
+ SOCKADDR_LEN AddrLen;
+ int AppVersionQuad[4];
+@@ -260,6 +263,8 @@
+ 
+     memset(&LocalAddr, 0, sizeof(LocalAddr));
+     NegotiatedVideoFormat = 0;
++    EncryptionFeaturesSupported = EncryptionFeaturesRequested = EncryptionFeaturesEnabled = 0;
++    AudioEncryptionEnabled = false;
+     memcpy(&StreamConfig, streamConfig, sizeof(StreamConfig));
+     RemoteAddrString = strdup(serverInfo->address);
+ 
+@@ -278,6 +283,16 @@
+     else {
+         Limelog("RTSP port: %u\n", RtspPortNumber);
+     }
++
++    if ((serverInfo->rtspTcpAddress == NULL) != (serverInfo->rtspTcpPort == 0) ||
++            (serverInfo->rtspTcpAddress != NULL &&
++             (!IS_SUNSHINE() || !APP_VERSION_AT_LEAST(7, 1, 431)))) {
++        Limelog("Split RTSP transport requires modern Sunshine and both relay fields\n");
++        err = ML_ERROR_UNSUPPORTED_TRANSPORT;
++        goto Cleanup;
++    }
++    RtspTcpPortNumber = serverInfo->rtspTcpAddress != NULL ?
++        serverInfo->rtspTcpPort : RtspPortNumber;
+ 
+     alreadyTerminated = false;
+     ConnectionInterrupted = false;
+@@ -345,7 +360,16 @@
+     Limelog("Resolving host name...");
+     ListenerCallbacks.stageStarting(STAGE_NAME_RESOLUTION);
+     LC_ASSERT(RtspPortNumber != 0);
+-    if (RtspPortNumber != 48010) {
++    if (serverInfo->rtspTcpAddress != NULL) {
++        // No TCP probes against the media destination. The app selects one
++        // numeric candidate at a time and keeps the SSH relay alive.
++        err = resolveHostName(serverInfo->address, AF_UNSPEC, 0, &RemoteAddr, &AddrLen);
++        if (err == 0) {
++            err = resolveHostName(serverInfo->rtspTcpAddress, AF_UNSPEC, 0,
++                                  &RtspTcpAddr, &RtspTcpAddrLen);
++        }
++    }
++    else if (RtspPortNumber != 48010) {
+         // If we have an alternate RTSP port, use that as our test port. The host probably
+         // isn't listening on 47989 or 47984 anyway, since they're using alternate ports.
+         err = resolveHostName(serverInfo->address, AF_UNSPEC, RtspPortNumber, &RemoteAddr, &AddrLen);
+@@ -378,7 +402,12 @@
+         goto Cleanup;
+     }
+ 
+-    // Resolve LocalAddr by RemoteAddr.
++    if (serverInfo->rtspTcpAddress == NULL) {
++        memcpy(&RtspTcpAddr, &RemoteAddr, sizeof(RtspTcpAddr));
++        RtspTcpAddrLen = AddrLen;
++    }
++
++    // Resolve LocalAddr by the UDP destination, not the SSH relay.
+     {
+         SOCKADDR_LEN localAddrLen;
+         err = getLocalAddressByUdpConnect(&RemoteAddr, AddrLen, RtspPortNumber, &LocalAddr, &localAddrLen);
+@@ -531,11 +560,7 @@
+     ListenerCallbacks.stageComplete(STAGE_INPUT_STREAM_START);
+     Limelog("done\n");
+     
+-    // Wiggle the mouse a bit to wake the display up
+-    LiSendMouseMoveEvent(1, 1);
+-    PltSleepMs(10);
+-    LiSendMouseMoveEvent(-1, -1);
+-    PltSleepMs(10);
++    // Probe input is opt-in; do not move the pointer implicitly.
+ 
+     ListenerCallbacks.connectionStarted();
+ 
+@@ -552,3 +577,15 @@
+     // v1 = RTSP encryption
+     return "&corever=1";
+ }
++
++void LiGetP6aNegotiation(P6A_NEGOTIATION* info) {
++    memset(info, 0, sizeof(*info));
++    info->supported = EncryptionFeaturesSupported;
++    info->requested = EncryptionFeaturesRequested;
++    info->enabled = EncryptionFeaturesEnabled;
++    info->videoEncrypted = !!(EncryptionFeaturesEnabled & SS_ENC_VIDEO);
++    info->audioEncrypted = AudioEncryptionEnabled;
++    info->controlEncrypted = APP_VERSION_AT_LEAST(7, 1, 431);
++    info->controlV2 = !!(EncryptionFeaturesEnabled & SS_ENC_CONTROL_V2);
++    info->videoFormat = NegotiatedVideoFormat;
++}
+--- a/src/Limelight-internal.h
++++ b/src/Limelight-internal.h
+@@ -16,6 +16,9 @@
+ // Common globals
+ extern char* RemoteAddrString;
+ extern struct sockaddr_storage RemoteAddr;
++extern struct sockaddr_storage RtspTcpAddr;
++extern SOCKADDR_LEN RtspTcpAddrLen;
++extern uint16_t RtspTcpPortNumber;
+ extern struct sockaddr_storage LocalAddr;
+ extern SOCKADDR_LEN AddrLen;
+ extern int AppVersionQuad[4];
+--- a/src/Limelight.h
++++ b/src/Limelight.h
+@@ -418,6 +418,10 @@
+ // firewall or port forwarding rules.
+ #define ML_ERROR_NO_VIDEO_TRAFFIC -100
+ 
++// Miffan fork: setup errors, also reported via stageFailed().
++#define ML_ERROR_ENCRYPTION_REQUIRED -110
++#define ML_ERROR_UNSUPPORTED_TRANSPORT -111
++
+ // This error is passed to ConnListenerConnectionTerminated() if a fully formed
+ // frame could not be received after waiting several seconds. It likely indicates
+ // an extremely unstable connection or a bitrate that is far too high.
+@@ -536,6 +540,16 @@
+ 
+     // Specifies the 'ServerCodecModeSupport' from the /serverinfo response.
+     int serverCodecModeSupport;
++
++    // Optional split transport for modern Sunshine only. address remains the
++    // selected numeric UDP destination; these fields identify a local SSH relay.
++    // NULL/0 preserves the existing direct connection behavior.
++    const char* rtspTcpAddress;
++    unsigned short rtspTcpPort;
++
++    // Reject missing RTSP, video, audio, or control-v2 encryption support.
++    // The caller must also request ENCFLG_AUDIO | ENCFLG_VIDEO.
++    bool requireEncryptedStreams;
+ } SERVER_INFORMATION, *PSERVER_INFORMATION;
+ 
+ // Use this function to zero the server information when allocated on the stack or heap
+@@ -1018,6 +1032,16 @@
+ #define LI_FF_CONTROLLER_TOUCH_EVENTS 0x02 // LiSendControllerTouchEvent() supported
+ uint32_t LiGetHostFeatureFlags(void);
+ 
++
++// Probe-only snapshot. Call on the startup thread or after LiStartConnection()
++// returns, before LiStopConnection(); these fields are immutable while streaming.
++typedef struct _P6A_NEGOTIATION {
++    uint32_t supported, requested, enabled;
++    bool videoEncrypted, audioEncrypted, controlEncrypted, controlV2;
++    int videoFormat;
++} P6A_NEGOTIATION;
++void LiGetP6aNegotiation(P6A_NEGOTIATION* info);
++
+ #ifdef __cplusplus
+ }
+ #endif
+--- a/src/RtspConnection.c
++++ b/src/RtspConnection.c
+@@ -404,7 +404,7 @@
+     // returns HTTP 200 OK for the /launch request before the RTSP handshake port
+     // is listening.
+     do {
+-        sock = connectTcpSocket(&RemoteAddr, AddrLen, RtspPortNumber, RTSP_CONNECT_TIMEOUT_SEC);
++        sock = connectTcpSocket(&RtspTcpAddr, RtspTcpAddrLen, RtspTcpPortNumber, RTSP_CONNECT_TIMEOUT_SEC);
+         if (sock == INVALID_SOCKET) {
+             *error = LastSocketError();
+             if (*error == ECONNREFUSED) {
+@@ -953,6 +953,18 @@
+     controlStreamId = APP_VERSION_AT_LEAST(7, 1, 431) ? "streamid=control/13/0" : "streamid=control/1/0";
+     AudioEncryptionEnabled = false;
+     encryptedRtspEnabled = serverInfo->rtspSessionUrl && strstr(serverInfo->rtspSessionUrl, "rtspenc://");
++    if (serverInfo->rtspTcpAddress != NULL && useEnet) {
++        return ML_ERROR_UNSUPPORTED_TRANSPORT;
++    }
++    if (serverInfo->requireEncryptedStreams &&
++            (!IS_SUNSHINE() || !APP_VERSION_AT_LEAST(7, 1, 431) ||
++             (StreamConfig.encryptionFlags & (ENCFLG_VIDEO | ENCFLG_AUDIO)) !=
++                 (ENCFLG_VIDEO | ENCFLG_AUDIO) ||
++             serverInfo->rtspSessionUrl == NULL ||
++             strncmp(serverInfo->rtspSessionUrl, "rtspenc://", 10) != 0)) {
++        Limelog("Required encrypted RTSP/streams are unavailable\n");
++        return ML_ERROR_ENCRYPTION_REQUIRED;
++    }
+     encryptionCtx = PltCreateCryptoContext();
+     decryptionCtx = PltCreateCryptoContext();
+ 
+@@ -1154,6 +1166,14 @@
+             EncryptionFeaturesRequested = 0;
+         }
+         EncryptionFeaturesEnabled = 0;
++        if (serverInfo->requireEncryptedStreams &&
++                (EncryptionFeaturesSupported & (SS_ENC_VIDEO | SS_ENC_AUDIO | SS_ENC_CONTROL_V2)) !=
++                    (SS_ENC_VIDEO | SS_ENC_AUDIO | SS_ENC_CONTROL_V2)) {
++            Limelog("Host cannot provide all required stream encryption\n");
++            freeMessage(&response);
++            ret = ML_ERROR_ENCRYPTION_REQUIRED;
++            goto Exit;
++        }
+ 
+         // Parse the Opus surround parameters out of the RTSP DESCRIBE response.
+         ret = parseOpusConfigurations(&response);
+@@ -1204,6 +1224,12 @@
+         pingPayload = getOptionContent(response.options, "X-SS-Ping-Payload");
+         if (pingPayload != NULL && strlen(pingPayload) == sizeof(AudioPingPayload.payload)) {
+             memcpy(AudioPingPayload.payload, pingPayload, sizeof(AudioPingPayload.payload));
++        }
++
++        if (serverInfo->rtspTcpAddress != NULL && AudioPingPayload.payload[0] == 0) {
++            freeMessage(&response);
++            ret = ML_ERROR_UNSUPPORTED_TRANSPORT;
++            goto Exit;
+         }
+ 
+         // Let the audio stream know the port number is now finalized.
+@@ -1271,6 +1297,12 @@
+             memcpy(VideoPingPayload.payload, pingPayload, sizeof(VideoPingPayload.payload));
+         }
+ 
++        if (serverInfo->rtspTcpAddress != NULL && VideoPingPayload.payload[0] == 0) {
++            freeMessage(&response);
++            ret = ML_ERROR_UNSUPPORTED_TRANSPORT;
++            goto Exit;
++        }
++
+         // Parse the video port out of the RTSP SETUP response
+         LC_ASSERT(VideoPortNumber == 0);
+         if (!parseServerPortFromTransport(&response, &VideoPortNumber)) {
+@@ -1308,6 +1340,11 @@
+ 
+         // Parse the Sunshine control connect data extension if present
+         connectData = getOptionContent(response.options, "X-SS-Connect-Data");
++        if (serverInfo->rtspTcpAddress != NULL && (connectData == NULL || connectData[0] == 0)) {
++            freeMessage(&response);
++            ret = ML_ERROR_UNSUPPORTED_TRANSPORT;
++            goto Exit;
++        }
+         if (connectData != NULL) {
+             ControlConnectData = (uint32_t)strtoul(connectData, NULL, 0);
+         }
+@@ -1348,6 +1385,15 @@
+         }
+ 
+         freeMessage(&response);
++    }
++
++    // SDP generation has now selected the effective encryption modes.
++    if (serverInfo->requireEncryptedStreams &&
++            ((EncryptionFeaturesEnabled & (SS_ENC_VIDEO | SS_ENC_AUDIO | SS_ENC_CONTROL_V2)) !=
++                 (SS_ENC_VIDEO | SS_ENC_AUDIO | SS_ENC_CONTROL_V2) || !AudioEncryptionEnabled)) {
++        Limelog("Negotiated stream encryption does not meet policy\n");
++        ret = ML_ERROR_ENCRYPTION_REQUIRED;
++        goto Exit;
+     }
+ 
+     // GFE 3.22 uses a single PLAY message

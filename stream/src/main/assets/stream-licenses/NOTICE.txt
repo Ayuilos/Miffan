@@ -1,0 +1,5 @@
+Miffan Stream incorporates moonlight-common-c f900dd4767759c7b9d0e93bcea666b55c69ea62f
+(GPL-3.0), ENet aca87840b57f045a1f7f9299e4b1b9b8e2a5e2f1 (MIT), nanors
+b1e3c22ca0cdc0bb83e3cd6ed1a2fc77869ed99a (MIT), and statically linked
+OpenSSL 3.5.9 (Apache-2.0). See accompanying licenses. Reproducible source URLs,
+checksums and local modifications are in stream/scripts/ and its patches/ folder.

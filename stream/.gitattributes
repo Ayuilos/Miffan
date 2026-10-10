@@ -1,0 +1,2 @@
+# Unified diff context must preserve upstream whitespace for exact application.
+scripts/patches/*.patch whitespace=-blank-at-eol
