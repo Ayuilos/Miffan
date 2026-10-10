@@ -11,7 +11,7 @@
 - **安全模型**：SSH 负责管理、配对、伙伴操作和证书核验；画面与用户输入走 Sunshine 自己的 UDP 通道。用户已接受。
 - **能否使用高性能模式，看 UDP 能否到达，不看有没有 VPN**。局域网、Tailscale / WireGuard、有公网 IP 的云服务器都可以；UDP 到不了时才退回 VNC / RDP。
 - **TCP 一律走 SSH**：配对、HTTPS 管理（47984 / 47989）、RTSP 建流（48010）都经已验证的 SSH 会话转发，这几个端口不需要对外开放。只有媒体 UDP（47998–48000）直连。
-- **强制加密**：客户端 `encryptionFlags=ENCFLG_ALL`，主机 `lan_encryption_mode=2`、`wan_encryption_mode=2`，不满足就拒绝连接。UDP 的会话密钥经 SSH + HTTPS 下发，公网上看不到。修改主机配置前要向用户展示具体变化并取得同意。
+- **强制加密**：客户端 `encryptionFlags=ENCFLG_ALL`，主机 `lan_encryption_mode=2`、`wan_encryption_mode=2`，不满足就拒绝连接（上游 `ENCFLG_ALL` 不会拒绝降级，由 common-c 补丁 `requireEncryptedStreams` 负责）。会话密钥由手机生成、经 SSH + HTTPS 的 launch 交给主机，公网上看不到。视频和控制 / 输入是 AES-GCM，音频是无认证标签的 AES-CBC，这是协议现状。修改主机配置前要向用户展示具体变化并取得同意。
 - **与 VNC / RDP 并存**，不替换。每台主机可选高性能模式；默认值在 P6 测试矩阵完成后按平台决定。
 - **编码**：优先 HEVC SDR 8-bit 4:2:0，不支持时回退 H.264；首版不做 AV1、HDR、4:4:4。
 - **中文与剪贴板**继续走现有 SSH 粘贴桥（`miffan.sh clip` + Ctrl/Cmd+V），不依赖 Sunshine 的 UTF-8 键入。
@@ -24,10 +24,10 @@
   │     ├── 管理 / 探测 / 配对 / 证书核验（miffan.sh）
   │     ├── 伙伴操作（cua-driver）
   │     └── direct-tcpip → 127.0.0.1:47984 / 47989 / 48010（HTTPS、配对、RTSP）
-  └── UDP 直连 → <选中的地址>:47998–48000（视频、音频、控制与输入，AES-GCM）
+  └── UDP 直连 → <选中的地址>:47998–48000（视频、控制与输入 AES-GCM；音频 AES-CBC）
 ```
 
-TCP 走隧道时，客户端看到的主机地址是本地转发地址，主机看到的客户端地址是 127.0.0.1；UDP 则是手机与主机的真实地址。这种“地址分离”需要两边都能接受，列为 P6a 的第一项验证。
+TCP 走隧道时，客户端看到的主机地址是本地转发地址，主机看到的客户端地址是 127.0.0.1；UDP 则是手机与主机的真实地址。Sunshine 用 launch 时生成的 ping payload 和 connect data 匹配 UDP 会话，不比较 IP，因此“地址分离”可行：P6a 已在 Tailscale 上实测通过（`P6A_NOTES.md` 第 6 节）。
 
 ## 路径选择
 
@@ -35,6 +35,8 @@ TCP 走隧道时，客户端看到的主机地址是本地转发地址，主机�
 2. 依次尝试建流；在限定时间内收不到视频（common-c 的 `ML_ERROR_NO_VIDEO_TRAFFIC` 等）就换下一个。
 3. 全部失败时退回该主机的 VNC / RDP，并在页面说明原因（例如“云服务器的安全组没有放行 UDP 47998–48000”）。
 4. 按“主机 + 当前网络”缓存上次成功的地址，下次直接先试它。
+5. UDP 全不通时 common-c 在控制流建立阶段约 8–10 s 失败；候选尝试应设更短的总期限并用 `LiInterruptConnection` 取消，换下一个候选前等上一条完全停止。
+6. 局域网候选需要 Android 的本地网络权限（新版 Android 开始限制访问局域网地址），未授权时跳过局域网候选。
 
 ## 云服务器
 
@@ -60,7 +62,7 @@ TCP 走隧道时，客户端看到的主机地址是本地转发地址，主机�
 
 | 阶段 | 内容 | 交付 |
 | --- | --- | --- |
-| P6a 验证 | ① 地址分离：TCP 经 SSH、UDP 直连，Sunshine 能否认出同一会话，common-c 需要怎样的补丁。② 强制加密下视频、音频、输入都加密，降级会被拒绝。先读源码，再在用户授权后对 CachyOS 上的 Sunshine 实测 | 结论文档 + 补丁草案；不可行时回到“TCP 也直连”的方案并重新评估安全 |
+| P6a 验证（已完成 2026-10-10） | ① 地址分离：TCP 经 SSH、UDP 直连，Sunshine 能否认出同一会话，common-c 需要怎样的补丁。② 强制加密下视频、音频、输入都加密，降级会被拒绝。先读源码，再在用户授权后对 CachyOS 上的 Sunshine 实测 | 结论文档 + 补丁草案；不可行时回到“TCP 也直连”的方案并重新评估安全 |
 | P6b 原生库 | `stream` 模块：common-c 构建、JNI、HTTP / 配对、Surface 解码、输入；模拟器经 SSH 连测试机 | 模拟器上能看、能点、能打字 |
 | P6c 接入 App | 主机配置增加高性能模式；路径选择与回退；屏幕页 Surface 渲染；统计浮层；中文与剪贴板桥 | 真机连 KDE / niri / GNOME，延迟与官方 Moonlight 相当 |
 | P6d 自动配对与引导 | 经 SSH 探测 Sunshine、核对证书、定向批准 Miffan 的配对请求；没有管理凭据时提供一次手动 PIN；加密配置变更的确认界面；云服务器放行端口的引导 | 轻松模式下一步接入 |
