@@ -72,6 +72,8 @@ internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFall
     RemoteStreamFallbackReason.HOST_REJECTED -> R.string.workspace_screen_stream_reason_rejected
     RemoteStreamFallbackReason.DECODER_UNSUPPORTED -> R.string.workspace_screen_stream_reason_decoder
     RemoteStreamFallbackReason.LOCAL_NETWORK_PERMISSION -> R.string.workspace_screen_stream_reason_local_network
+    // Claude replaces with dedicated strings on merge
+    RemoteStreamFallbackReason.MAC_PERMISSIONS, RemoteStreamFallbackReason.DISPLAY_ASLEEP -> R.string.workspace_screen_stream_reason_other
     RemoteStreamFallbackReason.OTHER -> R.string.workspace_screen_stream_reason_other
 })
 

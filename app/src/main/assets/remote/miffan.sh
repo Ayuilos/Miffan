@@ -10,11 +10,11 @@
 #   miffan vnc start|stop|status
 #                           manage a VNC server only this user can reach (JSON on stdout)
 #   miffan rdp start        password on stdin; safe per-user RDP startup (JSON)
-#   miffan sunshine probe|enforce-encryption
+#   miffan sunshine probe|start|enforce-encryption|wake|open-settings screen|accessibility
 #                           inspect Sunshine; explicit backed-up encryption enforcement
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=10
+MIFFAN_HELPER_VERSION=11
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -604,13 +604,13 @@ rdp_start() (
 # --- Sunshine (read-only probe; explicit, backed-up encryption change) --------------------
 
 sunshine() {
-    case "$1" in probe|enforce-encryption) ;; *) echo 'usage: miffan sunshine probe|enforce-encryption' >&2; return 2 ;; esac
+    case "$1" in probe|start|enforce-encryption|wake|open-settings) ;; *) echo 'usage: miffan sunshine probe|start|enforce-encryption|wake|open-settings screen|accessibility' >&2; return 2 ;; esac
     if ! command -v python3 >/dev/null 2>&1; then
         printf '{"success":false,"detail":"python3 is required for Sunshine inspection"}\n'
         return 1
     fi
-    python3 - "$1" <<'SUNSHINE_PY'
-import datetime, hashlib, ipaddress, json, os, pathlib, re, shlex, shutil, subprocess, sys, tempfile
+    python3 - "$1" "$(os)" "${2:-}" <<'SUNSHINE_PY'
+import datetime, hashlib, ipaddress, json, os, pathlib, plistlib, re, shlex, shutil, subprocess, sys, tempfile, time
 
 def run(args):
     try:
@@ -622,68 +622,186 @@ def output(args):
     result = run(args)
     return result.stdout.strip() if result and result.returncode == 0 else ''
 
-def reply(success, detail):
-    print(json.dumps(dict(success=success, detail=detail)))
+def reply(success, detail, **extra):
+    print(json.dumps(dict(success=success, detail=detail, **extra)))
+
+def finish(success, detail, **extra):
+    reply(success, detail, **extra); sys.exit(0 if success else 1)
+
+def display_asleep():
+    # Only classify the unambiguous endpoints; intermediate/absent power states are unknown.
+    data = output(['ioreg', '-a', '-r', '-n', 'IODisplayWrangler'])
+    try:
+        for item in plistlib.loads(data.encode()):
+            power = item.get('IOPowerManagement', {})
+            current, maximum = power.get('CurrentPowerState'), power.get('MaxPowerState')
+            if isinstance(current, int) and isinstance(maximum, int) and maximum > 0:
+                if current == 0: return True
+                if current == maximum: return False
+    except (ValueError, TypeError, plistlib.InvalidFileException): pass
+    # pmset exposes the driver current/max states even when ioreg omits the dictionary.
+    for line in output(['pmset', '-g', 'powerstate', 'IODisplayWrangler']).splitlines():
+        match = re.match(r'^\s*IODisplayWrangler\s+\S+\s+(\d+)\s+(\d+)(?:\s|$)', line)
+        if match:
+            current, maximum = map(int, match.groups())
+            if maximum > 0 and current == 0: return True
+            if maximum > 0 and current == maximum: return False
+    return None
+
+def mac_processes():
+    result = run(['ps', '-ww', '-axo', 'uid=,pid=,comm='])
+    if not result or result.returncode != 0: return None
+    found = []
+    for line in result.stdout.splitlines():
+        fields = line.strip().split(None, 2)
+        if len(fields) != 3 or fields[0] != str(os.getuid()): continue
+        if pathlib.Path(fields[2]).name.lower() == 'sunshine':
+            found.append((fields[1], fields[2]))
+    return found
 
 mode = sys.argv[1]
-units = set()
-for args in (['systemctl', '--user', 'list-units', '--all', '--type=service', '--no-legend', '--plain'],
-             ['systemctl', '--user', 'list-unit-files', '--type=service', '--no-legend']):
-    for line in output(args).splitlines():
-        name = line.split()[0] if line.split() else ''
-        if 'sunshine' in name.lower() and name.endswith('.service'):
-            units.add(name)
-active_units = sorted(name for name in units if output(['systemctl', '--user', 'is-active', name]) == 'active')
-unit = active_units[0] if len(active_units) == 1 else (next(iter(units)) if len(units) == 1 else None)
-running = bool(active_units)
-binary = shutil.which('sunshine')
-installed = binary is not None or bool(units)
-# Never run Sunshine, even --version: it loads config and rotates a live instance's logs.
-version = None
-packages = [(['pacman', '-Q', 'sunshine'], 'pacman'),
-            (['dpkg-query', '-W', '-f=${Version}', 'sunshine'], 'plain'),
-            (['rpm', '-q', '--qf', '%{VERSION}', 'sunshine'], 'plain'),
-            (['flatpak', 'info', 'dev.lizardbyte.app.Sunshine'], 'flatpak')]
-for command, kind in packages:
-    value = output(command)
-    if not value: continue
-    if kind == 'pacman':
-        fields = value.split()
-        value = fields[1] if len(fields) == 2 and fields[0] == 'sunshine' else ''
-    elif kind == 'flatpak':
-        match = re.search(r'^\s*Version:\s*(.+)$', value, re.MULTILINE)
-        value = match.group(1).strip() if match else ''
-    if value:
-        version = value; installed = True; break
-appdata = pathlib.Path(os.environ.get('XDG_CONFIG_HOME', str(pathlib.Path.home() / '.config'))) / 'sunshine'
+mac = sys.argv[2] == 'macos'
+if mode == 'open-settings':
+    permission = sys.argv[3]
+    if permission not in ('screen', 'accessibility'): finish(False, 'Unknown Sunshine permission')
+    if not mac: finish(False, 'Sunshine permission settings are only supported on macOS')
+    pane = 'Privacy_ScreenCapture' if permission == 'screen' else 'Privacy_Accessibility'
+    result = run(['open', 'x-apple.systempreferences:com.apple.preference.security?' + pane])
+    if result and result.returncode == 0: finish(True, 'Permission settings opened')
+    result = run(['open', 'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension'])
+    finish(bool(result and result.returncode == 0), 'Privacy & Security settings opened' if result and result.returncode == 0 else 'Could not open permission settings')
+if mode == 'wake':
+    if not mac: finish(False, 'Display wake is only supported on macOS', display_asleep=None)
+    result = run(['caffeinate', '-u', '-t', '5'])
+    finish(bool(result and result.returncode == 0), 'Display wake requested' if result and result.returncode == 0 else 'Display wake failed', display_asleep=display_asleep())
+
+appdata = pathlib.Path.home() / '.config/sunshine'
 config = appdata / 'sunshine.conf'
 args = []
 configuration_known = False
-if unit:
-    try:
-        if running:
-            pid = output(['systemctl', '--user', 'show', unit, '--property=MainPID', '--value'])
-            command = pathlib.Path('/proc/' + pid + '/cmdline').read_bytes().decode().split('\0')
-            cwd = pathlib.Path(os.readlink('/proc/' + pid + '/cwd'))
-        else:
-            description = output(['systemctl', '--user', 'show', unit, '--property=ExecStart', '--value'])
-            match = re.search(r'argv\[\]=(.*?)\s*;', description)
-            command = shlex.split(match.group(1)) if match else []
-            working = output(['systemctl', '--user', 'show', unit, '--property=WorkingDirectory', '--value'])
-            cwd = pathlib.Path(working) if working else pathlib.Path.home()
-        # Refuse to modify a guessed config for a wrapper, Flatpak launcher or unknown unit.
-        if command and pathlib.Path(command[0]).name == 'sunshine':
-            configuration_known = True
-            for arg in command[1:]:
-                if arg.startswith('--'): break
-                args.append(arg)
-                if arg and not arg.startswith('-') and '=' not in arg:
-                    candidate = pathlib.Path(arg)
-                    config = candidate if candidate.is_absolute() else cwd / candidate
-    except (OSError, UnicodeError, ValueError):
-        pass
+unit = None
+app = None
+version = None
+if mac:
+    # Prefer a per-user bundle; Homebrew casks also normally install into /Applications.
+    for candidate in (pathlib.Path.home() / 'Applications/Sunshine.app', pathlib.Path('/Applications/Sunshine.app')):
+        if candidate.is_dir():
+            app = candidate
+            try:
+                with (app / 'Contents/Info.plist').open('rb') as source:
+                    version = plistlib.load(source).get('CFBundleShortVersionString')
+            except (OSError, ValueError, plistlib.InvalidFileException): pass
+            break
+    brew_version = ''
+    if app is None:
+        for brew_args in (['brew', 'list', '--versions', '--cask', 'sunshine'], ['brew', 'list', '--versions', 'sunshine']):
+            brew_version = output(brew_args)
+            if brew_version: break
+        fields = brew_version.split()
+        if len(fields) >= 2 and fields[0].lower() == 'sunshine': version = fields[1]
+        prefix = output(['brew', '--prefix', 'sunshine']) if version else ''
+        if prefix:
+            for candidate in (pathlib.Path(prefix) / 'Sunshine.app', pathlib.Path(prefix) / 'share/Sunshine.app'):
+                if candidate.is_dir(): app = candidate; break
+    installed = app is not None or version is not None or shutil.which('sunshine') is not None
+    processes = mac_processes()
+    running = bool(processes)
+    installed = installed or running
+    configuration_known = processes is not None and len(processes) <= 1
+    if processes and len(processes) == 1:
+        pid, executable = processes[0]
+        if '.app/Contents/' in executable:
+            candidate = pathlib.Path(executable.split('.app/Contents/', 1)[0] + '.app')
+            if candidate.is_dir(): app = candidate
+        command = output(['ps', '-ww', '-p', pid, '-o', 'command='])
+        try:
+            if not command.startswith(executable): configuration_known = False
+            else:
+                args = shlex.split(command[len(executable):].strip())
+                for arg in args:
+                    if arg.startswith('--'): break
+                    if arg and not arg.startswith('-') and '=' not in arg:
+                        candidate = pathlib.Path(arg)
+                        if candidate.is_absolute(): config = candidate
+                        else:
+                            cwd = next((line[1:] for line in output(['lsof', '-a', '-p', pid, '-d', 'cwd', '-Fn']).splitlines() if line.startswith('n')), '')
+                            if cwd: config = pathlib.Path(cwd) / candidate
+                            else: configuration_known = False
+        except ValueError: configuration_known = False
+else:
+    units = set()
+    for args in (['systemctl', '--user', 'list-units', '--all', '--type=service', '--no-legend', '--plain'],
+                 ['systemctl', '--user', 'list-unit-files', '--type=service', '--no-legend']):
+        for line in output(args).splitlines():
+            name = line.split()[0] if line.split() else ''
+            if 'sunshine' in name.lower() and name.endswith('.service'):
+                units.add(name)
+    active_units = sorted(name for name in units if output(['systemctl', '--user', 'is-active', name]) == 'active')
+    unit = active_units[0] if len(active_units) == 1 else (next(iter(units)) if len(units) == 1 else None)
+    running = bool(active_units)
+    binary = shutil.which('sunshine')
+    installed = binary is not None or bool(units)
+    # Never run Sunshine, even --version: it loads config and rotates a live instance's logs.
+    version = None
+    packages = [(['pacman', '-Q', 'sunshine'], 'pacman'),
+                (['dpkg-query', '-W', '-f=${Version}', 'sunshine'], 'plain'),
+                (['rpm', '-q', '--qf', '%{VERSION}', 'sunshine'], 'plain'),
+                (['flatpak', 'info', 'dev.lizardbyte.app.Sunshine'], 'flatpak')]
+    for command, kind in packages:
+        value = output(command)
+        if not value: continue
+        if kind == 'pacman':
+            fields = value.split()
+            value = fields[1] if len(fields) == 2 and fields[0] == 'sunshine' else ''
+        elif kind == 'flatpak':
+            match = re.search(r'^\s*Version:\s*(.+)$', value, re.MULTILINE)
+            value = match.group(1).strip() if match else ''
+        if value:
+            version = value; installed = True; break
+    appdata = pathlib.Path(os.environ.get('XDG_CONFIG_HOME', str(pathlib.Path.home() / '.config'))) / 'sunshine'
+    config = appdata / 'sunshine.conf'
+    args = []
+    configuration_known = False
+    if unit:
+        try:
+            if running:
+                pid = output(['systemctl', '--user', 'show', unit, '--property=MainPID', '--value'])
+                command = pathlib.Path('/proc/' + pid + '/cmdline').read_bytes().decode().split('\0')
+                cwd = pathlib.Path(os.readlink('/proc/' + pid + '/cwd'))
+            else:
+                description = output(['systemctl', '--user', 'show', unit, '--property=ExecStart', '--value'])
+                match = re.search(r'argv\[\]=(.*?)\s*;', description)
+                command = shlex.split(match.group(1)) if match else []
+                working = output(['systemctl', '--user', 'show', unit, '--property=WorkingDirectory', '--value'])
+                cwd = pathlib.Path(working) if working else pathlib.Path.home()
+            # Refuse to modify a guessed config for a wrapper, Flatpak launcher or unknown unit.
+            if command and pathlib.Path(command[0]).name == 'sunshine':
+                configuration_known = True
+                for arg in command[1:]:
+                    if arg.startswith('--'): break
+                    args.append(arg)
+                    if arg and not arg.startswith('-') and '=' not in arg:
+                        candidate = pathlib.Path(arg)
+                        config = candidate if candidate.is_absolute() else cwd / candidate
+        except (OSError, UnicodeError, ValueError):
+            pass
+def start():
+    if running: finish(True, 'Sunshine is already running')
+    if mac:
+        if not app: finish(False, 'No Sunshine application bundle found')
+        command = ['open', '-a', str(app)]
+        if args: command += ['--args'] + args
+    else:
+        if not installed or not unit: finish(False, 'No unambiguous Sunshine user unit found')
+        command = ['systemctl', '--user', 'start', unit]
+    result = run(command)
+    finish(bool(result and result.returncode == 0), 'Sunshine start requested' if result and result.returncode == 0 else 'Sunshine start failed')
+
+if mode == 'start':
+    if mac and processes is None: finish(False, 'Cannot inspect the current user Sunshine processes')
+    start()
 if mode == 'enforce-encryption' and not configuration_known:
-    reply(False, 'Cannot verify the Sunshine user unit configuration'); sys.exit(1)
+    reply(False, 'Cannot verify the Sunshine configuration'); sys.exit(1)
 try:
     content = config.read_text() if config.exists() else ''
 except OSError:
@@ -702,18 +820,31 @@ def integer(name, default):
 # released by end_broadcast on the last. Pending sessions count as active for safe restart.
 base = integer('port', 47989)
 ports = {base + offset for offset in (9, 10, 11)} if base is not None else {47998, 47999, 48000}
-ss = run(['ss', '-H', '-uanp'])
-active_stream = False
-if ss is None or ss.returncode != 0:
-    active_stream = running  # Unknown is conservatively busy: never restart blindly.
-else:
-    for line in ss.stdout.splitlines():
+def stream_activity(strict=False):
+    if mac:
+        sockets = run(['lsof', '-nP', '-iUDP'])
+        # lsof uses exit 1 with empty output for no matching sockets.
+        if sockets is None or sockets.returncode not in (0, 1) or (sockets.returncode == 1 and (sockets.stdout or sockets.stderr)):
+            return True if strict else running
+        current = mac_processes()
+        if current is None: return True if strict else running
+        pids = {pid for pid, _ in current}
+        for line in sockets.stdout.splitlines():
+            fields = line.split()
+            if len(fields) < 2 or fields[1] not in pids: continue
+            if any(int(port) in ports for port in re.findall(r':(\d+)(?:->|\s|$)', line)): return True
+        return False
+    sockets = run(['ss', '-H', '-uanp'])
+    if not sockets or sockets.returncode != 0: return True if strict else running
+    for line in sockets.stdout.splitlines():
         columns = line.split()
         local = columns[3] if len(columns) > 3 else ''
         try: port = int(local.rsplit(':', 1)[-1])
         except ValueError: continue
-        if port in ports and ('sunshine' in line.lower() or 'users:' not in line):
-            active_stream = True
+        if port in ports and (strict or 'sunshine' in line.lower() or 'users:' not in line): return True
+    return False
+
+active_stream = stream_activity()
 cert = pathlib.Path(values.get('cert', str(appdata / 'credentials/cacert.pem')))
 if not cert.is_absolute(): cert = appdata / cert
 certificate_sha256 = None
@@ -722,25 +853,58 @@ try:
     if der.returncode == 0: certificate_sha256 = hashlib.sha256(der.stdout).hexdigest()
 except (OSError, subprocess.TimeoutExpired): pass
 candidates = []
-try:
-    interfaces = json.loads(output(['ip', '-j', '-4', 'address', 'show']))
-    for interface in interfaces:
-        name = interface.get('ifname', '')
-        if re.match(r'^(lo|docker|br-|virbr|veth|cni|podman|lxc)', name): continue
-        # A Linux bridge can have an arbitrary name; inspect its sysfs type too.
-        if pathlib.Path('/sys/class/net', name, 'bridge').exists(): continue
-        for item in interface.get('addr_info', []):
-            ip = ipaddress.IPv4Address(item['local'])
-            if any(ip in net for net in map(ipaddress.ip_network, ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10'])):
-                if str(ip) not in candidates: candidates.append(str(ip))
-except (ValueError, KeyError, TypeError): pass
+def add_candidate(value):
+    try: ip = ipaddress.IPv4Address(value)
+    except ValueError: return
+    if any(ip in ipaddress.ip_network(net) for net in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10')):
+        if str(ip) not in candidates: candidates.append(str(ip))
+if mac:
+    interface = ''
+    for line in output(['ifconfig']).splitlines():
+        match = re.match(r'^(\S+):', line)
+        if match: interface = match[1]
+        if re.match(r'^(lo\d|bridge|awdl|llw|vmenet|vmnet|vboxnet|virbr|docker|veth|tap|gif|stf)', interface): continue
+        match = re.match(r'^\s+inet\s+(\S+)', line)
+        if match: add_candidate(match[1])
+else:
+    try:
+        interfaces = json.loads(output(['ip', '-j', '-4', 'address', 'show']))
+        for interface in interfaces:
+            name = interface.get('ifname', '')
+            if re.match(r'^(lo|docker|br-|virbr|veth|cni|podman|lxc)', name): continue
+            # A Linux bridge can have an arbitrary name; inspect its sysfs type too.
+            if pathlib.Path('/sys/class/net', name, 'bridge').exists(): continue
+            for item in interface.get('addr_info', []):
+                ip = ipaddress.IPv4Address(item['local'])
+                if any(ip in net for net in map(ipaddress.ip_network, ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10'])):
+                    if str(ip) not in candidates: candidates.append(str(ip))
+    except (ValueError, KeyError, TypeError): pass
+permissions = dict(screen_recording=None, accessibility=None)
+permissions_from_log = False
+if mac:
+    # No TCC database access. Only explicit denial in the latest Sunshine startup is evidence.
+    log = pathlib.Path(values.get('log_path', str(appdata / 'sunshine.log')))
+    if not log.is_absolute(): log = appdata / log
+    try:
+        with log.open('rb') as source:
+            source.seek(0, 2); source.seek(max(0, source.tell() - 262144))
+            recent = source.read().decode('utf-8', errors='replace')
+        starts = list(re.finditer(r'Sunshine version:', recent))
+        if starts:
+            recent = recent[starts[-1].start():]
+            if 'No screen capture permission!' in recent:
+                permissions['screen_recording'] = False
+                permissions_from_log = True
+    except OSError: pass
 if mode == 'probe':
     print(json.dumps(dict(installed=installed, version=version, running=running,
         lan_encryption_mode=integer('lan_encryption_mode', 0), wan_encryption_mode=integer('wan_encryption_mode', 1),
-        certificate_sha256=certificate_sha256, active_stream=active_stream, candidates=candidates)))
+        certificate_sha256=certificate_sha256, active_stream=active_stream, candidates=candidates,
+        display_asleep=display_asleep() if mac else None, permissions=permissions if mac else None,
+        permissions_from_log=permissions_from_log if mac else None)))
     sys.exit(0)
-if not installed or not unit:
-    reply(False, 'No unambiguous Sunshine user unit found'); sys.exit(1)
+if not installed or (not app if mac else not unit):
+    finish(False, 'No Sunshine application bundle found' if mac else 'No unambiguous Sunshine user unit found')
 if active_stream:
     reply(False, 'Sunshine has an active or pending stream; encryption was not changed'); sys.exit(1)
 if any(key in overrides for key in ('lan_encryption_mode', 'wan_encryption_mode')):
@@ -761,20 +925,34 @@ try:
             stream.write('\n'.join(lines) + '\n'); stream.flush(); os.fsync(stream.fileno())
         shutil.copymode(config, temporary)
         # Recheck just before replacement/restart: a stream could have started during the backup.
-        check = run(['ss', '-H', '-uanp'])
-        if not check or check.returncode != 0 or any(re.search(r':(' + '|'.join(map(str, ports)) + r')\s', line) for line in check.stdout.splitlines()):
+        if stream_activity(strict=True):
             reply(False, 'Stream activity changed or cannot be verified; configuration was not changed'); sys.exit(1)
         if config.read_text() != content:
             reply(False, 'Sunshine configuration changed; no settings were replaced'); sys.exit(1)
         os.replace(temporary, config)
     finally:
         if os.path.exists(temporary): os.unlink(temporary)
-    check = run(['ss', '-H', '-uanp'])
-    if not check or check.returncode != 0 or any(re.search(r':(' + '|'.join(map(str, ports)) + r')\s', line) for line in check.stdout.splitlines()):
+    if stream_activity(strict=True):
         reply(False, 'Encryption saved with backup; stream activity prevents restart'); sys.exit(1)
-    restarted = run(['systemctl', '--user', 'restart', unit])
+    if mac:
+        if running:
+            stopped = run(['osascript', '-e', 'quit app id "dev.lizardbyte.app.Sunshine"'])
+            if not stopped or stopped.returncode != 0:
+                finish(False, 'Encryption saved with backup; Sunshine graceful quit failed')
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                current = mac_processes()
+                if current == []: break
+                time.sleep(0.1)
+            else: finish(False, 'Encryption saved with backup; Sunshine did not exit; no process was killed')
+        # Keep a verified explicit config/overrides when reopening the existing instance.
+        command = ['open', '-a', str(app)]
+        if args: command += ['--args'] + args
+        restarted = run(command)
+    else:
+        restarted = run(['systemctl', '--user', 'restart', unit])
     success = bool(restarted and restarted.returncode == 0)
-    reply(success, 'Encryption enforced; Sunshine restarted' if success else 'Encryption saved with backup; Sunshine restart failed')
+    finish(success, 'Encryption enforced; Sunshine restarted' if success else 'Encryption saved with backup; Sunshine restart failed')
 except OSError:
     reply(False, 'Could not back up or update Sunshine configuration'); sys.exit(1)
 SUNSHINE_PY
@@ -834,7 +1012,7 @@ case "${1:-}" in
     rdp)
         case "${2:-}" in start) rdp_start ;; *) echo "usage: miffan rdp start" >&2; exit 2 ;; esac
         ;;
-    sunshine) sunshine "${2:-probe}" ;;
+    sunshine) sunshine "${2:-probe}" "${3:-}" ;;
     clip) clip ;;
     *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip" >&2; exit 2 ;;
 esac

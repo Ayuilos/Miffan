@@ -21,8 +21,9 @@ import org.junit.runner.RunWith
 class StreamInstrumentedTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.context
-    private val prefs = context.getSharedPreferences("p6b-generated-identity", 0)
     private val args = InstrumentationRegistry.getArguments()
+    private val prefs = context.getSharedPreferences(
+        if (args.getString("mac", "false") == "true") "p6f-mac-generated-identity" else "p6b-generated-identity", 0)
     private fun connector() = StreamTcpConnector { port ->
         val socket = Socket().apply { connect(InetSocketAddress("10.0.2.2", if (port == 47984) args.getString("pinServerPort")?.toInt() ?: port else port), 2000) }
         val output = object : java.io.FilterOutputStream(socket.getOutputStream()) {
@@ -43,8 +44,8 @@ class StreamInstrumentedTest {
         val pinFile = File(context.cacheDir, "stream-pin")
         val pin = pinFile.readText().trim(); pinFile.delete()
         val host = StreamHost(connector(), identity(), null)
-        val actual = host.pair(pin, "miffan-p6b-emulator")
-        assertEquals("b1afd9ddaa2c2f90559b3cf77ef9882688aba8130d40453cf246e22e905a1d17", actual)
+        val actual = host.pair(pin, if (args.getString("mac", "false") == "true") "miffan-p6f-mac-emulator" else "miffan-p6b-emulator")
+        assertEquals(args.getString("expectedSha256") ?: "b1afd9ddaa2c2f90559b3cf77ef9882688aba8130d40453cf246e22e905a1d17", actual)
         prefs.edit().putString("pin", actual).commit()
         assertTrue(host.serverInfo().paired)
         Log.i("StreamAcceptance", "PAIR_OK DER_SHA256=$actual")
@@ -106,7 +107,12 @@ class StreamInstrumentedTest {
         } finally { scope.cancel(); instrumentation.runOnMainSync { activity.finish() } }
     }
     /** P6e receive-only acceptance: no keys, clipboard, pointer or host configuration changes. */
-    @Test fun audioAndTrafficAcceptance(): Unit = runBlocking {
+    @Test fun audioAndTrafficAcceptance(): Unit = audioTrafficAcceptance("100.64.0.5", false)
+
+    /** P6f: all TCP/UDP goes to the Mac host; only receive media and move the pointer 5px back/forth. */
+    @Test fun macReceiveOnlyAcceptance(): Unit = audioTrafficAcceptance("10.0.2.2", true)
+
+    private fun audioTrafficAcceptance(address: String, mac: Boolean): Unit = runBlocking {
         val pin = requireNotNull(prefs.getString("pin", null)) { "Test identity needs pairing" }
         val host = StreamHost(connector(), identity(), pin)
         val app = host.apps().first { it.name == "Desktop" }
@@ -114,7 +120,7 @@ class StreamInstrumentedTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as StreamTestActivity
         assertTrue(activity.ready.await(5, TimeUnit.SECONDS))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val s = StreamSession(host, app, "100.64.0.5", StreamConfig(
+        val s = StreamSession(host, app, address, StreamConfig(
             args.getString("width", "1280")!!.toInt(), args.getString("height", "720")!!.toInt(),
             args.getString("fps", "30")!!.toInt(), args.getString("bitrate", "4000")!!.toInt(),
             setOf(StreamCodec.H264), args.getString("timeout", "10000")!!.toLong()),
@@ -129,6 +135,19 @@ class StreamInstrumentedTest {
             assertFalse(audio.enabled.value); s.start(scope)
             waitUntil("stream startup", 30000) { s.state.value != StreamState.Connecting }
             assertEquals(StreamState.Streaming, s.state.value)
+            if (mac) {
+                waitUntil("Mac video renders") { s.stats.value.renderedFrames > 10 }
+                val stats = s.stats.value
+                assertTrue(stats.videoEncrypted && stats.audioEncrypted && stats.controlEncrypted)
+                s.mouseMove(5, 0); Thread.sleep(100); s.mouseMove(-5, 0)
+                instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+                    File(context.getExternalFilesDir(null), "p6f-mac.png").outputStream().use {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    bitmap.recycle()
+                }
+                Log.i("StreamAcceptance", "P6F_MAC_VIDEO $stats")
+            }
             val mutedBytes = s.bytesReceived
             Thread.sleep(1000)
             assertTrue(s.bytesReceived > mutedBytes)
@@ -174,6 +193,7 @@ class StreamInstrumentedTest {
             s.close(); assertTrue(s.awaitStopped()); scope.cancel()
             assertFalse(audio.enabled.value); assertFalse(s.stats.value.audioTrackActive)
             Log.i("StreamAcceptance", "P6E_AUDIO_CLOSED bytes=${s.bytesReceived} ${s.stats.value}")
+            if (mac) File(context.getExternalFilesDir(null), "p6f-mac.txt").writeText(s.stats.value.toString())
             instrumentation.runOnMainSync { activity.finish() }
         }
     }

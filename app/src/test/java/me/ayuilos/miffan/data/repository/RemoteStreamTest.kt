@@ -6,6 +6,65 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteStreamTest {
+    @Test fun macProbeKeepsUnknownPermissionsAndParsesLogEvidence() {
+        val p = parseSunshineProbe("""{"installed":true,"running":true,"active_stream":false,"display_asleep":true,"permissions":{"screen_recording":false,"accessibility":null},"permissions_from_log":true}""")
+        assertEquals(true, p.displayAsleep); assertEquals(false, p.permissions?.screenRecording)
+        assertNull(p.permissions?.accessibility); assertEquals(true, p.permissionsFromLog)
+        assertEquals(RemoteStreamFallbackReason.MAC_PERMISSIONS, streamPreflightFallback(p))
+        // Missing screen capture access can make Sunshine exit during startup.
+        assertEquals(RemoteStreamFallbackReason.MAC_PERMISSIONS, streamPreflightFallback(p.copy(running = false)))
+        assertEquals(RemoteStreamFallbackReason.DISPLAY_ASLEEP, streamPreflightFallback(p.copy(permissions = null)))
+        val linux = probe(); assertNull(linux.displayAsleep); assertNull(linux.permissionsFromLog)
+        assertNull(streamPreflightFallback(linux))
+        assertNull(parseSunshineProbe("""{"installed":true,"running":false,"active_stream":false,"permissions":null,"permissions_from_log":null}""").permissions)
+    }
+    @Test fun macDiagnosticFallbackRequiresEvidenceAndPreservesOtherFailures() {
+        val fallback = RemoteStreamFallback(RemoteStreamFallbackReason.UDP_UNREACHABLE, "route")
+        assertEquals(fallback, streamDiagnosticFallback(probe(), fallback))
+        val denied = probe().copy(permissions = SunshinePermissions(accessibility = false), permissionsFromLog = true)
+        assertEquals(RemoteStreamFallbackReason.MAC_PERMISSIONS, streamDiagnosticFallback(denied, fallback).reason)
+        assertEquals(RemoteStreamFallbackReason.DISPLAY_ASLEEP, streamDiagnosticFallback(probe().copy(displayAsleep = true), fallback).reason)
+        val decoder = RemoteStreamFallback(RemoteStreamFallbackReason.DECODER_UNSUPPORTED)
+        assertEquals(decoder, streamDiagnosticFallback(denied, decoder))
+        val notRunning = RemoteStreamFallback(RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING)
+        assertEquals(notRunning, streamDiagnosticFallback(denied, notRunning))
+    }
+    @Test fun onlyAnExplicitlySleepingRunningMacIsWokenAndUnknownWakeResultRemainsAsleep() = kotlinx.coroutines.runBlocking {
+        var calls = 0
+        suspend fun prepare(platform: RemoteScreenPlatform, p: SunshineProbe, asleep: Boolean? = false) =
+            prepareStreamProbe(platform, p) { calls++; SunshineCommand(true, "wake", asleep) }
+        val sleeping = probe().copy(displayAsleep = true)
+        assertEquals(false, prepare(RemoteScreenPlatform.MACOS, sleeping).displayAsleep)
+        assertEquals(true, prepare(RemoteScreenPlatform.MACOS, sleeping, true).displayAsleep)
+        assertEquals(true, prepare(RemoteScreenPlatform.MACOS, sleeping, null).displayAsleep)
+        assertEquals(3, calls)
+        prepare(RemoteScreenPlatform.LINUX, sleeping)
+        prepare(RemoteScreenPlatform.MACOS, sleeping.copy(running = false))
+        prepare(RemoteScreenPlatform.MACOS, sleeping.copy(displayAsleep = null))
+        prepare(RemoteScreenPlatform.MACOS, sleeping.copy(displayAsleep = false))
+        assertEquals(3, calls)
+    }
+    @Test fun macPasteUsesCommandAndRestoresPhysicalModifiers() {
+        val events = mutableListOf<Triple<Int, Boolean, Int>>()
+        val input = StreamDesktopInput({ _, _, _, _ -> }, { _, _ -> }, { _, _ -> },
+            { vk, down, mods -> events += Triple(vk, down, mods) }, RemoteScreenPlatform.MACOS)
+        input.key(0xffe4, true); input.key(0xffea, true); input.key(0xffec, true); events.clear()
+        input.paste(); input.key('a'.code, true)
+        assertEquals(listOf(Triple(0xa3, false, 16), Triple(0xa5, false, 16), Triple(0x5c, false, 16)), events.take(3))
+        assertEquals(listOf(Triple(0x5b, true, 24), Triple(0x56, true, 8), Triple(0x56, false, 8), Triple(0x5b, false, 16)), events.subList(3, 7))
+        assertEquals(Triple(0x41, true, 14), events.last())
+    }
+    @Test fun macKeysMatchSunshinePortableWindowsCodesWithoutSwappingControlAndCommand() {
+        val mac = RemoteScreenPlatform.MACOS
+        for ((sym, vk) in listOf(0xffeb to 0x5b, 0xffec to 0x5c, 0xffe9 to 0xa4, 0xffea to 0xa5,
+            0xffe3 to 0xa2, 0xffe4 to 0xa3, 0xffbe to 0x70, 0xffd1 to 0x83,
+            0xff51 to 0x25, 0xff52 to 0x26, 0xff53 to 0x27, 0xff54 to 0x28)) {
+            assertEquals(vk, StreamKeys.virtualKey(sym, mac))
+        }
+        for (sym in listOf(0xffd2, 0xffd5, 0xff67, 0xff13, 0xff14, 0xff61, 0xff7f)) {
+            assertNull(StreamKeys.virtualKey(sym, mac)); assertNotNull(StreamKeys.virtualKey(sym))
+        }
+    }
     @Test fun keyboardCoversExistingScreenKeyboardAndPhysicalKeys() {
         val known = (32..126).toList() + (0xffbe..0xffd5).toList() + listOf(0xff08, 0xff09, 0xff0d, 0xff1b,
             0xffff, 0xff50, 0xff51, 0xff52, 0xff53, 0xff54, 0xff55, 0xff56, 0xff57, 0xff63,
