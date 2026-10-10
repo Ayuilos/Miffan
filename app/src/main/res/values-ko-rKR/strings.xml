@@ -2175,6 +2175,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_macos_sharing_help">시스템 설정 → 일반 → 공유에서 Screen Sharing를 켜고 화면 설정에서 macOS 계정 인증을 선택하세요.</string>
   <string name="workspace_screen_vnc_missing">사용할 수 있는 화면 서비스가 없어요.</string>
   <string name="workspace_screen_port_closed">컴퓨터에서 화면 연결을 받는 서비스가 없어요. 데스크톱을 바꿨다면 화면 설정에서 연결 방식을 \'자동\'으로 바꾸세요.</string>
+  <string name="workspace_screen_use_automatic">자동 연결로 바꾸기</string>
   <string name="workspace_screen_rdp_gnome">GNOME 원격 데스크톱</string>
   <string name="workspace_screen_rdp_kde">KDE 원격 데스크톱(krdp)</string>
   <string name="workspace_screen_install_rdp">컴퓨터에 %1$s을(를) 설치한 뒤 다시 확인하세요.</string>

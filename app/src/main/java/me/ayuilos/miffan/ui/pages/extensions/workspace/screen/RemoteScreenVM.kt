@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteController
+import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.repository.RemoteScreenConnection
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
@@ -124,6 +125,10 @@ class RemoteScreenVM(
     private val _stats = MutableStateFlow<RemoteScreenStats?>(null)
     /** Rolling session statistics for the performance overlay; null until connected. */
     val stats: StateFlow<RemoteScreenStats?> = _stats.asStateFlow()
+
+    private val _canUseAutomatic = MutableStateFlow(false)
+    /** The last failure was a fixed endpoint nothing listens on; automatic connection may fix it. */
+    val canUseAutomatic: StateFlow<Boolean> = _canUseAutomatic.asStateFlow()
 
     private val _rdpStats = MutableStateFlow<RdpStats?>(null)
     /** RDP's own numbers (codec, decoder); null on VNC connections. */
@@ -235,6 +240,38 @@ class RemoteScreenVM(
         }
     }
 
+    /**
+     * Switches this computer from a fixed endpoint to automatic connection, keeping its
+     * authentication, then connects again. Offered only after [canUseAutomatic].
+     */
+    fun useAutomaticConnection() {
+        _canUseAutomatic.value = false
+        viewModelScope.launch {
+            try {
+                val hostId = repository.hostIdOf(args.workspaceId) ?: return@launch
+                val config = repository.getConfig(hostId) ?: return@launch
+                repository.updateConfig(hostId, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
+                    auth = config.auth, username = config.username, password = null)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _state.value = RemoteScreenUiState.Failed(error)
+                return@launch
+            }
+            reconnect()
+        }
+    }
+
+    /** Offers automatic connection when a fixed endpoint turned out to have nothing listening. */
+    private fun checkAutomaticFix(error: Throwable) {
+        if (!isClosedScreenPort(error)) return
+        viewModelScope.launch {
+            val hostId = repository.hostIdOf(args.workspaceId) ?: return@launch
+            val endpoint = runCatching { repository.getConfig(hostId)?.endpoint }.getOrNull() ?: return@launch
+            _canUseAutomatic.value = endpoint != RemoteScreenEndpoint.Helper
+        }
+    }
+
     fun setMaxFps(fps: Int) {
         _maxFps.value = fps
         connection?.session?.setMaxFps(fps)
@@ -314,6 +351,7 @@ class RemoteScreenVM(
 
     private fun connect() {
         _state.value = RemoteScreenUiState.Connecting
+        _canUseAutomatic.value = false
         connectJob = viewModelScope.launch {
             try {
                 val opened = repository.open(
@@ -352,6 +390,7 @@ class RemoteScreenVM(
                         }
                         is RemoteScreenState.Closed -> {
                             _state.value = state.error?.let(RemoteScreenUiState::Failed) ?: RemoteScreenUiState.Closed
+                            state.error?.let(::checkAutomaticFix)
                             opened.close()
                             if (connection === opened) connection = null
                         }
@@ -361,6 +400,7 @@ class RemoteScreenVM(
                 throw cancelled
             } catch (error: Throwable) {
                 _state.value = RemoteScreenUiState.Failed(error)
+                checkAutomaticFix(error)
             }
         }
     }

@@ -2215,6 +2215,7 @@
   <string name="workspace_screen_macos_sharing_help" tools:ignore="MissingTranslation">Enable Screen Sharing in System Settings → General → Sharing, and choose macOS account authentication in screen settings.</string>
   <string name="workspace_screen_vnc_missing" tools:ignore="MissingTranslation">No supported screen service is available.</string>
   <string name="workspace_screen_port_closed" tools:ignore="MissingTranslation">Nothing on the computer is accepting the screen connection. If you switched desktops, set the connection method to Automatic in the screen settings.</string>
+  <string name="workspace_screen_use_automatic" tools:ignore="MissingTranslation">Use automatic connection</string>
   <string name="workspace_screen_rdp_gnome" tools:ignore="MissingTranslation">GNOME Remote Desktop</string>
   <string name="workspace_screen_rdp_kde" tools:ignore="MissingTranslation">KDE Remote Desktop (krdp)</string>
   <string name="workspace_screen_install_rdp" tools:ignore="MissingTranslation">Install %1$s on the computer, then check again.</string>

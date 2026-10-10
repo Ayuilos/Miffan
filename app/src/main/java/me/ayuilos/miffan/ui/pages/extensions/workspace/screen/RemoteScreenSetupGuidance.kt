@@ -59,15 +59,20 @@ internal fun remoteScreenSetupError(resources: Resources, error: Throwable): Str
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
 
+/**
+ * SSH works but nothing accepts the forwarded screen connection, typically a fixed VNC port left
+ * over from another desktop. Automatic connection lets the helper start the right service.
+ */
+internal fun isClosedScreenPort(error: Throwable): Boolean =
+    generateSequence(error) { it.cause }.any { it is JSchException && it.message?.contains("channel is not opened", ignoreCase = true) == true }
+
 /** SSH failures in words the user can act on, instead of the transport's raw message. */
 internal fun remoteSshError(resources: Resources, error: Throwable): String? {
     val chain = generateSequence(error) { it.cause }.toList()
     val ssh = chain.firstOrNull { it is JSchException }?.message.orEmpty()
     return when {
         ssh.contains("auth", ignoreCase = true) -> resources.getString(R.string.workspace_screen_ssh_auth)
-        // SSH is fine but nothing accepts the forwarded connection, typically a fixed VNC port
-        // left over from another desktop.
-        ssh.contains("channel is not opened", ignoreCase = true) -> resources.getString(R.string.workspace_screen_port_closed)
+        isClosedScreenPort(error) -> resources.getString(R.string.workspace_screen_port_closed)
         chain.any { it is SocketTimeoutException } || ssh.contains("timeout", ignoreCase = true) ->
             resources.getString(R.string.workspace_screen_ssh_timeout)
         chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException } ||

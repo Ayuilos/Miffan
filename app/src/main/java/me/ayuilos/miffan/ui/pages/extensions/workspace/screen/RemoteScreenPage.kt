@@ -103,6 +103,7 @@ internal fun RemoteScreenScaffold(
     val bytes by vm.bytesReceived.collectAsStateWithLifecycle()
     val fps by vm.maxFps.collectAsStateWithLifecycle()
     val platform by vm.platform.collectAsStateWithLifecycle()
+    val canUseAutomatic by vm.canUseAutomatic.collectAsStateWithLifecycle()
     var trackpad by rememberSaveable { mutableStateOf(false) }
     var keyboard by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -219,6 +220,7 @@ internal fun RemoteScreenScaffold(
                         failureText = (failed as? RemoteScreenUiState.Failed)?.error?.let(failureText),
                         settingsText = settingsLabel,
                         onTrustCertificate = vm::trustCertificate,
+                        onUseAutomatic = if (canUseAutomatic) vm::useAutomaticConnection else null,
                     )
                 }
                 RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner, partnerBusy = partnerBusy,

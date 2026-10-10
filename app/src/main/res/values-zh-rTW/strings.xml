@@ -2173,6 +2173,7 @@
   <string name="workspace_screen_macos_sharing_help">在「系統設定 → 一般 → 共享」中開啟 Screen Sharing，並在螢幕設定中選擇 macOS 帳號驗證。</string>
   <string name="workspace_screen_vnc_missing">沒有可用且受支援的螢幕服務。</string>
   <string name="workspace_screen_port_closed">電腦上沒有螢幕服務在接收連線。如果你換了桌面，請在螢幕設定中把連線方式改成「自動」。</string>
+  <string name="workspace_screen_use_automatic">改用自動連線</string>
   <string name="workspace_screen_rdp_gnome">GNOME 遠端桌面</string>
   <string name="workspace_screen_rdp_kde">KDE 遠端桌面（krdp）</string>
   <string name="workspace_screen_install_rdp">請在電腦上安裝 %1$s，然後重新檢查。</string>

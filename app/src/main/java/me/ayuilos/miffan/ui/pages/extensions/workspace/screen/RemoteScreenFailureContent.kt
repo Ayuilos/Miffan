@@ -38,6 +38,8 @@ internal fun RemoteScreenFailureContent(
     settingsText: String? = null,
     /** Pins a changed RDP certificate after the user confirmed it; null hides the action. */
     onTrustCertificate: ((String) -> Unit)? = null,
+    /** Switches a fixed endpoint nothing listens on to automatic connection; null hides the action. */
+    onUseAutomatic: (() -> Unit)? = null,
 ) {
     val resources = LocalResources.current
     val error = (state as? RemoteScreenUiState.Failed)?.error
@@ -68,6 +70,9 @@ internal fun RemoteScreenFailureContent(
                 unavailable.detail?.takeIf { it.isNotBlank() }?.let { RemoteScreenLog(it) }
             }
             Row {
+                if (onUseAutomatic != null) {
+                    TextButton(onClick = onUseAutomatic) { Text(stringResource(R.string.workspace_screen_use_automatic)) }
+                }
                 if (changedCertificate != null && onTrustCertificate != null) {
                     TextButton(onClick = { confirmTrust = true }) { Text(stringResource(R.string.workspace_screen_rdp_trust)) }
                 }

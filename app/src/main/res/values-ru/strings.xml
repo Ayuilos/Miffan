@@ -2175,6 +2175,7 @@
   <string name="workspace_screen_macos_sharing_help">Включите Screen Sharing в «Системные настройки → Основные → Общий доступ» и выберите аутентификацию через учётную запись macOS в настройках экрана.</string>
   <string name="workspace_screen_vnc_missing">Нет доступной службы экрана.</string>
   <string name="workspace_screen_port_closed">На компьютере нет службы, принимающей подключение к экрану. Если вы сменили рабочий стол, выберите в настройках экрана способ подключения «Автоматически».</string>
+  <string name="workspace_screen_use_automatic">Перейти на автоматическое подключение</string>
   <string name="workspace_screen_rdp_gnome">Удалённый рабочий стол GNOME</string>
   <string name="workspace_screen_rdp_kde">Удалённый рабочий стол KDE (krdp)</string>
   <string name="workspace_screen_install_rdp">Установите %1$s на компьютер и проверьте ещё раз.</string>
