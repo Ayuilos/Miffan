@@ -341,3 +341,23 @@ streamConfig.encryptionFlags = ENCFLG_ALL;
 2. 主机 LAN/WAN 分别 0/1/2、去掉视频／音频／CONTROL_V2 广告、返回明文 RTSP scheme，确认严格客户端拒绝；确认音频 CBC 与文档描述一致，主机可选补丁对旧控制协议的拒绝。
 3. 控制未建立时快速重试、控制已建立后视频失败的断开／resume、Wi-Fi→蜂窝及 NAT rebind，确认旧会话实际释放且不影响用户已有串流。
 4. 编译 JNI／native API 改动，检查直接连接仍兼容、旧 split 协议拒绝、缺标识拒绝；确认有效首帧期限能处理“收到垃圾包后静默”的情况。公网安全边界另行验收，不能仅用握手成功代替。
+
+## 6. 实机结果（2026-10-10 16:15–16:19，Claude 执行）
+
+环境：Mac（`192.168.31.26`、Tailscale `100.64.0.2`）运行 `tools/p6a-probe`；CachyOS 用户会话 niri（wlr 采集，NVENC），Sunshine `lan_encryption_mode = 2`、`wan_encryption_mode = 2`（原配置备份为 `~/.config/sunshine/sunshine.conf.bak-p6a-20261010`）。TCP 47984 / 47989 / 48010 经 `ssh -L` 到主机 `127.0.0.1`，Sunshine 看到的 TCP 对端是 loopback。
+
+- **配对**：Miffan 自有测试身份 `miffan-p6a` 经 SSH 转发完成 PIN 配对；配对得到的主机证书 DER SHA-256 与经 SSH 直接读取 `credentials/cacert.pem` 的结果一致（`b1afd9dd…1d17`）。
+- **地址分离 + 强制加密，Tailscale UDP（`100.64.0.5`）**：成功。
+
+| 运行 | 编码 | 分辨率 | 首个完整帧 | 平均 fps | 视频字节 / 时长 | RTT |
+| --- | --- | --- | --- | --- | --- | --- |
+| strict | HEVC | 1920×1080@60，15 Mbps | 433 ms | 58.8 | 4.8 MB / 20 s | 29 ms |
+| strict + `--input-test` | HEVC | 1920×1080@60 | — | 58.8 | 3.6 MB / 15 s | 21 ms |
+| strict | H.264 | 2560×1440@60，25 Mbps | 430 ms | 58.7 | 35.9 MB / 15 s | 33 ms |
+
+  每次协商结果都是 `supported = requested = enabled = 0x7`（视频、音频、控制 V2 全部加密），音频包正常到达；输入测试两次 `LiSendMouseMoveEvent` 返回 0。静态桌面上 HEVC 约 2 Mbps，H.264 1440p 约 19 Mbps。
+
+- **局域网 UDP（`192.168.31.61`）**：控制流建立阶段约 8.1–8.4 s 失败（`stageFailed` stage 8，error 35），两次复现。原因在 Mac 测试环境：同一 shell 下 adhoc 签名的最小 UDP 程序发往局域网的包根本没有到达主机，而发往 Tailscale 地址正常；Homebrew python3 在局域网双向正常。判断为 macOS“本地网络”隐私限制拦截了未授权的命令行程序，与协议无关。局域网路径留到手机上验证；新版 Android 的本地网络权限需要在 App 中处理。
+- **失败后的清理与重试**：局域网失败后立即经 Tailscale `resume` 成功；主机日志每次都是 `active sessions: 1`，没有残留会话。
+
+未实测：主机加密关闭时客户端的拒绝（Codex 已用本地假服务器离线覆盖）、公网 UDP、切网、IPv6、音频 CBC 的实际风险。
