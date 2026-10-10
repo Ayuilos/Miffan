@@ -35,6 +35,8 @@ data class RemoteHostEntity(
     @ColumnInfo("screen_protocol", defaultValue = "'auto'") val screenProtocol: String = "auto",
     @ColumnInfo("rdp_username", defaultValue = "''") val rdpUsername: String = "",
     @ColumnInfo("rdp_certificate_sha256") val rdpCertificateSha256: String? = null,
+    @ColumnInfo("stream_enabled", defaultValue = "0") val streamEnabled: Boolean = false,
+    @ColumnInfo("stream_certificate_sha256") val streamCertificateSha256: String? = null,
 )
 
 enum class RemoteScreenAuth { NONE, VNC_PASSWORD, MACOS_ACCOUNT;

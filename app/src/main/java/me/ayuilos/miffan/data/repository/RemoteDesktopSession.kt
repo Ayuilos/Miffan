@@ -16,9 +16,19 @@ import me.rerere.workspace.screen.RemoteScreenSession
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RemoteScreenStats
 
-enum class RemoteDesktopProtocol { VNC, RDP }
+enum class RemoteDesktopProtocol { VNC, RDP, STREAM }
+
+data class RemoteVideoSize(val width: Int, val height: Int)
+
+/** Frames go to a Surface instead of the frame sink. The UI owns its Surface. */
+interface RemoteSurfaceTarget {
+    val videoSize: StateFlow<RemoteVideoSize?>
+    fun setSurface(surface: android.view.Surface?)
+}
 
 interface RemoteDesktopSession : Closeable {
+    val surface: RemoteSurfaceTarget? get() = null
+    val streamStats: StateFlow<me.rerere.stream.StreamStats>? get() = null
     val protocol: RemoteDesktopProtocol
     val state: StateFlow<RemoteScreenState>
     val clipboard: SharedFlow<String>
