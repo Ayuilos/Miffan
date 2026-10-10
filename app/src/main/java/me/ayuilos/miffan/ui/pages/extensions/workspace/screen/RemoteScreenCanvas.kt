@@ -89,8 +89,15 @@ internal fun RemoteScreenCanvas(
     val context = LocalContext.current
     val image = remember(bitmap) { bitmap?.asImageBitmap() }
     val scope = rememberCoroutineScope()
-    val input = remember(width, height, trackpad, vm) {
-        ScreenGestures(context, width, height, trackpad, vm, scope)
+    // Remembered so a new picture size starts at the view's size instead of drawing one frame
+    // unscaled in the corner; switching modes keeps the same gestures, zoom and pan.
+    val viewSize = remember { mutableStateOf(Size.Zero) }
+    val input = remember(width, height, vm) {
+        ScreenGestures(context, width, height, vm, scope).apply { resize(viewSize.value) }
+    }
+    DisposableEffect(input, trackpad) {
+        input.trackpad = trackpad
+        onDispose { input.cancel() }
     }
     // A stream draws the real pointer into the video, a network round trip after the finger
     // moves; a faint ring at the predicted spot bridges that gap and fades once the finger rests.
@@ -112,7 +119,7 @@ internal fun RemoteScreenCanvas(
     Box(modifier) {
     // The video sits under the gesture canvas, which stays transparent where there is no bitmap.
     if (video != null) key(video, width, height) { RemoteVideoSurface(video, width, height, input) }
-    Canvas(Modifier.fillMaxSize().onSizeChanged { input.resize(Size(it.width.toFloat(), it.height.toFloat())) }
+    Canvas(Modifier.fillMaxSize().onSizeChanged { viewSize.value = Size(it.width.toFloat(), it.height.toFloat()); input.resize(viewSize.value) }
         // Touching the picture folds the desktop shortcuts away, without taking the touch.
         .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); macExpanded = false } }
         .pointerInteropFilter { input.event(it) }) {
@@ -260,10 +267,11 @@ private class ScreenGestures(
     context: Context,
     private val width: Int,
     private val height: Int,
-    private val trackpad: Boolean,
     private val vm: RemoteScreenVM,
     private val scope: CoroutineScope,
 ) {
+    /** Set by the page's mode switch; moving the pointer by finger instead of touching where it should go. */
+    var trackpad = false
     private var fling: Job? = null
     private var viewport by mutableStateOf(Size.Zero)
     private var zoom by mutableFloatStateOf(1f)
@@ -302,6 +310,7 @@ private class ScreenGestures(
     fun resize(size: Size) { viewport = size; clampPan() }
     private fun click(button: RemoteMouseButton, count: Int = 1, at: Offset = last) {
         val point = if (trackpad) pointer else toBitmap(at)
+        if (!trackpad && inside(point)) pointer = point
         if (trackpad || inside(point)) vm.click(point.x, point.y, button, count)
     }
     private fun move(point: Offset) {

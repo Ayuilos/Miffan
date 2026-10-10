@@ -122,7 +122,7 @@ class ComputerCloseAppTest {
         }
         coEvery { registry.capabilities("workspace") } returns RemoteComputerRegistry.Capabilities("host", emptyList(), null, emptyList())
         assertFalse(createComputerTools(snapshot, true, registry, RemoteComputerControl(), files).any { it.name == "computer_kill_app" })
-        val entryPrompt = ComputerToolbox(snapshot, true) { emptyList() }.tools().single().systemPrompt(Model(), emptyList())
+        val entryPrompt = ComputerToolbox(snapshot, true, ensureSession = { "s" }) { emptyList() }.tools().single().systemPrompt(Model(), emptyList())
         assertFalse(entryPrompt.contains("launch_app only opens"))
     }
 }

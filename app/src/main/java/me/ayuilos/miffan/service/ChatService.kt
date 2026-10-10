@@ -77,6 +77,7 @@ import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.workspaceToolTargetError
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
+import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.ai.tools.createMiffanHelpTool
 import me.ayuilos.miffan.data.ai.tools.createSearchTools
 import me.ayuilos.miffan.data.ai.tools.createSkillTools
@@ -1222,7 +1223,10 @@ class ChatService(
             assistant.id.toString(), workspaceId, assistant.workspaceScopeId?.toString(),
         )?.copy(conversationId = conversationId) ?: return null
         val approvalRequired = assistant.computerUse == ComputerUseMode.ASK
-        val toolbox = ComputerToolbox(snapshot, approvalRequired) {
+        val toolbox = ComputerToolbox(
+            snapshot, approvalRequired,
+            ensureSession = { withTimeout(20_000) { getKoin().get<RemoteComputerRegistry>().ensureSession(workspaceId) } },
+        ) {
             withTimeout(20_000) {
                 createComputerTools(
                     snapshot = snapshot,

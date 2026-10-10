@@ -27,6 +27,17 @@ import me.ayuilos.miffan.ui.context.LocalNavController
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
+import androidx.compose.ui.graphics.Color
+import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.datastore.findModelById
+import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.ui.components.ai.ModelListSheet
+import me.ayuilos.miffan.ui.components.ai.rememberModelListState
+import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
+import me.ayuilos.miffan.ui.context.LocalSettings
+import me.rerere.ai.provider.ModelType
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
 
 @Composable
 fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(key = assistantId, parameters = { parametersOf(Uuid.parse(assistantId)) })) {
@@ -77,6 +88,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                     }, Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(stringResource(R.string.im_p5_send_message)) }
                 }
             }
+            item("model") { PartnerModelRow(partner, LocalSettings.current, !busy) { id -> perform { vm.update { it.copy(chatModelId = id) } } } }
             item("memory") { ImSettingRow(stringResource(R.string.im_p5_memory_count, memories.size), { nav.navigate(Screen.ImMemory(partner.memoryOwnerId())) }) }
             item("capabilities") { Text(stringResource(R.string.im_p5_capabilities), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item("web") { ImCapabilityRow(stringResource(R.string.im_p5_web), partner.enableWebSearch, !busy) { enabled -> perform { vm.update { it.copy(enableWebSearch = enabled) } } } }
@@ -125,6 +137,36 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                 }
             }) { Text(stringResource(R.string.im_partner_delete), color = MaterialTheme.colorScheme.error) }
         }, dismissButton = { TextButton(onClick = { deletePartnerConfirm = false }) { Text(stringResource(R.string.chat_page_cancel)) } })
+}
+
+/**
+ * The model behind the partner. Without its own choice it follows the default chat model, and the
+ * row says so with that model's name; a choice whose model was removed is flagged, since replies fail.
+ */
+@Composable
+private fun PartnerModelRow(partner: Assistant, settings: Settings, enabled: Boolean, onSelect: (Uuid?) -> Unit) {
+    val own = partner.chatModelId?.let { settings.providers.findModelById(it) }
+    val fallback = settings.findModelById(settings.chatModelId)
+    val missing = partner.chatModelId != null && own == null
+    val state = rememberModelListState(own?.id ?: fallback?.id, settings.providers, ModelType.CHAT)
+    Surface(onClick = state::open, enabled = enabled, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            (own ?: fallback.takeUnless { missing })?.let { AutoAIIcon(it.modelId, Modifier.size(28.dp), color = Color.Transparent) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.im_p5_model))
+                Text(when {
+                    missing -> stringResource(R.string.im_p5_model_missing)
+                    own != null -> own.displayName
+                    fallback != null -> stringResource(R.string.im_p5_model_default, fallback.displayName)
+                    else -> stringResource(R.string.im_p5_model_no_default)
+                }, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = if (missing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (partner.chatModelId != null) TextButton(onClick = { onSelect(null) }, enabled = enabled) { Text(stringResource(R.string.im_p5_model_use_default)) }
+            else Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    ModelListSheet(state) { model -> onSelect(model.id) }
 }
 
 @Composable

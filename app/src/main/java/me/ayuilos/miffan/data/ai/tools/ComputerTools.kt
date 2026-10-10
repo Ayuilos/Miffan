@@ -79,6 +79,8 @@ fun List<UIMessage>.usesComputer(): Boolean =
 class ComputerToolbox(
     private val snapshot: WorkspaceToolTargetSnapshot,
     private val approvalRequired: Boolean,
+    /** Starts the driver session (again, if the driver ended it) and returns its label. */
+    private val ensureSession: suspend () -> String,
     private val load: suspend () -> List<Tool>,
 ) {
     private val target = snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
@@ -96,8 +98,9 @@ class ComputerToolbox(
 
     private val startTool = Tool(
         name = COMPUTER_START_TOOL,
-        description = "Start operating the desktop of $target. Loads the computer_* tools for observing and " +
-            "controlling it; they become available on your next step.",
+        description = "Start operating the desktop of $target, or reconnect after a computer_* tool reports that its " +
+            "session ended. Loads the computer_* tools and checks the session can take calls; the tools become " +
+            "available on your next step.",
         parameters = { InputSchema.Obj(properties = JsonObject(emptyMap())) },
         workspaceTarget = snapshot,
         systemPrompt = { _, _ ->
@@ -128,8 +131,22 @@ class ComputerToolbox(
             val tools = loaded ?: return@Tool listOf(UIMessagePart.Text(
                 """{"status":"error","reason":"$target did not answer in time. Tell the user and stop."}""",
             ))
+            // Loaded tools are not proof the driver will act: it may have ended the session meanwhile.
+            val session = try {
+                ensureSession()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "start: session unavailable", error)
+                return@Tool listOf(UIMessagePart.Text(buildJsonObject {
+                    put("status", "error")
+                    put("reason", "cua-driver on $target is loaded but its session could not start: ${error.message}")
+                    put("next", "Tell the user and stop.")
+                }.toString()))
+            }
             listOf(UIMessagePart.Text(buildJsonObject {
                 put("status", "ready")
+                put("session", session)
                 put("tools", tools.joinToString(", ") { it.name })
                 put("next", "Observe first, e.g. computer_get_desktop_state.")
             }.toString()))
@@ -154,6 +171,7 @@ suspend fun createComputerTools(
     val hostId = capabilities.hostId
     val target = snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
     val tools = capabilities.tools.filter { it.name in OBSERVE_TOOLS || it.name in ACTION_TOOLS || it.name in FOREGROUND_TOOLS }
+    val clickTool = tools.firstOrNull { it.name == "click" }
 
     fun requiresApproval(name: String, args: JsonElement): Boolean = when {
         name in FOREGROUND_TOOLS -> true
@@ -175,11 +193,14 @@ suspend fun createComputerTools(
                 },
                 execute = { args ->
                     val arguments = withScreenshotCap(tool, args.jsonObject)
+                    val focusClick = desktopTypeFocusClick(tool, arguments, clickTool)
                     if (tool.name in OBSERVE_TOOLS) {
                         convert(registry.call(workspaceId, tool.name, arguments), filesManager)
                     } else {
-                        control.partnerActs(hostId) { convert(registry.call(workspaceId, tool.name, arguments), filesManager) }
-                            ?: listOf(UIMessagePart.Text(
+                        control.partnerActs(hostId) {
+                            if (focusClick != null) typeAfterFocusClick(workspaceId, registry, focusClick, arguments, filesManager)
+                            else convert(registry.call(workspaceId, tool.name, arguments), filesManager)
+                        } ?: listOf(UIMessagePart.Text(
                                 """{"status":"refused","reason":"The user has taken control of the remote screen. """ +
                                     """Stop acting and wait until the user hands control back."}""",
                             ))
@@ -189,6 +210,42 @@ suspend fun createComputerTools(
         }
         add(createReadGuideTool(workspaceId, target, capabilities, registry))
     }
+}
+
+private val DESKTOP_TYPE_POSITION = setOf("x", "y")
+
+/**
+ * type_text's x,y form pixel-clicks the field before typing, but the driver honours it only for a
+ * window; on the desktop it types into whatever has focus and drops the position. The app keeps
+ * the documented meaning by clicking there first. Returns the click's arguments, or null when the
+ * call needs no such help.
+ */
+internal fun desktopTypeFocusClick(tool: McpTool, arguments: JsonObject, click: McpTool?): JsonObject? {
+    if (tool.name != "type_text" || click == null || !DESKTOP_TYPE_POSITION.all { it in arguments }) return null
+    if ("element_token" in arguments || "pid" in arguments || "window_id" in arguments) return null
+    val scope = (arguments["scope"] as? JsonPrimitive)?.contentOrNull
+    val targetKind = ((arguments["target"] as? JsonObject)?.get("kind") as? JsonPrimitive)?.contentOrNull
+    if (scope != "desktop" && targetKind != "desktop") return null
+    val accepted = click.inputSchema.properties?.keys.orEmpty()
+    if (!DESKTOP_TYPE_POSITION.all { it in accepted }) return null
+    return JsonObject(arguments.filterKeys { it in accepted && it != "text" && it != "delay_ms" })
+}
+
+private suspend fun typeAfterFocusClick(
+    workspaceId: String,
+    registry: RemoteComputerRegistry,
+    click: JsonObject,
+    arguments: JsonObject,
+    filesManager: FilesManager,
+): List<UIMessagePart> {
+    val clicked = registry.call(workspaceId, "click", click)
+    if (clicked.isError == true) return listOf(UIMessagePart.Text(
+        """{"status":"error","reason":"Clicking the field at x,y to focus it failed, so nothing was typed."}""",
+    )) + convert(clicked, filesManager)
+    val typed = registry.call(workspaceId, "type_text", JsonObject(arguments.filterKeys { it !in DESKTOP_TYPE_POSITION }))
+    return listOf(UIMessagePart.Text(
+        """{"note":"Clicked x,y to focus the field, then typed into the focused application. Check the screen to confirm."}""",
+    )) + convert(typed, filesManager)
 }
 
 private fun createReadGuideTool(
@@ -214,6 +271,9 @@ private fun createReadGuideTool(
             appendLine("You can see and operate the desktop of $target through the computer_* tools, which call cua-driver on that machine.")
             appendLine("- The user can watch the same screen and take over at any time. If a tool reports that the user has taken control, stop and wait for them.")
             appendLine("- Observe before every action and verify after it (computer_get_window_state or computer_get_desktop_state).")
+            appendLine("- Make one computer_* call at a time when it depends on an earlier one: never put an action and the observation that checks it in the same step. Use only snapshot_id, capture_id and element tokens that a tool actually returned; never predict them.")
+            appendLine("- A reply of \"typed\" or effect \"unverifiable\" means the input was sent, not that it landed; confirm it on a fresh observation.")
+            appendLine("- If a tool says the session ended or is not ready, call $COMPUTER_START_TOOL once to reconnect, then observe again. Do not repeat the failing call or look for the driver over the shell.")
             appendLine("- launch_app only opens GUI apps; never use it to run commands such as kill. To close an app or window use kill_app (or the app's own close shortcut via hotkey). For other commands use the shell tool if you have one.")
             appendLine("- An element_token is `<snapshot_id>:<element index>`, using snapshot_id from the latest state of that window; the tree shows indices as [n].")
             appendLine("- Prefer background actions. delivery_mode \"foreground\" and computer_bring_to_front interrupt the user and always ask for their approval.")

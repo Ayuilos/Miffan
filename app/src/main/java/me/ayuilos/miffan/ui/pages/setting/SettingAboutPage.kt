@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.pages.setting
 
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Code
+import me.rerere.hugeicons.stroke.BookOpen01
 import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Github
@@ -35,6 +36,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -54,6 +56,9 @@ import me.ayuilos.miffan.utils.plus
 fun SettingAboutPage() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val context = LocalContext.current
+    // The guide is published in simplified Chinese and English only.
+    val docsUrl = if (LocalConfiguration.current.locales[0].language == "zh") "https://miffan.ayuilos.me/docs"
+        else "https://miffan.ayuilos.me/docs/en"
     val navController = LocalNavController.current
     val emojiOptions = remember {
         listOf(
@@ -161,6 +166,12 @@ fun SettingAboutPage() {
                             leadingContent = { Icon(HugeIcons.Earth, null) },
                             supportingContent = { Text("miffan.ayuilos.me") },
                             headlineContent = { Text(stringResource(R.string.about_page_website)) },
+                        )
+                        item(
+                            onClick = { context.openUrl(docsUrl) },
+                            leadingContent = { Icon(HugeIcons.BookOpen01, null) },
+                            supportingContent = { Text(docsUrl.removePrefix("https://")) },
+                            headlineContent = { Text(stringResource(R.string.about_page_docs)) },
                         )
                         item(
                             onClick = { context.openUrl("https://github.com/Ayuilos/Miffan") },
