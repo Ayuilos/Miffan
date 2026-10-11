@@ -2182,6 +2182,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_view_zoom_out">缩小画面</string>
   <string name="workspace_screen_metered">正在使用移动网络或计费网络，查看画面会消耗流量。</string>
   <string name="workspace_screen_paste_failed">粘贴到远程电脑失败</string>
+  <string name="workspace_screen_mac_shortcut_needs_cua">高性能模式下使用这个快捷动作，需要 Mac 上装有 cua-driver</string>
+  <string name="workspace_screen_mac_shortcut_failed">没能在 Mac 上执行这个快捷动作</string>
   <string name="workspace_screen_text_unsupported">该平台暂不支持输入这类文字</string>
   <!-- P2 screen setup is scoped to English and Simplified Chinese. -->
   <string name="workspace_screen_automatic">自动（推荐）</string>

@@ -2151,6 +2151,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_actions">화면 작업</string>
   <string name="workspace_screen_metered">모바일 네트워크 또는 종량제 네트워크를 사용 중이에요. 화면을 보면 데이터가 사용돼요.</string>
   <string name="workspace_screen_paste_failed">원격 컴퓨터에 붙여넣지 못했어요</string>
+  <string name="workspace_screen_mac_shortcut_needs_cua">고성능 모드에서 이 동작을 쓰려면 Mac에 cua-driver가 필요해요</string>
+  <string name="workspace_screen_mac_shortcut_failed">Mac에서 이 동작을 실행하지 못했어요</string>
   <string name="workspace_screen_text_unsupported">이 플랫폼에서는 아직 이 텍스트를 입력할 수 없어요</string>
   <string name="workspace_screen_automatic">자동(권장)</string>
   <string name="workspace_screen_automatic_help">Miffan이 원격 컴퓨터의 ~/.miffan/bin/miffan에 작은 도우미를 설치해요. 도우미가 데스크톱 세션을 찾아 내 계정만 연결할 수 있는 화면 서비스를 시작해요. 모든 연결은 SSH를 통해 이루어져요.</string>

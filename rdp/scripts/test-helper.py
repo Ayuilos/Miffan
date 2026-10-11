@@ -265,3 +265,31 @@ with tempfile.TemporaryDirectory(prefix="cua-helper-") as tmp:
     assert cua(FIXTURE_LANG="zh_CN.UTF-8", LC_ALL="C") == "|zh_CN.UTF-8|"
     assert cua(LANG="en_US.UTF-8") == "||en_US.UTF-8"
     print("PASS: cua-driver gets a UTF-8 character type from SSH's C locale")
+
+# `miffan mac-shortcut` presses Control+fn+arrow through cua-driver, and reports a missing driver.
+MAC_MOCK = r'''#!/bin/sh
+case "$(basename "$0")" in
+    uname) [ "${1:-}" = -s ] && echo Darwin || echo arm64 ;;
+    cua-driver) printf '%s\n' "$*" > "$HOME/cua-args" ;;
+esac
+'''
+with tempfile.TemporaryDirectory(prefix="mac-shortcut-") as tmp:
+    root = Path(tmp)
+    tools = root / "tools"
+    tools.mkdir()
+    (tools / "mock").write_text(MAC_MOCK)
+    (tools / "mock").chmod(0o755)
+    (tools / "uname").symlink_to(tools / "mock")
+    for name in ["sh", "basename", "printf", "cat"]:
+        if shutil.which(name): (tools / name).symlink_to(shutil.which(name))
+    def shortcut(name):
+        env = dict(os.environ, HOME=str(root), PATH=str(tools))
+        return subprocess.run([shutil.which("sh"), str(HELPER), "mac-shortcut", name], text=True, capture_output=True, env=env, timeout=10)
+    assert shortcut("desktop-left").returncode == 127
+    (tools / "cua-driver").symlink_to(tools / "mock")
+    for name, key in [("desktop-left", "left"), ("desktop-right", "right"), ("mission-control", "up"), ("app-windows", "down")]:
+        result = shortcut(name)
+        assert result.returncode == 0, result.stderr
+        assert (root / "cua-args").read_text().strip() == 'hotkey {"scope":"desktop","keys":["ctrl","fn","%s"]}' % key
+    assert shortcut("other").returncode == 2
+    print("PASS: Mac shortcuts press Control+fn+arrow through cua-driver; missing driver exits 127")

@@ -2149,6 +2149,8 @@
   <string name="workspace_screen_actions">螢幕操作</string>
   <string name="workspace_screen_metered">你正在使用行動網路或計量付費網路，查看螢幕會消耗流量。</string>
   <string name="workspace_screen_paste_failed">無法貼上到遠端電腦</string>
+  <string name="workspace_screen_mac_shortcut_needs_cua">高效能模式下使用這個快捷動作，需要 Mac 上安裝 cua-driver</string>
+  <string name="workspace_screen_mac_shortcut_failed">無法在 Mac 上執行這個快捷動作</string>
   <string name="workspace_screen_text_unsupported">此平台暫時無法輸入這類文字</string>
   <string name="workspace_screen_automatic">自動（推薦）</string>
   <string name="workspace_screen_automatic_help">Miffan 會在遠端電腦的 ~/.miffan/bin/miffan 安裝小工具，找出桌面工作階段，並啟動只有你的帳號能連接的螢幕服務。連線全程透過 SSH。</string>

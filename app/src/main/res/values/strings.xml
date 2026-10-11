@@ -2190,6 +2190,8 @@
   <string name="workspace_screen_view_zoom_out" tools:ignore="MissingTranslation">Shrink view</string>
   <string name="workspace_screen_metered" tools:ignore="MissingTranslation">You are using a mobile or metered network. Viewing the screen uses data.</string>
   <string name="workspace_screen_paste_failed" tools:ignore="MissingTranslation">Could not paste on the remote computer</string>
+  <string name="workspace_screen_mac_shortcut_needs_cua" tools:ignore="MissingTranslation">This shortcut needs cua-driver on the Mac in high-performance mode</string>
+  <string name="workspace_screen_mac_shortcut_failed" tools:ignore="MissingTranslation">Could not run the shortcut on the Mac</string>
   <string name="workspace_screen_text_unsupported" tools:ignore="MissingTranslation">This platform cannot type this text yet</string>
   <!-- P2 screen setup is scoped to English and Simplified Chinese. -->
   <string name="workspace_screen_automatic" tools:ignore="MissingTranslation">Automatic (recommended)</string>

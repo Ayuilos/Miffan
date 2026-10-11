@@ -13,8 +13,10 @@
 #   miffan sunshine probe|start|enforce-encryption|wake|open-settings screen|accessibility
 #                           inspect Sunshine; explicit backed-up encryption enforcement
 #   miffan clip             set the session clipboard from stdin (UTF-8)
+#   miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows
+#                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 
-MIFFAN_HELPER_VERSION=14
+MIFFAN_HELPER_VERSION=15
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -127,6 +129,20 @@ utf8_ctype() {
     case "$ctype" in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) ;; *) ctype=C.UTF-8 ;; esac
     unset LC_ALL
     export LC_CTYPE="$ctype"
+}
+
+# Sunshine posts keys with modifier flags only, and macOS matches Control+arrow system shortcuts
+# only with the fn flag a real arrow key carries, so these go through cua-driver's daemon (which
+# holds the Accessibility grant) with fn added. Exit 127 when cua-driver is missing.
+mac_shortcut() {
+    case "$1" in
+        desktop-left) key=left ;; desktop-right) key=right ;;
+        mission-control) key=up ;; app-windows) key=down ;;
+        *) echo "usage: miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows" >&2; return 2 ;;
+    esac
+    [ "$(os)" = macos ] || { echo "mac-shortcut is only for macOS" >&2; return 2; }
+    cua=$(cua_path) || { echo "cua-driver not found" >&2; return 127; }
+    "$cua" hotkey "{\"scope\":\"desktop\",\"keys\":[\"ctrl\",\"fn\",\"$key\"]}" >/dev/null
 }
 
 cua_version() {
@@ -1031,5 +1047,6 @@ case "${1:-}" in
         ;;
     sunshine) sunshine "${2:-probe}" "${3:-}" ;;
     clip) clip ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip" >&2; exit 2 ;;
+    mac-shortcut) mac_shortcut "${2:-}" ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut" >&2; exit 2 ;;
 esac

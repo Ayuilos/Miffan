@@ -2151,6 +2151,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_actions">画面操作</string>
   <string name="workspace_screen_metered">モバイルネットワークまたは従量制ネットワークを使用中です。画面の表示にはデータ通信量がかかります。</string>
   <string name="workspace_screen_paste_failed">リモートコンピューターに貼り付けできませんでした</string>
+  <string name="workspace_screen_mac_shortcut_needs_cua">高パフォーマンスモードでこの操作を使うには、Mac に cua-driver が必要です</string>
+  <string name="workspace_screen_mac_shortcut_failed">Mac でこの操作を実行できませんでした</string>
   <string name="workspace_screen_text_unsupported">このプラットフォームでは、このテキストをまだ入力できません</string>
   <string name="workspace_screen_automatic">自動（おすすめ）</string>
   <string name="workspace_screen_automatic_help">Miffan はリモートコンピューターに小さなヘルパー ~/.miffan/bin/miffan をインストールします。デスクトップセッションを検出し、ご自身のアカウントだけが接続できる画面サービスを起動します。接続はすべて SSH 経由です。</string>

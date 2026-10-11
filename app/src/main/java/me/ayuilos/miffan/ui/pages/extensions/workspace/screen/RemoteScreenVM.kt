@@ -71,6 +71,8 @@ sealed interface RemoteScreenNotice {
     /** Text had characters VNC cannot type and this platform has no clipboard bridge yet. */
     data object TextNotTypable : RemoteScreenNotice
     data class ClipboardFailed(val error: Throwable) : RemoteScreenNotice
+    /** A Mac shortcut over a stream needs cua-driver on the Mac ([cuaMissing]) or its call failed. */
+    data class MacShortcutFailed(val cuaMissing: Boolean) : RemoteScreenNotice
     /** The remote side copied text (Latin-1 only through standard RFB). */
     data class RemoteClipboard(val text: String) : RemoteScreenNotice
     /** High-performance mode was on but this connection uses VNC or RDP instead. */
@@ -240,6 +242,8 @@ class RemoteScreenVM(
     private val keyboard = Channel<suspend () -> Unit>(Channel.UNLIMITED)
 
     @Volatile private var connection: RemoteScreenConnection? = null
+    /** A Mac's VNC viewer kept open, paused, behind a stream; see [reconnectWithStream]. */
+    private var heldVnc: RemoteScreenConnection? = null
     @Volatile private var scale = 1
     @Volatile private var serverWidth = 0
     @Volatile private var serverHeight = 0
@@ -402,6 +406,16 @@ class RemoteScreenVM(
     /** Reconnects with or without high-performance mode for this visit only; the computer's setting stays. */
     fun reconnectWithStream(stream: Boolean) {
         skipStream = !stream
+        val current = connection
+        if (stream && heldVnc == null && current != null && current.platform == RemoteScreenPlatform.MACOS &&
+            current.session.protocol == RemoteDesktopProtocol.VNC
+        ) {
+            // Closing the last Screen Sharing viewer locks a Mac again if it was locked when the
+            // viewer connected, and the lock screen ignores streamed keys. Keep it until the page leaves.
+            current.session.setPaused(true)
+            heldVnc = current
+            connection = null
+        }
         reconnect()
     }
 
@@ -451,6 +465,39 @@ class RemoteScreenVM(
     fun key(keysym: Int, modifiers: Set<RemoteModifier> = emptySet()) {
         userInput()
         keyboard.trySend { sendKey(keysym, modifiers) }
+    }
+
+    /**
+     * A Mission Control shortcut. VNC sends Control+arrow; a stream's keys reach macOS without the
+     * fn flag its system shortcuts need, so a stream presses them through cua-driver over SSH.
+     */
+    internal fun macShortcut(shortcut: MacShortcut) {
+        if (connection?.session?.protocol != RemoteDesktopProtocol.STREAM) {
+            key(when (shortcut) {
+                MacShortcut.DESKTOP_LEFT -> RfbKeys.LEFT
+                MacShortcut.DESKTOP_RIGHT -> RfbKeys.RIGHT
+                MacShortcut.MISSION_CONTROL -> RfbKeys.UP
+                MacShortcut.APP_WINDOWS -> RfbKeys.DOWN
+            }, setOf(RemoteModifier.CONTROL))
+            return
+        }
+        userInput()
+        keyboard.trySend {
+            val name = when (shortcut) {
+                MacShortcut.DESKTOP_LEFT -> "desktop-left"
+                MacShortcut.DESKTOP_RIGHT -> "desktop-right"
+                MacShortcut.MISSION_CONTROL -> "mission-control"
+                MacShortcut.APP_WINDOWS -> "app-windows"
+            }
+            try {
+                if (!repository.pressMacShortcut(args.workspaceId, name)) _notices.tryEmit(RemoteScreenNotice.MacShortcutFailed(cuaMissing = true))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                Log.w(TAG, "Mac shortcut $name failed", error)
+                _notices.tryEmit(RemoteScreenNotice.MacShortcutFailed(cuaMissing = false))
+            }
+        }
     }
 
     /**
@@ -607,6 +654,8 @@ class RemoteScreenVM(
         handBackToPartner()
         keyboard.close()
         close()
+        heldVnc?.close()
+        heldVnc = null
     }
 
     private companion object {
@@ -642,3 +691,4 @@ internal const val SCREEN_HINTS = "remote_screen_hints"
 
 private const val INITIAL_CLIPBOARD_MILLIS = 3_000L
 private const val PERF_TAG = "RemoteScreenPerf"
+private const val TAG = "RemoteScreenVM"
