@@ -131,33 +131,38 @@ internal class DefaultPartnerChatService(
         job.start()
     }
 
-    internal fun refusal(caller: Conversation, to: Uuid?): String? {
+    internal suspend fun groupMemberIds(caller: Conversation): Set<Uuid> = caller.chatId?.let { store.chat(it) }
+        ?.takeIf { it.kind == PartnerChatKind.GROUP }?.memberIds.orEmpty().toSet()
+
+    internal fun refusal(caller: Conversation, to: Uuid?, groupMemberIds: Set<Uuid> = emptySet()): String? {
         val settings = settingsStore.settingsFlow.value
         val chain = caller.partnerTrigger()?.chain.orEmpty()
         return when {
             to == null || settings.getAssistantById(to) == null -> "Contact does not exist."
             settings.getAssistantById(caller.assistantId) == null -> "Sender does not exist."
             to == caller.assistantId -> "You cannot contact yourself."
+            to in groupMemberIds -> "对方就在这个群里，请在群里用 @名字。"
             to in chain -> "Contact is already on the call chain (loop)."
             chain.size >= 2 -> "Call chain depth limit is 2 (A→B→C)."
             else -> null
         }
     }
 
-    internal fun needsApproval(caller: Conversation, to: String): Boolean {
+    internal fun needsApproval(caller: Conversation, to: String, groupMemberIds: Set<Uuid>): Boolean {
         if (to == PartnerMessageTool.OWNER) return false
         val id = runCatching { Uuid.parse(to) }.getOrNull()
-        return refusal(caller, id) == null && PartnerPair.of(caller.assistantId, requireNotNull(id)) !in
+        return refusal(caller, id, groupMemberIds) == null && PartnerPair.of(caller.assistantId, requireNotNull(id)) !in
             settingsStore.settingsFlow.value.partnerContactGrants
     }
 
     /** Called only by the tool executor, after the existing generation approval gate. */
-    internal suspend fun send(caller: Conversation, to: String, text: String): JsonObject {
+    internal suspend fun send(caller: Conversation, to: String, text: String, roundGroupMemberIds: Set<Uuid> = emptySet()): JsonObject {
         if (text.isBlank()) return refused("Message text is empty.")
         settingsStore.settingsFlow.awaitLoadedSettings()
         if (to == PartnerMessageTool.OWNER) return sendToOwner(caller, text)
         val target = runCatching { Uuid.parse(to) }.getOrNull()
-        refusal(caller, target)?.let { return refused(it) }
+        // Retain the tool's round snapshot too: removal must not turn a skipped approval into a grant.
+        refusal(caller, target, roundGroupMemberIds + groupMemberIds(caller))?.let { return refused(it) }
         val b = requireNotNull(target)
         // Group @ routing is separate from private send_message call chains and their budget.
         val trigger = if (caller.chatId?.let { store.chat(it)?.kind } == PartnerChatKind.GROUP) null else caller.partnerTrigger()
@@ -229,7 +234,7 @@ internal class DefaultPartnerChatService(
         val other = chat.memberIds.first { it != assistantId }
         val name = settings.getAssistantById(other)?.name?.ifBlank { "伙伴" } ?: "伙伴"
         val segment = member.segmentId?.let { runtime.loadSegment(it) } ?: Conversation(
-            assistantId = assistantId, chatId = chat.id, title = if (chat.kind == PartnerChatKind.GROUP) "群聊：${chat.title}" else "与 $name 的私聊", messageNodes = emptyList())
+            assistantId = assistantId, chatId = chat.id, title = if (chat.kind == PartnerChatKind.GROUP) "群聊：${partnerChatTitle(chat, settings)}" else "与 $name 的私聊", messageNodes = emptyList())
         return member.copy(segmentId = segment.id) to segment
     }
 
@@ -341,20 +346,18 @@ internal class DefaultPartnerChatService(
         require(ids.size in PartnerGroupLimits.MIN_PARTNERS..PartnerGroupLimits.MAX_PARTNERS && ids.distinct().size == ids.size)
         require(ids.all { it != OWNER_PARTICIPANT_ID && settings.getAssistantById(it) != null })
     }
-    private fun groupTitle(title: String, ids: List<Uuid>): String = title.trim().ifBlank {
-        ids.joinToString("、") { settingsStore.settingsFlow.value.getAssistantById(it)?.name?.ifBlank { "伙伴" } ?: "伙伴" }
-    }.let { it.substring(0, it.offsetByCodePoints(0, minOf(24, it.codePointCount(0, it.length)))) }
+    private fun groupTitle(title: String): String = title.trim().let { it.substring(0, it.offsetByCodePoints(0, minOf(24, it.codePointCount(0, it.length)))) }
     private suspend fun group(id: Uuid): PartnerChat = requireNotNull(store.chat(id)).also { require(it.kind == PartnerChatKind.GROUP) }
 
     override suspend fun createGroup(memberIds: List<Uuid>, title: String): Uuid {
         validateMembers(memberIds)
-        val chat = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, memberIds.toList(), groupTitle(title, memberIds), Instant.now(), memberIds.first())
+        val chat = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, memberIds.toList(), groupTitle(title), Instant.now(), memberIds.first())
         store.saveGroup(chat)
         return chat.id
     }
     override suspend fun renameGroup(chatId: Uuid, title: String) = managementLocks.getOrPut(chatId) { Mutex() }.withLock {
         val chat = group(chatId)
-        store.saveGroup(chat.copy(title = groupTitle(title, chat.memberIds)))
+        store.saveGroup(chat.copy(title = groupTitle(title)))
     }
     override suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>) = managementLocks.getOrPut(chatId) { Mutex() }.withLock {
         validateMembers(memberIds)
