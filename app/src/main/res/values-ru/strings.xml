@@ -1838,6 +1838,17 @@
   <string name="im_p5_pin">Закрепить</string>
   <string name="im_p5_unpin">Открепить</string>
   <string name="im_p5_hide">Скрыть</string>
+  <string name="im_chats_move_to_group">Переместить в группу</string>
+  <string name="im_chats_no_group">Убрать из группы</string>
+  <string name="im_chats_new_group">Новая группа</string>
+  <string name="im_chats_group_name">Название группы</string>
+  <string name="im_chats_rename_group">Переименовать группу</string>
+  <string name="im_chats_move_up">Вверх</string>
+  <string name="im_chats_move_down">Вниз</string>
+  <string name="im_chats_delete_group">Удалить группу</string>
+  <string name="im_chats_delete_group_title">Удалить группу «%1$s»?</string>
+  <string name="im_chats_delete_group_desc">Чаты останутся вне группы. История переписки сохранится.</string>
+  <string name="im_chats_long_press_hint">Нажмите и удерживайте чат, чтобы закрепить его, переместить в группу или скрыть. Скрытые чаты появятся снова с новыми сообщениями.</string>
   <string name="im_p5_image">[Изображение]</string>
   <string name="im_p5_file">[Файл]</string>
   <string name="im_p5_you_prefix">Вы: %1$s</string>

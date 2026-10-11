@@ -1836,6 +1836,17 @@
   <string name="im_p5_pin">置頂</string>
   <string name="im_p5_unpin">取消置頂</string>
   <string name="im_p5_hide">不顯示</string>
+  <string name="im_chats_move_to_group">移到分組</string>
+  <string name="im_chats_no_group">移出分組</string>
+  <string name="im_chats_new_group">新增分組</string>
+  <string name="im_chats_group_name">分組名稱</string>
+  <string name="im_chats_rename_group">重新命名分組</string>
+  <string name="im_chats_move_up">上移</string>
+  <string name="im_chats_move_down">下移</string>
+  <string name="im_chats_delete_group">刪除分組</string>
+  <string name="im_chats_delete_group_title">刪除分組「%1$s」？</string>
+  <string name="im_chats_delete_group_desc">分組中的聊天會移出分組，聊天記錄不受影響。</string>
+  <string name="im_chats_long_press_hint">長按聊天可置頂、移到分組或不顯示。不顯示的聊天有新訊息時會重新出現。</string>
   <string name="im_p5_image">[圖片]</string>
   <string name="im_p5_file">[檔案]</string>
   <string name="im_p5_you_prefix">我：%1$s</string>
