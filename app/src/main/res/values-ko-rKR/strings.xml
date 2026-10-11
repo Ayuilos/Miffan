@@ -1849,6 +1849,19 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_chats_delete_group_title">‘%1$s’ 그룹을 삭제할까요?</string>
   <string name="im_chats_delete_group_desc">그룹의 채팅은 그룹에서 빠져나와요. 대화 기록은 그대로 유지돼요.</string>
   <string name="im_chats_long_press_hint">채팅을 길게 눌러 고정하거나 그룹으로 옮기거나 숨길 수 있어요. 숨긴 채팅은 새 메시지가 오면 다시 나타나요.</string>
+  <string name="im_partner_chat_empty">아직 서로 대화한 적이 없어요.</string>
+  <string name="im_partner_chat_hint">위의 파트너를 눌러 누가 답할지 선택하세요</string>
+  <string name="im_partner_chat_preview">%1$s: %2$s</string>
+  <string name="im_partner_msg_permission_title">%1$s이(가) %2$s에게 연락하도록 허용할까요?</string>
+  <string name="im_partner_msg_permission_desc">허용하면 앞으로 서로 직접 메시지를 주고받을 수 있어요. 파트너 정보에서 허용을 취소할 수 있어요.</string>
+  <string name="im_partner_msg_asking">%1$s에게 물어보는 중…</string>
+  <string name="im_partner_msg_replied">%1$s와(과) 대화했어요</string>
+  <string name="im_partner_msg_pending">%1$s이(가) 나중에 답장해요</string>
+  <string name="im_partner_msg_refused">%1$s에게 연락하지 못했어요</string>
+  <string name="im_partner_msg_declined">%1$s에게 연락하도록 허용하지 않았어요</string>
+  <string name="im_partner_contacts">연락할 수 있는 파트너</string>
+  <string name="im_partner_contacts_none">아직 다른 파트너에게 연락하도록 허용하지 않았어요.</string>
+  <string name="im_partner_contacts_revoke">허용 취소</string>
   <string name="im_p5_image">[이미지]</string>
   <string name="im_p5_file">[파일]</string>
   <string name="im_p5_you_prefix">나: %1$s</string>
@@ -2655,6 +2668,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_step_screen_time">스크린 타임 확인</string>
   <string name="im_step_mcp">%1$s의 %2$s 사용</string>
   <string name="im_step_tool">%1$s 사용</string>
+  <string name="im_step_contacts">연락처 확인</string>
   <string name="im_p5_model">모델</string>
   <string name="im_p5_model_default">기본 모델 · %1$s</string>
   <string name="im_p5_model_no_default">기본 모델이 설정되지 않았어요</string>
