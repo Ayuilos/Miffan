@@ -109,6 +109,9 @@ fun buildSelfConfigTools(
                 },
                 needsApproval = { true },
                 execute = { input ->
+                    if (trigger == null) {
+                        return@Tool listOf(UIMessagePart.Text(rejection("Rejected: only an owner turn may change abilities.").toString()))
+                    }
                     val reason = input.jsonObject["reason"]?.jsonPrimitive?.contentOrNull.orEmpty()
                     withContext(RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger, summary = reason)) {
                         settingsStore.update { settings ->

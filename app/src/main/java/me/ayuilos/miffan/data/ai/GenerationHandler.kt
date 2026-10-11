@@ -112,6 +112,8 @@ class GenerationHandler(
         localToolOutputRoot: String? = assistant.workspaceId?.toString(),
         /** Summaries of earlier IM thread segments, appended to the system prompt. */
         threadContext: String? = null,
+        ownerTurn: Boolean = true,
+        memoryTrigger: MessageRef? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -120,9 +122,7 @@ class GenerationHandler(
         // Memory changes in this turn are attributed to the user message that started it.
         val memoryOrigin = RevisionOrigin(
             author = RevisionAuthor.AGENT,
-            trigger = conversationId?.let { id ->
-                messages.lastOrNull { it.role == MessageRole.USER }?.let { MessageRef(id, it.id) }
-            },
+            trigger = memoryTrigger,
         )
 
         for (stepIndex in 0 until maxSteps) {
@@ -130,7 +130,7 @@ class GenerationHandler(
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
-                if (assistant?.enableMemory == true) {
+                if (ownerTurn && assistant.enableMemory) {
                     val memoryAssistantId = if (assistant.useGlobalMemory) {
                         MemoryRepository.GLOBAL_MEMORY_ID
                     } else {

@@ -291,6 +291,8 @@ internal fun Conversation.copyMessagePathForFork(
         val copied = MessageNode(
             message = transformMessage(source.message),
             parentId = copiedNodes.lastOrNull()?.id,
+            replyTo = source.replyTo,
+            origin = source.origin,
         )
         if (copiedNodes.isNotEmpty()) {
             copiedNodes[copiedNodes.lastIndex] = copiedNodes.last().withSelectedChild(copied.id)
@@ -607,10 +609,10 @@ class ChatService(
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
-        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt)
+        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt, origin = origin)
         // A message sent while an approval waits is the user's answer to it, not a turn behind it.
-        val answersApproval = !session.isGenerating && session.state.value.hasPendingToolApprovals()
-        if (immediately || answersApproval) {
+        val answersApproval = origin == null && !session.isGenerating && session.state.value.hasPendingToolApprovals()
+        if ((immediately || answersApproval) && !(origin != null && session.state.value.hasPendingToolApprovals())) {
             sendMessageNow(session, message)
             session.resumeQueue()
         } else {
@@ -621,6 +623,10 @@ class ChatService(
     fun sendQueuedMessageImmediately(conversationId: Uuid, messageId: Uuid) {
         val session = getOrCreateSession(conversationId)
         val message = session.removeQueuedMessage(messageId) ?: return
+        if (message.origin != null && session.state.value.hasPendingToolApprovals()) {
+            session.enqueueMessage(message)
+            return
+        }
         sendMessageNow(session, message)
         session.resumeQueue()
     }
@@ -641,7 +647,12 @@ class ChatService(
             queuedMessage = message,
         ) {
             try {
-                finishInterruptedPendingTools(conversationId, repliedInChat = true)
+                // An approval may have appeared while an interrupted generation was settling.
+                if (message.origin != null && session.state.value.hasPendingToolApprovals()) {
+                    session.enqueueMessage(message)
+                    return@launchGenerationJob
+                }
+                if (message.origin == null) finishInterruptedPendingTools(conversationId, repliedInChat = true)
 
                 val currentConversation = session.state.value
                 val settings = settingsStore.settingsFlow.first()
@@ -657,6 +668,7 @@ class ChatService(
                         parts = processedContent,
                     ).let { if (message.createdAt != null) it.copy(createdAt = message.createdAt) else it },
                     replyTo = message.replyTo,
+                    origin = message.origin,
                 ).copy(updateAt = Instant.now())
                 saveConversation(conversationId, newConversation)
 
@@ -1019,6 +1031,10 @@ class ChatService(
                     it
                 }
             }
+            val turnConversation = if (messageRange != null) {
+                conversation.copy(messageNodes = conversation.currentMessageNodes.take(messageRange.endInclusive + 1))
+            } else conversation
+            val ownerTrigger = turnConversation.ownerTrigger()
             val computerToolbox = createComputerToolbox(assistant, conversation.id.toString(), generationMessages)
             generationHandler.generateText(
                 settings = settings,
@@ -1027,6 +1043,8 @@ class ChatService(
                 messages = generationMessages,
                 assistant = assistant,
                 conversationId = conversationId,
+                ownerTurn = ownerTrigger != null,
+                memoryTrigger = ownerTrigger,
                 conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
@@ -1069,13 +1087,13 @@ class ChatService(
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     if (settings.isImMode) {
-                        val trigger = conversation.currentMessages.lastOrNull { it.role == MessageRole.USER }
+                        val trigger = ownerTrigger
                         addAll(
                             buildSelfConfigTools(
                                 assistantId = assistant.id,
                                 settingsStore = settingsStore,
-                                trigger = trigger?.let { MessageRef(conversation.id, it.id) },
-                                triggerText = trigger?.toText().orEmpty(),
+                                trigger = trigger,
+                                triggerText = trigger?.let { conversation.getMessageNodeByMessageId(it.messageId)?.message?.toText() }.orEmpty(),
                                 webSearchEnabled = assistant.enableWebSearch,
                             )
                         )
@@ -1403,12 +1421,12 @@ class ChatService(
         conversation: Conversation,
     ) = withContext(Dispatchers.IO) {
         runCatching {
+            val trigger = conversation.ownerTrigger() ?: return@runCatching
             val settings = settingsStore.settingsFlow.first()
             // Read the assistant now: memory may have been switched off while the reply streamed.
             val assistant = settings.getAssistantById(assistantId) ?: return@runCatching
             if (!assistant.memoryExtractionEnabled(settings)) return@runCatching
-            val messages = conversation.currentMessages
-            val window = memoryExtractionWindow(messages) ?: return@runCatching
+            val window = memoryExtractionWindow(conversation) ?: return@runCatching
             // Only the fast model runs this, so it never adds hidden cost on the chat model.
             val model = settings.findModelById(settings.fastModelId) ?: return@runCatching
             val provider = model.findProvider(settings.providers) ?: return@runCatching
@@ -1438,8 +1456,7 @@ class ChatService(
 
                 val origin = RevisionOrigin(
                     author = RevisionAuthor.AGENT,
-                    trigger = messages.lastOrNull { it.role == MessageRole.USER }
-                        ?.let { MessageRef(conversationId, it.id) },
+                    trigger = trigger,
                 )
                 withContext(origin) {
                     operations.forEach { operation ->
@@ -1756,6 +1773,8 @@ class ChatService(
         val editedNode = MessageNode(
             message = editedMessage,
             parentId = sourceNode.parentId,
+            replyTo = sourceNode.replyTo,
+            origin = sourceNode.origin,
         )
         val updatedConversation = currentConversation
             .selectNode(sourceNode.id)

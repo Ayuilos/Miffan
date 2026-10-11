@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.thread
 
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import me.ayuilos.miffan.data.model.MessageNode
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -14,7 +15,7 @@ class ThreadListSummariesTest {
     private val utc = TimeZone.UTC
 
     private fun msg(role: MessageRole, minute: Int, vararg parts: UIMessagePart) =
-        UIMessage(role = role, parts = parts.toList(), createdAt = LocalDateTime(2026, 10, 5, 21, minute))
+        MessageNode(message = UIMessage(role = role, parts = parts.toList(), createdAt = LocalDateTime(2026, 10, 5, 21, minute)))
 
     @Test
     fun repliesAfterTheLastVisitAreUnreadButOwnMessagesNever() {
@@ -38,4 +39,15 @@ class ThreadListSummariesTest {
         assertEquals(PreviewKind.IMAGE, ThreadListSummaries.summarize(listOf(image), 0, utc).previewKind)
         assertEquals(PreviewKind.EMPTY, ThreadListSummaries.summarize(emptyList(), 0, utc).previewKind)
     }
+    @Test fun eventUsesSummaryWithoutOwnerPrefixOrUnreadIncrement() {
+        val event = msg(MessageRole.USER, 5, UIMessagePart.Text("model payload"))
+            .copy(origin = me.ayuilos.miffan.data.model.MessageOrigin.Event("debug", "arrived"))
+        val reply = msg(MessageRole.ASSISTANT, 4, UIMessagePart.Text("reply"))
+        val summary = ThreadListSummaries.summarize(listOf(event, reply), 0, utc)
+        assertEquals("arrived", summary.preview)
+        assertEquals(PreviewKind.TEXT, summary.previewKind)
+        org.junit.Assert.assertFalse(summary.fromUser)
+        assertEquals(1, summary.unread)
+    }
+
 }

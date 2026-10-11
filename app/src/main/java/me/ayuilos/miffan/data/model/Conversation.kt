@@ -96,7 +96,9 @@ data class Conversation(
      * path, or null when that message came from another partner or an event. Only this message
      * may authorize self-configuration, permission grants and memory about the owner.
      */
-    fun ownerTrigger(): MessageRef? = TODO()
+    fun ownerTrigger(): MessageRef? = currentMessageNodes.lastOrNull { it.role == MessageRole.USER }
+        ?.takeIf { it.origin == null }
+        ?.let { MessageRef(id, it.message.id) }
 
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? = nodesByMessageId[message.id]
 
@@ -135,11 +137,12 @@ data class Conversation(
             .filter { it.isNotEmpty() && it.first().parentId == null }
             .toList()
 
-    fun appendMessage(message: UIMessage, replyTo: MessageRef? = null): Conversation = addNodeAndSelect(
+    fun appendMessage(message: UIMessage, replyTo: MessageRef? = null, origin: MessageOrigin? = null): Conversation = addNodeAndSelect(
         MessageNode(
             message = message,
             parentId = currentMessageNodes.lastOrNull()?.id,
             replyTo = replyTo,
+            origin = origin,
         )
     )
 

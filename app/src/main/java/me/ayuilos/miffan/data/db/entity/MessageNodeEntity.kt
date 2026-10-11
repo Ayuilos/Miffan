@@ -39,4 +39,6 @@ data class MessageNodeEntity(
     /** JSON [me.ayuilos.miffan.data.model.MessageRef] the user explicitly replied to; empty when none. */
     @ColumnInfo("reply_to", defaultValue = "")
     val replyTo: String = "",
+    @ColumnInfo("origin", defaultValue = "")
+    val origin: String = "",
 )
