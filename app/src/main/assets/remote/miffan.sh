@@ -14,7 +14,7 @@
 #                           inspect Sunshine; explicit backed-up encryption enforcement
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 
-MIFFAN_HELPER_VERSION=13
+MIFFAN_HELPER_VERSION=14
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -115,6 +115,18 @@ cua_path() {
         fi
     done
     return 1
+}
+
+# cua-driver types on Wayland through wtype, which decodes its text in the C library's locale.
+# SSH commands start in the C locale, where any non-ASCII text fails and the driver falls back
+# to a portal wait that times out on compositors without RemoteDesktop (niri). Prefer the
+# session's UTF-8 LANG, else C.UTF-8; only the character type changes.
+utf8_ctype() {
+    case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) return 0 ;; esac
+    ctype=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^LANG=//p' | head -n 1)
+    case "$ctype" in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) ;; *) ctype=C.UTF-8 ;; esac
+    unset LC_ALL
+    export LC_CTYPE="$ctype"
 }
 
 cua_version() {
@@ -1002,6 +1014,7 @@ case "${1:-}" in
     cua)
         [ "$(os)" = macos ] || load_session_env || { echo "no graphical session" >&2; exit 1; }
         [ "$(session_type)" = wayland ] && export CUA_DRIVER_RS_ENABLE_WAYLAND=1
+        [ "$(os)" = macos ] || utf8_ctype
         cua=$(cua_path) || { echo "cua-driver not found" >&2; exit 127; }
         exec "$cua" mcp
         ;;

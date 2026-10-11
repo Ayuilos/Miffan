@@ -237,3 +237,31 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
         assert result.returncode!=0 and status['error']=='credential_setup_unavailable',status
         assert status['certificate_sha256'] is None
     print('PASS: stdin-only exact QtKeychain credentials, default collection refusal, libsecret startup/migration, ownership, persistent DER identity, permissions and fail-closed attestation')
+
+# `miffan cua` must hand cua-driver a UTF-8 character type even from an SSH command's C locale.
+CUA_MOCK = r'''#!/bin/sh
+case "$(basename "$0")" in
+    uname) [ "${1:-}" = -s ] && echo Linux || echo x86_64 ;;
+    systemctl) [ -n "${FIXTURE_LANG:-}" ] && echo "LANG=$FIXTURE_LANG" ;;
+    cua-driver) printf '%s|%s|%s\n' "${LC_ALL:-}" "${LC_CTYPE:-}" "${LANG:-}" ;;
+esac
+'''
+with tempfile.TemporaryDirectory(prefix="cua-helper-") as tmp:
+    root = Path(tmp)
+    mock = root / "mock"
+    mock.write_text(CUA_MOCK)
+    mock.chmod(0o755)
+    for name in ["uname", "systemctl", "cua-driver"]:
+        (root / name).symlink_to(mock)
+    def cua(**extra):
+        env = {k: v for k, v in os.environ.items() if k not in ("LANG", "LC_ALL", "LC_CTYPE")}
+        env.update(HOME=str(root), PATH=str(root)+os.pathsep+os.environ["PATH"],
+                   WAYLAND_DISPLAY="fixture", XDG_RUNTIME_DIR=str(root), **extra)
+        result = subprocess.run(["sh", str(HELPER), "cua"], text=True, capture_output=True, env=env, timeout=10)
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+    assert cua() == "|C.UTF-8|"
+    assert cua(FIXTURE_LANG="zh_CN.UTF-8") == "|zh_CN.UTF-8|"
+    assert cua(FIXTURE_LANG="zh_CN.UTF-8", LC_ALL="C") == "|zh_CN.UTF-8|"
+    assert cua(LANG="en_US.UTF-8") == "||en_US.UTF-8"
+    print("PASS: cua-driver gets a UTF-8 character type from SSH's C locale")
