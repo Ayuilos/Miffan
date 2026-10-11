@@ -138,7 +138,8 @@ internal fun PartnerChatPage(chatId: Uuid, vm: PartnerChatVM = koinViewModel { p
     val typing = state?.typing.orEmpty()
     LaunchedEffect(messages.size, typing) {
         vm.markRead()
-        val last = messages.size + (if (typing.isEmpty()) 0 else 1) - 1
+        // Date labels sit between messages, so follow the list's own last item rather than a message index.
+        val last = listState.layoutInfo.totalItemsCount - 1
         if (last >= 0) listState.animateScrollToItem(last)
     }
 
