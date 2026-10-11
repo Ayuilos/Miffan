@@ -304,6 +304,7 @@ internal fun parseLatestMiffanReleaseAtom(
     var releaseLink: String? = null
     var publishedAt: String? = null
     var changelog: String? = null
+    var title: String? = null
 
     while (parser.eventType != XmlPullParser.END_DOCUMENT) {
         when (parser.eventType) {
@@ -313,13 +314,14 @@ internal fun parseLatestMiffanReleaseAtom(
                     releaseLink = null
                     publishedAt = null
                     changelog = null
+                    title = null
                 }
 
                 "link" -> if (inEntry && parser.getAttributeValue(null, "rel") == "alternate") {
                     releaseLink = parser.getAttributeValue(null, "href")
                 }
 
-                "updated", "content" -> if (inEntry) {
+                "title", "updated", "content" -> if (inEntry) {
                     currentTextTag = parser.name
                     text.clear()
                 }
@@ -333,6 +335,7 @@ internal fun parseLatestMiffanReleaseAtom(
                 when {
                     parser.name == currentTextTag -> {
                         when (currentTextTag) {
+                            "title" -> title = text.toString().trim()
                             "updated" -> publishedAt = text.toString().trim()
                             "content" -> changelog = text.toString().trim()
                         }
@@ -347,6 +350,9 @@ internal fun parseLatestMiffanReleaseAtom(
                             )
                             ?.substringBefore('?')
                             ?.takeIf { it.isFormalMiffanReleaseVersion() }
+                            // The feed also lists bare tags, titled "<tag>: <commit subject>" and
+                            // without an APK. A published release is titled exactly its tag.
+                            ?.takeIf { it == title }
                         if (tag != null) {
                             return UpdateInfo(
                                 version = tag,

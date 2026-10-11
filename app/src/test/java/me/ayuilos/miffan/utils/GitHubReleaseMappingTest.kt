@@ -139,11 +139,13 @@ class GitHubReleaseMappingTest {
             <feed xmlns="http://www.w3.org/2005/Atom">
               <entry>
                 <updated>2026-08-25T00:00:00Z</updated>
+                <title>3.0.0-rc.1</title>
                 <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/3.0.0-rc.1" />
                 <content>Release candidate</content>
               </entry>
               <entry>
                 <updated>2026-09-01T00:00:00Z</updated>
+                <title>3.0.0</title>
                 <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/3.0.0" />
                 <content>Formal release</content>
               </entry>
@@ -168,6 +170,7 @@ class GitHubReleaseMappingTest {
             <feed xmlns="http://www.w3.org/2005/Atom">
               <entry>
                 <updated>2026-08-23T15:29:40Z</updated>
+                <title>2.4.11-miffan.1</title>
                 <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/2.4.11-miffan.1" />
                 <content>Historical release</content>
               </entry>
@@ -177,6 +180,30 @@ class GitHubReleaseMappingTest {
 
         assertEquals("2.4.11-miffan.1", info.version)
         assertEquals("Miffan-2.4.11-miffan.1-arm64-v8a.apk", info.downloads.single().name)
+    }
+
+    @Test
+    fun `Atom fallback skips bare tags that have no published release`() {
+        val info = parseAtom(
+            """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <updated>2026-10-12T00:00:00Z</updated>
+                <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/4.1.4" />
+                <title>4.1.4: Merge pull request #45 from Ayuilos/feature/im-4.0</title>
+                <content>Miffan 4.1.4</content>
+              </entry>
+              <entry>
+                <updated>2026-10-11T04:08:54Z</updated>
+                <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/4.1.3" />
+                <title>4.1.3</title>
+                <content>Formal release</content>
+              </entry>
+            </feed>
+            """.trimIndent()
+        )
+
+        assertEquals("4.1.3", info.version)
     }
 
     private companion object {
