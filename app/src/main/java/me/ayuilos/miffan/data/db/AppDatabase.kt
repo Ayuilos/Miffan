@@ -36,6 +36,9 @@ import me.ayuilos.miffan.utils.JsonInstant
 @Database(
     entities = [
         ConversationEntity::class,
+        me.ayuilos.miffan.data.db.entity.PartnerChatEntity::class,
+        me.ayuilos.miffan.data.db.entity.PartnerChatMemberEntity::class,
+        me.ayuilos.miffan.data.db.entity.PartnerChatMessageEntity::class,
         MemoryEntity::class,
         GenMediaEntity::class,
         MessageNodeEntity::class,
@@ -48,7 +51,7 @@ import me.ayuilos.miffan.utils.JsonInstant
         RevisionEntity::class,
         me.ayuilos.miffan.data.db.entity.AuditEventEntity::class,
     ],
-    version = 34,
+    version = 35,
     autoMigrations = [
         AutoMigration(from = 32, to = 33),
         AutoMigration(from = 31, to = 32),
@@ -74,6 +77,8 @@ import me.ayuilos.miffan.utils.JsonInstant
 )
 @TypeConverters(TokenUsageConverter::class)
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun partnerChatDao(): me.ayuilos.miffan.data.db.dao.PartnerChatDAO
+
     abstract fun conversationDao(): ConversationDAO
 
     abstract fun memoryDao(): MemoryDAO

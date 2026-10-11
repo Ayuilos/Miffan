@@ -35,7 +35,7 @@ fun interface SegmentRouter {
  */
 class RuleSegmentRouter(private val idleMillis: Long = DEFAULT_IDLE_MILLIS) : SegmentRouter {
     override suspend fun route(request: RouteRequest): RouteDecision {
-        val newest = request.segments.firstOrNull { it.threadClosedAt == 0L }
+        val newest = request.segments.firstOrNull { it.chatId == null && it.threadClosedAt == 0L }
             ?: return RouteDecision.New("no open segment")
         val idle = request.now.toEpochMilli() - newest.updateAt.toEpochMilli()
         return if (idle > idleMillis) {

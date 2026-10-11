@@ -40,4 +40,6 @@ data class ConversationEntity(
     /** Epoch millis when this segment stopped receiving new topics; 0 while open. */
     @ColumnInfo("thread_closed_at", defaultValue = "0")
     val threadClosedAt: Long = 0,
+    @ColumnInfo("chat_id", defaultValue = "NULL")
+    val chatId: String? = null,
 )

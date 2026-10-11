@@ -28,7 +28,7 @@ class SegmentSummarizer(
 
     suspend fun summarize(segmentId: Uuid) {
         val segment = conversationRepository.getConversationById(segmentId) ?: return
-        if (segment.threadSummary.isNotBlank()) return
+        if (segment.chatId != null || segment.threadSummary.isNotBlank()) return
         val messages = segment.currentMessages.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
         if (messages.isEmpty()) return
         val prompt = settingsStore.settingsFlow.value.compressPrompt.applyPlaceholders(
