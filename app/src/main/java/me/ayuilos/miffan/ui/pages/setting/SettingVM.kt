@@ -51,6 +51,12 @@ class SettingVM(
         settingsStore.update { it.withWhaleThemeTrial(whaleName) }
     }
 
+    val downloadState = updateChecker.downloadState
+
+    fun cancelUpdateDownload() = updateChecker.cancelUpdateDownload()
+
+    fun installUpdate(context: Context): Boolean = updateChecker.installUpdate(context)
+
     fun downloadUpdate(context: Context, download: UpdateDownload) {
         updateChecker.downloadUpdate(context, download)
     }

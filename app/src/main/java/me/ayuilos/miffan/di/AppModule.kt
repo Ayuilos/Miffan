@@ -24,6 +24,7 @@ import me.ayuilos.miffan.utils.EmojiData
 import me.ayuilos.miffan.utils.EmojiUtils
 import me.ayuilos.miffan.utils.JsonInstant
 import me.ayuilos.miffan.utils.SoundEffectPlayer
+import me.ayuilos.miffan.utils.UpdateApkDownloader
 import me.ayuilos.miffan.utils.UpdateChecker
 import me.ayuilos.miffan.web.WebServerManager
 import me.rerere.tts.provider.TTSManager
@@ -40,11 +41,14 @@ val appModule = module {
         LocalTools(get(), get(), get(), get())
     }
 
+    single { UpdateApkDownloader(context = get(), client = get(), appScope = get<AppScope>()) }
+
     single {
         UpdateChecker(
             client = get(),
             appScope = get<AppScope>(),
             settings = get<SettingsStore>().settingsFlow,
+            downloader = get(),
         )
     }
 

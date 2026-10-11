@@ -3,6 +3,7 @@ package me.ayuilos.miffan.utils
 import kotlinx.serialization.json.Json
 import org.kxml2.io.KXmlParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,7 +22,8 @@ class GitHubReleaseMappingTest {
                 {
                   "name": "Miffan-2.4.10-miffan.6-arm64-v8a.apk",
                   "browser_download_url": "https://github.com/Ayuilos/Miffan/releases/download/2.4.10-miffan.6/Miffan-2.4.10-miffan.6-arm64-v8a.apk",
-                  "size": 40277098
+                  "size": 40277098,
+                  "digest": "sha256:${"aB".repeat(32)}"
                 },
                 {
                   "name": "unrelated.txt",
@@ -45,6 +47,7 @@ class GitHubReleaseMappingTest {
         )
         assertEquals(1, info.downloads.size)
         assertEquals(40_277_098L, info.downloads.single().sizeBytes)
+        assertEquals("aB".repeat(32), info.downloads.single().sha256)
     }
 
     @Test
@@ -66,6 +69,7 @@ class GitHubReleaseMappingTest {
         val info = release.toUpdateInfo()
 
         assertEquals("3.0.0", info.version)
+        assertNull(info.downloads.single().sha256)
         assertEquals("Miffan-3.0.0-arm64-v8a.apk", info.downloads.single().name)
         assertEquals(
             "https://github.com/Ayuilos/Miffan/releases/tag/3.0.0",
@@ -148,6 +152,7 @@ class GitHubReleaseMappingTest {
         )
 
         assertEquals("3.0.0", info.version)
+        assertNull(info.downloads.single().sha256)
         assertEquals("Miffan-3.0.0-arm64-v8a.apk", info.downloads.single().name)
         assertEquals(
             "https://github.com/Ayuilos/Miffan/releases/download/3.0.0/" +

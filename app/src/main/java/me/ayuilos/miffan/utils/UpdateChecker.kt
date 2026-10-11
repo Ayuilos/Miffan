@@ -2,7 +2,6 @@ package me.ayuilos.miffan.utils
 
 import android.content.Context
 import android.util.Xml
-import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -22,13 +21,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.BuildConfig
-import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
 import me.rerere.common.http.await
 import okhttp3.OkHttpClient
@@ -65,6 +61,7 @@ class UpdateChecker(
     client: OkHttpClient,
     private val appScope: CoroutineScope,
     settings: Flow<Settings>,
+    private val downloader: UpdateApkDownloader,
 ) {
     private val client = client
     private val _debugUpdateOverrideEnabled = MutableStateFlow(false)
@@ -125,17 +122,14 @@ class UpdateChecker(
         emit(UiState.Error(it))
     }.flowOn(Dispatchers.IO)
 
-    fun downloadUpdate(context: Context, download: UpdateDownload) {
-        val appContext = context.applicationContext
-        appScope.launch(Dispatchers.IO) {
-            runCatching { UpdateDownloader.enqueue(appContext, download) }.onFailure {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(appContext, appContext.getString(R.string.update_download_start_failed), Toast.LENGTH_SHORT).show()
-                    context.openUrl(download.fallbackUrls.lastOrNull() ?: download.url)
-                }
-            }
-        }
-    }
+    val downloadState: StateFlow<UpdateDownloadState> = downloader.downloadState
+
+    fun downloadUpdate(context: Context, download: UpdateDownload) = downloader.downloadUpdate(download)
+
+    fun cancelUpdateDownload() = downloader.cancelUpdateDownload()
+
+    /** Launches the system installer for a Ready APK. Returns false when nothing is Ready. */
+    fun installUpdate(context: Context): Boolean = downloader.installUpdate(context)
 }
 
 private data class UpdateCheckConfig(
@@ -150,6 +144,7 @@ data class UpdateDownload(
     val url: String,
     val sizeBytes: Long?,
     val fallbackUrls: List<String> = emptyList(),
+    val sha256: String? = null,
 )
 
 data class UpdateInfo(
@@ -262,6 +257,7 @@ internal data class GitHubReleaseAsset(
     @SerialName("browser_download_url")
     val browserDownloadUrl: String,
     val size: Long,
+    val digest: String? = null,
 )
 
 internal fun GitHubRelease.toUpdateInfo(): UpdateInfo {
@@ -281,6 +277,10 @@ internal fun GitHubRelease.toUpdateInfo(): UpdateInfo {
                 name = asset.name,
                 url = asset.browserDownloadUrl,
                 sizeBytes = asset.size,
+                sha256 = asset.digest?.let { digest ->
+                    Regex("sha256:([a-fA-F0-9]{64})", RegexOption.IGNORE_CASE)
+                        .matchEntire(digest)?.groupValues?.get(1)
+                },
             )
         }
     return UpdateInfo(

@@ -2108,8 +2108,6 @@
   <string name="mcp_oauth_error_invalid_authorization_endpoint">Invalid authorization endpoint: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">hotword1, hotword2, hotword3</string>
   <string name="update_changelog_see_release">See the GitHub Release below for the changelog.</string>
-  <string name="update_download_start_failed">Unable to start the download, please use the GitHub fallback download</string>
-  <string name="update_downloading">Downloading update package...</string>
   <string name="setting_tts_model_recommended">%1$s (recommended)</string>
   <string name="setting_tts_model_free">%1$s (free)</string>
   <string name="setting_tts_step_api_key_description">Get a key from the StepFun website: platform.stepfun.com/interface-key</string>
@@ -2665,4 +2663,13 @@
     <item quantity="one">%d step failed</item>
     <item quantity="other">%d steps failed</item>
   </plurals>
+  <string name="update_download_channel_name">App updates</string>
+  <string name="update_download_title">Downloading update</string>
+  <string name="update_download_progress">Downloading update package…</string>
+  <string name="update_download_verifying">Verifying update package…</string>
+  <string name="update_download_cancel">Cancel</string>
+  <string name="update_download_complete_title">Update downloaded</string>
+  <string name="update_download_complete_text">Download complete, tap to install</string>
+  <string name="update_download_failed_title">Update download failed</string>
+  <string name="update_download_failed_text">Unable to download the update. Please try again.</string>
 </resources>

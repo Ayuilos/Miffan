@@ -2098,8 +2098,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="mcp_oauth_error_invalid_authorization_endpoint">無効な認可エンドポイント: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">ホットワード1, ホットワード2, ホットワード3</string>
   <string name="update_changelog_see_release">更新履歴は下の GitHub Release をご覧ください。</string>
-  <string name="update_download_start_failed">ダウンロードを開始できません。GitHub の代替ダウンロードをご利用ください</string>
-  <string name="update_downloading">更新パッケージをダウンロード中...</string>
   <string name="setting_tts_model_recommended">%1$s (推奨)</string>
   <string name="setting_tts_model_free">%1$s (無料)</string>
   <string name="setting_tts_step_api_key_description">StepFun の公式サイトでキーを取得してください: platform.stepfun.com/interface-key</string>
@@ -2647,4 +2645,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <plurals name="im_steps_failed">
     <item quantity="other">%d ステップが失敗しました</item>
   </plurals>
+  <string name="update_download_channel_name">アプリの更新</string>
+  <string name="update_download_title">更新をダウンロード中</string>
+  <string name="update_download_progress">更新パッケージをダウンロード中…</string>
+  <string name="update_download_verifying">更新パッケージを検証中…</string>
+  <string name="update_download_cancel">キャンセル</string>
+  <string name="update_download_complete_title">更新のダウンロード完了</string>
+  <string name="update_download_complete_text">ダウンロードが完了しました。タップしてインストール</string>
+  <string name="update_download_failed_title">更新のダウンロードに失敗</string>
+  <string name="update_download_failed_text">更新をダウンロードできませんでした。再試行してください。</string>
 </resources>

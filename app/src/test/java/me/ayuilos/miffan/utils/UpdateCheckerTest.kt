@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.utils
 
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,9 +31,12 @@ class UpdateCheckerTest {
             },
             appScope = scope,
             settings = settings,
+            downloader = mockk<UpdateApkDownloader> { every { downloadState } returns MutableStateFlow(UpdateDownloadState.Idle) },
         )
         try {
             withTimeout(5_000) { checker.updateState.filterIsInstance<UiState.Success<UpdateInfo>>().first() }
+            assertEquals("69a92099778ffb7371881e0e0aef989d6c19021517dcf1eaa6d96eaf8469aae8",
+                (checker.updateState.value as UiState.Success).data.downloads.single().sha256)
             settings.value = settings.value.copy(developerMode = true)
             settings.value = settings.value.copy(
                 networkSetting = settings.value.networkSetting.copy(updateDownloadBaseUrl = "https://mirror.example")
@@ -60,6 +65,7 @@ class UpdateCheckerTest {
             },
             appScope = scope,
             settings = settings,
+            downloader = mockk<UpdateApkDownloader> { every { downloadState } returns MutableStateFlow(UpdateDownloadState.Idle) },
         )
         try {
             checker.updateState.first()

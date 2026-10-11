@@ -2101,8 +2101,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="mcp_oauth_error_invalid_authorization_endpoint">非法的授权端点: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">热词1, 热词2, 热词3</string>
   <string name="update_changelog_see_release">更新日志请查看下方 GitHub Release。</string>
-  <string name="update_download_start_failed">无法启动下载，请使用 GitHub 备用下载</string>
-  <string name="update_downloading">正在下载更新包...</string>
   <string name="setting_tts_model_recommended">%1$s (推荐)</string>
   <string name="setting_tts_model_free">%1$s (免费)</string>
   <string name="setting_tts_step_api_key_description">从阶跃星辰官网获取密钥: platform.stepfun.com/interface-key</string>
@@ -2654,4 +2652,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <plurals name="im_steps_failed">
     <item quantity="other">其中 %d 步失败</item>
   </plurals>
+  <string name="update_download_channel_name">应用更新</string>
+  <string name="update_download_title">正在下载更新</string>
+  <string name="update_download_progress">正在下载更新包…</string>
+  <string name="update_download_verifying">正在验证更新包…</string>
+  <string name="update_download_cancel">取消</string>
+  <string name="update_download_complete_title">更新下载完成</string>
+  <string name="update_download_complete_text">下载完成，点击安装</string>
+  <string name="update_download_failed_title">更新下载失败</string>
+  <string name="update_download_failed_text">无法下载更新，请重试</string>
 </resources>

@@ -2096,8 +2096,6 @@
   <string name="mcp_oauth_error_invalid_authorization_endpoint">不合法的授權端點: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">熱詞1, 熱詞2, 熱詞3</string>
   <string name="update_changelog_see_release">更新日誌請查看下方 GitHub Release。</string>
-  <string name="update_download_start_failed">無法啟動下載，請使用 GitHub 備用下載</string>
-  <string name="update_downloading">正在下載更新套件...</string>
   <string name="setting_tts_model_recommended">%1$s (推薦)</string>
   <string name="setting_tts_model_free">%1$s (免費)</string>
   <string name="setting_tts_step_api_key_description">從階躍星辰官網取得金鑰: platform.stepfun.com/interface-key</string>
@@ -2645,4 +2643,13 @@
   <plurals name="im_steps_failed">
     <item quantity="other">其中 %d 步失敗</item>
   </plurals>
+  <string name="update_download_channel_name">應用程式更新</string>
+  <string name="update_download_title">正在下載更新</string>
+  <string name="update_download_progress">正在下載更新套件…</string>
+  <string name="update_download_verifying">正在驗證更新套件…</string>
+  <string name="update_download_cancel">取消</string>
+  <string name="update_download_complete_title">更新下載完成</string>
+  <string name="update_download_complete_text">下載完成，點選安裝</string>
+  <string name="update_download_failed_title">更新下載失敗</string>
+  <string name="update_download_failed_text">無法下載更新，請重試</string>
 </resources>
