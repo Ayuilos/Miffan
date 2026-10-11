@@ -472,6 +472,14 @@ class RouteActivity : ComponentActivity() {
                                 me.ayuilos.miffan.ui.im.PartnerChatPage(chatId = Uuid.parse(key.chatId))
                             }
 
+                            entry<Screen.GroupCreate> {
+                                me.ayuilos.miffan.ui.im.GroupCreatePage()
+                            }
+
+                            entry<Screen.GroupInfo> { key ->
+                                me.ayuilos.miffan.ui.im.GroupInfoPage(chatId = Uuid.parse(key.chatId))
+                            }
+
                             entry<Screen.Onboarding>(
                                 metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
                                     + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
@@ -771,6 +779,13 @@ sealed interface Screen : NavKey {
     /** A chat between partners, which the owner can read and join. */
     @Serializable
     data class PartnerChat(val chatId: String) : Screen
+
+    /** Picks the partners of a new group chat. */
+    @Serializable
+    data object GroupCreate : Screen
+
+    @Serializable
+    data class GroupInfo(val chatId: String) : Screen
 
     @Serializable
     data class PartnerScreen(val assistantId: String) : Screen

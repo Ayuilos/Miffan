@@ -17,6 +17,7 @@ import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.ChatGroup
 import me.ayuilos.miffan.data.model.ChatOrganization
 import me.ayuilos.miffan.data.model.OWNER_PARTICIPANT_ID
+import me.ayuilos.miffan.data.model.PartnerChatKind
 import me.ayuilos.miffan.data.partner.PartnerChatService
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.InterfaceMode
@@ -52,6 +53,8 @@ data class ImChatItem(
     val members: List<Assistant> = listOf(assistant),
     /** Who said the preview line in a partner chat. */
     val previewSender: Assistant? = null,
+    /** A group chat's name; other rows are named after their partners. */
+    val title: String? = null,
 ) {
     val chatId: Uuid get() = partnerChatId ?: assistant.id
     val isPartnerChat: Boolean get() = partnerChatId != null
@@ -140,7 +143,7 @@ class ImHomeVM(
             items + unstarted
         }
 
-    /** Chats between partners; their back-and-forth is not counted as unread. */
+    /** Chats between partners; only groups count unread, a chat of two partners never does. */
     private val partnerChats = combine(
         partnerChatService.observeSummaries(), settingsStore.settingsFlow, listState.value,
     ) { summaries, settings, prefs ->
@@ -158,9 +161,10 @@ class ImHomeVM(
                 previewKind = if (last == null) PreviewKind.EMPTY else PreviewKind.TEXT,
                 previewFromUser = last?.senderId == OWNER_PARTICIPANT_ID,
                 lastActivity = summary.lastActivity,
-                unread = 0,
+                unread = summary.unread,
                 pinned = pinned,
                 typing = summary.typing.isNotEmpty(),
+                title = summary.chat.title.takeIf { summary.chat.kind == PartnerChatKind.GROUP && it.isNotBlank() },
                 partnerChatId = summary.chat.id,
                 members = members,
                 previewSender = last?.senderId?.let { assistants[it] },

@@ -35,6 +35,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,7 +60,10 @@ import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.utils.toLocalString
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.UserAdd01
+import me.rerere.hugeicons.stroke.UserGroup
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
@@ -80,6 +85,15 @@ internal fun ImChatsTab(
     onFindPartner: () -> Unit,
 ) {
     val navController = LocalNavController.current
+    val scope = rememberCoroutineScope()
+    // Same as "add partner" in the Partners tab: a new partner opens on its profile to be set up.
+    val onAddPartner: () -> Unit = {
+        scope.launch {
+            val partner = me.ayuilos.miffan.data.model.Assistant(name = "Miffan")
+            vm.addPartner(partner)
+            navController.navigate(Screen.PartnerProfile(partner.id.toString()))
+        }
+    }
     val sections by vm.sections.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -106,7 +120,12 @@ internal fun ImChatsTab(
         modifier = Modifier.fillMaxSize(),
         contentPadding = innerPadding,
     ) {
-        item("title") { ImTabTitle(R.string.im_tab_chats) }
+        item("title") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ImTabTitle(R.string.im_tab_chats, Modifier.weight(1f))
+                ImChatsAddButton(onNewGroup = { navController.navigate(Screen.GroupCreate) }, onAddPartner = onAddPartner)
+            }
+        }
         item("search") {
             ImSearchField(onClick = { navController.navigate(Screen.ImSearch) })
         }
@@ -404,8 +423,26 @@ internal fun ImChatAvatar(chat: ImChatItem, size: Dp, loading: Boolean = false, 
 
 @Composable
 internal fun imChatTitle(chat: ImChatItem): String =
-    chat.members.map { partnerName(it) }.joinToString(" · ")
+    chat.title ?: chat.members.map { partnerName(it) }.joinToString(" · ")
 
 @Composable
 internal fun partnerName(assistant: me.ayuilos.miffan.data.model.Assistant): String =
     assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }
+
+/** "+" beside the Chats title: start a group chat, or add a partner. */
+@Composable
+private fun ImChatsAddButton(onNewGroup: () -> Unit, onAddPartner: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.padding(end = 16.dp)) {
+        Surface(onClick = { open = true }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.size(44.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(HugeIcons.Add01, stringResource(R.string.im_gc_create))
+            }
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            ImPressMenuItem(HugeIcons.UserGroup, stringResource(R.string.im_gc_create)) { open = false; onNewGroup() }
+            ImPressMenuItem(HugeIcons.UserAdd01, stringResource(R.string.im_partners_add)) { open = false; onAddPartner() }
+        }
+    }
+}
