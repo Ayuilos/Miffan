@@ -1838,6 +1838,17 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_pin">고정</string>
   <string name="im_p5_unpin">고정 해제</string>
   <string name="im_p5_hide">숨기기</string>
+  <string name="im_chats_move_to_group">그룹으로 이동</string>
+  <string name="im_chats_no_group">그룹에서 빼기</string>
+  <string name="im_chats_new_group">새 그룹</string>
+  <string name="im_chats_group_name">그룹 이름</string>
+  <string name="im_chats_rename_group">그룹 이름 변경</string>
+  <string name="im_chats_move_up">위로 이동</string>
+  <string name="im_chats_move_down">아래로 이동</string>
+  <string name="im_chats_delete_group">그룹 삭제</string>
+  <string name="im_chats_delete_group_title">‘%1$s’ 그룹을 삭제할까요?</string>
+  <string name="im_chats_delete_group_desc">그룹의 채팅은 그룹에서 빠져나와요. 대화 기록은 그대로 유지돼요.</string>
+  <string name="im_chats_long_press_hint">채팅을 길게 눌러 고정하거나 그룹으로 옮기거나 숨길 수 있어요. 숨긴 채팅은 새 메시지가 오면 다시 나타나요.</string>
   <string name="im_p5_image">[이미지]</string>
   <string name="im_p5_file">[파일]</string>
   <string name="im_p5_you_prefix">나: %1$s</string>

@@ -1838,6 +1838,17 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_pin">固定</string>
   <string name="im_p5_unpin">固定を解除</string>
   <string name="im_p5_hide">非表示</string>
+  <string name="im_chats_move_to_group">グループに移動</string>
+  <string name="im_chats_no_group">グループから外す</string>
+  <string name="im_chats_new_group">新しいグループ</string>
+  <string name="im_chats_group_name">グループ名</string>
+  <string name="im_chats_rename_group">グループ名を変更</string>
+  <string name="im_chats_move_up">上に移動</string>
+  <string name="im_chats_move_down">下に移動</string>
+  <string name="im_chats_delete_group">グループを削除</string>
+  <string name="im_chats_delete_group_title">グループ「%1$s」を削除しますか？</string>
+  <string name="im_chats_delete_group_desc">グループ内のチャットはグループから外れます。履歴は削除されません。</string>
+  <string name="im_chats_long_press_hint">チャットを長押しすると、固定・グループへの移動・非表示ができます。非表示のチャットは新しいメッセージが届くと再表示されます。</string>
   <string name="im_p5_image">[画像]</string>
   <string name="im_p5_file">[ファイル]</string>
   <string name="im_p5_you_prefix">自分：%1$s</string>
