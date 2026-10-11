@@ -86,10 +86,18 @@ internal fun Modifier.imLongPress(onLongPress: (Offset) -> Unit): Modifier = poi
 
 /** Remembers where a long press happened so its menu opens under the finger. */
 internal class PressMenuState {
+    /** Where the open menu was pressed; null while closed. */
     var at by mutableStateOf<Offset?>(null)
         private set
 
-    fun open(position: Offset) { at = position }
+    /** Where the menu last opened. Kept after closing so the menu fades out in place instead of jumping. */
+    var anchor by mutableStateOf(Offset.Zero)
+        private set
+
+    fun open(position: Offset) {
+        anchor = position
+        at = position
+    }
 
     fun close() { at = null }
 }
@@ -103,7 +111,7 @@ internal fun BoxScope.ImPressMenu(state: PressMenuState, content: @Composable Co
     val at = state.at
     val haptic = LocalHapticFeedback.current
     LaunchedEffect(at != null) { if (at != null) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
-    Box(Modifier.align(Alignment.TopStart).offset { IntOffset(at?.x?.roundToInt() ?: 0, at?.y?.roundToInt() ?: 0) }) {
+    Box(Modifier.align(Alignment.TopStart).offset { IntOffset(state.anchor.x.roundToInt(), state.anchor.y.roundToInt()) }) {
         DropdownMenu(expanded = at != null, onDismissRequest = state::close, content = content)
     }
 }
