@@ -31,7 +31,7 @@ object ThreadListSummaries {
         val lastNode = visible.firstOrNull()
         val last = lastNode?.message
         val event = lastNode?.origin as? MessageOrigin.Event
-        val text = event?.summary ?: last?.previewText().orEmpty()
+        val text = event?.summary ?: last?.listPreviewText().orEmpty()
         val kind = when {
             last == null -> PreviewKind.EMPTY
             text.isNotBlank() -> PreviewKind.TEXT

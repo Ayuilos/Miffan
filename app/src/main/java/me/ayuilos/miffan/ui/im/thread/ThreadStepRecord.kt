@@ -59,11 +59,11 @@ internal data class ThreadStep(
 
 /**
  * The steps behind a reply. Computer actions have their own card, and prompts the user answers
- * (questions, permission requests, refused calls) already show in the chat.
+ * (questions, permission requests, refused calls) and partner messages already show in the chat.
  */
 internal fun threadSteps(parts: List<UIMessagePart>): List<ThreadStep> = parts.mapNotNull { part ->
     (part as? UIMessagePart.Tool)?.takeUnless {
-        it.isComputerTool() || it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
+        it.isComputerTool() || it.isPartnerMessage() || it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
             it.isPending || it.approvalState is ToolApprovalState.Denied
     }?.let(::threadStep)
 }
@@ -111,6 +111,7 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
         "miffan_help" -> step(R.string.im_step_help)
         "get_time_info" -> step(R.string.im_step_time)
         "get_screen_time" -> step(R.string.im_step_screen_time)
+        "list_contacts" -> step(R.string.im_step_contacts)
         // An outside tool may change anything, so it always counts.
         else -> if (tool.toolName.startsWith(MCP_PREFIX)) {
             val name = tool.toolName.removePrefix(MCP_PREFIX)

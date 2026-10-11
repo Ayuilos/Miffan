@@ -23,6 +23,7 @@ import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.model.withInterfaceMode
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.data.thread.PreviewKind
+import me.ayuilos.miffan.data.thread.listPreviewText
 import me.ayuilos.miffan.data.thread.ThreadListPrefs
 import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadListSummaries
@@ -153,7 +154,7 @@ class ImHomeVM(
             val last = summary.last
             ImChatItem(
                 assistant = members.first(),
-                preview = last?.text.orEmpty(),
+                preview = last?.text?.let(::listPreviewText).orEmpty(),
                 previewKind = if (last == null) PreviewKind.EMPTY else PreviewKind.TEXT,
                 previewFromUser = last?.senderId == OWNER_PARTICIPANT_ID,
                 lastActivity = summary.lastActivity,

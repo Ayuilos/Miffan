@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -261,6 +262,8 @@ private fun PartnerChatComposer(
                     onClick = { if (selected) mentions.remove(partner.id) else mentions.add(partner.id) },
                     label = { Text("@" + partnerName(partner)) },
                     leadingIcon = { AssistantAvatar(partner.name, partner.avatar, Modifier.size(20.dp)) },
+                    // Solid, since the chips float over the messages.
+                    colors = FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                 )
             }
         }

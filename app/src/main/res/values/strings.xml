@@ -2684,6 +2684,7 @@
   <string name="im_step_screen_time">Check screen time</string>
   <string name="im_step_mcp">Use %2$s from %1$s</string>
   <string name="im_step_tool">Use %1$s</string>
+  <string name="im_step_contacts">Looked at contacts</string>
   <string name="im_p5_model">Model</string>
   <string name="im_p5_model_default">Default model · %1$s</string>
   <string name="im_p5_model_no_default">No default model yet</string>

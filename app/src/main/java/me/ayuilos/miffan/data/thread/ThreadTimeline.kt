@@ -10,6 +10,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import java.time.Instant
+import me.ayuilos.miffan.utils.stripMarkdown
 import java.time.ZoneId
 import kotlin.uuid.Uuid
 
@@ -274,7 +275,17 @@ object ThreadTimeline {
     }
 }
 
-/** First text of a message on one line, used by quote bars and list previews. */
+/**
+ * The Chats list line for a message: its last text (a reply's conclusion follows its "let me
+ * check"), without Markdown, on one line.
+ */
+fun UIMessage.listPreviewText(): String = listPreviewText(
+    parts.filterIsInstance<UIMessagePart.Text>().lastOrNull { it.text.isNotBlank() }?.text.orEmpty()
+)
+
+fun listPreviewText(text: String): String = text.stripMarkdown().replace(Regex("\\s+"), " ").trim()
+
+/** First text of a message on one line, used by quote bars. */
 fun UIMessage.previewText(): String = parts
     .filterIsInstance<UIMessagePart.Text>()
     .joinToString(" ") { it.text }

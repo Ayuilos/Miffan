@@ -2675,6 +2675,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_step_screen_time">查看屏幕使用时间</string>
   <string name="im_step_mcp">使用 %1$s 的 %2$s</string>
   <string name="im_step_tool">使用工具 %1$s</string>
+  <string name="im_step_contacts">看了看通讯录</string>
   <string name="im_p5_model">模型</string>
   <string name="im_p5_model_default">默认模型 · %1$s</string>
   <string name="im_p5_model_no_default">还没有设置默认模型</string>
