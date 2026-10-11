@@ -138,7 +138,8 @@ internal fun GroupInfoPage(chatId: Uuid) {
     val chat by remember(chatId) { service.observeChat(chatId) }.collectAsStateWithLifecycle(null)
     val settings = LocalSettings.current
     val current = chat ?: run {
-        Scaffold(topBar = { ImPageBar(stringResource(R.string.im_gc_info)) }) {}
+        // Still loading, or just deleted: the bar alone, so back works.
+        Scaffold(topBar = { ImPageBar(stringResource(R.string.im_gc_info)) }) { padding -> Box(Modifier.padding(padding)) }
         return
     }
     val members = current.memberIds.mapNotNull { id -> settings.assistants.firstOrNull { it.id == id } }
