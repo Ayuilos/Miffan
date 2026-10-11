@@ -172,11 +172,12 @@ private fun ImGroupPickerRow(icon: ImageVector?, label: String, selected: Boolea
 }
 
 @Composable
-internal fun ImGroupNameDialog(title: Int, initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun ImGroupNameDialog(title: Int, initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit, allowBlank: Boolean = false) {
     var name by remember { mutableStateOf(initial) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    val valid = name.isNotBlank()
+    // A group chat with no name shows its members' names instead, so clearing the name is allowed there.
+    val valid = allowBlank || name.isNotBlank()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(title)) },

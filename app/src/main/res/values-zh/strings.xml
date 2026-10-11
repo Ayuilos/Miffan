@@ -1881,6 +1881,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_gc_delete_desc">群里的聊天记录会一起删除，伙伴本身不受影响。</string>
   <string name="im_gc_mentions_you">@你</string>
   <string name="im_gc_needs_ok">%1$s需要你确认</string>
+  <string name="im_gc_empty">说点什么吧，你没有 @ 人时由主持来接。</string>
   <string name="im_p5_image">[图片]</string>
   <string name="im_p5_file">[文件]</string>
   <string name="im_p5_you_prefix">我：%1$s</string>

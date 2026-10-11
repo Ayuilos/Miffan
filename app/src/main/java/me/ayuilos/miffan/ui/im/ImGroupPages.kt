@@ -149,7 +149,10 @@ internal fun GroupInfoPage(chatId: Uuid) {
     Scaffold(topBar = { ImPageBar(stringResource(R.string.im_gc_info)) }) { padding ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 24.dp)) {
             item("name") {
-                ImSettingRow(stringResource(R.string.im_gc_name), { renaming = true }, supporting = current.title.ifBlank { null })
+                Box(Modifier.padding(horizontal = 16.dp)) {
+                    ImSettingRow(stringResource(R.string.im_gc_name), { renaming = true },
+                        supporting = current.title.ifBlank { members.map { partnerName(it) }.joinToString(" · ") })
+                }
             }
             item("members") {
                 Text(stringResource(R.string.im_gc_members, members.size), Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
@@ -200,7 +203,8 @@ internal fun GroupInfoPage(chatId: Uuid) {
         }
     }
     if (renaming) ImGroupNameDialog(R.string.im_gc_name, initial = current.title,
-        onConfirm = { title -> renaming = false; scope.launch { service.renameGroup(chatId, title) } }, onDismiss = { renaming = false })
+        onConfirm = { title -> renaming = false; scope.launch { service.renameGroup(chatId, title) } }, onDismiss = { renaming = false },
+        allowBlank = true)
     if (adding) {
         val others = settings.assistants.filter { it.id !in current.memberIds }
         val picked = remember { mutableStateListOf<Uuid>() }

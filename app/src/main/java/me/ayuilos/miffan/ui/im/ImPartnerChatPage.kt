@@ -75,7 +75,9 @@ import me.ayuilos.miffan.data.model.PartnerChat
 import me.ayuilos.miffan.data.model.PartnerChatApproval
 import me.ayuilos.miffan.data.model.PartnerChatMessage
 import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.ui.im.thread.ThreadPartnerMessage
 import me.ayuilos.miffan.ui.im.thread.ThreadToolPrompt
+import me.ayuilos.miffan.ui.im.thread.isPartnerMessage
 import me.ayuilos.miffan.data.partner.PartnerChatService
 import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadTimeline
@@ -150,9 +152,10 @@ internal fun PartnerChatPage(chatId: Uuid, vm: PartnerChatVM = koinViewModel { p
     val messages = state?.messages.orEmpty()
     val typing = state?.typing.orEmpty()
     val group = state?.chat?.isGroup == true
-    val title = state?.chat?.takeIf { group }?.title?.takeIf { it.isNotBlank() }
-        ?.let { "$it (${members.size})" } ?: members.map { partnerName(it) }.joinToString(" · ")
-    LaunchedEffect(messages.size, typing) {
+    val names = members.map { partnerName(it) }.joinToString(" · ")
+    val title = if (group) "${state?.chat?.title?.takeIf { it.isNotBlank() } ?: names} (${members.size})" else names
+    val approvalCount = state?.approvals?.size ?: 0
+    LaunchedEffect(messages.size, typing, approvalCount) {
         vm.markRead()
         // Date labels sit between messages, so follow the list's own last item rather than a message index.
         val last = listState.layoutInfo.totalItemsCount - 1
@@ -163,7 +166,7 @@ internal fun PartnerChatPage(chatId: Uuid, vm: PartnerChatVM = koinViewModel { p
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
             if (state != null && messages.isEmpty() && typing.isEmpty()) item("empty") {
-                Text(stringResource(R.string.im_partner_chat_empty), Modifier.fillMaxWidth().padding(vertical = 64.dp),
+                Text(stringResource(if (group) R.string.im_gc_empty else R.string.im_partner_chat_empty), Modifier.fillMaxWidth().padding(vertical = 64.dp),
                     textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             messages.forEachIndexed { index, message ->
@@ -350,7 +353,8 @@ private fun PartnerChatApprovalCard(approval: PartnerChatApproval, member: Assis
                 Text(stringResource(R.string.im_gc_needs_ok, partnerName(it)), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
             }
-            ThreadToolPrompt(approval.tool, onApproval, onAnswer = { _, _ -> })
+            if (approval.tool.isPartnerMessage()) ThreadPartnerMessage(approval.tool, member, onApproval)
+            else ThreadToolPrompt(approval.tool, onApproval, onAnswer = { _, _ -> })
         }
     }
 }

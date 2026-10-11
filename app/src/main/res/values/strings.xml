@@ -1888,6 +1888,7 @@
   <string name="im_gc_delete_desc">The group\'s messages are deleted too. The partners themselves stay.</string>
   <string name="im_gc_mentions_you">@you</string>
   <string name="im_gc_needs_ok">%1$s needs your OK</string>
+  <string name="im_gc_empty">Say something. The host answers when you don\'t @ anyone.</string>
   <string name="im_p5_image">[Image]</string>
   <string name="im_p5_file">[File]</string>
   <string name="im_p5_you_prefix">You: %1$s</string>
