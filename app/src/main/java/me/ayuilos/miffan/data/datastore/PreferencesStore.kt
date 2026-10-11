@@ -172,6 +172,7 @@ class SettingsStore(
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
         val ASSISTANTS = stringPreferencesKey("assistants")
         val ASSISTANT_TAGS = stringPreferencesKey("assistant_tags")
+        val CHAT_ORGANIZATION = stringPreferencesKey("chat_organization")
         val MIFFAN_HELP_ENABLED = booleanPreferencesKey("miffan_help_enabled")
 
         // 搜索
@@ -268,6 +269,7 @@ class SettingsStore(
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
+                chatOrganization = decodeChatOrganization(preferences[CHAT_ORGANIZATION]),
                 miffanHelpEnabled = preferences[MIFFAN_HELP_ENABLED] != false,
                 providers = JsonInstant
                     .decodeFromString<List<ProviderSetting>>(preferences[PROVIDERS] ?: "[]")
@@ -506,6 +508,7 @@ class SettingsStore(
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
             preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
             preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+            preferences[CHAT_ORGANIZATION] = JsonInstant.encodeToString(settings.chatOrganization)
             preferences[MIFFAN_HELP_ENABLED] = settings.miffanHelpEnabled
 
             preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)

@@ -15,6 +15,7 @@ import me.ayuilos.miffan.data.repository.GenMediaRepository
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.repository.ModelCatalogRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.thread.ChatOrganizationMigration
 import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadRepository
 import me.ayuilos.miffan.data.db.AppDatabase
@@ -54,6 +55,10 @@ val repositoryModule = module {
     single { ThreadRepository(get()) }
 
     single { ThreadListState(get()) }
+
+    single(createdAtStart = true) {
+        ChatOrganizationMigration(get(), get()).also { it.start(get<AppScope>()) }
+    }
 
     single {
         MemoryRepository(get(), get())

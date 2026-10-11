@@ -99,6 +99,7 @@ internal fun ImChatsTab(
         hide = { vm.hide(it.chatId) },
     )
 
+    val current = sections
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = innerPadding,
@@ -107,7 +108,6 @@ internal fun ImChatsTab(
         item("search") {
             ImSearchField(onClick = { navController.navigate(Screen.ImSearch) })
         }
-        val current = sections
         if (current != null && current.pinned.isEmpty() && current.ungrouped.isEmpty() && current.groups.isEmpty()) {
             item("empty") { ImChatsEmpty(onFindPartner) }
         }

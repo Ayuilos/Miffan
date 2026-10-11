@@ -22,26 +22,80 @@ data class ChatOrganization(
     fun groupOf(chatId: Uuid): ChatGroup? = groups.firstOrNull { chatId in it.chatIds }
 
     /** Pins [chatId] after the existing pins; a no-op when already pinned. */
-    fun pin(chatId: Uuid): ChatOrganization = TODO()
+    fun pin(chatId: Uuid): ChatOrganization {
+        val current = normalized()
+        return if (chatId in current.pinned) current else current.copy(pinned = current.pinned + chatId)
+    }
 
-    fun unpin(chatId: Uuid): ChatOrganization = TODO()
+    fun unpin(chatId: Uuid): ChatOrganization {
+        val current = normalized()
+        return if (chatId !in current.pinned) current
+        else current.copy(pinned = current.pinned.filterNot { it == chatId })
+    }
 
     /** Moves [chatId] into [groupId] (appended), or out of every group when [groupId] is null. */
-    fun moveToGroup(chatId: Uuid, groupId: Uuid?): ChatOrganization = TODO()
+    fun moveToGroup(chatId: Uuid, groupId: Uuid?): ChatOrganization {
+        val current = normalized()
+        val target = current.groups.indexOfFirst { it.id == groupId }
+        if (groupId != null && target < 0) return current
+        val moved = current.groups.mapIndexed { index, group ->
+            val members = group.chatIds.filterNot { it == chatId }
+            group.copy(chatIds = if (index == target) members + chatId else members)
+        }
+        return if (moved == current.groups) current else current.copy(groups = moved)
+    }
 
     /** Appends a group named [name] (trimmed, non-blank), optionally moving [chatId] into it. */
-    fun createGroup(name: String, chatId: Uuid? = null, id: Uuid = Uuid.random()): ChatOrganization = TODO()
+    fun createGroup(name: String, chatId: Uuid? = null, id: Uuid = Uuid.random()): ChatOrganization {
+        val current = normalized()
+        val trimmed = name.trim().take(24)
+        if (trimmed.isEmpty()) return current
+        val created = current.copy(groups = current.groups + ChatGroup(id = id, name = trimmed))
+        return if (chatId == null) created else created.moveToGroup(chatId, id)
+    }
 
-    fun renameGroup(groupId: Uuid, name: String): ChatOrganization = TODO()
+    fun renameGroup(groupId: Uuid, name: String): ChatOrganization {
+        val current = normalized()
+        val trimmed = name.trim().take(24)
+        if (trimmed.isEmpty()) return current
+        val renamed = current.groups.map { if (it.id == groupId) it.copy(name = trimmed) else it }
+        return if (renamed == current.groups) current else current.copy(groups = renamed)
+    }
 
     /** Moves a group one place up (-1) or down (+1); out-of-range moves are no-ops. */
-    fun moveGroup(groupId: Uuid, offset: Int): ChatOrganization = TODO()
+    fun moveGroup(groupId: Uuid, offset: Int): ChatOrganization {
+        val current = normalized()
+        if (offset != -1 && offset != 1) return current
+        val index = current.groups.indexOfFirst { it.id == groupId }
+        val target = index + offset
+        if (index < 0 || target !in current.groups.indices) return current
+        val moved = current.groups.toMutableList()
+        moved[target] = current.groups[index]
+        moved[index] = current.groups[target]
+        return current.copy(groups = moved)
+    }
 
     /** Deletes the group only; its chats become ungrouped. */
-    fun deleteGroup(groupId: Uuid): ChatOrganization = TODO()
+    fun deleteGroup(groupId: Uuid): ChatOrganization {
+        val current = normalized()
+        val kept = current.groups.filterNot { it.id == groupId }
+        return if (kept == current.groups) current else current.copy(groups = kept)
+    }
+
+    /** Repairs duplicate pins and memberships that imported data may contain. */
+    private fun normalized(): ChatOrganization = retainChats((pinned + groups.flatMap { it.chatIds }).toSet())
 
     /** Drops pins and group members whose chat no longer exists. Groups themselves are kept. */
-    fun retainChats(existing: Set<Uuid>): ChatOrganization = TODO()
+    fun retainChats(existing: Set<Uuid>): ChatOrganization {
+        val keptPins = pinned.filter { it in existing }.distinct()
+        // The first group wins if imported data contains duplicate membership.
+        val seen = HashSet<Uuid>()
+        val keptGroups = groups.map { group ->
+            group.copy(chatIds = group.chatIds.filter { it in existing && seen.add(it) })
+        }
+        return if (keptPins == pinned && keptGroups == groups) this
+        else copy(pinned = keptPins, groups = keptGroups)
+    }
 }
 
 @Serializable
