@@ -468,6 +468,10 @@ class RouteActivity : ComponentActivity() {
                                 )
                             }
 
+                            entry<Screen.PartnerChat> { key ->
+                                me.ayuilos.miffan.ui.im.PartnerChatPage(chatId = Uuid.parse(key.chatId))
+                            }
+
                             entry<Screen.Onboarding>(
                                 metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
                                     + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }

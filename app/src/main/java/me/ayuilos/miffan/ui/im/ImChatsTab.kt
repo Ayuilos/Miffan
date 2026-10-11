@@ -91,7 +91,9 @@ internal fun ImChatsTab(
     var moving by remember { mutableStateOf<ImChatItem?>(null) }
     var renaming by remember { mutableStateOf<ChatGroup?>(null) }
     var deleting by remember { mutableStateOf<ChatGroup?>(null) }
-    val open: (ImChatItem) -> Unit = { navController.navigate(Screen.Thread(it.chatId.toString())) }
+    val open: (ImChatItem) -> Unit = {
+        navController.navigate(if (it.isPartnerChat) Screen.PartnerChat(it.chatId.toString()) else Screen.Thread(it.chatId.toString()))
+    }
     val actions = ImChatActions(
         open = open,
         setPinned = { chat, pinned -> vm.setPinned(chat.chatId, pinned) },
@@ -231,18 +233,11 @@ private fun ImPinnedChat(chat: ImChatItem, avatarSize: Dp, width: Dp, nameStyle:
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Box {
-                // The mascot consumes taps for its own reactions, so it forwards the open action.
-                AssistantAvatar(
-                    name = chat.assistant.name,
-                    value = chat.assistant.avatar,
-                    loading = chat.typing,
-                    onClick = { actions.open(chat) },
-                    modifier = Modifier.size(avatarSize),
-                )
+                ImChatAvatar(chat, avatarSize, loading = chat.typing) { actions.open(chat) }
                 if (chat.unread > 0) ImUnreadBadge(chat.unread, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp))
             }
             Text(
-                text = chat.assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+                text = imChatTitle(chat),
                 style = nameStyle,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
@@ -307,17 +302,11 @@ private fun ImChatRow(chat: ImChatItem, actions: ImChatActions) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // The mascot consumes taps for its own reactions, so it forwards the row action.
-            AssistantAvatar(
-                name = chat.assistant.name,
-                value = chat.assistant.avatar,
-                onClick = { actions.open(chat) },
-                modifier = Modifier.size(56.dp),
-            )
+            ImChatAvatar(chat, 56.dp) { actions.open(chat) }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = chat.assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+                        text = imChatTitle(chat),
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -337,8 +326,13 @@ private fun ImChatRow(chat: ImChatItem, actions: ImChatActions) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         modifier = Modifier.weight(1f),
-                        text = if (chat.typing) stringResource(R.string.im_chats_typing)
-                            else if (chat.previewFromUser) stringResource(R.string.im_p5_you_prefix, preview) else preview,
+                        text = when {
+                            chat.typing -> stringResource(R.string.im_chats_typing)
+                            chat.previewFromUser -> stringResource(R.string.im_p5_you_prefix, preview)
+                            chat.previewSender != null && preview.isNotEmpty() ->
+                                stringResource(R.string.im_partner_chat_preview, partnerName(chat.previewSender), preview)
+                            else -> preview
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (chat.typing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -394,3 +388,24 @@ private fun imChatTime(instant: Instant): String {
         else -> date.toLocalDate().toLocalString(includeYear = date.year != today.year)
     }
 }
+
+/** A thread shows its partner; a chat between partners shows its first two members overlapping. */
+@Composable
+internal fun ImChatAvatar(chat: ImChatItem, size: Dp, loading: Boolean = false, onClick: () -> Unit) {
+    // The mascot consumes taps for its own reactions, so it forwards the open action.
+    if (!chat.isPartnerChat) AssistantAvatar(
+        name = chat.assistant.name,
+        value = chat.assistant.avatar,
+        loading = loading,
+        onClick = onClick,
+        modifier = Modifier.size(size),
+    ) else ImStackedAvatars(chat.members, size, onClick)
+}
+
+@Composable
+internal fun imChatTitle(chat: ImChatItem): String =
+    chat.members.map { partnerName(it) }.joinToString(" · ")
+
+@Composable
+internal fun partnerName(assistant: me.ayuilos.miffan.data.model.Assistant): String =
+    assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }

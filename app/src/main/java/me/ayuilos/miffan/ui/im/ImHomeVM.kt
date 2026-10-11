@@ -16,6 +16,8 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.ChatGroup
 import me.ayuilos.miffan.data.model.ChatOrganization
+import me.ayuilos.miffan.data.model.OWNER_PARTICIPANT_ID
+import me.ayuilos.miffan.data.partner.PartnerChatService
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.model.withInterfaceMode
@@ -32,8 +34,9 @@ import me.ayuilos.miffan.utils.availableUpdate
 import java.time.Instant
 import kotlin.uuid.Uuid
 
-/** One row of the Chats tab: an assistant's thread. */
+/** One row of the Chats tab: a partner's thread, or a chat between partners. */
 data class ImChatItem(
+    /** The partner of a thread; for a partner chat, its first member. */
     val assistant: Assistant,
     val preview: String,
     val previewKind: PreviewKind,
@@ -43,8 +46,14 @@ data class ImChatItem(
     val unread: Int,
     val pinned: Boolean,
     val typing: Boolean,
+    /** Set for a chat between partners: its id and every partner member. */
+    val partnerChatId: Uuid? = null,
+    val members: List<Assistant> = listOf(assistant),
+    /** Who said the preview line in a partner chat. */
+    val previewSender: Assistant? = null,
 ) {
-    val chatId: Uuid get() = assistant.id
+    val chatId: Uuid get() = partnerChatId ?: assistant.id
+    val isPartnerChat: Boolean get() = partnerChatId != null
 }
 
 /** The Chats tab laid out: pinned chats on top, then ungrouped chats, then each non-empty group. */
@@ -70,6 +79,7 @@ class ImHomeVM(
     private val conversationRepository: ConversationRepository,
     private val chatService: ChatService,
     private val listState: ThreadListState,
+    private val partnerChatService: PartnerChatService,
     private val updateChecker: UpdateChecker,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
@@ -87,7 +97,7 @@ class ImHomeVM(
     fun downloadUpdate(context: Context, download: UpdateDownload) = updateChecker.downloadUpdate(context, download)
 
     /** Threads by latest activity; hidden threads stay out until new activity unless pinned. */
-    private val chats = combine(
+    private val threads = combine(
         settingsStore.settingsFlow,
         conversationRepository.observeLatestConversationOfEachAssistant(),
         chatService.getConversationJobs(),
@@ -126,8 +136,40 @@ class ImHomeVM(
                 ImChatItem(assistant, preview = "", previewKind = PreviewKind.EMPTY, previewFromUser = false,
                     lastActivity = Instant.EPOCH, unread = 0, pinned = true, typing = assistant.id in typingAssistants)
             }
-            (items + unstarted).sortedByDescending { it.lastActivity }
+            items + unstarted
         }
+
+    /** Chats between partners; their back-and-forth is not counted as unread. */
+    private val partnerChats = combine(
+        partnerChatService.observeSummaries(), settingsStore.settingsFlow, listState.value,
+    ) { summaries, settings, prefs ->
+        val assistants = settings.assistants.associateBy { it.id }
+        summaries.mapNotNull { summary ->
+            val members = summary.chat.memberIds.mapNotNull { assistants[it] }
+            if (members.size < 2) return@mapNotNull null
+            val pinned = settings.chatOrganization.isPinned(summary.chat.id)
+            val hiddenAt = prefs.hiddenAt[summary.chat.id.toString()]
+            if (!pinned && hiddenAt != null && summary.lastActivity.toEpochMilli() <= hiddenAt) return@mapNotNull null
+            val last = summary.last
+            ImChatItem(
+                assistant = members.first(),
+                preview = last?.text.orEmpty(),
+                previewKind = if (last == null) PreviewKind.EMPTY else PreviewKind.TEXT,
+                previewFromUser = last?.senderId == OWNER_PARTICIPANT_ID,
+                lastActivity = summary.lastActivity,
+                unread = 0,
+                pinned = pinned,
+                typing = summary.typing.isNotEmpty(),
+                partnerChatId = summary.chat.id,
+                members = members,
+                previewSender = last?.senderId?.let { assistants[it] },
+            )
+        }
+    }
+
+    private val chats = combine(threads, partnerChats) { threads, partnerChats ->
+        (threads + partnerChats).sortedByDescending { it.lastActivity }
+    }
 
     val sections: StateFlow<ImChatSections?> = combine(chats, settingsStore.settingsFlow, listState.value) { chats, settings, prefs ->
         val organization = settings.chatOrganization

@@ -48,7 +48,8 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): I
         when (part) {
             is UIMessagePart.Text -> if (part.text.isNotBlank()) return null
             is UIMessagePart.Reasoning -> return R.string.im_thread_status_thinking
-            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending) null else toolStatus(part.toolName)
+            // A partner message has its own line in the reply, which already says it is asking.
+            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending || part.isPartnerMessage()) null else toolStatus(part.toolName)
             is UIMessagePart.ServerTool -> return toolStatus(part.toolName)
             is UIMessagePart.Image, is UIMessagePart.Audio, is UIMessagePart.Video -> return null
             else -> Unit
@@ -66,7 +67,7 @@ private fun toolStatus(name: String): Int =
  */
 internal fun UIMessagePart.Tool.isThreadPrompt(): Boolean =
     approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered) ||
-        isSettledPermission()
+        isSettledPermission() || isPartnerMessage()
 
 /** A permission card the user (or stopping the reply) already settled; it shrinks to a one-line record in place. */
 internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
