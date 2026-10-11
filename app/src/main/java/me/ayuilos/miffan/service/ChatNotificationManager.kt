@@ -264,7 +264,7 @@ class ChatNotificationManager(
             settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration)) return
         val name = settingsStore.settingsFlow.value.getAssistantById(message.senderId)?.name?.ifBlank { "伙伴" } ?: "伙伴"
         context.sendNotification(CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID, chat.id.hashCode() and Int.MAX_VALUE) {
-            title = chat.title
+            title = partnerChatTitle(chat, settingsStore.settingsFlow.value)
             content = "$name：${message.text.stripMarkdown()}"
             autoCancel = true
             useDefaults = true

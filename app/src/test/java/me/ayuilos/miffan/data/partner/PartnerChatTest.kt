@@ -122,7 +122,7 @@ class PartnerChatTest {
             caller(MessageOrigin.Partner(b.id, Uuid.random(), listOf(b.id, c.id))) to Uuid.random().toString(),
             caller(MessageOrigin.Partner(b.id, Uuid.random(), listOf(b.id, a.id))) to c.id.toString())
         for ((caller, to) in cases) {
-            assertFalse(f.service.needsApproval(caller, to))
+            assertFalse(f.service.needsApproval(caller, to, emptySet()))
             assertEquals("refused", f.service.send(caller, to, "hi").status())
         }
         assertTrue(f.store.chats.isEmpty()); assertTrue(f.settings.value.partnerContactGrants.isEmpty())
@@ -280,11 +280,12 @@ class PartnerChatTest {
             try { f.service.createGroup(ids, ""); fail("Invalid group accepted") } catch (_: IllegalArgumentException) {}
         }
         val id = f.service.createGroup(listOf(a.id, b.id, c.id), "  ")
-        assertEquals("小A、小B、小C", f.store.chat(id)?.title)
+        assertEquals("", f.store.chat(id)?.title)
         assertEquals(a.id, f.store.chat(id)?.hostId)
         try { f.service.setMembers(id, listOf(a.id, a.id)); fail() } catch (_: IllegalArgumentException) {}
         assertEquals(listOf(a.id,b.id,c.id), f.store.chat(id)?.memberIds)
         f.service.renameGroup(id, "x".repeat(40)); assertEquals(24, f.store.chat(id)?.title?.length)
+        f.service.renameGroup(id, "  \n\t "); assertEquals("", f.store.chat(id)?.title)
         try { f.service.setHost(id, Uuid.random()); fail() } catch (_: IllegalArgumentException) {}
         f.service.setHost(id, c.id)
         f.service.setMembers(id, listOf(a.id, b.id)); assertEquals(a.id, f.store.chat(id)?.hostId)
@@ -376,7 +377,7 @@ class PartnerChatTest {
         val chat = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, listOf(a.id,b.id,c.id), "group", Instant.now(), a.id)
         assertEquals(listOf(b.id, OWNER_PARTICIPANT_ID, c.id), parseGroupMentions("@小AB @小A @饭主 @主人 @小C", chat, a.id, settings))
         val context = perspectiveContext(chat, a.id, settings)
-        listOf("group", "小AB", "A introduction", "主持是 小A", "不要 @ 自己", "send_message").forEach { assertTrue(context.contains(it)) }
+        listOf("group", "小AB", "A introduction", "主持是 小A", "不要 @ 自己", "同群成员不能用 send_message 联系", "in_this_group=true", "群外伙伴").forEach { assertTrue(context.contains(it)) }
     }
 
     @Test fun newMembersSkipHistoryUnreadUsesReadAtAndDirectIsAlwaysZero() = runTest {
@@ -447,12 +448,88 @@ class PartnerChatTest {
 
     @Test fun groupPrivateContactStartsAnIndependentExchangeWithoutGroupRoutingBudget() = runTest {
         val f = Fixture(this)
-        val id = f.service.createGroup(listOf(a.id,b.id,c.id), "group")
+        val id = f.service.createGroup(listOf(a.id,b.id), "group")
         val exchange = Uuid.random()
-        repeat(8) { f.store.append(ChatMessage(PartnerChatMessage(Uuid.random(), id, c.id, "group reply", Instant.now(), exchange))) }
-        val perspective = caller(MessageOrigin.Partner(c.id, exchange, emptyList()), id)
-        assertEquals("replied", f.service.send(perspective, b.id.toString(), "private").status())
+        repeat(8) { f.store.append(ChatMessage(PartnerChatMessage(Uuid.random(), id, b.id, "group reply", Instant.now(), exchange))) }
+        val perspective = caller(MessageOrigin.Partner(b.id, exchange, emptyList()), id)
+        assertEquals("replied", f.service.send(perspective, c.id.toString(), "private").status())
         assertNotEquals(exchange, f.store.allMessages.last().message.exchangeId)
+    }
+
+    @Test fun groupContactsMarkMembersAndRefuseTheirPrivateMessagesWithoutApprovalOrGrants() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id,b.id), "group")
+        val perspective = caller(chatId = id)
+        val tools = buildPartnerMessageTools(perspective, f.settingsStore, f.service)
+        val contacts = Json.parseToJsonElement((tools.first().execute(buildJsonObject {}).single() as UIMessagePart.Text).text)
+            .jsonObject.getValue("contacts").jsonArray
+        val byId = contacts.associate { it.jsonObject.getValue("id").jsonPrimitive.content to it.jsonObject }
+        assertTrue(byId.getValue(b.id.toString()).getValue("in_this_group").jsonPrimitive.boolean)
+        assertFalse(byId.getValue(c.id.toString()).getValue("in_this_group").jsonPrimitive.boolean)
+        assertFalse(byId.containsKey(a.id.toString()))
+        fun args(target: Uuid) = buildJsonObject { put("to", target.toString()); put("text", "hello") }
+        assertFalse(tools.last().needsApproval(args(b.id)))
+        assertTrue(tools.last().needsApproval(args(c.id)))
+        val result = Json.parseToJsonElement((tools.last().execute(args(b.id)).single() as UIMessagePart.Text).text).jsonObject
+        assertEquals("refused", result.status())
+        assertEquals("对方就在这个群里，请在群里用 @名字。", result.getValue("reason").jsonPrimitive.content)
+        assertEquals("refused", f.service.send(perspective, b.id.toString(), "direct execution").status())
+        assertTrue(f.settings.value.partnerContactGrants.isEmpty())
+        assertEquals(listOf(id), f.store.chats.keys.toList())
+        assertTrue(f.store.allMessages.isEmpty()); assertTrue(f.generated.isEmpty())
+        f.settings.value = f.settings.value.copy(partnerContactGrants = listOf(PartnerPair.of(a.id,b.id)))
+        assertEquals("refused", f.service.send(perspective, b.id.toString(), "already authorized").status())
+        val outside = Json.parseToJsonElement((tools.last().execute(args(c.id)).single() as UIMessagePart.Text).text).jsonObject
+        assertEquals("replied", outside.status())
+        assertTrue(PartnerPair.of(a.id,c.id) in f.settings.value.partnerContactGrants)
+    }
+
+    @Test fun groupMembershipChangesCannotTurnSkippedApprovalsIntoPrivateContactGrants() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id,b.id), "group")
+        val perspective = caller(chatId = id)
+        val tool = buildPartnerMessageTools(perspective, f.settingsStore, f.service).last()
+        val args = buildJsonObject { put("to", b.id.toString()); put("text", "hello") }
+        assertFalse(tool.needsApproval(args))
+        f.service.setMembers(id, listOf(a.id,c.id))
+        val result = Json.parseToJsonElement((tool.execute(args).single() as UIMessagePart.Text).text).jsonObject
+        assertEquals("refused", result.status())
+        assertTrue(f.settings.value.partnerContactGrants.isEmpty())
+        val fresh = buildPartnerMessageTools(perspective, f.settingsStore, f.service).last()
+        assertTrue(fresh.needsApproval(args))
+        assertFalse(fresh.needsApproval(buildJsonObject { put("to", c.id.toString()); put("text", "hi") }))
+        assertEquals("refused", f.service.send(perspective, c.id.toString(), "new group member").status())
+    }
+
+    @Test fun directContactsRemainAvailableAndAreNotMarkedAsInThisGroup() = runTest {
+        val f = Fixture(this)
+        val id = f.store.direct(a.id,b.id).id
+        val tools = buildPartnerMessageTools(caller(chatId = id), f.settingsStore, f.service)
+        val contacts = Json.parseToJsonElement((tools.first().execute(buildJsonObject {}).single() as UIMessagePart.Text).text)
+            .jsonObject.getValue("contacts").jsonArray
+        assertTrue(contacts.filter { it.jsonObject.getValue("id").jsonPrimitive.content != "owner" }
+            .all { !it.jsonObject.getValue("in_this_group").jsonPrimitive.boolean })
+        val args = buildJsonObject { put("to", b.id.toString()); put("text", "hello") }
+        assertTrue(tools.last().needsApproval(args))
+        assertEquals("replied", Json.parseToJsonElement((tools.last().execute(args).single() as UIMessagePart.Text).text).jsonObject.status())
+    }
+
+    @Test fun blankGroupTitlesStayEmptyAndDisplayNamesFollowCurrentMembersAndNames() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id,b.id), " \n\t ")
+        fun title() = partnerChatTitle(f.store.chats.getValue(id), f.settings.value)
+        assertEquals("", f.store.chat(id)?.title)
+        assertEquals("小A · 小B", title())
+        f.service.setMembers(id, listOf(a.id,c.id))
+        assertEquals("", f.store.chat(id)?.title)
+        assertEquals("小A · 小C", title())
+        f.settings.value = f.settings.value.copy(assistants = listOf(a, b, c.copy(name = "小C新名")))
+        assertEquals("小A · 小C新名", title())
+        assertTrue(perspectiveContext(f.store.chats.getValue(id), a.id, f.settings.value).contains("这是群“${title()}”"))
+        f.service.renameGroup(id, "  Custom  ")
+        assertEquals("Custom", f.store.chat(id)?.title); assertEquals("Custom", title())
+        f.service.renameGroup(id, " \t ")
+        assertEquals("", f.store.chat(id)?.title); assertEquals("小A · 小C新名", title())
     }
 
     @Test fun approvalRuntimeRestoresThePerspectiveBeforeUsingTheExistingCardApprovalPath() = runTest {
