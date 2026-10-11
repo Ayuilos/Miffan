@@ -23,6 +23,8 @@ data class PartnerChat(
     val memberIds: List<Uuid>,
     val title: String = "",
     val createdAt: Instant,
+    /** GROUP only: the partner who takes the owner's messages that mention nobody. */
+    val hostId: Uuid? = null,
 )
 
 /** One message in a [PartnerChat], already final (replies appear once their turn finishes). */
@@ -37,6 +39,8 @@ data class PartnerChatMessage(
     val exchangeId: Uuid? = null,
     /** The message this one answers, when known. */
     val replyTo: Uuid? = null,
+    /** Participants this message @-mentions, possibly [OWNER_PARTICIPANT_ID]. */
+    val mentions: List<Uuid> = emptyList(),
 )
 
 /** A Chats list row for a [PartnerChat]. */
@@ -46,7 +50,27 @@ data class PartnerChatSummary(
     /** Partners whose turn in this chat is running. */
     val typing: Set<Uuid>,
     val lastActivity: Instant,
+    /** GROUP only: partner messages after the owner last read the chat. DIRECT chats are never unread. */
+    val unread: Int = 0,
 )
+
+/** A tool call a member made inside a partner chat that waits for the owner. */
+data class PartnerChatApproval(
+    val memberId: Uuid,
+    val tool: me.rerere.ai.ui.UIMessagePart.Tool,
+)
+
+/** Group limits the owner works within. */
+object PartnerGroupLimits {
+    const val MIN_PARTNERS = 2
+    const val MAX_PARTNERS = 6
+
+    /** Partner messages one owner message can lead to. */
+    const val MESSAGES_PER_ROUND = 8
+
+    /** Times one member can be called on within a round. */
+    const val TURNS_PER_MEMBER = 2
+}
 
 /** Two partners the owner allowed to contact each other; stored normalized so (a, b) == (b, a). */
 @Serializable

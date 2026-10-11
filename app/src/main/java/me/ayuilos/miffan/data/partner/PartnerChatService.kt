@@ -2,12 +2,13 @@ package me.ayuilos.miffan.data.partner
 
 import kotlinx.coroutines.flow.Flow
 import me.ayuilos.miffan.data.model.PartnerChat
+import me.ayuilos.miffan.data.model.PartnerChatApproval
 import me.ayuilos.miffan.data.model.PartnerChatMessage
 import me.ayuilos.miffan.data.model.PartnerChatSummary
 import kotlin.uuid.Uuid
 
 /**
- * Chats with two or more partners (phase 3: two partners). Each partner speaks from its own
+ * Chats with two or more partners: DIRECT chats between two partners and owner-made GROUP chats. Each partner speaks from its own
  * private perspective segment (a hidden [me.ayuilos.miffan.data.model.Conversation] with
  * `chatId` set), so tools, approvals and memory rules work as in its own thread.
  */
@@ -34,4 +35,23 @@ interface PartnerChatService {
 
     /** Takes back the owner's permission for [a] and [b] to contact each other. */
     suspend fun revokeContact(a: Uuid, b: Uuid)
+
+    /** Tool calls by members of [chatId] waiting for the owner, oldest first. */
+    fun observeApprovals(chatId: Uuid): Flow<List<PartnerChatApproval>>
+
+    /** The owner answers a member's pending tool call inside [chatId]. */
+    suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean)
+
+    /** Creates a group of [memberIds] (2–6 partners) hosted by the first member; returns its id. */
+    suspend fun createGroup(memberIds: List<Uuid>, title: String): Uuid
+
+    suspend fun renameGroup(chatId: Uuid, title: String)
+
+    /** Replaces the partner members (2–6); a removed host passes hosting to the first member. */
+    suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>)
+
+    suspend fun setHost(chatId: Uuid, assistantId: Uuid)
+
+    /** Deletes a group with its messages and perspective segments. */
+    suspend fun deleteGroup(chatId: Uuid)
 }

@@ -249,6 +249,15 @@ internal class DefaultPartnerChatService(
             }
         }
 
+    // Phase 4 (docs/agent-collab/P4_DATA_SPEC.md).
+    override fun observeApprovals(chatId: Uuid): Flow<List<me.ayuilos.miffan.data.model.PartnerChatApproval>> = TODO()
+    override suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean): Unit = TODO()
+    override suspend fun createGroup(memberIds: List<Uuid>, title: String): Uuid = TODO()
+    override suspend fun renameGroup(chatId: Uuid, title: String): Unit = TODO()
+    override suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>): Unit = TODO()
+    override suspend fun setHost(chatId: Uuid, assistantId: Uuid): Unit = TODO()
+    override suspend fun deleteGroup(chatId: Uuid): Unit = TODO()
+
     internal suspend fun removeAssistant(assistantId: Uuid) {
         val ids = store.directChatsOf(assistantId)
         ids.forEach { id ->
