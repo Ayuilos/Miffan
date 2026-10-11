@@ -35,12 +35,17 @@ class PartnerChatTest {
         val segments = mutableMapOf<Uuid, Conversation>()
         val runtime = mockk<PartnerChatRuntime>()
         val generated = mutableListOf<Conversation>()
+        val prefs = MutableStateFlow(me.ayuilos.miffan.data.thread.ThreadListPrefs())
+        val notifications = mutableListOf<PartnerChatMessage>()
+        val segmentFlows = mutableMapOf<Uuid, MutableStateFlow<Conversation?>>()
         val service: DefaultPartnerChatService
         init {
             every { settingsStore.settingsFlow } returns settings
             coEvery { settingsStore.update(any<(Settings) -> Settings>()) } coAnswers {
                 settings.value = firstArg<(Settings) -> Settings>()(settings.value)
             }
+            every { runtime.observeSegment(any()) } answers { segmentFlows.getOrPut(firstArg()) { MutableStateFlow(segments[firstArg()]) } }
+            coEvery { runtime.answerApproval(any(), any(), any()) } just Runs
             coEvery { runtime.loadSegment(any()) } coAnswers { segments[firstArg()] }
             coEvery { runtime.saveSegment(any()) } coAnswers { segments[firstArg<Conversation>().id] = firstArg() }
             coEvery { runtime.generate(any()) } coAnswers {
@@ -49,11 +54,14 @@ class PartnerChatTest {
                 "reply"
             }
             coEvery { runtime.keepAlive(any()) } returns {}
+            coEvery { runtime.keepAliveChat(any()) } returns {}
             coEvery { runtime.wake(any(), any(), any(), any()) } just Runs
             coEvery { runtime.ownerNote(any(), any(), any()) } just Runs
             coEvery { runtime.stop(any()) } just Runs
             every { runtime.reportFailure(any(), any()) } just Runs
-            service = DefaultPartnerChatService(store, settingsStore, runtime, scope, timeout)
+            service = DefaultPartnerChatService(store, settingsStore, runtime, scope, timeout, prefs, PartnerGroupNotifications { chat, message, trigger ->
+                if (shouldNotifyGroupMessage(chat, message, trigger)) notifications += message
+            })
         }
     }
 
@@ -265,6 +273,217 @@ class PartnerChatTest {
         val newest = f.generated.last()
         assertEquals(1, newest.currentMessages.count { it.role == MessageRole.ASSISTANT && it.toText() == "parallel IM send" })
     }
+    @Test fun groupValidationTitleHostManagementDeletionAndPartnerCascade() = runTest {
+        val f = Fixture(this)
+        for (ids in listOf(emptyList(), listOf(a.id), listOf(a.id, a.id), listOf(a.id, Uuid.random()),
+            List(7) { Uuid.random() })) {
+            try { f.service.createGroup(ids, ""); fail("Invalid group accepted") } catch (_: IllegalArgumentException) {}
+        }
+        val id = f.service.createGroup(listOf(a.id, b.id, c.id), "  ")
+        assertEquals("小A、小B、小C", f.store.chat(id)?.title)
+        assertEquals(a.id, f.store.chat(id)?.hostId)
+        try { f.service.setMembers(id, listOf(a.id, a.id)); fail() } catch (_: IllegalArgumentException) {}
+        assertEquals(listOf(a.id,b.id,c.id), f.store.chat(id)?.memberIds)
+        f.service.renameGroup(id, "x".repeat(40)); assertEquals(24, f.store.chat(id)?.title?.length)
+        try { f.service.setHost(id, Uuid.random()); fail() } catch (_: IllegalArgumentException) {}
+        f.service.setHost(id, c.id)
+        f.service.setMembers(id, listOf(a.id, b.id)); assertEquals(a.id, f.store.chat(id)?.hostId)
+        f.service.setMembers(id, listOf(a.id, b.id, c.id))
+        f.service.removeAssistant(a.id)
+        assertEquals(listOf(b.id, c.id), f.store.chat(id)?.memberIds); assertEquals(b.id, f.store.chat(id)?.hostId)
+        f.settings.value = f.settings.value.copy(chatOrganization = ChatOrganization().pin(id))
+        f.service.removeAssistant(b.id)
+        assertNull(f.store.chat(id)); assertTrue(f.settings.value.chatOrganization.pinned.isEmpty())
+        val other = f.service.createGroup(listOf(a.id, c.id), "delete")
+        f.service.sendFromOwner(other, "hi"); runCurrent()
+        f.settings.value = f.settings.value.copy(chatOrganization = ChatOrganization().pin(other).createGroup("folder", other))
+        f.service.deleteGroup(other)
+        assertTrue(f.settings.value.chatOrganization.pinned.isEmpty())
+        assertTrue(f.settings.value.chatOrganization.groups.single().chatIds.isEmpty())
+        assertTrue(f.store.chats.isEmpty()); assertTrue(f.store.allMessages.isEmpty())
+        coVerify { f.runtime.stop(any()) }
+    }
+
+    @Test fun groupHostAndMentionsStartInParallelWithCorrectReplyReferences() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id, b.id, c.id), "team")
+        f.service.sendFromOwner(id, "host please"); runCurrent()
+        assertEquals(listOf(a.id), f.generated.map { it.assistantId })
+        assertEquals(f.store.allMessages.first().message.id, f.store.allMessages.last().message.replyTo)
+        f.generated.clear()
+        val gates = mapOf(a.id to CompletableDeferred<String>(), b.id to CompletableDeferred<String>())
+        coEvery { f.runtime.generate(any()) } coAnswers {
+            val segment = firstArg<Conversation>(); f.generated += segment
+            gates.getValue(segment.assistantId).await()
+        }
+        f.service.sendFromOwner(id, "both", listOf(a.id, b.id)); runCurrent()
+        assertEquals(setOf(a.id, b.id), f.generated.map { it.assistantId }.toSet())
+        val owner = f.store.allMessages.last().message
+        assertEquals(listOf(a.id, b.id), owner.mentions)
+        gates.getValue(b.id).complete("B first"); runCurrent()
+        assertEquals(b.id, f.store.allMessages.last().message.senderId)
+        gates.getValue(a.id).complete("A second"); runCurrent()
+        assertTrue(f.store.allMessages.takeLast(2).all { it.message.replyTo == owner.id })
+    }
+
+    @Test fun groupReplyMentionsQueueBusyMemberAndIgnoreSelfAndNotifyOwner() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id, b.id, c.id), "team")
+        val gate = CompletableDeferred<String>()
+        coEvery { f.runtime.generate(any()) } coAnswers {
+            val segment = firstArg<Conversation>(); f.generated += segment
+            if (segment.assistantId == b.id && f.generated.count { it.assistantId == b.id } == 1) gate.await()
+            else if (segment.assistantId == a.id) "@小A @小B help" else "@主人 done"
+        }
+        f.service.sendFromOwner(id, "parallel", listOf(a.id, b.id)); runCurrent()
+        assertEquals(1, f.generated.count { it.assistantId == b.id })
+        assertEquals(listOf(b.id), f.store.allMessages.last().message.mentions)
+        val call = f.store.allMessages.last().message
+        gate.complete("done"); runCurrent()
+        assertEquals(2, f.generated.count { it.assistantId == b.id })
+        assertEquals(call.id, f.store.allMessages.last().message.replyTo)
+        assertTrue(f.generated.last().currentMessages.any { it.toText().contains("help") })
+        assertEquals(listOf(OWNER_PARTICIPANT_ID), f.store.allMessages.last().message.mentions)
+        assertEquals(3, f.notifications.size)
+    }
+
+    @Test fun groupRoundLimitsEightMessagesAndTwoTurnsPerMemberAndResetForNextOwnerMessage() = runTest {
+        val f = Fixture(this)
+        val d = Assistant(name = "小D"); val e = Assistant(name = "小E"); val g = Assistant(name = "小F")
+        f.settings.value = f.settings.value.copy(assistants = listOf(a,b,c,d,e,g))
+        val ids = listOf(a,b,c,d,e,g).map { it.id }
+        val id = f.service.createGroup(ids, "limits")
+        coEvery { f.runtime.generate(any()) } coAnswers {
+            val segment = firstArg<Conversation>(); f.generated += segment
+            "@小A @小B @小C @小D @小E @小F"
+        }
+        f.service.sendFromOwner(id, "go", ids); runCurrent()
+        assertEquals(8, f.generated.size)
+        assertTrue(f.generated.groupingBy { it.assistantId }.eachCount().values.all { it <= 2 })
+        f.service.sendFromOwner(id, "again", ids); runCurrent()
+        assertEquals(16, f.generated.size)
+        val pair = f.service.createGroup(listOf(a.id, b.id), "pair")
+        f.generated.clear(); f.service.sendFromOwner(pair, "ping"); runCurrent()
+        assertEquals(4, f.generated.size)
+        assertEquals(mapOf(a.id to 2, b.id to 2), f.generated.groupingBy { it.assistantId }.eachCount())
+    }
+
+    @Test fun mentionParserPrefersLongNamesRecognizesNicknameAndGroupContextExplainsRules() {
+        val longer = b.copy(name = "小AB")
+        val settings = Settings(assistants = listOf(a.copy(name = "小A"), longer, c)).let {
+            it.copy(displaySetting = it.displaySetting.copy(userNickname = "饭主"))
+        }
+        val chat = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, listOf(a.id,b.id,c.id), "group", Instant.now(), a.id)
+        assertEquals(listOf(b.id, OWNER_PARTICIPANT_ID, c.id), parseGroupMentions("@小AB @小A @饭主 @主人 @小C", chat, a.id, settings))
+        val context = perspectiveContext(chat, a.id, settings)
+        listOf("group", "小AB", "A introduction", "主持是 小A", "不要 @ 自己", "send_message").forEach { assertTrue(context.contains(it)) }
+    }
+
+    @Test fun newMembersSkipHistoryUnreadUsesReadAtAndDirectIsAlwaysZero() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id,b.id), "group")
+        f.service.sendFromOwner(id, "history"); runCurrent()
+        val old = f.store.allMessages.last().message
+        f.service.setMembers(id, listOf(a.id,b.id,c.id))
+        f.service.sendFromOwner(id, "new", listOf(c.id)); runCurrent()
+        assertEquals(listOf("[主人] new"), f.generated.last().currentMessages.map { it.toText() })
+        assertEquals(2, f.service.observeSummaries().first().single().unread)
+        f.prefs.value = me.ayuilos.miffan.data.thread.ThreadListPrefs(readAt = mapOf(id.toString() to old.createdAt.toEpochMilli()))
+        val expected = f.store.allMessages.count { it.message.senderId != OWNER_PARTICIPANT_ID && it.message.createdAt.toEpochMilli() > old.createdAt.toEpochMilli() }
+        assertEquals(expected, f.service.observeSummaries().first().single().unread)
+        val direct = f.store.direct(a.id, b.id)
+        f.service.sendFromOwner(direct.id, "direct"); runCurrent()
+        assertEquals(0, f.service.observeSummaries().first().first { it.chat.id == direct.id }.unread)
+    }
+
+    @Test fun removedMemberWaitingForApprovalStopsAndCannotWriteBack() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id,b.id,c.id), "remove")
+        coEvery { f.runtime.generate(any()) } coAnswers { awaitCancellation() }
+        f.service.sendFromOwner(id, "hello", listOf(b.id)); runCurrent()
+        f.service.setMembers(id, listOf(a.id,c.id)); runCurrent()
+        assertTrue(f.service.observeTyping(id).first().isEmpty())
+        assertEquals(1, f.store.allMessages.size)
+        coVerify { f.runtime.stop(any()) }
+    }
+
+    @Test fun approvalsObserveAllMemberPerspectivesInOrderAndAnswerLoadsCorrectSegment() = runTest {
+        val f = Fixture(this)
+        val id = f.store.direct(a.id, b.id).id
+        f.service.sendFromOwner(id, "hello", listOf(a.id,b.id)); runCurrent()
+        fun pending(call: String) = UIMessagePart.Tool(call, "send_message", "{}", approvalState = me.rerere.ai.ui.ToolApprovalState.Pending)
+        val sa = f.store.member(id, a.id).segmentId!!; val sb = f.store.member(id,b.id).segmentId!!
+        val first = f.segments.getValue(sa).appendMessage(UIMessage.assistant("first").copy(parts = listOf(pending("a"))))
+        val second = f.segments.getValue(sb).appendMessage(UIMessage.assistant("second").copy(parts = listOf(pending("b"))))
+        f.segments[sa] = first; f.segments[sb] = second
+        val approvals = f.service.observeApprovals(id).first()
+        assertEquals(listOf("a", "b"), approvals.map { it.tool.toolCallId })
+        f.service.answerApproval(id, b.id, "b", false)
+        coVerify { f.runtime.answerApproval(second, "b", false) }
+        f.segmentFlows.getValue(sb).value = second.copy(messageNodes = emptyList())
+        assertEquals(listOf("a"), f.service.observeApprovals(id).first().map { it.tool.toolCallId })
+    }
+
+    @Test fun answeringPerspectiveApprovalLetsItsWaitingTurnWriteTheFinalReply() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id,b.id), "approval")
+        val gate = CompletableDeferred<String>()
+        coEvery { f.runtime.generate(any()) } coAnswers {
+            val segment = firstArg<Conversation>()
+            val pending = UIMessagePart.Tool("contact", "send_message", "{}", approvalState = me.rerere.ai.ui.ToolApprovalState.Pending)
+            val saved = segment.appendMessage(UIMessage.assistant("").copy(parts = listOf(pending)))
+            f.segments[segment.id] = saved
+            f.segmentFlows.getOrPut(segment.id) { MutableStateFlow(saved) }.value = saved
+            gate.await()
+        }
+        coEvery { f.runtime.answerApproval(any(), any(), any()) } coAnswers { gate.complete("continued"); Unit }
+        f.service.sendFromOwner(id, "contact please"); runCurrent()
+        assertEquals(listOf("contact"), f.service.observeApprovals(id).first().map { it.tool.toolCallId })
+        assertEquals(1, f.store.allMessages.size)
+        f.service.answerApproval(id, a.id, "contact", true); runCurrent()
+        assertEquals("continued", f.store.allMessages.last().message.text)
+        assertTrue(f.service.observeTyping(id).first().isEmpty())
+    }
+
+    @Test fun groupPrivateContactStartsAnIndependentExchangeWithoutGroupRoutingBudget() = runTest {
+        val f = Fixture(this)
+        val id = f.service.createGroup(listOf(a.id,b.id,c.id), "group")
+        val exchange = Uuid.random()
+        repeat(8) { f.store.append(ChatMessage(PartnerChatMessage(Uuid.random(), id, c.id, "group reply", Instant.now(), exchange))) }
+        val perspective = caller(MessageOrigin.Partner(c.id, exchange, emptyList()), id)
+        assertEquals("replied", f.service.send(perspective, b.id.toString(), "private").status())
+        assertNotEquals(exchange, f.store.allMessages.last().message.exchangeId)
+    }
+
+    @Test fun approvalRuntimeRestoresThePerspectiveBeforeUsingTheExistingCardApprovalPath() = runTest {
+        val chat = mockk<me.ayuilos.miffan.service.ChatService>()
+        val segment = caller(chatId = Uuid.random())
+        coEvery { chat.openThreadSegment(segment.id, segment.assistantId) } just Runs
+        every { chat.handleToolApproval(segment.id, "tool", true, any(), any(), any()) } just Runs
+        val runtime = ChatServicePartnerRuntime(mockk(), mockk(), { chat }, { mockk() })
+        runtime.answerApproval(segment, "tool", true)
+        coVerifyOrder {
+            chat.openThreadSegment(segment.id, segment.assistantId)
+            chat.handleToolApproval(segment.id, "tool", true, "", null, me.rerere.ai.ui.ToolDecisionVia.CARD)
+        }
+    }
+
+    @Test fun groupNotificationDecisionAndNotificationRouteAreCorrect() {
+        val chat = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, listOf(a.id,b.id), "group", Instant.now(), a.id)
+        val owner = PartnerChatMessage(Uuid.random(), chat.id, OWNER_PARTICIPANT_ID, "hello", Instant.now())
+        val reply = PartnerChatMessage(Uuid.random(), chat.id, a.id, "reply", Instant.now(), replyTo = owner.id)
+        assertTrue(shouldNotifyGroupMessage(chat, reply, owner))
+        assertFalse(shouldNotifyGroupMessage(chat, reply, owner, foreground = true))
+        assertFalse(shouldNotifyGroupMessage(chat, reply, owner, enabled = false))
+        val indirect = reply.copy(replyTo = reply.id)
+        assertFalse(shouldNotifyGroupMessage(chat, indirect, reply))
+        assertTrue(shouldNotifyGroupMessage(chat, indirect.copy(mentions = listOf(OWNER_PARTICIPANT_ID)), reply))
+        assertFalse(shouldNotifyGroupMessage(chat.copy(kind = PartnerChatKind.DIRECT), reply, owner))
+        assertEquals(me.ayuilos.miffan.Screen.PartnerChat(chat.id.toString()), me.ayuilos.miffan.notificationDestination(chat.id.toString(), "segment"))
+        assertEquals(me.ayuilos.miffan.Screen.Chat("segment"), me.ayuilos.miffan.notificationDestination(null, "segment"))
+        assertEquals("小A · 小B", partnerChatTitle(chat.copy(kind = PartnerChatKind.DIRECT), Settings(assistants = listOf(a,b))))
+    }
+
 }
 
 internal class FakePartnerStore : PartnerChatStore {
@@ -273,7 +492,7 @@ internal class FakePartnerStore : PartnerChatStore {
     val allMessages = mutableListOf<ChatMessage>()
     private val reserved = mutableMapOf<Uuid, Uuid>()
     private val snapshots = MutableStateFlow(ChatSnapshot(emptyList(), emptyList()))
-    private fun publish() { snapshots.value = ChatSnapshot(chats.values.toList(), allMessages.toList()) }
+    private fun publish() { snapshots.value = ChatSnapshot(chats.values.toList(), allMessages.toList(), members.values.toList()) }
     override fun observeSnapshot() = snapshots
     override fun observeMessages(chatId: Uuid) = snapshots.map { it.messages.filter { m -> m.message.chatId == chatId } }
     override suspend fun chat(chatId: Uuid) = chats[chatId]
@@ -285,11 +504,11 @@ internal class FakePartnerStore : PartnerChatStore {
         publish(); return chat
     }
     override suspend fun member(chatId: Uuid, assistantId: Uuid) = members.getValue(chatId to assistantId)
-    override suspend fun updateMember(member: ChatMember) { members[member.chatId to member.assistantId] = member }
+    override suspend fun updateMember(member: ChatMember) { members[member.chatId to member.assistantId] = member; publish() }
     override suspend fun messages(chatId: Uuid) = allMessages.filter { it.message.chatId == chatId }
     override suspend fun append(message: ChatMessage, reserveReply: Boolean): Boolean {
         val m = message.message; val consumes = m.replyTo in reserved
-        if (m.exchangeId != null && allMessages.count { it.message.exchangeId == m.exchangeId } +
+        if (chats[m.chatId]?.kind != PartnerChatKind.GROUP && m.exchangeId != null && allMessages.count { it.message.exchangeId == m.exchangeId } +
             reserved.values.count { it == m.exchangeId } + (if (reserveReply) 2 else if (consumes) 0 else 1) > 6) return false
         allMessages.add(message)
         if (reserveReply) reserved[m.id] = m.exchangeId!!
@@ -300,6 +519,18 @@ internal class FakePartnerStore : PartnerChatStore {
     override suspend fun abandonReply(messageId: Uuid) { reserved.remove(messageId) }
     override suspend fun ids() = chats.keys.toSet()
     override suspend fun directChatsOf(assistantId: Uuid) = chats.values.filter { assistantId in it.memberIds }.map { it.id }
+    override suspend fun saveGroup(chat: PartnerChat) {
+        chats[chat.id] = chat
+        chat.memberIds.forEach { members.putIfAbsent(chat.id to it, ChatMember(chat.id, it)) }
+        publish()
+    }
+    override suspend fun replaceMembers(chat: PartnerChat) {
+        members.keys.removeAll { it.first == chat.id && it.second !in chat.memberIds }
+        chat.memberIds.forEach { members.putIfAbsent(chat.id to it, ChatMember(chat.id, it, syncedMessageId = messages(chat.id).lastOrNull()?.message?.id)) }
+        saveGroup(chat)
+    }
+    override suspend fun removePerspective(chatId: Uuid, assistantId: Uuid) {}
+    override suspend fun chatsOf(assistantId: Uuid) = chats.values.filter { assistantId in it.memberIds }.map { it.id }
     override suspend fun delete(chatId: Uuid) {
         chats.remove(chatId); members.keys.removeAll { it.first == chatId }; allMessages.removeAll { it.message.chatId == chatId }; publish()
     }

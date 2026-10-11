@@ -2,7 +2,6 @@ package me.ayuilos.miffan.data.partner
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import me.ayuilos.miffan.data.db.AppDatabase
@@ -21,7 +20,7 @@ import kotlin.uuid.Uuid
 internal data class ChatMember(val chatId: Uuid, val assistantId: Uuid,
     val segmentId: Uuid? = null, val syncedMessageId: Uuid? = null)
 internal data class ChatMessage(val message: PartnerChatMessage, val chain: List<Uuid> = emptyList())
-internal data class ChatSnapshot(val chats: List<PartnerChat>, val messages: List<ChatMessage>)
+internal data class ChatSnapshot(val chats: List<PartnerChat>, val messages: List<ChatMessage>, val members: List<ChatMember> = emptyList())
 
 internal interface PartnerChatStore {
     fun observeSnapshot(): Flow<ChatSnapshot>
@@ -37,6 +36,10 @@ internal interface PartnerChatStore {
     suspend fun abandonReply(messageId: Uuid)
     suspend fun ids(): Set<Uuid>
     suspend fun directChatsOf(assistantId: Uuid): List<Uuid>
+    suspend fun saveGroup(chat: PartnerChat)
+    suspend fun replaceMembers(chat: PartnerChat)
+    suspend fun removePerspective(chatId: Uuid, assistantId: Uuid)
+    suspend fun chatsOf(assistantId: Uuid): List<Uuid>
     suspend fun delete(chatId: Uuid)
 }
 
@@ -49,7 +52,7 @@ internal class RoomPartnerChatStore(
     override fun observeSnapshot(): Flow<ChatSnapshot> = combine(
         dao.observeChats(), dao.observeMembers(), dao.observeAllMessages(),
     ) { chats, members, messages ->
-        ChatSnapshot(chats.map { it.model(members.filter { m -> m.chatId == it.id }) }, messages.map { it.model() })
+        ChatSnapshot(chats.map { it.model(members.filter { m -> m.chatId == it.id }) }, messages.map { it.model() }, members.map { it.model() })
     }
     override fun observeMessages(chatId: Uuid): Flow<List<ChatMessage>> =
         dao.observeMessages(chatId.toString()).map { rows -> rows.map { it.model() } }
@@ -81,11 +84,11 @@ internal class RoomPartnerChatStore(
         val count = m.exchangeId?.let { dao.exchangeCount(it.toString()) } ?: 0
         val reserved = reservedReplies.values.count { it == m.exchangeId }
         val consumesReservation = m.replyTo in reservedReplies
-        if (m.exchangeId != null && count + reserved + (if (reserveReply) 2 else if (consumesReservation) 0 else 1) > 6) {
+        if (dao.getChat(m.chatId.toString())?.kind != "GROUP" && m.exchangeId != null && count + reserved + (if (reserveReply) 2 else if (consumesReservation) 0 else 1) > 6) {
             return@withTransaction false
         }
         dao.insert(PartnerChatMessageEntity(m.id.toString(), m.chatId.toString(), m.senderId.toString(), m.text,
-            m.createdAt.toEpochMilli(), m.exchangeId?.toString(), m.replyTo?.toString(), JsonInstant.encodeToString(message.chain)))
+            m.createdAt.toEpochMilli(), m.exchangeId?.toString(), m.replyTo?.toString(), JsonInstant.encodeToString(message.chain), JsonInstant.encodeToString(m.mentions)))
         if (reserveReply) reservedReplies[m.id] = requireNotNull(m.exchangeId)
         if (consumesReservation) reservedReplies.remove(m.replyTo)
         true
@@ -96,20 +99,47 @@ internal class RoomPartnerChatStore(
     override suspend fun abandonReply(messageId: Uuid) { db.withTransaction { reservedReplies.remove(messageId) } }
     override suspend fun ids(): Set<Uuid> = dao.getIds().mapTo(HashSet(), Uuid::parse)
     override suspend fun directChatsOf(assistantId: Uuid): List<Uuid> = dao.directChatsOf(assistantId.toString()).map(Uuid::parse)
-    override suspend fun delete(chatId: Uuid) {
-        // Include orphaned/replaced perspectives as well as the member's current pointer.
-        val members = dao.getMembers(chatId.toString())
-        members.forEach { member ->
-            conversations().getConversationsOfAssistant(Uuid.parse(member.assistantId)).let { flow ->
-                flow.first().filter { it.chatId == chatId }.forEach { conversations().deleteConversation(it) }
-            }
+    override suspend fun saveGroup(chat: PartnerChat) = db.withTransaction {
+        val row = PartnerChatEntity(chat.id.toString(), chat.kind.name, chat.title, chat.createdAt.toEpochMilli(), chat.hostId?.toString())
+        dao.insert(row)
+        dao.update(row)
+        if (dao.getMembers(chat.id.toString()).isEmpty()) {
+            chat.memberIds.forEach { dao.insert(PartnerChatMemberEntity(chat.id.toString(), it.toString(), chat.createdAt.toEpochMilli())) }
         }
+    }
+    override suspend fun replaceMembers(chat: PartnerChat) = db.withTransaction {
+        val old = dao.getMembers(chat.id.toString()).associateBy { it.assistantId }
+        val cursor = dao.getMessages(chat.id.toString()).lastOrNull()?.id
+        val now = Instant.now().toEpochMilli()
+        dao.deleteMembers(chat.id.toString())
+        chat.memberIds.forEach { id ->
+            dao.insert(old[id.toString()]
+                ?: PartnerChatMemberEntity(chat.id.toString(), id.toString(), now, syncedMessageId = cursor))
+        }
+        saveGroup(chat)
+    }
+    override suspend fun chatsOf(assistantId: Uuid): List<Uuid> = dao.chatsOf(assistantId.toString()).map(Uuid::parse)
+    override suspend fun removePerspective(chatId: Uuid, assistantId: Uuid) {
+        deletePerspectives(db.conversationDao().getPartnerSegmentIds(chatId.toString(), assistantId.toString()))
+    }
+    private suspend fun deletePerspectives(ids: List<String>) {
+        ids.forEach { id ->
+            conversations().getConversationById(Uuid.parse(id))?.let { conversations().deleteConversation(it) }
+        }
+    }
+    override suspend fun delete(chatId: Uuid) {
+        // Include removed members' orphaned perspectives, even after an interrupted cleanup.
+        deletePerspectives(db.conversationDao().getPartnerSegmentIds(chatId.toString()))
         dao.delete(chatId.toString())
     }
+
 }
 
 private fun PartnerChatEntity.model(members: List<PartnerChatMemberEntity>) = PartnerChat(
-    Uuid.parse(id), PartnerChatKind.valueOf(kind), members.map { Uuid.parse(it.assistantId) }, title, Instant.ofEpochMilli(createdAt))
+    Uuid.parse(id), PartnerChatKind.valueOf(kind), members.map { Uuid.parse(it.assistantId) }, title, Instant.ofEpochMilli(createdAt), hostId?.let(Uuid::parse))
 private fun PartnerChatMessageEntity.model() = ChatMessage(PartnerChatMessage(Uuid.parse(id), Uuid.parse(chatId),
-    Uuid.parse(senderId), text, Instant.ofEpochMilli(createdAt), exchangeId?.let(Uuid::parse), replyTo?.let(Uuid::parse)),
+    Uuid.parse(senderId), text, Instant.ofEpochMilli(createdAt), exchangeId?.let(Uuid::parse), replyTo?.let(Uuid::parse), JsonInstant.decodeFromString(mentions)),
     JsonInstant.decodeFromString(chain))
+
+private fun PartnerChatMemberEntity.model() = ChatMember(Uuid.parse(chatId), Uuid.parse(assistantId),
+    perspectiveSegmentId?.let(Uuid::parse), syncedMessageId?.let(Uuid::parse))

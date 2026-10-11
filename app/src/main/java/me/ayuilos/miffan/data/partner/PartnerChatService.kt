@@ -25,8 +25,9 @@ interface PartnerChatService {
     fun observeTyping(chatId: Uuid): Flow<Set<Uuid>>
 
     /**
-     * The owner speaks in [chatId]. The mentioned partners answer, in order; with no mention,
-     * the partner who spoke last answers. Returns once the message is stored, not when answered.
+     * The owner speaks in [chatId]. DIRECT mentions answer in order, or the last speaker answers.
+     * GROUP mentions answer concurrently, or the host answers when nobody is mentioned.
+     * Returns once the message is stored, not when answered.
      */
     suspend fun sendFromOwner(chatId: Uuid, text: String, mentions: List<Uuid> = emptyList())
 

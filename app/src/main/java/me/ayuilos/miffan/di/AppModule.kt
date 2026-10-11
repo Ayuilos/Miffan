@@ -116,7 +116,11 @@ val appModule = module {
     single<me.ayuilos.miffan.data.partner.PartnerChatRuntime> {
         me.ayuilos.miffan.data.partner.ChatServicePartnerRuntime(get(), get(), { get<ChatService>() }, { get<ThreadService>() })
     }
-    single { me.ayuilos.miffan.data.partner.DefaultPartnerChatService(get(), get(), get(), get<AppScope>()) }
+    single { me.ayuilos.miffan.data.partner.DefaultPartnerChatService(get(), get(), get(), get<AppScope>(),
+        listPrefs = get<me.ayuilos.miffan.data.thread.ThreadListState>().value,
+        notifications = me.ayuilos.miffan.data.partner.PartnerGroupNotifications { chat, message, trigger ->
+            get<ChatNotificationManager>().notifyGroupMessage(chat, message, trigger)
+        }) }
     single<me.ayuilos.miffan.data.partner.PartnerChatService> { get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>() }
 
     single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>()) }

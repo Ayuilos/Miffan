@@ -280,14 +280,14 @@ class RouteActivity : ComponentActivity() {
         super.onNewIntent(intent)
         normalLauncherEntry = isNormalLauncherEntry(intent)
         // Navigate to the chat screen if a conversation ID is provided
-        intent.getStringExtra("conversationId")?.let { text ->
-            navStack?.add(Screen.Chat(text))
+        notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"))?.let {
+            navStack?.add(it)
         }
     }
 
     private fun isNormalLauncherEntry(intent: Intent?): Boolean = intent != null &&
         (intent.action == Intent.ACTION_MAIN || intent.action == null) && intent.data == null &&
-        !intent.hasExtra("conversationId") && !intent.hasExtra(Intent.EXTRA_TEXT) &&
+        !intent.hasExtra("chatId") && !intent.hasExtra("conversationId") && !intent.hasExtra(Intent.EXTRA_TEXT) &&
         !intent.hasExtra(Intent.EXTRA_STREAM)
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -323,7 +323,7 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
-        val startScreen: Screen = if (settings.isNotConfigured()) {
+        val startScreen: Screen = notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId")) ?: if (settings.isNotConfigured()) {
             Screen.Onboarding
         } else if (settings.isImMode) {
             Screen.Home
@@ -965,4 +965,11 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Stats : Screen
+}
+
+/** Shared by cold launches and notification taps while the activity is already running. */
+internal fun notificationDestination(chatId: String?, conversationId: String?): Screen? = when {
+    chatId != null -> Screen.PartnerChat(chatId)
+    conversationId != null -> Screen.Chat(conversationId)
+    else -> null
 }

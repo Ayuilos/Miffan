@@ -16,6 +16,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import me.ayuilos.miffan.data.model.*
+import me.ayuilos.miffan.data.partner.*
+import me.ayuilos.miffan.data.datastore.getAssistantById
+import me.ayuilos.miffan.utils.stripMarkdown
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.get
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.AppScope
@@ -46,7 +52,7 @@ class ChatNotificationManager(
     conversationRepo: () -> ConversationRepository,
     eventBus: AppEventBus,
     settingsStore: () -> SettingsStore,
-) {
+) : KoinComponent {
     // Keep event subscriptions eager without opening the database/settings graph at process start.
     private val conversationRepo by lazy(conversationRepo)
     private val settingsStore by lazy(settingsStore)
@@ -124,21 +130,24 @@ class ChatNotificationManager(
             // Read the persisted state, not an old event payload: an answer may already have arrived.
             combine(
                 conversationRepo.observeConversation(conversationId)
-                    .map { it?.pendingApprovalTools().orEmpty() }.distinctUntilChanged(),
+                    .distinctUntilChanged(),
                 isForeground,
-            ) { tools, foreground -> tools to foreground }.collect { (tools, foreground) ->
+            ) { segment, foreground -> segment to foreground }.collect { (segment, foreground) ->
+                val tools = segment?.pendingApprovalTools().orEmpty()
+                val chat = segment?.chatId?.let { get<PartnerChatStore>().chat(it) }
+                val titleName = chat?.let { partnerChatTitle(it, settingsStore.settingsFlow.value) } ?: senderName
                 val summary = approvalNotificationSummary(tools) { id, args -> context.getString(id, *args.toTypedArray()) }
                 if (summary == null) {
                     cancelApprovalNotification(conversationId)
                 } else if (!foreground) {
                     context.sendNotification(CHAT_APPROVAL_NOTIFICATION_CHANNEL_ID, approvalNotificationId(conversationId)) {
-                        title = context.getString(R.string.notification_approval_title, senderName)
+                        title = if (chat != null) titleName else context.getString(R.string.notification_approval_title, titleName)
                         content = summary
                         autoCancel = true
                         onlyAlertOnce = true
                         useDefaults = true
                         category = NotificationCompat.CATEGORY_MESSAGE
-                        contentIntent = getPendingIntent(context, conversationId)
+                        contentIntent = getPendingIntent(context, conversationId, chat?.id)
                     }
                 }
             }
@@ -250,10 +259,25 @@ class ChatNotificationManager(
         }
     }
 
-    private fun getPendingIntent(context: Context, conversationId: Uuid): PendingIntent {
+    internal fun notifyGroupMessage(chat: PartnerChat, message: PartnerChatMessage, trigger: PartnerChatMessage) {
+        if (!shouldNotifyGroupMessage(chat, message, trigger, isForeground.value,
+            settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration)) return
+        val name = settingsStore.settingsFlow.value.getAssistantById(message.senderId)?.name?.ifBlank { "伙伴" } ?: "伙伴"
+        context.sendNotification(CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID, chat.id.hashCode() and Int.MAX_VALUE) {
+            title = chat.title
+            content = "$name：${message.text.stripMarkdown()}"
+            autoCancel = true
+            useDefaults = true
+            category = NotificationCompat.CATEGORY_MESSAGE
+            contentIntent = getPendingIntent(context, chat.id, chat.id)
+        }
+    }
+
+    private fun getPendingIntent(context: Context, conversationId: Uuid, chatId: Uuid? = null): PendingIntent {
         val intent = Intent(context, RouteActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("conversationId", conversationId.toString())
+            if (chatId != null) putExtra("chatId", chatId.toString())
+            else putExtra("conversationId", conversationId.toString())
         }
         return PendingIntent.getActivity(
             context,
