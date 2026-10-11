@@ -1847,6 +1847,19 @@
   <string name="im_chats_delete_group_title">刪除分組「%1$s」？</string>
   <string name="im_chats_delete_group_desc">分組中的聊天會移出分組，聊天記錄不受影響。</string>
   <string name="im_chats_long_press_hint">長按聊天可置頂、移到分組或不顯示。不顯示的聊天有新訊息時會重新出現。</string>
+  <string name="im_partner_chat_empty">它們還沒聊過。</string>
+  <string name="im_partner_chat_hint">點上面的夥伴，選誰來回答</string>
+  <string name="im_partner_chat_preview">%1$s：%2$s</string>
+  <string name="im_partner_msg_permission_title">讓%1$s聯絡%2$s嗎？</string>
+  <string name="im_partner_msg_permission_desc">允許後，它們之後可以直接互傳訊息。可以在資料卡裡撤回許可。</string>
+  <string name="im_partner_msg_asking">正在問%1$s…</string>
+  <string name="im_partner_msg_replied">和%1$s聊了</string>
+  <string name="im_partner_msg_pending">%1$s稍後回覆</string>
+  <string name="im_partner_msg_refused">沒聯絡上%1$s</string>
+  <string name="im_partner_msg_declined">你沒讓它聯絡%1$s</string>
+  <string name="im_partner_contacts">可以聯絡的夥伴</string>
+  <string name="im_partner_contacts_none">還沒允許它聯絡其他夥伴。</string>
+  <string name="im_partner_contacts_revoke">撤回許可</string>
   <string name="im_p5_image">[圖片]</string>
   <string name="im_p5_file">[檔案]</string>
   <string name="im_p5_you_prefix">我：%1$s</string>
@@ -2653,6 +2666,7 @@
   <string name="im_step_screen_time">查看螢幕使用時間</string>
   <string name="im_step_mcp">使用 %1$s 的 %2$s</string>
   <string name="im_step_tool">使用工具 %1$s</string>
+  <string name="im_step_contacts">看了看通訊錄</string>
   <string name="im_p5_model">模型</string>
   <string name="im_p5_model_default">預設模型 · %1$s</string>
   <string name="im_p5_model_no_default">尚未設定預設模型</string>

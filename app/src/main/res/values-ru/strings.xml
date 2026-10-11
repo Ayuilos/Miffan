@@ -1849,6 +1849,19 @@
   <string name="im_chats_delete_group_title">Удалить группу «%1$s»?</string>
   <string name="im_chats_delete_group_desc">Чаты останутся вне группы. История переписки сохранится.</string>
   <string name="im_chats_long_press_hint">Нажмите и удерживайте чат, чтобы закрепить его, переместить в группу или скрыть. Скрытые чаты появятся снова с новыми сообщениями.</string>
+  <string name="im_partner_chat_empty">Они ещё не общались.</string>
+  <string name="im_partner_chat_hint">Нажмите на партнёра сверху, чтобы выбрать, кто ответит</string>
+  <string name="im_partner_chat_preview">%1$s: %2$s</string>
+  <string name="im_partner_msg_permission_title">Разрешить %1$s связаться с %2$s?</string>
+  <string name="im_partner_msg_permission_desc">После разрешения они смогут писать друг другу напрямую. Разрешение можно отозвать в профиле.</string>
+  <string name="im_partner_msg_asking">Спрашиваем %1$s…</string>
+  <string name="im_partner_msg_replied">Поговорили с %1$s</string>
+  <string name="im_partner_msg_pending">%1$s ответит позже</string>
+  <string name="im_partner_msg_refused">Не удалось связаться с %1$s</string>
+  <string name="im_partner_msg_declined">Вы не разрешили связаться с %1$s</string>
+  <string name="im_partner_contacts">Партнёры, с которыми можно связаться</string>
+  <string name="im_partner_contacts_none">Связь с другими партнёрами пока не разрешена.</string>
+  <string name="im_partner_contacts_revoke">Отозвать разрешение</string>
   <string name="im_p5_image">[Изображение]</string>
   <string name="im_p5_file">[Файл]</string>
   <string name="im_p5_you_prefix">Вы: %1$s</string>
@@ -2655,6 +2668,7 @@
   <string name="im_step_screen_time">Проверка экранного времени</string>
   <string name="im_step_mcp">%2$s из %1$s</string>
   <string name="im_step_tool">Инструмент %1$s</string>
+  <string name="im_step_contacts">Просмотр контактов</string>
   <string name="im_p5_model">Модель</string>
   <string name="im_p5_model_default">Модель по умолчанию · %1$s</string>
   <string name="im_p5_model_no_default">Модель по умолчанию не выбрана</string>

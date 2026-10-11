@@ -1849,6 +1849,19 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_chats_delete_group_title">グループ「%1$s」を削除しますか？</string>
   <string name="im_chats_delete_group_desc">グループ内のチャットはグループから外れます。履歴は削除されません。</string>
   <string name="im_chats_long_press_hint">チャットを長押しすると、固定・グループへの移動・非表示ができます。非表示のチャットは新しいメッセージが届くと再表示されます。</string>
+  <string name="im_partner_chat_empty">まだ会話していません。</string>
+  <string name="im_partner_chat_hint">上のパートナーをタップして、誰が返事をするか選んでください</string>
+  <string name="im_partner_chat_preview">%1$s：%2$s</string>
+  <string name="im_partner_msg_permission_title">%1$s が %2$s に連絡してもいいですか？</string>
+  <string name="im_partner_msg_permission_desc">許可すると、今後はお互いに直接メッセージを送れます。プロフィールで許可を取り消せます。</string>
+  <string name="im_partner_msg_asking">%1$s に聞いています…</string>
+  <string name="im_partner_msg_replied">%1$s と話しました</string>
+  <string name="im_partner_msg_pending">%1$s は後で返事をします</string>
+  <string name="im_partner_msg_refused">%1$s に連絡できませんでした</string>
+  <string name="im_partner_msg_declined">%1$s への連絡を許可しませんでした</string>
+  <string name="im_partner_contacts">連絡できるパートナー</string>
+  <string name="im_partner_contacts_none">ほかのパートナーへの連絡はまだ許可されていません。</string>
+  <string name="im_partner_contacts_revoke">許可を取り消す</string>
   <string name="im_p5_image">[画像]</string>
   <string name="im_p5_file">[ファイル]</string>
   <string name="im_p5_you_prefix">自分：%1$s</string>
@@ -2655,6 +2668,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_step_screen_time">スクリーンタイムを確認</string>
   <string name="im_step_mcp">%1$s の %2$s を使用</string>
   <string name="im_step_tool">%1$s を使用</string>
+  <string name="im_step_contacts">連絡先を確認</string>
   <string name="im_p5_model">モデル</string>
   <string name="im_p5_model_default">デフォルトモデル · %1$s</string>
   <string name="im_p5_model_no_default">デフォルトモデルが未設定です</string>
