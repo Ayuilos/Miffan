@@ -7,7 +7,6 @@ import me.ayuilos.miffan.data.ai.tools.workspaceArtifacts
 import me.ayuilos.miffan.ui.components.message.EditedFilesList
 import android.content.ClipData
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -15,17 +14,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.im.ImPressMenu
+import me.ayuilos.miffan.ui.im.ImPressMenuItem
+import me.ayuilos.miffan.ui.im.imLongPress
+import me.ayuilos.miffan.ui.im.rememberPressMenu
 import me.ayuilos.miffan.data.ai.computer.PartnerComputer
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
@@ -112,10 +112,9 @@ internal fun ThreadMessageBubble(
     onComputerScreen: () -> Unit = {},
     assistant: Assistant? = null,
 ) {
-    var menu by remember { mutableStateOf(false) }
+    val menu = rememberPressMenu()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
     val tts = LocalTTSState.current
     val speaking by tts.isSpeaking.collectAsState()
     val canSpeak by tts.isAvailable.collectAsState()
@@ -156,12 +155,9 @@ internal fun ThreadMessageBubble(
         horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
         Box(Modifier.widthIn(max = threadBubbleMaxWidth())) {
             Surface(shape = RoundedCornerShape(20.dp),
-                border = if (highlighted || menu) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                border = if (highlighted || menu.at != null) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                 color = if (highlighted) MaterialTheme.colorScheme.secondaryContainer else if (user) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    menu = true
-                })) {
+                modifier = Modifier.imLongPress(menu::open)) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item.quote?.let { quote ->
                         val color = threadTopicColor(quote.topicIndex)
@@ -200,47 +196,25 @@ internal fun ThreadMessageBubble(
                 }
             }
             val text = item.message.previewText()
-            ThreadActionMenu(expanded = menu, onDismiss = { menu = false }) {
-                ThreadAction(HugeIcons.Reply, stringResource(R.string.im_thread_reply)) { menu = false; onReply() }
-                if (text.isNotBlank()) ThreadAction(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
-                    menu = false
+            ImPressMenu(menu) {
+                ImPressMenuItem(HugeIcons.Reply, stringResource(R.string.im_thread_reply)) { menu.close(); onReply() }
+                if (text.isNotBlank()) ImPressMenuItem(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
+                    menu.close()
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", item.message.toText()))) }
                 }
-                if (item.canRegenerate) ThreadAction(HugeIcons.Refresh01, stringResource(R.string.im_thread_regenerate)) { menu = false; onRegenerate() }
+                if (item.canRegenerate) ImPressMenuItem(HugeIcons.Refresh01, stringResource(R.string.im_thread_regenerate)) { menu.close(); onRegenerate() }
                 if (canSpeak && !user && text.isNotBlank()) {
-                    ThreadAction(if (speaking) HugeIcons.VolumeOff else HugeIcons.VolumeHigh,
+                    ImPressMenuItem(if (speaking) HugeIcons.VolumeOff else HugeIcons.VolumeHigh,
                         stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {
-                        menu = false
+                        menu.close()
                         if (speaking) tts.stop() else tts.speak(text)
                     }
                 }
-                ThreadAction(HugeIcons.Filter, stringResource(R.string.im_thread_filter)) { menu = false; onFilter() }
+                ImPressMenuItem(HugeIcons.Filter, stringResource(R.string.im_thread_filter)) { menu.close(); onFilter() }
             }
         }
     }
     status?.let { ThreadLiveStatusRow(assistant, assistantGenerationPhase(item.message, loading = true), it) }
-}
-
-/** The single entry point for acting on a message: long press opens the same kind of sheet as professional mode. */
-@Composable
-internal fun ThreadActionMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    if (!expanded) return
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
-    }
-}
-
-@Composable
-internal fun ThreadAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Card(onClick = onClick, shape = MaterialTheme.shapes.medium) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Icon(icon, null, Modifier.padding(4.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium)
-        }
-    }
 }
 
 @Composable
@@ -250,8 +224,7 @@ internal fun ThreadTyping(assistant: Assistant?) {
 
 @Composable
 internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () -> Unit, onDismiss: () -> Unit) {
-    var menu by remember { mutableStateOf(false) }
-    val haptic = LocalHapticFeedback.current
+    val menu = rememberPressMenu()
     val detail = error.error.message.orEmpty().lowercase(Locale.ROOT)
     // The reply still arrives without tools, so this is a notice rather than a failed reply.
     val toolsOff = error.solution == ChatErrorSolution.EnableModelTools
@@ -266,11 +239,8 @@ internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () 
     Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Box(Modifier.widthIn(max = threadBubbleMaxWidth())) {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer,
-                border = if (menu) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    menu = true
-                })) {
+                border = if (menu.at != null) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                modifier = Modifier.imLongPress(menu::open)) {
                 Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(HugeIcons.Alert01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
@@ -280,9 +250,9 @@ internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () 
                     else Spacer(Modifier.width(10.dp))
                 }
             }
-            ThreadActionMenu(expanded = menu, onDismiss = { menu = false }) {
-                if (retry) ThreadAction(HugeIcons.Refresh01, stringResource(R.string.im_thread_retry)) { menu = false; onRetry() }
-                ThreadAction(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss)) { menu = false; onDismiss() }
+            ImPressMenu(menu) {
+                if (retry) ImPressMenuItem(HugeIcons.Refresh01, stringResource(R.string.im_thread_retry)) { menu.close(); onRetry() }
+                ImPressMenuItem(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss)) { menu.close(); onDismiss() }
             }
         }
     }
