@@ -205,24 +205,24 @@ private fun ImPinnedChats(chats: List<ImChatItem>, actions: ImChatActions) {
     val modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp)
     when {
         chats.size == 1 -> Box(modifier, contentAlignment = Alignment.Center) {
-            ImPinnedChat(chats.single(), 96.dp, MaterialTheme.typography.titleMedium, actions)
+            ImPinnedChat(chats.single(), 96.dp, 220.dp, MaterialTheme.typography.titleMedium, actions)
         }
         chats.size <= 3 -> Row(modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            chats.forEach { ImPinnedChat(it, 76.dp, MaterialTheme.typography.bodyLarge, actions) }
+            chats.forEach { ImPinnedChat(it, 76.dp, 112.dp, MaterialTheme.typography.bodyLarge, actions) }
         }
         else -> LazyRow(modifier, contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(chats, key = { it.chatId.toString() }) { ImPinnedChat(it, 64.dp, MaterialTheme.typography.bodyMedium, actions) }
+            items(chats, key = { it.chatId.toString() }) { ImPinnedChat(it, 64.dp, 92.dp, MaterialTheme.typography.bodyMedium, actions) }
         }
     }
 }
 
 @Composable
-private fun ImPinnedChat(chat: ImChatItem, avatarSize: Dp, nameStyle: TextStyle, actions: ImChatActions) {
+private fun ImPinnedChat(chat: ImChatItem, avatarSize: Dp, width: Dp, nameStyle: TextStyle, actions: ImChatActions) {
     val menu = rememberPressMenu()
     Box {
         Column(
             modifier = Modifier
-                .width(avatarSize + 28.dp)
+                .width(width)
                 .clip(RoundedCornerShape(20.dp))
                 .imLongPress(menu::open)
                 .clickable { actions.open(chat) }
