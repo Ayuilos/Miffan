@@ -27,7 +27,7 @@ enum class MessageSearchSort(val orderBy: String) {
 
 private const val TAG = "MessageFtsManager"
 
-class MessageFtsManager(private val database: AppDatabase) {
+class MessageFtsManager(private val database: AppDatabase, private val imMode: () -> Boolean = { false }) {
 
     private val db get() = database.openHelper.writableDatabase
 
@@ -72,10 +72,11 @@ class MessageFtsManager(private val database: AppDatabase) {
                    simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet
             FROM message_fts
             WHERE text MATCH jieba_query(?)
+              AND (? = 0 OR conversation_id IN (SELECT id FROM conversationentity WHERE chat_id IS NULL))
             ORDER BY ${sort.orderBy}
             LIMIT 50
             """.trimIndent(),
-            arrayOf(keyword)
+            arrayOf<Any>(keyword, if (imMode()) 1 else 0)
         )
         Log.i(TAG, "search: $keyword")
         cursor.use {

@@ -415,6 +415,7 @@ class ConversationRepository(
             selectedRootId = conversation.selectedRootId?.toString() ?: "",
             threadSummary = conversation.threadSummary,
             threadClosedAt = conversation.threadClosedAt,
+            chatId = conversation.chatId?.toString(),
         )
     }
 
@@ -439,6 +440,7 @@ class ConversationRepository(
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
             threadSummary = conversationEntity.threadSummary,
             threadClosedAt = conversationEntity.threadClosedAt,
+            chatId = conversationEntity.chatId?.let(Uuid::parse),
         )
     }
 
@@ -479,6 +481,7 @@ class ConversationRepository(
             updateAt = Instant.ofEpochMilli(entity.updateAt),
             messageNodes = emptyList(),
             folderId = entity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
+            chatId = entity.chatId?.let(Uuid::parse),
         )
     }
 
@@ -570,6 +573,7 @@ data class LightConversationEntity(
     val createAt: Long,
     val updateAt: Long,
     val folderId: String = "",
+    val chatId: String? = null,
 )
 
 data class ConversationPageResult(

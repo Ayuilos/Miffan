@@ -12,6 +12,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.ayuilos.miffan.R
@@ -36,31 +41,56 @@ class ChatGenerationForegroundService : Service() {
 
         const val NOTIFICATION_ID = 2002
 
-        fun acquire(context: Context, generationId: Uuid, conversationId: Uuid): Boolean {
-            val intent = Intent(context, ChatGenerationForegroundService::class.java).apply {
-                action = ACTION_ACQUIRE
-                putExtra(EXTRA_GENERATION_ID, generationId.toString())
-                putExtra(EXTRA_CONVERSATION_ID, conversationId.toString())
-            }
-            return runCatching {
-                ContextCompat.startForegroundService(context, intent)
-                true
-            }.onFailure {
-                Log.e(TAG, "Unable to start chat generation foreground service", it)
-            }.getOrDefault(false)
-        }
+        private var instance: ChatGenerationForegroundService? = null
+        private val starting = mutableMapOf<Uuid, CompletableDeferred<Boolean>>()
+        private var keeper: GenerationKeepAlive? = null
 
-        fun release(context: Context, generationId: Uuid) {
-            val intent = Intent(context, ChatGenerationForegroundService::class.java).apply {
-                action = ACTION_RELEASE
-                putExtra(EXTRA_GENERATION_ID, generationId.toString())
+        private fun keeper(context: Context): GenerationKeepAlive = keeper ?: GenerationKeepAlive(
+            object : GenerationKeepAliveBackend {
+                override suspend fun acquireForeground(id: Uuid, conversationId: Uuid): Boolean =
+                    withContext(Dispatchers.Main.immediate) {
+                        instance?.takeIf { it.isForeground }?.let { service ->
+                            service.activeGenerations[id.toString()] = conversationId.toString()
+                            // The process already owns an FGS; do not request a new background start.
+                            return@withContext true
+                        }
+                        val ready = CompletableDeferred<Boolean>()
+                        starting[id] = ready
+                        try {
+                            val intent = Intent(context, ChatGenerationForegroundService::class.java).apply {
+                                action = ACTION_ACQUIRE
+                                putExtra(EXTRA_GENERATION_ID, id.toString())
+                                putExtra(EXTRA_CONVERSATION_ID, conversationId.toString())
+                            }
+                            ContextCompat.startForegroundService(context, intent)
+                            ready.await()
+                        } catch (e: CancellationException) {
+                            withContext(NonCancellable) { instance?.releaseId(id.toString()) }
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "FGS unavailable; using expedited work", e)
+                            false
+                        } finally {
+                            starting.remove(id)
+                        }
+                    }
+                override suspend fun acquireExpedited(id: Uuid, conversationId: Uuid) {
+                    ChatGenerationKeepAliveWorker.acquire(context, id)
+                }
+                override suspend fun releaseForeground(id: Uuid) {
+                    withContext(Dispatchers.Main.immediate) { instance?.releaseId(id.toString()) }
+                }
+                override suspend fun releaseExpedited(id: Uuid) {
+                    ChatGenerationKeepAliveWorker.release(id)
+                }
             }
-            runCatching {
-                context.startService(intent)
-            }.onFailure {
-                Log.e(TAG, "Unable to release chat generation foreground service", it)
-            }
-        }
+        ).also { keeper = it }
+
+        suspend fun acquire(context: Context, generationId: Uuid, conversationId: Uuid): Boolean =
+            withContext(Dispatchers.Main.immediate) { keeper(context.applicationContext).acquire(generationId, conversationId) }
+
+        suspend fun release(context: Context, generationId: Uuid) =
+            withContext(NonCancellable + Dispatchers.Main.immediate) { keeper(context.applicationContext).release(generationId) }
     }
 
     private val activeGenerations = linkedMapOf<String, String>()
@@ -70,6 +100,11 @@ class ChatGenerationForegroundService : Service() {
     private var latestStartId = 0
     private val appScope: AppScope by inject()
     private val chatService: ChatService by inject()
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -84,6 +119,8 @@ class ChatGenerationForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
+        starting.values.forEach { it.complete(false) }
         activeGenerations.clear()
         if (isForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -109,12 +146,20 @@ class ChatGenerationForegroundService : Service() {
     private fun acquire(intent: Intent) {
         val generationId = intent.getStringExtra(EXTRA_GENERATION_ID) ?: return stopService()
         val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID) ?: return stopService()
+        val ready = starting[Uuid.parse(generationId)]
+        if (ready == null) return stopService()
         activeGenerations[generationId] = conversationId
         updateForegroundNotification(conversationId)
+        if (isForeground) instance = this
+        ready.complete(isForeground)
     }
 
     private fun release(intent: Intent) {
-        intent.getStringExtra(EXTRA_GENERATION_ID)?.let(activeGenerations::remove)
+        intent.getStringExtra(EXTRA_GENERATION_ID)?.let(::releaseId)
+    }
+
+    private fun releaseId(id: String) {
+        activeGenerations.remove(id)
         if (activeGenerations.isEmpty()) {
             stopService()
         } else {
@@ -153,6 +198,7 @@ class ChatGenerationForegroundService : Service() {
             stopForeground(STOP_FOREGROUND_REMOVE)
             isForeground = false
         }
+        if (instance === this) instance = null
         stopSelfResult(latestStartId)
     }
 

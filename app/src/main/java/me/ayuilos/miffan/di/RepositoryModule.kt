@@ -50,14 +50,14 @@ val repositoryModule = module {
         FolderRepository(get(), get())
     }
 
-    single { AssistantRemover(get(), get(), get(), get(), get()) }
+    single { AssistantRemover(get(), get(), get(), get(), get(), { id -> get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>().removeAssistant(id) }) }
 
     single { ThreadRepository(get()) }
 
     single { ThreadListState(get()) }
 
     single(createdAtStart = true) {
-        ChatOrganizationMigration(get(), get()).also { it.start(get<AppScope>()) }
+        ChatOrganizationMigration(get(), get(), { get<me.ayuilos.miffan.data.partner.PartnerChatStore>().ids() }).also { it.start(get<AppScope>()) }
     }
 
     single {

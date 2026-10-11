@@ -23,6 +23,7 @@ import me.ayuilos.miffan.data.ai.TranslationHandler
 import me.ayuilos.miffan.data.ai.transformers.TemplateTransformer
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.db.AppDatabase
+import me.ayuilos.miffan.data.model.isImMode
 import me.ayuilos.miffan.data.db.fts.MessageFtsManager
 import me.ayuilos.miffan.data.db.fts.SimpleDictManager
 import me.ayuilos.miffan.data.db.migrations.Migration_6_7
@@ -73,6 +74,7 @@ val dataSourceModule = module {
                 Migration_29_30,
                 me.ayuilos.miffan.data.db.migrations.Migration_30_31,
                 me.ayuilos.miffan.data.db.migrations.Migration_33_34,
+                me.ayuilos.miffan.data.db.migrations.Migration_34_35,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
@@ -176,7 +178,7 @@ val dataSourceModule = module {
     }
 
     single {
-        MessageFtsManager(get())
+        MessageFtsManager(get(), { get<SettingsStore>().settingsFlow.value.isImMode })
     }
 
     single { McpManager(context = get(), settingsStore = get(), appScope = get(), filesManager = get(), appEventBus = get()) }

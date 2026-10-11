@@ -74,7 +74,7 @@ class ThreadService(
             val unsaved = recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
                 Conversation(id = id, assistantId = assistantId, title = topic.label, messageNodes = emptyList(), createAt = topic.at, updateAt = topic.at)
             }
-            val candidates = (segments + unsaved).sortedByDescending { it.updateAt }
+            val candidates = (segments.filter { it.chatId == null } + unsaved).sortedByDescending { it.updateAt }
             val segmentId = if (forced != null) {
                 forced
             } else {
@@ -126,9 +126,10 @@ class ThreadService(
         val stored = conversationRepository.getConversationsOfAssistant(assistantId).first()
         val known = stored.mapTo(HashSet()) { it.id }
         recentTopics.entries.removeAll { it.key in known }
-        val candidates = stored + recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
+        val candidates = stored.filter { it.chatId == null } + recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
             Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
         }
+        require(stored.none { it.id == segmentId && it.chatId != null }) { "Cannot deliver an IM event to a partner perspective" }
         val selected = segmentId ?: candidates.filter { it.threadClosedAt == 0L }
             .maxByOrNull { it.updateAt }?.id ?: Uuid.random()
         val existingAssistant = conversationRepository.getAssistantIdOf(selected)
@@ -141,6 +142,20 @@ class ThreadService(
         chatService.sendMessage(selected, content, immediately = false, origin = origin)
         chatService.resumeMessageQueue(selected)
         selected
+    }
+
+    /** Put a partner's note in its owner-facing thread without starting a model turn. */
+    internal suspend fun deliverNote(assistantId: Uuid, origin: MessageOrigin.Event, text: String) = routeMutex.withLock {
+        requireNotNull(settingsStore.settingsFlow.first { !it.init }.getAssistantById(assistantId))
+        val stored = conversationRepository.getConversationsOfAssistant(assistantId).first()
+        val known = stored.mapTo(HashSet()) { it.id }
+        recentTopics.entries.removeAll { it.key in known }
+        val candidates = stored.filter { it.chatId == null && it.threadClosedAt == 0L } +
+            recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
+                Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
+            }
+        val selected = candidates.maxByOrNull { it.updateAt }?.id ?: Uuid.random()
+        chatService.appendPartnerNote(selected, assistantId, origin, text)
     }
 
     /** Forces the next message into a new segment ("换个话题"). */

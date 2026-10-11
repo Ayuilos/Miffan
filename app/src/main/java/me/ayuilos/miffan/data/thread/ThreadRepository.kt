@@ -21,7 +21,7 @@ class ThreadRepository(private val conversationRepository: ConversationRepositor
             val loaded = stamps.mapNotNull { stamp ->
                 val cached = cache[stamp.id]?.takeIf { it.first == stamp }?.second
                 (cached ?: conversationRepository.getConversationById(Uuid.parse(stamp.id)))
-                    ?.let { stamp to it }
+                    ?.takeIf { it.chatId == null }?.let { stamp to it }
             }
             cache.clear()
             loaded.forEach { (stamp, conversation) -> cache[stamp.id] = stamp to conversation }

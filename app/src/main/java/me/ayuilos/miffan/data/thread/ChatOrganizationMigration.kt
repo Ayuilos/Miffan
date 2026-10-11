@@ -16,6 +16,7 @@ import kotlin.uuid.Uuid
 internal class ChatOrganizationMigration(
     private val settingsStore: SettingsStore,
     private val listState: ThreadListState,
+    private val chatIds: suspend () -> Set<Uuid> = { emptySet() },
 ) {
     private val mutex = Mutex()
 
@@ -35,7 +36,7 @@ internal class ChatOrganizationMigration(
     internal suspend fun migrate() = mutex.withLock {
         while (true) {
             val current = settingsStore.settingsFlow.awaitLoadedSettings()
-            val updated = current.withMigratedChatOrganization(listState.legacyPins())
+            val updated = current.withMigratedChatOrganization(listState.legacyPins(), chatIds())
             // Retry against the latest settings if a user edit or another migration won the race.
             if (updated === current || settingsStore.updateIfCurrent(current) { updated }) {
                 listState.clearLegacyPins()
@@ -45,9 +46,9 @@ internal class ChatOrganizationMigration(
     }
 }
 
-internal fun Settings.withMigratedChatOrganization(legacyPins: Set<String>): Settings {
+internal fun Settings.withMigratedChatOrganization(legacyPins: Set<String>, partnerChatIds: Set<Uuid> = emptySet()): Settings {
     if (init) return this
-    val existing = assistants.mapTo(HashSet()) { it.id }
+    val existing = assistants.mapTo(HashSet()) { it.id }.apply { addAll(partnerChatIds) }
     var organization = chatOrganization
     if (!organization.legacyPinsMigrated) {
         legacyPins.forEach { key ->

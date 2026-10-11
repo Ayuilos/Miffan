@@ -86,4 +86,22 @@ class ThreadServiceOriginTest {
         verify { f.chat.sendMessage(id, content, immediately = false, messageId = any(), origin = origin) }
     }
 
+    @Test fun perspectiveNeverReceivesImEventsEvenWhenNewerOrExplicitlyRequested() = runTest {
+        val im = segment(1)
+        val perspective = segment(100).copy(chatId = Uuid.random())
+        val f = Fixture(assistant, listOf(perspective, im))
+        assertEquals(im.id, f.service.deliverFrom(origin, assistant.id, content))
+        val failure = runCatching { f.service.deliverFrom(origin, assistant.id, content, perspective.id) }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+    }
+
+    @Test fun ownerNoteUsesImSegmentWithoutGenerating() = runTest {
+        val im = segment(1)
+        val perspective = segment(100).copy(chatId = Uuid.random())
+        val f = Fixture(assistant, listOf(perspective, im))
+        f.service.deliverNote(assistant.id, origin, "note")
+        coVerify { f.chat.appendPartnerNote(im.id, assistant.id, origin, "note") }
+        verify(exactly = 0) { f.chat.sendMessage(any(), any(), any(), any(), any(), any(), any(), any()) }
+    }
+
 }

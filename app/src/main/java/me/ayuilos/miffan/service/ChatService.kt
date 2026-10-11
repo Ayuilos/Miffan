@@ -15,6 +15,8 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -123,6 +125,7 @@ import me.ayuilos.miffan.data.revision.RevisionOrigin
 import me.ayuilos.miffan.utils.toLocalString
 import java.time.LocalDate
 import me.ayuilos.miffan.data.model.recentChatsReferenceEnabled
+import me.ayuilos.miffan.data.partner.withPartnerOwnerNote
 import me.ayuilos.miffan.data.thread.ThreadContext
 import me.ayuilos.miffan.data.model.fillModelSnapshots
 import me.ayuilos.miffan.data.model.Assistant
@@ -593,6 +596,66 @@ class ChatService(
         }
     }
 
+    /** Generate a private-perspective turn using the same tools, streaming and approval resumptions. */
+    internal suspend fun generatePartnerReply(conversationId: Uuid): String = coroutineScope {
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        val previous = session.state.value
+        val knownErrors = errors.value.mapTo(HashSet()) { it.id }
+        val completed = async(start = CoroutineStart.UNDISPATCHED) {
+            assistantReplyCompleted.first { it.conversationId == conversationId }
+        }
+        val failed = async(start = CoroutineStart.UNDISPATCHED) {
+            errors.first { list -> list.any { it.conversationId == conversationId && it.id !in knownErrors } }
+                .last { it.conversationId == conversationId && it.id !in knownErrors }.error
+        }
+        try {
+            val job = launchGenerationJob(conversationId) { handleMessageComplete(conversationId) }
+            job.join()
+            if (!session.state.value.hasPendingToolApprovals() && !completed.isCompleted && !failed.isCompleted) {
+                error("Partner turn ended without a completed reply")
+            }
+            select<String> {
+                completed.onAwait { completion ->
+                    completion.job.join()
+                    val final = session.state.value
+                    check(final.completedAssistantReplyId(previous) != null)
+                    final.currentMessages.last { it.role == MessageRole.ASSISTANT }.toText()
+                }
+                failed.onAwait { throw it }
+            }
+        } finally {
+            completed.cancel()
+            failed.cancel()
+            session.release()
+        }
+    }
+
+    /** An event may queue behind an approval; keep its handoff lease until its turn settles. */
+    internal suspend fun awaitDeliveredEvent(conversationId: Uuid, origin: me.ayuilos.miffan.data.model.MessageOrigin.Event) {
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        try {
+            session.state.first { conversation -> conversation.currentMessageNodes.any { it.origin == origin } }
+            session.generationJob.first { it == null }
+        } finally { session.release() }
+    }
+
+    /** Append a partner's note directly, without a user send or model generation. */
+    internal suspend fun appendPartnerNote(conversationId: Uuid, assistantId: Uuid,
+        origin: me.ayuilos.miffan.data.model.MessageOrigin.Event, text: String) {
+        openThreadSegment(conversationId, assistantId)
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        try {
+            session.getJob()?.join()
+            val updated = session.state.value.withPartnerOwnerNote(origin, text)
+            saveConversation(conversationId, updated)
+            val name = settingsStore.settingsFlow.value.getAssistantById(assistantId)?.name.orEmpty()
+            appEventBus.emit(AppEvent.ChatGenerationEnded(conversationId, name, text.take(50)))
+        } finally { session.release() }
+    }
+
     // ---- 发送消息 ----
 
     fun sendMessage(
@@ -1050,7 +1113,11 @@ class ChatService(
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
                 localToolOutputRoot = boundWorkspace?.takeUnless { it.isRemote }?.root,
-                threadContext = if (settings.isImMode) {
+                threadContext = if (conversation.chatId != null) {
+                    getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatStore>().chat(conversation.chatId)?.let {
+                        me.ayuilos.miffan.data.partner.perspectiveContext(it, assistant.id, settings)
+                    }
+                } else if (settings.isImMode) {
                     ThreadContext.build(conversationRepo, assistant.id, conversation.id)
                 } else {
                     null
@@ -1087,6 +1154,8 @@ class ChatService(
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     if (settings.isImMode) {
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildPartnerMessageTools(
+                            turnConversation, settingsStore, getKoin().get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>()))
                         val trigger = ownerTrigger
                         addAll(
                             buildSelfConfigTools(
@@ -1158,7 +1227,7 @@ class ChatService(
                         AppEvent.ChatGenerationEnded(
                             conversationId = conversationId,
                             senderName = senderName,
-                            contentPreview = updatedConversation.currentMessages.lastOrNull()?.toText()?.take(50)?.trim() ?: "",
+                            contentPreview = if (conversation.chatId == null) updatedConversation.currentMessages.lastOrNull()?.toText()?.take(50)?.trim() ?: "" else null,
                             pendingApprovals = updatedConversation.pendingApprovalTools(),
                         )
                     )
@@ -1172,7 +1241,7 @@ class ChatService(
 
                         // 通知等边缘副作用由 ChatNotificationManager 消费；
                         // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
-                        chunk.messages.lastOrNull()?.let { lastMessage ->
+                        chunk.messages.lastOrNull()?.takeIf { conversation.chatId == null }?.let { lastMessage ->
                             appEventBus.tryEmit(
                                 AppEvent.ChatGenerationUpdate(conversationId, lastMessage, senderName)
                             )
@@ -1200,11 +1269,9 @@ class ChatService(
                 )
             }
 
-            launchWithConversationReference(conversationId) {
-                generateTitle(conversationId, finalConversation)
-            }
-            launchWithConversationReference(conversationId) {
-                generateSuggestion(conversationId, finalConversation)
+            if (finalConversation.chatId == null) {
+                launchWithConversationReference(conversationId) { generateTitle(conversationId, finalConversation) }
+                launchWithConversationReference(conversationId) { generateSuggestion(conversationId, finalConversation) }
             }
             launchWithConversationReference(conversationId) {
                 extractMemories(conversationId, assistant.id, finalConversation)
@@ -1343,6 +1410,7 @@ class ChatService(
         conversation: Conversation,
         force: Boolean = false
     ) = withContext(Dispatchers.IO) {
+        if (conversation.chatId != null) return@withContext
         val shouldGenerate = when {
             force -> true
             conversation.title.isBlank() -> true
@@ -1899,6 +1967,11 @@ class ChatService(
         if (session.generationVersion != generationVersion) return
         finishInterruptedPendingTools(conversationId)
         saveConversation(conversationId, session.state.value)
+    }
+
+    internal suspend fun discardPartnerSegment(conversationId: Uuid) {
+        workspaceRepository.closeConversationTerminal(conversationId.toString())
+        discardSession(conversationId)
     }
 
     /** Deleting a conversation also discards its unsent messages and stops its turn chain. */
