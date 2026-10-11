@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.thread
 
 import kotlinx.datetime.LocalDateTime
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.MessageOrigin
 import me.ayuilos.miffan.data.model.MessageRef
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
@@ -207,4 +208,31 @@ class ThreadTimelineTest {
         assertEquals("partial", items.messages().last().message.previewText())
         assertTrue(items.messages().last().streaming)
     }
+    @Test fun eventRowsHidePayloadSuppressQuotesAndBreakSenderGrouping() {
+        val eventMessage = msg(MessageRole.USER, "private event payload", at(9, 0, 10))
+        val first = segment(0, msg(MessageRole.ASSISTANT, "before", at(9, 0)))
+            .appendMessage(eventMessage, origin = MessageOrigin.Event("debug", "event summary"))
+            .appendMessage(msg(MessageRole.ASSISTANT, "event reply", at(9, 0, 30)))
+        val second = segment(1, msg(MessageRole.USER, "owner", at(9, 0, 5)),
+            msg(MessageRole.ASSISTANT, "owner reply", at(9, 0, 40)))
+        val items = ThreadTimeline.build(listOf(first, second), zone = utc)
+        assertEquals("event summary", items.filterIsInstance<TimelineItem.Event>().single().origin.summary)
+        assertFalse(items.messages().any { it.message.id == eventMessage.id })
+        assertNull(items.text("event reply").quote)
+        assertNull(items.text("owner reply").quote)
+        assertFalse(items.text("event reply").groupedWithPrevious)
+    }
+
+    @Test fun eventBetweenTwoOwnerMessagesBreaksTheirGroupAndPartnerIsHidden() {
+        val conversation = segment(0, msg(MessageRole.USER, "first", at(9, 0)))
+            .appendMessage(msg(MessageRole.USER, "event", at(9, 0, 1)), origin = MessageOrigin.Event("debug", "summary"))
+            .appendMessage(msg(MessageRole.USER, "second", at(9, 0, 2)))
+            .appendMessage(msg(MessageRole.USER, "partner", at(9, 0, 3)), origin = MessageOrigin.Partner(Uuid.random(), Uuid.random()))
+            .appendMessage(msg(MessageRole.ASSISTANT, "partner reply", at(9, 0, 4)))
+        val items = ThreadTimeline.build(listOf(conversation), zone = utc)
+        assertEquals(listOf("first", "second", "partner reply"), items.messages().map { it.message.previewText() })
+        assertFalse(items.text("second").groupedWithPrevious)
+        assertNull(items.text("partner reply").quote)
+    }
+
 }

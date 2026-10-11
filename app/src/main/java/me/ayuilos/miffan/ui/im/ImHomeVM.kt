@@ -101,7 +101,7 @@ class ImHomeVM(
                 val assistant = assistants[conversation.assistantId] ?: return@mapNotNull null
                 val key = assistant.id.toString()
                 val summary = ThreadListSummaries.summarize(
-                    conversationRepository.getRecentMessages(conversation.id, RECENT_MESSAGES),
+                    conversationRepository.getRecentMessageNodes(conversation.id, RECENT_MESSAGES),
                     readAt = prefs.readAt[key] ?: 0L,
                 )
                 val lastActivity = maxOf(summary.lastActivity ?: conversation.updateAt, conversation.updateAt)

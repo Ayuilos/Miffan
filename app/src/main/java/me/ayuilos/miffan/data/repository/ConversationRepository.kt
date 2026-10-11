@@ -69,6 +69,20 @@ class ConversationRepository(
             runCatching { JsonInstant.decodeFromString<UIMessage>(it) }.getOrNull()
         }
 
+    /** Newest nodes, including source metadata for thread previews. */
+    suspend fun getRecentMessageNodes(conversationId: Uuid, limit: Int): List<MessageNode> =
+        messageNodeDAO.getRecentNodes(conversationId.toString(), limit).mapNotNull { entity ->
+            runCatching {
+                MessageNode(
+                    id = Uuid.parse(entity.id),
+                    message = JsonInstant.decodeFromString<UIMessage>(entity.message),
+                    origin = entity.origin.ifEmpty { null }?.let {
+                        JsonInstant.decodeFromString<me.ayuilos.miffan.data.model.MessageOrigin>(it)
+                    },
+                )
+            }.getOrNull()
+        }
+
     /** The assistant a conversation belongs to, without loading its messages. */
     suspend fun getAssistantIdOf(conversationId: Uuid): Uuid? =
         conversationDAO.getAssistantIdOf(conversationId.toString())?.let { runCatching { Uuid.parse(it) }.getOrNull() }
@@ -504,6 +518,7 @@ class ConversationRepository(
                             parentId = entity.parentId.ifEmpty { null }?.let(Uuid::parse),
                             selectedChildId = entity.selectedChildId.ifEmpty { null }?.let(Uuid::parse),
                             replyTo = entity.replyTo.ifEmpty { null }?.let { JsonInstant.decodeFromString<MessageRef>(it) },
+                            origin = entity.origin.ifEmpty { null }?.let { JsonInstant.decodeFromString<me.ayuilos.miffan.data.model.MessageOrigin>(it) },
                             isFavorite = favoriteNodeIds.contains(nodeId),
                             revision = entity.revision,
                         )
@@ -535,6 +550,7 @@ class ConversationRepository(
                 message = JsonInstant.encodeToString(node.message),
                 revision = node.revision,
                 replyTo = node.replyTo?.let { JsonInstant.encodeToString(it) } ?: "",
+                origin = node.origin?.let { JsonInstant.encodeToString(it) } ?: "",
             )
         }
         if (entities.isNotEmpty()) {

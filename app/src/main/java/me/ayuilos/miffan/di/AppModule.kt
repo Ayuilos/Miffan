@@ -130,7 +130,7 @@ val appModule = module {
 
     single<ThreadNoticeSource> { RevisionNoticeSource(revisions = get(), settingsStore = get()) }
 
-    single { ThreadService(chatService = get(), settingsStore = get(), router = get(), summarizer = get()) }
+    single { ThreadService(chatService = get(), settingsStore = get(), router = get(), summarizer = get(), conversationRepository = get()) }
 
     single {
         WebServerManager(

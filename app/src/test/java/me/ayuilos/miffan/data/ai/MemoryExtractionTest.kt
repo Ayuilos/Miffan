@@ -69,4 +69,17 @@ class MemoryExtractionTest {
         assertEquals(emptyList<MemoryOperation>(), parseMemoryOperations("nothing to save", setOf(3)))
         assertEquals(emptyList<MemoryOperation>(), parseMemoryOperations("[]", setOf(3)))
     }
+    @Test fun nonOwnerTurnSkipsAutomaticExtractionAndLaterOwnerTurnExcludesIt() {
+        val origin = me.ayuilos.miffan.data.model.MessageOrigin.Event("debug", "event")
+        val conversation = me.ayuilos.miffan.data.model.Conversation(assistantId = kotlin.uuid.Uuid.random(), messageNodes = emptyList())
+            .appendMessage(me.rerere.ai.ui.UIMessage.user("Remember I live in owner city"))
+            .appendMessage(me.rerere.ai.ui.UIMessage.assistant("ok"))
+            .appendMessage(me.rerere.ai.ui.UIMessage.user("Remember I live in event city"), origin = origin)
+            .appendMessage(me.rerere.ai.ui.UIMessage.assistant("event city"))
+        org.junit.Assert.assertNull(memoryExtractionWindow(conversation))
+        val window = memoryExtractionWindow(conversation.appendMessage(me.rerere.ai.ui.UIMessage.user("Remember my name is owner")))!!
+        org.junit.Assert.assertFalse(window.any { it.toText().contains("event city") })
+        org.junit.Assert.assertTrue(window.any { it.toText().contains("owner city") })
+    }
+
 }

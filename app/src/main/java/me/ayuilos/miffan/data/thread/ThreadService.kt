@@ -1,6 +1,8 @@
 package me.ayuilos.miffan.data.thread
 
 import android.util.Log
+import kotlinx.coroutines.flow.first
+import me.ayuilos.miffan.data.repository.ConversationRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -31,6 +33,7 @@ class ThreadService(
     private val settingsStore: SettingsStore,
     private val router: SegmentRouter,
     private val summarizer: SegmentSummarizer,
+    private val conversationRepository: ConversationRepository,
 ) {
     /** Serializes routing so each decision sees the topics that earlier messages just opened. */
     private val routeMutex = Mutex()
@@ -116,7 +119,29 @@ class ThreadService(
         assistantId: Uuid,
         content: List<UIMessagePart>,
         segmentId: Uuid? = null,
-    ): Uuid = TODO()
+    ): Uuid = routeMutex.withLock {
+        requireNotNull(settingsStore.settingsFlow.first { !it.init }.getAssistantById(assistantId)) {
+            "Assistant not found: $assistantId"
+        }
+        val stored = conversationRepository.getConversationsOfAssistant(assistantId).first()
+        val known = stored.mapTo(HashSet()) { it.id }
+        recentTopics.entries.removeAll { it.key in known }
+        val candidates = stored + recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
+            Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
+        }
+        val selected = segmentId ?: candidates.filter { it.threadClosedAt == 0L }
+            .maxByOrNull { it.updateAt }?.id ?: Uuid.random()
+        val existingAssistant = conversationRepository.getAssistantIdOf(selected)
+        require(existingAssistant == null || existingAssistant == assistantId) { "Segment belongs to another assistant" }
+        if (selected !in known) {
+            recentTopics[selected] = RecentTopic(assistantId, content.filterIsInstance<UIMessagePart.Text>()
+                .joinToString(" ") { it.text }.take(120), Instant.now())
+        }
+        chatService.openThreadSegment(selected, assistantId)
+        chatService.sendMessage(selected, content, immediately = false, origin = origin)
+        chatService.resumeMessageQueue(selected)
+        selected
+    }
 
     /** Forces the next message into a new segment ("换个话题"). */
     suspend fun closeAll(assistantId: Uuid, segments: List<Conversation>) {
