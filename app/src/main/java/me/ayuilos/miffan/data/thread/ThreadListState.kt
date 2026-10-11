@@ -15,6 +15,8 @@ data class ThreadListPrefs(
     val pinned: Set<String> = emptySet(),
     /** Hidden threads reappear once they have activity after this time. */
     val hiddenAt: Map<String, Long> = emptyMap(),
+    /** Collapsed Chats list groups, by group id. */
+    val collapsedGroups: Set<String> = emptySet(),
 )
 
 class ThreadListState(context: Context) {
@@ -35,6 +37,8 @@ class ThreadListState(context: Context) {
         prefs.edit { if (pinned) putBoolean(PINNED + key, true) else remove(PINNED + key) }
         state.update { it.copy(pinned = if (pinned) it.pinned + key else it.pinned - key) }
     }
+
+    fun setGroupCollapsed(groupId: Uuid, collapsed: Boolean): Unit = TODO()
 
     /** Removes the thread from the Chats list until it has new activity; history is kept. */
     fun hide(assistantId: Uuid, at: Long = System.currentTimeMillis()) {

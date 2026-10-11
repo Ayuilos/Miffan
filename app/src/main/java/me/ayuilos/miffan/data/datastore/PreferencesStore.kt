@@ -54,6 +54,7 @@ import me.ayuilos.miffan.data.model.initialInterfaceMode
 import me.ayuilos.miffan.data.model.Lorebook
 import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
+import me.ayuilos.miffan.data.model.ChatOrganization
 import me.ayuilos.miffan.data.model.Tag
 import me.ayuilos.miffan.data.model.WhaleThemeDiscovery
 import me.ayuilos.miffan.data.revision.AssistantRevisionRecorder
@@ -695,6 +696,8 @@ data class Settings(
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     val assistantTags: List<Tag> = emptyList(),
+    /** Easy-mode Chats list pins and groups. */
+    val chatOrganization: ChatOrganization = ChatOrganization(),
     val miffanHelpEnabled: Boolean = true,
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
