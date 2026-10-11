@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -56,10 +57,22 @@ class UpdateDownloadForegroundService : Service() {
         if (intent?.action == ACTION_CANCEL) downloader.cancelUpdateDownload()
         observer?.cancel()
         observer = scope.launch {
+            // The system drops notification updates past ~5/s per app; once a second is plenty.
+            var lastProgressPost = 0L
             downloader.downloadState.collect { state ->
                 when (state) {
-                    is UpdateDownloadState.Downloading, is UpdateDownloadState.Verifying ->
+                    is UpdateDownloadState.Downloading -> {
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastProgressPost >= 1_000) {
+                            lastProgressPost = now
+                            UpdateDownloadNotifications.updateProgress(this@UpdateDownloadForegroundService, state)
+                        }
+                    }
+
+                    is UpdateDownloadState.Verifying -> {
+                        lastProgressPost = 0L
                         UpdateDownloadNotifications.updateProgress(this@UpdateDownloadForegroundService, state)
+                    }
                     else -> {
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelfResult(startId)
