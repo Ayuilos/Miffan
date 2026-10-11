@@ -28,7 +28,7 @@ interface RemoteStreamPairing : Closeable {
 data class RemoteStreamFallback(val reason: RemoteStreamFallbackReason, val detail: String? = null)
 enum class RemoteStreamFallbackReason {
     SUNSHINE_MISSING, SUNSHINE_NOT_RUNNING, NOT_PAIRED, ENCRYPTION_NOT_ENFORCED,
-    UDP_UNREACHABLE, HOST_REJECTED, DECODER_UNSUPPORTED, LOCAL_NETWORK_PERMISSION, MAC_PERMISSIONS, DISPLAY_ASLEEP, OTHER,
+    UDP_UNREACHABLE, HOST_REJECTED, DECODER_UNSUPPORTED, LOCAL_NETWORK_PERMISSION, MAC_PERMISSIONS, DISPLAY_ASLEEP, SCREEN_LOCKED, OTHER,
 }
 class RemoteStreamCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
     RemoteScreenUnavailableException(RemoteScreenProblem.STREAM_CERTIFICATE_CHANGED, "Sunshine certificate fingerprint changed")
@@ -42,6 +42,8 @@ internal data class SunshineProbe(
     @SerialName("active_stream") val activeStream: Boolean,
     val candidates: List<String> = emptyList(),
     @SerialName("display_asleep") val displayAsleep: Boolean? = null,
+    /** macOS only; a stream's keys cannot type the lock screen password. */
+    @SerialName("screen_locked") val screenLocked: Boolean? = null,
     val permissions: SunshinePermissions? = null,
     @SerialName("permissions_from_log") val permissionsFromLog: Boolean? = null,
 ) {
@@ -69,6 +71,7 @@ internal fun streamPreflightFallback(probe: SunshineProbe, paired: Boolean? = nu
     probe.permissions?.let { it.screenRecording == false || it.accessibility == false } == true -> RemoteStreamFallbackReason.MAC_PERMISSIONS
     !probe.running -> RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING
     probe.displayAsleep == true -> RemoteStreamFallbackReason.DISPLAY_ASLEEP
+    probe.screenLocked == true -> RemoteStreamFallbackReason.SCREEN_LOCKED
     !probe.encryptionEnforced -> RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED
     paired == false -> RemoteStreamFallbackReason.NOT_PAIRED
     else -> null

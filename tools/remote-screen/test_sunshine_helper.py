@@ -66,6 +66,13 @@ elif name == 'ifconfig':
         ('utun2', '100.64.0.5'), ('bridge100', '192.168.64.1'), ('awdl0', '10.0.0.2'), ('llw0', '10.0.0.3'),
         ('vmenet0', '192.168.65.1'), ('vmnet1', '192.168.66.1'), ('vboxnet0', '192.168.67.1')]:
         print(interface + ': flags=8863\n    inet ' + address + ' netmask 0xffffff00')
+elif name == 'ioreg' and 'Root' in sys.argv:
+    import plistlib
+    locked = settings.get('locked')
+    users = [{'kCGSSessionUserIDKey': os.getuid() + 1, 'kCGSSessionOnConsoleKey': False, 'CGSSessionScreenIsLocked': True}]
+    if locked is not None:
+        users.append(dict({'kCGSSessionUserIDKey': os.getuid(), 'kCGSSessionOnConsoleKey': True}, **({'CGSSessionScreenIsLocked': True} if locked else {})))
+    sys.stdout.buffer.write(plistlib.dumps({'IOConsoleUsers': users}))
 elif name == 'ioreg':
     import plistlib
     state = settings.get('display')
@@ -217,6 +224,9 @@ class SunshineMacHelperTest(SunshineFixture):
         self.assertNotIn('open ', (self.root / 'commands.log').read_text())
     def test_mac_probe_ignores_other_users_and_has_unknown_or_sleeping_display(self):
         _, probe = self.call(); self.assertFalse(probe['running']); self.assertFalse(probe['active_stream']); self.assertIsNone(probe['display_asleep'])
+        self.assertIsNone(probe['screen_locked'])
+        for locked in (True, False):
+            _, probe = self.call(locked=locked); self.assertEqual(locked, probe['screen_locked'])
         for pmset in (False, True):
             _, probe = self.call(display=True, pmset=pmset); self.assertTrue(probe['display_asleep'])
             _, probe = self.call(display=False, pmset=pmset); self.assertFalse(probe['display_asleep'])

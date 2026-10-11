@@ -2235,6 +2235,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_stream_display_asleep">Mac のディスプレイがスリープ中です。接続時にスリープを解除します。</string>
   <string name="workspace_screen_stream_reason_mac_permissions">Mac の Sunshine に画面収録またはアクセシビリティの権限がありません</string>
   <string name="workspace_screen_stream_reason_display_asleep">Mac のディスプレイがスリープ中で、解除できませんでした</string>
+  <string name="workspace_screen_stream_reason_screen_locked">Mac がロックされていて、高パフォーマンスモードではパスワードを入力できません。ここでロックを解除してからメニューで切り替えてください</string>
   <string name="workspace_screen_mode_stream">高性能</string>
   <string name="workspace_screen_quality_saver">データ節約</string>
   <string name="workspace_screen_quality_balanced">バランス</string>

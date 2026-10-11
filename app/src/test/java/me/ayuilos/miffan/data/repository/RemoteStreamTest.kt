@@ -14,6 +14,10 @@ class RemoteStreamTest {
         // Missing screen capture access can make Sunshine exit during startup.
         assertEquals(RemoteStreamFallbackReason.MAC_PERMISSIONS, streamPreflightFallback(p.copy(running = false)))
         assertEquals(RemoteStreamFallbackReason.DISPLAY_ASLEEP, streamPreflightFallback(p.copy(permissions = null)))
+        val locked = parseSunshineProbe("""{"installed":true,"running":true,"active_stream":false,"display_asleep":false,"screen_locked":true,"lan_encryption_mode":2,"wan_encryption_mode":2}""")
+        assertEquals(RemoteStreamFallbackReason.SCREEN_LOCKED, streamPreflightFallback(locked))
+        assertNull(streamPreflightFallback(locked.copy(screenLocked = false)))
+        assertNull(streamPreflightFallback(locked.copy(screenLocked = null)))
         val linux = probe(); assertNull(linux.displayAsleep); assertNull(linux.permissionsFromLog)
         assertNull(streamPreflightFallback(linux))
         assertNull(parseSunshineProbe("""{"installed":true,"running":false,"active_stream":false,"permissions":null,"permissions_from_log":null}""").permissions)

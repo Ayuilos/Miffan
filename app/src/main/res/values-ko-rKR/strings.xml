@@ -2235,6 +2235,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_stream_display_asleep">Mac 디스플레이가 잠자기 상태입니다. 연결할 때 깨웁니다.</string>
   <string name="workspace_screen_stream_reason_mac_permissions">Mac의 Sunshine에 화면 기록 또는 손쉬운 사용 권한이 없습니다</string>
   <string name="workspace_screen_stream_reason_display_asleep">Mac 디스플레이가 잠자기 상태이며 깨우지 못했습니다</string>
+  <string name="workspace_screen_stream_reason_screen_locked">Mac이 잠겨 있고 고성능 모드에서는 암호를 입력할 수 없습니다. 여기서 잠금을 해제한 뒤 메뉴에서 전환하세요</string>
   <string name="workspace_screen_mode_stream">고성능</string>
   <string name="workspace_screen_quality_saver">데이터 절약</string>
   <string name="workspace_screen_quality_balanced">균형</string>

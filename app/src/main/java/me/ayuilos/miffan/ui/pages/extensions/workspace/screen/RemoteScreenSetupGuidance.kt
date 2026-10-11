@@ -74,6 +74,7 @@ internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFall
     RemoteStreamFallbackReason.LOCAL_NETWORK_PERMISSION -> R.string.workspace_screen_stream_reason_local_network
     RemoteStreamFallbackReason.MAC_PERMISSIONS -> R.string.workspace_screen_stream_reason_mac_permissions
     RemoteStreamFallbackReason.DISPLAY_ASLEEP -> R.string.workspace_screen_stream_reason_display_asleep
+    RemoteStreamFallbackReason.SCREEN_LOCKED -> R.string.workspace_screen_stream_reason_screen_locked
     RemoteStreamFallbackReason.OTHER -> R.string.workspace_screen_stream_reason_other
 })
 

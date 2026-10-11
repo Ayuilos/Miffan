@@ -16,7 +16,7 @@
 #   miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows
 #                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 
-MIFFAN_HELPER_VERSION=15
+MIFFAN_HELPER_VERSION=16
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -680,6 +680,15 @@ def display_asleep():
             if maximum > 0 and current == maximum: return False
     return None
 
+def screen_locked():
+    # This user's console session reports CGSSessionScreenIsLocked only while it is locked.
+    try: users = plistlib.loads(output(['ioreg', '-a', '-n', 'Root', '-d1']).encode()).get('IOConsoleUsers', [])
+    except (ValueError, TypeError, AttributeError, plistlib.InvalidFileException): return None
+    for user in users:
+        if user.get('kCGSSessionUserIDKey') == os.getuid() and user.get('kCGSSessionOnConsoleKey'):
+            return bool(user.get('CGSSessionScreenIsLocked'))
+    return None
+
 def mac_processes():
     result = run(['ps', '-ww', '-axo', 'uid=,pid=,comm='])
     if not result or result.returncode != 0: return None
@@ -932,7 +941,8 @@ if mode == 'probe':
     print(json.dumps(dict(installed=installed, version=version, running=running,
         lan_encryption_mode=integer('lan_encryption_mode', 0), wan_encryption_mode=integer('wan_encryption_mode', 1),
         certificate_sha256=certificate_sha256, active_stream=active_stream, candidates=candidates,
-        display_asleep=display_asleep() if mac else None, permissions=permissions if mac else None,
+        display_asleep=display_asleep() if mac else None, screen_locked=screen_locked() if mac else None,
+        permissions=permissions if mac else None,
         permissions_from_log=permissions_from_log if mac else None)))
     sys.exit(0)
 if not installed or (not app if mac else not unit):

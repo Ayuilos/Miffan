@@ -2267,6 +2267,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_stream_display_asleep">Mac 的显示器正在睡眠，连接时会先唤醒它。</string>
   <string name="workspace_screen_stream_reason_mac_permissions">Sunshine 在 Mac 上缺少屏幕录制或辅助功能权限</string>
   <string name="workspace_screen_stream_reason_display_asleep">Mac 的显示器在睡眠，没能唤醒</string>
+  <string name="workspace_screen_stream_reason_screen_locked">Mac 已锁屏，高性能模式下无法输入密码。请先在这里解锁，再从菜单切换</string>
   <string name="workspace_screen_mode_stream">高性能</string>
   <string name="workspace_screen_quality_saver">省流量</string>
   <string name="workspace_screen_quality_balanced">均衡</string>

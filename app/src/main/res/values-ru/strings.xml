@@ -2235,6 +2235,7 @@
   <string name="workspace_screen_stream_display_asleep">Дисплей Mac спит; при подключении он будет разбужен.</string>
   <string name="workspace_screen_stream_reason_mac_permissions">у Sunshine на Mac нет разрешения на запись экрана или универсальный доступ</string>
   <string name="workspace_screen_stream_reason_display_asleep">дисплей Mac спит, и разбудить его не удалось</string>
+  <string name="workspace_screen_stream_reason_screen_locked">Mac заблокирован, а в режиме высокой производительности пароль ввести нельзя. Разблокируйте его здесь, затем переключитесь в меню</string>
   <string name="workspace_screen_mode_stream">Высокая производительность</string>
   <string name="workspace_screen_quality_saver">Экономия трафика</string>
   <string name="workspace_screen_quality_balanced">Баланс</string>

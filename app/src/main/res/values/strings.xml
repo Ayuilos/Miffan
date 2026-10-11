@@ -2275,6 +2275,7 @@
   <string name="workspace_screen_stream_display_asleep" tools:ignore="MissingTranslation">The Mac\'s display is asleep; it will be woken when you connect.</string>
   <string name="workspace_screen_stream_reason_mac_permissions" tools:ignore="MissingTranslation">Sunshine on the Mac lacks screen recording or accessibility permission</string>
   <string name="workspace_screen_stream_reason_display_asleep" tools:ignore="MissingTranslation">the Mac\'s display is asleep and could not be woken</string>
+  <string name="workspace_screen_stream_reason_screen_locked" tools:ignore="MissingTranslation">the Mac is locked and its password cannot be typed in high-performance mode; unlock it here, then switch from the menu</string>
   <string name="workspace_screen_mode_stream" tools:ignore="MissingTranslation">High performance</string>
   <string name="workspace_screen_quality_saver" tools:ignore="MissingTranslation">Data saver</string>
   <string name="workspace_screen_quality_balanced" tools:ignore="MissingTranslation">Balanced</string>

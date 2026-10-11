@@ -2233,6 +2233,7 @@
   <string name="workspace_screen_stream_display_asleep">Mac 的顯示器正在睡眠，連線時會先喚醒它。</string>
   <string name="workspace_screen_stream_reason_mac_permissions">Sunshine 在 Mac 上缺少螢幕錄製或輔助使用權限</string>
   <string name="workspace_screen_stream_reason_display_asleep">Mac 的顯示器在睡眠，無法喚醒</string>
+  <string name="workspace_screen_stream_reason_screen_locked">Mac 已鎖定，高效能模式下無法輸入密碼。請先在這裡解鎖，再從選單切換</string>
   <string name="workspace_screen_mode_stream">高效能</string>
   <string name="workspace_screen_quality_saver">省流量</string>
   <string name="workspace_screen_quality_balanced">均衡</string>
