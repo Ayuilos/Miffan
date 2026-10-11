@@ -13,8 +13,10 @@
 #   miffan sunshine probe|start|enforce-encryption|wake|open-settings screen|accessibility
 #                           inspect Sunshine; explicit backed-up encryption enforcement
 #   miffan clip             set the session clipboard from stdin (UTF-8)
+#   miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows
+#                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 
-MIFFAN_HELPER_VERSION=13
+MIFFAN_HELPER_VERSION=16
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -115,6 +117,32 @@ cua_path() {
         fi
     done
     return 1
+}
+
+# cua-driver types on Wayland through wtype, which decodes its text in the C library's locale.
+# SSH commands start in the C locale, where any non-ASCII text fails and the driver falls back
+# to a portal wait that times out on compositors without RemoteDesktop (niri). Prefer the
+# session's UTF-8 LANG, else C.UTF-8; only the character type changes.
+utf8_ctype() {
+    case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) return 0 ;; esac
+    ctype=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^LANG=//p' | head -n 1)
+    case "$ctype" in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) ;; *) ctype=C.UTF-8 ;; esac
+    unset LC_ALL
+    export LC_CTYPE="$ctype"
+}
+
+# Sunshine posts keys with modifier flags only, and macOS matches Control+arrow system shortcuts
+# only with the fn flag a real arrow key carries, so these go through cua-driver's daemon (which
+# holds the Accessibility grant) with fn added. Exit 127 when cua-driver is missing.
+mac_shortcut() {
+    case "$1" in
+        desktop-left) key=left ;; desktop-right) key=right ;;
+        mission-control) key=up ;; app-windows) key=down ;;
+        *) echo "usage: miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows" >&2; return 2 ;;
+    esac
+    [ "$(os)" = macos ] || { echo "mac-shortcut is only for macOS" >&2; return 2; }
+    cua=$(cua_path) || { echo "cua-driver not found" >&2; return 127; }
+    "$cua" hotkey "{\"scope\":\"desktop\",\"keys\":[\"ctrl\",\"fn\",\"$key\"]}" >/dev/null
 }
 
 cua_version() {
@@ -652,6 +680,15 @@ def display_asleep():
             if maximum > 0 and current == maximum: return False
     return None
 
+def screen_locked():
+    # This user's console session reports CGSSessionScreenIsLocked only while it is locked.
+    try: users = plistlib.loads(output(['ioreg', '-a', '-n', 'Root', '-d1']).encode()).get('IOConsoleUsers', [])
+    except (ValueError, TypeError, AttributeError, plistlib.InvalidFileException): return None
+    for user in users:
+        if user.get('kCGSSessionUserIDKey') == os.getuid() and user.get('kCGSSessionOnConsoleKey'):
+            return bool(user.get('CGSSessionScreenIsLocked'))
+    return None
+
 def mac_processes():
     result = run(['ps', '-ww', '-axo', 'uid=,pid=,comm='])
     if not result or result.returncode != 0: return None
@@ -904,7 +941,8 @@ if mode == 'probe':
     print(json.dumps(dict(installed=installed, version=version, running=running,
         lan_encryption_mode=integer('lan_encryption_mode', 0), wan_encryption_mode=integer('wan_encryption_mode', 1),
         certificate_sha256=certificate_sha256, active_stream=active_stream, candidates=candidates,
-        display_asleep=display_asleep() if mac else None, permissions=permissions if mac else None,
+        display_asleep=display_asleep() if mac else None, screen_locked=screen_locked() if mac else None,
+        permissions=permissions if mac else None,
         permissions_from_log=permissions_from_log if mac else None)))
     sys.exit(0)
 if not installed or (not app if mac else not unit):
@@ -1002,6 +1040,7 @@ case "${1:-}" in
     cua)
         [ "$(os)" = macos ] || load_session_env || { echo "no graphical session" >&2; exit 1; }
         [ "$(session_type)" = wayland ] && export CUA_DRIVER_RS_ENABLE_WAYLAND=1
+        [ "$(os)" = macos ] || utf8_ctype
         cua=$(cua_path) || { echo "cua-driver not found" >&2; exit 127; }
         exec "$cua" mcp
         ;;
@@ -1018,5 +1057,6 @@ case "${1:-}" in
         ;;
     sunshine) sunshine "${2:-probe}" "${3:-}" ;;
     clip) clip ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip" >&2; exit 2 ;;
+    mac-shortcut) mac_shortcut "${2:-}" ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut" >&2; exit 2 ;;
 esac

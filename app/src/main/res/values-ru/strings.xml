@@ -2151,6 +2151,8 @@
   <string name="workspace_screen_actions">Действия с экраном</string>
   <string name="workspace_screen_metered">Вы используете мобильную сеть или сеть с тарификацией. Просмотр экрана расходует трафик.</string>
   <string name="workspace_screen_paste_failed">Не удалось вставить текст на удалённом компьютере</string>
+  <string name="workspace_screen_mac_shortcut_needs_cua">В режиме высокой производительности для этого действия на Mac нужен cua-driver</string>
+  <string name="workspace_screen_mac_shortcut_failed">Не удалось выполнить действие на Mac</string>
   <string name="workspace_screen_text_unsupported">На этой платформе пока нельзя вводить такой текст</string>
   <string name="workspace_screen_automatic">Автоматически (рекомендуется)</string>
   <string name="workspace_screen_automatic_help">Miffan установит на удалённый компьютер небольшую вспомогательную программу ~/.miffan/bin/miffan. Она найдёт сеанс рабочего стола и запустит службу экрана, доступную только вашей учётной записи. Подключение целиком проходит через SSH.</string>
@@ -2233,6 +2235,7 @@
   <string name="workspace_screen_stream_display_asleep">Дисплей Mac спит; при подключении он будет разбужен.</string>
   <string name="workspace_screen_stream_reason_mac_permissions">у Sunshine на Mac нет разрешения на запись экрана или универсальный доступ</string>
   <string name="workspace_screen_stream_reason_display_asleep">дисплей Mac спит, и разбудить его не удалось</string>
+  <string name="workspace_screen_stream_reason_screen_locked">Mac заблокирован, а в режиме высокой производительности пароль ввести нельзя. Разблокируйте его здесь, затем переключитесь в меню</string>
   <string name="workspace_screen_mode_stream">Высокая производительность</string>
   <string name="workspace_screen_quality_saver">Экономия трафика</string>
   <string name="workspace_screen_quality_balanced">Баланс</string>

@@ -490,6 +490,19 @@ class RemoteScreenRepository(
     }
 
     /**
+     * Presses a Mac's Mission Control shortcut (`desktop-left`, `desktop-right`, `mission-control`,
+     * `app-windows`) through cua-driver over SSH, for a stream whose keys macOS does not match
+     * against system shortcuts. False when the Mac has no cua-driver.
+     */
+    suspend fun pressMacShortcut(workspaceId: String, name: String): Boolean = withRemote(workspaceId) { ssh ->
+        ensureHelper(ssh)
+        val result = ssh.execute("$HELPER mac-shortcut $name", timeoutMillis = 15_000)
+        if (result.exitCode == 127) return@withRemote false
+        check(result.exitCode == 0) { result.stderr.ifBlank { "Mac shortcut failed" } }
+        true
+    }
+
+    /**
      * [probe] for a host, through any remote workspace on it (the SSH lease is per workspace).
      * [expectedRevision] is the host identity the user was looking at; a changed host is refused.
      */

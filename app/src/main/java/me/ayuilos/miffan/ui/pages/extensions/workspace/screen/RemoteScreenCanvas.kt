@@ -59,7 +59,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import me.rerere.workspace.screen.RfbKeys
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -158,14 +157,7 @@ internal fun RemoteScreenCanvas(
         canZoomOut = input.zoomed,
         onZoomIn = { input.zoomStep(zoomIn = true) },
         onZoomOut = { input.zoomStep(zoomIn = false) },
-        onMacShortcut = if (macOS) { shortcut ->
-            vm.key(when (shortcut) {
-                MacShortcut.DESKTOP_LEFT -> RfbKeys.LEFT
-                MacShortcut.DESKTOP_RIGHT -> RfbKeys.RIGHT
-                MacShortcut.MISSION_CONTROL -> RfbKeys.UP
-                MacShortcut.APP_WINDOWS -> RfbKeys.DOWN
-            }, setOf(RemoteModifier.CONTROL))
-        } else null,
+        onMacShortcut = if (macOS) vm::macShortcut else null,
         macExpanded = macExpanded,
         onMacExpandedChange = { macExpanded = it },
         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
