@@ -92,14 +92,17 @@ class ImHomeVM(
                     previewFromUser = summary.fromUser,
                     lastActivity = lastActivity,
                     unread = summary.unread,
-                    pinned = key in prefs.pinned,
+                    pinned = settings.chatOrganization.isPinned(assistant.id),
                     typing = assistant.id in typingAssistants,
                 )
             }.sortedWith(compareByDescending<ImChatItem> { it.pinned }.thenByDescending { it.lastActivity })
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun setPinned(assistant: Assistant, pinned: Boolean) = listState.setPinned(assistant.id, pinned)
+    fun setPinned(assistant: Assistant, pinned: Boolean) = updateSettings { settings ->
+        settings.copy(chatOrganization = if (pinned) settings.chatOrganization.pin(assistant.id)
+        else settings.chatOrganization.unpin(assistant.id))
+    }
 
     /** "不显示": hides the row until the thread has new activity; history is kept. */
     fun hide(assistant: Assistant) = listState.hide(assistant.id)
