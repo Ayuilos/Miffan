@@ -57,6 +57,12 @@ class ImHomeVM(
         .map { it.availableUpdate() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val downloadState = updateChecker.downloadState
+
+    fun cancelUpdateDownload() = updateChecker.cancelUpdateDownload()
+
+    fun installUpdate(context: Context): Boolean = updateChecker.installUpdate(context)
+
     fun downloadUpdate(context: Context, download: UpdateDownload) = updateChecker.downloadUpdate(context, download)
 
     /** Pinned threads first, then by latest activity; hidden threads stay out until new activity. */

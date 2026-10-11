@@ -133,6 +133,7 @@ internal data class UpdateManifest(
                     name = fileName,
                     url = "$baseUrl$path",
                     sizeBytes = size,
+                    sha256 = sha256,
                     fallbackUrls = fallbackBaseUrls.map { "$it$path" } + releaseDownloadUrl(version),
                 )
             ),

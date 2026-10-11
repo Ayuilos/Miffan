@@ -3,6 +3,7 @@ package me.ayuilos.miffan.utils
 import kotlinx.serialization.json.Json
 import org.kxml2.io.KXmlParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,7 +22,8 @@ class GitHubReleaseMappingTest {
                 {
                   "name": "Miffan-2.4.10-miffan.6-arm64-v8a.apk",
                   "browser_download_url": "https://github.com/Ayuilos/Miffan/releases/download/2.4.10-miffan.6/Miffan-2.4.10-miffan.6-arm64-v8a.apk",
-                  "size": 40277098
+                  "size": 40277098,
+                  "digest": "sha256:${"aB".repeat(32)}"
                 },
                 {
                   "name": "unrelated.txt",
@@ -45,6 +47,7 @@ class GitHubReleaseMappingTest {
         )
         assertEquals(1, info.downloads.size)
         assertEquals(40_277_098L, info.downloads.single().sizeBytes)
+        assertEquals("aB".repeat(32), info.downloads.single().sha256)
     }
 
     @Test
@@ -66,6 +69,7 @@ class GitHubReleaseMappingTest {
         val info = release.toUpdateInfo()
 
         assertEquals("3.0.0", info.version)
+        assertNull(info.downloads.single().sha256)
         assertEquals("Miffan-3.0.0-arm64-v8a.apk", info.downloads.single().name)
         assertEquals(
             "https://github.com/Ayuilos/Miffan/releases/tag/3.0.0",
@@ -135,11 +139,13 @@ class GitHubReleaseMappingTest {
             <feed xmlns="http://www.w3.org/2005/Atom">
               <entry>
                 <updated>2026-08-25T00:00:00Z</updated>
+                <title>3.0.0-rc.1</title>
                 <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/3.0.0-rc.1" />
                 <content>Release candidate</content>
               </entry>
               <entry>
                 <updated>2026-09-01T00:00:00Z</updated>
+                <title>3.0.0</title>
                 <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/3.0.0" />
                 <content>Formal release</content>
               </entry>
@@ -148,6 +154,7 @@ class GitHubReleaseMappingTest {
         )
 
         assertEquals("3.0.0", info.version)
+        assertNull(info.downloads.single().sha256)
         assertEquals("Miffan-3.0.0-arm64-v8a.apk", info.downloads.single().name)
         assertEquals(
             "https://github.com/Ayuilos/Miffan/releases/download/3.0.0/" +
@@ -163,6 +170,7 @@ class GitHubReleaseMappingTest {
             <feed xmlns="http://www.w3.org/2005/Atom">
               <entry>
                 <updated>2026-08-23T15:29:40Z</updated>
+                <title>2.4.11-miffan.1</title>
                 <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/2.4.11-miffan.1" />
                 <content>Historical release</content>
               </entry>
@@ -172,6 +180,30 @@ class GitHubReleaseMappingTest {
 
         assertEquals("2.4.11-miffan.1", info.version)
         assertEquals("Miffan-2.4.11-miffan.1-arm64-v8a.apk", info.downloads.single().name)
+    }
+
+    @Test
+    fun `Atom fallback skips bare tags that have no published release`() {
+        val info = parseAtom(
+            """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <updated>2026-10-12T00:00:00Z</updated>
+                <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/4.1.4" />
+                <title>4.1.4: Merge pull request #45 from Ayuilos/feature/im-4.0</title>
+                <content>Miffan 4.1.4</content>
+              </entry>
+              <entry>
+                <updated>2026-10-11T04:08:54Z</updated>
+                <link rel="alternate" href="https://github.com/Ayuilos/Miffan/releases/tag/4.1.3" />
+                <title>4.1.3</title>
+                <content>Formal release</content>
+              </entry>
+            </feed>
+            """.trimIndent()
+        )
+
+        assertEquals("4.1.3", info.version)
     }
 
     private companion object {

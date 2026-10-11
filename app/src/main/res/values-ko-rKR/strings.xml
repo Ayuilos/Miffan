@@ -1066,7 +1066,18 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="unpin_chat">채팅 고정 해제</string>
   <string name="update_card_check_failed">업데이트 확인 실패</string>
   <string name="update_card_close">닫기</string>
-  <string name="update_card_downloading">다운로드 중입니다. 진행 상황은 상태 표시줄을 확인하세요.</string>
+  <string name="update_card_downloading_percent">다운로드 중 %1$d%%</string>
+  <string name="update_card_downloading_indeterminate">다운로드 중…</string>
+  <string name="update_card_verifying">패키지 확인 중…</string>
+  <string name="update_card_ready">다운로드 완료</string>
+  <string name="update_card_ready_tap_to_install">다운로드 완료, 탭하여 설치</string>
+  <string name="update_card_install">설치</string>
+  <string name="update_card_cancel_download">다운로드 취소</string>
+  <string name="update_card_retry">다시 시도</string>
+  <string name="update_card_failed_tap_for_details">다운로드 실패, 탭하여 자세히 보기</string>
+  <string name="update_card_failed_network">다운로드에 실패했습니다. 연결을 확인하고 다시 시도하세요.</string>
+  <string name="update_card_failed_verification">패키지 확인에 실패했습니다. 다시 시도하세요.</string>
+  <string name="update_card_failed_storage">패키지를 저장할 수 없습니다. 남은 저장 공간을 확인하세요.</string>
   <string name="update_card_new_version_found">새 버전 발견 %s</string>
   <string name="update_card_unknown_error">알 수 없는 오류</string>
   <string name="upload_file">파일 업로드</string>
@@ -2098,8 +2109,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="mcp_oauth_error_invalid_authorization_endpoint">잘못된 인증 엔드포인트: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">핫워드1, 핫워드2, 핫워드3</string>
   <string name="update_changelog_see_release">변경 내역은 아래 GitHub Release를 확인하세요.</string>
-  <string name="update_download_start_failed">다운로드를 시작할 수 없습니다. GitHub 대체 다운로드를 사용해 주세요</string>
-  <string name="update_downloading">업데이트 패키지를 다운로드하는 중...</string>
   <string name="setting_tts_model_recommended">%1$s (권장)</string>
   <string name="setting_tts_model_free">%1$s (무료)</string>
   <string name="setting_tts_step_api_key_description">StepFun 공식 웹사이트에서 키를 받으세요: platform.stepfun.com/interface-key</string>
@@ -2647,4 +2656,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <plurals name="im_steps_failed">
     <item quantity="other">%d단계 실패</item>
   </plurals>
+  <string name="update_download_channel_name">앱 업데이트</string>
+  <string name="update_download_title">업데이트 다운로드 중</string>
+  <string name="update_download_progress">업데이트 패키지를 다운로드하는 중…</string>
+  <string name="update_download_verifying">업데이트 패키지를 확인하는 중…</string>
+  <string name="update_download_cancel">취소</string>
+  <string name="update_download_complete_title">업데이트 다운로드 완료</string>
+  <string name="update_download_complete_text">다운로드가 완료되었습니다. 탭하여 설치하세요</string>
+  <string name="update_download_failed_title">업데이트 다운로드 실패</string>
+  <string name="update_download_failed_text">업데이트를 다운로드할 수 없습니다. 다시 시도해 주세요.</string>
 </resources>

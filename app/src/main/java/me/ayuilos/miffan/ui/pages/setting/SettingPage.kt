@@ -96,6 +96,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     } else {
         vm.availableUpdate.collectAsStateWithLifecycle().value
     }
+    val updateDownloadState by vm.downloadState.collectAsStateWithLifecycle()
     val filesManager: FilesManager = koinInject()
     val settingsStore: SettingsStore = koinInject()
     val scope = rememberCoroutineScope()
@@ -126,7 +127,10 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     val context = LocalContext.current
                     UpdateAvailableBanner(
                         info = info,
+                        downloadState = updateDownloadState,
                         onDownload = { vm.downloadUpdate(context, it) },
+                        onCancelDownload = vm::cancelUpdateDownload,
+                        onInstall = { vm.installUpdate(context) },
                         modifier = Modifier.padding(horizontal = 8.dp),
                     )
                 }

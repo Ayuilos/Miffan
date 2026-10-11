@@ -43,9 +43,18 @@ class UpdateSourceTest {
 
         assertEquals("3.0.5", info.version)
         assertEquals(40_466_226L, info.downloads.single().sizeBytes)
+        assertEquals(manifest().sha256, info.downloads.single().sha256)
         assertEquals("$DEFAULT_UPDATE_DOWNLOAD_BASE_URL$APK_PATH", info.downloads.single().url)
         assertEquals(listOf(releaseDownloadUrl("3.0.5")), info.downloads.single().fallbackUrls)
         assertEquals("", info.changelog)
+    }
+
+    @Test
+    fun `download metadata remains compatible with older serialized values`() {
+        val legacy = Json.decodeFromString<UpdateDownload>("""{"name":"app.apk","url":"https://example.com/app.apk","sizeBytes":null}""")
+        assertNull(legacy.sha256)
+        val verified = legacy.copy(sha256 = "a".repeat(64))
+        assertEquals(verified, Json.decodeFromString<UpdateDownload>(Json.encodeToString(verified)))
     }
 
     @Test

@@ -1066,7 +1066,18 @@
   <string name="unpin_chat">Открепить чат</string>
   <string name="update_card_check_failed">Проверка обновления не удалась</string>
   <string name="update_card_close">Закрыть</string>
-  <string name="update_card_downloading">Идёт загрузка, следите за прогрессом в строке состояния</string>
+  <string name="update_card_downloading_percent">Загрузка %1$d%%</string>
+  <string name="update_card_downloading_indeterminate">Загрузка…</string>
+  <string name="update_card_verifying">Проверка пакета…</string>
+  <string name="update_card_ready">Загрузка завершена</string>
+  <string name="update_card_ready_tap_to_install">Загружено, нажмите для установки</string>
+  <string name="update_card_install">Установить</string>
+  <string name="update_card_cancel_download">Отменить загрузку</string>
+  <string name="update_card_retry">Повторить</string>
+  <string name="update_card_failed_tap_for_details">Ошибка загрузки, нажмите для подробностей</string>
+  <string name="update_card_failed_network">Не удалось загрузить. Проверьте подключение и повторите попытку.</string>
+  <string name="update_card_failed_verification">Пакет не прошёл проверку. Повторите попытку.</string>
+  <string name="update_card_failed_storage">Не удалось сохранить пакет. Проверьте свободное место.</string>
   <string name="update_card_new_version_found">Найдена новая версия %s</string>
   <string name="update_card_unknown_error">Неизвестная ошибка</string>
   <string name="upload_file">Загрузить файл</string>
@@ -2098,8 +2109,6 @@
   <string name="mcp_oauth_error_invalid_authorization_endpoint">Недопустимая конечная точка авторизации: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">слово1, слово2, слово3</string>
   <string name="update_changelog_see_release">Список изменений смотрите в GitHub Release ниже.</string>
-  <string name="update_download_start_failed">Не удалось начать загрузку, воспользуйтесь резервной загрузкой с GitHub</string>
-  <string name="update_downloading">Загрузка пакета обновления...</string>
   <string name="setting_tts_model_recommended">%1$s (рекомендуется)</string>
   <string name="setting_tts_model_free">%1$s (бесплатно)</string>
   <string name="setting_tts_step_api_key_description">Получите ключ на сайте StepFun: platform.stepfun.com/interface-key</string>
@@ -2653,4 +2662,13 @@
     <item quantity="many">%d шагов не удались</item>
     <item quantity="other">%d шага не удались</item>
   </plurals>
+  <string name="update_download_channel_name">Обновления приложения</string>
+  <string name="update_download_title">Загрузка обновления</string>
+  <string name="update_download_progress">Загрузка пакета обновления…</string>
+  <string name="update_download_verifying">Проверка пакета обновления…</string>
+  <string name="update_download_cancel">Отменить</string>
+  <string name="update_download_complete_title">Обновление загружено</string>
+  <string name="update_download_complete_text">Загрузка завершена. Нажмите для установки</string>
+  <string name="update_download_failed_title">Не удалось загрузить обновление</string>
+  <string name="update_download_failed_text">Не удалось загрузить обновление. Попробуйте ещё раз.</string>
 </resources>

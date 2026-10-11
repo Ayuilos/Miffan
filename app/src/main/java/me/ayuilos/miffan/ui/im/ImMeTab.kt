@@ -71,6 +71,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
     val navController = LocalNavController.current
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val updateDownloadState by vm.downloadState.collectAsStateWithLifecycle()
     val computers by rememberKnownComputers()
     val scope = rememberCoroutineScope()
     var advanced by rememberSaveable { mutableStateOf(true) }
@@ -117,7 +118,10 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
             item("update") {
                 UpdateAvailableBanner(
                     info = info,
+                    downloadState = updateDownloadState,
                     onDownload = { vm.downloadUpdate(context, it) },
+                    onCancelDownload = vm::cancelUpdateDownload,
+                    onInstall = { vm.installUpdate(context) },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }

@@ -76,7 +76,7 @@ Mirrors must expose the following paths relative to their configured directory (
 
 The manifest can retain the official download/checksum URLs or use matching URLs under the custom directory. The app rebases the versioned APK path onto the selected directory, so an unchanged copy of the official manifest works on a mirror. Arbitrary external APK URLs, prerelease tags, other architectures, and mismatched filenames are rejected. An optional `changelog` field supplies Markdown release notes; otherwise the details sheet links to GitHub for notes. Manifest checksum syntax is validated; installation authenticity remains enforced by Android's package signature check.
 
-After metadata succeeds, APK download failures try the remaining directories and then the **same version's** GitHub asset. Pending download IDs and remaining URLs are saved locally; a permission-protected system download receiver handles terminal network/HTTP failures even after the settings screen is closed. Cancellation, paused downloads, storage errors, and existing destination files do not trigger source switching. There is no automatic APK installation, and the GitHub Release page remains available for manual recovery. System download scheduling/retries determine when an asynchronous failure becomes terminal; the 12-second timeout applies only to metadata requests.
+After metadata succeeds, the app downloads the APK itself over the app's HTTP client, so the user's proxy settings apply. It tries the remaining directories and then the **same version's** GitHub asset, moving on after connection, HTTP or verification failures; cancellation never switches sources. Each file is checked against the manifest's SHA-256 (or the GitHub asset digest), its size and the app's package name before it is offered for installation. A foreground service keeps the download running when the app is in the background and shows its progress in a notification. When the download finishes, the update card and the completion notification open the system installer; the GitHub Release page remains available for manual recovery. The 12-second timeout applies only to metadata requests.
 
 ## Production signing trust anchor
 
@@ -136,6 +136,17 @@ gh release create "$version" --repo Ayuilos/Miffan --target "$commit" \
 ```
 
 Pushing a tag alone does not build an APK or publish a Release. If the owner has already pushed the tag, verify that it resolves to the recorded commit and use `--verify-tag` in place of `--target`; never move or replace it. Release tag protection continues to prohibit updates and deletion.
+
+## Tag-only patch versions
+
+A patch that deserves its own version number but no separate APK (4.0.1 and 4.1.4) is recorded as a tag only, and its changes ship with the next published release:
+
+1. Bump `versionName` and `versionCode` as for a normal release and add `docs/releases/<version>.md`. Its notice line says the version is a tag only.
+2. Merge it to `master` as usual and push a lightweight tag `<version>` on the merge commit.
+3. Do not create a GitHub Release or update `latest.json`. Users stay on the last published release until the next one.
+4. Copy the tag-only notes into the next release's notes, because users never received them on their own.
+
+GitHub's `releases.atom` feed lists bare tags as well, titled `<tag>: <commit subject>`. Builds from 4.1.4 on skip such entries in the Atom fallback. Older builds reach that fallback only after every manifest source and the GitHub API have failed; there they may offer the tag-only version and then fail to download it.
 
 ## Optional hosted build of a verified draft Release
 

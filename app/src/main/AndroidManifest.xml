@@ -3,6 +3,7 @@
   xmlns:tools="http://schemas.android.com/tools">
 
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -393,14 +394,10 @@
         android:value="local web server for LLM chat UI" />
     </service>
 
-    <receiver
-      android:name=".utils.UpdateDownloadReceiver"
-      android:exported="true"
-      android:permission="android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS">
-      <intent-filter>
-        <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
-      </intent-filter>
-    </receiver>
+    <service
+      android:name=".service.UpdateDownloadForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync" />
 
     <provider
       android:name="androidx.core.content.FileProvider"
