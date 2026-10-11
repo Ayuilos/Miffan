@@ -1838,7 +1838,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_pin">고정</string>
   <string name="im_p5_unpin">고정 해제</string>
   <string name="im_p5_hide">숨기기</string>
-  <string name="im_p5_hide_hint">숨겨도 기록은 남고 새 메시지가 오면 다시 표시돼요</string>
   <string name="im_p5_image">[이미지]</string>
   <string name="im_p5_file">[파일]</string>
   <string name="im_p5_you_prefix">나: %1$s</string>

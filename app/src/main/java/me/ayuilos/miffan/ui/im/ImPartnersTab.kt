@@ -1,7 +1,7 @@
 package me.ayuilos.miffan.ui.im
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,12 +43,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.Pin
+import me.rerere.hugeicons.stroke.PinOff
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
     val navController = LocalNavController.current
@@ -57,6 +59,7 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
     val templates = imPartnerTemplates(LocalConfiguration.current.locales[0])
     val scope = rememberCoroutineScope()
     var adding by remember { mutableStateOf(false) }
+    var moving by remember { mutableStateOf<Assistant?>(null) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         modifier = Modifier.fillMaxSize(),
@@ -100,33 +103,20 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                 }
             }
         }
-        items(settings.assistants, key = { it.id.toString() }) { assistant ->
-            val openChat: () -> Unit = { navController.navigate(Screen.PartnerProfile(assistant.id.toString())) }
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .combinedClickable(
-                        onClick = openChat,
-                        onLongClick = { navController.navigate(Screen.PartnerProfile(assistant.id.toString())) },
-                    )
-                    .padding(vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // The mascot consumes taps for its own reactions, so it forwards the cell action.
-                AssistantAvatar(
-                    name = assistant.name,
-                    value = assistant.avatar,
-                    onClick = openChat,
-                    modifier = Modifier.size(72.dp),
-                )
-                Text(
-                    text = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        val organization = settings.chatOrganization
+        val grouped = organization.groups.flatMapTo(HashSet()) { it.chatIds }
+        items(settings.assistants.filter { it.id !in grouped }, key = { it.id.toString() }) { assistant ->
+            ImPartnerCell(assistant, organization.isPinned(assistant.id), vm) { moving = assistant }
+        }
+        organization.groups.forEach { group ->
+            val members = group.chatIds.mapNotNull { id -> settings.assistants.firstOrNull { it.id == id } }
+            if (members.isEmpty()) return@forEach
+            item(key = "group:${group.id}", span = { GridItemSpan(maxLineSpan) }) {
+                Text(group.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, top = 12.dp))
+            }
+            items(members, key = { it.id.toString() }) { assistant ->
+                ImPartnerCell(assistant, organization.isPinned(assistant.id), vm) { moving = assistant }
             }
         }
         item(key = "recommendations", span = { GridItemSpan(maxLineSpan) }) {
@@ -156,6 +146,56 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     }
                 }
             }
+        }
+    }
+    moving?.let { partner ->
+        val groups = settings.chatOrganization.groups
+        ImGroupPickerSheet(
+            groups = groups,
+            current = groups.firstOrNull { partner.id in it.chatIds }?.id,
+            onPick = { vm.moveToGroup(partner.id, it); moving = null },
+            onCreate = { vm.createGroup(it, partner.id); moving = null },
+            onDismiss = { moving = null },
+        )
+    }
+}
+
+/** A partner in the grid: tap opens its profile, long press pins it or moves it to a group. */
+@Composable
+private fun ImPartnerCell(assistant: Assistant, pinned: Boolean, vm: ImHomeVM, onMove: () -> Unit) {
+    val navController = LocalNavController.current
+    val openProfile: () -> Unit = { navController.navigate(Screen.PartnerProfile(assistant.id.toString())) }
+    val menu = rememberPressMenu()
+    Box {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .imLongPress(menu::open)
+                .clickable(onClick = openProfile)
+                .padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // The mascot consumes taps for its own reactions, so it forwards the cell action.
+            AssistantAvatar(
+                name = assistant.name,
+                value = assistant.avatar,
+                onClick = openProfile,
+                modifier = Modifier.size(72.dp),
+            )
+            Text(
+                text = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        ImPressMenu(menu) {
+            ImPressMenuItem(if (pinned) HugeIcons.PinOff else HugeIcons.Pin,
+                stringResource(if (pinned) R.string.im_p5_unpin else R.string.im_p5_pin)) { menu.close(); vm.setPinned(assistant.id, !pinned) }
+            ImPressMenuItem(HugeIcons.Folder01, stringResource(R.string.im_chats_move_to_group)) { menu.close(); onMove() }
         }
     }
 }

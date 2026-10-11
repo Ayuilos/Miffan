@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.ChatGroup
+import me.ayuilos.miffan.data.model.ChatOrganization
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.model.withInterfaceMode
@@ -41,7 +43,26 @@ data class ImChatItem(
     val unread: Int,
     val pinned: Boolean,
     val typing: Boolean,
+) {
+    val chatId: Uuid get() = assistant.id
+}
+
+/** The Chats tab laid out: pinned chats on top, then ungrouped chats, then each non-empty group. */
+data class ImChatSections(
+    val pinned: List<ImChatItem>,
+    val ungrouped: List<ImChatItem>,
+    val groups: List<ImChatGroupSection>,
+    /** Every group, including empty ones, for the "move to group" picker. */
+    val allGroups: List<ChatGroup>,
 )
+
+data class ImChatGroupSection(
+    val group: ChatGroup,
+    val chats: List<ImChatItem>,
+    val collapsed: Boolean,
+) {
+    val unread: Int get() = chats.sumOf { it.unread }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImHomeVM(
@@ -65,8 +86,8 @@ class ImHomeVM(
 
     fun downloadUpdate(context: Context, download: UpdateDownload) = updateChecker.downloadUpdate(context, download)
 
-    /** Pinned threads first, then by latest activity; hidden threads stay out until new activity. */
-    val chats: StateFlow<List<ImChatItem>?> = combine(
+    /** Threads by latest activity; hidden threads stay out until new activity unless pinned. */
+    private val chats = combine(
         settingsStore.settingsFlow,
         conversationRepository.observeLatestConversationOfEachAssistant(),
         chatService.getConversationJobs(),
@@ -75,7 +96,8 @@ class ImHomeVM(
         .mapLatest { (settings, latest, jobIds, prefs) ->
             val assistants = settings.assistants.associateBy { it.id }
             val typingAssistants = jobIds.mapNotNullTo(HashSet()) { chatService.getConversationFlow(it).value.assistantId }
-            latest.mapNotNull { conversation ->
+            val organization = settings.chatOrganization
+            val items = latest.mapNotNull { conversation ->
                 val assistant = assistants[conversation.assistantId] ?: return@mapNotNull null
                 val key = assistant.id.toString()
                 val summary = ThreadListSummaries.summarize(
@@ -83,8 +105,9 @@ class ImHomeVM(
                     readAt = prefs.readAt[key] ?: 0L,
                 )
                 val lastActivity = maxOf(summary.lastActivity ?: conversation.updateAt, conversation.updateAt)
+                val pinned = organization.isPinned(assistant.id)
                 val hiddenAt = prefs.hiddenAt[key]
-                if (hiddenAt != null && lastActivity.toEpochMilli() <= hiddenAt) return@mapNotNull null
+                if (!pinned && hiddenAt != null && lastActivity.toEpochMilli() <= hiddenAt) return@mapNotNull null
                 ImChatItem(
                     assistant = assistant,
                     preview = summary.preview,
@@ -92,17 +115,59 @@ class ImHomeVM(
                     previewFromUser = summary.fromUser,
                     lastActivity = lastActivity,
                     unread = summary.unread,
-                    pinned = key in prefs.pinned,
+                    pinned = pinned,
                     typing = assistant.id in typingAssistants,
                 )
-            }.sortedWith(compareByDescending<ImChatItem> { it.pinned }.thenByDescending { it.lastActivity })
+            }
+            // A pinned partner stays on top even before its first message.
+            val started = items.mapTo(HashSet()) { it.chatId }
+            val unstarted = organization.pinned.filter { it !in started }.mapNotNull { id ->
+                val assistant = assistants[id] ?: return@mapNotNull null
+                ImChatItem(assistant, preview = "", previewKind = PreviewKind.EMPTY, previewFromUser = false,
+                    lastActivity = Instant.EPOCH, unread = 0, pinned = true, typing = assistant.id in typingAssistants)
+            }
+            (items + unstarted).sortedByDescending { it.lastActivity }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun setPinned(assistant: Assistant, pinned: Boolean) = listState.setPinned(assistant.id, pinned)
+    val sections: StateFlow<ImChatSections?> = combine(chats, settingsStore.settingsFlow, listState.value) { chats, settings, prefs ->
+        val organization = settings.chatOrganization
+        val byId = chats.associateBy { it.chatId }
+        val pinned = organization.pinned.mapNotNull { byId[it] }
+        val rest = chats.filterNot { it.pinned }
+        val grouped = organization.groups.flatMapTo(HashSet()) { it.chatIds }
+        ImChatSections(
+            pinned = pinned,
+            ungrouped = rest.filter { it.chatId !in grouped },
+            groups = organization.groups.mapNotNull { group ->
+                val members = group.chatIds.toSet()
+                rest.filter { it.chatId in members }.takeIf { it.isNotEmpty() }?.let {
+                    ImChatGroupSection(group, it, collapsed = group.id.toString() in prefs.collapsedGroups)
+                }
+            },
+            allGroups = organization.groups,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private fun organize(transform: (ChatOrganization) -> ChatOrganization) = updateSettings {
+        it.copy(chatOrganization = transform(it.chatOrganization))
+    }
+
+    fun setPinned(chatId: Uuid, pinned: Boolean) = organize { if (pinned) it.pin(chatId) else it.unpin(chatId) }
+
+    fun moveToGroup(chatId: Uuid, groupId: Uuid?) = organize { it.moveToGroup(chatId, groupId) }
+
+    fun createGroup(name: String, chatId: Uuid?) = organize { it.createGroup(name, chatId) }
+
+    fun renameGroup(groupId: Uuid, name: String) = organize { it.renameGroup(groupId, name) }
+
+    fun moveGroup(groupId: Uuid, offset: Int) = organize { it.moveGroup(groupId, offset) }
+
+    fun deleteGroup(groupId: Uuid) = organize { it.deleteGroup(groupId) }
+
+    fun setGroupCollapsed(groupId: Uuid, collapsed: Boolean) = listState.setGroupCollapsed(groupId, collapsed)
 
     /** "不显示": hides the row until the thread has new activity; history is kept. */
-    fun hide(assistant: Assistant) = listState.hide(assistant.id)
+    fun hide(chatId: Uuid) = listState.hide(chatId)
 
     fun updateSettings(transform: (Settings) -> Settings) {
         viewModelScope.launch { settingsStore.update(transform) }

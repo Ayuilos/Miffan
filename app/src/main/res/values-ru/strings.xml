@@ -1838,7 +1838,6 @@
   <string name="im_p5_pin">Закрепить</string>
   <string name="im_p5_unpin">Открепить</string>
   <string name="im_p5_hide">Скрыть</string>
-  <string name="im_p5_hide_hint">История сохраняется. Новый ответ вернёт чат в список</string>
   <string name="im_p5_image">[Изображение]</string>
   <string name="im_p5_file">[Файл]</string>
   <string name="im_p5_you_prefix">Вы: %1$s</string>

@@ -1838,7 +1838,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_pin">固定</string>
   <string name="im_p5_unpin">固定を解除</string>
   <string name="im_p5_hide">非表示</string>
-  <string name="im_p5_hide_hint">非表示でも履歴は残り、新着時に再表示されます</string>
   <string name="im_p5_image">[画像]</string>
   <string name="im_p5_file">[ファイル]</string>
   <string name="im_p5_you_prefix">自分：%1$s</string>
