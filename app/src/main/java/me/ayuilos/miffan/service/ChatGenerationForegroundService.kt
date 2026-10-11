@@ -44,6 +44,8 @@ class ChatGenerationForegroundService : Service() {
         private var instance: ChatGenerationForegroundService? = null
         private val starting = mutableMapOf<Uuid, CompletableDeferred<Boolean>>()
         private var keeper: GenerationKeepAlive? = null
+        // Main dispatcher only; preserve the chat destination for the lifetime of each lease.
+        private val partnerChatTargets = mutableMapOf<Uuid, Pair<Uuid, Uuid>>()
 
         private fun keeper(context: Context): GenerationKeepAlive = keeper ?: GenerationKeepAlive(
             object : GenerationKeepAliveBackend {
@@ -86,11 +88,18 @@ class ChatGenerationForegroundService : Service() {
             }
         ).also { keeper = it }
 
-        suspend fun acquire(context: Context, generationId: Uuid, conversationId: Uuid): Boolean =
-            withContext(Dispatchers.Main.immediate) { keeper(context.applicationContext).acquire(generationId, conversationId) }
+        suspend fun acquire(context: Context, generationId: Uuid, conversationId: Uuid, chatId: Uuid? = null): Boolean =
+            withContext(Dispatchers.Main.immediate) {
+                if (chatId != null) partnerChatTargets[generationId] = conversationId to chatId
+                try { keeper(context.applicationContext).acquire(generationId, conversationId) }
+                catch (e: Exception) { partnerChatTargets.remove(generationId); throw e }
+            }
 
         suspend fun release(context: Context, generationId: Uuid) =
-            withContext(NonCancellable + Dispatchers.Main.immediate) { keeper(context.applicationContext).release(generationId) }
+            withContext(NonCancellable + Dispatchers.Main.immediate) {
+                try { keeper(context.applicationContext).release(generationId) }
+                finally { partnerChatTargets.remove(generationId) }
+            }
     }
 
     private val activeGenerations = linkedMapOf<String, String>()
@@ -216,7 +225,8 @@ class ChatGenerationForegroundService : Service() {
     private fun getConversationPendingIntent(conversationId: String): PendingIntent {
         val intent = Intent(this, RouteActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("conversationId", conversationId)
+            val chatId = partnerChatTargets.values.lastOrNull { it.first.toString() == conversationId }?.second
+            if (chatId != null) putExtra("chatId", chatId.toString()) else putExtra("conversationId", conversationId)
         }
         return PendingIntent.getActivity(
             this,

@@ -9,6 +9,12 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import me.ayuilos.miffan.data.thread.ThreadListPrefs
+import me.rerere.ai.ui.UIMessagePart
+import me.ayuilos.miffan.service.pendingApprovalTools
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -31,6 +37,8 @@ import kotlin.uuid.Uuid
 
 internal interface PartnerChatRuntime {
     suspend fun loadSegment(id: Uuid): Conversation?
+    fun observeSegment(id: Uuid): Flow<Conversation?>
+    suspend fun answerApproval(segment: Conversation, toolCallId: String, approved: Boolean)
     suspend fun saveSegment(segment: Conversation)
     /** Waits across approval pauses; returns only the final assistant text. */
     suspend fun generate(segment: Conversation): String
@@ -38,6 +46,7 @@ internal interface PartnerChatRuntime {
     suspend fun ownerNote(assistantId: Uuid, origin: MessageOrigin.Event, text: String)
     /** Acquired before generation and released after writeback/handoff, with no lifetime gap. */
     suspend fun keepAlive(segmentId: Uuid): suspend () -> Unit
+    suspend fun keepAliveChat(chatId: Uuid): suspend () -> Unit
     suspend fun stop(segmentId: Uuid)
     fun reportFailure(error: Exception, segmentId: Uuid?)
 }
@@ -48,18 +57,26 @@ internal class DefaultPartnerChatService(
     private val runtime: PartnerChatRuntime,
     private val scope: CoroutineScope,
     private val replyTimeoutMillis: Long = 90_000L,
+    private val listPrefs: Flow<ThreadListPrefs> = MutableStateFlow(ThreadListPrefs()),
+    private val notifications: PartnerGroupNotifications = PartnerGroupNotifications { _, _, _ -> },
 ) : PartnerChatService {
     private val typing = MutableStateFlow<Map<Uuid, Set<Uuid>>>(emptyMap())
     private val memberLocks = ConcurrentHashMap<Pair<Uuid, Uuid>, Mutex>()
     private val ownerLocks = ConcurrentHashMap<Uuid, Mutex>()
     private val deleted = ConcurrentHashMap.newKeySet<Uuid>()
     private val ownerJobs = ConcurrentHashMap<Uuid, MutableSet<Job>>()
+    private val memberJobs = ConcurrentHashMap<Pair<Uuid, Uuid>, MutableSet<Job>>()
+    private val managementLocks = ConcurrentHashMap<Uuid, Mutex>()
     private val replies = ConcurrentHashMap<Uuid, MutableSet<Deferred<PartnerChatMessage>>>()
 
-    override fun observeSummaries(): Flow<List<PartnerChatSummary>> = combine(store.observeSnapshot(), typing) { snapshot, running ->
+    override fun observeSummaries(): Flow<List<PartnerChatSummary>> = combine(store.observeSnapshot(), typing, listPrefs) { snapshot, running, prefs ->
         snapshot.chats.map { chat ->
             val last = snapshot.messages.lastOrNull { it.message.chatId == chat.id }?.message
-            PartnerChatSummary(chat, last, running[chat.id].orEmpty(), last?.createdAt ?: chat.createdAt)
+            PartnerChatSummary(chat, last, running[chat.id].orEmpty(), last?.createdAt ?: chat.createdAt,
+                if (chat.kind == PartnerChatKind.GROUP) snapshot.messages.count {
+                    it.message.chatId == chat.id && it.message.senderId != OWNER_PARTICIPANT_ID &&
+                        it.message.createdAt.toEpochMilli() > (prefs.readAt[chat.id.toString()] ?: 0L)
+                } else 0)
         }.sortedByDescending { it.lastActivity }
     }.distinctUntilChanged()
     override fun observeChat(chatId: Uuid): Flow<PartnerChat?> = store.observeSnapshot()
@@ -83,13 +100,24 @@ internal class DefaultPartnerChatService(
         settingsStore.settingsFlow.awaitLoadedSettings()
         val chat = requireNotNull(store.chat(chatId)) { "Chat not found" }
         val lastPartner = store.messages(chatId).lastOrNull { it.message.senderId in chat.memberIds }?.message?.senderId
-        val targets = if (mentions.isEmpty()) listOfNotNull(lastPartner ?: chat.memberIds.firstOrNull())
+        val targets = if (mentions.isEmpty()) listOfNotNull(if (chat.kind == PartnerChatKind.GROUP) chat.hostId else lastPartner ?: chat.memberIds.firstOrNull())
             else mentions.filter { it in chat.memberIds }.distinct()
-        val message = PartnerChatMessage(Uuid.random(), chatId, OWNER_PARTICIPANT_ID, text, Instant.now())
+        val message = PartnerChatMessage(Uuid.random(), chatId, OWNER_PARTICIPANT_ID, text, Instant.now(), mentions = mentions.distinct())
         check(store.append(ChatMessage(message)))
-        // Store synchronously, then schedule sequential replies without making the UI wait.
+        // Store synchronously, then schedule the turn(s) without making the UI wait.
         val job = scope.launch(start = CoroutineStart.LAZY) {
-            ownerLocks.getOrPut(chatId) { Mutex() }.withLock {
+            if (chat.kind == PartnerChatKind.GROUP) {
+                try {
+                    val release = runtime.keepAliveChat(chatId)
+                    try {
+                        coroutineScope {
+                            val round = GroupRound()
+                            targets.forEach { scheduleGroup(this, round, chatId, it, message) }
+                        }
+                    } finally { release() }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { runtime.reportFailure(e, null) }
+            } else ownerLocks.getOrPut(chatId) { Mutex() }.withLock {
                 for (target in targets) {
                     try { speak(chatId, target, message) }
                     catch (e: CancellationException) { throw e }
@@ -131,7 +159,8 @@ internal class DefaultPartnerChatService(
         val target = runCatching { Uuid.parse(to) }.getOrNull()
         refusal(caller, target)?.let { return refused(it) }
         val b = requireNotNull(target)
-        val trigger = caller.partnerTrigger()
+        // Group @ routing is separate from private send_message call chains and their budget.
+        val trigger = if (caller.chatId?.let { store.chat(it)?.kind } == PartnerChatKind.GROUP) null else caller.partnerTrigger()
         val exchange = trigger?.exchangeId ?: Uuid.random()
         if (store.exchangeUsage(exchange) > 4) return refused("Exchange limit is 6 messages.")
         val pair = PartnerPair.of(caller.assistantId, b)
@@ -200,7 +229,7 @@ internal class DefaultPartnerChatService(
         val other = chat.memberIds.first { it != assistantId }
         val name = settings.getAssistantById(other)?.name?.ifBlank { "伙伴" } ?: "伙伴"
         val segment = member.segmentId?.let { runtime.loadSegment(it) } ?: Conversation(
-            assistantId = assistantId, chatId = chat.id, title = "与 $name 的私聊", messageNodes = emptyList())
+            assistantId = assistantId, chatId = chat.id, title = if (chat.kind == PartnerChatKind.GROUP) "群聊：${chat.title}" else "与 $name 的私聊", messageNodes = emptyList())
         return member.copy(segmentId = segment.id) to segment
     }
 
@@ -223,6 +252,7 @@ internal class DefaultPartnerChatService(
         memberLocks.getOrPut(chatId to assistantId) { Mutex() }.withLock {
             check(chatId !in deleted) { "Chat was deleted" }
             val chat = requireNotNull(store.chat(chatId))
+            check(assistantId in chat.memberIds) { "Member was removed" }
             val (member, old) = perspective(chat, assistantId)
             val release = runtime.keepAlive(old.id)
             typing.update { it + (chatId to (it[chatId].orEmpty() + assistantId)) }
@@ -235,13 +265,15 @@ internal class DefaultPartnerChatService(
                 check(chatId !in deleted)
                 val source = messages.find { it.message.id == replyTo.id }
                 val reply = PartnerChatMessage(Uuid.random(), chatId, assistantId, text, Instant.now(),
-                    replyTo.exchangeId ?: Uuid.random(), replyTo.id)
-                check(store.append(ChatMessage(reply, source?.chain.orEmpty() + assistantId))) { "Exchange limit is 6 messages." }
+                    replyTo.exchangeId ?: Uuid.random(), replyTo.id,
+                    if (chat.kind == PartnerChatKind.GROUP) parseGroupMentions(text, chat, assistantId, settingsStore.settingsFlow.value) else emptyList())
+                check(store.append(ChatMessage(reply, if (chat.kind == PartnerChatKind.GROUP) emptyList() else source?.chain.orEmpty() + assistantId))) { "Exchange limit is 6 messages." }
                 // Another message can arrive while generating. Do not jump the cursor over it.
                 val latest = store.messages(chatId)
                 val tail = latest.dropWhile { it.message.id != messages.lastOrNull()?.message?.id }.drop(1)
                 val cursor = if (tail.all { it.message.senderId == assistantId && it.message.replyTo != null }) reply.id else messages.lastOrNull()?.message?.id
                 store.updateMember(member.copy(syncedMessageId = cursor))
+                if (chat.kind == PartnerChatKind.GROUP) notifications.onMessage(chat, reply, replyTo)
                 reply
             } finally {
                 typing.update { it + (chatId to (it[chatId].orEmpty() - assistantId)) }
@@ -249,30 +281,134 @@ internal class DefaultPartnerChatService(
             }
         }
 
-    // Phase 4 (docs/agent-collab/P4_DATA_SPEC.md).
-    override fun observeApprovals(chatId: Uuid): Flow<List<me.ayuilos.miffan.data.model.PartnerChatApproval>> = TODO()
-    override suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean): Unit = TODO()
-    override suspend fun createGroup(memberIds: List<Uuid>, title: String): Uuid = TODO()
-    override suspend fun renameGroup(chatId: Uuid, title: String): Unit = TODO()
-    override suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>): Unit = TODO()
-    override suspend fun setHost(chatId: Uuid, assistantId: Uuid): Unit = TODO()
-    override suspend fun deleteGroup(chatId: Uuid): Unit = TODO()
+    private class GroupRound {
+        private var scheduled = 0
+        private val turns = mutableMapOf<Uuid, Int>()
+        @Synchronized fun reserve(id: Uuid): Boolean {
+            val used = turns[id] ?: 0
+            if (scheduled >= PartnerGroupLimits.MESSAGES_PER_ROUND || used >= PartnerGroupLimits.TURNS_PER_MEMBER) return false
+            scheduled++
+            turns[id] = used + 1
+            return true
+        }
+    }
+
+    private fun scheduleGroup(parent: CoroutineScope, round: GroupRound, chatId: Uuid, id: Uuid, trigger: PartnerChatMessage) {
+        if (!round.reserve(id)) return
+        val job = parent.launch(start = CoroutineStart.LAZY) {
+            try {
+                val chat = store.chat(chatId) ?: return@launch
+                if (id !in chat.memberIds || chatId in deleted) return@launch
+                val reply = speak(chatId, id, trigger)
+                reply.mentions.filter { it != OWNER_PARTICIPANT_ID && it != id }.forEach {
+                    scheduleGroup(parent, round, chatId, it, reply)
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { runtime.reportFailure(e, null) }
+        }
+        val jobs = memberJobs.getOrPut(chatId to id) { ConcurrentHashMap.newKeySet() }
+        jobs.add(job)
+        job.invokeOnCompletion { jobs.remove(job) }
+        job.start()
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun observeApprovals(chatId: Uuid): Flow<List<PartnerChatApproval>> = store.observeSnapshot()
+        .map { snapshot -> snapshot.members.filter { it.chatId == chatId && it.segmentId != null } }
+        .distinctUntilChanged().flatMapLatest { members ->
+            if (members.isEmpty()) flowOf(emptyList()) else combine(members.map { runtime.observeSegment(requireNotNull(it.segmentId)) }) { segments ->
+                segments.filterNotNull().flatMap { segment ->
+                    segment.currentMessages.flatMap { message ->
+                        message.parts.filterIsInstance<UIMessagePart.Tool>().filter { it.isPending }
+                            .map { message.createdAt to PartnerChatApproval(segment.assistantId, it) }
+                    }
+                }.sortedBy { it.first }.map { it.second }
+            }
+        }.distinctUntilChanged()
+
+    override suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean) {
+        val chat = requireNotNull(store.chat(chatId))
+        require(memberId in chat.memberIds)
+        val id = requireNotNull(store.member(chatId, memberId).segmentId)
+        val segment = requireNotNull(runtime.loadSegment(id))
+        require(segment.chatId == chatId && segment.assistantId == memberId)
+        if (segment.pendingApprovalTools().none { it.toolCallId == toolCallId }) return
+        runtime.answerApproval(segment, toolCallId, approved)
+    }
+
+    private suspend fun validateMembers(ids: List<Uuid>) {
+        val settings = settingsStore.settingsFlow.awaitLoadedSettings()
+        require(ids.size in PartnerGroupLimits.MIN_PARTNERS..PartnerGroupLimits.MAX_PARTNERS && ids.distinct().size == ids.size)
+        require(ids.all { it != OWNER_PARTICIPANT_ID && settings.getAssistantById(it) != null })
+    }
+    private fun groupTitle(title: String, ids: List<Uuid>): String = title.trim().ifBlank {
+        ids.joinToString("、") { settingsStore.settingsFlow.value.getAssistantById(it)?.name?.ifBlank { "伙伴" } ?: "伙伴" }
+    }.let { it.substring(0, it.offsetByCodePoints(0, minOf(24, it.codePointCount(0, it.length)))) }
+    private suspend fun group(id: Uuid): PartnerChat = requireNotNull(store.chat(id)).also { require(it.kind == PartnerChatKind.GROUP) }
+
+    override suspend fun createGroup(memberIds: List<Uuid>, title: String): Uuid {
+        validateMembers(memberIds)
+        val chat = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, memberIds.toList(), groupTitle(title, memberIds), Instant.now(), memberIds.first())
+        store.saveGroup(chat)
+        return chat.id
+    }
+    override suspend fun renameGroup(chatId: Uuid, title: String) = managementLocks.getOrPut(chatId) { Mutex() }.withLock {
+        val chat = group(chatId)
+        store.saveGroup(chat.copy(title = groupTitle(title, chat.memberIds)))
+    }
+    override suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>) = managementLocks.getOrPut(chatId) { Mutex() }.withLock {
+        validateMembers(memberIds)
+        val chat = group(chatId)
+        val removed = (chat.memberIds - memberIds.toSet()).associateWith { store.member(chatId, it).segmentId }
+        // Publish removal before stopping jobs: queued turns must no longer start for this member.
+        store.replaceMembers(chat.copy(memberIds = memberIds.toList(), hostId = chat.hostId?.takeIf { it in memberIds } ?: memberIds.first()))
+        removed.forEach { (id, segment) -> removeMember(chatId, id, segment) }
+    }
+    private suspend fun removeMember(chatId: Uuid, id: Uuid, segmentId: Uuid?) {
+        memberJobs.remove(chatId to id)?.forEach { it.cancel() }
+        segmentId?.let { runtime.stop(it) }
+        // Pointer may already be gone; load all segments for cleanup via the store.
+        memberLocks.getOrPut(chatId to id) { Mutex() }.withLock {
+            store.removePerspective(chatId, id)
+        }
+        typing.update { it + (chatId to (it[chatId].orEmpty() - id)) }
+    }
+    override suspend fun setHost(chatId: Uuid, assistantId: Uuid) = managementLocks.getOrPut(chatId) { Mutex() }.withLock {
+        val chat = group(chatId)
+        require(assistantId in chat.memberIds)
+        store.saveGroup(chat.copy(hostId = assistantId))
+    }
+    override suspend fun deleteGroup(chatId: Uuid) = managementLocks.getOrPut(chatId) { Mutex() }.withLock {
+        group(chatId)
+        deleteChat(chatId)
+        retainOrganization()
+    }
+    private suspend fun deleteChat(id: Uuid) {
+        deleted.add(id)
+        ownerJobs.remove(id)?.forEach { it.cancel() }
+        replies.remove(id)?.forEach { it.cancel() }
+        val members = store.chat(id)?.memberIds.orEmpty()
+        members.forEach { memberId ->
+            memberJobs.remove(id to memberId)?.forEach { it.cancel() }
+            store.member(id, memberId).segmentId?.let { runtime.stop(it) }
+        }
+        members.forEach { memberLocks.getOrPut(id to it) { Mutex() }.withLock { } }
+        store.delete(id)
+        typing.update { it - id }
+    }
+    private suspend fun retainOrganization() {
+        val ids = store.ids()
+        settingsStore.update { settings -> settings.copy(chatOrganization = settings.chatOrganization.retainChats(
+            settings.assistants.map { it.id }.toSet() + ids)) }
+    }
 
     internal suspend fun removeAssistant(assistantId: Uuid) {
-        val ids = store.directChatsOf(assistantId)
-        ids.forEach { id ->
-            deleted.add(id)
-            ownerJobs.remove(id)?.forEach { it.cancel() }
-            replies.remove(id)?.forEach { it.cancel() }
-            store.chat(id)?.memberIds?.forEach { memberId ->
-                store.member(id, memberId).segmentId?.let { runtime.stop(it) }
-            }
-            // Await in-flight member writebacks before deleting their perspectives.
-            store.chat(id)?.memberIds?.forEach { memberId ->
-                memberLocks.getOrPut(id to memberId) { Mutex() }.withLock { }
-            }
-            store.delete(id)
-            typing.update { it - id }
+        store.chatsOf(assistantId).forEach { id ->
+            val chat = store.chat(id) ?: return@forEach
+            val remaining = chat.memberIds - assistantId
+            if (chat.kind == PartnerChatKind.DIRECT) deleteChat(id)
+            else if (remaining.size < PartnerGroupLimits.MIN_PARTNERS) deleteGroup(id)
+            else setMembers(id, remaining)
         }
         val remainingChatIds = store.ids()
         settingsStore.update { settings ->

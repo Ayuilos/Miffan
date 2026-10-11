@@ -75,6 +75,10 @@ interface ConversationDAO {
     @Query("SELECT * FROM conversationentity WHERE id = :id")
     fun getConversationFlowById(id: String): Flow<ConversationEntity?>
 
+    /** Includes perspectives orphaned by an interrupted membership change. */
+    @Query("SELECT id FROM conversationentity WHERE chat_id = :chatId AND (:assistantId IS NULL OR assistant_id = :assistantId)")
+    suspend fun getPartnerSegmentIds(chatId: String, assistantId: String? = null): List<String>
+
     @Query("SELECT id FROM conversationentity")
     suspend fun getAllIds(): List<String>
 

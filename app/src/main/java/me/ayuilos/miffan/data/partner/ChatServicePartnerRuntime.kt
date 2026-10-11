@@ -16,6 +16,11 @@ internal class ChatServicePartnerRuntime(
     private val chatService: () -> ChatService,
     private val threadService: () -> ThreadService,
 ) : PartnerChatRuntime {
+    override fun observeSegment(id: Uuid) = conversations.observeConversation(id)
+    override suspend fun answerApproval(segment: Conversation, toolCallId: String, approved: Boolean) {
+        chatService().openThreadSegment(segment.id, segment.assistantId)
+        chatService().handleToolApproval(segment.id, toolCallId, approved)
+    }
     override suspend fun loadSegment(id: Uuid): Conversation? = conversations.getConversationById(id)
     override suspend fun saveSegment(segment: Conversation) = chatService().saveConversation(segment.id, segment)
     override suspend fun generate(segment: Conversation): String = chatService().generatePartnerReply(segment.id)
@@ -26,9 +31,11 @@ internal class ChatServicePartnerRuntime(
     }
     override suspend fun ownerNote(assistantId: Uuid, origin: MessageOrigin.Event, text: String) =
         threadService().deliverNote(assistantId, origin, text)
-    override suspend fun keepAlive(segmentId: Uuid): suspend () -> Unit {
+    override suspend fun keepAlive(segmentId: Uuid): suspend () -> Unit = acquireLease(segmentId, loadSegment(segmentId)?.chatId)
+    override suspend fun keepAliveChat(chatId: Uuid): suspend () -> Unit = acquireLease(chatId, chatId)
+    private suspend fun acquireLease(segmentId: Uuid, chatId: Uuid?): suspend () -> Unit {
         val token = Uuid.random()
-        ChatGenerationForegroundService.acquire(context, token, segmentId)
+        ChatGenerationForegroundService.acquire(context, token, segmentId, chatId)
         return { ChatGenerationForegroundService.release(context, token) }
     }
     override suspend fun stop(segmentId: Uuid) = chatService().discardPartnerSegment(segmentId)

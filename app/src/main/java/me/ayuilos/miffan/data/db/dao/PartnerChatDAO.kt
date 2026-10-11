@@ -40,6 +40,12 @@ interface PartnerChatDAO {
     suspend fun insert(message: PartnerChatMessageEntity)
     @Update
     suspend fun update(member: PartnerChatMemberEntity)
+    @Update
+    suspend fun update(chat: PartnerChatEntity)
+    @Query("DELETE FROM partner_chat_member WHERE chat_id = :chatId")
+    suspend fun deleteMembers(chatId: String)
+    @Query("SELECT c.id FROM partner_chat c JOIN partner_chat_member m ON c.id = m.chat_id WHERE m.assistant_id = :assistantId")
+    suspend fun chatsOf(assistantId: String): List<String>
     @Query("DELETE FROM partner_chat WHERE id = :id")
     suspend fun delete(id: String)
 }

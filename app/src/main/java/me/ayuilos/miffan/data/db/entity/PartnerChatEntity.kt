@@ -12,6 +12,7 @@ data class PartnerChatEntity(
     val kind: String,
     val title: String,
     @ColumnInfo("created_at") val createdAt: Long,
+    @ColumnInfo("host_id") val hostId: String? = null,
 )
 
 @Entity(tableName = "partner_chat_member", primaryKeys = ["chat_id", "assistant_id"],
@@ -40,4 +41,5 @@ data class PartnerChatMessageEntity(
     @ColumnInfo("reply_to") val replyTo: String? = null,
     /** Call provenance must survive process death and backup, without changing the UI contract. */
     @ColumnInfo(defaultValue = "'[]'") val chain: String = "[]",
+    @ColumnInfo(defaultValue = "'[]'") val mentions: String = "[]",
 )
