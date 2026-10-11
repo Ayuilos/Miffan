@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.MessageOrigin
 import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.service.ChatService
 import me.ayuilos.miffan.service.hasPendingToolApprovals
@@ -102,6 +103,20 @@ class ThreadService(
         chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId, createdAt = createdAt)
         chatService.resumeMessageQueue(segmentId)
     }
+
+    /**
+     * Delivers a message the owner did not write and lets the partner answer it, without routing:
+     * into [segmentId] when given (e.g. the topic that asked another partner), otherwise the newest
+     * open segment, otherwise a new one. Returns the segment. The answer arrives like any reply:
+     * unread in the Chats list and a notification while the app is in the background. The turn
+     * has no owner trigger, so it cannot change settings, grant permissions or edit memories.
+     */
+    suspend fun deliverFrom(
+        origin: MessageOrigin,
+        assistantId: Uuid,
+        content: List<UIMessagePart>,
+        segmentId: Uuid? = null,
+    ): Uuid = TODO()
 
     /** Forces the next message into a new segment ("换个话题"). */
     suspend fun closeAll(assistantId: Uuid, segments: List<Conversation>) {

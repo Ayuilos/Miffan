@@ -91,6 +91,13 @@ data class Conversation(
     val currentMessages: List<UIMessage>
         get() = currentMessageNodes.map(MessageNode::message)
 
+    /**
+     * The owner message that started the current turn: the last USER message on the current
+     * path, or null when that message came from another partner or an event. Only this message
+     * may authorize self-configuration, permission grants and memory about the owner.
+     */
+    fun ownerTrigger(): MessageRef? = TODO()
+
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? = nodesByMessageId[message.id]
 
     fun getMessageNodeByMessageId(messageId: Uuid): MessageNode? = nodesByMessageId[messageId]
@@ -274,6 +281,8 @@ data class MessageNode(
     val selectedChildId: Uuid? = null,
     /** The message the user explicitly replied to in the IM timeline. */
     val replyTo: MessageRef? = null,
+    /** Who wrote a USER message when it was not the owner; null means the owner. */
+    val origin: MessageOrigin? = null,
     @Transient
     val isFavorite: Boolean = false,
     @Transient

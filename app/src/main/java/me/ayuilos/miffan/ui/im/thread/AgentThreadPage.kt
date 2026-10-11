@@ -273,6 +273,7 @@ fun AgentThreadPage(
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
                 assistant = assistant)
             is TimelineItem.Typing -> ThreadTyping(assistant)
+            is TimelineItem.Event -> ThreadEventLine(item.origin.summary)
             is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
                 onView = { viewingNotice = item.notice },
                 onUndo = {

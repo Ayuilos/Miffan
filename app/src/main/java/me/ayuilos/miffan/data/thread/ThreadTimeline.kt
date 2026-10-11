@@ -46,6 +46,19 @@ sealed interface TimelineItem {
         override val key: String get() = "notice-${notice.id}"
     }
 
+    /**
+     * A USER message that did not come from the owner but from an event (see
+     * [me.ayuilos.miffan.data.model.MessageOrigin.Event]); shown as a system line, not as the owner's bubble.
+     */
+    data class Event(
+        val segmentId: Uuid,
+        val node: MessageNode,
+        val at: Instant,
+        val origin: me.ayuilos.miffan.data.model.MessageOrigin.Event,
+    ) : TimelineItem {
+        override val key: String get() = "event-${node.message.id}"
+    }
+
     /** A segment is waiting for its first reply token. */
     data class Typing(val segmentIds: Set<Uuid>) : TimelineItem {
         override val key: String get() = "typing"

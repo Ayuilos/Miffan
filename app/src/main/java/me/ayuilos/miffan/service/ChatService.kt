@@ -602,6 +602,8 @@ class ChatService(
         replyTo: MessageRef? = null,
         messageId: Uuid = Uuid.random(),
         createdAt: LocalDateTime? = null,
+        /** Who wrote it when not the owner; null means the owner. */
+        origin: me.ayuilos.miffan.data.model.MessageOrigin? = null,
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
