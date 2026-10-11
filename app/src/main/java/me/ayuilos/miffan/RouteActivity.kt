@@ -764,6 +764,10 @@ sealed interface Screen : NavKey {
     @Serializable
     data class Thread(val assistantId: String, val focusMessageId: String? = null, val text: String? = null) : Screen
 
+    /** A chat between partners, which the owner can read and join. */
+    @Serializable
+    data class PartnerChat(val chatId: String) : Screen
+
     @Serializable
     data class PartnerScreen(val assistantId: String) : Screen
 

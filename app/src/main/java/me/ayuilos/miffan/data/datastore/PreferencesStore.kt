@@ -701,6 +701,8 @@ data class Settings(
     val assistantTags: List<Tag> = emptyList(),
     /** Easy-mode Chats list pins and groups. */
     val chatOrganization: ChatOrganization = ChatOrganization(),
+    /** Partners the owner allowed to contact each other. */
+    val partnerContactGrants: List<me.ayuilos.miffan.data.model.PartnerPair> = emptyList(),
     val miffanHelpEnabled: Boolean = true,
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
