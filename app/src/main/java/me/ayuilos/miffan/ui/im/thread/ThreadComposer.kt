@@ -9,6 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.layout.onSizeChanged
+import me.ayuilos.miffan.data.model.Assistant
 import dev.chrisbanes.haze.HazeState
 import me.ayuilos.miffan.ui.components.ui.GlassIconButton
 import me.ayuilos.miffan.ui.components.ui.GlassSurface
@@ -96,6 +100,8 @@ internal fun ThreadComposer(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    /** Other partners the owner can @ in this thread. */
+    mentionables: List<Assistant> = emptyList(),
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -118,6 +124,14 @@ internal fun ThreadComposer(
     val latestInput by rememberUpdatedState(onInput)
     val latestError by rememberUpdatedState(onError)
     val addError = stringResource(R.string.im_thread_attachment_error)
+    // The cursor is needed to find the @ being typed; [input] stays the source of truth for the text.
+    var field by remember { mutableStateOf(TextFieldValue(input, TextRange(input.length))) }
+    if (field.text != input) field = TextFieldValue(input, TextRange(input.length))
+    val mention = if (mentionables.isEmpty()) null else field.mentionQuery()
+    val candidates = mention?.let { mentionCandidates(mentionables, it.query) }.orEmpty()
+    var pillWidth by remember { mutableIntStateOf(0) }
+    val mentionColor = MaterialTheme.colorScheme.primary
+    val highlight = remember(mentionables, mentionColor) { MentionHighlight(mentionables, mentionColor) }
 
     DisposableEffect(asr) {
         onDispose { if (ownsRecording) asr.stop() }
@@ -216,12 +230,17 @@ internal fun ThreadComposer(
                     ThreadAttachmentMenuItem(HugeIcons.Files02, stringResource(R.string.im_thread_file)) { menu = false; documents.launch(arrayOf("*/*")) }
                 }
             }
-            ComposerPill(compact, hazeState, Modifier.weight(1f).heightIn(min = 48.dp)) {
+            Box(Modifier.weight(1f).onSizeChanged { pillWidth = it.width }) {
+            if (!asrState.isRecording) ThreadMentionPopup(candidates, pillWidth, hazeState) { partner ->
+                mention?.let { field = field.insertMention(it, partner.name); onInput(field.text) }
+            }
+            ComposerPill(compact, hazeState, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Row(Modifier.padding(start = 18.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (asrState.isRecording) {
                         Text(stringResource(R.string.im_thread_voice_stop), Modifier.weight(1f).padding(vertical = 12.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else BasicTextField(value = input, onValueChange = onInput,
+                    } else BasicTextField(value = field, onValueChange = { field = it; onInput(it.text) },
+                        visualTransformation = highlight,
                         modifier = Modifier.weight(1f).padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) menu = false },
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), maxLines = if (compact) 2 else 5,
@@ -248,6 +267,7 @@ internal fun ThreadComposer(
                         }, enabled = loaded && (stops || (!importing && !asrState.isRecording)),
                     ) { Icon(if (stops) HugeIcons.StopCircle else HugeIcons.ArrowUp02, stringResource(if (stops) R.string.im_thread_stop else R.string.im_thread_send)) }
                 }
+            }
             }
         }
     }

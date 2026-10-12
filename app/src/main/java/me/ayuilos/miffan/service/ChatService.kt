@@ -1136,6 +1136,7 @@ class ChatService(
                     addAll(inputTransformers)
                     add(templateTransformer)
                     add(workspaceReminderTransformer)
+                    add(me.ayuilos.miffan.data.ai.transformers.PartnerMentionTransformer(turnConversation, settings))
                 },
                 outputTransformers = outputTransformers,
                 dynamicTools = { computerToolbox?.tools().orEmpty() },

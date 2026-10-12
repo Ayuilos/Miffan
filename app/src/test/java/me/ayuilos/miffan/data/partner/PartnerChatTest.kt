@@ -128,6 +128,52 @@ class PartnerChatTest {
         assertTrue(f.store.chats.isEmpty()); assertTrue(f.settings.value.partnerContactGrants.isEmpty())
     }
 
+    @Test fun ownerMentionBypassesOnlyThatContactsApprovalAndExecutionPersistsGrant() = runTest {
+        val f = Fixture(this)
+        f.settings.value = f.settings.value.withInterfaceMode(InterfaceMode.IM)
+        val owner = caller().appendMessage(UIMessage.user("@小B帮我问问他今天怎么样"))
+        val tool = buildPartnerMessageTools(owner, f.settingsStore, f.service).last()
+        fun args(target: Uuid) = buildJsonObject { put("to", target.toString()); put("text", "今天怎么样？") }
+        assertFalse(tool.needsApproval(args(b.id)))
+        assertTrue(tool.needsApproval(args(c.id)))
+        assertTrue(f.settings.value.partnerContactGrants.isEmpty())
+        val result = Json.parseToJsonElement((tool.execute(args(b.id)).single() as UIMessagePart.Text).text).jsonObject
+        assertEquals("replied", result.status())
+        assertEquals(listOf(PartnerPair.of(a.id, b.id)), f.settings.value.partnerContactGrants)
+        f.service.revokeContact(a.id, b.id)
+        val later = buildPartnerMessageTools(owner.appendMessage(UIMessage.user("没有提到伙伴")), f.settingsStore, f.service).last()
+        assertTrue(later.needsApproval(args(b.id)))
+    }
+
+    @Test fun historicalAndNonOwnerMentionsCannotBypassApproval() = runTest {
+        val f = Fixture(this)
+        f.settings.value = f.settings.value.withInterfaceMode(InterfaceMode.IM)
+        val history = caller().appendMessage(UIMessage.user("@小B"))
+        val args = buildJsonObject { put("to", b.id.toString()); put("text", "hello") }
+        for (current in listOf(history.appendMessage(UIMessage.user("hello")),
+            history.appendMessage(UIMessage.user("@小B"), origin = MessageOrigin.Event("test", "event")),
+            history.appendMessage(UIMessage.user("@小B"), origin = MessageOrigin.Partner(c.id, Uuid.random())),
+            history.copy(chatId = Uuid.random()))) {
+            assertTrue(buildPartnerMessageTools(current, f.settingsStore, f.service).last().needsApproval(args))
+        }
+        f.settings.value = f.settings.value.withInterfaceMode(InterfaceMode.PROFESSIONAL)
+        assertTrue(buildPartnerMessageTools(history, f.settingsStore, f.service).last().needsApproval(args))
+    }
+
+    @Test fun mentioningGroupMemberStillRefusesAndDoesNotGrant() = runTest {
+        val f = Fixture(this)
+        f.settings.value = f.settings.value.withInterfaceMode(InterfaceMode.IM)
+        val group = f.service.createGroup(listOf(a.id, b.id), "group")
+        val owner = caller(chatId = group).appendMessage(UIMessage.user("@小B"))
+        val tool = buildPartnerMessageTools(owner, f.settingsStore, f.service).last()
+        val args = buildJsonObject { put("to", b.id.toString()); put("text", "hello") }
+        assertFalse(tool.needsApproval(args))
+        val result = Json.parseToJsonElement((tool.execute(args).single() as UIMessagePart.Text).text).jsonObject
+        assertEquals("refused", result.status())
+        assertTrue(f.settings.value.partnerContactGrants.isEmpty())
+        assertTrue(f.store.allMessages.isEmpty())
+    }
+
     @Test fun secondHopCarriesTheRootExchangeAndChain() = runTest {
         val f = Fixture(this)
         val exchange = Uuid.random()
