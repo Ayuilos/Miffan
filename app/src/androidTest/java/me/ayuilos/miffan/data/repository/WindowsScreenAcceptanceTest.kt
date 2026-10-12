@@ -74,7 +74,7 @@ class WindowsScreenAcceptanceTest {
         val row = host()
         assertEquals("windows", row.platform)
         val probe = screens.probe(workspace.id)
-        assertEquals("windows", probe.os); assertEquals(4, probe.helper); assertTrue(probe.cua.ok)
+        assertEquals("windows", probe.os); assertEquals(bundledWindowsHelperVersion(), probe.helper); assertTrue(probe.cua.ok)
         assertTrue(screens.checkSunshineFirewall(row.id, row.connectionRevision).firewallModelOk)
         workspaces.openLeasedRemote(workspace.id) { ssh ->
             assertEquals(RemotePlatform.WINDOWS, ssh.platform)
@@ -171,3 +171,9 @@ class WindowsScreenAcceptanceTest {
         identityRoot.deleteRecursively(); preferences.edit().clear().commit(); Unit
     }
 }
+
+/** The version of the bundled `miffan.ps1`, so the acceptance tests follow helper upgrades. */
+internal fun bundledWindowsHelperVersion(): Int =
+    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.assets.open("remote/miffan.ps1")
+        .use { it.readBytes().toString(Charsets.UTF_8) }
+        .let { requireNotNull(Regex("""HelperVersion = (\d+)""").find(it)).groupValues[1].toInt() }

@@ -157,6 +157,7 @@ internal fun RemoteScreenScaffold(
     LaunchedEffect(vm, state) {
         if (state !is RemoteScreenUiState.Connected) keyboard = false
     }
+    LaunchedEffect(keyboard) { if (keyboard) vm.prepareTyping() }
     LaunchedEffect(vm) {
         if (vm.metered && !meteredNoticeShown) {
             meteredNoticeShown = true

@@ -61,7 +61,7 @@ class WindowsComputerAcceptanceTest {
             workspaceId = workspace.id
             val screens = RemoteScreenRepository(workspaces, koin.get<WorkspaceDAO>(), koin.get<RemoteHostDAO>(), koin.get<RemoteScreenCredentialStore>(), context.assets, context)
             val probe = screens.probe(workspace.id)
-            assertEquals("windows", probe.os); assertEquals(4, probe.helper)
+            assertEquals("windows", probe.os); assertEquals(bundledWindowsHelperVersion(), probe.helper)
             assertTrue(probe.cua.ok); assertEquals("Limited", probe.cua.autostartRunLevel)
             registry = RemoteComputerRegistry(screens, scope)
             val caps = registry.capabilities(workspace.id)

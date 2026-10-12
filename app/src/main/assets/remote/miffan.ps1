@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 6
+$script:HelperVersion = 7
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -1045,6 +1045,16 @@ function Remove-StaleCuaBridgeTasks($Context) {
         Unregister-ScheduledTask -TaskName $old.TaskName -TaskPath '\' -Confirm:$false -ErrorAction SilentlyContinue
     }
 }
+# Starts the bridge ahead of typing on a screen page, so the first clipboard write is fast too.
+# Best effort: an unusable cua-driver or a locked desktop just reports not ready.
+function Invoke-CuaWarm {
+    if (-not (Get-CuaStatus).ok) {return @{success=$true;ready=$false;detail='cua-driver not usable'}}
+    $context=Get-CuaBridgeContext; Assert-CuaConsole $context
+    Initialize-CuaBridge
+    if (Test-CuaBridgeAvailable $context.pipe) {return @{success=$true;ready=$true;detail='Bridge already running'}}
+    $null=Ensure-CuaBridge
+    return @{success=$true;ready=$true;detail='Bridge started'}
+}
 function Invoke-CuaBridge {
     $context=Get-CuaBridgeContext; Assert-CuaConsole $context
     if ([Diagnostics.Process]::GetCurrentProcess().SessionId -ne $context.console.id) {throw 'Bridge must run in the console session'}
@@ -1134,7 +1144,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
             }
         }
         'clip' { if ($Subcommand -or $Suboperation) {throw 'Clipboard text must come from stdin'}; return Invoke-CuaClipboard ([Console]::In.ReadToEnd()) }
-        'cua' { if ($Subcommand -eq 'status' -and -not $Suboperation) {return Get-CuaStatus}; if ($Subcommand -eq 'install' -and -not $Suboperation) {return Invoke-CuaInstall}; throw 'Usage: cua [status|install|bridge]' }
+        'cua' { if ($Subcommand -eq 'status' -and -not $Suboperation) {return Get-CuaStatus}; if ($Subcommand -eq 'install' -and -not $Suboperation) {return Invoke-CuaInstall}; if ($Subcommand -eq 'warm' -and -not $Suboperation) {return Invoke-CuaWarm}; throw 'Usage: cua [status|install|warm|bridge]' }
         default { throw 'Usage: version|probe [display]|sunshine|clip|cua' }
     }
 }

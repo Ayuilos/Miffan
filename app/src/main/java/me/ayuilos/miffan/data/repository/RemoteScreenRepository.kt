@@ -548,6 +548,18 @@ class RemoteScreenRepository(
     }
 
     /** Uses cliprdr for an active RDP session; VNC and STREAM use the SSH clipboard helper. */
+    /**
+     * Starts the Windows cua bridge ahead of typing so the first clipboard write is fast too.
+     * Best effort and quick to skip elsewhere: the screen never waits on it.
+     */
+    suspend fun prepareWindowsTyping(workspaceId: String) {
+        withRemote(workspaceId) { ssh ->
+            if (ssh.platform != me.rerere.workspace.RemotePlatform.WINDOWS) return@withRemote
+            ensureHelper(ssh)
+            ssh.execute(screenHelperCommand(ssh.platform, "cua warm"), timeoutMillis = 30_000)
+        }
+    }
+
     suspend fun setRemoteClipboard(workspaceId: String, @Suppress("UNUSED_PARAMETER") platform: RemoteScreenPlatform, text: String): Boolean {
         val rdp = synchronized(lock) { open.values.flatten().firstOrNull {
             it.workspaceId == workspaceId && it.session.protocol == RemoteDesktopProtocol.RDP

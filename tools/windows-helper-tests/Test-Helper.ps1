@@ -96,7 +96,7 @@ Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
     Assert-Equal $decoded.items.Count 0 'empty JSON array'
     Assert-Equal $decoded.one.Count 1 'single JSON array'
     Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
-    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '6' 'integer version contract'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '7' 'integer version contract'
 }
 Test 'firewall review includes exact LAN and detected Tailscale sources without granting writes' {
     function Get-NetIPConfiguration { return @(
@@ -410,6 +410,22 @@ Test 'clipboard chooses available bridge, and unavailable bridge falls back (moc
     Assert-Equal (Invoke-CuaClipboard "中文`nEnglish").transport 'mock-interactive' 'failed on-demand start falls back before any write'
     Assert-Equal $script:Ensured 1 'bridge started on demand when cua-driver is usable'
     Assert-Throws {Invoke-CuaClipboard ([string][char]0)} 'NUL refused'
+}
+
+Test 'cua warm starts the bridge only when cua-driver is usable (mocked)' {
+    $script:Ensured=0
+    function Ensure-CuaBridge {$script:Ensured++;return @{}}
+    function Get-CuaBridgeContext {return @{console=@{present=$true;sid='S-1';id=1;lock_state='unlocked'};sid='S-1';pipe='Miffan-offline';directory='C:\offline'}}
+    function Test-CuaBridgeAvailable {param($Name);return $false}
+    function Get-CuaStatus {return @{ok=$false}}
+    Assert-Equal (Invoke-CuaWarm).ready $false 'unusable cua-driver is not warmed'
+    Assert-Equal $script:Ensured 0 'no start without a usable cua-driver'
+    function Get-CuaStatus {return @{ok=$true}}
+    Assert-Equal (Invoke-CuaWarm).ready $true 'usable cua-driver warms the bridge'
+    Assert-Equal $script:Ensured 1 'bridge started once'
+    function Test-CuaBridgeAvailable {param($Name);return $true}
+    Assert-Equal (Invoke-CuaWarm).detail 'Bridge already running' 'running bridge left alone'
+    Assert-Equal $script:Ensured 1 'no second start'
 }
 
 Test 'stale bridge tasks of older helpers are removed, nothing else (mocked)' {

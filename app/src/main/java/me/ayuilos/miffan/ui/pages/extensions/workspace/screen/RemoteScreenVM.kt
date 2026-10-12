@@ -399,6 +399,24 @@ class RemoteScreenVM(
         reconnect()
     }
 
+    private var typingPreparedAt = 0L
+
+    /**
+     * Windows writes typed text through the cua bridge, which exits after two idle minutes; start it
+     * when the screen connects or the keyboard opens so the first keystrokes need not wait for it.
+     */
+    fun prepareTyping() {
+        if (_platform.value != RemoteScreenPlatform.WINDOWS) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - typingPreparedAt < 60_000) return
+        typingPreparedAt = now
+        viewModelScope.launch {
+            try { repository.prepareWindowsTyping(args.workspaceId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Throwable) { typingPreparedAt = 0L }
+        }
+    }
+
     private val _windowsSetup = MutableStateFlow(false)
     /** A Windows computer has no plain connection, so its failed connection walks through Sunshine setup. */
     val windowsSetup: StateFlow<Boolean> = _windowsSetup.asStateFlow()
@@ -599,6 +617,7 @@ class RemoteScreenVM(
                 connection = opened
                 _hostId.value = opened.hostId
                 _platform.value = opened.platform
+                prepareTyping()
                 opened.streamFallback?.let { _notices.tryEmit(RemoteScreenNotice.StreamFallback(it)) }
                 _connectionInfo.value = RemoteConnectionInfo(opened.session.protocol, opened.streamRequested,
                     opened.streamAddress, opened.streamFallback, skipStream)
