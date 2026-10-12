@@ -72,20 +72,7 @@ internal fun parseGroupMentions(text: String, chat: PartnerChat, sender: Uuid, s
     val names = ownerNames + chat.memberIds.mapNotNull { id ->
         settings.getAssistantById(id)?.name?.takeIf { it.isNotBlank() }?.let { it to id }
     }
-    val ordered = names.sortedByDescending { it.first.length }
-    val mentions = linkedSetOf<Uuid>()
-    var index = 0
-    while (index < text.length) {
-        if (text[index] == '@') {
-            val match = ordered.firstOrNull { text.startsWith(it.first, index + 1) }
-            if (match != null) {
-                if (match.second != sender) mentions.add(match.second)
-                index += match.first.length
-            }
-        }
-        index++
-    }
-    return mentions.toList()
+    return findPartnerMentions(text, names).map { it.id }.filter { it != sender }.distinct()
 }
 
 internal fun partnerChatTitle(chat: PartnerChat, settings: Settings): String =
