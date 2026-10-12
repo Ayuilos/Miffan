@@ -123,6 +123,8 @@ val appModule = module {
         }) }
     single<me.ayuilos.miffan.data.partner.PartnerChatService> { get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>() }
 
+    single { me.ayuilos.miffan.data.ai.BackgroundModelHealth() }
+
     single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>()) }
 
     single<SegmentRouter> { SmartSegmentRouter(LlmTopicClassifier(get())) }
