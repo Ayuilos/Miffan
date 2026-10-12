@@ -111,7 +111,7 @@ data class BackgroundFailure(
 )
 
 /** Latest background chore failure, kept in memory for the easy-chat status row. */
-class BackgroundModelHealth {
+class BackgroundModelHealth(private val onFailure: (BackgroundTask, Throwable) -> Unit = { _, _ -> }) {
     private val _lastFailure = MutableStateFlow<BackgroundFailure?>(null)
     val lastFailure: StateFlow<BackgroundFailure?> = _lastFailure.asStateFlow()
 
@@ -120,6 +120,7 @@ class BackgroundModelHealth {
         if (generateSequence(error) { it.cause }.any {
                 it is CancellationException || it is InterruptedIOException || it is TimeoutException
             }) return
+        onFailure(task, error)
         _lastFailure.value = BackgroundFailure(
             task = task,
             modelName = model.displayName.ifBlank { model.modelId },

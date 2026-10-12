@@ -13,7 +13,7 @@ internal const val OWNER_THREAD_RELAY_APPROVAL_REASON = "owner_thread_non_owner_
  * Network help stays gated even though it routes free-text topics locally.
  */
 internal val OWNER_THREAD_LOCAL_TOOL_ALLOWLIST = setOf(
-    "my_environment", "list_contacts",
+    "my_environment", "list_contacts", "app_diagnostics",
     "recent_chats", "conversation_search", "read_partner_chat",
     "get_time_info", "get_screen_time", "calendar_query", "use_skill", "ask_user",
     "workspace_read_file",

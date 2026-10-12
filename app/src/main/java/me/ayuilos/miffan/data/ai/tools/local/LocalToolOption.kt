@@ -34,6 +34,10 @@ sealed class LocalToolOption {
     data object Calendar : LocalToolOption()
 
     @Serializable
+    @SerialName("bug_report")
+    data object BugReport : LocalToolOption()
+
+    @Serializable
     @SerialName("extension_management")
     data object ExtensionManagement : LocalToolOption()
 }

@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.di
 
+import kotlinx.coroutines.launch
+
 import me.ayuilos.miffan.data.revision.RevisionNoticeSource
 import me.ayuilos.miffan.data.revision.RevisionService
 import me.ayuilos.miffan.data.thread.LlmTopicClassifier
@@ -88,6 +90,8 @@ val appModule = module {
         )
     }
 
+    single { me.ayuilos.miffan.data.bugreport.RecentErrorStore(java.io.File(get<android.app.Application>().filesDir, "diagnostics/recent_errors.json")) }
+
     single {
         ChatService(
             context = get(),
@@ -110,6 +114,7 @@ val appModule = module {
             auditRepository = get(),
             httpClient = get(),
             backgroundModelHealth = get(),
+            recentErrorStore = get(),
         )
     }
 
@@ -124,7 +129,13 @@ val appModule = module {
         }) }
     single<me.ayuilos.miffan.data.partner.PartnerChatService> { get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>() }
 
-    single { me.ayuilos.miffan.data.ai.BackgroundModelHealth() }
+    single {
+        val store = get<me.ayuilos.miffan.data.bugreport.RecentErrorStore>()
+        val scope = get<AppScope>()
+        me.ayuilos.miffan.data.ai.BackgroundModelHealth { task, error ->
+            scope.launch { runCatching { store.record(error, "Background helper: ${task.name}") } }
+        }
+    }
 
     single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>(), backgroundModelHealth = get()) }
 

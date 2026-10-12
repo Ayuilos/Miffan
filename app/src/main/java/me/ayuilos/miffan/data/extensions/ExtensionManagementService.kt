@@ -581,6 +581,7 @@ private val localToolDefinitions = listOf(
     LocalToolDefinition("ask_user", LocalToolOption.AskUser),
     LocalToolDefinition("screen_time", LocalToolOption.ScreenTime),
     LocalToolDefinition("calendar", LocalToolOption.Calendar),
+    LocalToolDefinition("bug_report", LocalToolOption.BugReport),
     LocalToolDefinition(
         id = "extension_management",
         option = LocalToolOption.ExtensionManagement,

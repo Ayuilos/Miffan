@@ -405,6 +405,7 @@ class ChatService(
     private val auditRepository: AuditRepository,
     httpClient: OkHttpClient,
     private val backgroundModelHealth: BackgroundModelHealth = BackgroundModelHealth(),
+    private val recentErrorStore: me.ayuilos.miffan.data.bugreport.RecentErrorStore? = null,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -427,6 +428,9 @@ class ChatService(
         solution: ChatErrorSolution? = null,
     ) {
         if (error is CancellationException) return
+        recentErrorStore?.let { store ->
+            appScope.launch { runCatching { store.record(error, title) } }
+        }
         _errors.update {
             it + ChatError(title = title, error = error, conversationId = conversationId, solution = solution)
         }
@@ -1161,6 +1165,12 @@ class ChatService(
                         addAll(createSearchTools(settings))
                     }
                     addAll(localTools.getTools(assistant.localTools))
+                    if (LocalToolOption.BugReport in assistant.localTools) {
+                        add(me.ayuilos.miffan.data.bugreport.createAppDiagnosticsTool(access) {
+                            me.ayuilos.miffan.data.bugreport.deviceDiagnostics(context, settings.isImMode)
+                                .copy(recentErrors = recentErrorStore?.recent().orEmpty())
+                        })
+                    }
                     if (extensionManagementEnabled) {
                         addAll(createExtensionManagementTools(extensionManagementService, access))
                     }

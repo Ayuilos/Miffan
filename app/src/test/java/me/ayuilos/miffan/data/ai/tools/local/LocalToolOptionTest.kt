@@ -9,6 +9,13 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class LocalToolOptionTest {
+    @Test fun bugReportIsOptInAndRoundTrips() {
+        assertFalse(LocalToolOption.BugReport in Assistant().localTools)
+        val encoded = JsonInstant.encodeToString<LocalToolOption>(LocalToolOption.BugReport)
+        assertEquals("bug_report", JsonInstant.parseToJsonElement(encoded).jsonObject["type"]?.jsonPrimitive?.content)
+        assertEquals(LocalToolOption.BugReport, JsonInstant.decodeFromString<LocalToolOption>(encoded))
+    }
+
     @Test
     fun `extension management is disabled by default`() {
         assertFalse(Assistant().localTools.contains(LocalToolOption.ExtensionManagement))
