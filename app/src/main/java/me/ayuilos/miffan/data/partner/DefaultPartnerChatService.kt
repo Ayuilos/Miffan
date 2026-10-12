@@ -366,12 +366,24 @@ internal class DefaultPartnerChatService(
         store.saveGroup(chat.copy(title = groupTitle(title)))
     }
     override suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>) = managementLocks.getOrPut(chatId) { Mutex() }.withLock {
+        replaceGroupMembers(group(chatId), memberIds)
+    }
+
+    override suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>, access: AgentAccess) =
+        managementLocks.getOrPut(chatId) { Mutex() }.withLock {
+            require(access.ownerInitiated) { "Only an owner-initiated turn may invite partners." }
+            // Check membership before validating requested ids: inaccessible and absent chats are indistinguishable.
+            val chat = store.chat(chatId)?.takeIf { it.kind == PartnerChatKind.GROUP && access.callerId in it.memberIds }
+                ?: throw IllegalArgumentException("Group chat does not exist.")
+            replaceGroupMembers(chat, (chat.memberIds + memberIds).distinct())
+        }
+
+    private suspend fun replaceGroupMembers(chat: PartnerChat, memberIds: List<Uuid>) {
         validateMembers(memberIds)
-        val chat = group(chatId)
-        val removed = (chat.memberIds - memberIds.toSet()).associateWith { store.member(chatId, it).segmentId }
+        val removed = (chat.memberIds - memberIds.toSet()).associateWith { store.member(chat.id, it).segmentId }
         // Publish removal before stopping jobs: queued turns must no longer start for this member.
         store.replaceMembers(chat.copy(memberIds = memberIds.toList(), hostId = chat.hostId?.takeIf { it in memberIds } ?: memberIds.first()))
-        removed.forEach { (id, segment) -> removeMember(chatId, id, segment) }
+        removed.forEach { (id, segment) -> removeMember(chat.id, id, segment) }
     }
     private suspend fun removeMember(chatId: Uuid, id: Uuid, segmentId: Uuid?) {
         memberJobs.remove(chatId to id)?.forEach { it.cancel() }

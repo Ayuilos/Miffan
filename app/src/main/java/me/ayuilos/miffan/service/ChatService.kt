@@ -1185,6 +1185,10 @@ class ChatService(
                             access, settings.isImMode, settingsStore, ownerTrigger,
                             emojiValues = { me.ayuilos.miffan.data.ai.tools.profileEmojiValues(me.ayuilos.miffan.utils.EmojiUtils.loadEmoji(context)) },
                         ))
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildGroupChatTools(
+                            access, settings.isImMode, settingsStore, ownerTrigger,
+                            getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>(),
+                        ))
                         val trigger = ownerTrigger
                         addAll(
                             buildSelfConfigTools(

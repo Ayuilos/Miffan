@@ -14,3 +14,12 @@
 ## 验证约束
 
 按 P3 规格只使用 JVM 测试；未启动或操作模拟器、未安装 App、未做真实模型实测。日志和临时文件均在当前 worktree 的 `build/` 下。
+
+## 群聊（与消息列表分组分开）
+
+- `create_group_chat`、`invite_to_group_chat` 仅 IM 主人回合注册并在执行时复查，每次审批，严格使用 title/chat_id、member_ids、reason 参数。
+- 创建将调用者放在成员首位，现有 createGroup 因此将其设为 host；校验存在的伙伴、排除主人占位 id、自己和重复成员，沿用 2–6 人限制。标题沿用服务已有的去空白与 24 Unicode 码点限制，返回实际保存的标题。
+- 邀请先检查群聊存在且调用者是成员；非成员与不存在返回完全相同的 `Group chat does not exist.`。已有成员和重复邀请忽略。
+- 新增 AgentAccess 版 `PartnerChatService.setMembers` 重载；DefaultPartnerChatService 在现有 managementLocks 内重新检查调用者成员身份，并合并最新成员后写入。避免审批等待或并发邀请用旧列表覆盖现有成员；保持原 host，不走移除成员/删除视角路径。主人界面原有两参数 setMembers 继续允许原管理行为。
+- createGroup/setMembers 调用均包在 RevisionOrigin(AGENT, ownerTrigger, reason)；当前修订机制没有群聊/成员 subject，不新增数据库或虚构修订。
+- GroupChatToolsTest 使用真实 DefaultPartnerChatService + 内存 PartnerChatStore，覆盖群主、仅新增、原群主保留、旧列表合并、非成员错误隔离、输入和 AGENT 来源；连同 PartnerChatTest 通过。日志 `build/group-tests.log`。

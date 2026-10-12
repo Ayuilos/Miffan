@@ -51,6 +51,9 @@ interface PartnerChatService {
     /** Replaces the partner members (2–6); a removed host passes hosting to the first member. */
     suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>)
 
+    /** Agent invitations merge with current members under the management lock, never removing perspectives. */
+    suspend fun setMembers(chatId: Uuid, memberIds: List<Uuid>, access: me.ayuilos.miffan.data.ai.AgentAccess)
+
     suspend fun setHost(chatId: Uuid, assistantId: Uuid)
 
     /** Deletes a group with its messages and perspective segments. */
