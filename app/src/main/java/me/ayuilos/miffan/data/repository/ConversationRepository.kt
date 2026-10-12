@@ -43,10 +43,11 @@ class ConversationRepository(
         private const val INITIAL_LOAD_SIZE = 40
     }
 
-    suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10): List<Conversation> {
+    suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10, newestFirst: Boolean = false): List<Conversation> {
         return conversationDAO.getRecentConversationsOfAssistant(
             assistantId = assistantId.toString(),
-            limit = limit
+            limit = limit,
+            newestFirst = newestFirst,
         ).map { entity ->
             val nodes = loadMessageNodes(entity.id)
             conversationEntityToConversation(entity, nodes)
@@ -375,7 +376,8 @@ class ConversationRepository(
     suspend fun searchMessages(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
-    ) = messageFtsManager.search(keyword, sort)
+        perspectiveAssistantId: Uuid? = null,
+    ) = messageFtsManager.search(keyword, sort, perspectiveAssistantId?.toString())
 
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
         messageFtsManager.deleteAll()

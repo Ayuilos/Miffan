@@ -17,6 +17,7 @@ data class MessageSearchResult(
     val title: String,
     val updateAt: Instant,
     val snippet: String,
+    val chatId: String? = null,
 )
 
 enum class MessageSearchSort(val orderBy: String) {
@@ -64,19 +65,22 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
     suspend fun search(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
+        // IM tools may recall only this caller's perspectives; UI searches leave it null.
+        perspectiveAssistantId: String? = null,
     ): List<MessageSearchResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<MessageSearchResult>()
         val cursor = db.query(
             """
             SELECT node_id, message_id, conversation_id, title, update_at,
-                   simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet
+                   simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet,
+                   (SELECT chat_id FROM conversationentity WHERE id = conversation_id) AS chat_id
             FROM message_fts
             WHERE text MATCH jieba_query(?)
-              AND (? = 0 OR conversation_id IN (SELECT id FROM conversationentity WHERE chat_id IS NULL))
+              AND (? = 0 OR conversation_id IN (SELECT id FROM conversationentity WHERE chat_id IS NULL OR assistant_id = ?))
             ORDER BY ${sort.orderBy}
             LIMIT 50
             """.trimIndent(),
-            arrayOf<Any>(keyword, if (imMode()) 1 else 0)
+            arrayOf<Any?>(keyword, if (imMode()) 1 else 0, perspectiveAssistantId)
         )
         Log.i(TAG, "search: $keyword")
         cursor.use {
@@ -89,6 +93,7 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
                         title = it.getString(3),
                         updateAt = Instant.ofEpochMilli(it.getLong(4)),
                         snippet = it.getString(5),
+                        chatId = if (it.isNull(6)) null else it.getString(6),
                     )
                 )
             }

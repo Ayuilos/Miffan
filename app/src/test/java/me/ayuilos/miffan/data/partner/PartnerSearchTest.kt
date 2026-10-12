@@ -28,10 +28,10 @@ class PartnerSearchTest {
         var im = true
         val manager = MessageFtsManager(database) { im }
         manager.search("needle")
-        verify { sqlite.query(match<String> { it.contains("chat_id IS NULL") }, match<Array<out Any?>> { it.contentEquals(arrayOf<Any>("needle", 1)) }) }
+        verify { sqlite.query(match<String> { it.contains("chat_id IS NULL") }, match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 1, null)) }) }
         im = false
         manager.search("needle")
-        verify { sqlite.query(any<String>(), match<Array<out Any?>> { it.contentEquals(arrayOf<Any>("needle", 0)) }) }
+        verify { sqlite.query(any<String>(), match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 0, null)) }) }
         val perspective = Conversation(assistantId = Uuid.random(), chatId = Uuid.random(), messageNodes = emptyList())
             .appendMessage(UIMessage.user("[A] searchable in professional mode"))
         manager.indexConversation(perspective)

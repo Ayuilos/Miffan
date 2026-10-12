@@ -30,8 +30,8 @@ interface ConversationDAO {
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, chat_id as chatId FROM conversationentity WHERE folder_id = :folderId ORDER BY is_pinned DESC, update_at DESC")
     fun getConversationsOfFolderPaging(folderId: String): PagingSource<Int, LightConversationEntity>
 
-    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND chat_id IS NULL ORDER BY is_pinned DESC, update_at DESC LIMIT :limit")
-    suspend fun getRecentConversationsOfAssistant(assistantId: String, limit: Int): List<ConversationEntity>
+    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND chat_id IS NULL ORDER BY CASE WHEN :newestFirst THEN 0 ELSE is_pinned END DESC, update_at DESC LIMIT :limit")
+    suspend fun getRecentConversationsOfAssistant(assistantId: String, limit: Int, newestFirst: Boolean = false): List<ConversationEntity>
 
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, chat_id as chatId FROM conversationentity ORDER BY update_at DESC LIMIT :limit")
     fun observeRecentConversations(limit: Int): Flow<List<LightConversationEntity>>

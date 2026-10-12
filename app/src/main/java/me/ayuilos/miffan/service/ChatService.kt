@@ -1157,7 +1157,8 @@ class ChatService(
                         addAll(createExtensionManagementTools(extensionManagementService))
                     }
                     if (assistant.recentChatsReferenceEnabled(settings)) {
-                        addAll(createConversationTools(conversationRepo, assistant.id))
+                        addAll(createConversationTools(conversationRepo, assistant.id, settings,
+                            if (settings.isImMode) getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>() else null))
                     }
                     if (settings.isImMode) {
                         addAll(me.ayuilos.miffan.data.ai.tools.buildPartnerMessageTools(
