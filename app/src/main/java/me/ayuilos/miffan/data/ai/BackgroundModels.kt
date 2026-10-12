@@ -48,6 +48,14 @@ fun Settings.backgroundModelSource(assistant: Assistant?): BackgroundModelSource
 fun ProviderSetting.suggestFastModel(chatModel: Model?): Model? =
     TODO("feature/background-model-data")
 
+/**
+ * Sets the fast model to [provider]'s suggestion for [chatModel] when the current fast model is
+ * missing or unusable; otherwise returns these settings unchanged. Used when easy chat connects a
+ * provider.
+ */
+fun Settings.withSuggestedFastModel(provider: ProviderSetting, chatModel: Model): Settings =
+    TODO("feature/background-model-data")
+
 data class BackgroundFailure(
     val task: BackgroundTask,
     val modelName: String,
