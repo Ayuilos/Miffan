@@ -55,7 +55,7 @@ class ChatOrganizationTest {
         val id = Uuid.random()
         val created = organization.pin(a).createGroup("  ${"字".repeat(30)}  ", a, id)
         assertEquals(id, created.groups.last().id)
-        assertEquals("字".repeat(24), created.groups.last().name)
+        assertEquals("字".repeat(30), created.groups.last().name)
         assertEquals(listOf(a), created.groups.last().chatIds)
         assertEquals(listOf(b), created.groups.first().chatIds)
         assertEquals(listOf(a), created.pinned)
@@ -74,7 +74,7 @@ class ChatOrganizationTest {
         assertSame(organization, organization.renameGroup(g1.id, " \t "))
         assertSame(organization, organization.renameGroup(Uuid.random(), "New"))
         assertSame(organization, organization.renameGroup(g1.id, " First "))
-        assertEquals(24, organization.renameGroup(g1.id, "a".repeat(25)).groups.first().name.length)
+        assertEquals(30, organization.renameGroup(g1.id, "a".repeat(31)).groups.first().name.length)
     }
 
     @Test

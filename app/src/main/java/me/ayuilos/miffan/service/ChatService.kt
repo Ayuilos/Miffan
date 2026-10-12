@@ -1189,6 +1189,10 @@ class ChatService(
                             access, settings.isImMode, settingsStore, ownerTrigger,
                             getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>(),
                         ))
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildChatListTools(
+                            access, settings.isImMode, settingsStore, ownerTrigger,
+                            getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>(),
+                        ))
                         val trigger = ownerTrigger
                         addAll(
                             buildSelfConfigTools(

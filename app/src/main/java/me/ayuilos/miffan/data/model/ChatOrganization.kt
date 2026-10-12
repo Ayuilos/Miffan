@@ -48,7 +48,7 @@ data class ChatOrganization(
     /** Appends a group named [name] (trimmed, non-blank), optionally moving [chatId] into it. */
     fun createGroup(name: String, chatId: Uuid? = null, id: Uuid = Uuid.random()): ChatOrganization {
         val current = normalized()
-        val trimmed = name.trim().take(24)
+        val trimmed = name.trim().let { it.substring(0, it.offsetByCodePoints(0, minOf(30, it.codePointCount(0, it.length)))) }
         if (trimmed.isEmpty()) return current
         val created = current.copy(groups = current.groups + ChatGroup(id = id, name = trimmed))
         return if (chatId == null) created else created.moveToGroup(chatId, id)
@@ -56,22 +56,21 @@ data class ChatOrganization(
 
     fun renameGroup(groupId: Uuid, name: String): ChatOrganization {
         val current = normalized()
-        val trimmed = name.trim().take(24)
+        val trimmed = name.trim().let { it.substring(0, it.offsetByCodePoints(0, minOf(30, it.codePointCount(0, it.length)))) }
         if (trimmed.isEmpty()) return current
         val renamed = current.groups.map { if (it.id == groupId) it.copy(name = trimmed) else it }
         return if (renamed == current.groups) current else current.copy(groups = renamed)
     }
 
-    /** Moves a group one place up (-1) or down (+1); out-of-range moves are no-ops. */
+    /** Moves a group by a signed offset; out-of-range moves are no-ops. */
     fun moveGroup(groupId: Uuid, offset: Int): ChatOrganization {
         val current = normalized()
-        if (offset != -1 && offset != 1) return current
         val index = current.groups.indexOfFirst { it.id == groupId }
-        val target = index + offset
-        if (index < 0 || target !in current.groups.indices) return current
+        val targetLong = index.toLong() + offset.toLong()
+        if (index < 0 || offset == 0 || targetLong !in 0L until current.groups.size.toLong()) return current
+        val target = targetLong.toInt()
         val moved = current.groups.toMutableList()
-        moved[target] = current.groups[index]
-        moved[index] = current.groups[target]
+        moved.add(target, moved.removeAt(index))
         return current.copy(groups = moved)
     }
 
