@@ -5,7 +5,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
 import kotlinx.serialization.json.*
-import me.ayuilos.miffan.data.ai.tools.buildPartnerMessageTools
+import me.ayuilos.miffan.data.ai.AgentAccess
+import me.ayuilos.miffan.data.ai.tools.buildPartnerMessageTools as productionPartnerTools
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.*
@@ -26,6 +27,8 @@ class PartnerChatTest {
     private fun caller(origin: MessageOrigin? = null, chatId: Uuid? = null) =
         Conversation(assistantId = a.id, chatId = chatId, messageNodes = emptyList())
             .appendMessage(UIMessage.user("trigger"), origin = origin)
+    private suspend fun buildPartnerMessageTools(caller: Conversation, settingsStore: SettingsStore, service: DefaultPartnerChatService) =
+        productionPartnerTools(caller, AgentAccess.forTurn(a, caller), settingsStore, service)
     private fun JsonObject.status() = getValue(PartnerMessageTool.RESULT_STATUS).jsonPrimitive.content
 
     private inner class Fixture(scope: CoroutineScope, timeout: Long = 90_000) {
@@ -243,6 +246,24 @@ class PartnerChatTest {
         runCurrent(); assertEquals(a.id, f.generated.single().assistantId)
     }
 
+
+    @Test fun contactsExposeOnlyTagNamesAndOmitTheFieldWithoutTags() = runTest {
+        val f = Fixture(this)
+        val tag = Tag(Uuid.random(), "研究伙伴")
+        f.settings.value = f.settings.value.copy(
+            assistants = listOf(a, b.copy(tags = listOf(tag.id), systemPrompt = "private-prompt",
+                learnedPreferences = "private-preferences"), c),
+            assistantTags = listOf(tag),
+        )
+        val text = (buildPartnerMessageTools(caller(), f.settingsStore, f.service).first()
+            .execute(buildJsonObject {}).single() as UIMessagePart.Text).text
+        val contacts = Json.parseToJsonElement(text).jsonObject.getValue("contacts").jsonArray
+        assertEquals(listOf("研究伙伴"), contacts.first().jsonObject.getValue("tags").jsonArray.map { it.jsonPrimitive.content })
+        assertFalse(contacts.last().jsonObject.containsKey("tags"))
+        assertFalse(text.contains("private-"))
+        assertFalse(text.contains("description"))
+    }
+
     @Test fun cursorDoesNotSkipMessageArrivingDuringGeneration() = runTest {
         val f = Fixture(this)
         val gate = CompletableDeferred<String>()
@@ -423,7 +444,8 @@ class PartnerChatTest {
         val chat = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, listOf(a.id,b.id,c.id), "group", Instant.now(), a.id)
         assertEquals(listOf(b.id, OWNER_PARTICIPANT_ID, c.id), parseGroupMentions("@小AB @小A @饭主 @主人 @小C", chat, a.id, settings))
         val context = perspectiveContext(chat, a.id, settings)
-        listOf("group", "小AB", "A introduction", "主持是 小A", "不要 @ 自己", "同群成员不能用 send_message 联系", "in_this_group=true", "群外伙伴").forEach { assertTrue(context.contains(it)) }
+        listOf("group", "小AB", "公开标签", "主持是 小A", "不要 @ 自己", "同群成员不能用 send_message 联系", "in_this_group=true", "群外伙伴").forEach { assertTrue(context.contains(it)) }
+        assertFalse(context.contains("A introduction"))
     }
 
     @Test fun newMembersSkipHistoryUnreadUsesReadAtAndDirectIsAlwaysZero() = runTest {

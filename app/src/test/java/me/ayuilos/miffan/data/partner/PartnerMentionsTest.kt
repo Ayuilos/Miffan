@@ -45,11 +45,12 @@ class PartnerMentionsTest {
         assertEquals(stored[1], request[1])
         assertEquals(stored[0].parts, request[0].parts.dropLast(1))
         val hint = (request[0].parts.last() as UIMessagePart.Text).text
-        assertTrue(hint.contains("小B（联系人 id: ${b.id}）：B 的简介"))
+        assertTrue(hint.contains("小B（联系人 id: ${b.id}）"))
+        assertFalse(hint.contains("B 的简介"))
         assertTrue(hint.contains("send_message")); assertTrue(hint.contains("list_contacts"))
         assertTrue(hint.contains("已经同意你联系谁")); assertFalse(hint.contains("第二行"))
         val latest = (request[2].parts.last() as UIMessagePart.Text).text
-        assertTrue(latest.contains("长".repeat(160))); assertFalse(latest.contains("长".repeat(161)))
+        assertFalse(latest.contains("长".repeat(160)))
         assertEquals(1, latest.lines().count { it.contains(b.id.toString()) })
     }
 

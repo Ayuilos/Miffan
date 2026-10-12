@@ -1,7 +1,8 @@
 package me.ayuilos.miffan.data.extensions
 
+import io.mockk.*
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import me.ayuilos.miffan.data.ai.mcp.McpCommonOptions
 import me.ayuilos.miffan.data.ai.mcp.McpOAuthState
 import me.ayuilos.miffan.data.ai.mcp.McpServerConfig
@@ -20,6 +21,73 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 class ExtensionManagementServiceTest {
+
+    @Test fun callerCatalogRedactsOtherPartnersEvenWithDefaultsEnabled() {
+        val a = Assistant(name = "A", enableWebSearch = true, quickMessageIds = setOf(Uuid.random()))
+        val b = Assistant(name = "B", enableWebSearch = true, mcpServers = setOf(Uuid.random()))
+        val settings = Settings(assistants = listOf(a, b))
+        val access = me.ayuilos.miffan.data.ai.AgentAccess.forAssistant(a, true)
+        val catalog = buildExtensionCatalog(settings, emptyList(), access)
+        val json = me.ayuilos.miffan.utils.JsonInstant.encodeToJsonElement(ExtensionCatalog.serializer(), catalog)
+        val rows = json.jsonObject.getValue("assistants").jsonArray
+        assertEquals(setOf("id", "name"), rows[1].jsonObject.keys)
+        assertTrue(rows[0].jsonObject.containsKey("quickMessageIds"))
+        assertTrue(rows[0].jsonObject.getValue("externalWebSearchEnabled").jsonPrimitive.content.toBoolean())
+        assertNotNull(buildExtensionCatalog(settings, emptyList()).assistants[1].mcpServerIds)
+    }
+
+    @Test fun partnerTurnsRejectEveryOtherPartnerTargetBeforePreviewValidation() {
+        val a = Assistant(name = "A")
+        val b = Assistant(name = "B")
+        val changes = listOf(
+            ExtensionChange.SetResourceBinding(b.id.toString(), ExtensionResourceType.MCP, "missing", true),
+            ExtensionChange.SetWorkspace(b.id.toString(), "missing"),
+            ExtensionChange.SetLocalTool(b.id.toString(), "missing", true),
+            ExtensionChange.SetExternalWebSearch(b.id.toString(), true),
+        )
+        val partner = me.ayuilos.miffan.data.ai.AgentAccess.forAssistant(a, false)
+        changes.forEach { assertFalse(extensionAccessErrors(listOf(it), partner).isEmpty()) }
+        assertTrue(extensionAccessErrors(changes, partner.copy(ownerInitiated = true)).isEmpty())
+        assertTrue(extensionAccessErrors(changes, null).isEmpty())
+        assertTrue(extensionAccessErrors(listOf(ExtensionChange.SetExternalWebSearch(a.id.toString(), true)), partner).isEmpty())
+    }
+
+    @Test fun deniedServicePreviewDoesNotLoadOrRevealAnySettings() = kotlinx.coroutines.test.runTest {
+        val a = Assistant()
+        val store = io.mockk.mockk<me.ayuilos.miffan.data.datastore.SettingsStore>()
+        val workspaces = io.mockk.mockk<me.ayuilos.miffan.data.repository.WorkspaceRepository>()
+        val preview = ExtensionManagementService(store, workspaces).preview(
+            listOf(ExtensionChange.SetWorkspace(Uuid.random().toString(), "secret-path")),
+            me.ayuilos.miffan.data.ai.AgentAccess.forAssistant(a, false),
+        )
+        assertFalse(preview.valid)
+        assertTrue(preview.changes.isEmpty())
+        assertTrue(preview.summaries.isEmpty())
+        assertFalse(Json.encodeToString(preview).contains("secret-path"))
+        io.mockk.verify { store wasNot Called; workspaces wasNot Called }
+    }
+
+    @Test fun previewCanOnlyBeConsumedOnceByItsIssuingCallerContext() = kotlinx.coroutines.test.runTest {
+        val a = Assistant()
+        val b = Assistant()
+        val initial = Settings(assistants = listOf(a, b))
+        val store = mockk<me.ayuilos.miffan.data.datastore.SettingsStore>()
+        val workspaces = mockk<me.ayuilos.miffan.data.repository.WorkspaceRepository>()
+        every { store.settingsFlow } returns kotlinx.coroutines.flow.MutableStateFlow(initial)
+        every { workspaces.listFlow() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        coEvery { store.updateIfCurrent(initial, any()) } returns true
+        val service = ExtensionManagementService(store, workspaces)
+        val access = me.ayuilos.miffan.data.ai.AgentAccess.forAssistant(a, true)
+        val preview = service.preview(listOf(ExtensionChange.SetExternalWebSearch(a.id.toString(), true)), access)
+        assertTrue(preview.valid)
+        val id = requireNotNull(preview.previewId)
+        assertFalse(service.apply(id, me.ayuilos.miffan.data.ai.AgentAccess.forAssistant(b, true)).applied)
+        assertFalse(service.apply(id, access.copy(ownerInitiated = false)).applied)
+        assertTrue(service.apply(id, access).applied)
+        assertFalse(service.apply(id, access).applied)
+        coVerify(exactly = 1) { store.updateIfCurrent(initial, any()) }
+    }
+
     @Test
     fun `preview capability binds canonical summaries to a unique id`() {
         val summaries = listOf("Create mode injection 'Study'", "Bind it to assistant 'Tutor'")

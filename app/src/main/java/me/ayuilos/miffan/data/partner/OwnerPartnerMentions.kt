@@ -33,7 +33,7 @@ internal fun partnerMentionHints(conversation: Conversation, settings: Settings)
             appendLine("主人在这条消息里 @ 了 Miffan 里的其他伙伴（不是普通人名）：")
             ids.forEach { id ->
                 val assistant = assistants.getValue(id)
-                val introduction = assistant.systemPrompt.lineSequence().firstOrNull().orEmpty().take(160)
+                val introduction = partnerTagNames(assistant, settings).joinToString("、")
                 appendLine("- ${partnerDisplayName(assistant)}（联系人 id: $id）：$introduction")
             }
             appendLine("需要联系时直接调用 send_message，to 填上面的 id，不必先调用 list_contacts。主人 @ 了谁，就表示已经同意你联系谁。")
@@ -41,3 +41,8 @@ internal fun partnerMentionHints(conversation: Conversation, settings: Settings)
         }
     }.toMap()
 }
+
+
+/** Public contact labels; never use a partner's prompt as an introduction. */
+internal fun partnerTagNames(assistant: me.ayuilos.miffan.data.model.Assistant, settings: Settings): List<String> =
+    settings.assistantTags.filter { it.id in assistant.tags }.map { it.name }

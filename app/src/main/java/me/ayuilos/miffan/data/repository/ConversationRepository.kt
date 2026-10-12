@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.repository
 
+import me.ayuilos.miffan.data.ai.AgentAccess
+
 import android.database.sqlite.SQLiteBlobTooBigException
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -377,8 +379,8 @@ class ConversationRepository(
     suspend fun searchMessages(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
-        perspectiveAssistantId: Uuid? = null,
-    ) = messageFtsManager.search(keyword, sort, perspectiveAssistantId?.toString())
+        access: AgentAccess? = null,
+    ) = messageFtsManager.search(keyword, sort, access)
 
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
         messageFtsManager.deleteAll()

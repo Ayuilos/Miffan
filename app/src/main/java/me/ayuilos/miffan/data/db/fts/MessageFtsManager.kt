@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.db.fts
 
 import android.util.Log
+import me.ayuilos.miffan.data.ai.AgentAccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.rerere.ai.ui.UIMessage
@@ -65,8 +66,8 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
     suspend fun search(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
-        // IM tools may recall only this caller's perspectives; UI searches leave it null.
-        perspectiveAssistantId: String? = null,
+        // A null access preserves the owner UI/web global search.
+        access: AgentAccess? = null,
     ): List<MessageSearchResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<MessageSearchResult>()
         val cursor = db.query(
@@ -76,11 +77,19 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
                    (SELECT chat_id FROM conversationentity WHERE id = conversation_id) AS chat_id
             FROM message_fts
             WHERE text MATCH jieba_query(?)
-              AND conversation_id IN (SELECT id FROM conversationentity WHERE chat_id IS NULL OR (? = 1 AND assistant_id = ?))
+              AND conversation_id IN (SELECT id FROM conversationentity WHERE (? IS NULL AND chat_id IS NULL)
+                  OR (assistant_id = ? AND (
+                    (? = 1 AND chat_id IS NULL)
+                    OR (? = 1 AND chat_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM partner_chat_member member
+                      WHERE member.chat_id = conversationentity.chat_id AND member.assistant_id = ?
+                    ))
+                  )))
             ORDER BY ${sort.orderBy}
             LIMIT 50
             """.trimIndent(),
-            arrayOf<Any?>(keyword, if (imMode()) 1 else 0, perspectiveAssistantId)
+            arrayOf<Any?>(keyword, access?.callerId?.toString(), access?.callerId?.toString(),
+                if (access?.ownerInitiated == true) 1 else 0, if (imMode()) 1 else 0, access?.callerId?.toString())
         )
         Log.i(TAG, "search: $keyword")
         cursor.use {

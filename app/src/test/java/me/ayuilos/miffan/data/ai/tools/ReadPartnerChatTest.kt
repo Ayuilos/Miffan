@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.tools
 
+import me.ayuilos.miffan.data.ai.AgentAccess
 import io.mockk.*
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -21,7 +22,7 @@ class ReadPartnerChatTest {
     private val chats = mockk<PartnerChatService>()
     private val settings = Settings(assistants = listOf(a, blank)).withInterfaceMode(InterfaceMode.IM)
     private val chat = PartnerChat(Uuid.random(), PartnerChatKind.DIRECT, listOf(a.id, blank.id), createdAt = Instant.EPOCH)
-    private fun tools(s: Settings = settings) = createConversationTools(repo, a.id, s, chats)
+    private fun tools(s: Settings = settings) = createConversationTools(repo, AgentAccess.forAssistant(a, true), s, chats)
     private suspend fun read(id: String = chat.id.toString(), limit: Int? = null, s: Settings = settings): JsonObject {
         val parts = tools(s).single { it.name == "read_partner_chat" }.execute(buildJsonObject {
             put("chat_id", id); limit?.let { put("limit", it) }

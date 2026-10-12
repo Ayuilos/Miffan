@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.tools
 
+import me.ayuilos.miffan.data.ai.AgentAccess
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -19,20 +20,21 @@ import me.ayuilos.miffan.utils.JsonInstant
 
 fun createExtensionManagementTools(
     service: ExtensionManagementService,
+    access: AgentAccess,
     json: Json = JsonInstant,
 ): List<Tool> = listOf(
     Tool(
         name = "extensions_catalog",
         description = """
             Return a credential-redacted catalog of assistants and extension resources that can be managed.
-            Prompt bodies and MCP connection fields are omitted.
+            Your own bindings are visible; other partners expose only id and name. Prompt bodies and MCP connection fields are omitted.
             Inspect this catalog before proposing changes so you use stable resource identifiers.
         """.trimIndent().replace("\n", " "),
         parameters = {
             InputSchema.Obj(properties = buildJsonObject {})
         },
         execute = {
-            val catalog = service.catalog()
+            val catalog = service.catalog(access)
             listOf(UIMessagePart.Text(json.encodeToString(catalog)))
         },
     ),
@@ -40,7 +42,7 @@ fun createExtensionManagementTools(
         name = "extensions_preview_changes",
         description = """
             Validate and normalize proposed extension configuration changes without writing anything.
-            Always call extensions_catalog first. Show the returned summaries to the user before asking
+            Changes to another partner require an owner-initiated turn. Always call extensions_catalog first. Show the returned summaries to the user before asking
             to apply a valid preview.
         """.trimIndent().replace("\n", " "),
         parameters = {
@@ -59,7 +61,7 @@ fun createExtensionManagementTools(
             val changesElement = input.jsonObject["changes"] ?: error("changes is required")
             require(changesElement is JsonArray) { "changes must be an array" }
             val changes = json.decodeFromJsonElement(ListSerializer(ExtensionChange.serializer()), changesElement)
-            val preview = service.preview(changes)
+            val preview = service.preview(changes, access)
             listOf(UIMessagePart.Text(json.encodeToString(preview)))
         },
     ),
@@ -83,7 +85,7 @@ fun createExtensionManagementTools(
             val previewId = input.jsonObject["previewId"]?.jsonPrimitive?.content
                 ?.takeIf { it.isNotBlank() }
                 ?: error("previewId is required")
-            val result = service.apply(previewId)
+            val result = service.apply(previewId, access)
             listOf(UIMessagePart.Text(json.encodeToString(result)))
         },
     ),

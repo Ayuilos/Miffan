@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.repository
 
 import kotlinx.coroutines.currentCoroutineContext
+import me.ayuilos.miffan.data.ai.AgentAccess
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import me.ayuilos.miffan.data.db.dao.MemoryDAO
@@ -64,8 +65,10 @@ class MemoryRepository(
         }
     }
 
-    suspend fun updateContent(id: Int, content: String): AssistantMemory {
-        val old = memoryDAO.getMemoryById(id) ?: error("Memory record #$id not found")
+    suspend fun updateContent(id: Int, content: String, access: AgentAccess? = null): AssistantMemory {
+        val old = memoryDAO.getMemoryById(id)
+            ?.takeIf { access == null || it.assistantId == access.memoryOwnerId }
+            ?: error("Memory record #$id not found")
         val newMemory = old.copy(
             content = content
         )
@@ -95,8 +98,13 @@ class MemoryRepository(
     }
 
     /** Deletes a memory; returns the revision recording the deletion, if history is enabled. */
-    suspend fun deleteMemory(id: Int): Revision? {
-        val old = memoryDAO.getMemoryById(id) ?: return null
+    suspend fun deleteMemory(id: Int, access: AgentAccess? = null): Revision? {
+        val old = memoryDAO.getMemoryById(id)
+            ?.takeIf { access == null || it.assistantId == access.memoryOwnerId }
+        if (old == null) {
+            if (access != null) error("Memory record #$id not found")
+            return null
+        }
         return recordingRevision(old.assistantId, summary = old.content) {
             memoryDAO.deleteMemory(id)
         }.second

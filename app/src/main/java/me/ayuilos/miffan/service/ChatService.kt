@@ -77,6 +77,7 @@ import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.workspaceToolTargetError
+import me.ayuilos.miffan.data.ai.AgentAccess
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
@@ -1103,6 +1104,7 @@ class ChatService(
                 conversation.copy(messageNodes = conversation.currentMessageNodes.take(messageRange.endInclusive + 1))
             } else conversation
             val ownerTrigger = turnConversation.ownerTrigger()
+            val access = AgentAccess.forTurn(assistant, turnConversation)
             val computerToolbox = createComputerToolbox(assistant, conversation.id.toString(), generationMessages)
             generationHandler.generateText(
                 settings = settings,
@@ -1111,7 +1113,7 @@ class ChatService(
                 messages = generationMessages,
                 assistant = assistant,
                 conversationId = conversationId,
-                ownerTurn = ownerTrigger != null,
+                access = access,
                 memoryTrigger = ownerTrigger,
                 conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
@@ -1154,15 +1156,15 @@ class ChatService(
                     }
                     addAll(localTools.getTools(assistant.localTools))
                     if (extensionManagementEnabled) {
-                        addAll(createExtensionManagementTools(extensionManagementService))
+                        addAll(createExtensionManagementTools(extensionManagementService, access))
                     }
                     if (assistant.recentChatsReferenceEnabled(settings)) {
-                        addAll(createConversationTools(conversationRepo, assistant.id, settings,
+                        addAll(createConversationTools(conversationRepo, access, settings,
                             if (settings.isImMode) getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>() else null))
                     }
                     if (settings.isImMode) {
                         addAll(me.ayuilos.miffan.data.ai.tools.buildPartnerMessageTools(
-                            turnConversation, settingsStore, getKoin().get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>()))
+                            turnConversation, access, settingsStore, getKoin().get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>()))
                         val trigger = ownerTrigger
                         addAll(
                             buildSelfConfigTools(
@@ -1514,11 +1516,8 @@ class ChatService(
             val model = choice.model
             val provider = model.findProvider(settings.providers) ?: return@runCatching
 
-            val ownerId = if (assistant.useGlobalMemory) {
-                MemoryRepository.GLOBAL_MEMORY_ID
-            } else {
-                assistant.id.toString()
-            }
+            val access = AgentAccess.forTurn(assistant, conversation)
+            val ownerId = access.memoryOwnerId
             memoryExtractionLock.withLock {
                 val memories = memoryRepository.getMemoriesOfAssistant(ownerId)
                 // LOW avoids OFF's rejected none/minimal effort on always-reasoning chat models.
@@ -1557,7 +1556,7 @@ class ChatService(
                     operations.forEach { operation ->
                         when (operation) {
                             is MemoryOperation.Create -> memoryRepository.addMemory(ownerId, operation.content)
-                            is MemoryOperation.Edit -> memoryRepository.updateContent(operation.id, operation.content)
+                            is MemoryOperation.Edit -> memoryRepository.updateContent(operation.id, operation.content, access)
                         }
                     }
                 }

@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.extensions
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -18,17 +20,26 @@ data class ExtensionCatalog(
     val workspaces: List<WorkspaceCatalogEntry>,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ExtensionAssistantCatalogEntry(
     val id: String,
     val name: String,
-    val quickMessageIds: List<String>,
-    val modeInjectionIds: List<String>,
-    val lorebookIds: List<String>,
-    val mcpServerIds: List<String>,
-    val localToolIds: List<String>,
-    val externalWebSearchEnabled: Boolean,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val quickMessageIds: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val modeInjectionIds: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val lorebookIds: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val mcpServerIds: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val localToolIds: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val externalWebSearchEnabled: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val workspaceId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val workspaceScopeId: String? = null,
 )
 

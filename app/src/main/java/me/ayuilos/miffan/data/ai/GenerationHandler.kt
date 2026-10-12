@@ -112,7 +112,7 @@ class GenerationHandler(
         localToolOutputRoot: String? = assistant.workspaceId?.toString(),
         /** Summaries of earlier IM thread segments, appended to the system prompt. */
         threadContext: String? = null,
-        ownerTurn: Boolean = true,
+        access: AgentAccess,
         memoryTrigger: MessageRef? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
@@ -130,22 +130,18 @@ class GenerationHandler(
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
-                if (ownerTurn && assistant.enableMemory) {
-                    val memoryAssistantId = if (assistant.useGlobalMemory) {
-                        MemoryRepository.GLOBAL_MEMORY_ID
-                    } else {
-                        assistant.id.toString()
-                    }
+                if (access.ownerInitiated && assistant.enableMemory) {
+                    val memoryAssistantId = access.memoryOwnerId
                     buildMemoryTools(
                         json = json,
                         onCreation = { content ->
                             withContext(memoryOrigin) { memoryRepo.addMemory(memoryAssistantId, content) }
                         },
                         onUpdate = { id, content ->
-                            withContext(memoryOrigin) { memoryRepo.updateContent(id, content) }
+                            withContext(memoryOrigin) { memoryRepo.updateContent(id, content, access) }
                         },
                         onDelete = { id ->
-                            withContext(memoryOrigin) { memoryRepo.deleteMemory(id) }
+                            withContext(memoryOrigin) { memoryRepo.deleteMemory(id, access) }
                         }
                     ).let(this::addAll)
                 }

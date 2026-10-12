@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.ai.tools
 
 import kotlinx.serialization.json.*
+import me.ayuilos.miffan.data.ai.AgentAccess
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.PartnerMessageTool
@@ -12,6 +13,7 @@ import me.rerere.ai.ui.UIMessagePart
 
 internal suspend fun buildPartnerMessageTools(
     caller: Conversation,
+    access: AgentAccess,
     settingsStore: SettingsStore,
     service: DefaultPartnerChatService,
 ): List<Tool> {
@@ -30,13 +32,14 @@ internal suspend fun buildPartnerMessageTools(
                         put("description", "The owner; send a note to your IM thread without generating a reply.")
                         put("authorized", true)
                     })
-                    settings.assistants.filter { it.id != caller.assistantId }.forEach { assistant ->
+                    settings.assistants.filter { it.id != access.callerId }.forEach { assistant ->
                         add(buildJsonObject {
                             put("id", assistant.id.toString())
                             put("name", me.ayuilos.miffan.data.partner.partnerDisplayName(assistant))
-                            put("description", assistant.systemPrompt.trim().lineSequence().firstOrNull().orEmpty().take(160))
+                            val tags = me.ayuilos.miffan.data.partner.partnerTagNames(assistant, settings)
+                            if (tags.isNotEmpty()) put("tags", buildJsonArray { tags.forEach { add(it) } })
                             put("in_this_group", assistant.id in groupMemberIds)
-                            put("authorized", PartnerPair.of(caller.assistantId, assistant.id) in settings.partnerContactGrants)
+                            put("authorized", PartnerPair.of(access.callerId, assistant.id) in settings.partnerContactGrants)
                         })
                     }
                 }

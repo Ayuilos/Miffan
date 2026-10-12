@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.partner
 
 import androidx.room.Room
+import me.ayuilos.miffan.data.ai.AgentAccess
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -45,6 +46,10 @@ class PartnerRecallQueryTest {
             val fts = MessageFtsManager(db) { im }
             suspend fun add(assistant: Uuid, chatId: Uuid? = null): Conversation {
                 val c = Conversation(assistantId = assistant, chatId = chatId, title = "fixture", updateAt = Instant.ofEpochMilli(2), messageNodes = emptyList()).appendMessage(UIMessage.user("recallneedle 秋日暗号"))
+                if (chatId != null) {
+                    db.openHelper.writableDatabase.execSQL("INSERT INTO partner_chat(id, kind, title, created_at) VALUES (?, 'DIRECT', 'fixture', 1)", arrayOf(chatId.toString()))
+                    db.openHelper.writableDatabase.execSQL("INSERT INTO partner_chat_member(chat_id, assistant_id, joined_at) VALUES (?, ?, 1)", arrayOf(chatId.toString(), assistant.toString()))
+                }
                 db.conversationDao().insert(ConversationEntity(c.id.toString(), assistant.toString(), c.title, "[]", 1, 2, "[]", false, chatId = chatId?.toString()))
                 fts.indexConversation(c)
                 return c
@@ -54,13 +59,19 @@ class PartnerRecallQueryTest {
             repeat(55) { add(b, Uuid.random()) }
             val ownerIds = setOf(ownerA.id.toString(), ownerB.id.toString())
             assertEquals(ownerIds, fts.search("recallneedle").map { it.conversationId }.toSet())
-            val recalled = fts.search("recallneedle", perspectiveAssistantId = a.toString())
-            assertEquals(ownerIds + setOf(direct.id.toString(), group.id.toString()), recalled.map { it.conversationId }.toSet())
+            val recalled = fts.search("recallneedle", access = AgentAccess(a, true, a.toString()))
+            assertEquals(setOf(ownerA.id.toString(), direct.id.toString(), group.id.toString()), recalled.map { it.conversationId }.toSet())
             assertEquals(direct.chatId.toString(), recalled.single { it.conversationId == direct.id.toString() }.chatId)
             assertTrue(recalled.all { it.snippet.contains("recallneedle") })
+            assertEquals(setOf(direct.id.toString(), group.id.toString()),
+                fts.search("recallneedle", access = AgentAccess(a, false, a.toString())).map { it.conversationId }.toSet())
+            db.openHelper.writableDatabase.execSQL("DELETE FROM partner_chat_member WHERE chat_id = ?", arrayOf(direct.chatId.toString()))
+            assertEquals(setOf(group.id.toString()),
+                fts.search("recallneedle", access = AgentAccess(a, false, a.toString())).map { it.conversationId }.toSet())
             im = false
             assertEquals(ownerIds, fts.search("recallneedle").map { it.conversationId }.toSet())
-            assertEquals(ownerIds, fts.search("recallneedle", perspectiveAssistantId = a.toString()).map { it.conversationId }.toSet())
+            assertEquals(setOf(ownerA.id.toString()), fts.search("recallneedle", access = AgentAccess(a, true, a.toString())).map { it.conversationId }.toSet())
+            assertTrue(fts.search("recallneedle", access = AgentAccess(a, false, a.toString())).isEmpty())
         } finally { db.close(); context.deleteDatabase(fixtureName) }
     }
 

@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.partner
 
+import me.ayuilos.miffan.data.ai.AgentAccess
 import android.database.Cursor
 import android.util.Log
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -27,16 +28,22 @@ class PartnerSearchTest {
         every { cursor.moveToNext() } returns false
         var im = true
         val manager = MessageFtsManager(database) { im }
+        val caller = Uuid.random()
+        val access = AgentAccess(caller, true, caller.toString())
+        val queries = mutableListOf<Array<out Any?>>()
+        every { sqlite.query(any<String>(), capture(queries)) } returns cursor
         manager.search("needle")
-        verify { sqlite.query(match<String> { it.contains("chat_id IS NULL") }, match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 1, null)) }) }
-        im = false
-        manager.search("needle")
-        verify { sqlite.query(any<String>(), match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 0, null)) }) }
-        manager.search("needle", perspectiveAssistantId = "a")
-        verify { sqlite.query(match<String> { it.contains("chat_id IS NULL OR (? = 1 AND assistant_id = ?)") }, match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 0, "a")) }) }
-        im = true
-        manager.search("needle", perspectiveAssistantId = "a")
-        verify { sqlite.query(any<String>(), match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 1, "a")) }) }
+        org.junit.Assert.assertNull(queries.last()[1])
+        for (mode in listOf(false, true)) {
+            im = mode
+            manager.search("needle", access = access)
+            org.junit.Assert.assertEquals(caller.toString(), queries.last()[1])
+            org.junit.Assert.assertEquals(caller.toString(), queries.last()[2])
+            org.junit.Assert.assertEquals(1, queries.last()[3])
+            org.junit.Assert.assertEquals(if (mode) 1 else 0, queries.last()[4])
+            manager.search("needle", access = access.copy(ownerInitiated = false))
+            org.junit.Assert.assertEquals(0, queries.last()[3])
+        }
         val perspective = Conversation(assistantId = Uuid.random(), chatId = Uuid.random(), messageNodes = emptyList())
             .appendMessage(UIMessage.user("[A] searchable by this partner in IM"))
         manager.indexConversation(perspective)

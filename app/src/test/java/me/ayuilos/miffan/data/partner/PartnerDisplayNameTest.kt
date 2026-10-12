@@ -35,7 +35,8 @@ class PartnerDisplayNameTest {
         val group = direct.copy(kind = PartnerChatKind.GROUP, hostId = blank.id)
         val context = perspectiveContext(group, named.id, settings)
         assertTrue(context.contains("蓝鲸 · 默认助手"))
-        assertTrue(context.contains("默认助手：介绍"))
+        assertTrue(context.contains("默认助手："))
+        assertFalse(context.contains("介绍"))
         assertTrue(context.contains("主持是 默认助手"))
         assertEquals("蓝鲸 · 默认助手", partnerChatTitle(group, settings))
     }

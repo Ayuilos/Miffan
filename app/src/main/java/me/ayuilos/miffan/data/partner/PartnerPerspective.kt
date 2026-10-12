@@ -38,12 +38,12 @@ internal fun perspectiveContext(chat: PartnerChat, assistantId: Uuid, settings: 
     if (chat.kind == PartnerChatKind.GROUP) {
         val members = chat.memberIds.joinToString("\n") { id ->
             val assistant = settings.getAssistantById(id)
-            "${partnerDisplayName(assistant)}：${assistant?.systemPrompt?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(160).orEmpty()}"
+            "${partnerDisplayName(assistant)}：${assistant?.let { partnerTagNames(it, settings).joinToString("、") }.orEmpty()}"
         }
         val host = partnerDisplayName(chat.hostId?.let { settings.getAssistantById(it) })
         return """
             <partner_chat>
-            这是群“${partnerChatTitle(chat, settings)}”，主人是 $owner。成员及各自介绍：
+            这是群“${partnerChatTitle(chat, settings)}”，主人是 $owner。成员及公开标签：
             $members
             主持是 $host。主人没有 @ 人时由主持接；主持可以自己回答，或在回复里写 @名字 请成员处理。
             需要别人帮忙时写 @名字；要提醒主人时写 @主人（或 @$owner）。不要 @ 自己，也不要为了客套而 @ 别人。
