@@ -165,6 +165,7 @@ private fun computerSummary(computer: KnownComputer): String = listOfNotNull(
 private fun RemoteScreenPlatform.label(): String? = when (this) {
     RemoteScreenPlatform.MACOS -> "macOS"
     RemoteScreenPlatform.LINUX -> "Linux"
+    RemoteScreenPlatform.WINDOWS -> "Windows"
     RemoteScreenPlatform.UNKNOWN -> null
 }
 
