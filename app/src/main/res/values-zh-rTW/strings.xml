@@ -2679,6 +2679,12 @@
   <string name="im_step_memory_delete">刪除記憶</string>
   <string name="im_step_memory_read">查看記憶</string>
   <string name="im_step_preferences">更新你的偏好</string>
+  <string name="im_profile_title">修改夥伴資料</string>
+  <string name="im_profile_name">名字</string>
+  <string name="im_profile_avatar">頭像</string>
+  <string name="im_profile_prompt">設定（取代全部內容）</string>
+  <string name="im_profile_undo">之後可以在修訂歷史裡復原。</string>
+  <string name="im_step_profile">修改了自己的資料</string>
   <string name="im_step_calendar_add">新增行程</string>
   <string name="im_step_calendar_read">查看行程</string>
   <string name="im_step_clipboard_write">寫入剪貼簿</string>

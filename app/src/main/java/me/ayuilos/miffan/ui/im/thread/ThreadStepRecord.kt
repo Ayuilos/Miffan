@@ -99,6 +99,7 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
             else -> step(R.string.im_step_memory_read)
         }
         "update_my_preferences" -> step(R.string.im_step_preferences, changes = true)
+        UPDATE_MY_PROFILE -> step(R.string.im_step_profile, changes = true)
         "calendar_create" -> step(R.string.im_step_calendar_add, changes = true)
         "calendar_query" -> step(R.string.im_step_calendar_read)
         "clipboard_tool" -> if (arg("action") == "write") step(R.string.im_step_clipboard_write, changes = true)

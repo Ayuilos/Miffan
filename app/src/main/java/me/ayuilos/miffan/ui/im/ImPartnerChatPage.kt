@@ -354,7 +354,7 @@ private fun PartnerChatApprovalCard(approval: PartnerChatApproval, member: Assis
                     color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
             }
             if (approval.tool.isPartnerMessage()) ThreadPartnerMessage(approval.tool, member, onApproval)
-            else ThreadToolPrompt(approval.tool, onApproval, onAnswer = { _, _ -> })
+            else ThreadToolPrompt(approval.tool, onApproval, onAnswer = { _, _ -> }, assistant = member)
         }
     }
 }

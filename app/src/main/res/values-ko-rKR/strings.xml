@@ -2681,6 +2681,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_step_memory_delete">기억 삭제</string>
   <string name="im_step_memory_read">기억 확인</string>
   <string name="im_step_preferences">선호 설정 업데이트</string>
+  <string name="im_profile_title">파트너 프로필 변경</string>
+  <string name="im_profile_name">이름</string>
+  <string name="im_profile_avatar">아바타</string>
+  <string name="im_profile_prompt">설정 (전체 내용 교체)</string>
+  <string name="im_profile_undo">나중에 변경 기록에서 되돌릴 수 있습니다.</string>
+  <string name="im_step_profile">내 프로필 변경</string>
   <string name="im_step_calendar_add">일정 추가</string>
   <string name="im_step_calendar_read">일정 확인</string>
   <string name="im_step_clipboard_write">클립보드에 복사</string>

@@ -2697,6 +2697,12 @@
   <string name="im_step_memory_delete">Forget a memory</string>
   <string name="im_step_memory_read">Check memories</string>
   <string name="im_step_preferences">Update your preferences</string>
+  <string name="im_profile_title">Change partner profile</string>
+  <string name="im_profile_name">Name</string>
+  <string name="im_profile_avatar">Avatar</string>
+  <string name="im_profile_prompt">Persona (replaces the whole text)</string>
+  <string name="im_profile_undo">You can undo this in the revision history.</string>
+  <string name="im_step_profile">Updated own profile</string>
   <string name="im_step_calendar_add">Add a calendar event</string>
   <string name="im_step_calendar_read">Check the calendar</string>
   <string name="im_step_clipboard_write">Copy to the clipboard</string>

@@ -18,6 +18,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.ui.im.partnerName
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
+import androidx.compose.ui.text.font.FontWeight
 import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
 import me.ayuilos.miffan.ui.components.message.ChatMessageToolStep
 import me.ayuilos.miffan.ui.components.message.ComputerToolUIRenderer
@@ -31,11 +35,13 @@ import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 
 internal const val ASK_USER = "ask_user"
 internal const val REQUEST_WEB_SEARCH = "request_web_search"
+internal const val UPDATE_MY_PROFILE = "update_my_profile"
 
 /**
  * What a streaming reply is doing right now, or null once its own text (or a prompt card) is the feedback.
@@ -78,10 +84,17 @@ internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
 }
 
 @Composable
-internal fun ThreadToolPrompt(tool: UIMessagePart.Tool, onApproval: (String, Boolean) -> Unit, onAnswer: (String, String) -> Unit) {
+internal fun ThreadToolPrompt(
+    tool: UIMessagePart.Tool,
+    onApproval: (String, Boolean) -> Unit,
+    onAnswer: (String, String) -> Unit,
+    assistant: Assistant? = null,
+) {
     when {
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER ->
             ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)), onAnswer)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == UPDATE_MY_PROFILE ->
+            ThreadProfileCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
         tool.isSettledPermission() -> ThreadPermissionRecord(tool)
@@ -153,8 +166,71 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
     }
 }
 
-private fun webSearchReason(tool: UIMessagePart.Tool): String? =
-    (tool.inputAsJson() as? JsonObject)?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+private fun webSearchReason(tool: UIMessagePart.Tool): String? = toolArg(tool, "reason")
+
+private fun toolArg(tool: UIMessagePart.Tool, key: String): String? =
+    (tool.inputAsJson() as? JsonObject)?.get(key)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+
+/** The partner asks to change its own profile: each changed field, as it is now and as it would become. */
+@Composable
+private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) {
+    var answered by remember(tool.toolCallId) { mutableStateOf(false) }
+    var promptExpanded by remember(tool.toolCallId) { mutableStateOf(false) }
+    val newName = toolArg(tool, "name")?.trim()
+    val newEmoji = toolArg(tool, "avatar_emoji")?.trim()
+    val newPrompt = toolArg(tool, "system_prompt")
+    val currentName = assistant?.let { partnerName(it) }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.im_profile_title), style = MaterialTheme.typography.titleMedium)
+            toolArg(tool, "reason")?.let { Text(it) }
+            if (newName != null) ProfileChange(stringResource(R.string.im_profile_name)) {
+                currentName?.let {
+                    Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                    ProfileArrow()
+                }
+                Text(newName, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+            }
+            if (newEmoji != null) ProfileChange(stringResource(R.string.im_profile_avatar)) {
+                assistant?.let {
+                    AssistantAvatar(currentName.orEmpty(), it.avatar, Modifier.size(32.dp))
+                    ProfileArrow()
+                }
+                AssistantAvatar(newName ?: currentName.orEmpty(), Avatar.Emoji(newEmoji), Modifier.size(32.dp))
+            }
+            if (newPrompt != null) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.im_profile_prompt), style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Surface(onClick = { promptExpanded = !promptExpanded }, color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    shape = MaterialTheme.shapes.medium) {
+                    Text(newPrompt, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium,
+                        maxLines = if (promptExpanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Text(stringResource(R.string.im_profile_undo), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) { Text(stringResource(R.string.im_p5_allow)) }
+                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileChange(label: String, content: @Composable RowScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    }
+}
+
+@Composable
+private fun ProfileArrow() {
+    Icon(HugeIcons.ArrowRight01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+}
 
 /**
  * What a settled permission card leaves behind: what was asked and how it was answered,
@@ -174,6 +250,7 @@ private fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
     val reason = (tool.approvalState as? ToolApprovalState.Denied)?.reason?.takeIf { declined && it.isNotBlank() }
     val title = when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
+        tool.toolName == UPDATE_MY_PROFILE -> toolArg(tool, "reason") ?: stringResource(R.string.im_profile_title)
         computer -> computerActionText(tool)
         else -> renderer.title(context)
     }

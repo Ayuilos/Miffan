@@ -2688,6 +2688,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_step_memory_delete">删除记忆</string>
   <string name="im_step_memory_read">查看记忆</string>
   <string name="im_step_preferences">更新你的偏好</string>
+  <string name="im_profile_title">修改伙伴资料</string>
+  <string name="im_profile_name">名字</string>
+  <string name="im_profile_avatar">头像</string>
+  <string name="im_profile_prompt">设定（替换全部内容）</string>
+  <string name="im_profile_undo">之后可以在修订历史里撤销。</string>
+  <string name="im_step_profile">修改了自己的资料</string>
   <string name="im_step_calendar_add">添加日程</string>
   <string name="im_step_calendar_read">查看日程</string>
   <string name="im_step_clipboard_write">写入剪贴板</string>
