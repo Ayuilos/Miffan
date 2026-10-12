@@ -2789,4 +2789,19 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_windows_send_help">スマホとパソコンでクリップボードを共有していない場合は、パソコンでも使っているアプリ（チャットアプリなど）でスクリプトを自分宛てに送ってください。</string>
   <string name="im_computer_windows_show_script">スクリプトを表示</string>
   <string name="im_computer_fingerprint_windows_help">セットアップスクリプトの最後に表示されています。もう一度見るには、パソコンの PowerShell で次を実行します:</string>
+  <string name="assistant_page_local_tools_bug_report_title">不具合の報告</string>
+  <string name="assistant_page_local_tools_bug_report_desc">アプリのバージョン、端末、最近のエラー概要を AI が読み取り、あなたが送信する GitHub の報告を下書きします</string>
+  <string name="im_step_diagnostics">アプリの診断情報を確認</string>
+  <string name="im_step_bug_report">不具合の報告を下書き</string>
+  <string name="im_bug_report_title">不具合報告の下書き</string>
+  <string name="im_bug_report_description">内容と再現手順</string>
+  <string name="im_bug_report_actual">実際の結果</string>
+  <string name="im_bug_report_expected">期待する結果</string>
+  <string name="im_bug_report_logs">関連するエラー</string>
+  <string name="im_bug_report_environment">環境</string>
+  <string name="im_bug_report_public">GitHub でご自身のアカウントから送信します。送信後は誰でも閲覧できます。</string>
+  <string name="im_bug_report_submit">GitHub で送信</string>
+  <string name="im_bug_report_copy">コピー</string>
+  <string name="im_bug_report_skip">送信しない</string>
+  <string name="im_bug_report_reopen">もう一度 GitHub を開く</string>
 </resources>

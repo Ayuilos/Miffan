@@ -17,6 +17,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.openrouter.OpenRouterAuthService
 import me.ayuilos.miffan.data.ai.openrouter.OpenRouterAuthState
@@ -40,7 +41,8 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
     val savedKey by auth.savedKeyState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val locale = LocalConfiguration.current.locales[0]
-    val templates = imPartnerTemplates(locale)
+    // The first partner is someone to talk to; the bug reporter waits in the partners tab.
+    val templates = imPartnerTemplates(locale).filter { LocalToolOption.BugReport !in it.localTools }
     var step by rememberSaveable { mutableIntStateOf(0) }
     var selectedService by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPartner by rememberSaveable { mutableStateOf<String?>(null) }

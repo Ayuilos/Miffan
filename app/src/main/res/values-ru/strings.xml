@@ -2798,4 +2798,19 @@
   <string name="im_computer_windows_send_help">Если у телефона и компьютера нет общего буфера обмена, отправьте скрипт себе через приложение, которым пользуетесь и на компьютере, например мессенджер.</string>
   <string name="im_computer_windows_show_script">Показать скрипт</string>
   <string name="im_computer_fingerprint_windows_help">Скрипт настройки вывел его в конце. Чтобы увидеть снова, выполните в PowerShell на компьютере:</string>
+  <string name="assistant_page_local_tools_bug_report_title">Сообщения об ошибках</string>
+  <string name="assistant_page_local_tools_bug_report_desc">ИИ читает версию приложения, устройство и сводку недавних ошибок и готовит черновик issue на GitHub, который отправляете вы</string>
+  <string name="im_step_diagnostics">Просмотр диагностики приложения</string>
+  <string name="im_step_bug_report">Черновик сообщения об ошибке</string>
+  <string name="im_bug_report_title">Черновик сообщения об ошибке</string>
+  <string name="im_bug_report_description">Что случилось и как повторить</string>
+  <string name="im_bug_report_actual">Фактический результат</string>
+  <string name="im_bug_report_expected">Ожидаемый результат</string>
+  <string name="im_bug_report_logs">Связанные ошибки</string>
+  <string name="im_bug_report_environment">Окружение</string>
+  <string name="im_bug_report_public">Вы отправляете его на GitHub со своего аккаунта. После отправки его увидят все.</string>
+  <string name="im_bug_report_submit">Отправить на GitHub</string>
+  <string name="im_bug_report_copy">Копировать</string>
+  <string name="im_bug_report_skip">Не отправлять</string>
+  <string name="im_bug_report_reopen">Снова открыть GitHub</string>
 </resources>

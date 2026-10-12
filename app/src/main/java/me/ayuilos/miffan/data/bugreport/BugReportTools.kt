@@ -36,14 +36,7 @@ fun createDraftBugReportTool(access: AgentAccess, diagnostics: suspend () -> App
     execute = { input ->
         val result = try {
             val draft = parseBugReportDraft(input)
-            val environment = diagnostics()
-            val filled = draft.copy(
-                app_version = draft.app_version?.takeIf { it.isNotBlank() } ?: environment.appVersion,
-                android_version = draft.android_version?.takeIf { it.isNotBlank() }
-                    ?: "Android ${environment.androidVersion.release} (SDK ${environment.androidVersion.sdk})",
-                device_model = draft.device_model?.takeIf { it.isNotBlank() }
-                    ?: "${environment.device.manufacturer} ${environment.device.model}",
-            )
+            val filled = draft.withEnvironment(diagnostics())
             // No settings or chat lookup, no file/network write, and no browser intent.
             buildJsonObject {
                 put("success", true)

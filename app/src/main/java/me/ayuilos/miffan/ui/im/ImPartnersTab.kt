@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -143,6 +144,8 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                                 }
                             }
                         }
+                        // An odd last template keeps the width of its neighbours above.
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }

@@ -104,8 +104,11 @@ internal fun ThreadToolPrompt(
             ThreadGroupChatCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == ORGANIZE_CHAT_LIST ->
             ThreadOrganizeCard(tool, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == DRAFT_BUG_REPORT ->
+            ThreadBugReportCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
+        tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)
         tool.isSettledPermission() -> ThreadPermissionRecord(tool)
     }
 }
@@ -231,7 +234,7 @@ private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, o
  * in the same wording as the approval history. Tapping it shows the exact request.
  */
 @Composable
-private fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
+internal fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
     val record = tool.approvalRecord ?: return
     val decision = record.decision ?: return
     val at = record.decidedAt ?: return
@@ -245,6 +248,7 @@ private fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
     val title = when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
         tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
+        tool.toolName == DRAFT_BUG_REPORT -> toolArg(tool, "title")?.let { "bug: $it" } ?: stringResource(R.string.im_bug_report_title)
         computer -> computerActionText(tool)
         else -> renderer.title(context)
     }

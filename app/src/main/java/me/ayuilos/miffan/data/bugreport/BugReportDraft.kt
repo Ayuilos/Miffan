@@ -39,6 +39,15 @@ data class BugReportDraft(
     )
 }
 
+/** Blank environment fields filled from this device; the approval card and the tool build the same link. */
+fun BugReportDraft.withEnvironment(environment: AppDiagnostics): BugReportDraft = copy(
+    app_version = app_version?.takeIf { it.isNotBlank() } ?: environment.appVersion,
+    android_version = android_version?.takeIf { it.isNotBlank() }
+        ?: "Android ${environment.androidVersion.release} (SDK ${environment.androidVersion.sdk})",
+    device_model = device_model?.takeIf { it.isNotBlank() }
+        ?: "${environment.device.manufacturer} ${environment.device.model}",
+)
+
 const val BUG_REPORT_URL_LIMIT = 7500
 const val BUG_REPORT_TRUNCATION_NOTE = "（内容过长，已截断，请在 issue 中补充）"
 private const val ISSUE_FORM_URL = "https://github.com/Ayuilos/Miffan/issues/new?template=bug-report.yml"

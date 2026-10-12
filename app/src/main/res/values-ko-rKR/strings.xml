@@ -2789,4 +2789,19 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_windows_send_help">휴대폰과 컴퓨터가 클립보드를 공유하지 않으면, 컴퓨터에서도 쓰는 앱(채팅 앱 등)으로 스크립트를 자신에게 보내세요.</string>
   <string name="im_computer_windows_show_script">스크립트 보기</string>
   <string name="im_computer_fingerprint_windows_help">설정 스크립트가 마지막에 지문을 표시했습니다. 다시 보려면 컴퓨터의 PowerShell에서 다음을 실행하세요:</string>
+  <string name="assistant_page_local_tools_bug_report_title">버그 신고</string>
+  <string name="assistant_page_local_tools_bug_report_desc">AI가 앱 버전, 기기, 최근 오류 요약을 읽고 직접 제출할 GitHub 이슈 초안을 작성합니다</string>
+  <string name="im_step_diagnostics">앱 진단 정보 확인</string>
+  <string name="im_step_bug_report">버그 신고 초안 작성</string>
+  <string name="im_bug_report_title">버그 신고 초안</string>
+  <string name="im_bug_report_description">문제 설명과 재현 방법</string>
+  <string name="im_bug_report_actual">실제 결과</string>
+  <string name="im_bug_report_expected">기대 결과</string>
+  <string name="im_bug_report_logs">관련 오류</string>
+  <string name="im_bug_report_environment">환경</string>
+  <string name="im_bug_report_public">GitHub에서 본인 계정으로 제출합니다. 제출하면 누구나 볼 수 있습니다.</string>
+  <string name="im_bug_report_submit">GitHub에서 제출</string>
+  <string name="im_bug_report_copy">복사</string>
+  <string name="im_bug_report_skip">제출 안 함</string>
+  <string name="im_bug_report_reopen">GitHub 다시 열기</string>
 </resources>

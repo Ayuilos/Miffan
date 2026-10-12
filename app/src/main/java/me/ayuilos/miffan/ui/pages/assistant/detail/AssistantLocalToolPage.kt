@@ -276,6 +276,20 @@ private fun AssistantLocalToolContent(
             )
             item(
                 headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_bug_report_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_bug_report_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.localTools.contains(LocalToolOption.BugReport),
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.BugReport, it) }
+                    )
+                }
+            )
+            item(
+                headlineContent = {
                     Text(stringResource(R.string.extension_management_setting_title))
                 },
                 supportingContent = {

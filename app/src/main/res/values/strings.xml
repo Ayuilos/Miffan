@@ -2808,4 +2808,19 @@
   <string name="im_computer_windows_send_help" tools:ignore="MissingTranslation">If the phone and the computer don\'t share a clipboard, send the script to yourself with an app you also use on the computer, such as a chat app.</string>
   <string name="im_computer_windows_show_script" tools:ignore="MissingTranslation">Show script</string>
   <string name="im_computer_fingerprint_windows_help" tools:ignore="MissingTranslation">The setup script printed it at the end. To see it again, run this in PowerShell on the computer:</string>
+  <string name="assistant_page_local_tools_bug_report_title">Bug reports</string>
+  <string name="assistant_page_local_tools_bug_report_desc">Let the AI read the app version, device and recent error summaries, and draft a GitHub issue for you to submit</string>
+  <string name="im_step_diagnostics">Checked app diagnostics</string>
+  <string name="im_step_bug_report">Drafted a bug report</string>
+  <string name="im_bug_report_title">Bug report draft</string>
+  <string name="im_bug_report_description">What happened and how to reproduce it</string>
+  <string name="im_bug_report_actual">Actual result</string>
+  <string name="im_bug_report_expected">Expected result</string>
+  <string name="im_bug_report_logs">Related errors</string>
+  <string name="im_bug_report_environment">Environment</string>
+  <string name="im_bug_report_public">You submit it on GitHub with your own account. Once submitted, anyone can see it.</string>
+  <string name="im_bug_report_submit">Submit on GitHub</string>
+  <string name="im_bug_report_copy">Copy</string>
+  <string name="im_bug_report_skip">Don\'t submit</string>
+  <string name="im_bug_report_reopen">Open on GitHub again</string>
 </resources>

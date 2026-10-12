@@ -2787,4 +2787,19 @@
   <string name="im_computer_windows_send_help">手機和電腦不共用剪貼簿時，可以用電腦上也登入著的應用程式（例如聊天軟體）把指令碼傳給自己。</string>
   <string name="im_computer_windows_show_script">查看指令碼</string>
   <string name="im_computer_fingerprint_windows_help">設定指令碼最後已經印出了指紋。要再看一次，在電腦的 PowerShell 裡執行：</string>
+  <string name="assistant_page_local_tools_bug_report_title">問題回報</string>
+  <string name="assistant_page_local_tools_bug_report_desc">讓 AI 讀取 App 版本、裝置和最近的錯誤摘要，並起草 GitHub 回報，由你來提交</string>
+  <string name="im_step_diagnostics">查看了 App 診斷資訊</string>
+  <string name="im_step_bug_report">起草了一份問題回報</string>
+  <string name="im_bug_report_title">問題回報草稿</string>
+  <string name="im_bug_report_description">問題描述與重現步驟</string>
+  <string name="im_bug_report_actual">實際結果</string>
+  <string name="im_bug_report_expected">預期結果</string>
+  <string name="im_bug_report_logs">相關錯誤</string>
+  <string name="im_bug_report_environment">環境</string>
+  <string name="im_bug_report_public">將在 GitHub 上用你自己的帳號提交，提交後所有人都看得到。</string>
+  <string name="im_bug_report_submit">前往 GitHub 提交</string>
+  <string name="im_bug_report_copy">複製內容</string>
+  <string name="im_bug_report_skip">不提交</string>
+  <string name="im_bug_report_reopen">再次開啟 GitHub</string>
 </resources>
