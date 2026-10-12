@@ -202,6 +202,39 @@ class RevisionTest {
     }
 
     @Test
+    fun profileChangeRecordsAgentOriginAndUndoRestoresNameAvatarAndPrompt() = runBlocking {
+        val revisionStore = FakeStore()
+        val revisions = RevisionRepository(revisionStore)
+        val recorder = AssistantRevisionRecorder(revisions)
+        val before = Assistant(name = "A", avatar = me.ayuilos.miffan.data.model.Avatar.Emoji("😀"), systemPrompt = "original")
+        val other = Assistant(name = "B")
+        val state = MutableStateFlow(Settings(assistants = listOf(before, other)))
+        val settingsStore = mockk<SettingsStore>()
+        io.mockk.every { settingsStore.settingsFlow } returns state
+        coEvery { settingsStore.update(any<(Settings) -> Settings>()) } coAnswers {
+            val old = state.value
+            val next = firstArg<(Settings) -> Settings>()(old)
+            state.value = next
+            recorder.onAssistantsChanged(old.assistants, next.assistants)
+        }
+        val tool = me.ayuilos.miffan.data.ai.tools.buildSelfProfileTools(
+            me.ayuilos.miffan.data.ai.AgentAccess.forAssistant(before, true), true, settingsStore, trigger,
+        ) { setOf("🐳") }.single()
+        assertTrue(tool.execute(buildJsonObject {
+            put("name", "X"); put("avatar_emoji", "🐳"); put("system_prompt", "new prompt"); put("reason", "改成小鲸鱼")
+        }).success())
+        val revision = revisionStore.revisions.value.last()
+        assertEquals(RevisionAuthor.AGENT, revision.author)
+        assertEquals(trigger, revision.trigger)
+        assertEquals("改成小鲸鱼", revision.summary)
+        assertEquals(setOf(before.id.toString()), revisionStore.revisions.value.map { it.subjectId }.toSet())
+        val service = RevisionService(revisions, settingsStore, MemoryRepository(FakeMemoryDao()))
+        assertEquals(RestoreResult.Restored, service.undo(revision.id))
+        assertEquals(listOf(before, other), state.value.assistants)
+        assertEquals(RevisionAuthor.RESTORE, revisionStore.revisions.value.last().author)
+    }
+
+    @Test
     fun quotesMustComeFromTheTriggeringMessage() {
         assertTrue(isQuotedFrom("回答 简短一点", "以后回答简短一点"))
         assertTrue(isQuotedFrom("“Be brief”", "please BE brief from now on"))
