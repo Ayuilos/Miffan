@@ -77,7 +77,7 @@ class MyEnvironmentToolTest {
     }
 
     @Test fun blankNameAvatarVariantsAndNoBindingsUseSafeDisplayValues() {
-        for ((avatar, type) in listOf(Avatar.Dummy to "default", Avatar.Miffan() to "default",
+        for ((avatar, type) in listOf(Avatar.Dummy to "default",
             Avatar.Emoji("secret-avatar-content") to "emoji", Avatar.WhaleGirl() to "whale_girl")) {
             val s = settings.copy(assistants = listOf(a.copy(name = "  ", avatar = avatar)))
             val output = buildMyEnvironment(AgentAccess.forAssistant(a, false), s, model, "Provider",
@@ -87,6 +87,17 @@ class MyEnvironmentToolTest {
             assertFalse(output.containsKey("workspace"))
             assertFalse(output.containsKey("computer"))
             assertFalse(output.toString().contains("secret-avatar-content"))
+        }
+    }
+
+    @Test fun miffanAvatarReportsSerialKindAndPaletteWithoutPaths() {
+        for (kind in MiffanKind.entries) for (palette in MiffanPalette.entries) {
+            val s = settings.copy(assistants = listOf(a.copy(avatar = Avatar.Miffan(MiffanAppearance(palette, kind)))))
+            val avatar = environment(s).getValue("avatar").jsonObject
+            assertEquals(setOf("type", "kind", "palette"), avatar.keys)
+            assertEquals("miffan", avatar.getValue("type").jsonPrimitive.content)
+            assertEquals(Json.encodeToJsonElement(kind), avatar.getValue("kind"))
+            assertEquals(Json.encodeToJsonElement(palette), avatar.getValue("palette"))
         }
     }
 

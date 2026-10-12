@@ -1176,6 +1176,7 @@ class ChatService(
                             isImMode = settings.isImMode,
                             settingsStore = settingsStore,
                             ownerTrigger = ownerTrigger,
+                            revisionService = getKoin().get<me.ayuilos.miffan.data.revision.RevisionService>(),
                             emojiValues = {
                                 me.ayuilos.miffan.data.ai.tools.profileEmojiValues(me.ayuilos.miffan.utils.EmojiUtils.loadEmoji(context))
                             },

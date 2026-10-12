@@ -32,7 +32,7 @@ class SelfProfileToolTest {
         profileEmojiValues(EmojiUtils.loadEmoji(context))
     }
     private fun tools(store: SettingsStore, authority: AgentAccess = access, im: Boolean = true, ref: MessageRef? = trigger) =
-        buildSelfProfileTools(authority, im, store, ref) { emojiValues }
+        buildSelfProfileTools(authority, im, store, ref, mockk()) { emojiValues }
     private fun List<UIMessagePart>.result() = Json.parseToJsonElement((single() as UIMessagePart.Text).text).jsonObject
 
     @Test fun registrationRequiresImAndOwnerAndEveryCallRequiresApproval() = runTest {

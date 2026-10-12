@@ -219,6 +219,7 @@ class RevisionTest {
         }
         val tool = me.ayuilos.miffan.data.ai.tools.buildSelfProfileTools(
             me.ayuilos.miffan.data.ai.AgentAccess.forAssistant(before, true), true, settingsStore, trigger,
+            RevisionService(revisions, settingsStore, MemoryRepository(FakeMemoryDao())),
         ) { setOf("🐳") }.single()
         assertTrue(tool.execute(buildJsonObject {
             put("name", "X"); put("avatar_emoji", "🐳"); put("system_prompt", "new prompt"); put("reason", "改成小鲸鱼")

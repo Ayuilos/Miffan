@@ -8,10 +8,12 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.ThreadNoticeKind
@@ -33,6 +35,21 @@ class RevisionService(
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
 ) {
+    /** Preview for approval UI: newest own historical avatar that differs from the current one. */
+    suspend fun previousAvatar(assistantId: Uuid): Avatar? {
+        val current = settingsStore.settingsFlow.first().getAssistantById(assistantId) ?: return null
+        return avatarHistory(assistantId).firstOrNull { it != current.avatar }
+    }
+
+    /** Scoped query only; never inspect other assistants or memory revisions. Newest first. */
+    internal suspend fun avatarHistory(assistantId: Uuid): List<Avatar> = revisions
+        .history(RevisionSubject.ASSISTANT, assistantId.toString()).first()
+        .filter { it.subject == RevisionSubject.ASSISTANT && it.subjectId == assistantId.toString() }
+        .mapNotNull { revision ->
+            runCatching { AssistantRevisionRecorder.restore(revision.snapshot) }.getOrNull()
+                ?.takeIf { it.id == assistantId }?.avatar
+        }
+
     /** Restores [target]'s snapshot if the subject's head is still [expectedHeadId]. */
     suspend fun restore(target: Revision, expectedHeadId: String): RestoreResult {
         val head = revisions.head(target.subject, target.subjectId) ?: return RestoreResult.NotFound

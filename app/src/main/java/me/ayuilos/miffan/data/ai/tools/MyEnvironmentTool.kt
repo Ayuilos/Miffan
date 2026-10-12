@@ -56,7 +56,12 @@ internal fun buildMyEnvironment(
     val caller = requireNotNull(settings.getAssistantById(access.callerId))
     return buildJsonObject {
         put("name", partnerDisplayName(caller))
-        put("avatar", when (caller.avatar) {
+        val avatar = caller.avatar
+        if (avatar is Avatar.Miffan) put("avatar", buildJsonObject {
+            put("type", "miffan")
+            put("kind", Json.encodeToJsonElement(avatar.appearance.kind))
+            put("palette", Json.encodeToJsonElement(avatar.appearance.palette))
+        }) else put("avatar", when (avatar) {
             is Avatar.Emoji -> "emoji"
             is Avatar.Image -> "image"
             is Avatar.WhaleGirl -> "whale_girl"
