@@ -16,10 +16,10 @@ The release channels are intentionally isolated:
 | Channel | Gradle build type | Application ID | Signing | Distribution |
 | --- | --- | --- | --- | --- |
 | Official / release candidate | `release` | `me.ayuilos.miffan.app` | Miffan production certificate | Owner direct publication or optional hosted draft |
-| Nightly | `nightly` | `me.ayuilos.miffan.app.nightly` | Ephemeral CI debug certificate | Disposable GitHub Actions artifact only |
+| Nightly | `nightly` | `me.ayuilos.miffan.app.nightly` | Android debug certificate | Local `./gradlew assembleNightly` only |
 | Local debug | `debug` | `me.ayuilos.miffan.app.debug` | Android debug certificate | Local or CI artifact |
 
-Nightly never reads production signing secrets, never updates the fixed `nightly` tag, and never creates a GitHub Release. Its different application ID prevents a nightly APK from replacing or upgrading an official installation. Each hosted CI run uses a temporary debug signer that may differ from another run, so Nightly is a disposable test artifact and is not guaranteed to upgrade in place over an earlier Nightly. A fresh install may be required.
+There is no scheduled Nightly workflow. The `nightly` build type remains for local side-by-side testing: it never reads production signing secrets, and its different application ID prevents a nightly APK from replacing or upgrading an official installation.
 
 ## Independent version scheme
 
