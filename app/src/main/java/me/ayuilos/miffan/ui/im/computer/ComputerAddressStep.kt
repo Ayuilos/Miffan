@@ -15,6 +15,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenCopyCommand
+import me.rerere.workspace.RemotePlatform
 
 internal fun computerPublicKeyCommand(publicKey: String): String {
     val quoted = "'" + publicKey.trim().replace("'", "'\\''") + "'"
@@ -36,6 +37,7 @@ internal fun ComputerAddressStep(
     var port by rememberSaveable { mutableStateOf("22") }
     var username by rememberSaveable { mutableStateOf("") }
     var passwordLogin by rememberSaveable { mutableStateOf(false) }
+    var windows by rememberSaveable { mutableStateOf(false) }
     var keyId by rememberSaveable { mutableStateOf<String?>(null) }
     var keyRequested by rememberSaveable { mutableStateOf(false) }
     // Editing keeps the saved sign-in unless the user asks to change it.
@@ -45,6 +47,7 @@ internal fun ComputerAddressStep(
         if (edit && host != null && !prefilled) {
             name = host.name; address = host.host; port = host.port.toString(); username = host.username
             keyId = host.sshKeyId
+            windows = host.platform == RemotePlatform.WINDOWS.storageName
             prefilled = true
         }
     }
@@ -52,18 +55,20 @@ internal fun ComputerAddressStep(
     var password by remember { mutableStateOf("") }
     var keyMenu by remember { mutableStateOf(false) }
     val selectedKey = keys.find { it.id == keyId } ?: keys.firstOrNull()
+    // Windows needs the setup script anyway, and the script authorizes a key: no password option there.
+    val usePassword = passwordLogin && !windows
     // submitAddress has already saved this computer even when fingerprint reading fails.
     val retryFingerprint = state.hostId != null && !edit
     val editable = !state.busy && !retryFingerprint
     // The recommended path needs a key; make one rather than asking the user to.
-    LaunchedEffect(passwordLogin, keys.isEmpty(), changeSignIn) {
-        if (changeSignIn && !passwordLogin && keys.isEmpty() && !keyRequested) {
+    LaunchedEffect(usePassword, keys.isEmpty(), changeSignIn) {
+        if (changeSignIn && !usePassword && keys.isEmpty() && !keyRequested) {
             keyRequested = true
             vm.createAppKey(reuseExisting = true) { keyId = it.id }
         }
     }
     val valid = name.isNotBlank() && address.isNotBlank() && username.isNotBlank() && port.toIntOrNull() in 1..65535 &&
-        (!changeSignIn || if (passwordLogin) password.isNotEmpty() else selectedKey != null) && (!edit || prefilled)
+        (!changeSignIn || if (usePassword) password.isNotEmpty() else selectedKey != null) && (!edit || prefilled)
     ComputerSetupStepLayout(
         title = stringResource(if (edit) R.string.im_computer_edit_title else R.string.im_computer_address_title),
         supporting = stringResource(if (edit) R.string.im_computer_edit_help else R.string.im_computer_address_help),
@@ -72,11 +77,34 @@ internal fun ComputerAddressStep(
         else SetupAction(stringResource(if (edit) R.string.im_computer_save_continue else R.string.im_computer_continue), enabled = valid) {
             vm.submitAddress(name.trim(), address.trim(), port.toInt(), username.trim(), when {
                 !changeSignIn -> null
-                passwordLogin -> ComputerSetupAuth.Password(password)
+                usePassword -> ComputerSetupAuth.Password(password)
                 else -> ComputerSetupAuth.AppKey(requireNotNull(selectedKey).id)
-            })
+            }, windows)
         },
     ) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SegmentedButton(selected = !windows, enabled = editable, onClick = { windows = false },
+                shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text(stringResource(R.string.im_computer_system_unix)) }
+            SegmentedButton(selected = windows, enabled = editable, onClick = { windows = true },
+                shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text(stringResource(R.string.im_computer_system_windows)) }
+        }
+        // On Windows the script comes first: it prints the address and username to fill in.
+        val keyPicker: @Composable () -> Unit = {
+            if (selectedKey != null && keys.size > 1) Box {
+                TextButton(enabled = editable, onClick = { keyMenu = true }, contentPadding = PaddingValues(0.dp)) {
+                    Text(stringResource(R.string.im_computer_other_key, selectedKey.name))
+                }
+                DropdownMenu(keyMenu, onDismissRequest = { keyMenu = false }) {
+                    keys.forEach { key ->
+                        DropdownMenuItem(text = { Text(key.name) }, onClick = { keyId = key.id; keyMenu = false })
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text(stringResource(R.string.im_computer_generate_key)) },
+                        onClick = { keyMenu = false; vm.createAppKey { keyId = it.id } })
+                }
+            }
+        }
+        if (windows && changeSignIn) WindowsSetupCard(selectedKey, keyPicker)
         SetupCard {
             OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.im_computer_name)) },
                 enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -101,7 +129,7 @@ internal fun ComputerAddressStep(
                 }
                 TextButton(enabled = editable, onClick = { changeSignIn = true }) { Text(stringResource(R.string.im_computer_sign_in_change)) }
             }
-        } else SetupCard {
+        } else if (!windows) SetupCard {
             Text(stringResource(R.string.im_computer_sign_in), style = MaterialTheme.typography.titleSmall)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SegmentedButton(selected = !passwordLogin, enabled = editable, onClick = { passwordLogin = false; password = "" },
@@ -116,19 +144,7 @@ internal fun ComputerAddressStep(
             } else if (selectedKey != null) {
                 Text(stringResource(R.string.im_computer_key_command_help), style = MaterialTheme.typography.bodyMedium)
                 RemoteScreenCopyCommand("", computerPublicKeyCommand(selectedKey.publicKey))
-                if (keys.size > 1) Box {
-                    TextButton(enabled = editable, onClick = { keyMenu = true }, contentPadding = PaddingValues(0.dp)) {
-                        Text(stringResource(R.string.im_computer_other_key, selectedKey.name))
-                    }
-                    DropdownMenu(keyMenu, onDismissRequest = { keyMenu = false }) {
-                        keys.forEach { key ->
-                            DropdownMenuItem(text = { Text(key.name) }, onClick = { keyId = key.id; keyMenu = false })
-                        }
-                        HorizontalDivider()
-                        DropdownMenuItem(text = { Text(stringResource(R.string.im_computer_generate_key)) },
-                            onClick = { keyMenu = false; vm.createAppKey { keyId = it.id } })
-                    }
-                }
+                keyPicker()
             }
         }
     }

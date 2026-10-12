@@ -2775,4 +2775,16 @@
   <string name="update_download_complete_text">下載完成，點選安裝</string>
   <string name="update_download_failed_title">更新下載失敗</string>
   <string name="update_download_failed_text">無法下載更新，請重試</string>
+  <string name="im_computer_system_unix">Mac / Linux</string>
+  <string name="im_computer_system_windows">Windows</string>
+  <string name="im_computer_windows_setup_title">先準備這台 Windows 電腦</string>
+  <string name="im_computer_windows_setup_admin">在電腦上右鍵點「開始」按鈕，選擇「終端機（系統管理員）」或「Windows PowerShell（系統管理員）」。</string>
+  <string name="im_computer_windows_setup_paste">貼上指令碼，按 Enter。指令碼會開啟 Windows 內建的 SSH 服務，允許 Miffan 的金鑰登入，並且只對區域網路和 Tailscale 開放 SSH 連接埠。</string>
+  <string name="im_computer_windows_setup_fill">把指令碼最後印出的名稱、位址和使用者名稱填到下面。</string>
+  <string name="im_computer_windows_copy_script">複製指令碼</string>
+  <string name="im_computer_windows_script_copied">已複製</string>
+  <string name="im_computer_windows_send_script">傳送到電腦</string>
+  <string name="im_computer_windows_send_help">手機和電腦不共用剪貼簿時，可以用電腦上也登入著的應用程式（例如聊天軟體）把指令碼傳給自己。</string>
+  <string name="im_computer_windows_show_script">查看指令碼</string>
+  <string name="im_computer_fingerprint_windows_help">設定指令碼最後已經印出了指紋。要再看一次，在電腦的 PowerShell 裡執行：</string>
 </resources>

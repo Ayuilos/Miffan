@@ -36,6 +36,7 @@ import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
+import me.rerere.workspace.RemotePlatform
 import kotlin.uuid.Uuid
 
 /** Steps of "connect a computer for the partner", in order. */
@@ -98,6 +99,8 @@ data class ComputerSetupState(
     val editing: Boolean = false,
     /** Windows only: Sunshine is installed, running, encrypted and paired for [hostRevision]. */
     val streamReady: Boolean = false,
+    /** The user said the computer runs Windows (or it was detected before); only changes instructions. */
+    val expectWindows: Boolean = false,
 ) {
     val busy: Boolean get() = task != null
     val isMac: Boolean get() = probe?.os == "macos"
@@ -212,7 +215,7 @@ class ComputerSetupVM(
 
     /** The exact command [installCuaDriver] runs, for the confirmation dialog. */
     fun cuaInstallCommand(): String = RemoteScreenRepository.cuaDriverCommand(upgradePath(),
-        if (_state.value.probe?.os == "windows") me.rerere.workspace.RemotePlatform.WINDOWS else me.rerere.workspace.RemotePlatform.POSIX)
+        if (_state.value.probe?.os == "windows") RemotePlatform.WINDOWS else RemotePlatform.POSIX)
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
@@ -237,7 +240,8 @@ class ComputerSetupVM(
     /** Continue with a known computer: verify its key if it has none, otherwise connect. */
     fun chooseHost(hostId: String) = run(ComputerSetupTask.CONNECTING) {
         val host = requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" }
-        _state.value = ComputerSetupState(hostId = host.id, task = ComputerSetupTask.CONNECTING)
+        _state.value = ComputerSetupState(hostId = host.id, task = ComputerSetupTask.CONNECTING,
+            expectWindows = host.platform == RemotePlatform.WINDOWS.storageName)
         if (host.trustedHostKeySha256 == null) readFingerprint(host) else connectAndProbe(host.id)
     }
 
@@ -262,8 +266,9 @@ class ComputerSetupVM(
      * [auth] keeps the saved sign-in. Continues to the fingerprint when it is not trusted (new, or the
      * address changed), otherwise straight to connecting and checking.
      */
-    fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?) =
+    fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?, windows: Boolean) =
         run(ComputerSetupTask.READING_FINGERPRINT) {
+            _state.update { it.copy(expectWindows = windows) }
             val host = if (_state.value.editing) {
                 val hostId = requireNotNull(_state.value.hostId)
                 check(workspaces.updateHost(hostId, name, address, port, username,

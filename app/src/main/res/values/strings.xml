@@ -2796,4 +2796,16 @@
   <string name="update_download_complete_text">Download complete, tap to install</string>
   <string name="update_download_failed_title">Update download failed</string>
   <string name="update_download_failed_text">Unable to download the update. Please try again.</string>
+  <string name="im_computer_system_unix" tools:ignore="MissingTranslation">Mac / Linux</string>
+  <string name="im_computer_system_windows" tools:ignore="MissingTranslation">Windows</string>
+  <string name="im_computer_windows_setup_title" tools:ignore="MissingTranslation">First, prepare the Windows computer</string>
+  <string name="im_computer_windows_setup_admin" tools:ignore="MissingTranslation">On the computer, right-click Start and choose Terminal (Admin) or Windows PowerShell (Admin).</string>
+  <string name="im_computer_windows_setup_paste" tools:ignore="MissingTranslation">Paste the script and press Enter. It turns on Windows\' own SSH service, lets Miffan\'s key sign in, and opens the SSH port only to your local network and Tailscale.</string>
+  <string name="im_computer_windows_setup_fill" tools:ignore="MissingTranslation">Fill in the name, address and username it prints at the end.</string>
+  <string name="im_computer_windows_copy_script" tools:ignore="MissingTranslation">Copy script</string>
+  <string name="im_computer_windows_script_copied" tools:ignore="MissingTranslation">Copied</string>
+  <string name="im_computer_windows_send_script" tools:ignore="MissingTranslation">Send to computer</string>
+  <string name="im_computer_windows_send_help" tools:ignore="MissingTranslation">If the phone and the computer don\'t share a clipboard, send the script to yourself with an app you also use on the computer, such as a chat app.</string>
+  <string name="im_computer_windows_show_script" tools:ignore="MissingTranslation">Show script</string>
+  <string name="im_computer_fingerprint_windows_help" tools:ignore="MissingTranslation">The setup script printed it at the end. To see it again, run this in PowerShell on the computer:</string>
 </resources>

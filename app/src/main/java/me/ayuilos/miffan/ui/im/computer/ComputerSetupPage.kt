@@ -279,7 +279,10 @@ private fun ComputerVerifyStep(vm: ComputerSetupVM, state: ComputerSetupState, h
                 Text(key.sha256Fingerprint, style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
             }
         }
-        SetupDisclosure(stringResource(R.string.im_computer_fingerprint_command)) {
+        if (state.expectWindows) SetupDisclosure(stringResource(R.string.im_computer_fingerprint_command)) {
+            Text(stringResource(R.string.im_computer_fingerprint_windows_help), style = MaterialTheme.typography.bodyMedium)
+            RemoteScreenCopyCommand("", WINDOWS_FINGERPRINT_COMMAND)
+        } else SetupDisclosure(stringResource(R.string.im_computer_fingerprint_command)) {
             RemoteScreenCopyCommand("", "for f in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf \"\$f\"; done")
         }
     }

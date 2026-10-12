@@ -2784,4 +2784,16 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="update_download_complete_text">下载完成，点击安装</string>
   <string name="update_download_failed_title">更新下载失败</string>
   <string name="update_download_failed_text">无法下载更新，请重试</string>
+  <string name="im_computer_system_unix">Mac / Linux</string>
+  <string name="im_computer_system_windows">Windows</string>
+  <string name="im_computer_windows_setup_title">先准备这台 Windows 电脑</string>
+  <string name="im_computer_windows_setup_admin">在电脑上右键点“开始”按钮，选择“终端管理员”或“Windows PowerShell（管理员）”。</string>
+  <string name="im_computer_windows_setup_paste">粘贴脚本，按回车。脚本会打开 Windows 自带的 SSH 服务，允许 Miffan 的密钥登录，并且只对局域网和 Tailscale 开放 SSH 端口。</string>
+  <string name="im_computer_windows_setup_fill">把脚本最后打印的名称、地址和用户名填到下面。</string>
+  <string name="im_computer_windows_copy_script">复制脚本</string>
+  <string name="im_computer_windows_script_copied">已复制</string>
+  <string name="im_computer_windows_send_script">发送到电脑</string>
+  <string name="im_computer_windows_send_help">手机和电脑不共用剪贴板时，可以用电脑上也登录着的应用（比如微信的文件传输助手）把脚本发给自己。</string>
+  <string name="im_computer_windows_show_script">查看脚本</string>
+  <string name="im_computer_fingerprint_windows_help">设置脚本最后已经打印了指纹。要再看一次，在电脑的 PowerShell 里运行：</string>
 </resources>

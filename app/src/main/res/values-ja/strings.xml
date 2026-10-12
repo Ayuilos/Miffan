@@ -2777,4 +2777,16 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="update_download_complete_text">ダウンロードが完了しました。タップしてインストール</string>
   <string name="update_download_failed_title">更新のダウンロードに失敗</string>
   <string name="update_download_failed_text">更新をダウンロードできませんでした。再試行してください。</string>
+  <string name="im_computer_system_unix">Mac / Linux</string>
+  <string name="im_computer_system_windows">Windows</string>
+  <string name="im_computer_windows_setup_title">まず Windows パソコンを準備します</string>
+  <string name="im_computer_windows_setup_admin">パソコンで「スタート」を右クリックし、「ターミナル (管理者)」または「Windows PowerShell (管理者)」を選びます。</string>
+  <string name="im_computer_windows_setup_paste">スクリプトを貼り付けて Enter を押します。Windows 標準の SSH サービスを有効にし、Miffan の鍵でのログインを許可し、SSH ポートをローカルネットワークと Tailscale にだけ開きます。</string>
+  <string name="im_computer_windows_setup_fill">最後に表示される名前、アドレス、ユーザー名を下に入力します。</string>
+  <string name="im_computer_windows_copy_script">スクリプトをコピー</string>
+  <string name="im_computer_windows_script_copied">コピーしました</string>
+  <string name="im_computer_windows_send_script">パソコンに送る</string>
+  <string name="im_computer_windows_send_help">スマホとパソコンでクリップボードを共有していない場合は、パソコンでも使っているアプリ（チャットアプリなど）でスクリプトを自分宛てに送ってください。</string>
+  <string name="im_computer_windows_show_script">スクリプトを表示</string>
+  <string name="im_computer_fingerprint_windows_help">セットアップスクリプトの最後に表示されています。もう一度見るには、パソコンの PowerShell で次を実行します:</string>
 </resources>

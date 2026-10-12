@@ -2786,4 +2786,16 @@
   <string name="update_download_complete_text">Загрузка завершена. Нажмите для установки</string>
   <string name="update_download_failed_title">Не удалось загрузить обновление</string>
   <string name="update_download_failed_text">Не удалось загрузить обновление. Попробуйте ещё раз.</string>
+  <string name="im_computer_system_unix">Mac / Linux</string>
+  <string name="im_computer_system_windows">Windows</string>
+  <string name="im_computer_windows_setup_title">Сначала подготовьте компьютер с Windows</string>
+  <string name="im_computer_windows_setup_admin">На компьютере щёлкните правой кнопкой по «Пуску» и выберите «Терминал (администратор)» или «Windows PowerShell (администратор)».</string>
+  <string name="im_computer_windows_setup_paste">Вставьте скрипт и нажмите Enter. Он включит встроенную службу SSH в Windows, разрешит вход по ключу Miffan и откроет порт SSH только для локальной сети и Tailscale.</string>
+  <string name="im_computer_windows_setup_fill">Введите ниже имя, адрес и имя пользователя, которые он выведет в конце.</string>
+  <string name="im_computer_windows_copy_script">Копировать скрипт</string>
+  <string name="im_computer_windows_script_copied">Скопировано</string>
+  <string name="im_computer_windows_send_script">Отправить на компьютер</string>
+  <string name="im_computer_windows_send_help">Если у телефона и компьютера нет общего буфера обмена, отправьте скрипт себе через приложение, которым пользуетесь и на компьютере, например мессенджер.</string>
+  <string name="im_computer_windows_show_script">Показать скрипт</string>
+  <string name="im_computer_fingerprint_windows_help">Скрипт настройки вывел его в конце. Чтобы увидеть снова, выполните в PowerShell на компьютере:</string>
 </resources>
