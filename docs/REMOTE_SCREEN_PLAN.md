@@ -10,7 +10,7 @@
 
 - 同一块屏幕：用户可看可操作，伙伴也可操作。
 - 伙伴的 computer use 能力以远端安装的 cua-driver 为核心，不在 APP 内另造截图/点击实现。
-- 目标平台：Linux、macOS。Windows 暂不考虑。
+- 目标平台：Linux、macOS。Windows 暂不考虑（2026-10-12 起另立 P7，见 `remote-screen/P7_WINDOWS_PLAN.md`）。
 - 两个入口：
   - 专业模式：工作空间详情中的“屏幕”页，与文件、终端并列。
   - 轻松模式：伙伴聊天页右上角的“…”替换为电脑图标，点击进入独立的屏幕页。
