@@ -10,13 +10,16 @@ data class AgentAccess(
     val callerId: Uuid,
     val ownerInitiated: Boolean,
     val memoryOwnerId: String,
+    val ownerThreadNonOwnerTurn: Boolean = false,
 ) {
     fun canChangeAssistant(id: String): Boolean = ownerInitiated ||
         runCatching { Uuid.parse(id.trim()) == callerId }.getOrDefault(false)
 
     companion object {
         fun forTurn(assistant: Assistant, conversation: Conversation): AgentAccess =
-            forAssistant(assistant, conversation.ownerTrigger() != null)
+            forAssistant(assistant, conversation.ownerTrigger() != null).let { access ->
+                access.copy(ownerThreadNonOwnerTurn = conversation.chatId == null && !access.ownerInitiated)
+            }
 
         fun forAssistant(assistant: Assistant, ownerInitiated: Boolean): AgentAccess = AgentAccess(
             callerId = assistant.id,

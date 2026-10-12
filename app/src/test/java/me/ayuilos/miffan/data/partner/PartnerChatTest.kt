@@ -118,6 +118,33 @@ class PartnerChatTest {
         assertTrue(tool.needsApproval(args))
     }
 
+    @Test fun ownerThreadNonOwnerTurnAlwaysApprovesAndNeverAddsGrants() = runTest {
+        val f = Fixture(this)
+        val oldGrant = PartnerPair.of(a.id, b.id)
+        f.settings.value = f.settings.value.copy(partnerContactGrants = listOf(oldGrant))
+        val turn = caller().appendMessage(UIMessage.user("B replied"), origin = MessageOrigin.Event("partner", "reply"))
+        val tool = buildPartnerMessageTools(turn, f.settingsStore, f.service).last()
+        for (target in listOf(b.id, c.id)) {
+            val args = buildJsonObject { put("to", target.toString()); put("text", "hello") }
+            assertTrue(tool.needsApproval(args))
+            assertEquals("replied", Json.parseToJsonElement((tool.execute(args).single() as UIMessagePart.Text).text).jsonObject.status())
+            assertEquals(listOf(oldGrant), f.settings.value.partnerContactGrants)
+            assertTrue(tool.needsApproval(args))
+        }
+    }
+
+    @Test fun partnerPerspectiveStillUsesAndCreatesLastingGrants() = runTest {
+        val f = Fixture(this)
+        val chat = f.store.direct(a.id, b.id)
+        val turn = caller(MessageOrigin.Partner(b.id, Uuid.random(), listOf(b.id)), chat.id)
+        val args = buildJsonObject { put("to", c.id.toString()); put("text", "hello") }
+        val tool = buildPartnerMessageTools(turn, f.settingsStore, f.service).last()
+        assertTrue(tool.needsApproval(args))
+        tool.execute(args)
+        assertEquals(listOf(PartnerPair.of(a.id, c.id)), f.settings.value.partnerContactGrants)
+        assertFalse(tool.needsApproval(args))
+    }
+
     @Test fun invalidSelfLoopAndDepthCallsRefuseWithoutApprovalOrCreatingChat() = runTest {
         val f = Fixture(this)
         val cases = listOf(caller() to "invalid", caller() to Uuid.random().toString(), caller() to a.id.toString(),
@@ -125,8 +152,8 @@ class PartnerChatTest {
             caller(MessageOrigin.Partner(b.id, Uuid.random(), listOf(b.id, c.id))) to Uuid.random().toString(),
             caller(MessageOrigin.Partner(b.id, Uuid.random(), listOf(b.id, a.id))) to c.id.toString())
         for ((caller, to) in cases) {
-            assertFalse(f.service.needsApproval(caller, to, emptySet()))
-            assertEquals("refused", f.service.send(caller, to, "hi").status())
+            assertFalse(f.service.needsApproval(caller, AgentAccess.forTurn(a, caller), to, emptySet()))
+            assertEquals("refused", f.service.send(caller, AgentAccess.forTurn(a, caller), to, "hi").status())
         }
         assertTrue(f.store.chats.isEmpty()); assertTrue(f.settings.value.partnerContactGrants.isEmpty())
     }
@@ -182,7 +209,7 @@ class PartnerChatTest {
         val exchange = Uuid.random()
         val fromB = Conversation(assistantId = b.id, chatId = Uuid.random(), messageNodes = emptyList())
             .appendMessage(UIMessage.user("from A"), origin = MessageOrigin.Partner(a.id, exchange, listOf(a.id)))
-        assertEquals("replied", f.service.send(fromB, c.id.toString(), "hello C").status())
+        assertEquals("replied", f.service.send(fromB, AgentAccess.forTurn(b, fromB), c.id.toString(), "hello C").status())
         val user = f.generated.single().currentMessageNodes.single()
         assertEquals(MessageOrigin.Partner(b.id, exchange, listOf(a.id, b.id)), user.origin)
         assertEquals(exchange, f.store.allMessages.last().message.exchangeId)
@@ -193,7 +220,7 @@ class PartnerChatTest {
         val gate = CompletableDeferred<String>()
         coEvery { f.runtime.generate(any()) } coAnswers { gate.await() }
         val initiating = caller()
-        val send = async { f.service.send(initiating, b.id.toString(), "hello") }
+        val send = async { f.service.send(initiating, AgentAccess.forTurn(a, initiating), b.id.toString(), "hello") }
         runCurrent(); assertEquals(setOf(b.id), f.service.observeTyping(f.store.chats.values.single().id).first())
         advanceTimeBy(100); runCurrent()
         assertEquals("pending", send.await().status())
@@ -212,7 +239,7 @@ class PartnerChatTest {
         val gate = CompletableDeferred<String>()
         coEvery { f.runtime.generate(any()) } coAnswers { gate.await() }
         val initiating = caller(MessageOrigin.Partner(c.id, Uuid.random(), listOf(c.id)), Uuid.random())
-        val send = async { f.service.send(initiating, b.id.toString(), "hello") }
+        val send = async { f.service.send(initiating, AgentAccess.forTurn(a, initiating), b.id.toString(), "hello") }
         advanceTimeBy(100); runCurrent(); assertEquals("pending", send.await().status())
         gate.complete("late"); runCurrent()
         assertEquals(2, f.store.allMessages.size)
@@ -223,8 +250,8 @@ class PartnerChatTest {
         val f = Fixture(this)
         val exchange = Uuid.random()
         val initiating = caller(MessageOrigin.Partner(c.id, exchange, listOf(c.id)), Uuid.random())
-        repeat(3) { assertEquals("replied", f.service.send(initiating, b.id.toString(), "hi").status()) }
-        assertEquals("refused", f.service.send(initiating, b.id.toString(), "seventh").status())
+        repeat(3) { assertEquals("replied", f.service.send(initiating, AgentAccess.forTurn(a, initiating), b.id.toString(), "hi").status()) }
+        assertEquals("refused", f.service.send(initiating, AgentAccess.forTurn(a, initiating), b.id.toString(), "seventh").status())
         assertEquals(6, f.store.allMessages.size)
     }
 
@@ -268,7 +295,7 @@ class PartnerChatTest {
         val f = Fixture(this)
         val gate = CompletableDeferred<String>()
         coEvery { f.runtime.generate(any()) } coAnswers { gate.await() }
-        val send = async { f.service.send(caller(), b.id.toString(), "hello") }
+        val send = async { f.service.send(caller(), AgentAccess.forTurn(a, caller()), b.id.toString(), "hello") }
         runCurrent()
         val chat = f.store.chats.values.single(); val inputId = f.store.allMessages.single().message.id
         val later = ChatMessage(PartnerChatMessage(Uuid.random(), chat.id, OWNER_PARTICIPANT_ID, "later", Instant.now()))
@@ -281,9 +308,9 @@ class PartnerChatTest {
 
     @Test fun ownerContactIsOnlyAvailableInPerspectivesAndDoesNotGenerate() = runTest {
         val f = Fixture(this)
-        assertEquals("refused", f.service.send(caller(), "owner", "note").status())
+        assertEquals("refused", f.service.send(caller(), AgentAccess.forTurn(a, caller()), "owner", "note").status())
         val chat = f.store.direct(a.id, b.id)
-        assertEquals("delivered", f.service.send(caller(chatId = chat.id), "owner", "note").status())
+        assertEquals("delivered", f.service.send(caller(chatId = chat.id), AgentAccess.forTurn(a, caller(chatId = chat.id)), "owner", "note").status())
         coVerify(exactly = 1) { f.runtime.ownerNote(a.id, MessageOrigin.Event("partner_note", "来自和 小B 的私聊", b.id, chat.id), "note") }
         coVerify(exactly = 0) { f.runtime.generate(any()) }
         val contactsTool = buildPartnerMessageTools(caller(chatId = chat.id), f.settingsStore, f.service).first()
@@ -295,7 +322,7 @@ class PartnerChatTest {
 
     @Test fun summariesContactsCleanupAndRetainChatsIncludePartnerChats() = runTest {
         val f = Fixture(this)
-        f.service.send(caller(), b.id.toString(), "hello")
+        f.service.send(caller(), AgentAccess.forTurn(a, caller()), b.id.toString(), "hello")
         val chat = f.store.chats.values.single()
         f.settings.value = f.settings.value.copy(chatOrganization = ChatOrganization(legacyPinsMigrated = true).pin(chat.id).pin(a.id).pin(b.id))
         assertEquals(listOf(b.id), f.service.observeContacts(a.id).first())
@@ -332,7 +359,7 @@ class PartnerChatTest {
             text
         }
         f.service.sendFromOwner(chat.id, "owner", listOf(a.id)); runCurrent()
-        val send = async { f.service.send(caller(), b.id.toString(), "parallel IM send") }
+        val send = async { f.service.send(caller(), AgentAccess.forTurn(a, caller()), b.id.toString(), "parallel IM send") }
         runCurrent()
         assertTrue(send.isCompleted); assertEquals("replied", send.await().status())
         busy = false; gate.complete("reply"); runCurrent()
@@ -520,7 +547,7 @@ class PartnerChatTest {
         val exchange = Uuid.random()
         repeat(8) { f.store.append(ChatMessage(PartnerChatMessage(Uuid.random(), id, b.id, "group reply", Instant.now(), exchange))) }
         val perspective = caller(MessageOrigin.Partner(b.id, exchange, emptyList()), id)
-        assertEquals("replied", f.service.send(perspective, c.id.toString(), "private").status())
+        assertEquals("replied", f.service.send(perspective, AgentAccess.forTurn(a, perspective), c.id.toString(), "private").status())
         assertNotEquals(exchange, f.store.allMessages.last().message.exchangeId)
     }
 
@@ -541,12 +568,12 @@ class PartnerChatTest {
         val result = Json.parseToJsonElement((tools.last().execute(args(b.id)).single() as UIMessagePart.Text).text).jsonObject
         assertEquals("refused", result.status())
         assertEquals("对方就在这个群里，请在群里用 @名字。", result.getValue("reason").jsonPrimitive.content)
-        assertEquals("refused", f.service.send(perspective, b.id.toString(), "direct execution").status())
+        assertEquals("refused", f.service.send(perspective, AgentAccess.forTurn(a, perspective), b.id.toString(), "direct execution").status())
         assertTrue(f.settings.value.partnerContactGrants.isEmpty())
         assertEquals(listOf(id), f.store.chats.keys.toList())
         assertTrue(f.store.allMessages.isEmpty()); assertTrue(f.generated.isEmpty())
         f.settings.value = f.settings.value.copy(partnerContactGrants = listOf(PartnerPair.of(a.id,b.id)))
-        assertEquals("refused", f.service.send(perspective, b.id.toString(), "already authorized").status())
+        assertEquals("refused", f.service.send(perspective, AgentAccess.forTurn(a, perspective), b.id.toString(), "already authorized").status())
         val outside = Json.parseToJsonElement((tools.last().execute(args(c.id)).single() as UIMessagePart.Text).text).jsonObject
         assertEquals("replied", outside.status())
         assertTrue(PartnerPair.of(a.id,c.id) in f.settings.value.partnerContactGrants)
@@ -566,7 +593,7 @@ class PartnerChatTest {
         val fresh = buildPartnerMessageTools(perspective, f.settingsStore, f.service).last()
         assertTrue(fresh.needsApproval(args))
         assertFalse(fresh.needsApproval(buildJsonObject { put("to", c.id.toString()); put("text", "hi") }))
-        assertEquals("refused", f.service.send(perspective, c.id.toString(), "new group member").status())
+        assertEquals("refused", f.service.send(perspective, AgentAccess.forTurn(a, perspective), c.id.toString(), "new group member").status())
     }
 
     @Test fun directContactsRemainAvailableAndAreNotMarkedAsInThisGroup() = runTest {
@@ -632,11 +659,11 @@ class PartnerChatTest {
     @Test fun serviceCreatesDisplayNamedPerspectiveAndOwnerNoteForBlankPartner() = runTest {
         val f = Fixture(this)
         f.settings.value = f.settings.value.copy(assistants = listOf(a.copy(name = ""), b, c))
-        assertEquals("replied", f.service.send(caller(), b.id.toString(), "hello").status())
+        assertEquals("replied", f.service.send(caller(), AgentAccess.forTurn(a, caller()), b.id.toString(), "hello").status())
         val perspective = f.generated.single()
         assertEquals("与 默认助手 的私聊", perspective.title)
         assertEquals("[默认助手] hello", perspective.currentMessages.single().toText())
-        assertEquals("delivered", f.service.send(perspective, "owner", "note").status())
+        assertEquals("delivered", f.service.send(perspective, AgentAccess.forTurn(a, perspective), "owner", "note").status())
         coVerify { f.runtime.ownerNote(b.id, match { it.summary == "来自和 默认助手 的私聊" }, "note") }
     }
 

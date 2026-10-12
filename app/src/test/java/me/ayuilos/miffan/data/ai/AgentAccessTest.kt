@@ -16,8 +16,13 @@ class AgentAccessTest {
         val a = Assistant()
         val owner = Conversation(assistantId = a.id, messageNodes = emptyList()).appendMessage(UIMessage.user("owner"))
         assertTrue(AgentAccess.forTurn(a, owner).ownerInitiated)
+        assertFalse(AgentAccess.forTurn(a, owner).ownerThreadNonOwnerTurn)
         val partner = owner.appendMessage(UIMessage.user("partner"), origin = MessageOrigin.Partner(Uuid.random(), Uuid.random(), emptyList()))
         assertFalse(AgentAccess.forTurn(a, partner).ownerInitiated)
+        assertTrue(AgentAccess.forTurn(a, partner).ownerThreadNonOwnerTurn)
+        assertFalse(AgentAccess.forTurn(a, partner.copy(chatId = Uuid.random())).ownerThreadNonOwnerTurn)
+        val event = owner.appendMessage(UIMessage.user("reply"), origin = MessageOrigin.Event("partner", "reply"))
+        assertTrue(AgentAccess.forTurn(a, event).ownerThreadNonOwnerTurn)
         assertEquals(a.id.toString(), AgentAccess.forTurn(a, partner).memoryOwnerId)
         assertEquals(MemoryRepository.GLOBAL_MEMORY_ID, AgentAccess.forTurn(a.copy(useGlobalMemory = true), partner).memoryOwnerId)
     }

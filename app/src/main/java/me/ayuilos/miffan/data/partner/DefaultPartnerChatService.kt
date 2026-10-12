@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.partner
 
+import me.ayuilos.miffan.data.ai.AgentAccess
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineStart
@@ -148,17 +150,18 @@ internal class DefaultPartnerChatService(
         }
     }
 
-    internal fun needsApproval(caller: Conversation, to: String, groupMemberIds: Set<Uuid>): Boolean {
+    internal fun needsApproval(caller: Conversation, access: AgentAccess, to: String, groupMemberIds: Set<Uuid>): Boolean {
         if (to == PartnerMessageTool.OWNER) return false
         val id = runCatching { Uuid.parse(to) }.getOrNull()
         val settings = settingsStore.settingsFlow.value
         return refusal(caller, id, groupMemberIds) == null &&
-            id !in caller.ownerMentionedPartnerIds(settings) &&
-            PartnerPair.of(caller.assistantId, requireNotNull(id)) !in settings.partnerContactGrants
+            (access.ownerThreadNonOwnerTurn ||
+                (id !in caller.ownerMentionedPartnerIds(settings) &&
+                    PartnerPair.of(access.callerId, requireNotNull(id)) !in settings.partnerContactGrants))
     }
 
     /** Called only by the tool executor, after the existing generation approval gate. */
-    internal suspend fun send(caller: Conversation, to: String, text: String, roundGroupMemberIds: Set<Uuid> = emptySet()): JsonObject {
+    internal suspend fun send(caller: Conversation, access: AgentAccess, to: String, text: String, roundGroupMemberIds: Set<Uuid> = emptySet()): JsonObject {
         if (text.isBlank()) return refused("Message text is empty.")
         settingsStore.settingsFlow.awaitLoadedSettings()
         if (to == PartnerMessageTool.OWNER) return sendToOwner(caller, text)
@@ -171,8 +174,9 @@ internal class DefaultPartnerChatService(
         val exchange = trigger?.exchangeId ?: Uuid.random()
         if (store.exchangeUsage(exchange) > 4) return refused("Exchange limit is 6 messages.")
         val pair = PartnerPair.of(caller.assistantId, b)
-        settingsStore.update { settings ->
-            // Execution passed the approval gate (including the owner's current-turn @mention).
+        if (!access.ownerThreadNonOwnerTurn) settingsStore.update { settings ->
+            // Owner-thread partner/event approvals allow only this message, never a lasting grant.
+            // Other turns passed the approval gate (including the owner's current-turn @mention).
             if (pair in settings.partnerContactGrants) settings
             else settings.copy(partnerContactGrants = settings.partnerContactGrants + pair)
         }
