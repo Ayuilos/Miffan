@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 4
+$script:HelperVersion = 6
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -1020,6 +1020,7 @@ function Ensure-CuaBridge {
             $task=$tasks[0]
             if ([string]$task.Principal.RunLevel -ne 'Limited' -or [string]$task.Principal.LogonType -ne 'Interactive' -or -not (Test-CuaTaskOwner $task $context.sid) -or $task.Actions.Count -ne 1 -or [string]$task.Actions[0].Arguments -cne $arguments) {throw 'Existing bridge task differs; user review required'}
         } else {
+            Remove-StaleCuaBridgeTasks $context
             $action=New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument $arguments
             $principal=New-ScheduledTaskPrincipal -UserId $context.sid -LogonType Interactive -RunLevel Limited
             $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -1033,6 +1034,16 @@ function Ensure-CuaBridge {
         }
     }
     return $context
+}
+# Each helper version registers its own bridge task; drop this user's tasks left by older versions.
+# Only exact Miffan-cua-<sid>-* names owned by this user at Limited level are touched; a running
+# old bridge keeps running until its idle exit.
+function Remove-StaleCuaBridgeTasks($Context) {
+    foreach ($old in @(Get-ScheduledTask -TaskPath '\' -ErrorAction SilentlyContinue | Where-Object {
+        $_.TaskName -clike ('Miffan-cua-' + $Context.sid + '-*') -and $_.TaskName -cne $Context.task -and
+        [string]$_.Principal.RunLevel -eq 'Limited' -and (Test-CuaTaskOwner $_ $Context.sid) })) {
+        Unregister-ScheduledTask -TaskName $old.TaskName -TaskPath '\' -Confirm:$false -ErrorAction SilentlyContinue
+    }
 }
 function Invoke-CuaBridge {
     $context=Get-CuaBridgeContext; Assert-CuaConsole $context
@@ -1049,7 +1060,13 @@ function Invoke-CuaClipboard([string]$Text) {
     if ($Text.Contains([char]0)) {throw 'Clipboard text cannot contain NUL'}
     $context=Get-CuaBridgeContext; Assert-CuaConsole $context
     Initialize-CuaBridge
-    if (-not (Test-CuaBridgeAvailable $context.pipe)) {return Invoke-DesktopJob 'clip' $Text}
+    # Typing on the screen page writes the clipboard often; start the bridge on demand so each write
+    # does not pay for a one-shot task. Nothing has been written yet, so falling back here is safe.
+    if (-not (Test-CuaBridgeAvailable $context.pipe)) {
+        $started=$false
+        if ((Get-CuaStatus).ok) { try { $context=Ensure-CuaBridge; $started=$true } catch { } }
+        if (-not $started) {return Invoke-DesktopJob 'clip' $Text}
+    }
     Assert-PrivateDirectory $context.directory $context.sid
     # Once clipboard_write could have reached the daemon, never replay via the fallback.
     if (-not [MiffanCuaBridge]::Clipboard($context.pipe,$context.directory,$Text)) {throw 'Clipboard readback did not match'}

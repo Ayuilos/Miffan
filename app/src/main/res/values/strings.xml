@@ -2473,6 +2473,8 @@
   <string name="im_computer_stream" tools:ignore="MissingTranslation">Smoother picture</string>
   <string name="im_computer_stream_optional" tools:ignore="MissingTranslation">Optional. With Sunshine installed on the computer, the picture is smoother and responds faster.</string>
   <string name="im_computer_sunshine_needed" tools:ignore="MissingTranslation">Install Sunshine on this computer first (github.com/LizardByte/Sunshine/releases), then check again.</string>
+  <string name="im_computer_sunshine_setup_needed" tools:ignore="MissingTranslation">Sunshine is installed. Pair it with this phone to show the picture.</string>
+  <string name="im_computer_sunshine_set_up" tools:ignore="MissingTranslation">Set up</string>
   <string name="im_computer_stream_available" tools:ignore="MissingTranslation">Sunshine is on this computer and can make the picture smoother and faster.</string>
   <string name="im_computer_stream_enabled" tools:ignore="MissingTranslation">On</string>
   <string name="im_computer_stream_enable" tools:ignore="MissingTranslation">Turn on</string>

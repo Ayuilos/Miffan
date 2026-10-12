@@ -2433,6 +2433,8 @@
   <string name="im_computer_stream">Более плавное изображение</string>
   <string name="im_computer_stream_optional">Необязательно. Если на компьютере установлен Sunshine, изображение плавнее и откликается быстрее.</string>
   <string name="im_computer_sunshine_needed">Сначала установите Sunshine на этот компьютер (github.com/LizardByte/Sunshine/releases), затем проверьте снова.</string>
+  <string name="im_computer_sunshine_setup_needed">Sunshine установлен. Выполните сопряжение с этим телефоном, чтобы показать изображение.</string>
+  <string name="im_computer_sunshine_set_up">Настроить</string>
   <string name="im_computer_stream_available">На этом компьютере есть Sunshine: изображение может быть плавнее и быстрее.</string>
   <string name="im_computer_stream_enabled">Включено</string>
   <string name="im_computer_stream_enable">Включить</string>

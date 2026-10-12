@@ -92,7 +92,7 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
             HorizontalDivider(Modifier.padding(start = 36.dp))
             CheckRow(stringResource(R.string.im_computer_clipboard), if (clipboard != null) CheckStatus.READY else CheckStatus.OPTIONAL,
                 when {
-                    state.isWindows -> stringResource(if (probe.cua.bridgeAvailable) R.string.workspace_screen_clipboard_windows_bridge
+                    state.isWindows -> stringResource(if (probe.cua.ok) R.string.workspace_screen_clipboard_windows_bridge
                         else R.string.workspace_screen_clipboard_windows_task)
                     else -> clipboard ?: stringResource(R.string.im_computer_clipboard_optional)
                 }) {
@@ -155,6 +155,7 @@ private fun StreamCheckRow(
         !status.installed -> stringResource(if (required) R.string.im_computer_sunshine_needed else R.string.im_computer_stream_optional)
         enabled && required -> "Sunshine" + (status.version?.let { " $it" } ?: "")
         enabled -> stringResource(R.string.im_computer_stream_enabled)
+        required -> stringResource(R.string.im_computer_sunshine_setup_needed)
         else -> stringResource(R.string.im_computer_stream_available)
     }) {
         when {
@@ -162,7 +163,9 @@ private fun StreamCheckRow(
             status == null -> TextButton(enabled = !busy, onClick = onRecheck) { Text(stringResource(R.string.im_computer_recheck)) }
             !status.installed -> Unit
             // "Turn on" also starts Sunshine when it is installed but closed.
-            !enabled -> FilledTonalButton(enabled = !busy, onClick = onEnable) { Text(stringResource(R.string.im_computer_stream_enable)) }
+            !enabled -> FilledTonalButton(enabled = !busy, onClick = onEnable) {
+                Text(stringResource(if (required) R.string.im_computer_sunshine_set_up else R.string.im_computer_stream_enable))
+            }
         }
         // A Mac needs Sunshine's grants switched on at the computer; offer the page where that happens.
         if (macOS && status?.installed == true && !stream.busy) {

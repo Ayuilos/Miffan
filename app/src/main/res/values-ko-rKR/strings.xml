@@ -2430,6 +2430,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_stream">더 부드러운 화면</string>
   <string name="im_computer_stream_optional">선택 사항입니다. 컴퓨터에 Sunshine을 설치하면 화면이 더 부드럽고 지연이 줄어듭니다.</string>
   <string name="im_computer_sunshine_needed">먼저 이 컴퓨터에 Sunshine을 설치한 뒤(github.com/LizardByte/Sunshine/releases) 다시 확인하세요.</string>
+  <string name="im_computer_sunshine_setup_needed">Sunshine이 설치되어 있어요. 이 휴대폰과 페어링하면 화면이 표시돼요.</string>
+  <string name="im_computer_sunshine_set_up">설정</string>
   <string name="im_computer_stream_available">이 컴퓨터에 Sunshine이 있어 화면을 더 부드럽고 빠르게 만들 수 있습니다.</string>
   <string name="im_computer_stream_enabled">사용 중</string>
   <string name="im_computer_stream_enable">켜기</string>

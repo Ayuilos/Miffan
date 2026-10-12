@@ -2428,6 +2428,8 @@
   <string name="im_computer_stream">更流暢的畫面</string>
   <string name="im_computer_stream_optional">可選。電腦上裝了 Sunshine 後，畫面會更流暢、延遲更低。</string>
   <string name="im_computer_sunshine_needed">請先在這台電腦上安裝 Sunshine（github.com/LizardByte/Sunshine/releases），裝好後重新檢查。</string>
+  <string name="im_computer_sunshine_setup_needed">Sunshine 已安裝，和這支手機配對後才能顯示畫面。</string>
+  <string name="im_computer_sunshine_set_up">設定</string>
   <string name="im_computer_stream_available">這台電腦裝了 Sunshine，可以讓畫面更流暢、延遲更低。</string>
   <string name="im_computer_stream_enabled">已啟用</string>
   <string name="im_computer_stream_enable">啟用</string>

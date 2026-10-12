@@ -31,7 +31,7 @@ class WindowsScreenRepositoryTest {
     private var approvedStdin: String? = null
     private var firewallExitCode = 0
     private var sunshineInstalled = true
-    private var installedVersion = "4"
+    private var installedVersion = "6"
     private var installedBytes: ByteArray? = null
     private var firewall = WindowsScreenHelperTest.reviewJson
     private fun repo(): RemoteScreenRepository {
@@ -49,7 +49,7 @@ class WindowsScreenRepositoryTest {
             val command = firstArg<String>(); commands += command
             val output = when {
                 command == windowsHelperVersionCommand -> installedVersion
-                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "4"; "" }
+                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "6"; "" }
                 command.endsWith("sunshine firewall check") -> firewall
                 command.endsWith("sunshine firewall apply") -> {
                     approvedStdin = arg<InputStream?>(4)!!.readBytes().toString(Charsets.UTF_8)

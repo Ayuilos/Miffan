@@ -87,7 +87,8 @@ internal fun RemoteScreenEnvironmentPanel(
                     else -> resources.getString(R.string.workspace_screen_session_signed_in)
                 })
             EnvironmentRow(stringResource(R.string.workspace_screen_clipboard), EnvironmentStatus.OK,
-                resources.getString(if (probe.cua.bridgeAvailable) R.string.workspace_screen_clipboard_windows_bridge
+                // The helper starts the bridge on demand whenever cua-driver is usable.
+                resources.getString(if (probe.cua.ok) R.string.workspace_screen_clipboard_windows_bridge
                     else R.string.workspace_screen_clipboard_windows_task))
         } else if (probe != null) {
             EnvironmentRow(stringResource(R.string.workspace_screen_system),

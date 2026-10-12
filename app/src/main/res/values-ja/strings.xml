@@ -2430,6 +2430,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_stream">より滑らかな画面</string>
   <string name="im_computer_stream_optional">任意。パソコンに Sunshine を入れると、画面がより滑らかになり遅延も減ります。</string>
   <string name="im_computer_sunshine_needed">先にこのコンピューターに Sunshine をインストールしてから（github.com/LizardByte/Sunshine/releases）、もう一度確認してください。</string>
+  <string name="im_computer_sunshine_setup_needed">Sunshine はインストール済みです。このスマートフォンとペアリングすると画面が表示されます。</string>
+  <string name="im_computer_sunshine_set_up">設定</string>
   <string name="im_computer_stream_available">このパソコンには Sunshine があり、画面をより滑らかに、遅延を少なくできます。</string>
   <string name="im_computer_stream_enabled">有効</string>
   <string name="im_computer_stream_enable">有効にする</string>

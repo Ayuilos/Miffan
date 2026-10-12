@@ -96,7 +96,7 @@ Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
     Assert-Equal $decoded.items.Count 0 'empty JSON array'
     Assert-Equal $decoded.one.Count 1 'single JSON array'
     Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
-    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '4' 'integer version contract'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '6' 'integer version contract'
 }
 Test 'firewall review includes exact LAN and detected Tailscale sources without granting writes' {
     function Get-NetIPConfiguration { return @(
@@ -401,8 +401,30 @@ Test 'clipboard chooses available bridge, and unavailable bridge falls back (moc
     function Get-CuaBridgeContext {return @{console=@{present=$true;sid='S-1';id=1;lock_state='unlocked'};sid='S-1';pipe='Miffan-offline';directory='C:\offline'}}
     function Test-CuaBridgeAvailable {param($Name);return $false}
     function Invoke-DesktopJob {param($Mode,$Text);Assert-Equal $Mode 'clip' 'interactive fallback';Assert-Equal $Text "中文`nEnglish" 'text untouched';return @{success=$true;verified=$true;transport='mock-interactive'}}
+    $script:Ensured=0
+    function Ensure-CuaBridge {$script:Ensured++;throw 'bridge did not start'}
+    function Get-CuaStatus {return @{ok=$false}}
     Assert-Equal (Invoke-CuaClipboard "中文`nEnglish").transport 'mock-interactive' 'fallback selected without starting bridge'
+    Assert-Equal $script:Ensured 0 'no bridge start without a usable cua-driver'
+    function Get-CuaStatus {return @{ok=$true}}
+    Assert-Equal (Invoke-CuaClipboard "中文`nEnglish").transport 'mock-interactive' 'failed on-demand start falls back before any write'
+    Assert-Equal $script:Ensured 1 'bridge started on demand when cua-driver is usable'
     Assert-Throws {Invoke-CuaClipboard ([string][char]0)} 'NUL refused'
+}
+
+Test 'stale bridge tasks of older helpers are removed, nothing else (mocked)' {
+    $context=@{sid='S-1';task='Miffan-cua-S-1-1-v5'}
+    function Test-CuaTaskOwner {param($Task,$Sid);return $Task.Principal.UserId -eq $Sid}
+    function Get-ScheduledTask {param($TaskPath,$ErrorAction);return @(
+        @{TaskName='Miffan-cua-S-1-1-v4';Principal=@{RunLevel='Limited';UserId='S-1'}},
+        @{TaskName='Miffan-cua-S-1-1-v5';Principal=@{RunLevel='Limited';UserId='S-1'}},
+        @{TaskName='Miffan-cua-S-2-1-v4';Principal=@{RunLevel='Limited';UserId='S-2'}},
+        @{TaskName='Miffan-cua-S-1-1-v3';Principal=@{RunLevel='Highest';UserId='S-1'}},
+        @{TaskName='cua-driver-serve';Principal=@{RunLevel='Limited';UserId='S-1'}})}
+    $script:Removed=@()
+    function Unregister-ScheduledTask {param($TaskName,$TaskPath,$Confirm,$ErrorAction);$script:Removed+=$TaskName}
+    Remove-StaleCuaBridgeTasks $context
+    Assert-Equal ($script:Removed -join ',') 'Miffan-cua-S-1-1-v4' 'only older Limited bridge tasks of this user'
 }
 
 Test 'daemon permission review rejects elevated, unknown or another-user runtime (mocked)' {

@@ -18,7 +18,7 @@ class WindowsScreenHelperTest {
         assertTrue(windowsHelperInstallCommand.contains("[IO.File]::Replace"))
         val asset = File("src/main/assets/remote/miffan.ps1").readBytes()
         assertArrayEquals(byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()), asset.take(3).toByteArray())
-        assertTrue(asset.toString(Charsets.UTF_8).contains("HelperVersion = 4"))
+        assertTrue(asset.toString(Charsets.UTF_8).contains("HelperVersion = 6"))
     }
     @Test fun windowsProbeAndSunshineReuseModelsWithoutClaimingCuaSupport() {
         val p = parseHelperProbe("""{"helper":2,"os":"windows","arch":"AMD64","session":{"present":true,"type":"console","desktop":"windows","id":1},"cua":{"ok":false,"min":"0.34.0"},"vnc":{"running":false},"clipboard":"interactive-task"}""")

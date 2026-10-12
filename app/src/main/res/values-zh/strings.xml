@@ -2464,6 +2464,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_stream">更流畅的画面</string>
   <string name="im_computer_stream_optional">可选。电脑上装了 Sunshine 后，画面会更流畅、延迟更低。</string>
   <string name="im_computer_sunshine_needed">请先在这台电脑上安装 Sunshine（github.com/LizardByte/Sunshine/releases），装好后重新检查。</string>
+  <string name="im_computer_sunshine_setup_needed">Sunshine 已安装，和这台手机配对后才能显示画面。</string>
+  <string name="im_computer_sunshine_set_up">设置</string>
   <string name="im_computer_stream_available">这台电脑装了 Sunshine，可以让画面更流畅、延迟更低。</string>
   <string name="im_computer_stream_enabled">已启用</string>
   <string name="im_computer_stream_enable">启用</string>
