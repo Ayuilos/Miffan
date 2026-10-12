@@ -2694,6 +2694,7 @@
   <string name="im_step_mcp">使用 %1$s 的 %2$s</string>
   <string name="im_step_tool">使用工具 %1$s</string>
   <string name="im_step_contacts">看了看通訊錄</string>
+  <string name="im_step_environment">看了看自己的設定</string>
   <string name="im_p5_model">模型</string>
   <string name="im_p5_model_default">預設模型 · %1$s</string>
   <string name="im_p5_model_no_default">尚未設定預設模型</string>

@@ -2696,6 +2696,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_step_mcp">%1$s의 %2$s 사용</string>
   <string name="im_step_tool">%1$s 사용</string>
   <string name="im_step_contacts">연락처 확인</string>
+  <string name="im_step_environment">내 설정 확인</string>
   <string name="im_p5_model">모델</string>
   <string name="im_p5_model_default">기본 모델 · %1$s</string>
   <string name="im_p5_model_no_default">기본 모델이 설정되지 않았어요</string>

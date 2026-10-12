@@ -2696,6 +2696,7 @@
   <string name="im_step_mcp">%2$s из %1$s</string>
   <string name="im_step_tool">Инструмент %1$s</string>
   <string name="im_step_contacts">Просмотр контактов</string>
+  <string name="im_step_environment">Просмотр своих настроек</string>
   <string name="im_p5_model">Модель</string>
   <string name="im_p5_model_default">Модель по умолчанию · %1$s</string>
   <string name="im_p5_model_no_default">Модель по умолчанию не выбрана</string>

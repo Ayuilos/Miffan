@@ -2696,6 +2696,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_step_mcp">%1$s の %2$s を使用</string>
   <string name="im_step_tool">%1$s を使用</string>
   <string name="im_step_contacts">連絡先を確認</string>
+  <string name="im_step_environment">自分の設定を確認</string>
   <string name="im_p5_model">モデル</string>
   <string name="im_p5_model_default">デフォルトモデル · %1$s</string>
   <string name="im_p5_model_no_default">デフォルトモデルが未設定です</string>

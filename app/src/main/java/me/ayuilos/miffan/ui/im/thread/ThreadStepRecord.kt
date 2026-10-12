@@ -112,6 +112,7 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
         "get_time_info" -> step(R.string.im_step_time)
         "get_screen_time" -> step(R.string.im_step_screen_time)
         "list_contacts" -> step(R.string.im_step_contacts)
+        "my_environment" -> step(R.string.im_step_environment)
         // An outside tool may change anything, so it always counts.
         else -> if (tool.toolName.startsWith(MCP_PREFIX)) {
             val name = tool.toolName.removePrefix(MCP_PREFIX)
