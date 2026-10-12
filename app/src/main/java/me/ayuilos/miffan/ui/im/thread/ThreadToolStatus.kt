@@ -20,12 +20,6 @@ import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
-import me.ayuilos.miffan.data.model.MiffanAppearance
-import me.ayuilos.miffan.data.model.MiffanKind
-import me.ayuilos.miffan.data.model.MiffanMotionProfile
-import me.ayuilos.miffan.data.model.MiffanPalette
-import me.ayuilos.miffan.data.model.characterMotionProfileOrDefault
-import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
 import me.ayuilos.miffan.data.revision.RevisionService
 import org.koin.compose.koinInject
 import me.ayuilos.miffan.ui.im.partnerName
@@ -104,6 +98,12 @@ internal fun ThreadToolPrompt(
             ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)), onAnswer)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == UPDATE_MY_PROFILE ->
             ThreadProfileCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == CREATE_PARTNER ->
+            ThreadCreatePartnerCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && (tool.toolName == CREATE_GROUP_CHAT || tool.toolName == INVITE_TO_GROUP_CHAT) ->
+            ThreadGroupChatCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ORGANIZE_CHAT_LIST ->
+            ThreadOrganizeCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
         tool.isSettledPermission() -> ThreadPermissionRecord(tool)
@@ -192,90 +192,38 @@ internal fun RelayApprovalNotice(tool: UIMessagePart.Tool) {
     }
 }
 
-private fun toolArg(tool: UIMessagePart.Tool, key: String): String? =
-    (tool.inputAsJson() as? JsonObject)?.get(key)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-
 /** The partner asks to change its own profile: each changed field, as it is now and as it would become. */
 @Composable
 private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) {
-    var answered by remember(tool.toolCallId) { mutableStateOf(false) }
-    var promptExpanded by remember(tool.toolCallId) { mutableStateOf(false) }
     val newName = toolArg(tool, "name")?.trim()
-    val newEmoji = toolArg(tool, "avatar_emoji")?.trim()
     val preset = toolArg(tool, "avatar_preset")
     val revisions: RevisionService = koinInject()
     val previous by produceState<Avatar?>(null, assistant?.id, preset) {
         value = if (preset == "previous" && assistant != null) runCatching { revisions.previousAvatar(assistant.id) }.getOrNull() else null
     }
-    val newAvatar: Avatar? = when {
-        newEmoji != null -> Avatar.Emoji(newEmoji)
-        preset == "whale_girl" -> Avatar.WhaleGirl(assistant?.avatar?.characterMotionProfileOrDefault() ?: MiffanMotionProfile.CURIOUS)
-        preset == "miffan" -> {
-            val current = assistant?.avatar?.takeIf { it is Avatar.Miffan }?.miffanAppearanceOrDefault() ?: MiffanAppearance()
-            Avatar.Miffan(
-                appearance = current.copy(
-                    kind = MiffanKind.entries.firstOrNull { it.serialName() == toolArg(tool, "miffan_kind") } ?: current.kind,
-                    palette = MiffanPalette.entries.firstOrNull { it.serialName() == toolArg(tool, "miffan_palette") } ?: current.palette,
-                ),
-                motionProfile = assistant?.avatar?.characterMotionProfileOrDefault() ?: MiffanMotionProfile.CURIOUS,
-            )
-        }
-        preset == "previous" -> previous
-        else -> null
-    }
-    val newPrompt = toolArg(tool, "system_prompt")
+    val avatarChange = preset != null || toolArg(tool, "avatar_emoji") != null
+    val newAvatar = requestedAvatar(tool, assistant?.avatar, previous)
     val currentName = assistant?.let { partnerName(it) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.im_profile_title), style = MaterialTheme.typography.titleMedium)
-            toolArg(tool, "reason")?.let { Text(it) }
-            if (newName != null) ProfileChange(stringResource(R.string.im_profile_name)) {
-                currentName?.let {
-                    Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false))
-                    ProfileArrow()
-                }
-                Text(newName, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+    AgentChangeCard(tool, onApproval, footer = stringResource(R.string.im_profile_undo)) {
+        if (newName != null) ChangeField(stringResource(R.string.im_profile_name)) {
+            currentName?.let {
+                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false))
+                ChangeArrow()
             }
-            if (newEmoji != null || preset != null) ProfileChange(stringResource(R.string.im_profile_avatar)) {
-                assistant?.let {
-                    AssistantAvatar(currentName.orEmpty(), it.avatar, Modifier.size(40.dp))
-                    ProfileArrow()
-                }
-                if (newAvatar != null) AssistantAvatar(newName ?: currentName.orEmpty(), newAvatar, Modifier.size(40.dp))
-                else Text(stringResource(R.string.im_profile_avatar_previous), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (newPrompt != null) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.im_profile_prompt), style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Surface(onClick = { promptExpanded = !promptExpanded }, color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    shape = MaterialTheme.shapes.medium) {
-                    Text(newPrompt, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium,
-                        maxLines = if (promptExpanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            Text(stringResource(R.string.im_profile_undo), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) { Text(stringResource(R.string.im_p5_allow)) }
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
-            }
+            Text(newName, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false))
         }
+        if (avatarChange) ChangeField(stringResource(R.string.im_profile_avatar)) {
+            assistant?.let {
+                AssistantAvatar(currentName.orEmpty(), it.avatar, Modifier.size(40.dp))
+                ChangeArrow()
+            }
+            if (newAvatar != null) AssistantAvatar(newName ?: currentName.orEmpty(), newAvatar, Modifier.size(40.dp))
+            else Text(stringResource(R.string.im_profile_avatar_previous), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        toolArg(tool, "system_prompt")?.let { ChangeLongText(stringResource(R.string.im_profile_prompt), it) }
     }
-}
-
-@Composable
-private fun ProfileChange(label: String, content: @Composable RowScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), content = content)
-    }
-}
-
-@Composable
-private fun ProfileArrow() {
-    Icon(HugeIcons.ArrowRight01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /**
@@ -296,7 +244,7 @@ private fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
     val reason = (tool.approvalState as? ToolApprovalState.Denied)?.reason?.takeIf { declined && it.isNotBlank() }
     val title = when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
-        tool.toolName == UPDATE_MY_PROFILE -> toolArg(tool, "reason") ?: stringResource(R.string.im_profile_title)
+        tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
         computer -> computerActionText(tool)
         else -> renderer.title(context)
     }
@@ -335,6 +283,3 @@ internal fun ThreadLiveStatusRow(assistant: Assistant?, phase: AssistantGenerati
         ThreadLiveStatus(label)
     }
 }
-
-/** The wire name of an avatar enum, matching the tool's arguments. */
-private fun Enum<*>.serialName(): String = name.lowercase()

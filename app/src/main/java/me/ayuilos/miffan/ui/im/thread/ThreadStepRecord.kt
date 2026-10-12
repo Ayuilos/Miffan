@@ -100,6 +100,11 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
         }
         "update_my_preferences" -> step(R.string.im_step_preferences, changes = true)
         UPDATE_MY_PROFILE -> step(R.string.im_step_profile, changes = true)
+        CREATE_PARTNER -> step(R.string.im_step_create_partner, changes = true)
+        CREATE_GROUP_CHAT -> step(R.string.im_step_create_group_chat, changes = true)
+        INVITE_TO_GROUP_CHAT -> step(R.string.im_step_invite, changes = true)
+        ORGANIZE_CHAT_LIST -> step(R.string.im_step_organize, changes = true)
+        VIEW_CHAT_LIST -> step(R.string.im_step_view_chat_list)
         "calendar_create" -> step(R.string.im_step_calendar_add, changes = true)
         "calendar_query" -> step(R.string.im_step_calendar_read)
         "clipboard_tool" -> if (arg("action") == "write") step(R.string.im_step_clipboard_write, changes = true)
