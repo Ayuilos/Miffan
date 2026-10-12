@@ -12,6 +12,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -19,6 +20,14 @@ import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanKind
+import me.ayuilos.miffan.data.model.MiffanMotionProfile
+import me.ayuilos.miffan.data.model.MiffanPalette
+import me.ayuilos.miffan.data.model.characterMotionProfileOrDefault
+import me.ayuilos.miffan.data.model.miffanAppearanceOrDefault
+import me.ayuilos.miffan.data.revision.RevisionService
+import org.koin.compose.koinInject
 import me.ayuilos.miffan.ui.im.partnerName
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import androidx.compose.ui.text.font.FontWeight
@@ -158,6 +167,7 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
                 Text(stringResource(R.string.im_p5_permission_info), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)))
             }
+            RelayApprovalNotice(tool)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) { Text(stringResource(R.string.im_p5_allow)) }
                 OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
@@ -167,6 +177,20 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
 }
 
 private fun webSearchReason(tool: UIMessagePart.Tool): String? = toolArg(tool, "reason")
+
+/** Set by the app when a partner's message, not the owner, started this turn in the owner's private chat. */
+internal fun UIMessagePart.Tool.isRelayApproval(): Boolean =
+    (metadata?.get("approval_reason") as? JsonPrimitive)?.contentOrNull == "owner_thread_non_owner_turn"
+
+/** Why a step that is usually free asks first: another partner's message started this turn. */
+@Composable
+internal fun RelayApprovalNotice(tool: UIMessagePart.Tool) {
+    if (!tool.isRelayApproval()) return
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+        Text(stringResource(R.string.im_relay_approval_notice), Modifier.fillMaxWidth().padding(12.dp),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+    }
+}
 
 private fun toolArg(tool: UIMessagePart.Tool, key: String): String? =
     (tool.inputAsJson() as? JsonObject)?.get(key)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
@@ -178,6 +202,27 @@ private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, o
     var promptExpanded by remember(tool.toolCallId) { mutableStateOf(false) }
     val newName = toolArg(tool, "name")?.trim()
     val newEmoji = toolArg(tool, "avatar_emoji")?.trim()
+    val preset = toolArg(tool, "avatar_preset")
+    val revisions: RevisionService = koinInject()
+    val previous by produceState<Avatar?>(null, assistant?.id, preset) {
+        value = if (preset == "previous" && assistant != null) runCatching { revisions.previousAvatar(assistant.id) }.getOrNull() else null
+    }
+    val newAvatar: Avatar? = when {
+        newEmoji != null -> Avatar.Emoji(newEmoji)
+        preset == "whale_girl" -> Avatar.WhaleGirl(assistant?.avatar?.characterMotionProfileOrDefault() ?: MiffanMotionProfile.CURIOUS)
+        preset == "miffan" -> {
+            val current = assistant?.avatar?.takeIf { it is Avatar.Miffan }?.miffanAppearanceOrDefault() ?: MiffanAppearance()
+            Avatar.Miffan(
+                appearance = current.copy(
+                    kind = MiffanKind.entries.firstOrNull { it.serialName() == toolArg(tool, "miffan_kind") } ?: current.kind,
+                    palette = MiffanPalette.entries.firstOrNull { it.serialName() == toolArg(tool, "miffan_palette") } ?: current.palette,
+                ),
+                motionProfile = assistant?.avatar?.characterMotionProfileOrDefault() ?: MiffanMotionProfile.CURIOUS,
+            )
+        }
+        preset == "previous" -> previous
+        else -> null
+    }
     val newPrompt = toolArg(tool, "system_prompt")
     val currentName = assistant?.let { partnerName(it) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
@@ -193,12 +238,13 @@ private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, o
                 Text(newName, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false))
             }
-            if (newEmoji != null) ProfileChange(stringResource(R.string.im_profile_avatar)) {
+            if (newEmoji != null || preset != null) ProfileChange(stringResource(R.string.im_profile_avatar)) {
                 assistant?.let {
-                    AssistantAvatar(currentName.orEmpty(), it.avatar, Modifier.size(32.dp))
+                    AssistantAvatar(currentName.orEmpty(), it.avatar, Modifier.size(40.dp))
                     ProfileArrow()
                 }
-                AssistantAvatar(newName ?: currentName.orEmpty(), Avatar.Emoji(newEmoji), Modifier.size(32.dp))
+                if (newAvatar != null) AssistantAvatar(newName ?: currentName.orEmpty(), newAvatar, Modifier.size(40.dp))
+                else Text(stringResource(R.string.im_profile_avatar_previous), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (newPrompt != null) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.im_profile_prompt), style = MaterialTheme.typography.labelMedium,
@@ -289,3 +335,6 @@ internal fun ThreadLiveStatusRow(assistant: Assistant?, phase: AssistantGenerati
         ThreadLiveStatus(label)
     }
 }
+
+/** The wire name of an avatar enum, matching the tool's arguments. */
+private fun Enum<*>.serialName(): String = name.lowercase()

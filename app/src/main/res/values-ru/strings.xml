@@ -2706,6 +2706,8 @@
   <string name="im_profile_avatar">Аватар</string>
   <string name="im_profile_prompt">Описание (заменяет весь текст)</string>
   <string name="im_profile_undo">Это можно отменить в истории изменений.</string>
+  <string name="im_relay_approval_notice">Этот ход начат сообщением другого партнёра, поэтому действия, которые могут передать вашу личную переписку, требуют подтверждения.</string>
+  <string name="im_profile_avatar_previous">Прежний аватар</string>
   <string name="im_step_profile">Изменён собственный профиль</string>
   <string name="im_step_calendar_add">Добавление события</string>
   <string name="im_step_calendar_read">Просмотр календаря</string>

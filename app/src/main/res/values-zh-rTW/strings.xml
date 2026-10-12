@@ -2701,6 +2701,8 @@
   <string name="im_profile_avatar">頭像</string>
   <string name="im_profile_prompt">設定（取代全部內容）</string>
   <string name="im_profile_undo">之後可以在修訂歷史裡復原。</string>
+  <string name="im_relay_approval_notice">這一輪是由其他夥伴的訊息觸發的。為了防止你和它的私聊內容被轉出去，這一步需要你確認。</string>
+  <string name="im_profile_avatar_previous">之前的頭像</string>
   <string name="im_step_profile">修改了自己的資料</string>
   <string name="im_step_calendar_add">新增行程</string>
   <string name="im_step_calendar_read">查看行程</string>

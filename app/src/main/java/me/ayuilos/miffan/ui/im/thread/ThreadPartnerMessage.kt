@@ -70,7 +70,7 @@ internal fun ThreadPartnerMessage(tool: UIMessagePart.Tool, sender: Assistant?, 
     val target = LocalSettings.current.assistants.firstOrNull { it.id == call.to }
     val targetName = target?.let { partnerName(it) } ?: call.to?.toString().orEmpty()
     if (tool.approvalState is ToolApprovalState.Pending) {
-        PartnerMessagePermission(tool.toolCallId, sender, target, targetName, call.text, onApproval)
+        PartnerMessagePermission(tool, sender, target, targetName, call.text, onApproval)
         return
     }
     val nav = LocalNavController.current
@@ -99,13 +99,14 @@ internal fun ThreadPartnerMessage(tool: UIMessagePart.Tool, sender: Assistant?, 
 
 @Composable
 private fun PartnerMessagePermission(
-    toolCallId: String,
+    tool: UIMessagePart.Tool,
     sender: Assistant?,
     target: Assistant?,
     targetName: String,
     text: String,
     onApproval: (String, Boolean) -> Unit,
 ) {
+    val toolCallId = tool.toolCallId
     var answered by remember(toolCallId) { mutableStateOf(false) }
     val senderName = sender?.let { partnerName(it) }.orEmpty()
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
@@ -118,7 +119,8 @@ private fun PartnerMessagePermission(
             if (text.isNotBlank()) Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium) {
                 Text(text, Modifier.fillMaxWidth().padding(12.dp), maxLines = 6, overflow = TextOverflow.Ellipsis)
             }
-            Text(stringResource(R.string.im_partner_msg_permission_desc), style = MaterialTheme.typography.bodySmall,
+            if (tool.isRelayApproval()) RelayApprovalNotice(tool)
+            else Text(stringResource(R.string.im_partner_msg_permission_desc), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(toolCallId, true) }) {

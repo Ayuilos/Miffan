@@ -2710,6 +2710,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_profile_avatar">头像</string>
   <string name="im_profile_prompt">设定（替换全部内容）</string>
   <string name="im_profile_undo">之后可以在修订历史里撤销。</string>
+  <string name="im_relay_approval_notice">这一轮是由其他伙伴的消息触发的。为了防止你和它的私聊内容被转出去，这一步需要你确认。</string>
+  <string name="im_profile_avatar_previous">之前的头像</string>
   <string name="im_step_profile">修改了自己的资料</string>
   <string name="im_step_calendar_add">添加日程</string>
   <string name="im_step_calendar_read">查看日程</string>

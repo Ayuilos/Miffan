@@ -2720,6 +2720,8 @@
   <string name="im_profile_avatar">Avatar</string>
   <string name="im_profile_prompt">Persona (replaces the whole text)</string>
   <string name="im_profile_undo">You can undo this in the revision history.</string>
+  <string name="im_relay_approval_notice">Another partner\'s message started this turn, so steps that could send out your private chat need your OK first.</string>
+  <string name="im_profile_avatar_previous">Earlier avatar</string>
   <string name="im_step_profile">Updated own profile</string>
   <string name="im_step_calendar_add">Add a calendar event</string>
   <string name="im_step_calendar_read">Check the calendar</string>

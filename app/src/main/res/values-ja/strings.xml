@@ -2703,6 +2703,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_profile_avatar">アバター</string>
   <string name="im_profile_prompt">設定（全文を置き換え）</string>
   <string name="im_profile_undo">あとで変更履歴から元に戻せます。</string>
+  <string name="im_relay_approval_notice">このターンは他のパートナーのメッセージで始まりました。あなたとのプライベートな会話が外に送られないよう、この操作には確認が必要です。</string>
+  <string name="im_profile_avatar_previous">以前のアバター</string>
   <string name="im_step_profile">自分のプロフィールを変更</string>
   <string name="im_step_calendar_add">予定を追加</string>
   <string name="im_step_calendar_read">予定を確認</string>

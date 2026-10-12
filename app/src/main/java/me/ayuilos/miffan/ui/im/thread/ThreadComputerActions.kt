@@ -168,6 +168,7 @@ internal fun ThreadComputerApprovalCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            RelayApprovalNotice(tool)
             if (computerToolNeedsForegroundWarning(tool.toolName, tool.inputAsJson())) {
                 Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
                     Text(stringResource(R.string.im_computer_foreground_warning), Modifier.fillMaxWidth().padding(12.dp),
