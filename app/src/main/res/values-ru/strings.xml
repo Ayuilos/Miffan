@@ -1751,6 +1751,7 @@
   <string name="im_chats_search">Поиск партнёров и сообщений</string>
   <string name="im_chats_typing">Печатает…</string>
   <string name="im_partner_running">Работает</string>
+  <string name="im_partner_waiting">Ждёт вас</string>
   <string name="im_chats_empty_title">Чатов пока нет</string>
   <string name="im_chats_empty_desc">Выберите партнёра и поздоровайтесь.</string>
   <string name="im_chats_empty_action">Найти партнёра</string>

@@ -90,12 +90,13 @@ internal fun ThreadDateLabel(at: Instant) {
 
 @Composable
 internal fun ThreadAvatar(assistant: Assistant?, phase: AssistantGenerationPhase = AssistantGenerationPhase.None, error: Boolean = false,
-    modifier: Modifier = Modifier.size(36.dp), running: Boolean = false, runningRing: Color = MaterialTheme.colorScheme.surface) {
+    modifier: Modifier = Modifier.size(36.dp), running: Boolean = false, runningRing: Color = MaterialTheme.colorScheme.surface,
+    waiting: Boolean = false) {
     BoxWithConstraints(modifier) {
         AssistantAvatar(name = threadAssistantName(assistant), value = assistant?.avatar ?: Avatar.Miffan(), modifier = Modifier.fillMaxSize(),
             loading = phase != AssistantGenerationPhase.None, semanticState = if (error) MiffanMascotState.Error else MiffanMascotState.Idle, generationPhase = phase)
         if (error) Badge(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp)) { Text("!") }
-        RunningLight(running, maxWidth, runningRing)
+        RunningLight(running, maxWidth, runningRing, waiting)
     }
 }
 

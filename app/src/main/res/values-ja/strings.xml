@@ -1751,6 +1751,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_chats_search">パートナーやメッセージを検索</string>
   <string name="im_chats_typing">入力中…</string>
   <string name="im_partner_running">実行中</string>
+  <string name="im_partner_waiting">あなたの対応待ち</string>
   <string name="im_chats_empty_title">まだチャットはありません</string>
   <string name="im_chats_empty_desc">パートナーを選んで、あいさつしてみましょう。</string>
   <string name="im_chats_empty_action">パートナーを探す</string>

@@ -1751,6 +1751,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_chats_search">파트너 또는 메시지 검색</string>
   <string name="im_chats_typing">입력 중…</string>
   <string name="im_partner_running">실행 중</string>
+  <string name="im_partner_waiting">내 응답 대기 중</string>
   <string name="im_chats_empty_title">아직 대화가 없어요</string>
   <string name="im_chats_empty_desc">파트너를 골라 인사해 보세요.</string>
   <string name="im_chats_empty_action">파트너 찾기</string>

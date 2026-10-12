@@ -420,7 +420,7 @@ internal fun ImChatAvatar(chat: ImChatItem, size: Dp, loading: Boolean = false, 
             onClick = onClick,
             modifier = Modifier.size(size),
         ) else ImStackedAvatars(chat.members, size, onClick)
-        RunningLight(chat.typing, size)
+        RunningLight(chat.typing, size, waiting = chat.waiting)
     }
 }
 

@@ -1754,6 +1754,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_chats_search">搜索伙伴或消息</string>
   <string name="im_chats_typing">正在输入…</string>
   <string name="im_partner_running">运行中</string>
+  <string name="im_partner_waiting">等你处理</string>
   <string name="im_chats_empty_title">还没有聊天</string>
   <string name="im_chats_empty_desc">去伙伴里挑一个，打个招呼吧。</string>
   <string name="im_chats_empty_action">去找伙伴</string>

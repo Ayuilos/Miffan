@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.context.LocalSettings
+import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import androidx.compose.foundation.background
@@ -344,7 +345,8 @@ fun AgentThreadPage(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             // The reply's thinking and typing play here now that bubbles carry no avatar.
                             ThreadAvatar(assistant, headerPhase, error = generating.isEmpty() && visibleErrors.isNotEmpty(), modifier = Modifier.size(36.dp),
-                                running = status != null, runningRing = MaterialTheme.colorScheme.surfaceContainerHigh)
+                                running = status != null, runningRing = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                waiting = timeline.any { it is TimelineItem.Message && it.message.parts.any { part -> part is UIMessagePart.Tool && part.isPending } })
                             Column {
                                 Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 // Fades between states and grows or shrinks the line as the status appears or clears.

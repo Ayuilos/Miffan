@@ -1761,6 +1761,7 @@
   <string name="im_chats_search">Search partners or messages</string>
   <string name="im_chats_typing">Typing…</string>
   <string name="im_partner_running">Running</string>
+  <string name="im_partner_waiting">Waiting for you</string>
   <string name="im_chats_empty_title">No chats yet</string>
   <string name="im_chats_empty_desc">Pick a partner and say hi.</string>
   <string name="im_chats_empty_action">Find a partner</string>

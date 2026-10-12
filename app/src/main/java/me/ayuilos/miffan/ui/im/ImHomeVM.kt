@@ -7,6 +7,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import me.rerere.ai.ui.UIMessagePart
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -48,6 +52,8 @@ data class ImChatItem(
     val unread: Int,
     val pinned: Boolean,
     val typing: Boolean,
+    /** The partner (or a member) holds a request the owner has not answered yet. */
+    val waiting: Boolean = false,
     /** Set for a chat between partners: its id and every partner member. */
     val partnerChatId: Uuid? = null,
     val members: List<Assistant> = listOf(assistant),
@@ -100,24 +106,38 @@ class ImHomeVM(
 
     fun downloadUpdate(context: Context, download: UpdateDownload) = updateChecker.downloadUpdate(context, download)
 
+    /** Per partner chat, the members whose requests wait for the owner. */
+    private val chatApprovals = partnerChatService.observeSummaries()
+        .map { summaries -> summaries.map { it.chat.id } }
+        .distinctUntilChanged()
+        .flatMapLatest { ids ->
+            if (ids.isEmpty()) flowOf(emptyMap())
+            else combine(ids.map { id ->
+                partnerChatService.observeApprovals(id).map { approvals -> id to approvals.mapTo(HashSet()) { it.memberId } }
+            }) { it.toMap() }
+        }
+
     /** Threads by latest activity; hidden threads stay out until new activity unless pinned. */
     private val threads = combine(
         settingsStore.settingsFlow,
         conversationRepository.observeLatestConversationOfEachAssistant(),
         chatService.getConversationJobs(),
         listState.value,
-    ) { settings, latest, jobs, prefs -> Snapshot(settings, latest, jobs.keys, prefs) }
-        .mapLatest { (settings, latest, jobIds, prefs) ->
+        chatApprovals,
+    ) { settings, latest, jobs, prefs, approvals -> Snapshot(settings, latest, jobs.keys, prefs, approvals) }
+        .mapLatest { (settings, latest, jobIds, prefs, approvals) ->
+            val waitingElsewhere = approvals.values.flatMapTo(HashSet()) { it }
             val assistants = settings.assistants.associateBy { it.id }
             val typingAssistants = jobIds.mapNotNullTo(HashSet()) { chatService.getConversationFlow(it).value.assistantId }
             val organization = settings.chatOrganization
             val items = latest.mapNotNull { conversation ->
                 val assistant = assistants[conversation.assistantId] ?: return@mapNotNull null
                 val key = assistant.id.toString()
-                val summary = ThreadListSummaries.summarize(
-                    conversationRepository.getRecentMessageNodes(conversation.id, RECENT_MESSAGES),
-                    readAt = prefs.readAt[key] ?: 0L,
-                )
+                val nodes = conversationRepository.getRecentMessageNodes(conversation.id, RECENT_MESSAGES)
+                val summary = ThreadListSummaries.summarize(nodes, readAt = prefs.readAt[key] ?: 0L)
+                val waiting = assistant.id in waitingElsewhere || nodes.any { node ->
+                    node.message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                }
                 val lastActivity = maxOf(summary.lastActivity ?: conversation.updateAt, conversation.updateAt)
                 val pinned = organization.isPinned(assistant.id)
                 val hiddenAt = prefs.hiddenAt[key]
@@ -131,6 +151,7 @@ class ImHomeVM(
                     unread = summary.unread,
                     pinned = pinned,
                     typing = assistant.id in typingAssistants,
+                    waiting = waiting,
                 )
             }
             // A pinned partner stays on top even before its first message.
@@ -138,15 +159,16 @@ class ImHomeVM(
             val unstarted = organization.pinned.filter { it !in started }.mapNotNull { id ->
                 val assistant = assistants[id] ?: return@mapNotNull null
                 ImChatItem(assistant, preview = "", previewKind = PreviewKind.EMPTY, previewFromUser = false,
-                    lastActivity = Instant.EPOCH, unread = 0, pinned = true, typing = assistant.id in typingAssistants)
+                    lastActivity = Instant.EPOCH, unread = 0, pinned = true, typing = assistant.id in typingAssistants,
+                    waiting = assistant.id in waitingElsewhere)
             }
             items + unstarted
         }
 
     /** Chats between partners; only groups count unread, a chat of two partners never does. */
     private val partnerChats = combine(
-        partnerChatService.observeSummaries(), settingsStore.settingsFlow, listState.value,
-    ) { summaries, settings, prefs ->
+        partnerChatService.observeSummaries(), settingsStore.settingsFlow, listState.value, chatApprovals,
+    ) { summaries, settings, prefs, approvals ->
         val assistants = settings.assistants.associateBy { it.id }
         summaries.mapNotNull { summary ->
             val members = summary.chat.memberIds.mapNotNull { assistants[it] }
@@ -164,6 +186,7 @@ class ImHomeVM(
                 unread = summary.unread,
                 pinned = pinned,
                 typing = summary.typing.isNotEmpty(),
+                waiting = approvals[summary.chat.id].orEmpty().isNotEmpty(),
                 title = summary.chat.title.takeIf { summary.chat.kind == PartnerChatKind.GROUP && it.isNotBlank() },
                 partnerChatId = summary.chat.id,
                 members = members,
@@ -236,6 +259,7 @@ class ImHomeVM(
         val latest: List<Conversation>,
         val jobIds: Set<Uuid>,
         val prefs: ThreadListPrefs,
+        val approvals: Map<Uuid, Set<Uuid>>,
     )
 
     private companion object {

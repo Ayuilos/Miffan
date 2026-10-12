@@ -1749,6 +1749,7 @@
   <string name="im_chats_search">搜尋夥伴或訊息</string>
   <string name="im_chats_typing">正在輸入…</string>
   <string name="im_partner_running">執行中</string>
+  <string name="im_partner_waiting">等你處理</string>
   <string name="im_chats_empty_title">還沒有聊天</string>
   <string name="im_chats_empty_desc">去夥伴裡挑一個，打個招呼吧。</string>
   <string name="im_chats_empty_action">去找夥伴</string>
