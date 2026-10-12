@@ -22,6 +22,9 @@ class RemoteHostCredentialStore(
 
     @Synchronized
     fun save(id: String, authentication: RemoteAuthentication) {
+        require(authentication !is RemoteAuthentication.PrivateKey || authentication.filePath == null) {
+            "File-based SSH keys are for local test harnesses only and cannot be persisted"
+        }
         val json = when (authentication) {
             is RemoteAuthentication.Password -> JSONObject()
                 .put("type", "PASSWORD")

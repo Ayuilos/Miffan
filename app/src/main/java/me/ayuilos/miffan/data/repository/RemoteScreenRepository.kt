@@ -59,6 +59,10 @@ enum class RemoteScreenPlatform { UNKNOWN, MACOS, LINUX;
     }
 }
 
+class WindowsRemoteScreenUnsupportedException : UnsupportedOperationException(
+    "Remote screens and computer control are not yet supported on Windows.",
+)
+
 /** Why a screen could not be opened; the page maps each reason to a fix the user can make. */
 enum class RemoteScreenProblem {
     NOT_FOUND, NOT_ENABLED, BAD_ENDPOINT, PASSWORD_MISSING,
@@ -359,6 +363,7 @@ class RemoteScreenRepository(
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
+        if (!host.supportsRemoteScreen) throw WindowsRemoteScreenUnsupportedException()
         if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
         val endpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
@@ -370,6 +375,7 @@ class RemoteScreenRepository(
         val callerJob = currentCoroutineContext()[Job]
         val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
             runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { ensureRevision(host.id, host.connectionRevision) }
+            requireScreenSupported(ssh)
             val selection = RemoteScreenProtocol.parse(host.screenProtocol)
             // Manual VNC endpoints keep working without installing a helper or probing a desktop.
             val machine = if (endpoint == RemoteScreenEndpoint.Helper || selection == RemoteScreenProtocol.RDP) {
@@ -548,13 +554,19 @@ class RemoteScreenRepository(
      */
     suspend fun installCuaDriver(workspaceId: String, upgradePath: String?): RemoteCommandOutcome =
         withRemote(workspaceId) { ssh ->
+            requireScreenSupported(ssh)
             val result = ssh.execute(cuaDriverCommand(upgradePath), timeoutMillis = 10 * 60_000L, maxOutputBytes = 256 * 1024)
             RemoteCommandOutcome(result.exitCode == 0 && !result.timedOut,
                 (result.stdout + result.stderr).lines().takeLast(30).joinToString("\n"))
         }
 
+    private fun requireScreenSupported(ssh: RemoteWorkspaceSession) {
+        if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) throw WindowsRemoteScreenUnsupportedException()
+    }
+
     /** Uploads the bundled helper when the remote copy is missing or a different version. */
     private fun ensureHelper(ssh: RemoteWorkspaceSession) {
+        requireScreenSupported(ssh)
         val installed = ssh.execute("$HELPER version 2>/dev/null", timeoutMillis = 10_000).stdout.trim()
         if (installed == helperVersion) return
         val result = ssh.execute(

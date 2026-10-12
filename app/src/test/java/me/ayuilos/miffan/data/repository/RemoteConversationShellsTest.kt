@@ -125,4 +125,27 @@ class RemoteConversationShellsTest {
         assertTrue(withTimeout(5_000) { queued.await() }.isFailure)
         assertFalse(directory.resolve("should-not-exist").exists())
     }
+
+    @Test fun windowsUsesSeparateExecutionsWithoutOpeningPtyOrKeepingState() = runBlocking {
+        val calls = mutableListOf<Pair<String, String>>()
+        val windows = RemoteConversationShells(
+            open = { error("Windows must not open a PTY") }, validate = {}, singleExecution = { true },
+            executeSingle = { _, command, cwd, timeout ->
+                assertEquals(1234L, timeout)
+                calls += command to cwd
+                me.rerere.workspace.WorkspaceCommandResult(7, "中文", "error")
+            },
+        )
+        repeat(2) {
+            val result = windows.execute(target, "Write-Output '中文'", null, "中文 空格", 1234)
+            assertEquals(7, result.result.exitCode)
+            assertEquals("error", result.result.stderr)
+            assertFalse(result.reused)
+            assertFalse(result.sessionOpen)
+            assertTrue(windows.states.value.isEmpty())
+        }
+        assertEquals(listOf("Write-Output '中文'" to "中文 空格", "Write-Output '中文'" to "中文 空格"), calls)
+        assertTrue(runCatching { windows.execute(target, "Read-Host", null, null, null) }.isFailure)
+        assertEquals(2, calls.size)
+    }
 }

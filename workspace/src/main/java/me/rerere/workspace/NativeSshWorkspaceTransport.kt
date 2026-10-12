@@ -36,7 +36,8 @@ sealed interface RemoteAuthentication {
     data class Password(val value: String) : RemoteAuthentication {
         override fun toString(): String = "Password([redacted])"
     }
-    data class PrivateKey(val pem: String, val passphrase: String? = null) : RemoteAuthentication {
+    /** [filePath] is for local integration harnesses; Android persists only in-memory keys. */
+    data class PrivateKey(val pem: String, val passphrase: String? = null, val filePath: String? = null) : RemoteAuthentication {
         override fun toString(): String = "PrivateKey([redacted])"
     }
 }
@@ -104,13 +105,15 @@ object NativeSshWorkspaceTransport {
         }
         when (val auth = config.authentication) {
             is RemoteAuthentication.PrivateKey -> {
-                require(auth.pem.isNotBlank()) { "Private key is empty" }
-                jsch.addIdentity(
-                    "miffan-remote-key",
-                    auth.pem.toByteArray(StandardCharsets.UTF_8),
-                    null,
-                    auth.passphrase?.toByteArray(StandardCharsets.UTF_8),
-                )
+                if (auth.filePath != null) jsch.addIdentity(auth.filePath) else {
+                    require(auth.pem.isNotBlank()) { "Private key is empty" }
+                    jsch.addIdentity(
+                        "miffan-remote-key",
+                        auth.pem.toByteArray(StandardCharsets.UTF_8),
+                        null,
+                        auth.passphrase?.toByteArray(StandardCharsets.UTF_8),
+                    )
+                }
             }
             is RemoteAuthentication.Password -> require(auth.value.isNotEmpty()) { "Password is empty" }
         }
@@ -197,8 +200,15 @@ class RemoteWorkspaceSession internal constructor(
 
     val isConnected: Boolean get() = !closed.get() && session.isConnected
     val resolvedRoot: String get() = paths.root
+    var platform: RemotePlatform = RemotePlatform.POSIX
+        private set
+    var homeDirectory: String = "/"
+        private set
+    val supportsInteractiveTerminal: Boolean get() = platform.supportsInteractiveTerminal
 
     internal fun verifyRoot() = withSftp { sftp, _ ->
+        homeDirectory = sftp.realpath(".")
+        platform = RemotePlatform.detect(homeDirectory)
         // A selected root may itself be reached through a host symlink (for example macOS /var).
         // Resolve it once; all subsequent file paths still reject links below the selected root.
         paths = RemoteWorkspacePath(resolveSelectedRoot(sftp, paths.root), aliasRoot = paths.root)
@@ -248,7 +258,8 @@ class RemoteWorkspaceSession internal constructor(
         stdin: InputStream? = null,
     ): WorkspaceCommandResult {
         require(timeoutMillis > 0 && maxOutputBytes > 0)
-        val directory = paths.absolute(workingDirectory, allowRoot = true)
+        val directory = if (platform == RemotePlatform.WINDOWS) WindowsRemotePath.workingDirectory(paths.root, workingDirectory)
+            else paths.absolute(workingDirectory, allowRoot = true)
         withSftp { sftp, _ -> requireDirectoryPath(sftp, directory) }
         checkOpen()
         val budget = AtomicInteger(maxOutputBytes)
@@ -258,10 +269,11 @@ class RemoteWorkspaceSession internal constructor(
         register(channel)
         var timedOut = false
         try {
-            channel.setCommand("cd ${shellQuote(directory)} || exit 1\n$command")
+            val request = RemoteShell.request(platform, directory, command, stdin)
+            channel.setCommand(request.command)
             channel.setOutputStream(stdout)
             channel.setErrStream(stderr)
-            if (stdin != null) channel.setInputStream(stdin) else channel.setInputStream(null)
+            channel.setInputStream(request.stdin)
             channel.connect(channelTimeoutMillis)
             val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
             while (!channel.isClosed) {
@@ -273,8 +285,8 @@ class RemoteWorkspaceSession internal constructor(
             }
             return WorkspaceCommandResult(
                 exitCode = if (timedOut) -1 else channel.exitStatus,
-                stdout = stdout.text(),
-                stderr = stderr.text(),
+                stdout = if (platform == RemotePlatform.WINDOWS) PowerShellOutput.readable(stdout.text()) else stdout.text(),
+                stderr = if (platform == RemotePlatform.WINDOWS) PowerShellOutput.readable(stderr.text()) else stderr.text(),
                 timedOut = timedOut,
                 truncated = stdout.truncated || stderr.truncated,
             )
@@ -290,6 +302,7 @@ class RemoteWorkspaceSession internal constructor(
      */
     fun openTerminal(columns: Int = 80, rows: Int = 24, command: RemoteTerminalCommandSpec? = null,
         persistentCommands: Boolean = false): RemoteTerminalSession {
+        if (!supportsInteractiveTerminal) throw RemoteTerminalUnsupportedException()
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
         var channel: ChannelExec? = null
         try {
@@ -302,10 +315,8 @@ class RemoteWorkspaceSession internal constructor(
             channel.setPtyType("xterm-256color", columns, rows, 0, 0)
             channel.setEnv("TERM", "xterm-256color")
             channel.setCommand(
-                command?.shellScript(paths.root)
-                    ?: if (persistentCommands) {
-                        "cd ${shellQuote(paths.root)} || exit 1\nstty -echo 2>/dev/null || :\nexec env ENV= PS1= PS2= /bin/sh +i"
-                    } else "cd ${shellQuote(paths.root)} || exit 1\nexec \"\${SHELL:-/bin/sh}\" -i",
+                command?.shellScript(paths.root, platform)
+                    ?: RemoteShell.posixTerminal(paths.root, persistentCommands),
             )
             val input = channel.inputStream
             val output = channel.outputStream
@@ -440,36 +451,50 @@ class RemoteWorkspaceSession internal constructor(
         input: InputStream,
         overwrite: Boolean = true,
         maxBytes: Long = 32L * 1024 * 1024,
-    ): WorkspaceFileEntry = withSftp { sftp, progress ->
+    ): WorkspaceFileEntry {
         require(maxBytes >= 0)
         val relative = paths.relative(path)
         val absolute = paths.absolute(path)
-        ensureParents(sftp, absolute)
-        val existing = optionalAttrs(sftp, absolute)
-        require(existing == null || (overwrite && existing.isReg && !existing.isLink)) {
-            "Remote file exists or is not a regular file: $path"
-        }
         val staging = "$absolute.miffan-upload-${UUID.randomUUID()}"
         val backup = "$absolute.miffan-backup-${UUID.randomUUID()}"
-        var previousMoved = false
+        var stagingPending = false
         try {
-            sftp.put(BoundedInputStream(input, maxBytes), staging, progress, ChannelSftp.OVERWRITE)
-            requireSafePath(sftp, staging, expectFile = true)
-            if (existing != null) {
-                sftp.chmod(existing.permissions and 0x1FF, staging)
-                sftp.rename(absolute, backup)
-                previousMoved = true
+            return withSftp { sftp, progress ->
+                ensureParents(sftp, absolute)
+                val existing = optionalAttrs(sftp, absolute)
+                require(existing == null || (overwrite && existing.isReg && !existing.isLink)) {
+                    "Remote file exists or is not a regular file: $path"
+                }
+                var previousMoved = false
+                stagingPending = true
+                sftp.put(BoundedInputStream(input, maxBytes), staging, progress, ChannelSftp.OVERWRITE)
+                requireSafePath(sftp, staging, expectFile = true)
+                if (existing != null) {
+                    if (platform == RemotePlatform.POSIX) sftp.chmod(existing.permissions and 0x1FF, staging)
+                    sftp.rename(absolute, backup)
+                    previousMoved = true
+                }
+                try {
+                    sftp.rename(staging, absolute)
+                    stagingPending = false
+                } catch (error: Throwable) {
+                    if (previousMoved) sftp.rename(backup, absolute)
+                    throw error
+                }
+                if (previousMoved) sftp.rm(backup)
+                entry(relative, requireSafePath(sftp, absolute, expectFile = true))
             }
-            try {
-                sftp.rename(staging, absolute)
-            } catch (error: Throwable) {
-                if (previousMoved) sftp.rename(backup, absolute)
-                throw error
-            }
-            if (previousMoved) sftp.rm(backup)
-            entry(relative, requireSafePath(sftp, absolute, expectFile = true))
         } finally {
-            runCatching { if (optionalAttrs(sftp, staging) != null) sftp.rm(staging) }
+            // A failed streaming put can leave unread SFTP replies and an open file handle.
+            // Close that channel first, then clean its staging file through a fresh channel.
+            if (stagingPending) runCatching {
+                withSftp { sftp, _ ->
+                    if (optionalAttrs(sftp, staging) != null) {
+                        requireSafePath(sftp, staging, expectFile = true)
+                        sftp.rm(staging)
+                    }
+                }
+            }
         }
     }
 
@@ -768,8 +793,6 @@ private fun copyBounded(input: InputStream, output: OutputStream, maxBytes: Long
         output.write(buffer, 0, count)
     }
 }
-
-private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 
 private const val MAX_LIST_ENTRIES = 500
 

@@ -51,7 +51,7 @@ import me.ayuilos.miffan.utils.JsonInstant
         RevisionEntity::class,
         me.ayuilos.miffan.data.db.entity.AuditEventEntity::class,
     ],
-    version = 36,
+    version = 37,
     autoMigrations = [
         AutoMigration(from = 32, to = 33),
         AutoMigration(from = 31, to = 32),

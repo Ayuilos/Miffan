@@ -9,7 +9,8 @@ data class RemoteTerminalCommandSpec(val command: String, val cwd: String) {
         }
     }
 
-    internal fun shellScript(root: String): String {
+    internal fun shellScript(root: String, platform: RemotePlatform = RemotePlatform.POSIX): String {
+        if (!platform.supportsInteractiveTerminal) throw RemoteTerminalUnsupportedException()
         val directory = workingDirectory(root, cwd)
         fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
         return "cd ${quote(directory)} || exit 1\nexec /bin/sh -c ${quote(command)}"

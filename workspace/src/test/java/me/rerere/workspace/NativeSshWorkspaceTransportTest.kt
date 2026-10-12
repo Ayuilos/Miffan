@@ -65,6 +65,7 @@ class NativeSshWorkspaceTransportTest {
     private val forwardedInputBytes = AtomicInteger()
     private val forwardedOutputBytes = AtomicInteger()
     private val commandFailure = AtomicReference<Throwable?>()
+    private val failUploadRename = AtomicBoolean(false)
 
     @Before fun startServer() {
         directory = Files.createTempDirectory("miffan-ssh-test")
@@ -77,6 +78,11 @@ class NativeSshWorkspaceTransportTest {
             forwardingFilter = org.apache.sshd.server.forward.AcceptAllForwardingFilter.INSTANCE
             subsystemFactories = listOf(SftpSubsystemFactory.Builder().build().apply {
                 addSftpEventListener(object : SftpEventListener {
+                    override fun moving(session: ServerSession, source: Path, target: Path,
+                        options: Collection<java.nio.file.CopyOption>) {
+                        if (source.fileName.toString().contains(".miffan-upload-") &&
+                            failUploadRename.compareAndSet(true, false)) throw IOException("injected commit failure")
+                    }
                     override fun reading(
                         session: ServerSession, remoteHandle: String, localHandle: FileHandle,
                         offset: Long, data: ByteArray, dataOffset: Int, dataLen: Int,
@@ -448,6 +454,18 @@ class NativeSshWorkspaceTransportTest {
         Files.createSymbolicLink(root.resolve("link"), directory)
         NativeSshWorkspaceTransport.open(config(actual.sha256Fingerprint)).use { workspace ->
             assertThrows(IllegalArgumentException::class.java) { workspace.readText("link/hostkey.ser") }
+        }
+    }
+
+    @Test fun failedCommitRestoresRenamedBackupAndRemovesStaging() {
+        val actual = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        NativeSshWorkspaceTransport.open(config(actual.sha256Fingerprint)).use { workspace ->
+            workspace.writeText("中文 space.txt", "original")
+            failUploadRename.set(true)
+            assertThrows(Exception::class.java) { workspace.writeText("中文 space.txt", "replacement") }
+            assertFalse(failUploadRename.get())
+            assertEquals("original", workspace.readText("中文 space.txt"))
+            assertEquals(listOf("中文 space.txt"), workspace.list().map { it.name })
         }
     }
 

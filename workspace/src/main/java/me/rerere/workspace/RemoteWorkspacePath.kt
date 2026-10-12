@@ -16,6 +16,12 @@ internal class RemoteWorkspacePath(remoteRoot: String, private val aliasRoot: St
     }
 
     fun relative(path: String, allowRoot: Boolean = false): String {
+        // OpenSSH drive letters are case-insensitive. Preserve component spelling and do not
+        // broaden POSIX matching or accept sibling directories through case folding.
+        val path = if (RemotePlatform.detect(root) == RemotePlatform.WINDOWS &&
+            RemotePlatform.detect(path) == RemotePlatform.WINDOWS && root[1].equals(path[1], ignoreCase = true)) {
+            path.replaceRange(1, 2, root.substring(1, 2))
+        } else path
         val unprefixed = when {
             path == root -> ""
             root != "/" && path.startsWith("$root/") -> path.removePrefix("$root/")

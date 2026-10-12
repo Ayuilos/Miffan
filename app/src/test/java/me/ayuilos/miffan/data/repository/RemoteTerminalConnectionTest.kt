@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.repository
 
 import com.jcraft.jsch.JSchException
+import io.mockk.coVerify
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -49,9 +50,11 @@ class RemoteTerminalConnectionTest {
     private fun repository(settingsStore: SettingsStore = mockk()): WorkspaceRepository {
         coEvery { dao.getById("ws") } returns workspace
         coEvery { hostDao.getById("host") } answers { host }
+        coEvery { hostDao.updateDetectedPlatform("host", any(), any()) } returns 1
         every { credentials.load("host") } returns RemoteAuthentication.Password("test")
         every { transport.open(any(), any(), any()) } returns session
         every { session.resolvedRoot } returns "/srv/project"
+        every { session.platform } returns me.rerere.workspace.RemotePlatform.POSIX
         every { session.isConnected } returns true
         every { session.withOperation<Any?>(any(), any()) } answers { secondArg<() -> Any?>().invoke() }
         every { session.openTerminal(any(), any()) } returns terminal
@@ -88,6 +91,25 @@ class RemoteTerminalConnectionTest {
         repo.disconnectRemoteWorkspace("ws")
         verify(exactly = 1) { session.close() }
         assertEquals(RemoteConnectionActivity.IDLE, repo.remoteHostStates.value.getValue("host").activity)
+    }
+
+    @Test fun windowsCapabilityRejectsTerminalBeforeOpeningConnection() = runBlocking {
+        val repo = repository()
+        host = host.copy(platform = "windows")
+        assertEquals(false, repo.supportsInteractiveTerminal("ws"))
+        assertEquals(false, host.supportsRemoteScreen)
+        assertTrue(runCatching { repo.openRemoteTerminal("ws") }.exceptionOrNull() is
+            me.rerere.workspace.RemoteTerminalUnsupportedException)
+        verify(exactly = 0) { transport.open(any(), any(), any()) }
+    }
+
+    @Test fun windowsHomeUsesSftpAndPersistsDetectedPlatform() = runBlocking {
+        val repo = repository()
+        every { session.platform } returns me.rerere.workspace.RemotePlatform.WINDOWS
+        every { session.homeDirectory } returns "/C:/Users/Ekk"
+        assertEquals("/C:/Users/Ekk", repo.remoteHome("host"))
+        coVerify { hostDao.updateDetectedPlatform("host", "v1", "windows") }
+        verify(exactly = 0) { session.execute(any(), any(), any(), any(), any()) }
     }
 
     @Test fun timedOutWriteReportsUnknownOutcomeWithoutClosingSharedConnection() = runBlocking {
