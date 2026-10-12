@@ -97,7 +97,7 @@ class RemoteTerminalConnectionTest {
         val repo = repository()
         host = host.copy(platform = "windows")
         assertEquals(false, repo.supportsInteractiveTerminal("ws"))
-        assertEquals(false, host.supportsRemoteScreen)
+        assertEquals(true, host.supportsRemoteScreen)
         assertTrue(runCatching { repo.openRemoteTerminal("ws") }.exceptionOrNull() is
             me.rerere.workspace.RemoteTerminalUnsupportedException)
         verify(exactly = 0) { transport.open(any(), any(), any()) }

@@ -96,7 +96,42 @@ Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
     Assert-Equal $decoded.items.Count 0 'empty JSON array'
     Assert-Equal $decoded.one.Count 1 'single JSON array'
     Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
-    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '1' 'integer version contract'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '3' 'integer version contract'
+}
+Test 'firewall review includes exact LAN and detected Tailscale sources without granting writes' {
+    function Get-NetIPConfiguration { return @(
+        @{NetAdapter=@{Status='Up'};InterfaceAlias='Ethernet';InterfaceDescription='LAN';IPv4DefaultGateway=@{NextHop='192.168.31.1'};IPv4Address=@(@{IPAddress='192.168.31.61';PrefixLength=24})},
+        @{NetAdapter=@{Status='Up'};InterfaceAlias='Tailscale';InterfaceDescription='Tailscale Tunnel';IPv4DefaultGateway=$null;IPv4Address=@(@{IPAddress='100.64.0.8';PrefixLength=32})},
+        @{NetAdapter=@{Status='Up'};InterfaceAlias='VM';InterfaceDescription='Virtual';IPv4DefaultGateway=$null;IPv4Address=@(@{IPAddress='172.20.0.1';PrefixLength=16})}
+    ) }
+    try {
+        $sources=Get-FirewallSources
+        Assert-True (Test-SameSet $sources @('192.168.31.0/24','100.64.0.0/10')) 'only active gateway LAN and Tailscale'
+        $snapshot=@{rules=@((Rule 'unsafe'));profiles=@();profiles_safe=$true}
+        $review=Get-FirewallReview $snapshot $exe $sources
+        Assert-True (-not $review.firewall_model_ok) 'review required'
+        Assert-True ($null -ne $review.suggested_plan) 'complete plan'
+        Assert-True (Test-SameSet @($review.suggested_plan.Keys) @('disable_rules','allowed_sources','add_rule')) 'exact three fields'
+        Assert-True (Test-SameSet $review.suggested_plan.add_rule.sources $sources) 'fixed explicit sources'
+        $empty=Get-FirewallReview $snapshot $exe @()
+        Assert-True (-not $empty.firewall_model_ok -and $null -eq $empty.suggested_plan) 'unknown sources fail closed'
+        $snapshot.profiles_safe=$false
+        $blocked=Get-FirewallReview $snapshot $exe $sources
+        Assert-True ($null -eq $blocked.suggested_plan) 'profiles cannot be repaired by rule-only plan'
+    } finally { Remove-Item Function:Get-NetIPConfiguration }
+}
+Test 'review includes preexisting explicit UDP sources outside current approved proposal' {
+    $old=Rule 'old-explicit' 'UDP' @('47998-48000') @('10.0.0.0/8')
+    $snapshot=@{rules=@($old);profiles=@();profiles_safe=$true}
+    Assert-True ((Get-FirewallCheck $snapshot $exe).firewall_model_ok) 'old generic check accepts explicit subnet'
+    $review=Get-FirewallReview $snapshot $exe @('192.168.31.0/24','100.64.0.0/10')
+    Assert-True (-not $review.firewall_model_ok) 'current network scope requires review'
+    Assert-True ($review.suggested_plan.disable_rules -contains 'old-explicit') 'old scope explicitly disabled in approved plan'
+    Assert-True ($review.unsafe_rules[0].reasons -contains 'sources_differ_from_proposed_networks') 'source scope risk exposed'
+    Assert-Throws { Get-FirewallPlan $snapshot.rules $exe @('192.168.31.0/24') @() } 'apply cannot leave an explicit extra scope enabled'
+    $old.policy_source='GroupPolicy'
+    $blocked=Get-FirewallReview $snapshot $exe @('192.168.31.0/24')
+    Assert-True ($null -eq $blocked.suggested_plan -and $blocked.unmanageable_rules -contains 'old-explicit') 'GPO scope cannot receive a partial repair plan'
 }
 Test 'unknown stream state conservatively blocks restart' {
     Assert-True (Get-StreamActivity @{known=$false;values=@{}}).active 'unknown configuration'

@@ -30,7 +30,7 @@ data class RemoteHostEntity(
     @ColumnInfo("screen_auth", defaultValue = "'none'") val screenAuth: String = "none",
     /** Account for macOS screen sharing; blank means the SSH username. */
     @ColumnInfo("screen_username", defaultValue = "''") val screenUsername: String = "",
-    /** `macos`, `linux`, or blank until detected over SSH. */
+    /** `macos`, `linux`, `windows`, or blank until detected over SSH. */
     @ColumnInfo("screen_platform", defaultValue = "''") val screenPlatform: String = "",
     /** Command platform, detected from SFTP independently of desktop support. */
     @ColumnInfo("platform", defaultValue = "'posix'") val platform: String = "posix",
@@ -41,7 +41,7 @@ data class RemoteHostEntity(
     @ColumnInfo("stream_certificate_sha256") val streamCertificateSha256: String? = null,
 ) {
     val supportsInteractiveTerminal: Boolean get() = me.rerere.workspace.RemotePlatform.parse(platform).supportsInteractiveTerminal
-    val supportsRemoteScreen: Boolean get() = platform != "windows"
+    val supportsRemoteScreen: Boolean get() = true
 }
 
 enum class RemoteScreenAuth { NONE, VNC_PASSWORD, MACOS_ACCOUNT;

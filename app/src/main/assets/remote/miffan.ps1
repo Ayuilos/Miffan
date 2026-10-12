@@ -1,9 +1,9 @@
-﻿# Miffan Windows helper v1. PowerShell 5.1; install this file as UTF-8 WITH BOM.
+﻿# Miffan Windows helper v3. PowerShell 5.1; install this file as UTF-8 WITH BOM.
 # Dot-source to load pure functions for offline tests; otherwise stdout is one JSON line.
 # version deliberately retains the POSIX integer contract. No cua/App integration here.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 1
+$script:HelperVersion = 3
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
 function ConvertTo-PlainJson($Value) {
@@ -149,7 +149,14 @@ function Get-FirewallPlan($Rules, [string]$Executable, $Sources, $DisableIds) {
     }
     # Do not carry out a partial security repair: every hazardous effective Allow must be covered.
     foreach ($rule in $Rules) {
-        if ((Get-RuleRisks $rule).Count -gt 0 -and $rule.id -cnotin $disable -and -not ($create -and $create.replace -and $rule.id -ceq $create.id)) {
+        $outsideSources = $false
+        if ($rule.effective -and $rule.action -eq 'Allow' -and $rule.protocol -in @('UDP','17') -and (Test-SunshineProgram $rule.program $Executable)) {
+            try {
+                $addresses = Get-Networks $rule.sources
+                $outsideSources = @($addresses | Where-Object { $_ -cnotin $sourcesNormalized }).Count -gt 0
+            } catch { $outsideSources = $true }
+        }
+        if (((Get-RuleRisks $rule).Count -gt 0 -or $outsideSources) -and $rule.id -cnotin $disable -and -not ($create -and $create.replace -and $rule.id -ceq $create.id)) {
             throw 'Plan leaves an unsafe effective rule; check and review again'
         }
     }
@@ -264,6 +271,56 @@ function Get-StreamCandidates {
         $ip = [string]$_.IPAddress
         if ($ip -match '^10\.' -or $ip -match '^192\.168\.' -or $ip -match '^172\.(1[6-9]|2\d|3[01])\.' -or $ip -match '^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.') { $ip }
     } | Sort-Object -Unique)
+}
+function Get-FirewallSources {
+    # Only active LAN interfaces with an IPv4 default gateway; never guess /24 from an IP.
+    # The CGNAT range is proposed only when a live Tailscale adapter is actually present.
+    $sources = @()
+    foreach ($interface in @(Get-NetIPConfiguration)) {
+        if (-not $interface.NetAdapter -or $interface.NetAdapter.Status -ne 'Up') { continue }
+        $tailscale = ([string]$interface.InterfaceAlias -match 'Tailscale' -or [string]$interface.InterfaceDescription -match 'Tailscale')
+        foreach ($address in @($interface.IPv4Address)) {
+            $ip = [string]$address.IPAddress
+            if ($tailscale -and $ip -match '^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.') { $sources += '100.64.0.0/10' }
+            elseif ($interface.IPv4DefaultGateway -and ($ip -match '^10\.' -or $ip -match '^192\.168\.' -or $ip -match '^172\.(1[6-9]|2\d|3[01])\.')) {
+                if ($address.PrefixLength -ge 1 -and $address.PrefixLength -lt 32) { $sources += ConvertTo-Network ($ip + '/' + $address.PrefixLength) }
+            }
+        }
+    }
+    return ,@($sources | Sort-Object -Unique)
+}
+function Get-FirewallReview($Snapshot, [string]$Executable, $Sources) {
+    $check = Get-FirewallCheck $Snapshot $Executable
+    $check.allowed_sources = @($Sources)
+    $check.suggested_plan = $null
+    $check.plan_detail = $null
+    try {
+        if (-not $Snapshot.profiles_safe) { throw 'Firewall profiles do not enforce inbound blocking' }
+        $allowed = Get-Networks $Sources
+        # Existing explicit subnets are not automatically approval for this network's sources.
+        # Include otherwise narrow UDP rules with different scopes in the complete review plan.
+        foreach ($rule in $Snapshot.rules) {
+            if (-not $rule.effective -or $rule.action -ne 'Allow' -or $rule.protocol -notin @('UDP','17') -or
+                -not (Test-SunshineProgram $rule.program $Executable) -or (Get-RuleRisks $rule).Count -gt 0) { continue }
+            $ruleSources = Get-Networks $rule.sources
+            if (@($ruleSources | Where-Object { $_ -cnotin $allowed }).Count -gt 0) {
+                $check.unsafe_rules += @{id=$rule.id;reasons=@('sources_differ_from_proposed_networks')}
+                $check.firewall_model_ok = $false
+                if ($rule.policy_source -eq 'Local') { $check.suggested_changes.disable_rules += $rule.id }
+                else { $check.unmanageable_rules += $rule.id }
+            }
+        }
+        if ($check.unmanageable_rules.Count -gt 0) { throw 'Policy-managed firewall rules cannot be repaired locally' }
+        $plan = Get-FirewallPlan $Snapshot.rules $Executable $Sources $check.suggested_changes.disable_rules
+        if ($plan.changed) {
+            $check.suggested_plan = @{disable_rules=@($plan.disable_rules);allowed_sources=@($plan.allowed_sources);add_rule=$plan.add_rule}
+            $check.firewall_model_ok = $false
+        }
+    } catch {
+        $check.firewall_model_ok = $false
+        $check.plan_detail = 'Cannot propose a complete local repair; inspect profiles, source subnets and policy-managed rules'
+    }
+    return $check
 }
 function Get-SunshineProbe {
     $context = Get-SunshineContext
@@ -664,7 +721,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
                 'enforce-encryption' { return Invoke-EnforceEncryption }
                 'firewall' {
                     switch ($Suboperation) {
-                        'check' { $c=Get-SunshineContext; if (-not $c.installed) {throw 'Sunshine is not installed'}; return Get-FirewallCheck (Get-FirewallSnapshot $c.executable) $c.executable }
+                        'check' { $c=Get-SunshineContext; if (-not $c.installed) {throw 'Sunshine is not installed'}; return Get-FirewallReview (Get-FirewallSnapshot $c.executable) $c.executable (Get-FirewallSources) }
                         'apply' { return Invoke-FirewallApply (Read-FirewallRequest ([Console]::In.ReadToEnd())) }
                         default { throw 'Usage: sunshine firewall check|apply' }
                     }

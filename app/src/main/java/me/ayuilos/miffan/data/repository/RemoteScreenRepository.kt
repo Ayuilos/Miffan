@@ -52,14 +52,14 @@ data class RemoteHostScreenConfig(
     val streamCertificateSha256: String? = null,
 )
 
-enum class RemoteScreenPlatform { UNKNOWN, MACOS, LINUX;
+enum class RemoteScreenPlatform { UNKNOWN, MACOS, LINUX, WINDOWS;
     val storageName: String get() = if (this == UNKNOWN) "" else name.lowercase()
     companion object {
         fun parse(value: String): RemoteScreenPlatform = entries.firstOrNull { it.storageName == value && it != UNKNOWN } ?: UNKNOWN
     }
 }
 
-/** Windows hosts work as workspaces, but their screen and computer control are not wired up yet (P7b/P7c). */
+/** Windows computer control remains unsupported until P7c. Screen viewing uses Sunshine. */
 class WindowsRemoteScreenUnsupportedException : RemoteScreenUnavailableException(RemoteScreenProblem.WINDOWS_NOT_SUPPORTED)
 
 /** Why a screen could not be opened; the page maps each reason to a fix the user can make. */
@@ -73,7 +73,7 @@ enum class RemoteScreenProblem {
     NO_VNC_SERVER,
     VNC_START_FAILED, NO_RDP_SERVER, RDP_START_FAILED, RDP_ALREADY_CONFIGURED,
     RDP_KEYRING_LOCKED, RDP_CREDENTIAL_SETUP_UNAVAILABLE, RDP_CERTIFICATE_CHANGED, STREAM_CERTIFICATE_CHANGED,
-    WINDOWS_NOT_SUPPORTED,
+    WINDOWS_NOT_SUPPORTED, FIREWALL_REVIEW_NEEDED, FIREWALL_CHECK_FAILED, STREAM_UNAVAILABLE,
 }
 
 open class RemoteScreenUnavailableException(
@@ -82,6 +82,8 @@ open class RemoteScreenUnavailableException(
     val detail: String? = null,
     /** The remote desktop name (for example `GNOME`, `KDE`, `niri`) when the helper knows it. */
     val desktop: String? = null,
+    val firewallCheck: RemoteSunshineFirewallCheck? = null,
+    val streamFailure: RemoteStreamFallback? = null,
 ) : IllegalStateException("${problem.name}${detail?.let { ": $it" }.orEmpty()}")
 
 class RemoteRdpCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
@@ -173,6 +175,10 @@ class RemoteScreenRepository(
     private val helperVersion: String = Regex("""MIFFAN_HELPER_VERSION=(\d+)""")
         .find(helperScript.toString(Charsets.UTF_8))?.groupValues?.get(1)
         ?: error("Helper script has no version")
+    private val windowsHelperScript = assets.open("remote/miffan.ps1").use { it.readBytes() }
+    private val windowsHelperVersion = Regex("""HelperVersion = (\d+)""")
+        .find(windowsHelperScript.toString(Charsets.UTF_8))?.groupValues?.get(1)
+        ?: error("Windows helper script has no version")
     private val json = Json { ignoreUnknownKeys = true }
 
     private val lock = Any()
@@ -252,9 +258,11 @@ class RemoteScreenRepository(
         }
     }
 
-    suspend fun startStreamPairing(hostId: String, expectedRevision: String): RemoteStreamPairing {
+    suspend fun startStreamPairing(hostId: String, expectedRevision: String,
+        clientName: String = "Miffan (${Build.MODEL})".take(64)): RemoteStreamPairing {
         val workspaceId = workspaceOnHost(hostId, expectedRevision)
         val row = requireNotNull(hostDao.getById(hostId))
+        require(clientName.isNotBlank() && clientName.length <= 64 && clientName.none { it.isISOControl() })
         val pairingPin = SecureRandom().nextInt(10_000).toString().padStart(4, '0')
         val callerJob = currentCoroutineContext()[Job]
         val handle = workspaces.openLeasedRemote<RemoteStreamPairing>(workspaceId) { ssh ->
@@ -263,14 +271,17 @@ class RemoteScreenRepository(
             val probe = sunshineProbe(ssh)
             streams.verifyCertificate(row.streamCertificateSha256, probe)
             check(probe.installed && probe.running) { "Sunshine is not running" }
-            val streamHost = streams.host(ssh, row.streamCertificateSha256)
+            val pairingCertificate = if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS)
+                requireNotNull(probe.certificateSha256) { "Windows Sunshine public certificate unavailable" }
+                else row.streamCertificateSha256
+            val streamHost = streams.host(ssh, pairingCertificate)
             val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val paired = lifetime.async {
                 withTimeout(300_000) {
-                    val pin = try { streamHost.pair(pairingPin, "Miffan (${Build.MODEL})".take(64)) }
+                    val pin = try { streamHost.pair(pairingPin, clientName) }
                     catch (error: me.rerere.stream.StreamException) {
                         if (error.reason == me.rerere.stream.StreamFailureReason.CERTIFICATE_MISMATCH)
-                            throw streamCertificateFailure(row.streamCertificateSha256, probe.certificateSha256)
+                            throw streamCertificateFailure(pairingCertificate, probe.certificateSha256)
                         throw error
                     }
                     check(hostDao.pinPairedStreamCertificate(hostId, pin, expectedRevision, row.streamCertificateSha256, System.currentTimeMillis()) == 1) {
@@ -310,10 +321,44 @@ class RemoteScreenRepository(
         return withStreamRemote(workspaceId) { ssh ->
             ensureRevision(hostId, expectedRevision)
             ensureHelper(ssh)
-            val result = ssh.execute("$HELPER sunshine $command", timeoutMillis = 30_000)
+            if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS && command.startsWith("open-settings"))
+                return@withStreamRemote RemoteCommandOutcome(false, "Sunshine permission settings are only applicable to macOS")
+            val result = ssh.execute(screenHelperCommand(ssh.platform, "sunshine $command"), timeoutMillis = 30_000)
             val status = parseSunshineCommand(result.stdout)
             RemoteCommandOutcome(status.success && result.exitCode == 0 && !result.timedOut, status.detail)
         }
+    }
+
+    /** Read-only. The suggested plan must be displayed and approved before calling apply. */
+    suspend fun checkSunshineFirewall(hostId: String, expectedRevision: String): RemoteSunshineFirewallCheck =
+        withStreamRemote(workspaceOnHost(hostId, expectedRevision)) { ssh ->
+            ensureRevision(hostId, expectedRevision)
+            require(ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) { "Windows firewall only" }
+            ensureHelper(ssh)
+            firewallCheck(ssh)
+        }
+
+    /** Executes exactly the plan the user approved. Never synthesizes/retries a replacement plan. */
+    suspend fun applySunshineFirewall(hostId: String, expectedRevision: String,
+        plan: ApprovedSunshineFirewallPlan): RemoteSunshineFirewallResult =
+        withStreamRemote(workspaceOnHost(hostId, expectedRevision)) { ssh ->
+            ensureRevision(hostId, expectedRevision)
+            require(ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) { "Windows firewall only" }
+            ensureHelper(ssh)
+            val result = ssh.execute(screenHelperCommand(ssh.platform, "sunshine firewall apply"),
+                timeoutMillis = 60_000, stdin = ByteArrayInputStream(plan.json.toByteArray(Charsets.UTF_8)))
+            parseSunshineFirewallResult(result.stdout).let {
+                it.copy(success = it.success && result.exitCode == 0 && !result.timedOut)
+            }
+        }
+
+    private fun firewallCheck(ssh: RemoteWorkspaceSession): RemoteSunshineFirewallCheck {
+        val result = ssh.execute(screenHelperCommand(ssh.platform, "sunshine firewall check"), timeoutMillis = 30_000)
+        if (result.timedOut)
+            throw RemoteScreenUnavailableException(RemoteScreenProblem.FIREWALL_CHECK_FAILED, "Windows firewall inspection timed out")
+        val check = try { parseSunshineFirewallCheck(result.stdout) }
+        catch (error: Exception) { throw RemoteScreenUnavailableException(RemoteScreenProblem.FIREWALL_CHECK_FAILED, "Invalid firewall inspection result") }
+        return check.copy(success = check.success && result.exitCode == 0)
     }
 
     private suspend fun ensureRevision(hostId: String, revision: String) {
@@ -321,15 +366,20 @@ class RemoteScreenRepository(
     }
 
     private fun sunshineProbe(ssh: RemoteWorkspaceSession): SunshineProbe {
-        val result = ssh.execute("$HELPER sunshine probe", timeoutMillis = 5_000)
+        val result = ssh.execute(screenHelperCommand(ssh.platform, "sunshine probe"), timeoutMillis = 15_000)
         check(result.exitCode == 0 && !result.timedOut) { "Sunshine probe failed" }
         return parseSunshineProbe(result.stdout)
     }
 
     private fun writeStreamClipboard(ssh: RemoteWorkspaceSession, text: String) {
-        val result = ssh.execute("$HELPER clip", timeoutMillis = 10_000,
+        val result = ssh.execute(screenHelperCommand(ssh.platform, "clip"),
+            timeoutMillis = if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) 30_000 else 10_000,
             stdin = ByteArrayInputStream(text.toByteArray(Charsets.UTF_8)))
         check(result.exitCode == 0 && !result.timedOut) { "Remote clipboard command failed" }
+        if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) {
+            val status = parseWindowsClipboard(result.stdout)
+            check(status.success && status.verified) { status.detail }
+        }
     }
 
     private suspend fun <T> withStreamRemote(workspaceId: String, block: suspend (RemoteWorkspaceSession) -> T): T {
@@ -363,27 +413,28 @@ class RemoteScreenRepository(
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
-        if (!host.supportsRemoteScreen) throw WindowsRemoteScreenUnsupportedException()
         if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
-        val endpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
-            ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
+        val configuredEndpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
         var detected: RemoteScreenPlatform? = null
         var rdpUsername: String? = null
-        val streamRequested = stream.requested(host.streamEnabled)
+        var streamRequested = stream.requested(host.streamEnabled)
         var streamAddress: String? = null
         var streamFallback: RemoteStreamFallback? = null
         val callerJob = currentCoroutineContext()[Job]
         val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
             runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { ensureRevision(host.id, host.connectionRevision) }
-            requireScreenSupported(ssh)
+            val windows = ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS
+            streamRequested = windows || streamRequested
+            val endpoint = if (windows) RemoteScreenEndpoint.Helper else configuredEndpoint
+                ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
             val selection = RemoteScreenProtocol.parse(host.screenProtocol)
             // Manual VNC endpoints keep working without installing a helper or probing a desktop.
-            val machine = if (endpoint == RemoteScreenEndpoint.Helper || selection == RemoteScreenProtocol.RDP) {
+            val machine = if (windows || endpoint == RemoteScreenEndpoint.Helper || selection == RemoteScreenProtocol.RDP) {
                 ensureHelper(ssh)
-                val result = ssh.execute("$HELPER probe", timeoutMillis = 20_000)
+                val result = ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000)
                 parseHelperProbe(result.stdout)
             } else null
-            detected = machine?.let { RemoteScreenPlatform.parse(it.os) }
+            detected = if (windows) RemoteScreenPlatform.WINDOWS else machine?.let { RemoteScreenPlatform.parse(it.os) }
                 ?: RemoteScreenPlatform.parse(host.screenPlatform).takeIf { it != RemoteScreenPlatform.UNKNOWN }
                 ?: when (ssh.execute("uname -s", timeoutMillis = 10_000).stdout.trim()) {
                     "Darwin" -> RemoteScreenPlatform.MACOS
@@ -392,12 +443,17 @@ class RemoteScreenRepository(
                 }
             val attempt = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
                 attemptRemoteStream(streamRequested) {
-                    if (detected !in setOf(RemoteScreenPlatform.LINUX, RemoteScreenPlatform.MACOS)) return@attemptRemoteStream StreamOpenResult(
-                        fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux or macOS"))
+                    if (detected !in setOf(RemoteScreenPlatform.LINUX, RemoteScreenPlatform.MACOS, RemoteScreenPlatform.WINDOWS)) return@attemptRemoteStream StreamOpenResult(
+                        fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux, macOS or Windows"))
                     try {
                         ensureHelper(ssh)
                         val deadline = System.nanoTime() + 20_000_000_000L
                         val initial = sunshineProbe(ssh)
+                        if (windows) {
+                            val firewall = firewallCheck(ssh)
+                            if (!initial.installed) throw windowsStreamUnavailable(RemoteStreamFallback(RemoteStreamFallbackReason.SUNSHINE_MISSING))
+                            requireSunshineFirewall(firewall)
+                        }
                         streams.verifyCertificate(host.streamCertificateSha256, initial)
                         val platform = requireNotNull(detected)
                         val probe = prepareStreamProbe(platform, initial) {
@@ -417,6 +473,7 @@ class RemoteScreenRepository(
                             opened.copy(fallback = streamDiagnosticFallback(diagnostic, opened.fallback))
                         } else opened
                     } catch (error: RemoteStreamCertificateChangedException) { throw error }
+                    catch (error: RemoteScreenUnavailableException) { throw error }
                     catch (error: CancellationException) { throw error }
                     catch (_: Exception) { StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER)) }
                 }
@@ -424,6 +481,7 @@ class RemoteScreenRepository(
             streamFallback = attempt.fallback
             streamAddress = attempt.address
             if (attempt.session != null) return@openLeasedRemote attempt.session
+            if (windows) throw windowsStreamUnavailable(attempt.fallback)
             val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
             if (protocol == RemoteDesktopProtocol.RDP) {
                 val password = credentials.getOrCreateRdp(host.id)
@@ -488,9 +546,7 @@ class RemoteScreenRepository(
         if (rdp != null) { rdp.session.sendClipboard(text); return true }
         withRemote(workspaceId) { ssh ->
             ensureHelper(ssh)
-            val result = ssh.execute("$HELPER clip", timeoutMillis = 10_000,
-                stdin = ByteArrayInputStream(text.toByteArray(Charsets.UTF_8)))
-            check(result.exitCode == 0) { result.stderr.ifBlank { "Remote clipboard command failed" } }
+            writeStreamClipboard(ssh, text)
         }
         return true
     }
@@ -501,6 +557,7 @@ class RemoteScreenRepository(
      * against system shortcuts. False when the Mac has no cua-driver.
      */
     suspend fun pressMacShortcut(workspaceId: String, name: String): Boolean = withRemote(workspaceId) { ssh ->
+        requireScreenSupported(ssh)
         ensureHelper(ssh)
         val result = ssh.execute("$HELPER mac-shortcut $name", timeoutMillis = 15_000)
         if (result.exitCode == 127) return@withRemote false
@@ -533,6 +590,7 @@ class RemoteScreenRepository(
      */
     suspend fun openCuaProcess(workspaceId: String): LeasedRemote<me.rerere.workspace.RemoteChannelStream> =
         workspaces.openLeasedRemote(workspaceId) { ssh ->
+            requireScreenSupported(ssh)
             ensureHelper(ssh)
             ssh.openProcess("$HELPER cua")
         }
@@ -543,7 +601,7 @@ class RemoteScreenRepository(
     /** Installs or refreshes the helper and describes the machine behind [workspaceId]. */
     suspend fun probe(workspaceId: String): RemoteMachineProbe = withRemote(workspaceId) { ssh ->
         ensureHelper(ssh)
-        val result = ssh.execute("$HELPER probe", timeoutMillis = 20_000)
+        val result = ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000)
         check(result.exitCode == 0) { result.stderr.ifBlank { "Remote probe failed" } }
         json.decodeFromString<RemoteMachineProbe>(result.stdout.trim().lineSequence().last())
     }
@@ -566,7 +624,14 @@ class RemoteScreenRepository(
 
     /** Uploads the bundled helper when the remote copy is missing or a different version. */
     private fun ensureHelper(ssh: RemoteWorkspaceSession) {
-        requireScreenSupported(ssh)
+        if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) {
+            val installed = ssh.execute(windowsHelperVersionCommand, timeoutMillis = 10_000)
+            if (installed.exitCode == 0 && !installed.timedOut && installed.stdout.trim() == windowsHelperVersion) return
+            val result = ssh.execute(windowsHelperInstallCommand, timeoutMillis = 30_000,
+                stdin = ByteArrayInputStream(windowsHelperScript))
+            check(result.exitCode == 0 && !result.timedOut) { "Could not install the Windows Miffan helper" }
+            return
+        }
         val installed = ssh.execute("$HELPER version 2>/dev/null", timeoutMillis = 10_000).stdout.trim()
         if (installed == helperVersion) return
         val result = ssh.execute(
@@ -651,7 +716,7 @@ class RemoteScreenRepository(
         endpoint = RemoteScreenEndpoint.parse(screenEndpoint) ?: RemoteScreenEndpoint.Tcp(5900),
         auth = RemoteScreenAuth.parse(screenAuth),
         username = screenUsername,
-        platform = RemoteScreenPlatform.parse(screenPlatform),
+        platform = if (platform == "windows") RemoteScreenPlatform.WINDOWS else RemoteScreenPlatform.parse(screenPlatform),
         hasPassword = hasPassword,
         protocol = RemoteScreenProtocol.parse(screenProtocol), rdpUsername = rdpUsername,
         rdpCertificateSha256 = rdpCertificateSha256,
