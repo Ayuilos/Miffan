@@ -21,7 +21,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontWeight
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.im.ImPressMenu
 import me.ayuilos.miffan.ui.im.ImPressMenuItem
 import me.ayuilos.miffan.ui.im.imLongPress
@@ -120,6 +123,7 @@ internal fun ThreadMessageBubble(
     val canSpeak by tts.isAvailable.collectAsState()
 
     val user = item.message.role == MessageRole.USER
+    val partners = LocalSettings.current.assistants
     val parts = item.message.parts
     val evidence = remember(parts) { threadComputerEvidence(parts) }
     val liveComputer = item.streaming && latestComputerAction(parts)?.approvalState !is me.rerere.ai.ui.ToolApprovalState.Pending &&
@@ -171,7 +175,12 @@ internal fun ThreadMessageBubble(
                     if (recordSteps) ThreadStepRecord(steps, live = item.streaming, liveStatus = liveStatus)
                     parts.forEach { part ->
                         when (part) {
-                            is UIMessagePart.Text -> if (part.text.isNotBlank()) MarkdownBlock(part.text.withWorkspaceImages(imageContext),
+                            is UIMessagePart.Text -> if (part.text.isBlank()) Unit
+                            // The owner's own words with @partners in them read as typed, the mentions colored as in the input.
+                            else if (user && hasPartnerMention(part.text, partners)) Text(
+                                mentionText(part.text, partners, SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)),
+                                style = MaterialTheme.typography.bodyLarge)
+                            else MarkdownBlock(part.text.withWorkspaceImages(imageContext),
                                 style = MaterialTheme.typography.bodyLarge)
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
                             is UIMessagePart.Document -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
