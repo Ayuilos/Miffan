@@ -332,7 +332,7 @@ internal fun RemoteScreenScaffold(
                     partnerWaiting = partnerWaiting, onHandBack = vm::handBackToPartner,
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
             }
-            if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = macOS)
+            if (keyboard && connected) RemoteScreenKeyboard(vm, platform)
             if (!fullscreen) bottom()
         }
     }
