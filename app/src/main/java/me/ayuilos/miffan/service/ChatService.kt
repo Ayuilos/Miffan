@@ -78,6 +78,9 @@ import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.workspaceToolTargetError
 import me.ayuilos.miffan.data.ai.AgentAccess
+import me.ayuilos.miffan.data.ai.tools.createMyEnvironmentTool
+import me.ayuilos.miffan.data.ai.tools.availableWorkspaceSkills
+import me.ayuilos.miffan.data.partner.ownerMentionedPartnerIds
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
@@ -1042,22 +1045,6 @@ class ChatService(
             // reset suggestions
             updateConversation(conversationId, initialConversation.copy(chatSuggestions = emptyList()))
 
-            // memory tool
-            if (!model.abilities.contains(ModelAbility.TOOL)) {
-                if (
-                    useExternalWebSearch ||
-                    mcpManager.getAllAvailableTools().isNotEmpty() ||
-                    LocalToolOption.ExtensionManagement in assistant.localTools
-                ) {
-                    addError(
-                        IllegalStateException(context.getString(R.string.tools_warning)),
-                        conversationId,
-                        title = context.getString(R.string.error_title_tool_unavailable),
-                        solution = ChatErrorSolution.EnableModelTools,
-                    )
-                }
-            }
-
             // check invalid messages
             checkInvalidMessages(conversationId)
             val conversation = getConversationFlow(conversationId).value
@@ -1105,6 +1092,22 @@ class ChatService(
             } else conversation
             val ownerTrigger = turnConversation.ownerTrigger()
             val access = AgentAccess.forTurn(assistant, turnConversation)
+            // memory tool
+            if (!model.abilities.contains(ModelAbility.TOOL)) {
+                if (
+                    useExternalWebSearch ||
+                    mcpManager.getAllAvailableTools(access).isNotEmpty() ||
+                    LocalToolOption.ExtensionManagement in assistant.localTools
+                ) {
+                    addError(
+                        IllegalStateException(context.getString(R.string.tools_warning)),
+                        conversationId,
+                        title = context.getString(R.string.error_title_tool_unavailable),
+                        solution = ChatErrorSolution.EnableModelTools,
+                    )
+                }
+            }
+
             val computerToolbox = createComputerToolbox(assistant, conversation.id.toString(), generationMessages)
             generationHandler.generateText(
                 settings = settings,
@@ -1177,19 +1180,20 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
+                    val builtInSkills = buildList {
+                        if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
+                        if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
+                    }
                     if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(
                                 allSkills = availableSkills,
-                                builtInSkills = buildList {
-                                    if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
-                                    if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
-                                },
+                                builtInSkills = builtInSkills,
                                 workspaceReady = workspaceReady && assistant.workspaceShellEnabled,
                             )
                         )
                     }
-                    mcpManager.getAllAvailableTools().also { allTools ->
+                    mcpManager.getAllAvailableTools(access).also { allTools ->
                         val invalidNames = allTools
                             .map { it.second }
                             .distinct()
@@ -1218,6 +1222,26 @@ class ChatService(
                                 },
                             )
                         )
+                    }
+                    if (settings.isImMode) {
+                        val registeredTools = toList()
+                        val chatService = getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>()
+                        val host = boundWorkspace?.remoteHostId?.let { workspaceRepository.getHostById(it) }
+                        add(createMyEnvironmentTool(
+                            access = access,
+                            settings = settings,
+                            model = model,
+                            providerName = model.findProvider(settings.providers)?.name.orEmpty(),
+                            toolNames = { (registeredTools + computerToolbox?.tools().orEmpty()).mapTo(hashSetOf()) { it.name } },
+                            skillNames = builtInSkills.map { it.name } +
+                                availableWorkspaceSkills(availableSkills, builtInSkills,
+                                    workspaceReady && assistant.workspaceShellEnabled).map { it.name },
+                            workspaceName = boundWorkspace?.name,
+                            computerName = host?.takeIf { it.screenEnabled }?.name,
+                            groups = { chatService.observeSummaries().first().map { it.chat } },
+                            turnContactIds = if (access.ownerInitiated)
+                                turnConversation.ownerMentionedPartnerIds(settings).toSet() else emptySet(),
+                        ))
                     }
                 },
             ).onCompletion { cause ->

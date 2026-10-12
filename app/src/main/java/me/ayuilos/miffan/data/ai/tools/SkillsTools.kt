@@ -24,15 +24,7 @@ fun createSkillTools(
     val builtInsByName = builtInSkills.associateBy { it.name }
     // A bundled definition is trusted application content and must not be shadowed by a
     // user-controlled skill directory with the same frontmatter name.
-    val availableUserSkills = allSkills
-        .asSequence()
-        .filter { skill ->
-            skill.scope == SkillScope.WORKSPACE &&
-                (!skill.requiresWorkspace || workspaceReady) &&
-                skill.name !in builtInsByName
-        }
-        .distinctBy { it.name }
-        .toList()
+    val availableUserSkills = availableWorkspaceSkills(allSkills, builtInSkills, workspaceReady)
     if (builtInSkills.isEmpty() && availableUserSkills.isEmpty()) return emptyList()
 
     return listOf(
@@ -152,4 +144,17 @@ private fun String.escapeXmlText(): String = buildString(length) {
             else -> append(character)
         }
     }
+}
+
+/** Keep environment reporting identical to the skills actually exposed by use_skill. */
+internal fun availableWorkspaceSkills(
+    allSkills: List<SkillMetadata>,
+    builtInSkills: List<BuiltInSkillDefinition>,
+    workspaceReady: Boolean,
+): List<SkillMetadata> {
+    val builtInNames = builtInSkills.mapTo(hashSetOf()) { it.name }
+    return allSkills.filter {
+        it.scope == SkillScope.WORKSPACE && (!it.requiresWorkspace || workspaceReady) &&
+            it.name !in builtInNames
+    }.distinctBy { it.name }
 }

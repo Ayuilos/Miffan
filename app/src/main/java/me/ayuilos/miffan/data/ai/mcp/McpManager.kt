@@ -20,6 +20,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.AppScope
+import me.ayuilos.miffan.data.ai.AgentAccess
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 import me.ayuilos.miffan.data.event.AppEventBus
@@ -98,17 +99,8 @@ class McpManager(
 
     fun getStatus(config: McpServerConfig): Flow<McpStatus> = sessionRegistry.getStatus(config.id)
 
-    fun getAllAvailableTools(): List<Triple<Uuid, String, McpTool>> {
-        val settings = settingsStore.settingsFlow.value
-        val assistant = settings.getCurrentAssistant()
-        return settings.mcpServers
-            .filter { it.commonOptions.enable && it.id in assistant.mcpServers }
-            .flatMap { server ->
-                server.commonOptions.tools
-                    .filter { tool -> tool.enable }
-                    .map { tool -> Triple(server.id, server.commonOptions.name, tool) }
-            }
-    }
+    fun getAllAvailableTools(access: AgentAccess? = null): List<Triple<Uuid, String, McpTool>> =
+        availableMcpTools(settingsStore.settingsFlow.value, access)
 
     suspend fun callTool(serverId: Uuid, toolName: String, args: JsonObject): List<UIMessagePart> {
         val result = try {
@@ -157,4 +149,19 @@ class McpManager(
         )
         return UIMessagePart.Image(url = filesManager.getFile(entity).toUri().toString())
     }
+}
+
+/** Agent turns must use the caller's bindings, regardless of which profile the UI selected. */
+internal fun availableMcpTools(
+    settings: me.ayuilos.miffan.data.datastore.Settings,
+    access: AgentAccess?,
+): List<Triple<Uuid, String, McpTool>> {
+    val assistant = if (access == null) settings.getCurrentAssistant()
+        else settings.assistants.firstOrNull { it.id == access.callerId } ?: return emptyList()
+    return settings.mcpServers
+        .filter { it.commonOptions.enable && it.id in assistant.mcpServers }
+        .flatMap { server ->
+            server.commonOptions.tools.filter { it.enable }
+                .map { Triple(server.id, server.commonOptions.name, it) }
+        }
 }
