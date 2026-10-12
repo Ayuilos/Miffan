@@ -2225,6 +2225,22 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_no_workspace">먼저 이 호스트의 원격 워크스페이스를 만든 다음 다시 확인하세요.</string>
   <string name="workspace_screen_no_session">로그인된 데스크톱 세션을 찾지 못했어요. 이 컴퓨터에서 데스크톱에 로그인한 다음 다시 시도하세요.</string>
   <string name="workspace_screen_windows_unsupported">Windows 컴퓨터의 화면 보기는 아직 지원하지 않아요. 파일과 PowerShell 명령은 사용할 수 있어요.</string>
+  <string name="workspace_screen_firewall_needed">이 컴퓨터의 Sunshine은 네트워크의 모든 기기가 관리 포트에 접근할 수 있게 되어 있어요. 연결하기 전에 방화벽을 좁혀야 해요.</string>
+  <string name="workspace_screen_firewall_check_failed">이 컴퓨터의 방화벽을 확인하지 못해 안전을 위해 연결하지 않았어요. 다시 시도하세요.</string>
+  <string name="workspace_screen_windows_stream_failed">Sunshine으로 이 Windows 컴퓨터에 연결하지 못했어요: %1$s.</string>
+  <string name="workspace_screen_windows_udp_hint">휴대폰과 컴퓨터가 같은 로컬 네트워크에 있거나 둘 다 Tailscale에 연결되어 있어야 해요.</string>
+  <string name="workspace_screen_windows_stream_setup">고성능 연결 설정</string>
+  <string name="workspace_screen_firewall_review">변경 내용 보기</string>
+  <string name="workspace_screen_firewall_title">Sunshine 방화벽 좁히기</string>
+  <string name="workspace_screen_firewall_hint">Sunshine은 설치할 때 관리 페이지를 포함한 모든 포트에 어떤 기기든 접근할 수 있게 했어요. 변경 후에는 관리와 페어링이 SSH로만 이뤄지고, 화면 데이터 포트만 아래 네트워크에 열려요.</string>
+  <string name="workspace_screen_firewall_add">%1$s에서 UDP 47998–48000만 허용하는 규칙 1개 추가</string>
+  <string name="workspace_screen_firewall_backup">변경하기 전에 현재 규칙을 컴퓨터에 백업해요.</string>
+  <string name="workspace_screen_firewall_apply">변경</string>
+  <string name="workspace_screen_firewall_failed">방화벽을 변경하지 못했어요.</string>
+  <string name="workspace_screen_firewall_failed_detail">방화벽을 변경하지 못했어요: %1$s</string>
+  <plurals name="workspace_screen_firewall_disable">
+    <item quantity="other">Sunshine이 추가한 허용 규칙 %d개 끄기</item>
+  </plurals>
   <string name="workspace_screen_config_incomplete">화면이 꺼져 있거나 설정이 완료되지 않았어요. 화면 설정을 열어 설정을 마무리하세요.</string>
   <string name="workspace_screen_start_failed">화면 서비스를 시작하지 못했어요. 출력을 확인하고 다시 시도하세요.</string>
   <string name="workspace_screen_system">시스템</string>
@@ -2236,6 +2252,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_use_automatic">자동 연결로 바꾸기</string>
   <string name="workspace_screen_stream">고성능 모드</string>
   <string name="workspace_screen_stream_help">컴퓨터의 Sunshine이 그래픽 카드로 화면을 인코딩해 지연이 더 적고 더 부드럽습니다. 화면은 네트워크(UDP)로 휴대폰에 바로 전송되며 항상 암호화됩니다. 조건이 맞지 않으면 일반 연결로 자동 전환합니다. Linux와 Mac 컴퓨터를 지원합니다.</string>
+  <string name="workspace_screen_stream_windows_help">Windows 컴퓨터는 Sunshine으로만 연결해요. 페어링과 암호화는 여기서 설정하고, 화면 데이터는 같은 로컬 네트워크나 Tailscale이 필요해요.</string>
   <string name="workspace_screen_stream_check">Sunshine 확인</string>
   <string name="workspace_screen_stream_checking">컴퓨터의 Sunshine을 확인하는 중…</string>
   <string name="workspace_screen_stream_enforcing">Sunshine 암호화 설정을 바꾸는 중…</string>

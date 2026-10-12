@@ -2225,6 +2225,25 @@
   <string name="workspace_screen_no_workspace">Сначала создайте удалённую рабочую область для этого компьютера, затем проверьте ещё раз.</string>
   <string name="workspace_screen_no_session">Не найден активный сеанс рабочего стола. Войдите в систему на этом компьютере и повторите попытку.</string>
   <string name="workspace_screen_windows_unsupported">Просмотр экрана компьютеров с Windows пока не поддерживается. Файлы и команды PowerShell уже работают.</string>
+  <string name="workspace_screen_firewall_needed">Sunshine на этом компьютере открывает порты управления для любого устройства в сети. Перед подключением ограничьте брандмауэр.</string>
+  <string name="workspace_screen_firewall_check_failed">Не удалось проверить брандмауэр этого компьютера, поэтому подключение не выполнено. Повторите попытку.</string>
+  <string name="workspace_screen_windows_stream_failed">Не удалось подключиться к этому компьютеру с Windows через Sunshine: %1$s.</string>
+  <string name="workspace_screen_windows_udp_hint">Телефон и компьютер должны быть в одной локальной сети или оба подключены к Tailscale.</string>
+  <string name="workspace_screen_windows_stream_setup">Настроить высокопроизводительное подключение</string>
+  <string name="workspace_screen_firewall_review">Посмотреть изменения</string>
+  <string name="workspace_screen_firewall_title">Ограничить брандмауэр Sunshine</string>
+  <string name="workspace_screen_firewall_hint">При установке Sunshine разрешил любому устройству доступ ко всем своим портам, включая страницу управления. После изменения управление и сопряжение идут только через SSH, а для сетей ниже остаются открытыми только порты передачи изображения.</string>
+  <string name="workspace_screen_firewall_add">Добавить одно правило, разрешающее только UDP 47998–48000 из %1$s</string>
+  <string name="workspace_screen_firewall_backup">Перед изменением текущие правила сохраняются на компьютере.</string>
+  <string name="workspace_screen_firewall_apply">Изменить</string>
+  <string name="workspace_screen_firewall_failed">Брандмауэр не изменён.</string>
+  <string name="workspace_screen_firewall_failed_detail">Брандмауэр не изменён: %1$s</string>
+  <plurals name="workspace_screen_firewall_disable">
+    <item quantity="one">Отключить %d разрешающее правило, добавленное Sunshine</item>
+    <item quantity="few">Отключить %d разрешающих правила, добавленных Sunshine</item>
+    <item quantity="many">Отключить %d разрешающих правил, добавленных Sunshine</item>
+    <item quantity="other">Отключить %d разрешающих правила, добавленных Sunshine</item>
+  </plurals>
   <string name="workspace_screen_config_incomplete">Экран выключен или настроен не полностью. Откройте настройки экрана и завершите настройку.</string>
   <string name="workspace_screen_start_failed">Не удалось запустить службу экрана. Проверьте вывод и повторите попытку.</string>
   <string name="workspace_screen_system">Система</string>
@@ -2236,6 +2255,7 @@
   <string name="workspace_screen_use_automatic">Перейти на автоматическое подключение</string>
   <string name="workspace_screen_stream">Режим высокой производительности</string>
   <string name="workspace_screen_stream_help">Sunshine на компьютере кодирует экран видеокартой: меньше задержка и плавнее движение. Изображение идёт по сети напрямую (UDP) и всегда шифруется; если это невозможно, Miffan использует обычное подключение. Для компьютеров с Linux и Mac.</string>
+  <string name="workspace_screen_stream_windows_help">Компьютеры с Windows подключаются только через Sunshine. Сопряжение и шифрование настраиваются здесь; для передачи изображения нужна одна локальная сеть или Tailscale.</string>
   <string name="workspace_screen_stream_check">Проверить Sunshine</string>
   <string name="workspace_screen_stream_checking">Проверяем Sunshine на компьютере…</string>
   <string name="workspace_screen_stream_enforcing">Меняем настройку шифрования Sunshine…</string>

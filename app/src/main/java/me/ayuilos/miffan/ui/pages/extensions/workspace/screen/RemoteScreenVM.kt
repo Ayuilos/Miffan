@@ -34,6 +34,7 @@ import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
 import me.ayuilos.miffan.data.repository.RemoteStreamFallback
 import me.ayuilos.miffan.data.repository.RemoteSurfaceTarget
+import me.ayuilos.miffan.data.repository.RemoteSunshineFirewallPlan
 import me.rerere.stream.StreamStats
 import me.rerere.workspace.screen.Framebuffer
 import me.rerere.workspace.screen.RemoteScreenFrameSink
@@ -79,6 +80,8 @@ sealed interface RemoteScreenNotice {
     data class StreamFallback(val fallback: RemoteStreamFallback) : RemoteScreenNotice
     /** The first stream on mobile data: what the chosen picture level may cost per hour. */
     data class StreamOnMeteredNetwork(val quality: RemoteScreenQuality) : RemoteScreenNotice
+    /** The approved Windows firewall change was refused or did not verify; nothing reconnects. */
+    data class FirewallFailed(val detail: String?) : RemoteScreenNotice
 }
 
 /** How the current connection reaches the desktop, for the page's status line and details. */
@@ -292,6 +295,12 @@ class RemoteScreenVM(
 
     init {
         viewModelScope.launch { for (job in keyboard) job() }
+        // A Windows computer can fail before any connection reports its platform; its settings already know it.
+        viewModelScope.launch {
+            val hostId = repository.hostIdOf(args.workspaceId) ?: return@launch
+            val known = runCatching { repository.getConfig(hostId)?.platform }.getOrNull() ?: return@launch
+            if (_platform.value == RemoteScreenPlatform.UNKNOWN) _platform.value = known
+        }
         connect()
     }
 
@@ -388,6 +397,49 @@ class RemoteScreenVM(
         if (!enabled) return
         _streamSuggestion.value = null
         reconnect()
+    }
+
+    private val _windowsSetup = MutableStateFlow(false)
+    /** A Windows computer has no plain connection, so its failed connection walks through Sunshine setup. */
+    val windowsSetup: StateFlow<Boolean> = _windowsSetup.asStateFlow()
+
+    fun beginWindowsStreamSetup() {
+        viewModelScope.launch {
+            val hostId = repository.hostIdOf(args.workspaceId) ?: return@launch
+            val host = runCatching { workspaces.getHostById(hostId) }.getOrNull() ?: return@launch
+            _streamSuggestion.value = StreamSuggestion(host.id, host.connectionRevision)
+            _windowsSetup.value = true
+            streamSetup.check(host.id, host.connectionRevision)
+        }
+    }
+
+    fun finishWindowsStreamSetup(completed: Boolean) {
+        _windowsSetup.value = false
+        _streamSuggestion.value = null
+        if (completed) reconnect()
+    }
+
+    private val _firewallApplying = MutableStateFlow(false)
+    val firewallApplying: StateFlow<Boolean> = _firewallApplying.asStateFlow()
+
+    /** Called only from the confirmation that lists this exact plan; the computer re-checks it before writing. */
+    fun applySunshineFirewall(plan: RemoteSunshineFirewallPlan) {
+        if (_firewallApplying.value) return
+        _firewallApplying.value = true
+        viewModelScope.launch {
+            try {
+                val hostId = repository.hostIdOf(args.workspaceId) ?: return@launch
+                val host = workspaces.getHostById(hostId) ?: return@launch
+                val result = repository.applySunshineFirewall(host.id, host.connectionRevision, plan.approve())
+                if (result.success) reconnect() else _notices.tryEmit(RemoteScreenNotice.FirewallFailed(result.detail))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _notices.tryEmit(RemoteScreenNotice.FirewallFailed(error.localizedMessage))
+            } finally {
+                _firewallApplying.value = false
+            }
+        }
     }
 
     /** Applies at once on VNC; a stream reconnects with the new resolution and bitrate. */

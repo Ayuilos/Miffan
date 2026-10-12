@@ -2223,6 +2223,22 @@
   <string name="workspace_screen_no_workspace">請先為這台主機建立遠端工作空間，再重新檢查。</string>
   <string name="workspace_screen_no_session">找不到已登入的桌面工作階段。請在這台電腦上登入桌面，再重試。</string>
   <string name="workspace_screen_windows_unsupported">暫時還不能查看 Windows 電腦的螢幕。檔案和 PowerShell 指令已經可以用了。</string>
+  <string name="workspace_screen_firewall_needed">這台電腦上的 Sunshine 允許網路裡的任何裝置存取它的管理連接埠。連線前需要先收緊防火牆。</string>
+  <string name="workspace_screen_firewall_check_failed">沒能檢查這台電腦的防火牆，為了安全沒有連線。請重試。</string>
+  <string name="workspace_screen_windows_stream_failed">沒能透過 Sunshine 連上這台 Windows 電腦：%1$s。</string>
+  <string name="workspace_screen_windows_udp_hint">手機和電腦需要在同一個區域網路，或者都連著 Tailscale。</string>
+  <string name="workspace_screen_windows_stream_setup">設定高效能連線</string>
+  <string name="workspace_screen_firewall_review">查看要做的修改</string>
+  <string name="workspace_screen_firewall_title">收緊 Sunshine 的防火牆</string>
+  <string name="workspace_screen_firewall_hint">Sunshine 安裝時允許任何裝置存取它的所有連接埠，包括管理頁面。修改後，管理和配對只經過 SSH，只有傳畫面的連接埠對下面的網段開放。</string>
+  <string name="workspace_screen_firewall_add">新增一條規則：只放行 UDP 47998–48000，來源限於 %1$s</string>
+  <string name="workspace_screen_firewall_backup">修改前會在電腦上自動備份現有規則。</string>
+  <string name="workspace_screen_firewall_apply">修改</string>
+  <string name="workspace_screen_firewall_failed">防火牆沒有修改成功。</string>
+  <string name="workspace_screen_firewall_failed_detail">防火牆沒有修改成功：%1$s</string>
+  <plurals name="workspace_screen_firewall_disable">
+    <item quantity="other">關閉 Sunshine 自帶的 %d 條放行規則</item>
+  </plurals>
   <string name="workspace_screen_config_incomplete">螢幕未啟用或設定不完整，請開啟螢幕設定完成設定。</string>
   <string name="workspace_screen_start_failed">螢幕服務無法啟動，請查看輸出後重試。</string>
   <string name="workspace_screen_system">系統</string>
@@ -2234,6 +2250,7 @@
   <string name="workspace_screen_use_automatic">改用自動連線</string>
   <string name="workspace_screen_stream">高效能模式</string>
   <string name="workspace_screen_stream_help">由電腦上的 Sunshine 用顯示卡編碼畫面，延遲更低、更流暢。畫面直接透過網路（UDP）傳到手機，並且一律加密；條件不符時自動改用一般連線。支援 Linux 和 Mac 電腦。</string>
+  <string name="workspace_screen_stream_windows_help">Windows 電腦只透過 Sunshine 連線。配對和加密在這裡設定；傳畫面需要手機和電腦在同一區域網路，或者都連著 Tailscale。</string>
   <string name="workspace_screen_stream_check">檢查 Sunshine</string>
   <string name="workspace_screen_stream_checking">正在檢查電腦上的 Sunshine…</string>
   <string name="workspace_screen_stream_enforcing">正在修改 Sunshine 的加密設定…</string>

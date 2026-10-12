@@ -60,6 +60,13 @@ internal fun remoteScreenSetupError(resources: Resources, error: Throwable): Str
         RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE -> resources.getString(R.string.workspace_screen_rdp_credentials_unavailable)
         RemoteScreenProblem.RDP_CERTIFICATE_CHANGED -> resources.getString(R.string.workspace_screen_rdp_certificate_changed)
         RemoteScreenProblem.WINDOWS_NOT_SUPPORTED -> resources.getString(R.string.workspace_screen_windows_unsupported)
+        RemoteScreenProblem.FIREWALL_REVIEW_NEEDED -> resources.getString(R.string.workspace_screen_firewall_needed)
+        RemoteScreenProblem.FIREWALL_CHECK_FAILED -> resources.getString(R.string.workspace_screen_firewall_check_failed)
+        RemoteScreenProblem.STREAM_UNAVAILABLE -> (error as RemoteScreenUnavailableException).streamFailure?.reason.let { reason ->
+            val text = resources.getString(R.string.workspace_screen_windows_stream_failed,
+                streamFallbackReason(resources, reason ?: RemoteStreamFallbackReason.OTHER))
+            if (reason == RemoteStreamFallbackReason.UDP_UNREACHABLE) text + "\n" + resources.getString(R.string.workspace_screen_windows_udp_hint) else text
+        }
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
 

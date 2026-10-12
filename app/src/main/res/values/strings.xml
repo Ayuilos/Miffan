@@ -2265,6 +2265,23 @@
   <string name="workspace_screen_no_workspace" tools:ignore="MissingTranslation">Create a remote workspace for this host first, then check again.</string>
   <string name="workspace_screen_no_session" tools:ignore="MissingTranslation">No logged-in desktop session was found. Log in to the desktop on this computer, then retry.</string>
   <string name="workspace_screen_windows_unsupported" tools:ignore="MissingTranslation">Viewing the screen of a Windows computer isn\'t supported yet. Files and PowerShell commands already work.</string>
+  <string name="workspace_screen_firewall_needed" tools:ignore="MissingTranslation">Sunshine on this computer lets any device on the network reach its management ports. Tighten the firewall before connecting.</string>
+  <string name="workspace_screen_firewall_check_failed" tools:ignore="MissingTranslation">Couldn\'t check this computer\'s firewall, so the connection was not made. Try again.</string>
+  <string name="workspace_screen_windows_stream_failed" tools:ignore="MissingTranslation">Couldn\'t connect to this Windows computer through Sunshine: %1$s.</string>
+  <string name="workspace_screen_windows_udp_hint" tools:ignore="MissingTranslation">The phone and the computer need to be on the same local network, or both connected to Tailscale.</string>
+  <string name="workspace_screen_windows_stream_setup" tools:ignore="MissingTranslation">Set up high-performance connection</string>
+  <string name="workspace_screen_firewall_review" tools:ignore="MissingTranslation">Review changes</string>
+  <string name="workspace_screen_firewall_title" tools:ignore="MissingTranslation">Tighten Sunshine\'s firewall</string>
+  <string name="workspace_screen_firewall_hint" tools:ignore="MissingTranslation">When Sunshine was installed, it let any device reach all of its ports, including its management page. After this change, management and pairing go only through SSH, and only the picture data ports stay open to the networks below.</string>
+  <string name="workspace_screen_firewall_add" tools:ignore="MissingTranslation">Add one rule that allows only UDP 47998–48000 from %1$s</string>
+  <string name="workspace_screen_firewall_backup" tools:ignore="MissingTranslation">The current rules are backed up on the computer before anything changes.</string>
+  <string name="workspace_screen_firewall_apply" tools:ignore="MissingTranslation">Change</string>
+  <string name="workspace_screen_firewall_failed" tools:ignore="MissingTranslation">The firewall wasn\'t changed.</string>
+  <string name="workspace_screen_firewall_failed_detail" tools:ignore="MissingTranslation">The firewall wasn\'t changed: %1$s</string>
+  <plurals name="workspace_screen_firewall_disable" tools:ignore="MissingTranslation">
+    <item quantity="one">Turn off %d allow rule that Sunshine added</item>
+    <item quantity="other">Turn off %d allow rules that Sunshine added</item>
+  </plurals>
   <string name="workspace_screen_config_incomplete" tools:ignore="MissingTranslation">The screen is disabled or its configuration is incomplete. Open screen settings to finish setup.</string>
   <string name="workspace_screen_start_failed" tools:ignore="MissingTranslation">The screen service could not start. Check the output and retry.</string>
   <string name="workspace_screen_system" tools:ignore="MissingTranslation">System</string>
@@ -2276,6 +2293,7 @@
   <string name="workspace_screen_use_automatic" tools:ignore="MissingTranslation">Use automatic connection</string>
   <string name="workspace_screen_stream" tools:ignore="MissingTranslation">High-performance mode</string>
   <string name="workspace_screen_stream_help" tools:ignore="MissingTranslation">Sunshine on the computer encodes the screen with its graphics card, for lower latency and smoother motion. The picture travels straight over the network (UDP) and is always encrypted; when that is not possible, Miffan uses the normal connection. Linux and Mac computers.</string>
+  <string name="workspace_screen_stream_windows_help" tools:ignore="MissingTranslation">Windows computers connect only through Sunshine. Pairing and encryption are set up here; the picture data needs the same local network or Tailscale.</string>
   <string name="workspace_screen_stream_check" tools:ignore="MissingTranslation">Check Sunshine</string>
   <string name="workspace_screen_stream_checking" tools:ignore="MissingTranslation">Checking Sunshine on the computer…</string>
   <string name="workspace_screen_stream_enforcing" tools:ignore="MissingTranslation">Changing Sunshine\'s encryption setting…</string>

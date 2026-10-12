@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.computer
 
+import me.rerere.workspace.RemotePlatform
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -144,7 +145,7 @@ class PartnerComputers(
             hostId = host.id,
             name = host.name,
             address = "${host.username}@${host.host}" + if (host.port != 22) ":${host.port}" else "",
-            platform = RemoteScreenPlatform.parse(host.screenPlatform),
+            platform = computerPlatform(host),
             screenEnabled = host.screenEnabled,
             workspaceId = workspace?.id,
             otherWorkspaceCount = hostWorkspaces.size - if (workspace != null) 1 else 0,
@@ -167,7 +168,7 @@ class PartnerComputers(
             workspaceId = workspace.id,
             hostId = host.id,
             name = host.name,
-            platform = RemoteScreenPlatform.parse(host.screenPlatform),
+            platform = computerPlatform(host),
             screenEnabled = host.screenEnabled,
             computerUse = assistant.computerUse,
         )
@@ -185,3 +186,7 @@ class PartnerComputers(
         workspaceList.find { it.id == bound }?.isRemote == false
     }.distinctUntilChanged()
 }
+
+/** SFTP knows a Windows host before its screen has ever opened and recorded a screen platform. */
+private fun computerPlatform(host: RemoteHostEntity): RemoteScreenPlatform =
+    if (host.platform == RemotePlatform.WINDOWS.storageName) RemoteScreenPlatform.WINDOWS else RemoteScreenPlatform.parse(host.screenPlatform)

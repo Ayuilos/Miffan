@@ -71,3 +71,20 @@ internal fun RemoteStreamSuggestion(vm: RemoteScreenVM, modifier: Modifier = Mod
             onFinished = { enabled -> enabling = false; vm.finishStreamSuggestion(enabled) })
     }
 }
+
+/**
+ * A Windows computer only connects through Sunshine, so a failed connection that Sunshine setup can
+ * fix (not running, encryption, pairing) runs the same enable flow here, then reconnects.
+ */
+@Composable
+internal fun RemoteWindowsStreamSetup(vm: RemoteScreenVM) {
+    val active by vm.windowsSetup.collectAsStateWithLifecycle()
+    val suggestion by vm.streamSuggestion.collectAsStateWithLifecycle()
+    val setups by vm.streamSetups.collectAsStateWithLifecycle()
+    val state = suggestion?.let { current -> setups[current.hostId]?.takeIf { it.connectionRevision == current.revision } }
+    if (active && state != null) {
+        RemoteStreamEnableFlow(state, onStart = { vm.startSunshine() }, onEnforce = { vm.enforceStreamEncryption() }, onPair = { vm.pairStream() },
+            onCancelPairing = vm::cancelStreamPairing, onEnable = { vm.enableStream() },
+            onFinished = vm::finishWindowsStreamSetup)
+    }
+}

@@ -2225,6 +2225,22 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_no_workspace">先にこのホストのリモートワークスペースを作成してから、もう一度確認してください。</string>
   <string name="workspace_screen_no_session">ログイン中のデスクトップセッションが見つかりません。このコンピューターでデスクトップにログインしてから、再試行してください。</string>
   <string name="workspace_screen_windows_unsupported">Windows コンピューターの画面表示にはまだ対応していません。ファイルと PowerShell コマンドは使えます。</string>
+  <string name="workspace_screen_firewall_needed">このコンピューターの Sunshine は、ネットワーク上のどのデバイスからでも管理ポートにアクセスできる状態です。接続する前にファイアウォールを絞り込んでください。</string>
+  <string name="workspace_screen_firewall_check_failed">このコンピューターのファイアウォールを確認できなかったため、安全のため接続しませんでした。再試行してください。</string>
+  <string name="workspace_screen_windows_stream_failed">Sunshine 経由でこの Windows コンピューターに接続できませんでした：%1$s。</string>
+  <string name="workspace_screen_windows_udp_hint">スマートフォンとコンピューターが同じローカルネットワークにあるか、両方が Tailscale に接続している必要があります。</string>
+  <string name="workspace_screen_windows_stream_setup">高パフォーマンス接続を設定</string>
+  <string name="workspace_screen_firewall_review">変更内容を確認</string>
+  <string name="workspace_screen_firewall_title">Sunshine のファイアウォールを絞り込む</string>
+  <string name="workspace_screen_firewall_hint">Sunshine はインストール時に、管理ページを含むすべてのポートへどのデバイスからでもアクセスできるようにしました。変更後、管理とペアリングは SSH 経由のみになり、画面データ用のポートだけが下のネットワークに開かれます。</string>
+  <string name="workspace_screen_firewall_add">UDP 47998–48000 のみを %1$s から許可するルールを 1 件追加する</string>
+  <string name="workspace_screen_firewall_backup">変更する前に、現在のルールをコンピューターにバックアップします。</string>
+  <string name="workspace_screen_firewall_apply">変更</string>
+  <string name="workspace_screen_firewall_failed">ファイアウォールを変更できませんでした。</string>
+  <string name="workspace_screen_firewall_failed_detail">ファイアウォールを変更できませんでした：%1$s</string>
+  <plurals name="workspace_screen_firewall_disable">
+    <item quantity="other">Sunshine が追加した許可ルール %d 件を無効にする</item>
+  </plurals>
   <string name="workspace_screen_config_incomplete">画面が無効になっているか、設定が不完全です。画面設定を開いてセットアップを完了してください。</string>
   <string name="workspace_screen_start_failed">画面サービスを起動できませんでした。出力を確認して再試行してください。</string>
   <string name="workspace_screen_system">システム</string>
@@ -2236,6 +2252,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_use_automatic">自動接続に切り替える</string>
   <string name="workspace_screen_stream">高性能モード</string>
   <string name="workspace_screen_stream_help">パソコン上の Sunshine がグラフィックカードで画面をエンコードし、遅延が少なく滑らかに表示します。画面はネットワーク（UDP）で直接スマートフォンに届き、常に暗号化されます。条件を満たさないときは通常の接続に自動で切り替えます。Linux と Mac のパソコンに対応しています。</string>
+  <string name="workspace_screen_stream_windows_help">Windows コンピューターは Sunshine 経由でのみ接続します。ペアリングと暗号化はここで設定します。画面データには同じローカルネットワークか Tailscale が必要です。</string>
   <string name="workspace_screen_stream_check">Sunshine を確認</string>
   <string name="workspace_screen_stream_checking">パソコンの Sunshine を確認しています…</string>
   <string name="workspace_screen_stream_enforcing">Sunshine の暗号化設定を変更しています…</string>
