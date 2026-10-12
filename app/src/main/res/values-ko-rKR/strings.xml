@@ -1765,6 +1765,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_me_ai_service">AI 서비스</string>
   <string name="im_me_ai_connected">연결됨</string>
   <string name="im_me_ai_not_connected">연결 안 됨</string>
+  <string name="im_me_background_model">백그라운드 정리</string>
+  <string name="im_me_background_model_fast">%1$s · 기억, 주제 정리, 요약 담당</string>
+  <string name="im_me_background_model_fallback">지금은 채팅 모델로 기억하고 있어요. 가벼운 모델을 고르면 주제도 자동으로 나눠요</string>
+  <string name="im_me_background_model_none">사용할 수 없어 파트너가 새로운 내용을 기억하지 않아요</string>
+  <string name="im_me_background_model_failed">지난 정리 실패: %1$s</string>
   <string name="im_me_appearance">외관 및 캐릭터</string>
   <string name="im_me_backup">백업 및 복원</string>
   <string name="im_me_notification">알림</string>

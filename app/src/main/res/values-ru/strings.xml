@@ -1765,6 +1765,11 @@
   <string name="im_me_ai_service">Сервис ИИ</string>
   <string name="im_me_ai_connected">Подключено</string>
   <string name="im_me_ai_not_connected">Не подключено</string>
+  <string name="im_me_background_model">Фоновый помощник</string>
+  <string name="im_me_background_model_fast">%1$s · запоминает, разбирает темы и делает выжимки</string>
+  <string name="im_me_background_model_fallback">Пока запоминает модель чата. Выберите лёгкую модель, чтобы темы тоже разбирались автоматически</string>
+  <string name="im_me_background_model_none">Недоступно, поэтому партнёры не запоминают новое</string>
+  <string name="im_me_background_model_failed">Последний запуск не удался: %1$s</string>
   <string name="im_me_appearance">Оформление и персонажи</string>
   <string name="im_me_backup">Резервное копирование</string>
   <string name="im_me_notification">Уведомления</string>
