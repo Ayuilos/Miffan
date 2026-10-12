@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 7
+$script:HelperVersion = 8
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -905,24 +905,56 @@ public static class MiffanCuaBridge {
         throw new IOException("MCP response missing");
     }
     public static bool Clipboard(string name,string root,string text) {
-        using(var pipe=Connect(name,root)) {
-            Rpc(pipe,1,"initialize",new { protocolVersion="2025-06-18", capabilities=new {}, clientInfo=new {name="miffan-clip",version="1.0"} });
-            WriteLine(pipe,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
-            Rpc(pipe,2,"tools/call",new {name="clipboard_write",arguments=new {text=text}});
-            var result=Rpc(pipe,3,"tools/call",new {name="clipboard_read",arguments=new {include_text=true}});
-            // Verification stays local to the helper; no old clipboard read, text/hash output.
-            if(result.ContainsKey("structuredContent")) {
-                var structured=result["structuredContent"] as Dictionary<string,object>;
-                if(structured!=null && structured.ContainsKey("text")) return (string)structured["text"]==text;
+        using(var session=new ClipSession(name,root)) return session.Write(text);
+    }
+    /**
+     * Serves clipboard writes over this process's stdin/stdout until EOF: one base64 UTF-8 line in,
+     * one JSON line out. Reads go through [Standard] because OpenSSH hands over overlapped pipes.
+     */
+    public static void ClipServe(string name,string root) {
+        var input=Standard(-10,FileAccess.Read); var output=Standard(-11,FileAccess.Write);
+        using(var session=new ClipSession(name,root)) {
+            while(true) {
+                string line;
+                try { line=ReadLine(input,4*1024*1024); } catch (EndOfStreamException) { return; }
+                bool ok=false;
+                try {
+                    string text=Utf8.GetString(Convert.FromBase64String(line.Trim()));
+                    ok=text.IndexOf('\0')<0 && session.Write(text);
+                } catch {}
+                WriteLine(output,ok ? "{\"success\":true,\"verified\":true}" : "{\"success\":false,\"verified\":false}");
+                // A failed write may leave the MCP connection unusable; the client falls back.
+                if(!ok) return;
             }
-            foreach(var item in (System.Collections.ArrayList)result["content"]) {
-                var content=(Dictionary<string,object>)item;
-                if(content.ContainsKey("text")) {
-                    try { var value=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>((string)content["text"]); if(value.ContainsKey("text")) return (string)value["text"]==text; } catch {}
-                }
-            }
-            return false;
         }
+    }
+    /** One bridge connection and MCP handshake reused for many clipboard writes (screen-page typing). */
+    public sealed class ClipSession : IDisposable {
+        readonly NamedPipeClientStream pipe; int next=1;
+        public ClipSession(string name,string root) {
+            pipe=Connect(name,root);
+            Rpc(pipe,next++,"initialize",new { protocolVersion="2025-06-18", capabilities=new {}, clientInfo=new {name="miffan-clip",version="1.0"} });
+            WriteLine(pipe,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+        }
+        public bool Write(string text) {
+            Rpc(pipe,next++,"tools/call",new {name="clipboard_write",arguments=new {text=text}});
+            return Matches(Rpc(pipe,next++,"tools/call",new {name="clipboard_read",arguments=new {include_text=true}}),text);
+        }
+        public void Dispose() { pipe.Dispose(); }
+    }
+    static bool Matches(Dictionary<string,object> result,string text) {
+        // Verification stays local to the helper; no old clipboard read, text/hash output.
+        if(result.ContainsKey("structuredContent")) {
+            var structured=result["structuredContent"] as Dictionary<string,object>;
+            if(structured!=null && structured.ContainsKey("text")) return (string)structured["text"]==text;
+        }
+        foreach(var item in (System.Collections.ArrayList)result["content"]) {
+            var content=(Dictionary<string,object>)item;
+            if(content.ContainsKey("text")) {
+                try { var value=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>((string)content["text"]); if(value.ContainsKey("text")) return (string)value["text"]==text; } catch {}
+            }
+        }
+        return false;
     }
 }
 '@
@@ -1065,6 +1097,14 @@ function Invoke-CuaBridge {
 function Invoke-CuaStdio {
     $context=Ensure-CuaBridge
     [MiffanCuaBridge]::Stdio($context.pipe,$context.directory)
+}
+# Long-lived clipboard writer for typing on a screen page: one process, one compiled bridge client
+# and one MCP handshake for the whole connection. Each stdin line is base64 UTF-8 text; each reply
+# is one JSON line. Text never appears in argv or output. EOF ends it.
+function Invoke-CuaClipboardServe {
+    $context=Ensure-CuaBridge
+    Assert-PrivateDirectory $context.directory $context.sid
+    [MiffanCuaBridge]::ClipServe($context.pipe,$context.directory)
 }
 function Invoke-CuaClipboard([string]$Text) {
     if ($Text.Contains([char]0)) {throw 'Clipboard text cannot contain NUL'}
@@ -1235,6 +1275,14 @@ if ($MyInvocation.InvocationName -ne '.') {
     $OutputEncoding = $script:Utf8
     $script:LastBackup = $null; $script:LastDesktopTask=$null; $script:LastDesktopDirectory=$null
     try {
+        if ($Command -eq 'clip' -and $Action -eq 'serve' -and -not $Operation) {
+            try { Invoke-CuaClipboardServe }
+            catch {
+                # Startup failed (no usable cua-driver, locked desktop…): say so once; the client falls back.
+                [Console]::Out.WriteLine((ConvertTo-PlainJson @{success=$false;verified=$false;transport='cua-bridge-session'}))
+            }
+            exit 0
+        }
         if ($Command -eq 'cua' -and -not $Operation -and $Action -in @('', 'bridge','daemon')) {
             if ($Action -eq 'bridge') {Invoke-CuaBridge}
             elseif ($Action -eq 'daemon') {

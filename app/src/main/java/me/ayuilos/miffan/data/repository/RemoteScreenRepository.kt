@@ -191,6 +191,8 @@ class RemoteScreenRepository(
     private val json = Json { ignoreUnknownKeys = true }
 
     private val lock = Any()
+    /** The long-lived clipboard writer of each open Windows screen, by workspace. */
+    private val windowsClipboards = java.util.concurrent.ConcurrentHashMap<String, WindowsClipboardChannel>()
     private val open = mutableMapOf<String, MutableSet<RemoteScreenConnection>>()
 
     suspend fun getConfig(hostId: String): RemoteHostScreenConfig? {
@@ -429,10 +431,12 @@ class RemoteScreenRepository(
         var streamRequested = stream.requested(host.streamEnabled)
         var streamAddress: String? = null
         var streamFallback: RemoteStreamFallback? = null
+        var clipboard: WindowsClipboardChannel? = null
         val callerJob = currentCoroutineContext()[Job]
         val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
             runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { ensureRevision(host.id, host.connectionRevision) }
             val windows = ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS
+            if (windows) clipboard = WindowsClipboardChannel { ssh.openProcess(screenHelperCommand(ssh.platform, "clip serve")) }
             streamRequested = windows || streamRequested
             val endpoint = if (windows) RemoteScreenEndpoint.Helper else configuredEndpoint
                 ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
@@ -471,7 +475,7 @@ class RemoteScreenRepository(
                             else SunshineCommand(false, "Display wake failed", true)
                         }
                         val remaining = (deadline - System.nanoTime()) / 1_000_000
-                        val opened = streams.open(ssh, host, probe, { text -> writeStreamClipboard(ssh, text) }, remaining,
+                        val opened = streams.open(ssh, host, probe, { text -> if (clipboard?.write(text) != true) writeStreamClipboard(ssh, text) }, remaining,
                             stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height), platform)
                         if (platform == RemoteScreenPlatform.MACOS && opened.fallback != null) {
                             // A capture denial can appear only after attempting to build a stream.
@@ -541,10 +545,12 @@ class RemoteScreenRepository(
                     open[host.id]?.remove(closed)
                     if (open[host.id].isNullOrEmpty()) open.remove(host.id)
                 }
+                clipboard?.let { windowsClipboards.remove(workspaceId, it); it.close() }
             }
+            clipboard?.let { windowsClipboards.put(workspaceId, it)?.close() }
             synchronized(lock) { open.getOrPut(host.id, ::mutableSetOf) += connection }
             connection
-        } catch (error: Throwable) { handle.close(); throw error }
+        } catch (error: Throwable) { clipboard?.close(); handle.close(); throw error }
     }
 
     /** Uses cliprdr for an active RDP session; VNC and STREAM use the SSH clipboard helper. */
@@ -553,6 +559,8 @@ class RemoteScreenRepository(
      * Best effort and quick to skip elsewhere: the screen never waits on it.
      */
     suspend fun prepareWindowsTyping(workspaceId: String) {
+        // An open Windows screen opens its clipboard channel, which also starts the bridge.
+        windowsClipboards[workspaceId]?.let { channel -> withContext(Dispatchers.IO) { channel.prepare() }; return }
         withRemote(workspaceId) { ssh ->
             if (ssh.platform != me.rerere.workspace.RemotePlatform.WINDOWS) return@withRemote
             ensureHelper(ssh)

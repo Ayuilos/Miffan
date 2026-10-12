@@ -96,7 +96,7 @@ Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
     Assert-Equal $decoded.items.Count 0 'empty JSON array'
     Assert-Equal $decoded.one.Count 1 'single JSON array'
     Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
-    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '7' 'integer version contract'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '8' 'integer version contract'
 }
 Test 'firewall review includes exact LAN and detected Tailscale sources without granting writes' {
     function Get-NetIPConfiguration { return @(
