@@ -94,4 +94,16 @@ class ConversationRecallTest {
             assertTrue(it.description.contains("private chats and group chats"))
         }
     }
+    @Test fun oldPerspectiveTitlesResolveBlankNamesLiveAndAdvertiseDirectReading() = runTest {
+        val unnamed = b.copy(name = "")
+        val direct = chat(PartnerChatKind.DIRECT)
+        val group = chat(PartnerChatKind.GROUP)
+        coEvery { repo.searchMessages("needle", MessageSearchSort.RELEVANCE, a.id) } returns
+            listOf(result("与 伙伴 的私聊", direct), result("群聊：伙伴", group))
+        listOf(direct, group).forEach { every { chats.observeChat(it.id) } returns flowOf(it) }
+        val rows = search(settings.copy(assistants = listOf(a, unnamed))).map { it.jsonObject }
+        assertEquals(listOf("和 默认助手 的私聊", "小A · 默认助手"), rows.map { it.getValue("title").jsonPrimitive.content })
+        assertTrue(rows.all { it.getValue("read_hint").jsonPrimitive.content.contains("read_partner_chat") })
+    }
+
 }

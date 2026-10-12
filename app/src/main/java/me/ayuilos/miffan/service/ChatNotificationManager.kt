@@ -262,7 +262,7 @@ class ChatNotificationManager(
     internal fun notifyGroupMessage(chat: PartnerChat, message: PartnerChatMessage, trigger: PartnerChatMessage) {
         if (!shouldNotifyGroupMessage(chat, message, trigger, isForeground.value,
             settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration)) return
-        val name = settingsStore.settingsFlow.value.getAssistantById(message.senderId)?.name?.ifBlank { "伙伴" } ?: "伙伴"
+        val name = me.ayuilos.miffan.data.partner.partnerDisplayName(settingsStore.settingsFlow.value.getAssistantById(message.senderId))
         context.sendNotification(CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID, chat.id.hashCode() and Int.MAX_VALUE) {
             title = partnerChatTitle(chat, settingsStore.settingsFlow.value)
             content = "$name：${message.text.stripMarkdown()}"

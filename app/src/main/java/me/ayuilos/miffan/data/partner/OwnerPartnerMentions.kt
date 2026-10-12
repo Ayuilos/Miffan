@@ -34,7 +34,7 @@ internal fun partnerMentionHints(conversation: Conversation, settings: Settings)
             ids.forEach { id ->
                 val assistant = assistants.getValue(id)
                 val introduction = assistant.systemPrompt.lineSequence().firstOrNull().orEmpty().take(160)
-                appendLine("- ${assistant.name.ifBlank { BLANK_PARTNER_NAMES[1] }}（联系人 id: $id）：$introduction")
+                appendLine("- ${partnerDisplayName(assistant)}（联系人 id: $id）：$introduction")
             }
             appendLine("需要联系时直接调用 send_message，to 填上面的 id，不必先调用 list_contacts。主人 @ 了谁，就表示已经同意你联系谁。")
             append("</partner_mentions>")

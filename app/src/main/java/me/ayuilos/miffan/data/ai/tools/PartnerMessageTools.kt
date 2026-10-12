@@ -33,7 +33,7 @@ internal suspend fun buildPartnerMessageTools(
                     settings.assistants.filter { it.id != caller.assistantId }.forEach { assistant ->
                         add(buildJsonObject {
                             put("id", assistant.id.toString())
-                            put("name", assistant.name.ifBlank { me.ayuilos.miffan.data.partner.BLANK_PARTNER_NAMES[1] })
+                            put("name", me.ayuilos.miffan.data.partner.partnerDisplayName(assistant))
                             put("description", assistant.systemPrompt.trim().lineSequence().firstOrNull().orEmpty().take(160))
                             put("in_this_group", assistant.id in groupMemberIds)
                             put("authorized", PartnerPair.of(caller.assistantId, assistant.id) in settings.partnerContactGrants)

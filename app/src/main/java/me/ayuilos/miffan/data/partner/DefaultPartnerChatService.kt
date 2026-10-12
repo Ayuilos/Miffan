@@ -208,7 +208,7 @@ internal class DefaultPartnerChatService(
                 try {
                     val late = task.await()
                     if (chat.id !in deleted) {
-                        val name = settingsStore.settingsFlow.value.getAssistantById(b)?.name?.ifBlank { "伙伴" } ?: "伙伴"
+                        val name = partnerDisplayName(settingsStore.settingsFlow.value.getAssistantById(b))
                         runtime.wake(MessageOrigin.Event("partner_replied", "$name 回复了", b, chat.id),
                             caller.assistantId, "$name 在你们的私聊中回复了：\n${late.text}\n请处理这条回复，并按需要向主人汇报。", caller.id)
                     }
@@ -225,7 +225,7 @@ internal class DefaultPartnerChatService(
         val chat = store.chat(chatId) ?: return refused("Chat no longer exists.")
         if (caller.assistantId !in chat.memberIds) return refused("Sender is not a member of this chat.")
         val other = chat.memberIds.firstOrNull { it != caller.assistantId }
-        val name = other?.let { settingsStore.settingsFlow.value.getAssistantById(it)?.name }?.ifBlank { "伙伴" } ?: "伙伴"
+        val name = partnerDisplayName(other?.let { settingsStore.settingsFlow.value.getAssistantById(it) })
         runtime.ownerNote(caller.assistantId, MessageOrigin.Event("partner_note", "来自和 $name 的私聊", other, chatId), text)
         return result(PartnerMessageTool.STATUS_DELIVERED, chatId, caller.assistantId)
     }
@@ -234,7 +234,7 @@ internal class DefaultPartnerChatService(
         val member = store.member(chat.id, assistantId)
         val settings = settingsStore.settingsFlow.awaitLoadedSettings()
         val other = chat.memberIds.first { it != assistantId }
-        val name = settings.getAssistantById(other)?.name?.ifBlank { "伙伴" } ?: "伙伴"
+        val name = partnerDisplayName(settings.getAssistantById(other))
         val segment = member.segmentId?.let { runtime.loadSegment(it) } ?: Conversation(
             assistantId = assistantId, chatId = chat.id, title = if (chat.kind == PartnerChatKind.GROUP) "群聊：${partnerChatTitle(chat, settings)}" else "与 $name 的私聊", messageNodes = emptyList())
         return member.copy(segmentId = segment.id) to segment

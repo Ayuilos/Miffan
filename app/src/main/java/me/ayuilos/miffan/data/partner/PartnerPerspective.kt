@@ -26,21 +26,21 @@ internal fun synchronizePerspective(segment: Conversation, messages: List<ChatMe
         }
         val owner = m.senderId == OWNER_PARTICIPANT_ID
         val name = if (owner) settings.displaySetting.userNickname.ifBlank { "主人" }
-            else settings.getAssistantById(m.senderId)?.name?.ifBlank { "伙伴" } ?: "伙伴"
+            else partnerDisplayName(settings.getAssistantById(m.senderId))
         current.appendMessage(UIMessage(id = m.id, role = MessageRole.USER, parts = listOf(UIMessagePart.Text("[$name] ${m.text}"))),
             origin = if (owner) null else MessageOrigin.Partner(m.senderId, requireNotNull(m.exchangeId), stored.chain))
     }
 }
 
 internal fun perspectiveContext(chat: PartnerChat, assistantId: Uuid, settings: Settings): String {
-    val others = chat.memberIds.filter { it != assistantId }.map { settings.getAssistantById(it)?.name?.ifBlank { "伙伴" } ?: "伙伴" }
+    val others = chat.memberIds.filter { it != assistantId }.map { partnerDisplayName(settings.getAssistantById(it)) }
     val owner = settings.displaySetting.userNickname.ifBlank { "主人" }
     if (chat.kind == PartnerChatKind.GROUP) {
         val members = chat.memberIds.joinToString("\n") { id ->
             val assistant = settings.getAssistantById(id)
-            "${assistant?.name?.ifBlank { "伙伴" } ?: "伙伴"}：${assistant?.systemPrompt?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(160).orEmpty()}"
+            "${partnerDisplayName(assistant)}：${assistant?.systemPrompt?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(160).orEmpty()}"
         }
-        val host = chat.hostId?.let { settings.getAssistantById(it)?.name } ?: "伙伴"
+        val host = partnerDisplayName(chat.hostId?.let { settings.getAssistantById(it) })
         return """
             <partner_chat>
             这是群“${partnerChatTitle(chat, settings)}”，主人是 $owner。成员及各自介绍：
@@ -69,13 +69,11 @@ internal fun Conversation.partnerTrigger(): MessageOrigin.Partner? =
 internal fun parseGroupMentions(text: String, chat: PartnerChat, sender: Uuid, settings: Settings): List<Uuid> {
     val ownerNames = listOf("主人" to OWNER_PARTICIPANT_ID) +
         settings.displaySetting.userNickname.takeIf { it.isNotBlank() }?.let { listOf(it to OWNER_PARTICIPANT_ID) }.orEmpty()
-    val names = ownerNames + chat.memberIds.mapNotNull { id ->
-        settings.getAssistantById(id)?.name?.takeIf { it.isNotBlank() }?.let { it to id }
-    }
+    val names = ownerNames + partnerMentionNames(chat.memberIds.mapNotNull { settings.getAssistantById(it) })
     return findPartnerMentions(text, names).map { it.id }.filter { it != sender }.distinct()
 }
 
 internal fun partnerChatTitle(chat: PartnerChat, settings: Settings): String =
     chat.title.takeIf { chat.kind == PartnerChatKind.GROUP && it.isNotBlank() } ?: chat.memberIds.joinToString(" · ") {
-        settings.getAssistantById(it)?.name?.ifBlank { "伙伴" } ?: "伙伴"
+        partnerDisplayName(settings.getAssistantById(it))
     }

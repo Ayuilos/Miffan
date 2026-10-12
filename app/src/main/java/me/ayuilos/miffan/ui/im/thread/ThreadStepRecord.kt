@@ -91,7 +91,7 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
         "workspace_publish_files" -> step(R.string.im_step_publish, changes = true)
         "workspace_fetch_url", "scrape_web" -> step(R.string.im_step_read_web)
         "search_web" -> step(R.string.im_step_search)
-        "conversation_search", "recent_chats" -> step(R.string.im_step_chats)
+        "conversation_search", "recent_chats", "read_partner_chat" -> step(R.string.im_step_chats)
         "memory_tool" -> when (arg("action")) {
             "create" -> step(R.string.im_step_memory_save, changes = true)
             "edit" -> step(R.string.im_step_memory_edit, changes = true)

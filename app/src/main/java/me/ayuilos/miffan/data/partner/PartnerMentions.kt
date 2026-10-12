@@ -34,6 +34,10 @@ fun findPartnerMentions(text: String, names: List<Pair<String, Uuid>>): List<Par
  */
 val BLANK_PARTNER_NAMES = listOf("Default Assistant", "默认助手", "預設助手", "デフォルトアシスタント", "기본 어시스턴트", "Ассистент по умолчанию")
 
+/** Stable data/tool name; blank UI names are recognized in every language by [partnerMentionNames]. */
+fun partnerDisplayName(assistant: Assistant?): String =
+    assistant?.name?.ifBlank { BLANK_PARTNER_NAMES[1] } ?: "已删除的伙伴"
+
 /**
  * The names an owner can @ each partner by: its own name, or for a blank-named partner the name the UI shows,
  * in any language, so a mention survives switching the app language.

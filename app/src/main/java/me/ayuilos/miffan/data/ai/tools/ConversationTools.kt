@@ -13,6 +13,8 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.db.fts.MessageSearchSort
 import me.ayuilos.miffan.data.model.PartnerChat
+import me.ayuilos.miffan.data.model.OWNER_PARTICIPANT_ID
+import me.ayuilos.miffan.data.partner.partnerDisplayName
 import me.ayuilos.miffan.data.model.PartnerChatKind
 import me.ayuilos.miffan.data.model.isImMode
 import me.ayuilos.miffan.data.partner.PartnerChatService
@@ -42,6 +44,7 @@ fun createConversationTools(
             ${if (settings.isImMode) "Also covers your private chats and group chats with other partners that you took part in." else ""}
             Use this when you need quick context about what the user has been discussing lately.
             Only titles and dates are returned; use `conversation_search` to look up the actual content.
+            ${if (settings.isImMode) "For partner chats, use read_partner_chat with the returned chat_id to read the conversation directly, without guessing keywords." else ""}
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -95,6 +98,7 @@ fun createConversationTools(
             Use focused keywords. Run multiple searches with different keywords if needed.
             ${if (settings.isImMode) "Also covers your private chats and group chats with other partners that you took part in." else ""}
             Each result includes the conversation title, a snippet with matched keywords wrapped in [brackets], and the date.
+            ${if (settings.isImMode) "For private chats and group chats, use read_partner_chat with a result's chat_id to read more of the conversation." else ""}
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -136,7 +140,10 @@ fun createConversationTools(
                         if (settings.isImMode) {
                             put("source", if (result.chatId == null) "owner_thread"
                                 else chats[result.chatId]?.let(::recallChatSource) ?: "partner_chat")
-                            result.chatId?.let { put("chat_id", it) }
+                            result.chatId?.let {
+                                put("chat_id", it)
+                                put("read_hint", "Use read_partner_chat with this chat_id to read recent messages.")
+                            }
                         }
                     })
                 }
@@ -144,6 +151,77 @@ fun createConversationTools(
             listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(payload)))
         }
     )
+) + if (settings.isImMode) listOf(readPartnerChatTool(assistantId, settings, requireNotNull(partnerChats))) else emptyList()
+
+private fun readPartnerChatTool(assistantId: Uuid, settings: Settings, chats: PartnerChatService): Tool = Tool(
+    name = "read_partner_chat",
+    description = """
+        Read the recent final messages of private chats and group chats you are a member of.
+        Use chat_id from recent_chats or conversation_search to find who you talked with and what was discussed.
+        Returns the chat title, type, and recent messages in chronological order, with sender names and timestamps.
+        Each message is limited to 2000 characters. You cannot read a chat you are not a member of.
+    """.trimIndent(),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("chat_id", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Partner chat UUID from recent_chats or conversation_search")
+                })
+                put("limit", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "Number of recent messages (default: 20, max: 50)")
+                })
+            },
+            required = listOf("chat_id"),
+        )
+    },
+    execute = { args ->
+        fun errorResult(message: String) = listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(
+            buildJsonObject { put("error", message) }
+        )))
+        val id = (args.jsonObject["chat_id"] as? kotlinx.serialization.json.JsonPrimitive)
+            ?.takeIf { it.isString }?.contentOrNull
+            ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+        if (id == null) {
+            errorResult("chat_id must be a valid partner chat UUID.")
+        } else {
+            val chat = chats.observeChat(id).first()
+            when {
+                chat == null -> errorResult("Partner chat not found.")
+                assistantId !in chat.memberIds -> errorResult("You are not a member of this partner chat.")
+                else -> {
+                    val limit = (args.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 20).coerceIn(1, 50)
+                    val messages = chats.observeMessages(id).first().sortedBy { it.createdAt }.takeLast(limit)
+                    // Membership can change while messages are loaded; recheck before exposing content.
+                    val currentChat = chats.observeChat(id).first()
+                    when {
+                        currentChat == null -> errorResult("Partner chat not found.")
+                        assistantId !in currentChat.memberIds -> errorResult("You are not a member of this partner chat.")
+                        else -> listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(buildJsonObject {
+                            put("chat_id", id.toString())
+                            put("title", recallChatTitle(currentChat, assistantId, settings))
+                            put("type", currentChat.kind.name.lowercase())
+                            put("messages", buildJsonArray {
+                                messages.forEach { message ->
+                                    add(buildJsonObject {
+                                        put("sender", if (message.senderId == OWNER_PARTICIPANT_ID)
+                                            settings.displaySetting.userNickname.ifBlank { "主人" }
+                                            else partnerDisplayName(settings.getAssistantById(message.senderId)))
+                                        put("sender_id", message.senderId.toString())
+                                        put("created_at", message.createdAt.toString())
+                                        val text = message.text
+                                        put("text", if (text.codePointCount(0, text.length) > 2000)
+                                            text.substring(0, text.offsetByCodePoints(0, 2000)) else text)
+                                    })
+                                }
+                            })
+                        })))
+                    }
+                }
+            }
+        }
+    },
 )
 
 private fun recallChatSource(chat: PartnerChat): String =
@@ -152,5 +230,5 @@ private fun recallChatSource(chat: PartnerChat): String =
 private fun recallChatTitle(chat: PartnerChat, assistantId: Uuid, settings: Settings): String =
     if (chat.kind == PartnerChatKind.GROUP) partnerChatTitle(chat, settings)
     else "和 ${chat.memberIds.filter { it != assistantId }.joinToString(" · ") {
-        settings.getAssistantById(it)?.name?.ifBlank { "伙伴" } ?: "伙伴"
+        partnerDisplayName(settings.getAssistantById(it))
     }} 的私聊"

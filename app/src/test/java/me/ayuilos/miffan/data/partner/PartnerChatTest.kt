@@ -607,6 +607,17 @@ class PartnerChatTest {
         assertEquals("小A · 小B", partnerChatTitle(chat.copy(kind = PartnerChatKind.DIRECT), Settings(assistants = listOf(a,b))))
     }
 
+    @Test fun serviceCreatesDisplayNamedPerspectiveAndOwnerNoteForBlankPartner() = runTest {
+        val f = Fixture(this)
+        f.settings.value = f.settings.value.copy(assistants = listOf(a.copy(name = ""), b, c))
+        assertEquals("replied", f.service.send(caller(), b.id.toString(), "hello").status())
+        val perspective = f.generated.single()
+        assertEquals("与 默认助手 的私聊", perspective.title)
+        assertEquals("[默认助手] hello", perspective.currentMessages.single().toText())
+        assertEquals("delivered", f.service.send(perspective, "owner", "note").status())
+        coVerify { f.runtime.ownerNote(b.id, match { it.summary == "来自和 默认助手 的私聊" }, "note") }
+    }
+
 }
 
 internal class FakePartnerStore : PartnerChatStore {
@@ -657,4 +668,6 @@ internal class FakePartnerStore : PartnerChatStore {
     override suspend fun delete(chatId: Uuid) {
         chats.remove(chatId); members.keys.removeAll { it.first == chatId }; allMessages.removeAll { it.message.chatId == chatId }; publish()
     }
+
+
 }
