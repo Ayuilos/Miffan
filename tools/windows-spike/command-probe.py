@@ -14,7 +14,7 @@ cases = [
     ('cmd-cd', 'cd', b''),
     ('encoded-output-exit', command('Write-Output "中文测试"; exit 7'), b''),
     ('encoded-stdin-exit', command('$v=[Console]::In.ReadToEnd(); Write-Output ("stdin:"+$v); exit 9'), '中文测试\n'.encode()),
-    # Added after the initial run exposed CP936 stdin decoding. Not yet verified remotely.
+    # Verified in the resumed run: Chinese stdin and explicit exit 9 survive.
     ('encoded-utf8-stdin-exit', command('[Console]::InputEncoding=New-Object System.Text.UTF8Encoding($false); $v=[Console]::In.ReadToEnd(); Write-Output ("stdin:"+$v); exit 9'), '中文测试\n'.encode()),
     ('stdin-script-exit', 'powershell.exe -NoLogo -NoProfile -NonInteractive -Command -',
      (prefix+'Write-Output "中文测试"\nexit 11\n').encode()),
