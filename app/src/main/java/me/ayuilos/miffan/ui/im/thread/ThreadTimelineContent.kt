@@ -178,8 +178,8 @@ internal fun ThreadMessageBubble(
                             is UIMessagePart.Text -> if (part.text.isBlank()) Unit
                             // The owner's own words with @partners in them read as typed, the mentions colored as in the input.
                             else if (user && hasPartnerMention(part.text, partners)) Text(
-                                mentionText(part.text, partners, SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)),
-                                style = MaterialTheme.typography.bodyLarge)
+                                mentionText(part.text, partners, SpanStyle(fontWeight = FontWeight.SemiBold)),
+                                style = MaterialTheme.typography.bodyLarge, inlineContent = mentionAvatars(partners))
                             else MarkdownBlock(part.text.withWorkspaceImages(imageContext),
                                 style = MaterialTheme.typography.bodyLarge)
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))

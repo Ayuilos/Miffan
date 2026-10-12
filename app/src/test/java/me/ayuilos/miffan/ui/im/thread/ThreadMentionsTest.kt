@@ -59,6 +59,54 @@ class ThreadMentionsTest {
         assertEquals(true, hasPartnerMention("@小Bot 你好", listOf(b, bot)))
         assertEquals(false, hasPartnerMention("@小C 你好", listOf(b, bot)))
         val styled = mentionText("@小Bot 和 @小B", listOf(b, bot), androidx.compose.ui.text.SpanStyle())
-        assertEquals(listOf(0 to 5, 8 to 11), styled.spanStyles.map { it.start to it.end })
+        // The text (what copying yields) is unchanged; each @ carries an avatar and the name is styled.
+        assertEquals("@小Bot 和 @小B", styled.text)
+        assertEquals(listOf(1 to 5, 9 to 11), styled.spanStyles.map { it.start to it.end })
+        assertEquals(listOf(mentionAvatarKey(bot.id), mentionAvatarKey(b.id)),
+            styled.getStringAnnotations(0, styled.length).map { it.item })
+    }
+
+    private fun at(text: String, start: Int, end: Int = start) = TextFieldValue(text, TextRange(start, end))
+
+    @Test
+    fun `backspace at a chip's end removes the whole chip`() {
+        val result = keepChipsWhole(at("@小B 你好", 3), at("@小 你好", 2), listOf(b))
+        assertEquals(" 你好", result.text)
+        assertEquals(TextRange(0), result.selection)
+    }
+
+    @Test
+    fun `backspacing the space after a chip removes the chip with it`() {
+        val result = keepChipsWhole(at("问@小B 你", 5), at("问@小B你", 4), listOf(b))
+        assertEquals("问你", result.text)
+        assertEquals(TextRange(1), result.selection)
+    }
+
+    @Test
+    fun `deleting a selection that cuts into a chip takes the chip`() {
+        val result = keepChipsWhole(at("@小B 你好", 2, 5), at("@小好", 2), listOf(b))
+        assertEquals("好", result.text)
+        assertEquals(TextRange(0), result.selection)
+    }
+
+    @Test
+    fun `typing over part of a chip replaces the chip`() {
+        val result = keepChipsWhole(at("问@小B", 3, 4), at("问@小x", 4), listOf(b))
+        assertEquals("问x", result.text)
+        assertEquals(TextRange(2), result.selection)
+    }
+
+    @Test
+    fun `ordinary edits around a chip pass through`() {
+        assertEquals(at("@小B x", 5), keepChipsWhole(at("@小B ", 4), at("@小B x", 5), listOf(b)))
+        assertEquals(at("@小B  ", 5), keepChipsWhole(at("@小B ", 4), at("@小B  ", 5), listOf(b)))
+        assertEquals(at("hello", 4), keepChipsWhole(at("hell", 4), at("hello", 4), listOf(b)))
+    }
+
+    @Test
+    fun `the cursor never rests inside a chip`() {
+        assertEquals(TextRange(0), keepChipsWhole(at("@小B 你", 5), at("@小B 你", 2), listOf(b)).selection)
+        assertEquals(TextRange(3), keepChipsWhole(at("@小B 你", 0), at("@小B 你", 1), listOf(b)).selection)
+        assertEquals(TextRange(0, 5), keepChipsWhole(at("@小B 你", 4), at("@小B 你", 1, 5), listOf(b)).selection)
     }
 }
