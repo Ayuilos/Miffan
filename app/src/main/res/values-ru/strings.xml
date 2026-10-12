@@ -1431,6 +1431,8 @@
   <string name="workspace_view_connection_details">Сведения о рабочем пространстве и подключении</string>
   <string name="workspace_login_target">Адрес входа</string>
   <string name="workspace_remote_directory">Удалённый каталог</string>
+  <string name="workspace_remote_system">Система</string>
+  <string name="workspace_remote_system_windows">Windows (экран и интерактивный терминал пока не поддерживаются)</string>
   <string name="workspace_host_identity">Идентификатор хоста</string>
   <string name="workspace_fingerprint_confirmed">Отпечаток подтверждён</string>
   <string name="workspace_fingerprint_unconfirmed">Отпечаток не подтверждён</string>
@@ -1603,6 +1605,7 @@
   <string name="workspace_export_private_key">Экспортировать закрытый ключ</string>
   <string name="workspace_terminal_disconnected">Соединение с терминалом прервано</string>
   <string name="workspace_terminal_connection_failed">Не удалось подключиться к удалённому терминалу</string>
+  <string name="workspace_terminal_windows_unsupported">Интерактивный терминал в Windows пока не поддерживается. Партнёры могут выполнять команды PowerShell.</string>
   <string name="workspace_connecting_host">Подключение к %1$s…</string>
   <string name="workspace_remote_host">Удалённый хост</string>
   <string name="workspace_connection_ended_exit">Соединение завершено · Код выхода %1$d</string>
@@ -2221,6 +2224,7 @@
   <string name="workspace_screen_no_output">Команда ничего не вывела.</string>
   <string name="workspace_screen_no_workspace">Сначала создайте удалённую рабочую область для этого компьютера, затем проверьте ещё раз.</string>
   <string name="workspace_screen_no_session">Не найден активный сеанс рабочего стола. Войдите в систему на этом компьютере и повторите попытку.</string>
+  <string name="workspace_screen_windows_unsupported">Просмотр экрана компьютеров с Windows пока не поддерживается. Файлы и команды PowerShell уже работают.</string>
   <string name="workspace_screen_config_incomplete">Экран выключен или настроен не полностью. Откройте настройки экрана и завершите настройку.</string>
   <string name="workspace_screen_start_failed">Не удалось запустить службу экрана. Проверьте вывод и повторите попытку.</string>
   <string name="workspace_screen_system">Система</string>
@@ -2473,6 +2477,7 @@
   <string name="im_computer_screen_start_failed">Не удалось запустить службу экрана. Проверьте ещё раз или повторите попытку.</string>
   <string name="im_computer_screenshot">Снимок экрана компьютера; нажмите для просмотра</string>
   <string name="im_computer_setup_needed">Подключите и настройте этот компьютер, чтобы открыть его экран.</string>
+  <string name="im_computer_windows_unsupported">Партнёры пока не могут управлять компьютерами с Windows.</string>
   <string name="im_computer_step_progress">Шаг %1$d из %2$d</string>
   <string name="im_computer_taken_over">Вы перехватили управление экраном; партнёр остановился</string>
   <string name="im_computer_test">Проверить</string>

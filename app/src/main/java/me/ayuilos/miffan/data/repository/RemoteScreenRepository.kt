@@ -59,9 +59,8 @@ enum class RemoteScreenPlatform { UNKNOWN, MACOS, LINUX;
     }
 }
 
-class WindowsRemoteScreenUnsupportedException : UnsupportedOperationException(
-    "Remote screens and computer control are not yet supported on Windows.",
-)
+/** Windows hosts work as workspaces, but their screen and computer control are not wired up yet (P7b/P7c). */
+class WindowsRemoteScreenUnsupportedException : RemoteScreenUnavailableException(RemoteScreenProblem.WINDOWS_NOT_SUPPORTED)
 
 /** Why a screen could not be opened; the page maps each reason to a fix the user can make. */
 enum class RemoteScreenProblem {
@@ -74,6 +73,7 @@ enum class RemoteScreenProblem {
     NO_VNC_SERVER,
     VNC_START_FAILED, NO_RDP_SERVER, RDP_START_FAILED, RDP_ALREADY_CONFIGURED,
     RDP_KEYRING_LOCKED, RDP_CREDENTIAL_SETUP_UNAVAILABLE, RDP_CERTIFICATE_CHANGED, STREAM_CERTIFICATE_CHANGED,
+    WINDOWS_NOT_SUPPORTED,
 }
 
 open class RemoteScreenUnavailableException(

@@ -1431,6 +1431,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_view_connection_details">ワークスペースと接続の詳細を表示</string>
   <string name="workspace_login_target">ログイン先</string>
   <string name="workspace_remote_directory">リモートディレクトリ</string>
+  <string name="workspace_remote_system">システム</string>
+  <string name="workspace_remote_system_windows">Windows（画面と対話型ターミナルは未対応）</string>
   <string name="workspace_host_identity">ホストの識別情報</string>
   <string name="workspace_fingerprint_confirmed">フィンガープリント確認済み</string>
   <string name="workspace_fingerprint_unconfirmed">フィンガープリント未確認</string>
@@ -1603,6 +1605,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_export_private_key">秘密鍵をエクスポート</string>
   <string name="workspace_terminal_disconnected">ターミナルの接続が中断されました</string>
   <string name="workspace_terminal_connection_failed">リモートターミナルに接続できませんでした</string>
+  <string name="workspace_terminal_windows_unsupported">Windows では対話型ターミナルにまだ対応していません。パートナーは PowerShell コマンドを実行できます。</string>
   <string name="workspace_connecting_host">%1$s に接続中…</string>
   <string name="workspace_remote_host">リモートホスト</string>
   <string name="workspace_connection_ended_exit">接続終了 · 終了コード %1$d</string>
@@ -2221,6 +2224,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_no_output">コマンドから出力がありませんでした。</string>
   <string name="workspace_screen_no_workspace">先にこのホストのリモートワークスペースを作成してから、もう一度確認してください。</string>
   <string name="workspace_screen_no_session">ログイン中のデスクトップセッションが見つかりません。このコンピューターでデスクトップにログインしてから、再試行してください。</string>
+  <string name="workspace_screen_windows_unsupported">Windows コンピューターの画面表示にはまだ対応していません。ファイルと PowerShell コマンドは使えます。</string>
   <string name="workspace_screen_config_incomplete">画面が無効になっているか、設定が不完全です。画面設定を開いてセットアップを完了してください。</string>
   <string name="workspace_screen_start_failed">画面サービスを起動できませんでした。出力を確認して再試行してください。</string>
   <string name="workspace_screen_system">システム</string>
@@ -2473,6 +2477,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_screen_start_failed">画面サービスを起動できませんでした。もう一度確認するか、再試行してください。</string>
   <string name="im_computer_screenshot">コンピューターのスクリーンショット · タップしてプレビュー</string>
   <string name="im_computer_setup_needed">画面を開くには、このコンピューターを接続して準備してください。</string>
+  <string name="im_computer_windows_unsupported">パートナーはまだ Windows コンピューターを操作できません。</string>
   <string name="im_computer_step_progress">%2$d ステップ中 %1$d ステップ目</string>
   <string name="im_computer_taken_over">画面の操作を引き継いだため、パートナーは停止しました</string>
   <string name="im_computer_test">試してみる</string>

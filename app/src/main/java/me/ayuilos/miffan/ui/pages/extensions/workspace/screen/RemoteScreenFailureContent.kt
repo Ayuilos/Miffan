@@ -57,7 +57,9 @@ internal fun RemoteScreenFailureContent(
     }
     var confirmTrust by remember(error) { mutableStateOf(false) }
     // Unspecified unavailable problems keep P1's settings action; ordinary failures still retry.
-    val settingsOnly = unavailable != null && !retryOnly && !missingServer
+    // Nothing on the computer or in settings fixes an unsupported platform, so it offers no action.
+    val unsupported = unavailable?.problem == RemoteScreenProblem.WINDOWS_NOT_SUPPORTED
+    val settingsOnly = unavailable != null && !retryOnly && !missingServer && !unsupported
     Surface(modifier.padding(24.dp).fillMaxWidth(), shape = MaterialTheme.shapes.large) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -81,7 +83,7 @@ internal fun RemoteScreenFailureContent(
                 if (changedCertificate != null && onTrustCertificate != null) {
                     TextButton(onClick = { confirmTrust = true }) { Text(stringResource(R.string.workspace_screen_rdp_trust)) }
                 }
-                if (!settingsOnly) {
+                if (!settingsOnly && !unsupported) {
                     TextButton(onClick = onRetry) {
                         Text(stringResource(if (error != null) R.string.workspace_screen_retry else R.string.workspace_screen_reconnect))
                     }

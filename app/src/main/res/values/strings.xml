@@ -1440,6 +1440,8 @@
   <string name="workspace_view_connection_details">View workspace and connection details</string>
   <string name="workspace_login_target">Login target</string>
   <string name="workspace_remote_directory">Remote directory</string>
+  <string name="workspace_remote_system">System</string>
+  <string name="workspace_remote_system_windows">Windows (no screen or interactive terminal yet)</string>
   <string name="workspace_host_identity">Host identity</string>
   <string name="workspace_fingerprint_confirmed">Fingerprint confirmed</string>
   <string name="workspace_fingerprint_unconfirmed">Fingerprint not confirmed</string>
@@ -1612,6 +1614,7 @@
   <string name="workspace_export_private_key">Export private key</string>
   <string name="workspace_terminal_disconnected">Terminal connection interrupted</string>
   <string name="workspace_terminal_connection_failed">Could not connect to remote terminal</string>
+  <string name="workspace_terminal_windows_unsupported">Interactive terminals aren\'t supported on Windows yet. Partners can still run PowerShell commands.</string>
   <string name="workspace_connecting_host">Connecting to %1$s…</string>
   <string name="workspace_remote_host">Remote host</string>
   <string name="workspace_connection_ended_exit">Connection ended · Exit code %1$d</string>
@@ -2261,6 +2264,7 @@
   <string name="workspace_screen_no_output" tools:ignore="MissingTranslation">The command returned no output.</string>
   <string name="workspace_screen_no_workspace" tools:ignore="MissingTranslation">Create a remote workspace for this host first, then check again.</string>
   <string name="workspace_screen_no_session" tools:ignore="MissingTranslation">No logged-in desktop session was found. Log in to the desktop on this computer, then retry.</string>
+  <string name="workspace_screen_windows_unsupported" tools:ignore="MissingTranslation">Viewing the screen of a Windows computer isn\'t supported yet. Files and PowerShell commands already work.</string>
   <string name="workspace_screen_config_incomplete" tools:ignore="MissingTranslation">The screen is disabled or its configuration is incomplete. Open screen settings to finish setup.</string>
   <string name="workspace_screen_start_failed" tools:ignore="MissingTranslation">The screen service could not start. Check the output and retry.</string>
   <string name="workspace_screen_system" tools:ignore="MissingTranslation">System</string>
@@ -2515,6 +2519,7 @@
   <string name="im_computer_screen_start_failed" tools:ignore="MissingTranslation">The screen service could not start. Check again or retry.</string>
   <string name="im_computer_screenshot" tools:ignore="MissingTranslation">Computer screenshot; tap to preview</string>
   <string name="im_computer_setup_needed" tools:ignore="MissingTranslation">Connect and prepare this computer to open its screen.</string>
+  <string name="im_computer_windows_unsupported" tools:ignore="MissingTranslation">Partners can\'t operate Windows computers yet.</string>
   <string name="im_computer_step_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
   <plurals name="im_computer_steps" tools:ignore="MissingTranslation">
     <item quantity="one">Performed %2$d step on %1$s</item>

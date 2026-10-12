@@ -1429,6 +1429,8 @@
   <string name="workspace_view_connection_details">查看工作區與連線詳細資訊</string>
   <string name="workspace_login_target">登入目標</string>
   <string name="workspace_remote_directory">遠端目錄</string>
+  <string name="workspace_remote_system">系統</string>
+  <string name="workspace_remote_system_windows">Windows（暫不支援螢幕和互動式終端機）</string>
   <string name="workspace_host_identity">主機身分</string>
   <string name="workspace_fingerprint_confirmed">已確認指紋</string>
   <string name="workspace_fingerprint_unconfirmed">未確認指紋</string>
@@ -1601,6 +1603,7 @@
   <string name="workspace_export_private_key">匯出私鑰</string>
   <string name="workspace_terminal_disconnected">終端機連線中斷</string>
   <string name="workspace_terminal_connection_failed">無法連線至遠端終端機</string>
+  <string name="workspace_terminal_windows_unsupported">Windows 暫時還不支援互動式終端機，夥伴仍可以執行 PowerShell 指令。</string>
   <string name="workspace_connecting_host">正在連線至 %1$s…</string>
   <string name="workspace_remote_host">遠端主機</string>
   <string name="workspace_connection_ended_exit">連線已結束 · 結束代碼 %1$d</string>
@@ -2219,6 +2222,7 @@
   <string name="workspace_screen_no_output">指令沒有傳回輸出。</string>
   <string name="workspace_screen_no_workspace">請先為這台主機建立遠端工作空間，再重新檢查。</string>
   <string name="workspace_screen_no_session">找不到已登入的桌面工作階段。請在這台電腦上登入桌面，再重試。</string>
+  <string name="workspace_screen_windows_unsupported">暫時還不能查看 Windows 電腦的螢幕。檔案和 PowerShell 指令已經可以用了。</string>
   <string name="workspace_screen_config_incomplete">螢幕未啟用或設定不完整，請開啟螢幕設定完成設定。</string>
   <string name="workspace_screen_start_failed">螢幕服務無法啟動，請查看輸出後重試。</string>
   <string name="workspace_screen_system">系統</string>
@@ -2471,6 +2475,7 @@
   <string name="im_computer_screen_start_failed">螢幕服務無法啟動，請重新檢查或重試。</string>
   <string name="im_computer_screenshot">電腦截圖，點按預覽</string>
   <string name="im_computer_setup_needed">請先連接並準備好這台電腦，再開啟螢幕。</string>
+  <string name="im_computer_windows_unsupported">夥伴暫時還不能操作 Windows 電腦。</string>
   <string name="im_computer_step_progress">第 %1$d 步，共 %2$d 步</string>
   <string name="im_computer_taken_over">你已接手操作螢幕，夥伴已停下</string>
   <string name="im_computer_test">試一試</string>

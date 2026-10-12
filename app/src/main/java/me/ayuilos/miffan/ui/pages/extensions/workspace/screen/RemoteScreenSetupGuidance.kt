@@ -59,6 +59,7 @@ internal fun remoteScreenSetupError(resources: Resources, error: Throwable): Str
         RemoteScreenProblem.RDP_KEYRING_LOCKED -> resources.getString(R.string.workspace_screen_rdp_keyring_locked)
         RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE -> resources.getString(R.string.workspace_screen_rdp_credentials_unavailable)
         RemoteScreenProblem.RDP_CERTIFICATE_CHANGED -> resources.getString(R.string.workspace_screen_rdp_certificate_changed)
+        RemoteScreenProblem.WINDOWS_NOT_SUPPORTED -> resources.getString(R.string.workspace_screen_windows_unsupported)
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
 
