@@ -1165,12 +1165,10 @@ class ChatService(
                         addAll(createSearchTools(settings))
                     }
                     addAll(localTools.getTools(assistant.localTools))
-                    if (LocalToolOption.BugReport in assistant.localTools) {
-                        add(me.ayuilos.miffan.data.bugreport.createAppDiagnosticsTool(access) {
-                            me.ayuilos.miffan.data.bugreport.deviceDiagnostics(context, settings.isImMode)
-                                .copy(recentErrors = recentErrorStore?.recent().orEmpty())
-                        })
-                    }
+                    addAll(me.ayuilos.miffan.data.bugreport.createBugReportTools(assistant.localTools, access) {
+                        me.ayuilos.miffan.data.bugreport.deviceDiagnostics(context, settings.isImMode)
+                            .copy(recentErrors = recentErrorStore?.recent().orEmpty())
+                    })
                     if (extensionManagementEnabled) {
                         addAll(createExtensionManagementTools(extensionManagementService, access))
                     }
