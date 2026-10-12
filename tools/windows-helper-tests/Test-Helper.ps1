@@ -1,0 +1,305 @@
+﻿# Pure/offline tests. Never calls live firewall/service/task/clipboard mutation cmdlets.
+param([string]$HelperPath = (Join-Path $PSScriptRoot '..\..\app\src\main\assets\remote\miffan.ps1'))
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+. $HelperPath
+$script:Passed = 0
+function Assert-True($Condition, [string]$Message) { if (-not $Condition) { throw "Assertion failed: $Message" } }
+function Assert-Equal($Actual, $Expected, [string]$Message) { if ($Actual -cne $Expected) { throw "Assertion failed: $Message; expected [$Expected], actual [$Actual]" } }
+function Assert-Throws([scriptblock]$Body, [string]$Message) { $caught=$false; try { & $Body } catch { $caught=$true }; Assert-True $caught $Message }
+function Test([string]$Name, [scriptblock]$Body) { & $Body; $script:Passed++; [Console]::Out.WriteLine("PASS $Name") }
+$exe = 'C:\Program Files\Sunshine\sunshine.exe'
+function Rule([string]$Id='vendor', [string]$Protocol='UDP', $Ports=@('Any'), $Sources=@('Any'), [string]$Program=$exe, [bool]$Enabled=$true) {
+    return @{id=$Id;program=$Program;direction='Inbound';enabled=$Enabled;effective=$Enabled;action='Allow';protocol=$Protocol;ports=$Ports;sources=$Sources;policy_source='Local';profile='Any'}
+}
+Test 'config preserves unrelated bytes, comments, CRLF, duplicates' {
+    $original = "# 中文`r`nfoo = keep # inline`r`n lan_encryption_mode=0 # lan`r`nlan_encryption_mode = 1`r`nwan_encryption_mode = 1`r`n"
+    $expected = "# 中文`r`nfoo = keep # inline`r`nlan_encryption_mode = 2 # lan`r`nlan_encryption_mode = 2`r`nwan_encryption_mode = 2`r`n"
+    Assert-Equal (Edit-EncryptionConfig $original) $expected 'exact retained bytes'
+    Assert-Equal (Edit-EncryptionConfig $expected) $expected 'rewrite idempotent'
+    Assert-Equal (Edit-EncryptionConfig "foo=bar") "foo=bar`nlan_encryption_mode = 2`nwan_encryption_mode = 2`n" 'append absent keys'
+    $values = Get-ConfigValues $original
+    Assert-Equal $values.lan_encryption_mode '1' 'last duplicate wins'
+    Assert-Equal (Get-ConfigInteger @{} 'wan_encryption_mode' 1) 1 'default'
+    Assert-True ($null -eq (Get-ConfigInteger @{port='bad'} 'port' 47989)) 'invalid integer unknown'
+}
+Test 'public X509 DER fingerprint, not PEM text' {
+    $pem = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $expected = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.sha256')).Trim()
+    Assert-Equal (Get-CertificateFingerprint $pem) $expected 'known DER hash'
+    Assert-Equal (Get-CertificateFingerprint ($pem.Replace("`n", "`r`n"))) $expected 'PEM whitespace invariant'
+    Assert-True ((Get-BytesSha256 $script:Utf8.GetBytes($pem)) -ne $expected) 'PEM hash differs'
+    Assert-Throws { Get-CertificateFingerprint '-----BEGIN CERTIFICATE-----AA==-----END CERTIFICATE-----' } 'invalid X509 rejected'
+}
+Test 'network validation and Windows dotted-mask canonicalization' {
+    Assert-Equal (ConvertTo-Network '192.168.31.8/255.255.255.0') '192.168.31.0/24' 'mask normalized'
+    Assert-Equal (ConvertTo-Network '100.64.0.8/10') '100.64.0.0/10' 'Tailscale normalized'
+    Assert-Equal (ConvertTo-Network 'fd00::123/64') 'fd00::/64' 'IPv6 normalized'
+    foreach ($bad in @('Any','LocalSubnet','*','192.168.0.1','0.0.0.0/0','::/0','10.0.0.0/33','10.0.0.0/255.0.255.0','10.0.0.0/24;calc','fe80::1%3/64')) { Assert-Throws {ConvertTo-Network $bad} "invalid source $bad" }
+    Assert-Throws { Get-Networks @() } 'empty sources rejected'
+}
+Test 'ActiveStore enforcement arrays and path normalization' {
+    Assert-True (Test-RuleEnforced $true 'OK' @('ProfileInactive','Enforced','Enforced')) 'mixed profile status still enforced'
+    Assert-True (-not (Test-RuleEnforced $false 'Inactive' @('Disabled'))) 'disabled not enforced'
+    Assert-True (-not (Test-RuleEnforced $true 'OK' @('ProfileInactive'))) 'only inactive profiles'
+    Assert-True (-not (Test-RuleEnforced $true 'Unknown' @('Unknown'))) 'unknown not reported as enforced'
+    Assert-True (Test-SunshineProgram 'C:\\Program Files\\Sunshine\\sunshine.exe' $exe) 'equivalent Windows separators'
+    Assert-True (-not (Test-SunshineProgram 'C:\other\sunshine.exe' $exe)) 'different exe path'
+}
+Test 'firewall exposure for enabled rules, wildcard protocols and ports' {
+    Assert-True ((Get-RuleRisks (Rule 'tcp' 'TCP')).Count -gt 0) 'TCP Any exposed'
+    Assert-True ((Get-RuleRisks (Rule 'any' 'Any')).Count -gt 0) 'Any protocol exposed'
+    Assert-True ((Get-RuleRisks (Rule 'udp')).Count -gt 0) 'UDP Any exposed'
+    Assert-True ((Get-RuleRisks (Rule 'udp' 'UDP' @('47998-48001') @('192.168.31.0/24'))).Count -gt 0) 'extra UDP port exposed'
+    Assert-Equal (Get-RuleRisks (Rule 'off' 'TCP' @('Any') @('Any') $exe $false)).Count 0 'disabled irrelevant'
+    Assert-Equal (Get-RuleRisks (Rule 'safe' 'UDP' @('47998-48000') @('192.168.31.0/24'))).Count 0 'narrow UDP safe'
+    Assert-True (Test-UdpPorts @('47998','47999','48000')) 'separate ports safe'
+    Assert-True (-not (Test-UdpPorts @('47998-47997'))) 'reversed range rejected'
+}
+Test 'firewall plan scope, safe fixed UDP creation, and idempotence' {
+    $rules = @((Rule 'tcp' 'TCP'), (Rule 'udp'))
+    $plan = Get-FirewallPlan $rules $exe @('192.168.31.0/24','100.64.0.0/10') @('tcp','udp')
+    Assert-True $plan.changed 'repair needed'
+    Assert-Equal $plan.disable_rules.Count 2 'both vendor rules disabled'
+    Assert-Equal $plan.add_rule.protocol 'UDP' 'only UDP'
+    Assert-Equal ($plan.add_rule.ports -join ',') '47998-48000' 'only allowed ports'
+    Assert-Throws { Get-FirewallPlan $rules $exe @('192.168.31.0/24') @('udp') } 'partial repair rejected'
+    Assert-Throws { Get-FirewallPlan @((Rule 'ssh' 'TCP' @('22') @('192.168.31.0/24') 'C:\Windows\System32\OpenSSH\sshd.exe')) $exe @('192.168.31.0/24') @('ssh') } 'unrelated program protected'
+    $gpo = Rule 'gpo' 'TCP'; $gpo.policy_source='GroupPolicy'
+    Assert-Throws { Get-FirewallPlan @($gpo) $exe @('192.168.31.0/24') @('gpo') } 'GPO protected'
+    $collision = Rule 'Miffan-Sunshine-UDP-LAN' 'TCP' @('22') @('Any') 'other.exe'
+    Assert-Throws { Get-FirewallPlan @($collision) $exe @('192.168.31.0/24') @() } 'Miffan name does not authorize other program'
+    $safe = Rule 'Miffan-Sunshine-UDP-LAN' 'UDP' @('47998-48000') @('192.168.31.0/255.255.255.0','100.64.0.0/255.192.0.0')
+    $plan = Get-FirewallPlan @($safe) $exe @('100.64.0.0/10','192.168.31.0/24') @()
+    Assert-True (-not $plan.changed) 'existing Windows mask sources no-op'
+    Assert-True ($null -eq $plan.add_rule) 'no redundant rule'
+}
+Test 'firewall check exposes unmanageable global rules and profile risk' {
+    $global = Rule 'global' 'TCP' @('Any') @('Any') 'Any'
+    $result = Get-FirewallCheck @{rules=@($global);profiles=@();profiles_safe=$true} $exe
+    Assert-True (-not $result.firewall_model_ok) 'global open rule unsafe'
+    Assert-Equal ($result.unmanageable_rules -join ',') 'global' 'global cannot auto-disable'
+    Assert-Throws {Get-FirewallPlan @($global) $exe @('192.168.31.0/24') @('global')} 'global scope rejected'
+    Assert-True (-not (Get-FirewallCheck @{rules=@();profiles=@();profiles_safe=$false} $exe).firewall_model_ok) 'disabled firewall unsafe'
+}
+Test 'strict firewall stdin schema cannot introduce TCP or extra changes' {
+    $r = Read-FirewallRequest '{"disable_rules":[],"allowed_sources":["192.168.31.0/24"],"add_rule":null}'
+    Assert-Equal $r.disable_rules.Count 0 'empty array retained'
+    foreach ($json in @('{"disable_rules":[],"allowed_sources":["Any"]}','{"disable_rules":[],"allowed_sources":["192.168.31.0/24"],"protocol":"TCP"}','{"disable_rules":"id","allowed_sources":["192.168.31.0/24"],"add_rule":null}','{"disable_rules":[5],"allowed_sources":["192.168.31.0/24"],"add_rule":null}')) { Assert-Throws {Read-FirewallRequest $json} 'unsafe request rejected' }
+}
+Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
+    $line = ConvertTo-PlainJson @{success=$true;detail="中文`nquote\";nothing=$null;items=@();one=@('one');number=1}
+    Assert-True (-not $line.Contains("`n")) 'one JSON line'
+    Assert-True ($line.Length -lt 200) 'no ETS expansion'
+    $decoded = ConvertFrom-Json $line
+    Assert-True $decoded.success 'boolean'
+    Assert-Equal $decoded.items.Count 0 'empty JSON array'
+    Assert-Equal $decoded.one.Count 1 'single JSON array'
+    Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '1' 'integer version contract'
+}
+Test 'unknown stream state conservatively blocks restart' {
+    Assert-True (Get-StreamActivity @{known=$false;values=@{}}).active 'unknown configuration'
+    Assert-True (-not (Get-StreamActivity @{known=$false;values=@{}}).known) 'unknown state explicit'
+    function Get-NetUDPEndpoint { throw 'offline endpoint failure' }
+    Assert-True (Get-StreamActivity @{known=$true;values=@{}}).active 'endpoint error active'
+    function Get-NetUDPEndpoint { [pscustomobject]@{LocalPort=48000;OwningProcess=999} }
+    Assert-True (Get-StreamActivity @{known=$true;values=@{}}).active 'any owner port conflict blocks'
+    function Get-NetUDPEndpoint { }
+    Assert-True (-not (Get-StreamActivity @{known=$true;values=@{}}).active) 'no endpoints no stream'
+}
+Test 'empty apply plan refuses before backup and mutations (mocked)' {
+    $script:Fixture = @{rules=@((Rule 'Miffan-Sunshine-UDP-LAN' 'UDP' @('47998-48000') @('192.168.31.0/24')));profiles=@();profiles_safe=$true}
+    $script:BackupCalled=$false;$script:MutationCalled=$false
+    function Get-SunshineContext { @{installed=$true;known=$true;executable=$exe} }
+    function Get-FirewallSnapshot { param($Executable); return $script:Fixture }
+    function Save-FirewallBackup { $script:BackupCalled=$true;throw 'Unexpected backup' }
+    function Invoke-FirewallMutations { $script:MutationCalled=$true;throw 'Unexpected mutation' }
+    Assert-Throws {Invoke-FirewallApply @{allowed_sources=@('192.168.31.0/24');disable_rules=@();add_rule=$null}} 'empty plan refuses'
+    Assert-True (-not $script:BackupCalled -and -not $script:MutationCalled) 'zero writes for empty plan'
+}
+Test 'apply backups precede mutation and detects concurrent rule change (mocked)' {
+    $script:Fixture = @{rules=@((Rule 'vendor' 'TCP'));profiles=@();profiles_safe=$true}
+    $script:Snapshots=0; $script:BackupDone=$false; $script:MutationDone=$false
+    function Get-SunshineContext { @{installed=$true;known=$true;executable=$exe} }
+    function Get-FirewallSnapshot { param($Executable); $script:Snapshots++; if($script:Snapshots -ge 2){return @{rules=@();profiles=@();profiles_safe=$true}};return $script:Fixture }
+    function Save-FirewallBackup { $script:BackupDone=$true; return 'offline-backup' }
+    function Invoke-FirewallMutations { $script:MutationDone=$true }
+    $requested=Get-FirewallPlan $script:Fixture.rules $exe @('192.168.31.0/24') @('vendor')
+    Assert-Throws {Invoke-FirewallApply $requested} 'concurrent change rejected'
+    Assert-True ($script:BackupDone -and -not $script:MutationDone) 'backup before refusal, no mutation'
+}
+
+Test 'successful apply is backed up, fixed-scope and rechecked (mocked)' {
+    $script:Fixture = @{rules=@((Rule 'vendor' 'TCP'));profiles=@();profiles_safe=$true}
+    $script:Order=@()
+    function Get-SunshineContext { @{installed=$true;known=$true;executable=$exe} }
+    function Get-FirewallSnapshot { param($Executable); $script:Order+='snapshot'; return $script:Fixture }
+    function Save-FirewallBackup { $script:Order+='backup'; return 'offline-backup' }
+    function Invoke-FirewallMutations {param($Plan); $script:Order+='mutation';$script:Fixture=@{rules=@((Rule 'Miffan-Sunshine-UDP-LAN' 'UDP' @('47998-48000') @('192.168.31.0/24')));profiles=@();profiles_safe=$true} }
+    $requested=Get-FirewallPlan $script:Fixture.rules $exe @('192.168.31.0/24') @('vendor')
+    $r=Invoke-FirewallApply $requested
+    Assert-True ($r.success -and $r.changed) 'changed repair verified'
+    Assert-Equal $r.backup 'offline-backup' 'backup surfaced'
+    Assert-Equal ($script:Order -join '|') 'snapshot|backup|snapshot|mutation|snapshot' 'order and recheck'
+}
+Test 'service start and encryption enforcement no-op never mutate (mocked)' {
+    function Get-SunshineContext { @{known=$true;installed=$true;service=@{State='Running'};config=$HelperPath;content='lan_encryption_mode = 2';values=@{lan_encryption_mode='2';wan_encryption_mode='2'}} }
+    function Get-StreamActivity { @{known=$true;active=$false} }
+    function Start-Service { throw 'Unexpected service start' }
+    function Restart-Service { throw 'Unexpected service restart' }
+    function New-BackupPath { throw 'Unexpected backup' }
+    Assert-True (-not (Invoke-SunshineStart).changed) 'already-running start no-op'
+    Assert-True (-not (Invoke-EnforceEncryption).changed) '2/2 enforcement no-op'
+    function Get-StreamActivity { @{known=$true;active=$true} }
+    Assert-Throws {Invoke-EnforceEncryption} 'active stream refuses even if already 2/2'
+}
+Test 'encryption atomic replacement and private backup use only temporary fixture' {
+    $savedLocal = $env:LOCALAPPDATA
+    $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('Miffan-test-'+[Guid]::NewGuid().ToString('N'))
+    $null=New-Item -ItemType Directory -Path $testRoot
+    $script:ConfigFixture = Join-Path $testRoot 'sunshine.conf'
+    $original = "# 中文`r`nfoo = bar`r`nlan_encryption_mode = 0`r`nwan_encryption_mode = 1`r`n"
+    [IO.File]::WriteAllText($script:ConfigFixture,$original,(New-Object Text.UTF8Encoding($true)))
+    $script:Restarted=$false
+    try {
+        $env:LOCALAPPDATA=$testRoot
+        function Get-SunshineContext {
+            $bytes=[IO.File]::ReadAllBytes($script:ConfigFixture)
+            $text=$script:Utf8.GetString($bytes).TrimStart([char]0xFEFF)
+            return @{known=$true;installed=$true;config=$script:ConfigFixture;content=$text;bytes=$bytes;values=(Get-ConfigValues $text)}
+        }
+        function Get-StreamActivity { @{known=$true;active=$false} }
+        function Restart-Service {param($Name); Assert-Equal $Name 'SunshineService' 'only Sunshine restart';$script:Restarted=$true}
+        $r=Invoke-EnforceEncryption
+        Assert-True ($r.success -and $r.changed -and $script:Restarted) 'fixture replacement and mocked restart'
+        Assert-Equal ([IO.File]::ReadAllText($r.backup)) $original 'backup exact original'
+        Assert-Equal ([IO.File]::ReadAllText($script:ConfigFixture)) (Edit-EncryptionConfig $original) 'new config exact'
+        Assert-Equal ([IO.File]::ReadAllBytes($script:ConfigFixture)[0]) 239 'BOM preserved'
+        Assert-PrivateDirectory (Split-Path $r.backup) ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+    } finally { $env:LOCALAPPDATA=$savedLocal;Remove-Item -LiteralPath $testRoot -Recurse -Force }
+}
+Test 'desktop job uses private ACL, Limited interactive principal, verified result, cleanup (mocked task)' {
+    $savedLocal=$env:LOCALAPPDATA
+    $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-test-'+[Guid]::NewGuid().ToString('N'))
+    $null=New-Item -ItemType Directory -Path $testRoot
+    $script:JobSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $script:Lifecycle=@();$script:JobDirectory=$null
+    try {
+        $env:LOCALAPPDATA=$testRoot
+        function Get-ConsoleSession { @{present=$true;sid=$script:JobSid;id=1;lock_state='unlocked'} }
+        function New-ScheduledTaskAction {param($Execute,$Argument);Assert-True ($Argument -notmatch '剪贴板内容') 'text absent in arguments';return @{Execute=$Execute;Argument=$Argument} }
+        function New-ScheduledTaskPrincipal {param($UserId,$LogonType,$RunLevel);Assert-Equal $LogonType 'Interactive' 'interactive';Assert-Equal $RunLevel 'Limited' 'ordinary privileges';return @{} }
+        function New-ScheduledTaskSettingsSet {param($ExecutionTimeLimit,[switch]$AllowStartIfOnBatteries,[switch]$DontStopIfGoingOnBatteries);return @{} }
+        function Register-ScheduledTask {param($TaskName,$Action,$Principal,$Settings);Assert-True ($TaskName.StartsWith('Miffan-clip-')) 'task prefix';$script:Lifecycle+='register'}
+        function Start-ScheduledTask {
+            param($TaskName)
+            $script:Lifecycle+='start'
+            $script:JobDirectory=(Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Miffan') -Directory | Select-Object -First 1).FullName
+            Assert-PrivateDirectory $script:JobDirectory $script:JobSid
+            Assert-Equal ([IO.File]::ReadAllText((Join-Path $script:JobDirectory 'input.txt'))) '剪贴板内容' 'stdin remains in file only'
+            [IO.File]::WriteAllText((Join-Path $script:JobDirectory 'result.json'),'{"success":true,"session_id":1,"verified":true}')
+        }
+        function Get-ScheduledTask {param($TaskName,$TaskPath,$ErrorAction);return @{State='Running'}}
+        function Stop-ScheduledTask {param($TaskName,$ErrorAction);$script:Lifecycle+='stop'}
+        function Unregister-ScheduledTask {param($InputObject,$Confirm,$ErrorAction);$script:Lifecycle+='unregister'}
+        $r=Invoke-DesktopJob 'clip' '剪贴板内容'
+        Assert-True ($r.success -and $r.verified) 'readback required'
+        Assert-Equal ($script:Lifecycle -join '|') 'register|start|stop|unregister' 'full lifecycle'
+        Assert-True (-not (Test-Path $script:JobDirectory)) 'data deleted'
+        function Get-ConsoleSession { @{present=$true;sid=$script:JobSid;id=1;lock_state='unknown'} }
+        Assert-Throws {Invoke-DesktopJob 'clip' 'text'} 'unknown lock refuses clipboard'
+        function Get-ConsoleSession { @{present=$true;sid='S-1-5-18';id=1;lock_state='unlocked'} }
+        Assert-Throws {Invoke-DesktopJob 'clip' 'text'} 'other desktop user refused'
+    } finally { $env:LOCALAPPDATA=$savedLocal;Remove-Item -LiteralPath $testRoot -Recurse -Force }
+}
+Test 'base probe does not create a desktop task (mocked)' {
+    function Get-MachineProbe { @{helper=1;os='windows';displays=$null;display_state='unknown';session=@{present=$true;type='console'};cua=@{min='0.34.0';ok=$false};vnc=@{running=$false}} }
+    function Invoke-DesktopJob { throw 'Base probe created a task' }
+    $p=Invoke-Helper 'probe' '' ''
+    Assert-Equal $p.os 'windows' 'platform'
+    Assert-True ($null -eq $p.displays) 'lightweight displays unknown'
+    Assert-Throws {Invoke-Helper 'clip' 'secret-in-argument' ''} 'clipboard argv rejected'
+}
+
+Test 'ActiveStore association never falls back to divergent PersistentStore (mocked provider)' {
+    $script:PolicyQueries=@()
+    function Get-NetFirewallApplicationFilter {param($PolicyStore,[switch]$All);Assert-Equal $PolicyStore 'ActiveStore' 'application policy explicit';return [pscustomobject]@{Program=$exe;InstanceID='vendor'} }
+    function Get-NetFirewallRule {
+        param($PolicyStore,[switch]$All,$AssociatedNetFirewallApplicationFilter)
+        $script:PolicyQueries += $PolicyStore
+        Assert-True ($All -and -not $AssociatedNetFirewallApplicationFilter) 'association queries prohibited'
+        if($PolicyStore -eq 'ActiveStore'){return [pscustomobject]@{Name='vendor';InstanceID='vendor';DisplayName='Sunshine';Direction='Inbound';Enabled='True';PrimaryStatus='OK';EnforcementStatus=@('ProfileInactive','Enforced');Action='Allow';Profile='Any';PolicyStoreSourceType='Local'}}
+        # The dangerous regression: this store says disabled and has no enforcement status.
+        return [pscustomobject]@{Name='vendor';InstanceID='vendor';DisplayName='Sunshine';Direction='Inbound';Enabled='False';PrimaryStatus='OK';EnforcementStatus=@('NotApplicable');Action='Allow';Profile='Any';PolicyStoreSourceType='Local'}
+    }
+    function Get-NetFirewallPortFilter {param($PolicyStore,[switch]$All);Assert-True $All 'explicit table enumeration';Assert-Equal $PolicyStore 'ActiveStore' 'port policy explicit';return [pscustomobject]@{InstanceID='vendor';Protocol='TCP';LocalPort=@('Any')} }
+    function Get-NetFirewallAddressFilter {param($PolicyStore,[switch]$All);Assert-True $All 'explicit table enumeration';Assert-Equal $PolicyStore 'ActiveStore' 'address policy explicit';return [pscustomobject]@{InstanceID='vendor';RemoteAddress=@('Any')} }
+    function Get-NetFirewallProfile {param($PolicyStore);Assert-Equal $PolicyStore 'ActiveStore' 'profiles policy explicit';foreach($name in @('Domain','Private','Public')){[pscustomobject]@{Name=$name;Enabled='True';DefaultInboundAction='Block'}} }
+    $snapshot=Get-FirewallSnapshot $exe
+    Assert-True ($snapshot.rules[0].enabled -and $snapshot.rules[0].effective) 'uses effective ActiveStore rule'
+    Assert-Equal ($script:PolicyQueries -join '|') 'ActiveStore' 'no implicit/default policy association'
+    Assert-Equal ((Get-FirewallCheck $snapshot $exe).suggested_changes.disable_rules -join '|') 'vendor' 'hazard not hidden by PersistentStore'
+}
+Test 'caller plan mismatch refuses before any backup/write (mocked)' {
+    $script:Fixture=@{rules=@((Rule 'vendor' 'TCP'));profiles=@();profiles_safe=$true}
+    function Get-SunshineContext { @{installed=$true;known=$true;executable=$exe} }
+    function Get-FirewallSnapshot {param($Executable);return $script:Fixture}
+    $script:Wrote=$false
+    function Save-FirewallBackup {$script:Wrote=$true;throw 'Unexpected backup'}
+    function Invoke-FirewallMutations {$script:Wrote=$true;throw 'Unexpected mutation'}
+    $requested=Get-FirewallPlan $script:Fixture.rules $exe @('192.168.31.0/24') @('vendor')
+    $requested.add_rule.replace=$true
+    Assert-Throws {Invoke-FirewallApply $requested} 'stale replacement plan refused'
+    Assert-True (-not $script:Wrote) 'mismatch zero writes'
+    $requested.add_rule.replace=$false;$requested.add_rule.sources=@('100.64.0.0/10')
+    Assert-Throws {Invoke-FirewallApply $requested} 'different approved sources refused'
+    Assert-True (-not $script:Wrote) 'different sources zero writes'
+}
+Test 'NetSecurity-style module import overwrites same-name guard; internal boundary still prevents writes' {
+    # An isolated fake module recreates auto-import shadowing without any real NetSecurity calls.
+    $temp=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-mock-'+[Guid]::NewGuid().ToString('N')+'.psm1')
+    [IO.File]::WriteAllText($temp,"function New-NetFirewallRule { 'module-overwrote-guard' }; Export-ModuleMember -Function New-NetFirewallRule")
+    function global:New-NetFirewallRule { 'original-guard' }
+    $loaded=$null
+    try {
+        Assert-Equal (New-NetFirewallRule) 'original-guard' 'guard before import'
+        $loaded=Import-Module $temp -Global -Force -PassThru
+        Assert-Equal (New-NetFirewallRule) 'module-overwrote-guard' 'import replaced same-name guard'
+        $script:Fixture=@{rules=@((Rule 'Miffan-Sunshine-UDP-LAN' 'UDP' @('47998-48000') @('192.168.31.0/24')));profiles=@();profiles_safe=$true}
+        function Get-SunshineContext { @{installed=$true;known=$true;executable=$exe} }
+        function Get-FirewallSnapshot {param($Executable);return $script:Fixture}
+        $script:Wrote=$false
+        function Save-FirewallBackup {$script:Wrote=$true}
+        function Invoke-FirewallMutations {$script:Wrote=$true;throw 'Internal mutation boundary reached'}
+        Assert-Throws {Invoke-FirewallApply @{allowed_sources=@('192.168.31.0/24');disable_rules=@();add_rule=$null}} 'empty plan stopped internally'
+        Assert-True (-not $script:Wrote) 'never relies on the overwritten native guard'
+        $source=[IO.File]::ReadAllText($HelperPath)
+        Assert-True ($source.Contains('NetSecurity\New-NetFirewallRule') -and $source.Contains('NetSecurity\Remove-NetFirewallRule') -and $source.Contains('NetSecurity\Disable-NetFirewallRule')) 'production mutations module-qualified'
+    } finally {if($loaded){Remove-Module $loaded};Remove-Item -LiteralPath $temp -Force;Remove-Item Function:\New-NetFirewallRule -ErrorAction SilentlyContinue}
+}
+
+Test 'desktop cleanup accepts completion race and refuses a still-running task (mocked)' {
+    $script:States=0
+    function Get-ScheduledTask {param($TaskName,$TaskPath,$ErrorAction);$script:States++;if($script:States -eq 1){return @{State='Running'}};return @{State='Ready'}}
+    function Stop-ScheduledTask {param($TaskName,$ErrorAction);throw 'Task has already finished'}
+    Stop-OwnedDesktopTask 'Miffan-mock-race'
+    Assert-Equal $script:States 2 'fresh task state proves completion'
+    function Get-ScheduledTask {param($TaskName,$TaskPath,$ErrorAction);return @{State='Running'}}
+    Assert-Throws {Stop-OwnedDesktopTask 'Miffan-mock-running'} 'failed stop of running task surfaced'
+}
+Test 'approved firewall add_rule schema accepts only fixed UDP and exact fields' {
+    $json = '{"disable_rules":["vendor"],"allowed_sources":["192.168.31.0/24"],"add_rule":{"id":"Miffan-Sunshine-UDP-LAN","program":"C:\\Program Files\\Sunshine\\sunshine.exe","protocol":"UDP","ports":["47998-48000"],"sources":["192.168.31.0/24"],"replace":false}}'
+    $request=Read-FirewallRequest $json
+    Assert-Equal $request.add_rule.protocol 'UDP' 'accepted fixed rule'
+    foreach($bad in @($json.Replace('"UDP"','"TCP"'),$json.Replace('47998-48000','22'),$json.Replace('"replace":false','"replace":"false"'),$json.Replace('Miffan-Sunshine-UDP-LAN','Miffan-SSH-LAN'))) {Assert-Throws {Read-FirewallRequest $bad} 'unsafe addition refused'}
+}
+
+Test 'desktop unregister retries transient provider failure on the exact root task (mocked)' {
+    $script:UnregisterCalls=0
+    function Get-ScheduledTask {param($TaskName,$TaskPath,$ErrorAction);Assert-Equal $TaskName 'Miffan-mock' 'exact name';Assert-Equal $TaskPath '\' 'explicit root';return @{TaskName='Miffan-mock';State='Ready'}}
+    function Unregister-ScheduledTask {param($InputObject,$Confirm,$ErrorAction);Assert-Equal $InputObject.TaskName 'Miffan-mock' 'fresh exact object';$script:UnregisterCalls++;if($script:UnregisterCalls -eq 1){throw 'transient provider error'}}
+    Unregister-OwnedDesktopTask 'Miffan-mock'
+    Assert-Equal $script:UnregisterCalls 2 'retried completed task removal'
+}
+[Console]::Out.WriteLine((ConvertTo-PlainJson @{success=$true;passed=$script:Passed;scope='offline; firewall/service/task mutations mocked'}))
