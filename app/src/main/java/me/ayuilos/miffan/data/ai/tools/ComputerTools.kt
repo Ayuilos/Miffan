@@ -44,7 +44,7 @@ private val OBSERVE_TOOLS = setOf(
 /** Tools that change the desktop; approval follows the assistant setting. */
 private val ACTION_TOOLS = setOf(
     "launch_app", "kill_app", "click", "double_click", "right_click", "drag", "type_text", "press_key",
-    "hotkey", "scroll", "set_value", "invoke_menu", "set_window_frame", "move_cursor",
+    "hotkey", "scroll", "set_value", "invoke_menu", "set_window_frame", "move_cursor", "clipboard_write",
 )
 
 /** Raising windows takes over what the user sees; always asks, like delivery_mode=foreground. */
@@ -279,6 +279,7 @@ private fun createReadGuideTool(
             appendLine("- Prefer background actions. delivery_mode \"foreground\" and computer_bring_to_front interrupt the user and always ask for their approval.")
             appendLine("- Never type passwords or other secrets. Ask the user to enter them on their screen themselves.")
             appendLine("- Screenshots are resized for you; pixel coordinates refer to the screenshot you were given, together with its capture_id.")
+            if (capabilities.windows) appendLine(WINDOWS_COMPUTER_GUIDANCE)
             capabilities.guide?.let {
                 appendLine()
                 appendLine("### cua-driver guide (from the remote driver)")
@@ -292,6 +293,12 @@ private fun createReadGuideTool(
         listOf(UIMessagePart.Text(registry.readResource(workspaceId, uri)))
     },
 )
+
+internal const val WINDOWS_COMPUTER_GUIDANCE = """
+- On Windows, pasting with Ctrl+V requires delivery_mode=foreground and approval; background Ctrl+V may only insert the letter v. Prefer type_text for Chinese text.
+- Opening an application does not guarantee a blank window: Windows 11 Notepad can restore historical documents. Open a new task-owned file or use File > New window; read only window content needed for the user's task.
+- Lock screens and UAC secure desktops cannot be read or operated. Stop when encountered and tell the user to unlock the computer or handle the UAC prompt themselves; observe again after they finish.
+"""
 
 private fun McpTool.toInputSchema(): InputSchema.Obj {
     val properties = inputSchema.properties ?: JsonObject(emptyMap())

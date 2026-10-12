@@ -66,6 +66,7 @@ class RemoteComputerRegistry(
         /** cua-driver's own SKILL.md, when the driver serves its skill as MCP resources. */
         val guide: String?,
         val resources: List<String>,
+        val windows: Boolean = false,
     )
 
     private class Connection(
@@ -132,7 +133,9 @@ class RemoteComputerRegistry(
     private suspend fun callOnce(current: Connection, name: String, arguments: JsonObject): CallToolResult {
         current.lastUsed = System.currentTimeMillis()
         val started = current.lastUsed
-        val withSession = JsonObject(arguments + ("session" to JsonPrimitive(current.label)))
+        val supportsSession = current.capabilities.tools.firstOrNull { it.name == name }
+            ?.inputSchema?.properties?.containsKey("session") == true
+        val withSession = if (supportsSession) JsonObject(arguments + ("session" to JsonPrimitive(current.label))) else arguments
         return current.client.callTool(
             request = CallToolRequest(params = CallToolRequestParams(name = name, arguments = withSession)),
             options = RequestOptions(timeout = 120.seconds),
@@ -211,7 +214,7 @@ class RemoteComputerRegistry(
             val guide = buildGuide(client, resources)
             val label = "miffan-" + UUID.randomUUID().toString().take(8)
             Log.i(TAG, "cua-driver connected for $workspaceId: ${tools.size} tools, guide=${guide?.length}")
-            return Connection(workspaceId, handle, client, label, Capabilities(hostId, tools, guide, resources))
+            return Connection(workspaceId, handle, client, label, Capabilities(hostId, tools, guide, resources, stream.platform == me.rerere.workspace.RemotePlatform.WINDOWS))
         } catch (error: Throwable) {
             withContext(NonCancellable) {
                 runCatching { client.close() }

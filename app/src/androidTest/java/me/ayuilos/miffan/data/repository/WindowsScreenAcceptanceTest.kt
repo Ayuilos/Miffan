@@ -74,7 +74,7 @@ class WindowsScreenAcceptanceTest {
         val row = host()
         assertEquals("windows", row.platform)
         val probe = screens.probe(workspace.id)
-        assertEquals("windows", probe.os); assertEquals(3, probe.helper); assertFalse(probe.cua.ok)
+        assertEquals("windows", probe.os); assertEquals(4, probe.helper); assertTrue(probe.cua.ok)
         assertTrue(screens.checkSunshineFirewall(row.id, row.connectionRevision).firewallModelOk)
         workspaces.openLeasedRemote(workspace.id) { ssh ->
             assertEquals(RemotePlatform.WINDOWS, ssh.platform)
@@ -84,7 +84,7 @@ class WindowsScreenAcceptanceTest {
             java.io.Closeable {}
         }.close()
         if (args.getString("helperOnly") == "true") {
-            File(context.getExternalFilesDir(null), "p7b2-helper.txt").writeText("helper v3 upgraded byte-for-byte with BOM; firewall scope check safe; no pairing/stream/clipboard\n")
+            File(context.getExternalFilesDir(null), "p7b2-helper.txt").writeText("helper v4 upgraded byte-for-byte with BOM; firewall scope check safe; no pairing/stream/clipboard\n")
             return@runBlocking
         }
         val pinFile = File(context.cacheDir, "p7b2-pin")

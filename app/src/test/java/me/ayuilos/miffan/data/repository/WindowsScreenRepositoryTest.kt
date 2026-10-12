@@ -31,7 +31,7 @@ class WindowsScreenRepositoryTest {
     private var approvedStdin: String? = null
     private var firewallExitCode = 0
     private var sunshineInstalled = true
-    private var installedVersion = "3"
+    private var installedVersion = "4"
     private var installedBytes: ByteArray? = null
     private var firewall = WindowsScreenHelperTest.reviewJson
     private fun repo(): RemoteScreenRepository {
@@ -49,13 +49,14 @@ class WindowsScreenRepositoryTest {
             val command = firstArg<String>(); commands += command
             val output = when {
                 command == windowsHelperVersionCommand -> installedVersion
-                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "3"; "" }
+                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "4"; "" }
                 command.endsWith("sunshine firewall check") -> firewall
                 command.endsWith("sunshine firewall apply") -> {
                     approvedStdin = arg<InputStream?>(4)!!.readBytes().toString(Charsets.UTF_8)
                     """{"success":true,"detail":"applied","backup":"C:\\backup","changed":true,"firewall_model_ok":true}"""
                 }
                 command.endsWith("sunshine probe") -> """{"installed":$sunshineInstalled,"running":true,"active_stream":false,"lan_encryption_mode":2,"wan_encryption_mode":2}"""
+                command.endsWith("cua install") -> """{"success":true,"version":"0.34.0","autostart_run_level":"Limited"}"""
                 command.endsWith(" probe") -> """{"helper":2,"os":"windows","arch":"AMD64","session":{"present":true,"type":"console"},"cua":{"min":"0.34.0","ok":false},"vnc":{}}"""
                 else -> error("Unexpected command: $command")
             }
@@ -113,11 +114,21 @@ class WindowsScreenRepositoryTest {
         assertFalse(result.success)
         assertFalse(commands.any { "open-settings" in it || "wake" in it })
     }
-    @Test fun revisionChangeAndCuaAreRejectedBeforeCommands() = runBlocking {
+    @Test fun cuaUsesPowerShellHelperAndLeasedStdioWithConfirmedInstall() = runBlocking {
+        val repository = repo()
+        val stream = mockk<me.rerere.workspace.RemoteChannelStream>(relaxed = true)
+        every { ssh.openProcess(any()) } returns stream
+        val handle = repository.openCuaProcess("ws")
+        assertSame(stream, handle.value)
+        verify(exactly = 1) { ssh.openProcess(screenHelperCommand(RemotePlatform.WINDOWS, "cua")) }
+        handle.close()
+        assertTrue(repository.installCuaDriver("ws", "C:/old").success)
+        assertEquals(1, commands.count { it.endsWith("cua install") })
+        assertFalse(commands.any { "/bin/bash" in it || "systemctl" in it })
+    }
+    @Test fun revisionChangeIsRejectedBeforeCommands() = runBlocking {
         val repository = repo()
         assertTrue(runCatching { repository.checkSunshineFirewall("host", "stale") }.exceptionOrNull() is WorkspaceToolTargetChangedException)
-        assertTrue(runCatching { repository.openCuaProcess("ws") }.exceptionOrNull() is WindowsRemoteScreenUnsupportedException)
-        assertTrue(runCatching { repository.installCuaDriver("ws", null) }.exceptionOrNull() is WindowsRemoteScreenUnsupportedException)
         assertTrue(commands.isEmpty())
     }
 }

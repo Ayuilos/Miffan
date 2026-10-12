@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteShellTest {
+    @Test fun longLivedBootstrapHandsOffRawStdioWithoutFormattingOrReadAhead() {
+        val bootstrap = RemoteShell.windowsProcessBootstrap
+        assertFalse(bootstrap.contains("StreamReader"))
+        assertFalse(bootstrap.contains("ForEach-Object"))
+        assertFalse(bootstrap.contains("Out-String"))
+        assertTrue(bootstrap.contains("GetOverlappedResult"))
+        assertTrue(bootstrap.contains("MiffanFrame"))
+        assertTrue(RemoteShell.windowsProcessCommand.length < 8191)
+        assertEquals(bootstrap, String(Base64.getDecoder().decode(RemoteShell.windowsProcessCommand.substringAfter("-EncodedCommand ")), Charsets.UTF_16LE))
+    }
+
     @Test fun detectsPlatformWithoutCommands() {
         listOf("/C:/Users/Ekk", "/c:/中文 空格", "/Z:/", "/d:").forEach {
             assertEquals(RemotePlatform.WINDOWS, RemotePlatform.detect(it))

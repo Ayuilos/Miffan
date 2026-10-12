@@ -96,7 +96,7 @@ Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
     Assert-Equal $decoded.items.Count 0 'empty JSON array'
     Assert-Equal $decoded.one.Count 1 'single JSON array'
     Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
-    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '3' 'integer version contract'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '4' 'integer version contract'
 }
 Test 'firewall review includes exact LAN and detected Tailscale sources without granting writes' {
     function Get-NetIPConfiguration { return @(
@@ -337,4 +337,86 @@ Test 'desktop unregister retries transient provider failure on the exact root ta
     Unregister-OwnedDesktopTask 'Miffan-mock'
     Assert-Equal $script:UnregisterCalls 2 'retried completed task removal'
 }
+Test 'cua bridge compiles on Windows PowerShell 5.1 without daemon access' {
+    Initialize-CuaBridge
+    Assert-True ([bool]('MiffanCuaBridge' -as [type])) 'C# compiled against .NET Framework'
+}
+Test 'one-time bridge credentials: replay, expiry, wrong token and path traversal' {
+    $directory=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-cua-offline-'+[Guid]::NewGuid().ToString('N'))
+    $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    New-PrivateDirectory $directory $sid
+    try {
+        Assert-PrivateDirectory $directory $sid
+        $id=[Guid]::NewGuid().ToString('N'); $token='a'*64
+        $file=[MiffanCuaBridge]::Ticket($directory,$id)
+        [IO.File]::WriteAllText($file,$token,$script:Utf8)
+        Assert-True ([MiffanCuaBridge]::Consume($directory,$id,$token)) 'first use succeeds'
+        Assert-True (-not [MiffanCuaBridge]::Consume($directory,$id,$token)) 'replay refused'
+        [IO.File]::WriteAllText($file,$token,$script:Utf8)
+        Assert-True (-not [MiffanCuaBridge]::Consume($directory,$id,('b'*64))) 'wrong token refused'
+        Assert-True (-not [IO.File]::Exists($file)) 'wrong auth consumes ticket'
+        [IO.File]::WriteAllText($file,$token,$script:Utf8); [IO.File]::SetLastWriteTimeUtc($file,[DateTime]::UtcNow.AddSeconds(-31))
+        Assert-True (-not [MiffanCuaBridge]::Consume($directory,$id,$token)) 'expired token refused'
+        Assert-Throws {[MiffanCuaBridge]::Ticket($directory,'../user-file')} 'invalid credential path'
+    } finally {Remove-Item -LiteralPath $directory -Recurse -Force}
+}
+Test 'bridge rejects missing, locked and different-user console sessions' {
+    foreach($console in @(@{present=$false;sid='S-1';id=1;lock_state='unlocked'},@{present=$true;sid='S-2';id=1;lock_state='unlocked'},@{present=$true;sid='S-1';id=0;lock_state='unlocked'},@{present=$true;sid='S-1';id=1;lock_state='locked'},@{present=$true;sid='S-1';id=1;lock_state='unknown'})) {
+        Assert-Throws {Assert-CuaConsole @{console=$console;sid='S-1'}} 'unsafe console refused'
+    }
+    Assert-CuaConsole @{console=@{present=$true;sid='S-1';id=1;lock_state='unlocked'};sid='S-1'}
+}
+Test 'bridge registers only ordinary interactive owned task and starts on demand (mocked)' {
+    $script:BridgeChecks=0; $script:BridgeStarted=$false; $script:BridgeRegistered=$false
+    function Get-CuaBridgeContext {return @{console=@{present=$true;sid='S-1';id=1;lock_state='unlocked'};sid='S-1';pipe='Miffan-offline';task='Miffan-offline';directory='C:\offline'}}
+    function Get-CuaStatus {return @{ok=$true;permission_review_needed=$false;daemon_session_ids=@(1)}}
+    function New-Item {param($ItemType,$Path,[switch]$Force)}
+    function Assert-CuaDirectoryParents {param($Path)}
+    function New-PrivateDirectory {param($Path,$Sid)}
+    function Assert-PrivateDirectory {param($Path,$Sid)}
+    function Test-CuaBridgeAvailable {param($Name);$script:BridgeChecks++;return $script:BridgeChecks -gt 1}
+    function Get-ScheduledTask {param($TaskName,$TaskPath,$ErrorAction);return @()}
+    function New-ScheduledTaskAction {param($Execute,$Argument);Assert-True ($Argument.Contains('cua bridge') -and $Argument.Contains('-WindowStyle Hidden')) 'hidden bridge command';return @{Execute=$Execute;Arguments=$Argument}}
+    function New-ScheduledTaskPrincipal {param($UserId,$LogonType,$RunLevel);Assert-Equal $UserId 'S-1' 'same SID';Assert-Equal $RunLevel 'Limited' 'ordinary task';Assert-Equal $LogonType 'Interactive' 'interactive task';return @{UserId=$UserId}}
+    function New-ScheduledTaskSettingsSet {param($ExecutionTimeLimit,$MultipleInstances,[switch]$AllowStartIfOnBatteries,[switch]$DontStopIfGoingOnBatteries);Assert-Equal $MultipleInstances 'IgnoreNew' 'no duplicate worker';return @{}}
+    function Register-ScheduledTask {param($TaskName,$Action,$Principal,$Settings,$ErrorAction);Assert-True ($TaskName.StartsWith('Miffan-')) 'only owned prefix';$script:BridgeRegistered=$true}
+    function Start-ScheduledTask {param($TaskName,$ErrorAction);$script:BridgeStarted=$true}
+    $context=Ensure-CuaBridge
+    Assert-True ($script:BridgeRegistered -and $script:BridgeStarted) 'registered and started once'
+    $script:BridgeRegistered=$false;$script:BridgeStarted=$false
+    $null=Ensure-CuaBridge
+    Assert-True (-not $script:BridgeRegistered -and -not $script:BridgeStarted) 'available bridge reused'
+    function Get-CuaStatus {return @{ok=$true;permission_review_needed=$true;daemon_session_ids=@(1)}}
+    Assert-Throws {Ensure-CuaBridge} 'elevated daemon task refused, not downgraded'
+}
+Test 'install refuses elevated existing task before network or mutation (mocked)' {
+    function Get-CuaTask {return @{Principal=@{RunLevel='Highest';LogonType='Interactive'}}}
+    function Invoke-WebRequest {throw 'MUST NOT DOWNLOAD'}
+    function Register-ScheduledTask {throw 'MUST NOT REGISTER'}
+    $message=$null
+    try {Invoke-CuaInstall} catch {$message=$_.Exception.Message}
+    Assert-Equal $message 'Cua autostart uses elevated permissions; user review required' 'explicit review refusal'
+}
+Test 'clipboard chooses available bridge, and unavailable bridge falls back (mocked)' {
+    function Get-CuaBridgeContext {return @{console=@{present=$true;sid='S-1';id=1;lock_state='unlocked'};sid='S-1';pipe='Miffan-offline';directory='C:\offline'}}
+    function Test-CuaBridgeAvailable {param($Name);return $false}
+    function Invoke-DesktopJob {param($Mode,$Text);Assert-Equal $Mode 'clip' 'interactive fallback';Assert-Equal $Text "中文`nEnglish" 'text untouched';return @{success=$true;verified=$true;transport='mock-interactive'}}
+    Assert-Equal (Invoke-CuaClipboard "中文`nEnglish").transport 'mock-interactive' 'fallback selected without starting bridge'
+    Assert-Throws {Invoke-CuaClipboard ([string][char]0)} 'NUL refused'
+}
+
+Test 'daemon permission review rejects elevated, unknown or another-user runtime (mocked)' {
+    function Test-CuaTaskOwner {param($Task,$Sid);return $Task.Principal.UserId -eq $Sid}
+    $context=@{sid='test-user'}
+    $task=@{Principal=@{RunLevel='Limited';UserId='test-user'}}
+    Assert-True (-not (Test-CuaPermissionReview $task $context @(8192))) 'medium runtime admitted'
+    Assert-True (Test-CuaPermissionReview $task $context @(12288)) 'high daemon refused even with Limited task'
+    Assert-True (Test-CuaPermissionReview $task $context @(-1)) 'unknown daemon integrity refused'
+    Assert-True (Test-CuaPermissionReview $task $context @(8192,12288)) 'mixed daemon permissions refused'
+    $task.Principal.RunLevel='Highest'
+    Assert-True (Test-CuaPermissionReview $task $context @(8192)) 'elevated autostart still reported'
+    $task.Principal.RunLevel='Limited';$task.Principal.UserId='other-user'
+    Assert-True (Test-CuaPermissionReview $task $context @(8192)) 'another user task requires review'
+}
+
 [Console]::Out.WriteLine((ConvertTo-PlainJson @{success=$true;passed=$script:Passed;scope='offline; firewall/service/task mutations mocked'}))

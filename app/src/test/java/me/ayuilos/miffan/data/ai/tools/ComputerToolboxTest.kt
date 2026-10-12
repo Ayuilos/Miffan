@@ -12,10 +12,20 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ComputerToolboxTest {
+    @Test fun windowsClipboardUsesActionApprovalAndPlatformGuidance() {
+        assertTrue("clipboard_write" in COMPUTER_DRIVER_TOOL_NAMES)
+        assertNull(computerAutoApprovedBy("clipboard_write", JsonObject(emptyMap()), true))
+        assertEquals(me.rerere.ai.ui.ToolDecisionVia.NO_ASK_SETTING, computerAutoApprovedBy("clipboard_write", JsonObject(emptyMap()), false))
+        assertTrue(WINDOWS_COMPUTER_GUIDANCE.contains("Ctrl+V"))
+        assertTrue(WINDOWS_COMPUTER_GUIDANCE.contains("historical documents"))
+        assertTrue(WINDOWS_COMPUTER_GUIDANCE.contains("UAC"))
+    }
+
     private val target = WorkspaceToolTargetSnapshot(
         assistantId = "assistant", workspacePermissionRevision = "permission", workspaceId = "workspace",
         scopeId = null, kind = "REMOTE", workspaceName = "Home", remoteHostName = "cachyos",

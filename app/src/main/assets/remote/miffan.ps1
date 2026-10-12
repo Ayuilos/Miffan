@@ -1,9 +1,10 @@
-﻿# Miffan Windows helper v3. PowerShell 5.1; install this file as UTF-8 WITH BOM.
+﻿# Miffan Windows helper v4. PowerShell 5.1; install this file as UTF-8 WITH BOM.
 # Dot-source to load pure functions for offline tests; otherwise stdout is one JSON line.
-# version deliberately retains the POSIX integer contract. No cua/App integration here.
+# version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 3
+$script:HelperVersion = 4
+$script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
 function ConvertTo-PlainJson($Value) {
@@ -233,7 +234,7 @@ function Get-MachineProbe {
     $osInfo = Get-CimInstance Win32_OperatingSystem
     $gpu = @(Get-CimInstance Win32_VideoController | ForEach-Object { [string]$_.Name })
     return @{ helper = $script:HelperVersion; os = 'windows'; arch = [string]$env:PROCESSOR_ARCHITECTURE;
-        session = $session; cua = @{path=$null;version=$null;min='0.34.0';ok=$false}; vnc = @{server=$null;running=$false}; rdp = @{server=$null;running=$false}; clipboard = 'interactive-task';
+        session = $session; cua = (Get-CuaStatus); vnc = @{server=$null;running=$false}; rdp = @{server=$null;running=$false}; clipboard = 'interactive-task';
         os_version = [string]$osInfo.Caption; os_version_number = [string]$osInfo.Version; os_build = [string]$osInfo.BuildNumber;
         displays = $null; display_state = 'unknown'; gpu = $gpu }
 }
@@ -705,6 +706,392 @@ function Invoke-DesktopJob([string]$Mode, [string]$Text) {
         $script:LastDesktopTask = $null; $script:LastDesktopDirectory = $null
     }
 }
+$script:CuaBridgeSource = @'
+using System;
+using System.IO;
+using System.IO.Pipes;
+using System.Text;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Security.Principal;
+using System.Security.AccessControl;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+using System.Collections.Generic;
+using System.Web.Script.Serialization;
+
+// No daemon ACL/permission changes. Every MCP child inherits this Limited interactive token.
+public static class MiffanCuaBridge {
+    public static readonly Encoding Utf8 = new UTF8Encoding(false, true);
+    [StructLayout(LayoutKind.Sequential)] struct SA { public int length; public IntPtr descriptor; public int inherit; }
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern SafePipeHandle CreateNamedPipe(string name, uint mode, uint pipeMode, uint instances, uint output, uint input, uint timeout, ref SA security);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool WaitNamedPipe(string name, uint timeout);
+    [DllImport("kernel32.dll")] static extern uint WTSGetActiveConsoleSessionId();
+    [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetTokenInformation(IntPtr token, int kind, IntPtr buffer, int size, out int needed);
+    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
+    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthority(IntPtr sid, uint index);
+    [DllImport("user32.dll", SetLastError=true)] static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+    [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool GetUserObjectInformation(IntPtr obj, int index, StringBuilder info, int length, out int needed);
+    [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int number);
+    static Stream Standard(int number, FileAccess access) {
+        // Windows OpenSSH inherits OVERLAPPED pipe handles. ConsoleStream's synchronous
+        // ReadFile can handle the first buffered batch then hang on the next pending read.
+        try { return new FileStream(new SafeFileHandle(GetStdHandle(number),false),access,65536,true); }
+        catch (ArgumentException) { return number==-10 ? Console.OpenStandardInput() : Console.OpenStandardOutput(); }
+    }
+    static long lastActivity;
+    static int active;
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<NamedPipeServerStream,byte> clients = new System.Collections.Concurrent.ConcurrentDictionary<NamedPipeServerStream,byte>();
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<int,Process> children = new System.Collections.Concurrent.ConcurrentDictionary<int,Process>();
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access,bool inherit,int pid);
+    [DllImport("advapi32.dll")] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    static int TokenIntegrity(IntPtr token) {
+        int size; GetTokenInformation(token,25,IntPtr.Zero,0,out size);
+        if(size<=0) throw new IOException("Cannot check integrity");
+        IntPtr memory=Marshal.AllocHGlobal(size);
+        try {
+            if(!GetTokenInformation(token,25,memory,size,out size)) throw new IOException("Cannot check integrity");
+            IntPtr sid=Marshal.ReadIntPtr(memory);
+            return Marshal.ReadInt32(GetSidSubAuthority(sid,(uint)(Marshal.ReadByte(GetSidSubAuthorityCount(sid))-1)));
+        } finally {Marshal.FreeHGlobal(memory);}
+    }
+    public static int Integrity() {using(var identity=WindowsIdentity.GetCurrent()) return TokenIntegrity(identity.Token);}
+    public static int ProcessIntegrity(int pid) {
+        IntPtr process=OpenProcess(0x1000,false,pid),token=IntPtr.Zero;
+        if(process==IntPtr.Zero) return -1;
+        try {if(!OpenProcessToken(process,8,out token)) return -1;return TokenIntegrity(token);}
+        catch {return -1;}
+        finally {if(token!=IntPtr.Zero) CloseHandle(token);CloseHandle(process);}
+    }
+    public static bool DesktopAvailable(int session) {
+        if (session == 0 || WTSGetActiveConsoleSessionId() != session) return false;
+        IntPtr desktop = OpenInputDesktop(0, false, 1);
+        if (desktop == IntPtr.Zero) return false;
+        try { var name = new StringBuilder(128); int needed; return GetUserObjectInformation(desktop, 2, name, 256, out needed) && name.ToString() == "Default"; }
+        finally { CloseDesktop(desktop); }
+    }
+    public static bool Available(string name) { return WaitNamedPipe(@"\\.\pipe\" + name, 1); }
+    static NamedPipeServerStream Create(string name, string sid, bool first) {
+        // Protected DACL: precisely this user, no Everyone/Administrators/System grant.
+        var security = new PipeSecurity(); security.SetSecurityDescriptorSddlForm("O:"+sid+"D:P(A;;GA;;;"+sid+")");
+        byte[] descriptor = security.GetSecurityDescriptorBinaryForm();
+        IntPtr memory = Marshal.AllocHGlobal(descriptor.Length);
+        try {
+            Marshal.Copy(descriptor, 0, memory, descriptor.Length);
+            var attributes = new SA { length=Marshal.SizeOf(typeof(SA)), descriptor=memory, inherit=0 };
+            // DUPLEX | OVERLAPPED | FIRST_PIPE_INSTANCE, byte mode | REJECT_REMOTE_CLIENTS.
+            var handle = CreateNamedPipe(@"\\.\pipe\"+name, 3u|0x40000000u|(first?0x00080000u:0u), 0x8u, 8, 65536, 65536, 1000, ref attributes);
+            if (handle.IsInvalid) { handle.Dispose(); throw new IOException("Bridge pipe unavailable"); }
+            return new NamedPipeServerStream(PipeDirection.InOut, true, false, handle);
+        } finally { Marshal.FreeHGlobal(memory); }
+    }
+    static void Touch() { Interlocked.Exchange(ref lastActivity, Environment.TickCount & 0xffffffffL); }
+    static long Age(long then) { return ((Environment.TickCount & 0xffffffffL)-then)&0xffffffffL; }
+    public static string ReadLine(Stream stream, int limit) {
+        using (var data = new MemoryStream()) {
+            for (int i=0; i<limit; i++) { int b=stream.ReadByte(); if(b<0) throw new EndOfStreamException(); if(b==10) return Utf8.GetString(data.ToArray()); data.WriteByte((byte)b); }
+            throw new IOException("Frame too long");
+        }
+    }
+    public static void WriteLine(Stream stream, string line) { byte[] data=Utf8.GetBytes(line+"\n"); stream.Write(data,0,data.Length); stream.Flush(); }
+    public static string Ticket(string root, string id) {
+        Guid value; if (!Guid.TryParseExact(id,"N",out value)) throw new IOException("Invalid ticket");
+        return Path.Combine(root,id+".ticket");
+    }
+    public static bool Consume(string root, string id, string token) {
+        string file=Ticket(root,id), consumed=file+".used-"+Guid.NewGuid().ToString("N");
+        try {
+            if ((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0 || (DateTime.UtcNow-File.GetLastWriteTimeUtc(file)).TotalSeconds>30) return false;
+            File.Move(file,consumed); // Atomic claim. Even failed authentication consumes the ticket.
+            string expected=File.ReadAllText(consumed,Utf8);
+            if (expected.Length!=64 || token.Length!=64) return false;
+            int difference=0; for(int i=0;i<64;i++) difference |= expected[i]^token[i];
+            return difference==0;
+        } catch { return false; }
+        finally { if (File.Exists(consumed)) File.Delete(consumed); }
+    }
+    static void Pump(Stream input, Stream output) {
+        byte[] data=new byte[65536]; int n;
+        while((n=input.ReadAsync(data,0,data.Length).GetAwaiter().GetResult())>0) { output.WriteAsync(data,0,n).GetAwaiter().GetResult(); output.FlushAsync().GetAwaiter().GetResult(); Touch(); }
+    }
+    static void Serve(NamedPipeServerStream pipe, string root, string exe, int session) {
+        Process child=null;
+        try {
+            var auth=Task.Run(()=>ReadLine(pipe,128));
+            if (!auth.Wait(5000)) return;
+            string[] parts=auth.Result.Split(' ');
+            if(parts.Length!=2 || !DesktopAvailable(session) || !Consume(root,parts[0],parts[1])) return;
+            var start=new ProcessStartInfo(exe,"mcp --socket \\\\.\\pipe\\cua-driver") {
+                UseShellExecute=false, CreateNoWindow=true, RedirectStandardInput=true, RedirectStandardOutput=true, RedirectStandardError=true,
+                StandardOutputEncoding=Utf8, StandardErrorEncoding=Utf8
+            };
+            child=Process.Start(start); children[child.Id]=child; child.StandardInput.NewLine="\n";
+            // BaseStreams bypass CP936; explicit UTF-8 on the text wrappers too.
+            WriteLine(pipe,"OK "+parts[1]); Touch();
+            var stderr=Task.Run(()=> { byte[] bytes=new byte[4096]; while(child.StandardError.BaseStream.Read(bytes,0,bytes.Length)>0) {} });
+            var incoming=Task.Run(()=>Pump(pipe,child.StandardInput.BaseStream));
+            var outgoing=Task.Run(()=>Pump(child.StandardOutput.BaseStream,pipe));
+            Task.WaitAny(incoming,outgoing);
+        } catch { /* Never log user JSON or exception text. EOF informs the client; no replay. */ }
+        finally {
+            pipe.Dispose(); byte removed; clients.TryRemove(pipe,out removed);
+            if(child!=null) { try { child.StandardInput.Close(); if(!child.WaitForExit(1000)) child.Kill(); } catch {} Process removedChild; children.TryRemove(child.Id,out removedChild); child.Dispose(); }
+            Interlocked.Decrement(ref active); Touch();
+        }
+    }
+    public static void Run(string name, string root, string exe, string sid, int session, int idleSeconds) {
+        if(WindowsIdentity.GetCurrent().User.Value!=sid || Process.GetCurrentProcess().SessionId!=session || Integrity()!=8192 || !DesktopAvailable(session)) throw new IOException("Bridge requires a Limited unlocked console session");
+        Touch(); NamedPipeServerStream listener=Create(name,sid,true);
+        try {
+            while(true) {
+                var waiting=listener.WaitForConnectionAsync();
+                while(!waiting.Wait(250)) {
+                    if(!DesktopAvailable(session) || (Age(Interlocked.Read(ref lastActivity))>idleSeconds*1000L)) return;
+                }
+                waiting.GetAwaiter().GetResult();
+                var connected=listener;
+                while (Volatile.Read(ref active)>=6) { Thread.Sleep(100); if(!DesktopAvailable(session) || Age(Interlocked.Read(ref lastActivity))>idleSeconds*1000L) { connected.Dispose(); return; } }
+                // Keep at least one instance alive throughout, preventing name takeover.
+                listener=Create(name,sid,false);
+                clients[connected]=0; Interlocked.Increment(ref active);
+                Task.Run(()=>Serve(connected,root,exe,session));
+            }
+        } finally {
+            listener.Dispose();
+            foreach(var client in clients.Keys) { try { client.Dispose(); } catch {} }
+            // Kill only the MCP children this bridge created, never the shared daemon.
+            foreach(var child in children.Values) { try { if(!child.HasExited) child.Kill(); } catch {} }
+        }
+    }
+    public static NamedPipeClientStream Connect(string name, string root) {
+        string id=Guid.NewGuid().ToString("N"); byte[] random=new byte[32];
+        using(var generator=System.Security.Cryptography.RandomNumberGenerator.Create()) generator.GetBytes(random);
+        string token=BitConverter.ToString(random).Replace("-","").ToLowerInvariant();
+        string ticket=Ticket(root,id);
+        using(var file=new FileStream(ticket,FileMode.CreateNew,FileAccess.Write,FileShare.None)) { byte[] data=Utf8.GetBytes(token); file.Write(data,0,data.Length); }
+        var pipe=new NamedPipeClientStream(".",name,PipeDirection.InOut,PipeOptions.Asynchronous,TokenImpersonationLevel.Identification);
+        try {
+            pipe.Connect(5000); WriteLine(pipe,id+" "+token);
+            var acknowledgement=Task.Run(()=>ReadLine(pipe,128));
+            if(!acknowledgement.Wait(5000) || acknowledgement.Result!="OK "+token) throw new IOException("Bridge authentication failed");
+            return pipe;
+        } catch { pipe.Dispose(); throw; }
+        finally { if(File.Exists(ticket)) File.Delete(ticket); }
+    }
+    public static void Stdio(string name,string root) {
+        Console.InputEncoding=Utf8; Console.OutputEncoding=Utf8;
+        using(var pipe=Connect(name,root)) {
+            var incoming=Task.Run(()=> { Pump(Standard(-10,FileAccess.Read),pipe); });
+            var outgoing=Task.Run(()=> { Pump(pipe,Standard(-11,FileAccess.Write)); });
+            Task.WaitAny(incoming,outgoing);
+        }
+    }
+    static Dictionary<string,object> Rpc(Stream pipe, int id, string method, object parameters) {
+        var json=new JavaScriptSerializer { MaxJsonLength=8*1024*1024 };
+        WriteLine(pipe,json.Serialize(new {jsonrpc="2.0",id=id,method=method,@params=parameters}));
+        for(int i=0;i<32;i++) {
+            var read=Task.Run(()=>ReadLine(pipe,8*1024*1024));
+            if(!read.Wait(10000)) throw new IOException("MCP timeout");
+            var response=json.Deserialize<Dictionary<string,object>>(read.Result);
+            if(!response.ContainsKey("id") || Convert.ToInt32(response["id"])!=id) continue;
+            if(response.ContainsKey("error")) throw new IOException("MCP error");
+            var result=(Dictionary<string,object>)response["result"];
+            if(result.ContainsKey("isError") && (bool)result["isError"]) throw new IOException("Clipboard tool refused");
+            return result;
+        }
+        throw new IOException("MCP response missing");
+    }
+    public static bool Clipboard(string name,string root,string text) {
+        using(var pipe=Connect(name,root)) {
+            Rpc(pipe,1,"initialize",new { protocolVersion="2025-06-18", capabilities=new {}, clientInfo=new {name="miffan-clip",version="1.0"} });
+            WriteLine(pipe,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+            Rpc(pipe,2,"tools/call",new {name="clipboard_write",arguments=new {text=text}});
+            var result=Rpc(pipe,3,"tools/call",new {name="clipboard_read",arguments=new {include_text=true}});
+            // Verification stays local to the helper; no old clipboard read, text/hash output.
+            if(result.ContainsKey("structuredContent")) {
+                var structured=result["structuredContent"] as Dictionary<string,object>;
+                if(structured!=null && structured.ContainsKey("text")) return (string)structured["text"]==text;
+            }
+            foreach(var item in (System.Collections.ArrayList)result["content"]) {
+                var content=(Dictionary<string,object>)item;
+                if(content.ContainsKey("text")) {
+                    try { var value=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>((string)content["text"]); if(value.ContainsKey("text")) return (string)value["text"]==text; } catch {}
+                }
+            }
+            return false;
+        }
+    }
+}
+'@
+# P7c: ordinary interactive task + authenticated local pipe. No TCP/file MCP transport.
+$script:CuaVersion = '0.34.0'
+function Initialize-CuaBridge {
+    if ('MiffanCuaBridge' -as [type]) { return }
+    Add-Type -TypeDefinition $script:CuaBridgeSource -ReferencedAssemblies 'System.dll','System.Core.dll','System.Web.Extensions.dll'
+}
+function Test-CuaBridgeAvailable([string]$Name) { Initialize-CuaBridge; return [MiffanCuaBridge]::Available($Name) }
+function Get-CuaExecutable {
+    $candidates = @((Join-Path $env:LOCALAPPDATA 'Programs\Cua\cua-driver\bin\cua-driver.exe'), (Join-Path $env:USERPROFILE '.local\bin\cua-driver.exe'))
+    $command = Get-Command cua-driver.exe -CommandType Application -ErrorAction SilentlyContinue
+    if ($command) { $candidates += [string]$command.Source }
+    foreach ($candidate in $candidates) { if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate } }
+    return $null
+}
+function Test-CuaTaskOwner($Task, [string]$Sid) {
+    $owner=[string]$Task.Principal.UserId
+    if ($owner -eq $Sid) {return $true}
+    try {return (New-Object Security.Principal.NTAccount -ArgumentList $owner).Translate([Security.Principal.SecurityIdentifier]).Value -eq $Sid} catch {return $false}
+}
+function Get-CuaTask {
+    $tasks = @(Get-ScheduledTask -TaskName 'cua-driver-serve' -TaskPath '\' -ErrorAction SilentlyContinue)
+    if ($tasks.Count -gt 1) { throw 'Ambiguous cua autostart task' }
+    if ($tasks.Count) { return $tasks[0] }
+    return $null
+}
+function Get-CuaBridgeContext {
+    $console = Get-ConsoleSession
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $suffix = $sid + '-' + $console.id + '-v' + $script:HelperVersion
+    return @{console=$console;sid=$sid;directory=(Join-Path $env:LOCALAPPDATA 'Miffan\cua-bridge');pipe=('Miffan-cua-'+$suffix);task=('Miffan-cua-'+$suffix)}
+}
+function Assert-CuaDirectoryParents([string]$Path) {
+    $parent=Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    while ($parent) {
+        if (-not ($parent -is [IO.DirectoryInfo]) -or ($parent.Attributes -band [IO.FileAttributes]::ReparsePoint)) {throw 'Reparse bridge parent is not allowed'}
+        $parent=$parent.Parent
+    }
+}
+function Assert-CuaConsole($Context) {
+    $console=$Context.console
+    if (-not $console.present -or $console.sid -ne $Context.sid -or $console.id -eq 0) {throw 'Cua requires the SSH user to match the console user'}
+    if ($console.lock_state -ne 'unlocked') {throw 'Cua requires a confirmed unlocked console session'}
+}
+function Test-CuaPermissionReview($Task, $Context, $Integrity) {
+    return (($Task -and ([string]$Task.Principal.RunLevel -ne 'Limited' -or -not (Test-CuaTaskOwner $Task $Context.sid))) -or @($Integrity | Where-Object {$_ -ne 8192}).Count -gt 0)
+}
+function Get-CuaStatus {
+    $exe = Get-CuaExecutable; $version=$null
+    if ($exe) {
+        # Never invoke a native command via PowerShell's pipeline on a stdio connection:
+        # its stdin pump can outlive --version and steal later MCP requests.
+        $start=New-Object Diagnostics.ProcessStartInfo
+        $start.FileName=$exe; $start.Arguments='--version'; $start.UseShellExecute=$false; $start.CreateNoWindow=$true
+        $start.RedirectStandardInput=$true; $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
+        $start.StandardOutputEncoding=$script:Utf8; $start.StandardErrorEncoding=$script:Utf8
+        $process=[Diagnostics.Process]::Start($start)
+        try {
+            $process.StandardInput.Close()
+            $output=$process.StandardOutput.ReadToEndAsync(); $errors=$process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit(5000)) {$process.Kill();throw 'Cua version check timed out'}
+            if ($process.ExitCode -eq 0 -and $output.Result -match 'cua-driver (\d+\.\d+\.\d+)') {$version=$matches[1]}
+        } finally {$process.Dispose()}
+    }
+    $task=Get-CuaTask; $runLevel=$null
+    if ($task) {$runLevel=[string]$task.Principal.RunLevel}
+    $daemons=@(Get-CimInstance Win32_Process -Filter "Name='cua-driver.exe'" | Where-Object {$_.CommandLine -match '(^|\s)serve(\s|$)'})
+    $sessions=@($daemons | ForEach-Object {[int]$_.SessionId} | Sort-Object -Unique)
+    $context=Get-CuaBridgeContext
+    Initialize-CuaBridge
+    $integrity=@($daemons | Where-Object {$_.SessionId -eq $context.console.id} | ForEach-Object {[MiffanCuaBridge]::ProcessIntegrity([int]$_.ProcessId)})
+    $review=Test-CuaPermissionReview $task $context $integrity
+    $available=(Test-CuaBridgeAvailable $context.pipe)
+    return @{path=$exe;installed=[bool]$exe;version=$version;min=$script:CuaVersion;ok=([bool]$version -and [version]$version -ge [version]$script:CuaVersion -and -not $review);autostart_run_level=$runLevel;daemon_session_ids=$sessions;daemon_integrity_rids=$integrity;bridge_available=$available;permission_review_needed=[bool]$review}
+}
+function Ensure-CuaBridge {
+    $context=Get-CuaBridgeContext
+    Assert-CuaConsole $context
+    $status=Get-CuaStatus
+    if ($status.permission_review_needed) {throw 'Cua permissions are elevated or unknown; user review required'}
+    if (-not $status.ok -or $context.console.id -notin $status.daemon_session_ids) {throw 'A supported ordinary cua daemon must be running in the console session'}
+    $root=Join-Path $env:LOCALAPPDATA 'Miffan'
+    $null=New-Item -ItemType Directory -Path $root -Force
+    Assert-CuaDirectoryParents $root
+    New-PrivateDirectory $context.directory $context.sid
+    Assert-PrivateDirectory $context.directory $context.sid
+    Assert-CuaDirectoryParents $context.directory
+    if (-not (Test-CuaBridgeAvailable $context.pipe)) {
+        $tasks=@(Get-ScheduledTask -TaskName $context.task -TaskPath '\' -ErrorAction SilentlyContinue)
+        if ($tasks.Count -gt 1) {throw 'Ambiguous bridge task'}
+        $arguments='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$script:HelperFile+'" cua bridge'
+        if ($tasks.Count) {
+            $task=$tasks[0]
+            if ([string]$task.Principal.RunLevel -ne 'Limited' -or [string]$task.Principal.LogonType -ne 'Interactive' -or -not (Test-CuaTaskOwner $task $context.sid) -or $task.Actions.Count -ne 1 -or [string]$task.Actions[0].Arguments -cne $arguments) {throw 'Existing bridge task differs; user review required'}
+        } else {
+            $action=New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument $arguments
+            $principal=New-ScheduledTaskPrincipal -UserId $context.sid -LogonType Interactive -RunLevel Limited
+            $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+            $null=Register-ScheduledTask -TaskName $context.task -Action $action -Principal $principal -Settings $settings -ErrorAction Stop
+        }
+        Start-ScheduledTask -TaskName $context.task -ErrorAction Stop
+        $deadline=[DateTime]::UtcNow.AddSeconds(15)
+        while (-not (Test-CuaBridgeAvailable $context.pipe)) {
+            if ([DateTime]::UtcNow -ge $deadline) {throw 'Cua bridge did not start'}
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    return $context
+}
+function Invoke-CuaBridge {
+    $context=Get-CuaBridgeContext; Assert-CuaConsole $context
+    if ([Diagnostics.Process]::GetCurrentProcess().SessionId -ne $context.console.id) {throw 'Bridge must run in the console session'}
+    Assert-PrivateDirectory $context.directory $context.sid
+    Initialize-CuaBridge
+    [MiffanCuaBridge]::Run($context.pipe,$context.directory,(Get-CuaExecutable),$context.sid,$context.console.id,120)
+}
+function Invoke-CuaStdio {
+    $context=Ensure-CuaBridge
+    [MiffanCuaBridge]::Stdio($context.pipe,$context.directory)
+}
+function Invoke-CuaClipboard([string]$Text) {
+    if ($Text.Contains([char]0)) {throw 'Clipboard text cannot contain NUL'}
+    $context=Get-CuaBridgeContext; Assert-CuaConsole $context
+    Initialize-CuaBridge
+    if (-not (Test-CuaBridgeAvailable $context.pipe)) {return Invoke-DesktopJob 'clip' $Text}
+    Assert-PrivateDirectory $context.directory $context.sid
+    # Once clipboard_write could have reached the daemon, never replay via the fallback.
+    if (-not [MiffanCuaBridge]::Clipboard($context.pipe,$context.directory,$Text)) {throw 'Clipboard readback did not match'}
+    return @{success=$true;verified=$true;session_id=$context.console.id;transport='cua-bridge';detail='Clipboard written and read back'}
+}
+function Invoke-CuaInstall {
+    $existing=Get-CuaTask
+    if ($existing -and ([string]$existing.Principal.RunLevel -ne 'Limited' -or [string]$existing.Principal.LogonType -ne 'Interactive')) {throw 'Cua autostart uses elevated permissions; user review required'}
+    $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    if ($existing -and -not (Test-CuaTaskOwner $existing $sid)) {throw 'Cua autostart belongs to another user'}
+    $directory=Join-Path $env:LOCALAPPDATA ('Miffan\cua-install-'+[Guid]::NewGuid().ToString('N'))
+    Assert-CuaDirectoryParents (Join-Path $env:LOCALAPPDATA 'Miffan')
+    New-PrivateDirectory $directory $sid
+    try {
+        $installer=Join-Path $directory 'install.ps1'
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://cua.ai/driver/install.ps1' -OutFile $installer
+        # Official NoAutoStart alone re-registers an existing task as Highest! Explicit default
+        # per-user paths make the installer skip ALL shared autostart changes (isolated mode).
+        $installCode=@'
+$env:CUA_DRIVER_RS_VERSION='0.34.0'
+$env:CUA_DRIVER_RS_HOME=Join-Path $env:USERPROFILE '.cua-driver'
+$env:CUA_DRIVER_RS_INSTALL_DIR=Join-Path $env:LOCALAPPDATA 'Programs\Cua\cua-driver\bin'
+& $args[0] -Release 0.34.0 -NoAutoStart
+'@
+        $bootstrap=Join-Path $directory 'install-user.ps1'
+        [IO.File]::WriteAllText($bootstrap,$installCode,(New-Object Text.UTF8Encoding($true)))
+        & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $bootstrap $installer *> $null
+        if ($LASTEXITCODE -ne 0) {throw 'Cua installer failed; existing autostart was not changed'}
+        $status=Get-CuaStatus
+        if ($status.version -ne $script:CuaVersion -or $status.permission_review_needed) {throw 'Cua installation could not be verified'}
+        $arguments='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$script:HelperFile+'" cua daemon'
+        $action=New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument $arguments
+        $principal=New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
+        $trigger=New-ScheduledTaskTrigger -AtLogOn -User $sid
+        $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        # Only after the user's existing install/upgrade confirmation; never used by status/open.
+        $null=Register-ScheduledTask -TaskName 'cua-driver-serve' -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Force -ErrorAction Stop
+        Start-ScheduledTask -TaskName 'cua-driver-serve'
+        return @{success=$true;version=$script:CuaVersion;autostart_run_level='Limited';detail='Cua installed for this user with ordinary interactive autostart'}
+    } finally {Remove-Item -LiteralPath $directory -Recurse -Force}
+}
+
 function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation) {
     switch ($Verb) {
         'version' { if ($Subcommand -or $Suboperation) {throw 'Usage: version'}; return $script:HelperVersion }
@@ -729,11 +1116,24 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
                 default { throw 'Usage: sunshine probe|start|enforce-encryption|firewall' }
             }
         }
-        'clip' { if ($Subcommand -or $Suboperation) {throw 'Clipboard text must come from stdin'}; return Invoke-DesktopJob 'clip' ([Console]::In.ReadToEnd()) }
-        default { throw 'Usage: version|probe [display]|sunshine|clip' }
+        'clip' { if ($Subcommand -or $Suboperation) {throw 'Clipboard text must come from stdin'}; return Invoke-CuaClipboard ([Console]::In.ReadToEnd()) }
+        'cua' { if ($Subcommand -eq 'status' -and -not $Suboperation) {return Get-CuaStatus}; if ($Subcommand -eq 'install' -and -not $Suboperation) {return Invoke-CuaInstall}; throw 'Usage: cua [status|install|bridge]' }
+        default { throw 'Usage: version|probe [display]|sunshine|clip|cua' }
     }
 }
 $script:SafeFailures = @(
+    'Cua autostart uses elevated permissions; user review required',
+    'Cua permissions are elevated or unknown; user review required',
+    'Cua installer failed; existing autostart was not changed',
+    'Cua autostart belongs to another user',
+    'Cua requires the SSH user to match the console user',
+    'Cua requires a confirmed unlocked console session',
+    'Cua version check timed out',
+    'Cua installation could not be verified',
+    'A supported ordinary cua daemon must be running in the console session',
+    'Existing bridge task differs; user review required',
+    'Cua bridge did not start',
+    'Reparse bridge parent is not allowed',
     'Active or unknown stream; refusing encryption change',
     'ActiveStore rule or filters disappeared during inspection',
     'Ambiguous ActiveStore filter identity',
@@ -808,12 +1208,27 @@ if ($MyInvocation.InvocationName -ne '.') {
     $OutputEncoding = $script:Utf8
     $script:LastBackup = $null; $script:LastDesktopTask=$null; $script:LastDesktopDirectory=$null
     try {
+        if ($Command -eq 'cua' -and -not $Operation -and $Action -in @('', 'bridge','daemon')) {
+            if ($Action -eq 'bridge') {Invoke-CuaBridge}
+            elseif ($Action -eq 'daemon') {
+                Initialize-CuaBridge
+                if ([MiffanCuaBridge]::Integrity() -ne 8192 -or [Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) {throw 'Cua daemon task must use ordinary interactive permissions'}
+                $start=New-Object Diagnostics.ProcessStartInfo
+                $start.FileName=Get-CuaExecutable; $start.Arguments='serve'; $start.UseShellExecute=$false; $start.CreateNoWindow=$true
+                $process=[Diagnostics.Process]::Start($start); $process.WaitForExit(); exit $process.ExitCode
+            } else {Invoke-CuaStdio}
+            exit 0
+        }
         $result = Invoke-Helper $Command $Action $Operation
         [Console]::Out.WriteLine((ConvertTo-PlainJson $result))
         if ($result -is [Collections.IDictionary] -and $result.Contains('success') -and -not $result.success) { exit 1 }
         exit 0
     } catch {
         # Never print exception messages: they could contain stdin text or confidential config.
+        if ($Command -eq 'cua' -and $Action -in @('', 'bridge','daemon')) {
+            [Console]::Error.WriteLine('Cua bridge unavailable; check cua status and the unlocked console session')
+            exit 1
+        }
         [Console]::Out.WriteLine((ConvertTo-PlainJson @{success=$false;detail=$(if ($_.Exception.Message -cin $script:SafeFailures) {$_.Exception.Message} else {'Helper command failed'});error_type=$_.Exception.GetType().Name;backup=$script:LastBackup;cleanup_task=$script:LastDesktopTask;cleanup_directory=$script:LastDesktopDirectory}))
         exit 1
     }

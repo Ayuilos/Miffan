@@ -56,3 +56,12 @@ python3 tools/windows-helper-tests/clip-smoke.py
 输出只有成功/verified/session_id，不输出剪贴板内容或摘要，不发粘贴键、不打开应用。
 基础 probe 不创建任务。正式调用约定与实测输出见
 [交付笔记](../../docs/remote-screen/P7B_NOTES.md)。
+
+## P7c 桥
+
+helper v4 还覆盖桥 C# 编译、一次性凭据/重放/过期、普通权限任务与 daemon 权限审阅。
+真实协议、连接闲置、模拟器控制器见 `tools/remote-screen/p7c-*.py`；
+[交付笔记](../../docs/remote-screen/P7C_NOTES.md) 记录调用顺序、安全边界和验证范围。
+`p7c-mcp.py` 只读；`p7c-idle.py` 保持连接但不操作桌面。
+`p7c-owned.py` 打开全新测试文件前必须先通知 Claude；`p7c-emulator.py` 的输入模式
+要求两次剪贴板写入分别已通知。每条通知均 send-text 后 send-keys enter。

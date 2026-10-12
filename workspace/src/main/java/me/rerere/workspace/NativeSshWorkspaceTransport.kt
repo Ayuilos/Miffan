@@ -384,11 +384,15 @@ class RemoteWorkspaceSession internal constructor(
         checkOpen()
         val channel = session.openChannel("exec") as ChannelExec
         try {
-            channel.setCommand(command)
+            channel.setCommand(if (platform == RemotePlatform.WINDOWS) RemoteShell.windowsProcessCommand else command)
             val input = channel.inputStream
             val output = channel.outputStream
             val stderr = channel.errStream
             channel.connect(channelTimeoutMillis)
+            if (platform == RemotePlatform.WINDOWS) {
+                output.write(RemoteShell.windowsFrame(paths.root, command))
+                output.flush()
+            }
             return RemoteChannelStream(this, channel, input, output, stderr)
         } catch (error: Throwable) {
             runCatching { channel.disconnect() }
@@ -661,6 +665,7 @@ class RemoteTerminalSession internal constructor(
     private val closed = AtomicBoolean(false)
     private val controlLock = Any()
 
+    val platform: RemotePlatform get() = owner.platform
     val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
     val exitStatus: Int get() = channel.exitStatus
 
@@ -698,6 +703,7 @@ class RemoteChannelStream internal constructor(
 ) : Closeable {
     private val closed = AtomicBoolean(false)
 
+    val platform: RemotePlatform get() = owner.platform
     val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
 
     override fun close() {
