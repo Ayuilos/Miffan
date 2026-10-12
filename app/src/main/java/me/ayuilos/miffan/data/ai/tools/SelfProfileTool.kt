@@ -71,24 +71,14 @@ internal fun buildSelfProfileTools(
             val changed = fields.filter { it in params }
             if (changed.isEmpty()) return@execute reject("Provide at least one profile change.")
             val name = (params["name"] as? JsonPrimitive)?.content?.trim()
-            val emoji = (params["avatar_emoji"] as? JsonPrimitive)?.content
-            val preset = (params["avatar_preset"] as? JsonPrimitive)?.content
-            if (emoji != null && preset != null) return@execute reject("avatar_emoji and avatar_preset are mutually exclusive.")
-            if (preset != null && preset !in setOf("miffan", "whale_girl", "previous")) return@execute reject("Invalid avatar_preset.")
-            if (("miffan_kind" in params || "miffan_palette" in params) && preset != "miffan") {
-                return@execute reject("miffan_kind and miffan_palette require avatar_preset=miffan.")
+            val avatarChange = try {
+                validateProfileAvatar(params, emojiValues)
+            } catch (e: IllegalArgumentException) {
+                return@execute reject(e.message ?: "Invalid avatar.")
             }
-            val kind = params["miffan_kind"]?.let {
-                runCatching { Json.decodeFromJsonElement<MiffanKind>(it) }.getOrNull()
-                    ?: return@execute reject("Invalid miffan_kind.")
-            }
-            val palette = params["miffan_palette"]?.let {
-                runCatching { Json.decodeFromJsonElement<MiffanPalette>(it) }.getOrNull()
-                    ?: return@execute reject("Invalid miffan_palette.")
-            }
+            val preset = avatarChange.preset
             val prompt = (params["system_prompt"] as? JsonPrimitive)?.content
             if (name != null && name.codePointCount(0, name.length) !in 1..40) return@execute reject("name must contain 1–40 characters after trimming.")
-            if (emoji != null && !isSingleProfileEmoji(emoji, emojiValues())) return@execute reject("avatar_emoji must be a single emoji grapheme cluster.")
             if (prompt != null && prompt.codePointCount(0, prompt.length) > 8000) return@execute reject("system_prompt must not exceed 8000 characters.")
             // Load only the caller's history after approval. Compare against latest settings below.
             val avatarHistory = if (preset == "previous") revisionService.avatarHistory(access.callerId) else emptyList()
@@ -100,19 +90,9 @@ internal fun buildSelfProfileTools(
                     settings.copy(assistants = settings.assistants.map { assistant ->
                         if (assistant.id != access.callerId) return@map assistant
                         found = true
-                        val avatar = when (preset) {
-                            "miffan" -> Avatar.Miffan(
-                                appearance = assistant.avatar.miffanAppearanceOrDefault().let { appearance ->
-                                    appearance.copy(kind = kind ?: appearance.kind, palette = palette ?: appearance.palette)
-                                },
-                                motionProfile = assistant.avatar.characterMotionProfileOrDefault(),
-                            )
-                            "whale_girl" -> Avatar.WhaleGirl(assistant.avatar.characterMotionProfileOrDefault())
-                            "previous" -> avatarHistory.firstOrNull { it != assistant.avatar } ?: run {
-                                avatarError = "没有更早的头像"
-                                return@map assistant
-                            }
-                            else -> emoji?.let { Avatar.Emoji(it) } ?: assistant.avatar
+                        val avatar = avatarChange.resolve(assistant.avatar, avatarHistory) ?: run {
+                            avatarError = "没有更早的头像"
+                            return@map assistant
                         }
                         assistant.copy(
                             name = name ?: assistant.name,
