@@ -78,6 +78,8 @@ import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.workspaceToolTargetError
 import me.ayuilos.miffan.data.ai.AgentAccess
+import me.ayuilos.miffan.data.ai.forAgentRelayTurn
+import me.ayuilos.miffan.data.ai.withAgentRelayApproval
 import me.ayuilos.miffan.data.ai.tools.createMyEnvironmentTool
 import me.ayuilos.miffan.data.ai.tools.availableWorkspaceSkills
 import me.ayuilos.miffan.data.partner.ownerMentionedPartnerIds
@@ -1029,16 +1031,14 @@ class ChatService(
         val initialConversation = getConversationFlow(conversationId).value
         val assistant = settings.getAssistantById(initialConversation.assistantId)
             ?: settings.getCurrentAssistant()
-        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+        val configuredModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
             ?: error(context.getString(R.string.chat_page_select_model_first))
 
         val senderName = if (settings.isImMode || assistant.useAssistantAvatar) {
             assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
         } else {
-            model.displayName
+            configuredModel.displayName
         }
-        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
-        val extensionManagementEnabled = shouldEnableExtensionManagement(assistant, model)
 
         runCatching {
 
@@ -1092,6 +1092,9 @@ class ChatService(
             } else conversation
             val ownerTrigger = turnConversation.ownerTrigger()
             val access = AgentAccess.forTurn(assistant, turnConversation)
+            val model = configuredModel.forAgentRelayTurn(access)
+            val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
+            val extensionManagementEnabled = shouldEnableExtensionManagement(assistant, model)
             // memory tool
             if (!model.abilities.contains(ModelAbility.TOOL)) {
                 if (
@@ -1144,7 +1147,7 @@ class ChatService(
                     add(me.ayuilos.miffan.data.ai.transformers.PartnerMentionTransformer(turnConversation, settings))
                 },
                 outputTransformers = outputTransformers,
-                dynamicTools = { computerToolbox?.tools().orEmpty() },
+                dynamicTools = { computerToolbox?.tools().orEmpty().withAgentRelayApproval(access, dynamic = true) },
                 tools = buildList {
                     val miffanHelpEnabled = shouldEnableMiffanHelp(
                         assistant = assistant,
@@ -1252,7 +1255,7 @@ class ChatService(
                                 turnConversation.ownerMentionedPartnerIds(settings).toSet() else emptySet(),
                         ))
                     }
-                },
+                }.withAgentRelayApproval(access),
             ).onCompletion { cause ->
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(

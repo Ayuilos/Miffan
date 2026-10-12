@@ -234,7 +234,7 @@ class GenerationHandler(
                         toolDef?.needsApproval(tool.inputAsJson()) == true &&
                             tool.approvalState is ToolApprovalState.Auto -> {
                             hasPendingApproval = true
-                            tool.waitForApproval(Clock.System.now().toEpochMilliseconds()).copy(
+                            tool.waitForApproval(Clock.System.now().toEpochMilliseconds(), toolDef.approvalReason).copy(
                                 terminalRequestId = if (tool.toolName == "workspace_terminal") {
                                     java.util.UUID.randomUUID().toString()
                                 } else null,

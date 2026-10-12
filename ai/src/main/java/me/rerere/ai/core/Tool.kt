@@ -18,6 +18,8 @@ data class Tool(
     val needsApproval: (JsonElement) -> Boolean = { false },
     val autoApprovedBy: (JsonElement) -> me.rerere.ai.ui.ToolDecisionVia? = { null },
     val workspaceTarget: WorkspaceToolTargetSnapshot? = null,
+    /** App-owned reason for a mandatory approval, persisted on the call for approval UI. */
+    val approvalReason: String? = null,
     val execute: suspend (JsonElement) -> List<UIMessagePart>
 )
 
