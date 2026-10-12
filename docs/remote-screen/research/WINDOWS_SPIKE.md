@@ -1,4 +1,4 @@
-# Windows 支持验证（第三轮检查点：串流与桌面操作通过，A5 待续）
+# Windows 支持验证（实测结论与收尾交付）
 
 日期：2026-10-12。分支：`research/windows-spike`。
 依据：[WINDOWS_SPIKE_SPEC.md](../WINDOWS_SPIKE_SPEC.md)。
@@ -7,7 +7,7 @@
 
 **Windows 的核心路径已实测成立：Sunshine Session 1 真实桌面 → SSH TCP + Tailscale UDP 严格加密；cua-driver Session 1 daemon → SSH stdio MCP。H.264/HEVC 均实际使用 RTX 3060 的 NVENC，持续打字约 60 fps；中英文输入、截图、点击、用户会话剪贴板和中文粘贴已通过。**
 
-第三轮仍不是全部验收完成：Sunshine 原生 VK/绝对坐标测试在发送输入前被实验记事本的焦点租约拒绝；已按规格停止桌面/串流实验，通知 Claude 请用户激活该实验窗口再恢复。当前只有单屏、96 DPI，多屏及其它缩放不能由本次结果推断。未主动锁屏/UAC/重启；音频没有播放，零包原因已有日志/源码解释，音频传输链路仍未验收。
+第四轮经用户激活窗口后，以 Session 1 无窗口观察器只读确认前台 HWND=788388，再通过 Sunshine 原生控制流验证绝对坐标、Ctrl+V、Ctrl+End、Left/Right、F5，文本和截图均读回。实验窗口已选择“不保存”关闭，临时观察器/MCP/转发均清理。**本机授权范围的 spike 已完成，结果足以进入正式 Windows 支持方案；不是跨机型完整兼容认证。** 当前仅单屏/96 DPI，其它缩放/多屏未实测；Win 键按只操作记事本的限制不发给共享 shell，Alt/Escape 仅确认排队返回而未独立观察效果。锁屏/UAC/未登录只读调研；音频两次自然收流收到 244/246 个加密压缩包，但未播放、未验收解码/音频来源及持续性。
 
 建议采用 Sunshine 采集真实控制台，TCP 管理/配对/RTSP 经 SSH，媒体及控制 UDP 直连 LAN/VPN；伙伴操作通过 SSH stdio MCP 连接用户交互会话中的 cua-driver 命名管道。当前 Mac 的 ad-hoc probe 被本地网络隐私拦截，Tailscale 已由用户安装并配置，正式手机 LAN 能力仍需 App 适配后验收。
 
@@ -197,6 +197,11 @@ Codex 命令复用上面的 loopback 57984/57989/58010，只将 `--udp-host` 改
 
 **音频零包的解释（只查配置/日志，没有播放）**：当前配置仅加密两项，未指定 audio_sink/virtual_sink；会话日志成功选择 `virtual-Stereo`，F32 48000 Hz 双声道，Opus 48 kHz/2 channels/512 kbps LOWDELAY，无初始化失败，所有 Win32_SoundDevice 状态 OK。probe 的 launch/resume 没有传 `continuousAudio`，common-c 附加参数只有 `corever=1`；Sunshine [nvhttp.cpp:506](https://github.com/LizardByte/Sunshine/blob/v2026.914.233613/src/nvhttp.cpp#L506) 默认 continuousAudio=0。精确版本 [WASAPI capture](https://github.com/LizardByte/Sunshine/blob/v2026.914.233613/src/platform/windows/audio.cpp#L573) 在无采样事件时返回 timeout，仅 continuous_audio=true 才补静音；[audio.cpp:252](https://github.com/LizardByte/Sunshine/blob/v2026.914.233613/src/audio.cpp#L252) 对 timeout 直接 continue，不编码音频。**推断**：静音/虚拟输出没有 render 数据且未请求连续音频，足以解释零包；不能仅凭配置/日志排除 UDP 音频路径问题，也不宣布音频已验收。Headscale/Windows 规则范围均包含 48000。
 
+
+第四轮收尾补测：HEVC strict 的原生输入会话 result=0，1920×1080、893 帧/40.571 s、均值 22.011 fps、首帧 1394.863 ms、RTT 19 ms、enc=0x7。输入是少量粘贴/方向键，不是持续打字；隔离变体的主采样循环被多次 SSH 目标校验阻塞，出现约 37 s 的采样间隔，因此不用它评估逐秒帧率。动态打字的帧率结论仍采用前述 25 s 独立实验。
+
+音频补充：两次保护性拒绝输入的会话分别收到 audio_packets=244/246，均 video/audio/control 加密=true、enc=0x7，客户端只解密/计数压缩包，没有主动播放/生成声音，也未在用户电脑打开音频程序。第三次静止原生输入会话又为 0；日志仍成功初始化同一 virtual-Stereo/Opus，第三次有一次 audio capture reinit。**音频 UDP → 解密回调确实收到过数据，不能再声称路径始终不通。** 零包与“未启用 continuousAudio、可能无 render 数据”相容，但具体音频来源/触发条件未测；没有将推断当成唯一原因。音频解码/播放质量与默认音频设备恢复没有专门基线验收，留给正式方案。
+
 本地证据：Claude `/private/tmp/claude-501/-Users-chenxiansheng-miffan/5bf132e0-9637-4ef3-a1ff-3e795b9ff342/scratchpad/win-ts3.json`；Codex `/private/tmp/windows-spike-ts-h264.json`、`windows-spike-ts-typing.json`、`windows-spike-ts-typing-overlap.json`、`windows-spike-ts-media.txt`。初次 status 因 PowerShell ETS 属性膨胀产生过大 JSON，已收敛为原始配置值，脚本改用 `[IO.File]::ReadAllText`，没有重跑安装/配置。
 
 ### A4 防火墙（第一轮暂停、第二轮已核实收紧）
@@ -257,11 +262,39 @@ Disabled 的 GUID。helper 应按 sunshine.exe 路径、有效入站 Allow、协
 
 cua 后台 End/Left 确实改变实验光标（End 后列 34；Left 后续输入插在末字前），F5 插入 `15:53 2026/10/12`。Alt+F 后出现访问键/弹出 UI，但没有确认打开“文件”菜单，故不记为 Alt 组合键通过。Ctrl+V 的 SendInput 路径通过。Win 键作用于共享 shell，不在本次只操作记事本的范围内，未发送；锁屏快捷键绝不测试。
 
-坐标尝试只覆盖 cua 窗口局部截图坐标：原窗口 bounds=(343,338,1910,1018)，预览 1568×836；在新 capture_id 下点击 (250,100)，返回 Posted click/effect=unverifiable，没有独立命中证明。End/Left 后文字位置的读回不能独立证明此前坐标点击，故 cua 坐标与 Sunshine 绝对坐标均不记为通过。Session 1 的只读 `GetDpiForWindow` 返回 96；仅一块 DISPLAY1，bounds=(0,0,2560,1440)。其它缩放和多显示器没有硬件/当前配置证据，未修改用户显示设置。
+坐标尝试只覆盖 cua 窗口局部截图坐标：原窗口 bounds=(343,338,1910,1018)，预览 1568×836；在新 capture_id 下点击 (250,100)，返回 Posted click/effect=unverifiable，没有独立命中证明。End/Left 后文字位置的读回不能独立证明此前坐标点击，故该次 cua 坐标不记为通过，不能由此推断 Sunshine 绝对坐标；后者由第四轮独立原生实验验证。Session 1 的只读 `GetDpiForWindow` 返回 96；仅一块 DISPLAY1，bounds=(0,0,2560,1440)。其它缩放和多显示器没有硬件/当前配置证据，未修改用户显示设置。
 
 Sunshine VK 协议源码 [input.cpp](https://github.com/LizardByte/Sunshine/blob/v2026.914.233613/src/input.cpp#L1118) 接收 Windows key code 与 Ctrl/Alt/Shift modifiers；[virtualhid_input.cpp](https://github.com/LizardByte/Sunshine/blob/v2026.914.233613/src/platform/virtualhid_input.cpp#L307) 传递 key_code/pressed/extended。Win=0x5B、Alt=0x12、F5=0x74、Left/Right=0x25/0x27 可以作为协议设计依据，不能以 cua 成功代替 Sunshine 原生输入成功。
 
-为原生输入构建了隔离 probe 变体（不改正常 p6a-probe）：对实验窗口建立短时 Session 1 前台租约；每个事件前经 SSH 检查 HWND/PID/Session 和 <500 ms 新鲜状态，再绝对移动到 (600,500)/2560×1440、点击与 Ctrl+End、X、Left/Right、F5、Alt。实际第一次租约检查返回 refused，probe result=1/error="Own Notepad foreground lease refused"，input_test.sent=false，**没有发送任何鼠标/键盘输入**。这不证明 Sunshine 输入失败，也尚未区分前台锁、租约过期或启动时序原因。按规格停止并通知 Claude，请用户激活标题含 `Sunshine VK input marker` 的独立窗口后恢复，不能盲目重发或针对当前用户窗口输入。窗口暂留等待续测，结束后应无保存关闭。
+第三轮隔离变体在首次焦点租约 refused 时停止且未发输入。之后只读查询发现 marker 是 `type_text` **追加到正文**的文本，并不会变成标题；当时实际标题/标签仍为 `*v中文测试Windows spike English  中文输 - Notepad`，窗口存在、未最小化、主屏内。先前按 marker 寻找的指引有误，已向 Claude 更正；不将该失误归为 Windows 窗口消失。
+
+第四轮用户确认该窗口在最前面。由于 SSH 是 Session 0，不再用其 GetForegroundWindow=0 作用户桌面证据，而在交互式 Session 1 创建**无窗口只读观察器**（WindowsApplication，无任何 SetForegroundWindow/输入 API）。创建前确认临时任务不存在并记录；增强光标检查前导出其 XML。实际输出：
+
+```text
+ForegroundHwnd=788388, TargetPid=24040, Session=1
+Exists=true, Visible=true, Minimized=false, DwmCloaked=0
+Dpi=96, MonitorCount=1, ScreenWidth=2560, ScreenHeight=1440
+physical WindowRect=(338,338)-(2258,1361)
+```
+
+隔离 probe 将正常源码复制到 /private/tmp，不改变 p6a 源码/正常二进制；只有 --input-test 明确 opt-in 才发输入。每批事件前写入随机 nonce，由 Session 1 观察器返回该 nonce 对应的最新前台状态；校验 HWND/PID/Session/可见/cloak、计划坐标命中窗口，且 Windows 收到请求至响应 <500 ms，SSH 总预算 <5 s。这样不依赖两机壁钟一致，也不把 PowerShell 启动耗时当作快照年龄。实测请求后响应 123 ms、整个 SSH 2746.8 ms。
+
+第一次实际绝对移动到 `(600,499)`，比请求 `(600,500)` 差 1 像素，仍命中该 HWND；因最初严格等值检查拒绝点击。第二次允许 1 像素后仍被把 SSH 启动计入的 2 s 阈值拒绝。**这两次均已发送一次鼠标绝对移动，但没有点击/按键**；input_test.sent=false 并不等于完全没有输入事件。保留失败证据，修正校验后第三次完整成功；不把保护性拒绝归为 Sunshine 原生输入失败。
+
+原生测试的实际结果：
+
+| 操作 | 读回证据 / 结论 |
+| --- | --- |
+| 绝对鼠标位置 `(600,500)` / reference 2560×1440 | GetCursorPos=(600,499)，CursorRootHwnd=788388；仅 1 像素量化差，96 DPI/单屏这个点通过 |
+| 原生点击 + Ctrl+V（VK 0x56、MODIFIER_CTRL=2） | 在原正文 offset=122 插入“中文测试”，非尾部；Document 与截图一致，坐标点击命中通过 |
+| Ctrl+End / Ctrl+V | 确实在正文末尾插入“中文测试”，证明 Ctrl 修饰及 End=0x23 |
+| Left=0x25 / Ctrl+V / Right=0x27 / F5=0x74 | 最终尾部为 `中文测中文测试试16:40 2026/10/12`；插在末字前、再移到末字后插时间戳，分别证明 Left/Right/F5 的实际效果 |
+| Alt=0x12 / Escape=0x1B | down/up=0，末态无弹出菜单；只确认队列接收，不独立宣称 Alt/Escape UI 效果验收 |
+| Win=0x5B | 未发送，避免作用到共享 shell；只保留上述协议源码依据 |
+
+所有 key down/up 返回 0，input_test.sent=true，严格加密 result=0；实际效果依据 UIA/PNG，不只看排队返回。证据 `windows-spike-a5-native-input3.json/.txt`、`windows-spike-a5-final/result-5.json`、`image-5-2.png`、`windows-spike-a5-verification.json`。其它 DPI/多屏没有实测，也没有修改显示设置。
+
+完成后只在 HWND 788388 的唯一实验标签执行“文件 → 关闭选项卡”，在该窗口的保存提示点**不保存**；随后 list_windows(pid=24040)=[]、精确 get_window_state 返回“No window with window_id 788388 exists”。没有 kill_app/泛杀 Notepad 或关闭其他窗口。
 
 ### A6 PowerShell helper 能力
 
@@ -360,7 +393,7 @@ SHA256 f99826836a06d6087e5a77bba01baecd0e23a09cc523a08472babf526635854b
 
 | 方案 | 已实测 | 权限与代价 |
 | --- | --- | --- |
-| Highest Session 1 daemon，SSH 直连 | 通过初始化和桌面工具 | daemon 以及它 launch_app 创建的进程具有 High token，可接触提升权限程序；SendInput 的 UIPI 边界由完整性级别决定。同 SID pipe ACL + SID 校验不要求调用者也为 High，低 mandatory label 允许普通用户客户端接入，因此它可能成为同用户的高权限代理；需要严格工具授权/宿主绑定，不能称为普通桌面权限 |
+| Highest Session 1 daemon，SSH 直连 | 通过初始化和桌面工具 | daemon 本身具有 High token，可接触提升权限程序；普通 exe 启动可能继承提升 token，包应用通过系统 broker 的权限则不能仅从 daemon 推断；SendInput 的 UIPI 边界由完整性级别决定。同 SID pipe ACL + SID 校验不要求调用者也为 High，低 mandatory label 允许普通用户客户端接入，因此它可能成为同用户的高权限代理；需要严格工具授权/宿主绑定，不能称为普通桌面权限 |
 | Limited daemon + Limited Session 1 MCP 客户端桥 | 通过初始化/schema/list_apps/list_windows | 桌面运行时保持 Medium，不能注入更高 IL 程序/安全桌面；多一层 IPC、生命周期与认证。本次文件桥只是诊断样例，默认用户 ACL、请求/响应文件、缺少完善 nonce/重放防护，不直接用于产品；正式桥应限定 caller/session/任务与目录 ACL，明确 stdout 编码和超时 |
 
 SSH 自身已经是 High 管理员，桥不会撤销 SSH 权限；安全收益是避免每个桌面工具及同 SID 本地客户端都借 daemon 获得 High 执行。源代码同 SID 校验详见上述 serve.rs。Microsoft [SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) 说明只能向等于或低于自身 IL 的程序注入。
@@ -371,7 +404,7 @@ SSH 自身已经是 High 管理员，桥不会撤销 SSH 权限；安全收益�
 
 初次 AUMID launch_app 的 `creates_new_application_instance=true` 在 Windows 是 no-op，现代记事本恢复了历史文档。随后在恢复窗口只调用“文件 → 新建窗口”，取得独立空白窗口后才输入；未编辑/保存/关闭历史文档。一次限制深度的树查询意外返回历史 Document.value，属于实验观察范围控制失误，已删除该两份本地原始响应，之后对恢复窗口强制禁截图并剥离 Document/Edit/Text.value；窗口标题亦在本地证据脱敏。无法撤回此前工具会话记录，笔记不包含历史文件名或内容。正式验收启动器必须避免恢复用户历史窗口，不能把 query/max_depth 当成数据隔离。
 
-最终 A5 焦点租约拒绝，依停机规则没有继续桌面动作，实验记事本仍打开等待 Claude/用户处理；两次 MCP 实验 session 均 end_session，客户端已退出。未 kill_app（同 PID 承载恢复窗口，不能整进程关闭）。续测只对 HWND 788388；完成后清空/关闭该新窗口而不保存，保留其它窗口。
+第三轮依停机规则等待用户激活；第四轮完成 A5 后通过目标窗口“关闭选项卡”与“不保存”关闭 HWND 788388，明确查询已不存在。只关闭该实验标签/窗口，没有 kill_app。用户此前自行操作后的同 PID 枚举只剩一个窗口，不把其它窗口消失归为本实验清理。所有实验 MCP session/client 已结束。
 
 ### B4 共存 / B5 锁屏
 
@@ -471,15 +504,15 @@ cd /C:/Users/Ekk     -> 成功，pwd=/C:/Users/Ekk (exit 0)
 
 | 实际改动 | 备份/证据 | 撤销方法（未执行，临时桥除外） |
 | --- | --- | --- |
-| 创建 `%TEMP%\miffan-windows-spike`，导出安装前全量规则/port filters | firewall-before.clixml / firewall-ports-before.clixml | 实验结束后精确删除临时目录，导出不改变防火墙 |
+| 创建 `%TEMP%\miffan-windows-spike`，保存导出/备份/启动包装 | firewall-before.clixml / firewall-ports-before.clixml、任务 XML、user-path-before.txt | **当前保留：cua 任务依赖 cua-logged-daemon.ps1，回滚任务或迁移包装前不能删整个目录**；导出不改变防火墙 |
 | 安装 Sunshine MSI；厂商添加宽泛规则、PATH/服务/自启动 | 第一轮规则 JSON、第二轮版本/服务输出 | 用户决定保留或卸载；卸载也会删规则，不自行执行 |
 | 用户禁用宽泛规则、添加 UDP LAN 规则 | 第二轮只读输出，用户/Claude 交付 TCP 不可达结果 | 由用户管理，Codex 不修改/撤销 |
 | Sunshine LAN/WAN 改为 2/2、重启其服务 | sunshine.conf.bak-windows-spike-20261012-144022 | 无活动流后恢复该备份，再重启 SunshineService |
 | 创建测试管理员并配对 miffan-win-spike | 初始状态不存在证据、授权目录 admin.json/probe-identity | 只撤销该测试客户端；新装主机状态无其他新增数据时才能按初始不存在状态恢复，不能删其他客户端/管理员配置 |
 | 按用户安装 cua 0.34、添加 User PATH、初始注册 Limited/Interactive cua-driver-serve | user-path-before.txt、cua-task-before.txt=absent、版本/任务输出 | 用户决定保留；卸载/移除任务前检查无其他使用者，只移除本次 PATH 项，别覆盖后来的 PATH 改动 |
 | cua-driver-serve 从 Limited 改 Highest，随后 action 改隐藏日志包装 | B2 完整 XML 两级备份、哈希、RID/Session 输出 | 先结束实验 MCP/确认无使用者，Stop-ScheduledTask；以 Limited XML Register-ScheduledTask -Xml ... -Force，Start-ScheduledTask，再核验进程/Session/IL；不要只改 RunLevel 忘记 action |
-| 新建独立实验记事本与短时焦点租约 | PID 24040/HWND 788388、PNG/值、租约拒绝结果 | 租约自动结束并仅在仍为实验前台时尝试恢复原前台；窗口待续测，完成后只关该 HWND、不保存、不 kill_app |
-| 用户会话剪贴板写入实验文本 | clipboard_read 返回“中文测试” | 当前保留该实验文本；未读取/记录原剪贴板内容，不能恢复原剪贴板 |
+| 新建独立实验记事本、第三轮短时焦点租约、第四轮只读观察器任务 | HWND 788388、输入/不保存/窗口不存在证据、观察器任务 absent/导出 XML | **已清理**：只关该实验标签/窗口、不保存；观察器任务已移除且无观察器进程。临时二进制/源码/XML 保留审阅，可精确删除，不应重新注册旧任务 |
+| 用户会话剪贴板写入实验文本 | clipboard_read 返回“中文测试”；最后一次 agent write 同样文本 | 未读取/记录原内容，不能恢复；不覆盖用户后续剪贴板变化 |
 | 临时普通用户 MCP 桥任务与文件 | Miffan-Windows-Spike-MCP、mcp-bridge/ | 已用 cleanup 脚本正常结束并移除任务，未关闭 daemon；文件暂留作证据 |
 | 临时下载代理与 TCP 转发 | 仅 loopback SSH forwarding | 已关闭唯一明确匹配本实验的 SSH 进程，未改系统代理/规则 |
 
@@ -515,16 +548,45 @@ Get-Process cua-driver | Select-Object Id,SessionId
 4. stdin/stdout 及 .NET 子进程均需显式 UTF-8；PowerShell ETS 自动扩展也会导致异常大 JSON，应输出朴素值。
 5. 后台 Ctrl+V 失败，F 键/箭头与文本并不等价；只能以读回结果决定降级，foreground 需明确授权和恢复验证。
 6. 现代记事本可能恢复历史用户数据；query 保留祖先，max_depth 不阻止 Document.value 出现，必须限定空白窗口/避免自动保存历史数据。
-7. Sunshine 原生输入仍待焦点条件满足，多 DPI/多屏没有实测；不能拿 cua 输入成功代替原生协议验收。
-8. 音频 AES-CBC 与零包不构成音频链路验收；本次未播放任何声音。
-9. 配置/任务回滚必须精确，不能全量恢复 firewall/PATH 覆盖用户后来的更改；实验 HWND 不能替换成同 PID 的任意窗口。
+7. Sunshine 原生坐标与指定 VK 组合在 96 DPI/单屏通过；其它 DPI/多屏、Win 及 Alt 的 UI 效果仍未覆盖。
+8. 已收到两次加密音频包，但 AES-CBC 不提供视频/控制那样的 AEAD；未验证音频来源/解码/播放及默认设备恢复，本次未主动播放声音。
+9. 配置/任务回滚必须精确，不能全量恢复 firewall/PATH 覆盖用户后来的更改；当前 Highest 启动包装在 TEMP，清理目录会破坏自启动，正式方案必须迁移到稳定的用户目录或回滚任务。
 
-## 需要用户决定的问题与续测
+## 收尾状态与需要决定的问题
 
-- 依规格已通过 herdr 通知 Claude：原生输入前台租约 refused，未发送任何输入，请用户激活独立实验记事本（标题含 `Sunshine VK input marker`、HWND 788388/PID 24040）后通知恢复。续测应先检查租约/时序，再重建快照，禁止盲重发。MCP session/client 和本轮 SSH 转发均已结束，窗口暂留等待续测。
-- 正式方案采用 Highest daemon，还是 Medium daemon + 受限用户会话客户端桥；当前 Highest 是用户明确授权的对照实验状态，完整 Limited XML 备份已保存。
-- 多屏/其它 DPI、真实手机 LAN、锁屏恢复（不能在本次违规主动锁屏）、音频链路的后续验收范围与设备。
-- 实验结束后是否保留 Sunshine、测试管理员/配对身份及 cua-driver 用户任务；只有测试新窗口应无保存关闭，恢复的历史窗口不关闭。
+2026-10-12 16:45:48 的只读 `windows-spike-final-status.json`：SunshineService Running，service PID 14076/Session 0、sunshine PID 13352/Session 1；cua-driver PID 21628/Session 1，cua-driver-serve Running/Highest/Interactive/Ekk，action 为 TEMP 中的隐藏包装；User PATH 含 Cua bin。`Miffan-Windows-Spike-*` 临时任务列表为空，无观察器进程，正常 daemon 保留。加密配置 2/2；两条宽泛规则 Disabled，窄规则 UDP 47998–48000 仅 LAN+100.64.0.0/10、限 sunshine.exe。没有改防火墙、OpenSSH 或 RDP。
+
+**已完成清理**：实验记事本选择“不保存”且 HWND 788388 不存在；临时普通客户端桥和只读观察器任务/进程已移除，MCP session/client、本轮 SSH forwarding、probe 均退出。本地 emulator-5560 的 adb 连接 TCP 5560 已 refused，未发 kill，没有触及 emulator-5554；第二轮 prefs/NAT 恢复证据仍保留。
+
+**当前保留 / 可撤销项**：
+
+| 保留项 | 状态与后续动作 |
+| --- | --- |
+| Sunshine、SunshineService、厂商 PATH/自启动 | 保留供正式方案；若用户决定卸载，仅用官方卸载流程，先保存需要保留的配置；Codex 不自行删服务/规则 |
+| Sunshine 2/2 与初始空配置备份 | 保留安全设置；无需撤销以满足设计，若退回实验前必须无流后恢复指定备份并仅重启该服务 |
+| miffan-win-spike 管理员、测试配对身份/状态、公私钥 | 本轮未撤销；待 Claude 审阅后定向删除测试客户端/管理员，先确认没有用户后加的数据；不 unpair-all，不删/导出主机私钥 |
+| cua 0.34、User PATH、Highest/Interactive 用户任务 | 保留用户授权的对照状态；正式选择 Medium 桥或 Highest 前明确安全边界。回滚按上面的完整 Limited XML、核对精确实验 daemon PID，别只改 RunLevel |
+| Windows TEMP 的启动包装/备份/安装日志/桥文件 | 当前包装 **不能删除**；先迁移任务到稳定 AppData 路径或回滚任务，再由用户/Claude审阅后精确清理其余本实验文件。目录 27 个直接文件及桥子目录，未全量删除 |
+| 用户/Claude 配置的 Tailscale、Headscale grant、防火墙 | 非 Codex 改动，保留；任何调整/撤销仍由用户/Claude管理，备份位置见 A3 |
+| `.deps/windows-spike` 测试凭据与模拟器 prefs 备份 | 0700/0600 已复核；审阅/定向撤销前保留，不复制到 git 或公开证据包 |
+| 剪贴板 | agent 最后写入“中文测试”；原内容未保留，不能恢复，也不覆盖用户之后的新值 |
+
+正式验收仍需多 DPI/多屏、真实手机 LAN、音频解码/来源/设备恢复、锁屏/UAC/登录切换恢复；本轮遵守禁主动锁屏等限制，以调研与明确范围结论交付。Win 键不得为了测试而作用到用户其它窗口。工作量/架构建议见开头。
+
+## 临时证据清点与审阅顺序
+
+完整清单见 [WINDOWS_SPIKE_ARTIFACTS.md](WINDOWS_SPIKE_ARTIFACTS.md)：87 个顶层证据项、833 个普通文件、约 85.74 MiB（不跟随 symlink，不含清单 JSON 自身）。没有为“收尾”删除审阅证据。各顶层目录已限制 0700，文件限制 0600；凭据在主 checkout `.deps/windows-spike/`，不在这份清单中。
+
+优先保留并审阅：
+
+1. `windows-spike-final-status.json`、`windows-spike-local-cleanup.json`：保留/清理状态。
+2. `windows-spike-a5-foreground-before.txt`、`a5-cursor-calibration.txt`、`a5-native-input3.json/.txt`、`a5-verification.json`：精确前台、坐标、原生输入、结果差异。
+3. `windows-spike-a5-final/result-5.json` / `image-5-2.png`：输入后读回；`result-12–15.json`：保存提示、不保存、窗口关闭。
+4. B 的 Medium/High token、两个 XML、medium-bridge、b3-isolated 和完整 tool schema：权限对照与桌面动作。
+5. `ts-h264.*`、`ts-typing-overlap.*`、`ts-media.txt`、`a5-media-final.txt`：NVENC、帧率、音频。
+6. `command-probe*.jsonl`、LAN 失败、模拟器 prefs/NAT 恢复证据。
+
+MSI（32.15 MiB）、APK（14.49 MiB）、Sunshine 源码（31.48 MiB）、离线依赖/隔离 probe 可保留复现，也可在审阅后重建；其余重复状态/启动失败辅助日志按清单处理。旧历史文档原始响应已删除，其它相关本地元数据已脱敏；不把它们重新打包。清点程序 `tools/windows-spike/inventory-temp.py` 只写清单，不删除任何文件。
 
 ## 第三轮证据索引
 
@@ -536,4 +598,4 @@ Get-Process cua-driver | Select-Object Id,SessionId
 - `/private/tmp/windows-spike-ts-input.json`、`windows-spike-ts-input.txt`：焦点租约 refused，input_test.sent=false；隔离变体在 `/private/tmp/windows-spike-notepad-probe/`，正常 p6a-probe 未修改。
 - 第二轮基线、LAN 失败、模拟器恢复及命令编码证据仍在 `windows-spike-*.json/jsonl/txt`，不进 git。
 
-这是可继续的检查点；已通知 Claude，**尚未提交最终全部验收完成声明**。
+第四轮证据还包括 `windows-spike-a5-*`、`windows-spike-final-status.json` 与完整临时清单。本次按授权范围完成实验和收尾；未测项目按上述范围明确留给正式兼容验收，不宣称全场景通过。

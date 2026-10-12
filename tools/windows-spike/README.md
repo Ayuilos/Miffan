@@ -1,9 +1,10 @@
 # Windows spike 实验脚本
 
 仅用于 `docs/remote-screen/WINDOWS_SPIKE_SPEC.md` 指定测试机。不是 App helper。
-第三轮已通过 Tailscale 严格加密 H.264/HEVC 与桌面操作。当前因 Sunshine 原生输入前的
-独立记事本焦点租约 refused 暂停，已通知 Claude `wJ:p1`；等待用户激活实验窗口再恢复。
-不要自行改规则、处理系统许可提示或向当前用户窗口发送输入。
+本机授权范围已完成：Tailscale 严格加密 H.264/HEVC、桌面动作及 Sunshine 原生坐标/
+指定 VK 组合通过。实验 HWND 788388 已“不保存”关闭，临时桥/观察器任务/MCP/转发已清理。
+正常 Highest/Interactive cua daemon、Sunshine 和测试身份仍保留，详见笔记撤销清单。
+不要直接重跑含旧 PID/HWND 的输入脚本；新实验必须重新核验目标、权限与当前状态。
 
 - `ssh_ps.py`：UTF-16LE EncodedCommand，设置 UTF-8 stdout，保留 stdin。
   **禁止传入密码、PIN、配对/会话密钥**，EncodedCommand 只是编码，不是加密。
@@ -53,17 +54,27 @@
 - `cua-window-metrics.ps1`：只读实验 Notepad DPI/屏幕几何，须在 Session 1 执行；
   本机结果 96 DPI / 单屏 2560×1440，没有修改显示设置。
 - `sunshine-media-diagnostics.ps1`：配置媒体键、实际会话编码器/音频日志/设备状态；不播放。
-- `cua-input-target.ps1` / `input-lease-check.py`：短时实验 Notepad 前台租约，恢复前台只在
-  当前仍为实验窗口时尝试；校验 PID/HWND/Session/状态新鲜度，失效则拒绝输入。
+- `cua-input-target.ps1`：第三轮历史焦点租约脚本，包含 SetForegroundWindow；保留解释失败，
+  第四轮未使用，不能作为只读前台核验。
+- `input-observer.cs` / `start-input-observer.ps1` / `refresh-input-observer.ps1`：
+  第四轮 Session 1 无窗口只读观察器，没有输入/激活 API；临时任务创建前记 absent，
+  换 action 前导出 XML。观察精确前台/窗口身份/Visible/Cloaked、DPI/光标/命中。
+- `input-lease-check.py`：nonce 请求→响应匹配，Windows 端 <500 ms、SSH 总预算 <5 s，
+  避免两机时钟/PowerShell启动耗时误判；实际光标校验允许 1 像素量化，必须命中实验 HWND。
+- `cleanup-input-observer.ps1`：保存最终 XML 后移除仅本实验观察器任务，已验收无进程。
+- `final-status.ps1`：服务/任务/配置/规则/实验临时文件的只读最终核验。
+- `inventory-temp.py`：只写临时证据 Markdown/JSON 清单，不删除文件。
 - `build-notepad-probe.py`：将正常 p6a 源码复制到 /private/tmp 后替换 opt-in input-test，
-  每个事件前检查租约。只适用于本次 PID 24040/HWND 788388、2560×1440/96 DPI，
-  不发送 Win 快捷键；构建不改 p6a 源码/正常二进制。首次租约 refused，未发输入，
-  不能声称原生 VK/坐标通过。必须从本 worktree 根运行，重用前重新核验目标/坐标。
+  每批事件前检查目标。只适用于本次 PID 24040/HWND 788388、2560×1440/96 DPI，
+  不发送 Win 快捷键；构建不改 p6a 源码/正常二进制。第四轮坐标/粘贴/箭头/F5已读回通过；
+  前两次拒绝发生在移动鼠标之后、点击/按键之前，因此 sent=false 不代表无输入。
+  主循环中同步 SSH 校验会拉长采样间隔，不用此变体评估逐秒帧率。必须从 worktree 根
+  运行；该 HWND 已关闭，复用前必须人工审核常量/重新绑定，禁止直接重跑。
 
 测试包、主机/客户端身份和版本必须逐项核对后才能重跑这些脚本。安装器返回的
 `$LASTEXITCODE` 可能来自内部 schtasks 查询，不能作为整个 PowerShell 脚本的退出码。
 
-示例（恢复授权后）：
+只读示例：
 
 ```sh
 python3 tools/windows-spike/ssh_ps.py tools/windows-spike/baseline.ps1
@@ -71,3 +82,6 @@ python3 tools/windows-spike/command-probe.py
 ```
 
 安装和下载脚本不能当作默认检查运行。全部输出不应包含测试凭据。
+
+完整清点见 `docs/remote-screen/research/WINDOWS_SPIKE_ARTIFACTS.md`。Windows TEMP 中
+`cua-logged-daemon.ps1` 是当前保留任务的启动依赖，不能在回滚/迁移任务前删除整目录。
