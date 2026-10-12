@@ -44,3 +44,39 @@ fun BugReportDraft.toMarkdown(): String
 - 公共纯函数同样校验/脱敏；不合法草稿或无法满足长度限制时抛 IllegalArgumentException，UI 可捕获并展示错误。`toMarkdown()` 输出完整的脱敏内容，不沿用 URL 截断；提供双语章节，省略 null 可选项。
 - 成功输出严格为 `{success:true,issue_url:...,note:"The owner opens this link to review and submit on GitHub; you cannot know whether it was submitted."}`。没有网络调用、提交 API、token、浏览器 intent、logcat 或 UI 代码。
 - JVM 覆盖审批前无诊断读取、每次审批、参数类型/必填/标题边界、自动环境补齐与显式值、全部字段脱敏、编码解码往返与表单 id、截断顺序/说明/长度、不可截断字段过大、Markdown、两种回合的 opt-in 注册。
+
+## 模板与主动建议
+
+- `ImPartnerTemplate` 增加 `localTools` 和 `miffanHelpOverride`，原有四个模板的默认行为保持。新增稳定 id `f5000000-0000-4000-8000-000000000005`，中英文名称/简介/设定分别为反馈助手 / Bug reporter。
+- 模板创建的伙伴默认开启 TimeInfo、BugReport，并显式启用 Miffan 使用帮助（不受全局帮助关闭影响）。沿用现有 Miffan rice / sea_salt 头像，不新增绘制代码。
+- 简短设定覆盖先查帮助解决配置/用法问题、确认 bug 后每次追问一两个缺失信息、用诊断补环境、只用相关错误摘要、一份报告一个问题、排除私聊/凭据/文件/内网信息、草稿审批及 GitHub 账号/公开可见/主人提交说明。
+- `bugReportSuggestionHint(access, settings)` 只在 IM 模式、调用者未启用 BugReport、另有至少一个启用 BugReport 的伙伴时返回提示。联系人只输出公开名字与 id，不输出提示词、偏好、模型或其他配置；已改名的反馈助手也能匹配。
+- `ChatService` 将提示追加到本次生成的 `threadContext`，与伙伴聊天 perspectiveContext 或主人 ThreadContext 共存；不写入原始聊天消息，不创建授权，不发送消息，不执行任何工具。
+- 提示仅允许这一轮出现疑似 App 问题时在回复末尾问一句；主人明确同意之后才能整理原始报错、当时动作、调用者自己的提供商/模型并用 send_message 联系，不能转发私聊或凭据。所有实际联系仍由原有服务按主人 @、首次审批、长期授权与 R8/R9 判断，没有新增例外。
+- `my_environment` 的能力名称表补充 App 诊断与需审批的反馈草稿，按实际工具快照显示。
+- JVM 覆盖中英模板稳定 id/默认能力、存在/不存在/关闭反馈能力/专业模式、调用者自己启用 BugReport、伙伴/relay 回合，以及提示不泄露联系人配置且不改变联系授权；原有联系和 R1–R9 测试纳入全量回归。
+
+## 验证与环境
+
+- 按本轮规格不启动、不连接或操作模拟器，不安装 APK，不做真实模型实测；只使用 JVM 测试。
+- 使用 Android Studio JBR、本机 Android SDK、现有离线 Gradle 缓存和 worktree 既有原生依赖。没有复制 local.properties、签名配置或凭据。
+- 构建/检查命令：
+
+```bash
+JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' \
+ANDROID_HOME='/Users/chenxiansheng/Library/Android/sdk' \
+./gradlew --offline --no-daemon --max-workers=2 \
+  :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+```
+
+- 使用 `--no-daemon`，构建结束后本次进程自动退出，不停止其他会话的 Gradle 进程。
+- 日志及临时 notes、测试文件都在 worktree 的 build 目录内；不提交这些临时文件。
+
+## 最终检查结果
+
+- 最终源码三项任务全部通过：`BUILD SUCCESSFUL in 8m`。
+- JVM：163 个测试类，955 项测试，0 failure/error/skipped。
+- Debug APK：构建通过。
+- Android Lint：0 error/fatal，376 warning、6 hint；未增加抑制规则。
+- 最终日志：`build/final-source-checks.log`；统计：`build/verification.json`。首轮全量检查日志为 `build/final-checks.log`，之后为覆盖新增持久化集成测试及脱敏边界修正再次检查最终源码。
+- 全程未使用模拟器；单次 Gradle 构建进程正常退出。

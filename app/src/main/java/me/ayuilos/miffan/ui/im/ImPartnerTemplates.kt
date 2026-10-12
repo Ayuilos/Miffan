@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im
 
+import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
+import me.ayuilos.miffan.data.model.MiffanHelpOverride
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MiffanAppearance
@@ -15,8 +17,11 @@ internal data class ImPartnerTemplate(
     val description: String,
     val prompt: String,
     val avatar: Avatar,
+    val localTools: List<LocalToolOption> = listOf(LocalToolOption.TimeInfo),
+    val miffanHelpOverride: MiffanHelpOverride = MiffanHelpOverride.INHERIT,
 ) {
-    fun assistant() = Assistant(id = id, name = name, systemPrompt = prompt, avatar = avatar, useAssistantAvatar = true)
+    fun assistant() = Assistant(id = id, name = name, systemPrompt = prompt, avatar = avatar,
+        useAssistantAvatar = true, localTools = localTools, miffanHelpOverride = miffanHelpOverride)
 }
 
 internal fun imPartnerTemplates(locale: Locale): List<ImPartnerTemplate> {
@@ -41,5 +46,23 @@ internal fun imPartnerTemplates(locale: Locale): List<ImPartnerTemplate> {
     return names.indices.map { index ->
         ImPartnerTemplate(Uuid.parse("f5000000-0000-4000-8000-00000000000${index + 1}"), names[index], descriptions[index], prompts[index],
             Avatar.Miffan(MiffanAppearance(palette = palettes[index], kind = kinds[index])))
-    }
+    } + ImPartnerTemplate(
+        id = Uuid.parse("f5000000-0000-4000-8000-000000000005"),
+        name = if (zh) "反馈助手" else "Bug reporter",
+        description = if (zh) "先排查问题，再整理可复现的反馈" else "Troubleshoot first, then prepare a reproducible bug report",
+        prompt = if (zh) """
+            你是 Miffan 的反馈助手。先理解问题；若像配置或用法问题，先用 miffan_help 查使用帮助，能解决就直接给办法，不必报 bug。
+            确认是 bug 后，补问复现步骤、期望结果、实际结果、用哪个伙伴和什么模型，每次只问一两个问题。
+            用 app_diagnostics 补齐环境信息，只挑相关的脱敏报错摘要放进 logs。一份报告只写一个问题，不放私聊内容、API key、文件内容或内网地址。
+            信息齐了再用 draft_bug_report 交给主人确认。说明提交会在 GitHub 上完成，内容提交后公开可见，主人需要有 GitHub 账号；主人自己打开链接审阅并提交，你无法知道是否已提交。
+        """.trimIndent() else """
+            You help the owner report Miffan bugs. Understand the problem first. For likely configuration or usage issues, consult miffan_help and offer a solution; a bug report may be unnecessary.
+            Once a bug is confirmed, ask for missing reproduction steps, expected and actual results, the partner used and its model. Ask only one or two questions at a time.
+            Use app_diagnostics to fill environment details and select only relevant sanitized error summaries for logs. Keep one problem per report. Exclude private chats, API keys, file contents and internal addresses.
+            Use draft_bug_report when ready for the owner's approval. Explain that submission happens on GitHub, submitted content is public, and the owner needs a GitHub account. The owner opens the link, reviews and submits; you cannot know whether it was submitted.
+        """.trimIndent(),
+        avatar = Avatar.Miffan(MiffanAppearance(palette = MiffanPalette.SEA_SALT, kind = MiffanKind.RICE)),
+        localTools = listOf(LocalToolOption.TimeInfo, LocalToolOption.BugReport),
+        miffanHelpOverride = MiffanHelpOverride.ENABLED,
+    )
 }

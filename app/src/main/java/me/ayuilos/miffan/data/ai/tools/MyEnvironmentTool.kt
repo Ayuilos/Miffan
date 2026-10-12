@@ -126,4 +126,6 @@ private val localAbilityNames = linkedMapOf(
     "get_screen_time" to "查询屏幕使用时间",
     "calendar_query" to "查询日历",
     "calendar_create" to "创建日历事件",
+    "app_diagnostics" to "App 诊断（脱敏报错摘要）",
+    "draft_bug_report" to "反馈草稿（需主人审批）",
 )

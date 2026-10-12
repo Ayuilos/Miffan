@@ -1130,7 +1130,7 @@ class ChatService(
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
                 localToolOutputRoot = boundWorkspace?.takeUnless { it.isRemote }?.root,
-                threadContext = if (conversation.chatId != null) {
+                threadContext = listOfNotNull(if (conversation.chatId != null) {
                     getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatStore>().chat(conversation.chatId)?.let {
                         me.ayuilos.miffan.data.partner.perspectiveContext(it, assistant.id, settings)
                     }
@@ -1138,7 +1138,8 @@ class ChatService(
                     ThreadContext.build(conversationRepo, assistant.id, conversation.id)
                 } else {
                     null
-                },
+                }, me.ayuilos.miffan.data.bugreport.bugReportSuggestionHint(access, settings))
+                    .joinToString("\n\n").takeIf { it.isNotBlank() },
                 memories = if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
                 } else {
