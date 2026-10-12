@@ -121,18 +121,18 @@
 
 粗估（实验的估计）：13–23 个工作日。P7a 和 P7b 可以并行；P7c 依赖 P7b 的辅助脚本；P7d 在 P7a 完成后开始。
 
-## 需要用户决定
+## 已确定的决策（2026-10-12）
 
-1. **伙伴操作的权限方案**：A（普通权限 + 桥，推荐）还是 B（最高权限 daemon）。
-2. **屏幕只用 Sunshine**（推荐），还是也保留 RDP 作为备选。
-3. **第一版的终端**：只做伙伴的单次命令（推荐），还是也做终端页的交互式 PowerShell。
-4. **防火墙**：App 经 SSH 直接修改，每次都弹窗确认（推荐）；还是只显示命令，让用户自己执行。
-5. **测试机现状**：cua-driver 自启动任务目前是实验留下的“最高权限 + TEMP 下的启动脚本”。这正是方案 B 的风险状态，TEMP 被清理时还会失效。建议现在就按备份恢复成普通权限，P7c 再接入桥。
+1. **伙伴操作用方案 A**：普通权限的 daemon 加普通权限的桥，不提升 cua-driver 的权限。
+2. **屏幕只用 Sunshine**，不做 RDP 备选。
+3. **第一版终端只做伙伴的单次 PowerShell 命令**，交互式终端页以后再做。
+4. **防火墙由 App 经 SSH 修改**，每次修改前弹窗列出具体变化，用户确认后才执行。
+5. **测试机的 cua-driver 已恢复为普通权限**（2026-10-12 17:46，按实验备份的 Limited XML 恢复，恢复前的最高权限配置另存在 `%TEMP%\miffan-windows-spike\`）。
 
 ## 测试机当前状态（2026-10-12 实验结束后）
 
 - **Sunshine** v2026.914：服务运行中，加密设置为 2 / 2；配对了测试客户端 `miffan-win-spike`，凭据在主 checkout 的 `.deps/windows-spike/`。
 - **防火墙**：Sunshine 的两条宽泛规则已禁用；`Miffan-Sunshine-UDP-LAN` 只放行 UDP 47998–48000，来源为 192.168.31.0/24 和 100.64.0.0/10；`Miffan-SSH-LAN` 只允许局域网访问 TCP 22；“远程桌面”规则组已关闭，RDP 服务开着，但只能经 SSH 隧道访问。
 - **Tailscale**：已加入，地址 100.64.0.8。Headscale 新增了 `win-desktop` 主机和一条授权：手机、Mac 可访问它的 UDP 47998–48000，原策略备份为 `policy.hujson.bak-windows-sunshine-*`。
-- **cua-driver** 0.34：已加入用户 PATH，`cua-driver-serve` 任务目前是最高权限 + TEMP 下的包装脚本，恢复方法见 `WINDOWS_SPIKE.md` 的“Windows 改动与撤销”。
+- **cua-driver** 0.34：已加入用户 PATH，`cua-driver-serve` 任务为普通权限、交互式登录，直接运行 `cua-driver.exe serve`。
 - **剪贴板**：最后一次写入的是“中文测试”。
