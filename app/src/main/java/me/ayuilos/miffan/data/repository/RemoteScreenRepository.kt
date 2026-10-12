@@ -102,7 +102,9 @@ data class RemoteMachineProbe(
     val rdp: Rdp = Rdp(),
 ) {
     @Serializable
-    data class Session(val present: Boolean, val type: String, val desktop: String? = null)
+    data class Session(val present: Boolean, val type: String, val desktop: String? = null,
+        /** Windows only: `locked`, `unlocked` or `unknown`. */
+        @SerialName("lock_state") val lockState: String? = null)
 
     @Serializable
     data class Cua(

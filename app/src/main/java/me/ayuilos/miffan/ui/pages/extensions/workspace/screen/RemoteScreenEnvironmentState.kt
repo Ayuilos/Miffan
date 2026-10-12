@@ -19,4 +19,5 @@ data class RemoteScreenEnvironmentState(
 enum class RemoteScreenEnvironmentPhase { IDLE, PROBING, INSTALLING }
 
 /** The command shown for confirmation is the one the repository runs. */
-internal fun remoteCuaDriverCommand(upgradePath: String?): String = RemoteScreenRepository.cuaDriverCommand(upgradePath)
+internal fun remoteCuaDriverCommand(upgradePath: String?, platform: me.rerere.workspace.RemotePlatform): String =
+    RemoteScreenRepository.cuaDriverCommand(upgradePath, platform)

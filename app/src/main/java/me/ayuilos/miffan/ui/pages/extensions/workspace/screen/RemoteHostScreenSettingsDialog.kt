@@ -259,8 +259,7 @@ fun RemoteHostScreenSettingsDialog(
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (!loaded && !busy) TextButton(onClick = ::load) { Text(stringResource(R.string.workspace_screen_retry)) }
-                // The environment panel installs cua-driver, which Windows does not support yet (P7c).
-                if (!windows) SettingsCard { RemoteScreenEnvironmentPanel(host, environment, vm, blocked = configBusy) }
+                SettingsCard { RemoteScreenEnvironmentPanel(host, environment, vm, blocked = configBusy) }
             }
         }
     }

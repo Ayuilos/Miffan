@@ -49,11 +49,22 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
         else SetupAction(stringResource(R.string.im_computer_recheck), onClick = vm::reprobe),
     ) {
         if (probe != null) SetupCard(spacing = 0.dp) {
-            CheckRow(stringResource(R.string.im_computer_desktop), if (state.sessionReady) CheckStatus.READY else CheckStatus.NEEDED,
-                if (state.sessionReady) listOfNotNull(probe.session.type, probe.session.desktop).joinToString(" · ")
-                else stringResource(R.string.im_computer_no_desktop))
+            val locked = probe.session.lockState == "locked"
+            CheckRow(stringResource(R.string.im_computer_desktop), if (state.sessionReady && !locked) CheckStatus.READY else CheckStatus.NEEDED,
+                when {
+                    !state.sessionReady -> stringResource(R.string.im_computer_no_desktop)
+                    locked -> stringResource(R.string.workspace_screen_session_locked)
+                    state.isWindows -> stringResource(R.string.workspace_screen_session_signed_in)
+                    else -> listOfNotNull(probe.session.type, probe.session.desktop).joinToString(" · ")
+                })
             HorizontalDivider(Modifier.padding(start = 36.dp))
-            CheckRow(stringResource(R.string.im_computer_screen_service), if (state.screenServiceReady) CheckStatus.READY else CheckStatus.NEEDED,
+            // Windows has no VNC or RDP: Sunshine is its screen service, so it is required there, not offered.
+            if (state.isWindows) {
+                if (stream == null) CheckRow(stringResource(R.string.im_computer_screen_service), CheckStatus.NEEDED,
+                    stringResource(R.string.workspace_screen_stream_checking))
+                else StreamCheckRow(stream, macOS = false, busy = state.busy || enablingStream, required = true,
+                    onEnable = { enablingStream = true }, onRecheck = vm::checkStream, onOpenSettings = vm::openSunshineSettings)
+            } else CheckRow(stringResource(R.string.im_computer_screen_service), if (state.screenServiceReady) CheckStatus.READY else CheckStatus.NEEDED,
                 when {
                     !state.screenServiceReady -> stringResource(R.string.im_computer_no_screen_service)
                     state.isMac -> stringResource(R.string.im_computer_mac_screen_sharing)
@@ -80,7 +91,11 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
             }
             HorizontalDivider(Modifier.padding(start = 36.dp))
             CheckRow(stringResource(R.string.im_computer_clipboard), if (clipboard != null) CheckStatus.READY else CheckStatus.OPTIONAL,
-                clipboard ?: stringResource(R.string.im_computer_clipboard_optional)) {
+                when {
+                    state.isWindows -> stringResource(if (probe.cua.bridgeAvailable) R.string.workspace_screen_clipboard_windows_bridge
+                        else R.string.workspace_screen_clipboard_windows_task)
+                    else -> clipboard ?: stringResource(R.string.im_computer_clipboard_optional)
+                }) {
                 val tool = when (probe.session.type) { "wayland" -> "wl-clipboard"; "x11" -> "xclip"; else -> null }
                 if (clipboard == null && probe.os == "linux" && tool != null) SetupDisclosure(stringResource(R.string.im_computer_show_commands)) {
                     RemoteScreenCopyCommand("Arch Linux", "sudo pacman -S $tool")
@@ -122,19 +137,23 @@ private fun StreamCheckRow(
     stream: RemoteStreamSetupState,
     macOS: Boolean,
     busy: Boolean,
+    /** Windows: Sunshine is the screen itself, so it reads as the screen service and must be set up. */
+    required: Boolean = false,
     onEnable: () -> Unit,
     onRecheck: () -> Unit,
     onOpenSettings: (RemoteSunshinePermission) -> Unit,
 ) {
     val resources = LocalResources.current
     val status = stream.status
-    val enabled = stream.streamReady && stream.enabled == true
-    CheckRow(stringResource(R.string.im_computer_stream), if (enabled) CheckStatus.READY else CheckStatus.OPTIONAL, when {
+    val enabled = stream.streamReady && (required || stream.enabled == true)
+    CheckRow(stringResource(if (required) R.string.im_computer_screen_service else R.string.im_computer_stream),
+        if (enabled) CheckStatus.READY else if (required) CheckStatus.NEEDED else CheckStatus.OPTIONAL, when {
         stream.phase == RemoteStreamSetupPhase.CHECKING -> stringResource(R.string.workspace_screen_stream_checking)
         stream.phase == RemoteStreamSetupPhase.ENFORCING -> stringResource(R.string.workspace_screen_stream_enforcing)
         stream.phase == RemoteStreamSetupPhase.STARTING -> stringResource(R.string.workspace_screen_stream_starting)
         status == null -> stream.error?.let { remoteScreenSetupError(resources, it) } ?: stringResource(R.string.im_computer_stream_optional)
-        !status.installed -> stringResource(R.string.im_computer_stream_optional)
+        !status.installed -> stringResource(if (required) R.string.im_computer_sunshine_needed else R.string.im_computer_stream_optional)
+        enabled && required -> "Sunshine" + (status.version?.let { " $it" } ?: "")
         enabled -> stringResource(R.string.im_computer_stream_enabled)
         else -> stringResource(R.string.im_computer_stream_available)
     }) {

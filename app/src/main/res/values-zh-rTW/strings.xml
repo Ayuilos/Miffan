@@ -1430,7 +1430,7 @@
   <string name="workspace_login_target">登入目標</string>
   <string name="workspace_remote_directory">遠端目錄</string>
   <string name="workspace_remote_system">系統</string>
-  <string name="workspace_remote_system_windows">Windows（暫不支援螢幕和互動式終端機）</string>
+  <string name="workspace_remote_system_windows">Windows（暫不支援互動式終端機）</string>
   <string name="workspace_host_identity">主機身分</string>
   <string name="workspace_fingerprint_confirmed">已確認指紋</string>
   <string name="workspace_fingerprint_unconfirmed">未確認指紋</string>
@@ -2222,6 +2222,8 @@
   <string name="workspace_screen_no_output">指令沒有傳回輸出。</string>
   <string name="workspace_screen_no_workspace">請先為這台主機建立遠端工作空間，再重新檢查。</string>
   <string name="workspace_screen_no_session">找不到已登入的桌面工作階段。請在這台電腦上登入桌面，再重試。</string>
+  <string name="workspace_screen_session_locked">已鎖定螢幕，請先在這台電腦上解鎖。</string>
+  <string name="workspace_screen_session_signed_in">已登入</string>
   <string name="workspace_screen_windows_unsupported">暫時還不能查看 Windows 電腦的螢幕。檔案和 PowerShell 指令已經可以用了。</string>
   <string name="workspace_screen_firewall_needed">這台電腦上的 Sunshine 允許網路裡的任何裝置存取它的管理連接埠。連線前需要先收緊防火牆。</string>
   <string name="workspace_screen_firewall_check_failed">沒能檢查這台電腦的防火牆，為了安全沒有連線。請重試。</string>
@@ -2359,9 +2361,13 @@
   <string name="workspace_screen_hide_output">收起輸出</string>
   <string name="workspace_screen_clipboard">剪貼簿</string>
   <string name="workspace_screen_clipboard_missing">找不到剪貼簿工具。</string>
+  <string name="workspace_screen_clipboard_windows_bridge">透過夥伴橋寫入</string>
+  <string name="workspace_screen_clipboard_windows_task">透過臨時工作寫入，每次要幾秒</string>
   <string name="workspace_screen_install_clipboard">請安裝 %1$s，才能輸入中文等非拉丁文字。</string>
   <string name="workspace_screen_cua">cua-driver · 夥伴操作電腦所需</string>
   <string name="workspace_screen_cua_missing">未安裝</string>
+  <string name="workspace_screen_cua_autostart">cua-driver 自動啟動</string>
+  <string name="workspace_screen_cua_elevated">cua-driver 以系統管理員權限自動啟動。請在電腦上把它的自動啟動工作改回一般權限，否則同一帳號下的其他程式也能借它以系統管理員身分操作。</string>
   <string name="workspace_screen_cua_outdated">目前版本 %1$s · 需要 %2$s 或更新版本</string>
   <string name="workspace_screen_unknown_version">版本不明</string>
   <string name="workspace_screen_install">安裝</string>
@@ -2421,6 +2427,7 @@
   <string name="im_computer_clipboard_optional">不影響繼續；安裝剪貼簿工具後，才能輸入中文等非拉丁文字。</string>
   <string name="im_computer_stream">更流暢的畫面</string>
   <string name="im_computer_stream_optional">可選。電腦上裝了 Sunshine 後，畫面會更流暢、延遲更低。</string>
+  <string name="im_computer_sunshine_needed">請先在這台電腦上安裝 Sunshine（github.com/LizardByte/Sunshine/releases），裝好後重新檢查。</string>
   <string name="im_computer_stream_available">這台電腦裝了 Sunshine，可以讓畫面更流暢、延遲更低。</string>
   <string name="im_computer_stream_enabled">已啟用</string>
   <string name="im_computer_stream_enable">啟用</string>

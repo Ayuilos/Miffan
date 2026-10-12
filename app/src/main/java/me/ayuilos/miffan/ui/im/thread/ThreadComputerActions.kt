@@ -32,7 +32,7 @@ import androidx.compose.ui.graphics.Color
 
 private val computerObservationNames = setOf(
     "start", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "read_guide",
-    "get_screen_size", "get_cursor_position", "zoom", "verify_state",
+    "get_screen_size", "get_cursor_position", "zoom", "verify_state", "clipboard_read",
 )
 
 internal fun UIMessagePart.Tool.isComputerTool() = toolName.startsWith(COMPUTER_TOOL_PREFIX)

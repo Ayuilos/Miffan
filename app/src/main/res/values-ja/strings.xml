@@ -1432,7 +1432,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_login_target">ログイン先</string>
   <string name="workspace_remote_directory">リモートディレクトリ</string>
   <string name="workspace_remote_system">システム</string>
-  <string name="workspace_remote_system_windows">Windows（画面と対話型ターミナルは未対応）</string>
+  <string name="workspace_remote_system_windows">Windows（対話型ターミナルは未対応）</string>
   <string name="workspace_host_identity">ホストの識別情報</string>
   <string name="workspace_fingerprint_confirmed">フィンガープリント確認済み</string>
   <string name="workspace_fingerprint_unconfirmed">フィンガープリント未確認</string>
@@ -2224,6 +2224,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_no_output">コマンドから出力がありませんでした。</string>
   <string name="workspace_screen_no_workspace">先にこのホストのリモートワークスペースを作成してから、もう一度確認してください。</string>
   <string name="workspace_screen_no_session">ログイン中のデスクトップセッションが見つかりません。このコンピューターでデスクトップにログインしてから、再試行してください。</string>
+  <string name="workspace_screen_session_locked">ロックされています。先にこのコンピューターでロックを解除してください。</string>
+  <string name="workspace_screen_session_signed_in">サインイン済み</string>
   <string name="workspace_screen_windows_unsupported">Windows コンピューターの画面表示にはまだ対応していません。ファイルと PowerShell コマンドは使えます。</string>
   <string name="workspace_screen_firewall_needed">このコンピューターの Sunshine は、ネットワーク上のどのデバイスからでも管理ポートにアクセスできる状態です。接続する前にファイアウォールを絞り込んでください。</string>
   <string name="workspace_screen_firewall_check_failed">このコンピューターのファイアウォールを確認できなかったため、安全のため接続しませんでした。再試行してください。</string>
@@ -2361,9 +2363,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_hide_output">出力を隠す</string>
   <string name="workspace_screen_clipboard">クリップボード</string>
   <string name="workspace_screen_clipboard_missing">クリップボードツールが見つかりません。</string>
+  <string name="workspace_screen_clipboard_windows_bridge">パートナーブリッジ経由で書き込み</string>
+  <string name="workspace_screen_clipboard_windows_task">一時タスク経由で書き込み（毎回数秒かかります）</string>
   <string name="workspace_screen_install_clipboard">中国語などのラテン文字以外を入力するには、%1$s をインストールしてください。</string>
   <string name="workspace_screen_cua">cua-driver · パートナーがコンピューターを操作するために必要</string>
   <string name="workspace_screen_cua_missing">未インストール</string>
+  <string name="workspace_screen_cua_autostart">cua-driver の自動起動</string>
+  <string name="workspace_screen_cua_elevated">cua-driver が管理者権限で自動起動しています。コンピューターで自動起動タスクを通常の権限に戻してください。そのままだと、同じアカウントの他のプログラムがこれを使って管理者として操作できてしまいます。</string>
   <string name="workspace_screen_cua_outdated">バージョン %1$s · 必要なバージョン %2$s 以上</string>
   <string name="workspace_screen_unknown_version">バージョン不明</string>
   <string name="workspace_screen_install">インストール</string>
@@ -2423,6 +2429,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_clipboard_optional">任意です。クリップボードツールをインストールすると、中国語などのラテン文字以外を入力できます。</string>
   <string name="im_computer_stream">より滑らかな画面</string>
   <string name="im_computer_stream_optional">任意。パソコンに Sunshine を入れると、画面がより滑らかになり遅延も減ります。</string>
+  <string name="im_computer_sunshine_needed">先にこのコンピューターに Sunshine をインストールしてから（github.com/LizardByte/Sunshine/releases）、もう一度確認してください。</string>
   <string name="im_computer_stream_available">このパソコンには Sunshine があり、画面をより滑らかに、遅延を少なくできます。</string>
   <string name="im_computer_stream_enabled">有効</string>
   <string name="im_computer_stream_enable">有効にする</string>

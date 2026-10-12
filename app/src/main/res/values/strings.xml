@@ -1441,7 +1441,7 @@
   <string name="workspace_login_target">Login target</string>
   <string name="workspace_remote_directory">Remote directory</string>
   <string name="workspace_remote_system">System</string>
-  <string name="workspace_remote_system_windows">Windows (no screen or interactive terminal yet)</string>
+  <string name="workspace_remote_system_windows">Windows (no interactive terminal yet)</string>
   <string name="workspace_host_identity">Host identity</string>
   <string name="workspace_fingerprint_confirmed">Fingerprint confirmed</string>
   <string name="workspace_fingerprint_unconfirmed">Fingerprint not confirmed</string>
@@ -2264,6 +2264,8 @@
   <string name="workspace_screen_no_output" tools:ignore="MissingTranslation">The command returned no output.</string>
   <string name="workspace_screen_no_workspace" tools:ignore="MissingTranslation">Create a remote workspace for this host first, then check again.</string>
   <string name="workspace_screen_no_session" tools:ignore="MissingTranslation">No logged-in desktop session was found. Log in to the desktop on this computer, then retry.</string>
+  <string name="workspace_screen_session_locked" tools:ignore="MissingTranslation">Locked. Unlock it on this computer first.</string>
+  <string name="workspace_screen_session_signed_in" tools:ignore="MissingTranslation">Signed in</string>
   <string name="workspace_screen_windows_unsupported" tools:ignore="MissingTranslation">Viewing the screen of a Windows computer isn\'t supported yet. Files and PowerShell commands already work.</string>
   <string name="workspace_screen_firewall_needed" tools:ignore="MissingTranslation">Sunshine on this computer lets any device on the network reach its management ports. Tighten the firewall before connecting.</string>
   <string name="workspace_screen_firewall_check_failed" tools:ignore="MissingTranslation">Couldn\'t check this computer\'s firewall, so the connection was not made. Try again.</string>
@@ -2402,9 +2404,13 @@
   <string name="workspace_screen_hide_output" tools:ignore="MissingTranslation">Hide output</string>
   <string name="workspace_screen_clipboard" tools:ignore="MissingTranslation">Clipboard</string>
   <string name="workspace_screen_clipboard_missing" tools:ignore="MissingTranslation">No clipboard tool was found.</string>
+  <string name="workspace_screen_clipboard_windows_bridge" tools:ignore="MissingTranslation">Through the partner bridge</string>
+  <string name="workspace_screen_clipboard_windows_task" tools:ignore="MissingTranslation">Through a temporary task, a few seconds each time</string>
   <string name="workspace_screen_install_clipboard" tools:ignore="MissingTranslation">Install %1$s to type Chinese and other non-Latin text.</string>
   <string name="workspace_screen_cua" tools:ignore="MissingTranslation">cua-driver · needed for partner computer control</string>
   <string name="workspace_screen_cua_missing" tools:ignore="MissingTranslation">Not installed</string>
+  <string name="workspace_screen_cua_autostart" tools:ignore="MissingTranslation">cua-driver autostart</string>
+  <string name="workspace_screen_cua_elevated" tools:ignore="MissingTranslation">cua-driver starts with administrator rights. Change its autostart task back to normal rights on the computer: otherwise other programs under the same account could use it to act as administrator.</string>
   <string name="workspace_screen_cua_outdated" tools:ignore="MissingTranslation">Version %1$s · required %2$s or newer</string>
   <string name="workspace_screen_unknown_version" tools:ignore="MissingTranslation">Unknown version</string>
   <string name="workspace_screen_install" tools:ignore="MissingTranslation">Install</string>
@@ -2466,6 +2472,7 @@
   <string name="im_computer_clipboard_optional" tools:ignore="MissingTranslation">Optional; install a clipboard tool to type Chinese and other non-Latin text.</string>
   <string name="im_computer_stream" tools:ignore="MissingTranslation">Smoother picture</string>
   <string name="im_computer_stream_optional" tools:ignore="MissingTranslation">Optional. With Sunshine installed on the computer, the picture is smoother and responds faster.</string>
+  <string name="im_computer_sunshine_needed" tools:ignore="MissingTranslation">Install Sunshine on this computer first (github.com/LizardByte/Sunshine/releases), then check again.</string>
   <string name="im_computer_stream_available" tools:ignore="MissingTranslation">Sunshine is on this computer and can make the picture smoother and faster.</string>
   <string name="im_computer_stream_enabled" tools:ignore="MissingTranslation">On</string>
   <string name="im_computer_stream_enable" tools:ignore="MissingTranslation">Turn on</string>

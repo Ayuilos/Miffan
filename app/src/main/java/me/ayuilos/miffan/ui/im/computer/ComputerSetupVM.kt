@@ -96,9 +96,12 @@ data class ComputerSetupState(
     val partnerChecked: Boolean = false,
     /** The address step edits this host's saved connection details. */
     val editing: Boolean = false,
+    /** Windows only: Sunshine is installed, running, encrypted and paired for [hostRevision]. */
+    val streamReady: Boolean = false,
 ) {
     val busy: Boolean get() = task != null
     val isMac: Boolean get() = probe?.os == "macos"
+    val isWindows: Boolean get() = probe?.os == "windows"
 
     val sessionReady: Boolean get() = probe?.session?.present == true
     /**
@@ -106,6 +109,8 @@ data class ComputerSetupState(
      * server, and macOS Screen Sharing must also be switched on (the helper cannot start it).
      */
     val screenServiceReady: Boolean get() = probe?.let { probe ->
+        // Sunshine is the only screen a Windows computer has.
+        if (probe.os == "windows") return@let streamReady
         if (probe.usesRdp) return@let probe.rdpServer != null
         val vnc = probe.vnc
         vnc.server != null && vnc.server != "none" && (vnc.server != "macos-screen-sharing" || vnc.running)
@@ -175,6 +180,18 @@ class ComputerSetupVM(
     /** Optional high-performance mode for the computer being set up; see [RemoteStreamSetupController]. */
     val streamSetups = streamSetup.states
 
+    init {
+        // Windows readiness depends on Sunshine, which the stream controller tracks per host and revision.
+        viewModelScope.launch {
+            streamSetup.states.collect { setups ->
+                _state.update { current ->
+                    val setup = current.hostId?.let { setups[it] }?.takeIf { it.connectionRevision == current.hostRevision }
+                    current.copy(streamReady = setup?.streamReady == true)
+                }
+            }
+        }
+    }
+
     private fun withProbedHost(action: (hostId: String, revision: String) -> Unit) {
         val state = _state.value
         action(state.hostId ?: return, state.hostRevision ?: return)
@@ -194,7 +211,8 @@ class ComputerSetupVM(
     }
 
     /** The exact command [installCuaDriver] runs, for the confirmation dialog. */
-    fun cuaInstallCommand(): String = RemoteScreenRepository.cuaDriverCommand(upgradePath())
+    fun cuaInstallCommand(): String = RemoteScreenRepository.cuaDriverCommand(upgradePath(),
+        if (_state.value.probe?.os == "windows") me.rerere.workspace.RemotePlatform.WINDOWS else me.rerere.workspace.RemotePlatform.POSIX)
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
@@ -387,8 +405,8 @@ class ComputerSetupVM(
         val host = currentHost()
         val probe = screens.probeHost(host.id, host.connectionRevision)
         _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision, step = ComputerSetupStep.PREPARE) }
-        // Sunshine is optional (Linux and macOS); its check runs beside the required ones.
-        if (probe.os == "linux" || probe.os == "macos") streamSetup.check(host.id, host.connectionRevision)
+        // Sunshine is optional on Linux and macOS and required on Windows; its check runs beside the others.
+        if (probe.os in setOf("linux", "macos", "windows")) streamSetup.check(host.id, host.connectionRevision)
     }
 
     private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path

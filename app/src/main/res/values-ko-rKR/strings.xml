@@ -1432,7 +1432,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_login_target">로그인 대상</string>
   <string name="workspace_remote_directory">원격 디렉터리</string>
   <string name="workspace_remote_system">시스템</string>
-  <string name="workspace_remote_system_windows">Windows (화면과 대화형 터미널은 아직 미지원)</string>
+  <string name="workspace_remote_system_windows">Windows(대화형 터미널은 아직 미지원)</string>
   <string name="workspace_host_identity">호스트 신원</string>
   <string name="workspace_fingerprint_confirmed">지문 확인됨</string>
   <string name="workspace_fingerprint_unconfirmed">지문 확인 전</string>
@@ -2224,6 +2224,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_no_output">명령에서 출력이 없어요.</string>
   <string name="workspace_screen_no_workspace">먼저 이 호스트의 원격 워크스페이스를 만든 다음 다시 확인하세요.</string>
   <string name="workspace_screen_no_session">로그인된 데스크톱 세션을 찾지 못했어요. 이 컴퓨터에서 데스크톱에 로그인한 다음 다시 시도하세요.</string>
+  <string name="workspace_screen_session_locked">잠겨 있어요. 먼저 이 컴퓨터에서 잠금을 해제하세요.</string>
+  <string name="workspace_screen_session_signed_in">로그인됨</string>
   <string name="workspace_screen_windows_unsupported">Windows 컴퓨터의 화면 보기는 아직 지원하지 않아요. 파일과 PowerShell 명령은 사용할 수 있어요.</string>
   <string name="workspace_screen_firewall_needed">이 컴퓨터의 Sunshine은 네트워크의 모든 기기가 관리 포트에 접근할 수 있게 되어 있어요. 연결하기 전에 방화벽을 좁혀야 해요.</string>
   <string name="workspace_screen_firewall_check_failed">이 컴퓨터의 방화벽을 확인하지 못해 안전을 위해 연결하지 않았어요. 다시 시도하세요.</string>
@@ -2361,9 +2363,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_hide_output">출력 숨기기</string>
   <string name="workspace_screen_clipboard">클립보드</string>
   <string name="workspace_screen_clipboard_missing">클립보드 도구를 찾지 못했어요.</string>
+  <string name="workspace_screen_clipboard_windows_bridge">파트너 브리지로 쓰기</string>
+  <string name="workspace_screen_clipboard_windows_task">임시 작업으로 쓰기(매번 몇 초 걸려요)</string>
   <string name="workspace_screen_install_clipboard">중국어 등 라틴 문자 이외의 텍스트를 입력하려면 %1$s를 설치하세요.</string>
   <string name="workspace_screen_cua">cua-driver · 파트너의 컴퓨터 조작에 필요</string>
   <string name="workspace_screen_cua_missing">설치되지 않음</string>
+  <string name="workspace_screen_cua_autostart">cua-driver 자동 시작</string>
+  <string name="workspace_screen_cua_elevated">cua-driver가 관리자 권한으로 자동 시작돼요. 컴퓨터에서 자동 시작 작업을 일반 권한으로 되돌리세요. 그대로 두면 같은 계정의 다른 프로그램이 이를 통해 관리자로 작업할 수 있어요.</string>
   <string name="workspace_screen_cua_outdated">버전 %1$s · %2$s 이상 필요</string>
   <string name="workspace_screen_unknown_version">버전 알 수 없음</string>
   <string name="workspace_screen_install">설치</string>
@@ -2423,6 +2429,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_clipboard_optional">선택 사항 · 중국어 등 라틴 문자 이외의 텍스트를 입력하려면 클립보드 도구를 설치하세요.</string>
   <string name="im_computer_stream">더 부드러운 화면</string>
   <string name="im_computer_stream_optional">선택 사항입니다. 컴퓨터에 Sunshine을 설치하면 화면이 더 부드럽고 지연이 줄어듭니다.</string>
+  <string name="im_computer_sunshine_needed">먼저 이 컴퓨터에 Sunshine을 설치한 뒤(github.com/LizardByte/Sunshine/releases) 다시 확인하세요.</string>
   <string name="im_computer_stream_available">이 컴퓨터에 Sunshine이 있어 화면을 더 부드럽고 빠르게 만들 수 있습니다.</string>
   <string name="im_computer_stream_enabled">사용 중</string>
   <string name="im_computer_stream_enable">켜기</string>

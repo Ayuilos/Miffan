@@ -1432,7 +1432,7 @@
   <string name="workspace_login_target">Адрес входа</string>
   <string name="workspace_remote_directory">Удалённый каталог</string>
   <string name="workspace_remote_system">Система</string>
-  <string name="workspace_remote_system_windows">Windows (экран и интерактивный терминал пока не поддерживаются)</string>
+  <string name="workspace_remote_system_windows">Windows (интерактивный терминал пока не поддерживается)</string>
   <string name="workspace_host_identity">Идентификатор хоста</string>
   <string name="workspace_fingerprint_confirmed">Отпечаток подтверждён</string>
   <string name="workspace_fingerprint_unconfirmed">Отпечаток не подтверждён</string>
@@ -2224,6 +2224,8 @@
   <string name="workspace_screen_no_output">Команда ничего не вывела.</string>
   <string name="workspace_screen_no_workspace">Сначала создайте удалённую рабочую область для этого компьютера, затем проверьте ещё раз.</string>
   <string name="workspace_screen_no_session">Не найден активный сеанс рабочего стола. Войдите в систему на этом компьютере и повторите попытку.</string>
+  <string name="workspace_screen_session_locked">Экран заблокирован. Сначала разблокируйте этот компьютер.</string>
+  <string name="workspace_screen_session_signed_in">Выполнен вход</string>
   <string name="workspace_screen_windows_unsupported">Просмотр экрана компьютеров с Windows пока не поддерживается. Файлы и команды PowerShell уже работают.</string>
   <string name="workspace_screen_firewall_needed">Sunshine на этом компьютере открывает порты управления для любого устройства в сети. Перед подключением ограничьте брандмауэр.</string>
   <string name="workspace_screen_firewall_check_failed">Не удалось проверить брандмауэр этого компьютера, поэтому подключение не выполнено. Повторите попытку.</string>
@@ -2364,9 +2366,13 @@
   <string name="workspace_screen_hide_output">Скрыть вывод</string>
   <string name="workspace_screen_clipboard">Буфер обмена</string>
   <string name="workspace_screen_clipboard_missing">Инструмент для работы с буфером обмена не найден.</string>
+  <string name="workspace_screen_clipboard_windows_bridge">Через мост партнёра</string>
+  <string name="workspace_screen_clipboard_windows_task">Через временную задачу, каждый раз несколько секунд</string>
   <string name="workspace_screen_install_clipboard">Установите %1$s, чтобы вводить китайский и другие нелатинские тексты.</string>
   <string name="workspace_screen_cua">cua-driver · нужен для управления компьютером партнёром</string>
   <string name="workspace_screen_cua_missing">Не установлен</string>
+  <string name="workspace_screen_cua_autostart">Автозапуск cua-driver</string>
+  <string name="workspace_screen_cua_elevated">cua-driver запускается с правами администратора. Верните для его задачи автозапуска обычные права на компьютере: иначе другие программы той же учётной записи смогут действовать через него как администратор.</string>
   <string name="workspace_screen_cua_outdated">Версия %1$s · требуется %2$s или новее</string>
   <string name="workspace_screen_unknown_version">Версия неизвестна</string>
   <string name="workspace_screen_install">Установить</string>
@@ -2426,6 +2432,7 @@
   <string name="im_computer_clipboard_optional">Необязательно; установите инструмент для буфера обмена, чтобы вводить китайский и другие нелатинские тексты.</string>
   <string name="im_computer_stream">Более плавное изображение</string>
   <string name="im_computer_stream_optional">Необязательно. Если на компьютере установлен Sunshine, изображение плавнее и откликается быстрее.</string>
+  <string name="im_computer_sunshine_needed">Сначала установите Sunshine на этот компьютер (github.com/LizardByte/Sunshine/releases), затем проверьте снова.</string>
   <string name="im_computer_stream_available">На этом компьютере есть Sunshine: изображение может быть плавнее и быстрее.</string>
   <string name="im_computer_stream_enabled">Включено</string>
   <string name="im_computer_stream_enable">Включить</string>
