@@ -19,7 +19,7 @@ $listeners=@(Get-NetTCPConnection -State Listen | Where-Object LocalPort -in 479
     Version=(Get-Item "$root\sunshine.exe").VersionInfo | Select-Object FileVersion,ProductVersion;
     Services=@(Get-CimInstance Win32_Service | Where-Object Name -match 'Sunshine' | Select-Object Name,State,StartName,PathName,ProcessId,StartMode);
     Processes=$processes;Files=$files;Rules=$rules;ConfigPath=$config;
-    Config=if(Test-Path $config){Get-Content $config}else{$null};
+    Config=if(Test-Path $config){[IO.File]::ReadAllText($config)}else{$null};
     CertificateSha256=$fingerprint;Listeners=$listeners;
     Udp=@(Get-NetUDPEndpoint | Where-Object LocalPort -in 47998,47999,48000 | Select-Object LocalAddress,LocalPort,OwningProcess);
     ConfigFiles=@(Get-ChildItem "$root\config" -Recurse -File -ErrorAction SilentlyContinue | Select-Object FullName,Length)
