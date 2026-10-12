@@ -102,6 +102,8 @@ internal fun ThreadComposer(
     compact: Boolean = false,
     /** Other partners the owner can @ in this thread. */
     mentionables: List<Assistant> = emptyList(),
+    /** Content uris to attach once when the thread opens (shared or shortcut photos). */
+    initialFiles: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -163,6 +165,15 @@ internal fun ThreadComposer(
                 latestError(addError)
             } finally { importing = false; cleanup() }
         }
+    }
+    // Saved, so returning to the thread does not attach them again.
+    var attachedInitial by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(initialFiles) {
+        if (attachedInitial || initialFiles.isEmpty()) return@LaunchedEffect
+        attachedInitial = true
+        val (images, others) = initialFiles.map(Uri::parse).partition { files.getFileMimeType(it)?.startsWith("image/") == true }
+        importUris(images, true)
+        importUris(others, false)
     }
     val (_, crop) = useCropLauncher(
         onCroppedImageReady = {

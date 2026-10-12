@@ -465,6 +465,7 @@ class RouteActivity : ComponentActivity() {
                                     assistantId = Uuid.parse(key.assistantId),
                                     focusMessageId = key.focusMessageId,
                                     initialText = key.text,
+                                    initialFiles = key.files,
                                 )
                             }
 
@@ -774,7 +775,13 @@ sealed interface Screen : NavKey {
 
     /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
     @Serializable
-    data class Thread(val assistantId: String, val focusMessageId: String? = null, val text: String? = null) : Screen
+    data class Thread(
+        val assistantId: String,
+        val focusMessageId: String? = null,
+        val text: String? = null,
+        /** Content uris to attach to the draft, e.g. a photo from the camera shortcut. */
+        val files: List<String> = emptyList(),
+    ) : Screen
 
     /** A chat between partners, which the owner can read and join. */
     @Serializable

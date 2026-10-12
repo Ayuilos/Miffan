@@ -72,6 +72,7 @@ fun AgentThreadPage(
     assistantId: Uuid,
     focusMessageId: String? = null,
     initialText: String? = null,
+    initialFiles: List<String> = emptyList(),
     vm: AgentThreadVM = koinViewModel { parametersOf(assistantId) },
 ) {
     LifecycleResumeEffect(vm) {
@@ -395,7 +396,7 @@ fun AgentThreadPage(
                         if (result == SnackbarResult.ActionPerformed) nav.navigate(Screen.SettingSpeech(recognition = true))
                     }
                 },
-                hazeState = hazeState, mentionables = mentionables)
+                hazeState = hazeState, mentionables = mentionables, initialFiles = initialFiles)
         }
         // Outside the measured composer so showing it never shifts the list's padding.
         if (!atBottom || highlighted != null) GlassIconButton(hazeState, HugeIcons.ArrowDown01, stringResource(R.string.im_thread_latest),
