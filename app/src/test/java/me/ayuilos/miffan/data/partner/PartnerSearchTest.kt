@@ -18,7 +18,7 @@ class PartnerSearchTest {
     @Before fun log() { mockkStatic(Log::class); every { Log.i(any(), any()) } returns 0 }
     @After fun cleanup() = unmockkStatic(Log::class)
 
-    @Test fun searchExcludesPerspectivesOnlyInImAndIndexesThemForProfessionalMode() = runTest {
+    @Test fun searchScopesPerspectivesByModeButAlwaysIndexesThem() = runTest {
         val sqlite = mockk<SupportSQLiteDatabase>(relaxed = true)
         val database = mockk<AppDatabase>()
         val cursor = mockk<Cursor>(relaxed = true)
@@ -32,8 +32,13 @@ class PartnerSearchTest {
         im = false
         manager.search("needle")
         verify { sqlite.query(any<String>(), match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 0, null)) }) }
+        manager.search("needle", perspectiveAssistantId = "a")
+        verify { sqlite.query(match<String> { it.contains("chat_id IS NULL OR (? = 1 AND assistant_id = ?)") }, match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 0, "a")) }) }
+        im = true
+        manager.search("needle", perspectiveAssistantId = "a")
+        verify { sqlite.query(any<String>(), match<Array<out Any?>> { it.contentEquals(arrayOf<Any?>("needle", 1, "a")) }) }
         val perspective = Conversation(assistantId = Uuid.random(), chatId = Uuid.random(), messageNodes = emptyList())
-            .appendMessage(UIMessage.user("[A] searchable in professional mode"))
+            .appendMessage(UIMessage.user("[A] searchable by this partner in IM"))
         manager.indexConversation(perspective)
         verify { sqlite.execSQL(match { it.startsWith("INSERT INTO message_fts") }, any<Array<out Any?>>()) }
     }

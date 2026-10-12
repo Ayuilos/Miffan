@@ -42,6 +42,7 @@ import me.ayuilos.miffan.web.dto.toDto
 import me.ayuilos.miffan.web.dto.toListDto
 import me.ayuilos.miffan.utils.JsonInstant
 import kotlin.time.Duration.Companion.seconds
+import me.ayuilos.miffan.data.model.isImMode
 import kotlin.uuid.Uuid
 
 fun Route.conversationRoutes(
@@ -143,6 +144,9 @@ fun Route.conversationRoutes(
         // GET /api/conversations/{id} - Get single conversation
         get("/{id}") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val conversation = conversationRepo.getConversationById(uuid)
                 ?: throw NotFoundException("Conversation not found")
 
@@ -153,6 +157,9 @@ fun Route.conversationRoutes(
         // DELETE /api/conversations/{id} - Delete conversation
         delete("/{id}") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val conversation = conversationRepo.getConversationById(uuid)
                 ?: throw NotFoundException("Conversation not found")
 
@@ -163,6 +170,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/pin - Toggle pinned status
         post("/{id}/pin") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val conversation = conversationRepo.getConversationById(uuid)
                 ?: throw NotFoundException("Conversation not found")
 
@@ -173,6 +183,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/regenerate-title - Regenerate conversation title
         post("/{id}/regenerate-title") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val conversation = conversationRepo.getConversationById(uuid)
                 ?: throw NotFoundException("Conversation not found")
 
@@ -183,6 +196,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/title - Update conversation title
         post("/{id}/title") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<UpdateConversationTitleRequest>()
             val title = request.title.trim()
 
@@ -200,6 +216,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/injections - Update conversation-scoped prompt injections
         post("/{id}/injections") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<UpdateConversationInjectionsRequest>()
             conversationRepo.getConversationById(uuid)
                 ?: throw NotFoundException("Conversation not found")
@@ -231,6 +250,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/move - Move conversation to another assistant
         post("/{id}/move") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<MoveConversationRequest>()
             val targetAssistantId = request.assistantId.toUuid("assistant id")
 
@@ -249,6 +271,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/folder - Move conversation to a folder (null = unfiled)
         post("/{id}/folder") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<MoveConversationToFolderRequest>()
 
             val conversation = conversationRepo.getConversationById(uuid)
@@ -270,6 +295,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/messages - Send a message
         post("/{id}/messages") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<SendMessageRequest>()
 
             chatService.initializeConversation(uuid)
@@ -288,6 +316,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/messages/{messageId}/edit - Edit a message as a new branch version
         post("/{id}/messages/{messageId}/edit") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val messageId = call.parameters["messageId"].toUuid("message id")
             val request = call.receive<EditMessageRequest>()
 
@@ -300,6 +331,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/fork - Create a forked conversation up to message
         post("/{id}/fork") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<ForkConversationRequest>()
             val messageId = request.messageId.toUuid("message id")
 
@@ -312,6 +346,9 @@ fun Route.conversationRoutes(
         // DELETE /api/conversations/{id}/messages/{messageId} - Delete a message
         delete("/{id}/messages/{messageId}") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val messageId = call.parameters["messageId"].toUuid("message id")
 
             chatService.initializeConversation(uuid)
@@ -323,6 +360,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/nodes/{nodeId}/select - Switch branch selection for a message node
         post("/{id}/nodes/{nodeId}/select") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val nodeId = call.parameters["nodeId"].toUuid("node id")
             val request = call.receive<SelectMessageNodeRequest>()
 
@@ -335,6 +375,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/regenerate - Regenerate message
         post("/{id}/regenerate") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<RegenerateRequest>()
             val messageId = request.messageId.toUuid("message id")
 
@@ -350,6 +393,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/stop - Stop generation
         post("/{id}/stop") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             chatService.stopGeneration(uuid)
             call.respond(HttpStatusCode.OK, mapOf("status" to "stopped"))
         }
@@ -357,6 +403,9 @@ fun Route.conversationRoutes(
         // POST /api/conversations/{id}/tool-approval - Handle tool approval
         post("/{id}/tool-approval") {
             val uuid = call.parameters["id"].toUuid("conversation id")
+            if (!settingsStore.settingsFlow.first().isImMode && conversationRepo.isPartnerPerspective(uuid)) {
+                throw NotFoundException("Conversation not found")
+            }
             val request = call.receive<ToolApprovalRequest>()
             chatService.handleToolApproval(uuid, request.toolCallId, request.approved, request.reason, request.answer)
             call.respond(HttpStatusCode.Accepted, mapOf("status" to "accepted"))

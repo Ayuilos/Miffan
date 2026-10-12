@@ -14,6 +14,7 @@ import me.ayuilos.miffan.data.db.dao.MessageNodeDAO
 import me.ayuilos.miffan.data.db.dao.getMessageCountPerDay
 import me.ayuilos.miffan.data.db.dao.getTokenStats
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.model.isImMode
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
@@ -45,6 +46,7 @@ class StatsVM(
     private suspend fun loadStats() {
         delay(50)
 
+        val excludePerspectives = !settingsStore.settingsFlow.first().isImMode
         val today = LocalDate.now()
 
         // 热力图起始日期（52 周前的周日），格式 "yyyy-MM-dd" 直接与 JSON 中的 LocalDateTime 前缀比较
@@ -56,17 +58,17 @@ class StatsVM(
         // 基于用户消息的 createdAt 统计每日活跃消息数，SQLite 侧 GROUP BY，返回 ≤371 行
         val conversationsPerDay = withContext(Dispatchers.IO) {
             messageNodeDAO
-                .getMessageCountPerDay(startDate)
+                .getMessageCountPerDay(startDate, excludePerspectives = excludePerspectives)
                 .mapNotNull { entry ->
                     runCatching { LocalDate.parse(entry.day) to entry.count }.getOrNull()
                 }
                 .toMap()
         }
 
-        val totalConversations = conversationDAO.countAll()
+        val totalConversations = if (excludePerspectives) conversationDAO.countVisible() else conversationDAO.countAll()
 
         // json_each() + json_extract() 在 SQLite 侧聚合，不再加载完整 JSON 到 Kotlin
-        val tokenStats = messageNodeDAO.getTokenStats()
+        val tokenStats = messageNodeDAO.getTokenStats(excludePerspectives = excludePerspectives)
 
         val launchCount = settingsStore.launchCountFlow.first()
 

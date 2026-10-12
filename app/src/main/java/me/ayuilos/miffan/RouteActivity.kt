@@ -33,6 +33,9 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import me.ayuilos.miffan.ui.pages.chat.ProfessionalChatRoute
+import me.ayuilos.miffan.ui.pages.chat.professionalStartupDestination
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -323,24 +326,35 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
-        val startScreen: Screen = notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId")) ?: if (settings.isNotConfigured()) {
-            Screen.Onboarding
-        } else if (settings.isImMode) {
-            Screen.Home
-        } else {
-            Screen.Chat(
-                id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
-                    Uuid.random().toString()
+        val requestedStartScreen: Screen = remember {
+            notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"))
+                ?: if (settings.isNotConfigured()) {
+                    Screen.Onboarding
+                } else if (settings.isImMode) {
+                    Screen.Home
                 } else {
-                    readStringPreference(
-                        "lastConversationId",
-                        Uuid.random().toString()
-                    ) ?: Uuid.random().toString()
+                    Screen.Chat(
+                        id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
+                            Uuid.random().toString()
+                        } else {
+                            readStringPreference("lastConversationId", null) ?: Uuid.random().toString()
+                        }
+                    )
                 }
-            )
         }
-
-        val backStack = rememberNavBackStack(startScreen)
+        val conversations = koinInject<me.ayuilos.miffan.data.db.dao.ConversationDAO>()
+        val startScreen by produceState<Screen?>(initialValue = null, requestedStartScreen) {
+            value = if (!settings.isImMode && requestedStartScreen is Screen.Chat &&
+                notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId")) == null) {
+                professionalStartupDestination(requestedStartScreen, conversations)
+            } else requestedStartScreen
+        }
+        val resolvedStartScreen = startScreen
+        if (resolvedStartScreen == null) {
+            AppStartupLoading(startupAppearance)
+            return
+        }
+        val backStack = rememberNavBackStack(resolvedStartScreen)
         // Reserve this launch for the workspace introduction, even after it is dismissed.
         // A user skipping several versions should not receive two promotional dialogs in a row.
         val workspaceIntroductionLaunch = rememberSaveable { !settings.remoteWorkspaceIntroSeen }
@@ -430,13 +444,15 @@ class RouteActivity : ComponentActivity() {
                                     ImChatRedirect(key)
                                     return@entry
                                 }
-                                ChatPage(
-                                    id = Uuid.parse(key.id),
-                                    text = key.text,
-                                    files = key.files.map { it.toUri() },
-                                    nodeId = key.nodeId?.let { Uuid.parse(it) },
-                                    messageId = key.messageId?.let { Uuid.parse(it) },
-                                )
+                                ProfessionalChatRoute(key) {
+                                    ChatPage(
+                                        id = Uuid.parse(key.id),
+                                        text = key.text,
+                                        files = key.files.map { it.toUri() },
+                                        nodeId = key.nodeId?.let { Uuid.parse(it) },
+                                        messageId = key.messageId?.let { Uuid.parse(it) },
+                                    )
+                                }
                             }
 
                             entry<Screen.Home>(

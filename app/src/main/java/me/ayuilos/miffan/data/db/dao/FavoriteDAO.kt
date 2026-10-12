@@ -18,6 +18,9 @@ interface FavoriteDAO {
     @Query("SELECT * FROM favorites WHERE type = :type ORDER BY created_at DESC")
     fun listByType(type: String): Flow<List<FavoriteEntity>>
 
+    @Query("SELECT * FROM favorites WHERE type = :type AND NOT EXISTS (SELECT 1 FROM conversationentity c WHERE c.chat_id IS NOT NULL AND favorites.ref_key LIKE 'node:' || c.id || ':%') ORDER BY created_at DESC")
+    fun listVisibleByType(type: String): Flow<List<FavoriteEntity>>
+
     @Query("SELECT ref_key FROM favorites WHERE type = :type")
     suspend fun getRefKeysByType(type: String): List<String>
 

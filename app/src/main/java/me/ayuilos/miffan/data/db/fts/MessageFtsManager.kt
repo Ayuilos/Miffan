@@ -76,7 +76,7 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
                    (SELECT chat_id FROM conversationentity WHERE id = conversation_id) AS chat_id
             FROM message_fts
             WHERE text MATCH jieba_query(?)
-              AND (? = 0 OR conversation_id IN (SELECT id FROM conversationentity WHERE chat_id IS NULL OR assistant_id = ?))
+              AND conversation_id IN (SELECT id FROM conversationentity WHERE chat_id IS NULL OR (? = 1 AND assistant_id = ?))
             ORDER BY ${sort.orderBy}
             LIMIT 50
             """.trimIndent(),

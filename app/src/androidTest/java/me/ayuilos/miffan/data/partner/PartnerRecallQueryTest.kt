@@ -59,8 +59,8 @@ class PartnerRecallQueryTest {
             assertEquals(direct.chatId.toString(), recalled.single { it.conversationId == direct.id.toString() }.chatId)
             assertTrue(recalled.all { it.snippet.contains("recallneedle") })
             im = false
-            assertEquals(50, fts.search("recallneedle").size)
-            assertEquals(50, fts.search("recallneedle", perspectiveAssistantId = a.toString()).size)
+            assertEquals(ownerIds, fts.search("recallneedle").map { it.conversationId }.toSet())
+            assertEquals(ownerIds, fts.search("recallneedle", perspectiveAssistantId = a.toString()).map { it.conversationId }.toSet())
         } finally { db.close(); context.deleteDatabase(fixtureName) }
     }
 

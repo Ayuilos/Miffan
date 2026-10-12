@@ -72,7 +72,7 @@ class Migration_34_35_Test {
             assertEquals(listOf("im"), dao.observeLatestConversationOfEachAssistant().first().map { it.id })
             assertEquals(listOf("im"), dao.getRecentConversationsOfAssistant("a", 10).map { it.id })
             assertEquals(listOf("im"), dao.getThreadDigests("a", "new", 10).map { it.id })
-            assertEquals(setOf("im", "perspective"), dao.getConversationsOfAssistant("a").first().map { it.id }.toSet())
+            assertEquals(setOf("im"), dao.getConversationsOfAssistant("a").first().map { it.id }.toSet())
             val partner = db.partnerChatDao()
             partner.insert(PartnerChatEntity("chat", "DIRECT", "", 1))
             partner.insert(PartnerChatMemberEntity("chat", "a", 1))

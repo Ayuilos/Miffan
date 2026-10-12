@@ -9,7 +9,6 @@ import androidx.paging.map
 import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.rerere.ai.ui.UIMessage
 import me.ayuilos.miffan.data.db.AppDatabase
@@ -332,8 +331,10 @@ class ConversationRepository(
         return conversationDAO.existsById(uuid.toString())
     }
 
-    suspend fun countConversations(): Int {
-        return conversationDAO.countAll()
+    suspend fun isPartnerPerspective(uuid: Uuid): Boolean = conversationDAO.getChatIdOf(uuid.toString()) != null
+
+    suspend fun countConversations(excludePerspectives: Boolean = false): Int {
+        return if (excludePerspectives) conversationDAO.countVisible() else conversationDAO.countAll()
     }
 
     suspend fun insertConversation(conversation: Conversation) {
@@ -393,8 +394,8 @@ class ConversationRepository(
     }
 
     suspend fun deleteConversationOfAssistant(assistantId: Uuid) {
-        getConversationsOfAssistant(assistantId).first().forEach { conversation ->
-            deleteConversation(conversation)
+        conversationDAO.getAllConversationsOfAssistant(assistantId.toString()).forEach { entity ->
+            deleteConversation(conversationEntityToConversation(entity, emptyList()))
         }
     }
 

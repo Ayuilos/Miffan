@@ -15,6 +15,8 @@ class FavoriteRepository(
 
     fun listByType(type: FavoriteType): Flow<List<FavoriteEntity>> = dao.listByType(type.value)
 
+    fun listVisibleByType(type: FavoriteType): Flow<List<FavoriteEntity>> = dao.listVisibleByType(type.value)
+
     suspend fun getByRefKey(refKey: String): FavoriteEntity? = dao.getByRefKey(refKey)
 
     suspend fun existsByRefKey(refKey: String): Boolean = dao.existsByRefKey(refKey)

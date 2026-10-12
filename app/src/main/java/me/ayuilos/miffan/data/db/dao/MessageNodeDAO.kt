@@ -79,18 +79,22 @@ data class MessageNodeRevision(val id: String, val revision: Long)
 private const val VALID_MESSAGE_JSON = "CASE WHEN json_valid(message) THEN message ELSE '{}' END"
 
 // Each row stores one message, so stats avoid expanding a JSON array.
-private val TOKEN_STATS_SQL = SimpleSQLiteQuery(
+private fun tokenStatsSql(excludePerspectives: Boolean) = SimpleSQLiteQuery(
     "SELECT COUNT(*) AS totalMessages, " +
         "COALESCE(SUM(CAST(json_extract($VALID_MESSAGE_JSON, '$.usage.promptTokens') AS INTEGER)), 0) AS promptTokens, " +
         "COALESCE(SUM(CAST(json_extract($VALID_MESSAGE_JSON, '$.usage.completionTokens') AS INTEGER)), 0) AS completionTokens, " +
         "COALESCE(SUM(CAST(json_extract($VALID_MESSAGE_JSON, '$.usage.cachedTokens') AS INTEGER)), 0) AS cachedTokens " +
-        "FROM message_node WHERE json_valid(message)"
+        "FROM message_node WHERE json_valid(message)" + visibleMessageCondition(excludePerspectives)
 )
 
-suspend fun MessageNodeDAO.getTokenStats(): MessageTokenStats = getTokenStatsRaw(TOKEN_STATS_SQL)
+private fun visibleMessageCondition(excludePerspectives: Boolean): String =
+    if (excludePerspectives) " AND conversation_id IN (SELECT id FROM conversationentity WHERE chat_id IS NULL)" else ""
+
+suspend fun MessageNodeDAO.getTokenStats(excludePerspectives: Boolean = false): MessageTokenStats =
+    getTokenStatsRaw(tokenStatsSql(excludePerspectives))
 
 // 按用户消息的 createdAt 字段（LocalDateTime ISO 字符串前10位即日期）统计每日消息数
-suspend fun MessageNodeDAO.getMessageCountPerDay(startDate: String): List<MessageDayCount> =
+suspend fun MessageNodeDAO.getMessageCountPerDay(startDate: String, excludePerspectives: Boolean = false): List<MessageDayCount> =
     getMessageCountPerDayRaw(
         SimpleSQLiteQuery(
             "SELECT substr(json_extract($VALID_MESSAGE_JSON, '$.createdAt'), 1, 10) AS day, " +
@@ -98,7 +102,7 @@ suspend fun MessageNodeDAO.getMessageCountPerDay(startDate: String): List<Messag
                 "FROM message_node " +
                 "WHERE json_extract($VALID_MESSAGE_JSON, '$.role') = 'user' " +
                 "AND json_extract($VALID_MESSAGE_JSON, '$.createdAt') >= ? " +
-                "GROUP BY day",
+                visibleMessageCondition(excludePerspectives) + " GROUP BY day",
             arrayOf(startDate)
         )
     )

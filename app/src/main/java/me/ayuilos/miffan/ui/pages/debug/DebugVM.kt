@@ -2,6 +2,8 @@ package me.ayuilos.miffan.ui.pages.debug
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.first
+import me.ayuilos.miffan.data.model.isImMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +53,7 @@ class DebugVM(
 
     fun refreshConversationCount() {
         viewModelScope.launch {
-            _conversationCount.value = conversationRepository.countConversations()
+            _conversationCount.value = conversationRepository.countConversations(excludePerspectives = !settingsStore.settingsFlow.first().isImMode)
         }
     }
 

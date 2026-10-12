@@ -34,11 +34,11 @@ class Navigator(private val backStack: MutableList<NavKey>) {
      * Puts [replacement] where [screen] is, with [root] below it when the stack lacks one. Returns
      * false when [screen] already left the stack, e.g. because another navigation cleared it.
      */
-    fun replace(screen: Screen, replacement: Screen, root: Screen): Boolean {
+    fun replace(screen: Screen, replacement: Screen, root: Screen, preserveExistingRoot: Boolean = false): Boolean {
         val index = backStack.lastIndexOf(screen)
         if (index == -1) return false
         backStack[index] = replacement
-        if (root !in backStack) backStack.add(0, root)
+        if (root !in backStack && (!preserveExistingRoot || index == 0)) backStack.add(0, root)
         return true
     }
 

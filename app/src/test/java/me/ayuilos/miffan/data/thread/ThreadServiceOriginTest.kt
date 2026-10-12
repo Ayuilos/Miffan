@@ -36,6 +36,9 @@ class ThreadServiceOriginTest {
             every { store.settingsFlow } returns MutableStateFlow(Settings(assistants = listOf(assistant)))
             every { repository.getConversationsOfAssistant(assistant.id) } returns flowOf(segments)
             coEvery { repository.getAssistantIdOf(any()) } returns null
+            coEvery { repository.isPartnerPerspective(any()) } answers {
+                segments.any { it.id == firstArg<Uuid>() && it.chatId != null }
+            }
             service = ThreadService(chat, store, router, mockk(), repository)
         }
     }
@@ -101,6 +104,17 @@ class ThreadServiceOriginTest {
         val f = Fixture(assistant, listOf(perspective, im))
         f.service.deliverNote(assistant.id, origin, "note")
         coVerify { f.chat.appendPartnerNote(im.id, assistant.id, origin, "note") }
+        verify(exactly = 0) { f.chat.sendMessage(any(), any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test fun explicitHiddenPerspectiveIsRejectedEvenWhenDisplayedListHasAlreadyFilteredIt() = runTest {
+        val im = segment(1)
+        val hiddenId = Uuid.random()
+        val f = Fixture(assistant, listOf(im))
+        coEvery { f.repository.isPartnerPerspective(hiddenId) } returns true
+        val failure = runCatching { f.service.deliverFrom(origin, assistant.id, content, hiddenId) }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+        coVerify(exactly = 0) { f.chat.openThreadSegment(any(), any()) }
         verify(exactly = 0) { f.chat.sendMessage(any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 

@@ -129,7 +129,9 @@ class ThreadService(
         val candidates = stored.filter { it.chatId == null } + recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
             Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
         }
-        require(stored.none { it.id == segmentId && it.chatId != null }) { "Cannot deliver an IM event to a partner perspective" }
+        require(segmentId == null || !conversationRepository.isPartnerPerspective(segmentId)) {
+            "Cannot deliver an IM event to a partner perspective"
+        }
         val selected = segmentId ?: candidates.filter { it.threadClosedAt == 0L }
             .maxByOrNull { it.updateAt }?.id ?: Uuid.random()
         val existingAssistant = conversationRepository.getAssistantIdOf(selected)
