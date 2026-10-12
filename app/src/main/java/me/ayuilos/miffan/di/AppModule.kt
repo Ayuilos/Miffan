@@ -109,6 +109,7 @@ val appModule = module {
             folderRepository = get(),
             auditRepository = get(),
             httpClient = get(),
+            backgroundModelHealth = get(),
         )
     }
 
@@ -125,7 +126,7 @@ val appModule = module {
 
     single { me.ayuilos.miffan.data.ai.BackgroundModelHealth() }
 
-    single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>()) }
+    single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>(), backgroundModelHealth = get()) }
 
     single<SegmentRouter> { SmartSegmentRouter(LlmTopicClassifier(get())) }
 

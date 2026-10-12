@@ -117,6 +117,10 @@ import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.data.model.isImMode
 import me.ayuilos.miffan.data.model.memoryExtractionEnabled
 import me.ayuilos.miffan.data.ai.MemoryOperation
+import me.ayuilos.miffan.data.ai.BackgroundModelHealth
+import me.ayuilos.miffan.data.ai.BackgroundModelSource
+import me.ayuilos.miffan.data.ai.BackgroundTask
+import me.ayuilos.miffan.data.ai.backgroundModelFor
 import me.ayuilos.miffan.data.ai.buildMemoryExtractionPrompt
 import me.ayuilos.miffan.data.ai.memoryExtractionWindow
 import me.ayuilos.miffan.data.ai.parseMemoryOperations
@@ -394,6 +398,7 @@ class ChatService(
     private val folderRepository: FolderRepository,
     private val auditRepository: AuditRepository,
     httpClient: OkHttpClient,
+    private val backgroundModelHealth: BackgroundModelHealth = BackgroundModelHealth(),
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -1441,30 +1446,37 @@ class ChatService(
     ): String? = withContext(Dispatchers.IO) {
         runCatching {
             val settings = settingsStore.settingsFlow.first()
-            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
+            val assistant = settings.getAssistantById(conversation.assistantId)
+            val model = settings.backgroundModelFor(BackgroundTask.TITLE, assistant)?.model
                 ?: return@runCatching null
             val provider = model.findProvider(settings.providers) ?: return@runCatching null
 
             val providerHandler = providerManager.getProviderByType(provider)
-            val result = providerHandler.generateText(
-                providerSetting = provider,
-                messages = listOf(
-                    UIMessage.user(
-                        prompt = settings.titlePrompt.applyPlaceholders(
-                            "locale" to Locale.getDefault().displayName,
-                            "content" to conversation.currentMessages
-                                .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
+            val result = try {
+                providerHandler.generateText(
+                    providerSetting = provider,
+                    messages = listOf(
+                        UIMessage.user(
+                            prompt = settings.titlePrompt.applyPlaceholders(
+                                "locale" to Locale.getDefault().displayName,
+                                "content" to conversation.currentMessages
+                                    .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
+                        ),
                     ),
-                ),
-                params = backgroundTextGenerationParams(
-                    model = model,
-                    reasoningLevel = if (model.id == settings.fastModelId) {
-                        settings.fastModelReasoningLevel
-                    } else {
-                        ReasoningLevel.AUTO
-                    },
-                ),
-            )
+                    params = backgroundTextGenerationParams(
+                        model = model,
+                        reasoningLevel = if (model.id == settings.fastModelId) {
+                            settings.fastModelReasoningLevel
+                        } else {
+                            ReasoningLevel.AUTO
+                        },
+                    ),
+                )
+            } catch (error: Exception) {
+                backgroundModelHealth.reportFailure(BackgroundTask.TITLE, model, error)
+                throw error
+            }
+            backgroundModelHealth.reportSuccess(BackgroundTask.TITLE)
             result.message.toText().trim().takeIf { it.isNotEmpty() }
         }.onFailure {
             if (it is CancellationException) throw it
@@ -1495,8 +1507,9 @@ class ChatService(
             val assistant = settings.getAssistantById(assistantId) ?: return@runCatching
             if (!assistant.memoryExtractionEnabled(settings)) return@runCatching
             val window = memoryExtractionWindow(conversation) ?: return@runCatching
-            // Only the fast model runs this, so it never adds hidden cost on the chat model.
-            val model = settings.findModelById(settings.fastModelId) ?: return@runCatching
+            // Throttled extraction may borrow the partner's chat model only in easy chat.
+            val choice = settings.backgroundModelFor(BackgroundTask.MEMORY, assistant) ?: return@runCatching
+            val model = choice.model
             val provider = model.findProvider(settings.providers) ?: return@runCatching
 
             val ownerId = if (assistant.useGlobalMemory) {
@@ -1506,19 +1519,31 @@ class ChatService(
             }
             memoryExtractionLock.withLock {
                 val memories = memoryRepository.getMemoriesOfAssistant(ownerId)
-                val result = providerManager.getProviderByType(provider).generateText(
-                    providerSetting = provider,
-                    messages = listOf(
-                        UIMessage.user(
-                            buildMemoryExtractionPrompt(
-                                memories = memories,
-                                window = window,
-                                today = LocalDate.now().toLocalString(true),
+                // LOW avoids OFF's rejected none/minimal effort on always-reasoning chat models.
+                val reasoningLevel = if (choice.source == BackgroundModelSource.CHAT_FALLBACK) {
+                    ReasoningLevel.LOW
+                } else {
+                    settings.fastModelReasoningLevel
+                }
+                val result = try {
+                    providerManager.getProviderByType(provider).generateText(
+                        providerSetting = provider,
+                        messages = listOf(
+                            UIMessage.user(
+                                buildMemoryExtractionPrompt(
+                                    memories = memories,
+                                    window = window,
+                                    today = LocalDate.now().toLocalString(true),
+                                )
                             )
-                        )
-                    ),
-                    params = backgroundTextGenerationParams(model, settings.fastModelReasoningLevel),
-                )
+                        ),
+                        params = backgroundTextGenerationParams(model, reasoningLevel),
+                    )
+                } catch (error: Exception) {
+                    backgroundModelHealth.reportFailure(BackgroundTask.MEMORY, model, error)
+                    throw error
+                }
+                backgroundModelHealth.reportSuccess(BackgroundTask.MEMORY)
                 val operations = parseMemoryOperations(result.message.toText(), memories.map { it.id }.toSet())
                 if (operations.isEmpty()) return@withLock
 
