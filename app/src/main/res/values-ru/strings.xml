@@ -1750,6 +1750,7 @@
   <string name="im_tab_me">Я</string>
   <string name="im_chats_search">Поиск партнёров и сообщений</string>
   <string name="im_chats_typing">Печатает…</string>
+  <string name="im_partner_running">Работает</string>
   <string name="im_chats_empty_title">Чатов пока нет</string>
   <string name="im_chats_empty_desc">Выберите партнёра и поздоровайтесь.</string>
   <string name="im_chats_empty_action">Найти партнёра</string>
@@ -2720,7 +2721,7 @@
   <string name="im_change_create_partner">Создание партнёра</string>
   <string name="im_change_create_group_chat">Новый групповой чат</string>
   <string name="im_change_invite">Приглашение в групповой чат</string>
-  <string name="im_change_organize">Изменить закрепление и группы</string>
+  <string name="im_change_organize">Упорядочить группы</string>
   <string name="im_change_create_partner_contact">После создания %1$s сможет писать ему напрямую.</string>
   <string name="im_change_create_partner_defaults">Партнёр начнёт с моделью и возможностями по умолчанию; их можно изменить в его профиле.</string>
   <string name="im_change_partner_prompt">Описание</string>
@@ -2739,8 +2740,8 @@
   <string name="im_step_create_partner">Создан партнёр</string>
   <string name="im_step_create_group_chat">Создан групповой чат</string>
   <string name="im_step_invite">Приглашены партнёры в группу</string>
-  <string name="im_step_organize">Изменены закрепление и группы</string>
-  <string name="im_step_view_chat_list">Просмотр закрепления и групп</string>
+  <string name="im_step_organize">Группы упорядочены</string>
+  <string name="im_step_view_chat_list">Просмотр групп</string>
   <string name="im_step_profile">Изменён собственный профиль</string>
   <string name="im_step_calendar_add">Добавление события</string>
   <string name="im_step_calendar_read">Просмотр календаря</string>

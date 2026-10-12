@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import me.ayuilos.miffan.ui.im.RunningLight
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
@@ -89,11 +90,12 @@ internal fun ThreadDateLabel(at: Instant) {
 
 @Composable
 internal fun ThreadAvatar(assistant: Assistant?, phase: AssistantGenerationPhase = AssistantGenerationPhase.None, error: Boolean = false,
-    modifier: Modifier = Modifier.size(36.dp)) {
-    Box(modifier) {
+    modifier: Modifier = Modifier.size(36.dp), running: Boolean = false, runningRing: Color = MaterialTheme.colorScheme.surface) {
+    BoxWithConstraints(modifier) {
         AssistantAvatar(name = threadAssistantName(assistant), value = assistant?.avatar ?: Avatar.Miffan(), modifier = Modifier.fillMaxSize(),
             loading = phase != AssistantGenerationPhase.None, semanticState = if (error) MiffanMascotState.Error else MiffanMascotState.Idle, generationPhase = phase)
         if (error) Badge(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp)) { Text("!") }
+        RunningLight(running, maxWidth, runningRing)
     }
 }
 

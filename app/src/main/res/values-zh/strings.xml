@@ -1753,6 +1753,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_tab_me">我</string>
   <string name="im_chats_search">搜索伙伴或消息</string>
   <string name="im_chats_typing">正在输入…</string>
+  <string name="im_partner_running">运行中</string>
   <string name="im_chats_empty_title">还没有聊天</string>
   <string name="im_chats_empty_desc">去伙伴里挑一个，打个招呼吧。</string>
   <string name="im_chats_empty_action">去找伙伴</string>
@@ -2724,7 +2725,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_change_create_partner">新建伙伴</string>
   <string name="im_change_create_group_chat">新建群聊</string>
   <string name="im_change_invite">邀请加入群聊</string>
-  <string name="im_change_organize">调整置顶和分组</string>
+  <string name="im_change_organize">整理分组</string>
   <string name="im_change_create_partner_contact">创建后，%1$s 可以直接给它发消息。</string>
   <string name="im_change_create_partner_defaults">它会使用默认的模型和能力，之后可以在它的资料里修改。</string>
   <string name="im_change_partner_prompt">设定</string>
@@ -2743,8 +2744,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_step_create_partner">新建了伙伴</string>
   <string name="im_step_create_group_chat">新建了群聊</string>
   <string name="im_step_invite">邀请伙伴进群</string>
-  <string name="im_step_organize">调整了置顶和分组</string>
-  <string name="im_step_view_chat_list">看了看置顶和分组</string>
+  <string name="im_step_organize">整理了分组</string>
+  <string name="im_step_view_chat_list">看了看分组</string>
   <string name="im_step_profile">修改了自己的资料</string>
   <string name="im_step_calendar_add">添加日程</string>
   <string name="im_step_calendar_read">查看日程</string>

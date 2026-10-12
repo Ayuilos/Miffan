@@ -1750,6 +1750,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_tab_me">マイページ</string>
   <string name="im_chats_search">パートナーやメッセージを検索</string>
   <string name="im_chats_typing">入力中…</string>
+  <string name="im_partner_running">実行中</string>
   <string name="im_chats_empty_title">まだチャットはありません</string>
   <string name="im_chats_empty_desc">パートナーを選んで、あいさつしてみましょう。</string>
   <string name="im_chats_empty_action">パートナーを探す</string>
@@ -2717,7 +2718,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_change_create_partner">パートナーを作成</string>
   <string name="im_change_create_group_chat">グループチャットを作成</string>
   <string name="im_change_invite">グループチャットに招待</string>
-  <string name="im_change_organize">固定とグループを変更</string>
+  <string name="im_change_organize">グループを整理</string>
   <string name="im_change_create_partner_contact">作成後、%1$s はこのパートナーに直接メッセージを送れます。</string>
   <string name="im_change_create_partner_defaults">既定のモデルと機能で始まります。あとでプロフィールから変更できます。</string>
   <string name="im_change_partner_prompt">設定</string>
@@ -2736,8 +2737,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_step_create_partner">パートナーを作成</string>
   <string name="im_step_create_group_chat">グループチャットを作成</string>
   <string name="im_step_invite">パートナーをグループに招待</string>
-  <string name="im_step_organize">固定とグループを変更</string>
-  <string name="im_step_view_chat_list">固定とグループを確認</string>
+  <string name="im_step_organize">グループを整理</string>
+  <string name="im_step_view_chat_list">グループを確認</string>
   <string name="im_step_profile">自分のプロフィールを変更</string>
   <string name="im_step_calendar_add">予定を追加</string>
   <string name="im_step_calendar_read">予定を確認</string>

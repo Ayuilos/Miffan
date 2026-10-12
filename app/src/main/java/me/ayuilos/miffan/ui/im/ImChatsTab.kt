@@ -411,14 +411,17 @@ private fun imChatTime(instant: Instant): String {
 /** A thread shows its partner; a chat between partners shows its first two members overlapping. */
 @Composable
 internal fun ImChatAvatar(chat: ImChatItem, size: Dp, loading: Boolean = false, onClick: () -> Unit) {
-    // The mascot consumes taps for its own reactions, so it forwards the open action.
-    if (!chat.isPartnerChat) AssistantAvatar(
-        name = chat.assistant.name,
-        value = chat.assistant.avatar,
-        loading = loading,
-        onClick = onClick,
-        modifier = Modifier.size(size),
-    ) else ImStackedAvatars(chat.members, size, onClick)
+    Box(Modifier.size(size)) {
+        // The mascot consumes taps for its own reactions, so it forwards the open action.
+        if (!chat.isPartnerChat) AssistantAvatar(
+            name = chat.assistant.name,
+            value = chat.assistant.avatar,
+            loading = loading,
+            onClick = onClick,
+            modifier = Modifier.size(size),
+        ) else ImStackedAvatars(chat.members, size, onClick)
+        RunningLight(chat.typing, size)
+    }
 }
 
 @Composable

@@ -1760,6 +1760,7 @@
   <string name="im_tab_me">Me</string>
   <string name="im_chats_search">Search partners or messages</string>
   <string name="im_chats_typing">Typing…</string>
+  <string name="im_partner_running">Running</string>
   <string name="im_chats_empty_title">No chats yet</string>
   <string name="im_chats_empty_desc">Pick a partner and say hi.</string>
   <string name="im_chats_empty_action">Find a partner</string>
@@ -2734,7 +2735,7 @@
   <string name="im_change_create_partner">Create a partner</string>
   <string name="im_change_create_group_chat">Start a group chat</string>
   <string name="im_change_invite">Invite to the group chat</string>
-  <string name="im_change_organize">Change pins and groups</string>
+  <string name="im_change_organize">Tidy up groups</string>
   <string name="im_change_create_partner_contact">%1$s will be able to message it directly.</string>
   <string name="im_change_create_partner_defaults">It starts with the default model and abilities; you can change them in its profile.</string>
   <string name="im_change_partner_prompt">Persona</string>
@@ -2753,8 +2754,8 @@
   <string name="im_step_create_partner">Created a partner</string>
   <string name="im_step_create_group_chat">Started a group chat</string>
   <string name="im_step_invite">Invited partners to a group chat</string>
-  <string name="im_step_organize">Changed pins and groups</string>
-  <string name="im_step_view_chat_list">Looked at pins and groups</string>
+  <string name="im_step_organize">Tidied up groups</string>
+  <string name="im_step_view_chat_list">Looked at groups</string>
   <string name="im_step_profile">Updated own profile</string>
   <string name="im_step_calendar_add">Add a calendar event</string>
   <string name="im_step_calendar_read">Check the calendar</string>

@@ -343,7 +343,8 @@ fun AgentThreadPage(
                         Row(Modifier.padding(start = 6.dp, end = 18.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             // The reply's thinking and typing play here now that bubbles carry no avatar.
-                            ThreadAvatar(assistant, headerPhase, error = generating.isEmpty() && visibleErrors.isNotEmpty(), modifier = Modifier.size(36.dp))
+                            ThreadAvatar(assistant, headerPhase, error = generating.isEmpty() && visibleErrors.isNotEmpty(), modifier = Modifier.size(36.dp),
+                                running = status != null, runningRing = MaterialTheme.colorScheme.surfaceContainerHigh)
                             Column {
                                 Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 // Fades between states and grows or shrinks the line as the status appears or clears.
