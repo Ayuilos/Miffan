@@ -21,6 +21,7 @@ import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.openrouter.OpenRouterAuthService
 import me.ayuilos.miffan.data.ai.openrouter.OpenRouterAuthState
 import me.ayuilos.miffan.data.ai.openrouter.OpenRouterSavedKeyState
+import me.ayuilos.miffan.data.ai.withSuggestedFastModel
 import me.ayuilos.miffan.data.datastore.OPENROUTER_PROVIDER_ID
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
@@ -95,10 +96,11 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
                                 assistants = if (current.assistants.any { it.id == chosen.id }) current.assistants else current.assistants + chosen,
                                 assistantId = chosen.id,
                             )
+                            // A light fast model lets memory and topic sorting work without a trip to settings.
                             partnered.copy(
                                 chatModelId = model.id,
                                 providers = current.providers.map { if (it.id == provider?.id) it.copyProvider(enabled = true) else it },
-                            )
+                            ).let { connected -> provider?.let { connected.withSuggestedFastModel(it, model) } ?: connected }
                         }
                         nav.clearAndNavigate(Screen.Home)
                     } catch (e: CancellationException) { throw e }

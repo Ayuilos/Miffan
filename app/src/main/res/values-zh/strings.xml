@@ -1768,6 +1768,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_me_ai_service">AI 服务</string>
   <string name="im_me_ai_connected">已连接</string>
   <string name="im_me_ai_not_connected">未连接</string>
+  <string name="im_me_background_model">后台整理</string>
+  <string name="im_me_background_model_fast">%1$s · 负责记事、分话题和写摘要</string>
+  <string name="im_me_background_model_fallback">暂用聊天模型记事。选一个轻量模型，还能自动分话题</string>
+  <string name="im_me_background_model_none">暂不可用，伙伴不会自动记住新的事</string>
+  <string name="im_me_background_model_failed">上次整理失败：%1$s</string>
   <string name="im_me_appearance">外观与角色</string>
   <string name="im_me_backup">备份与恢复</string>
   <string name="im_me_notification">通知</string>
