@@ -2811,4 +2811,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_bug_report_copy">复制内容</string>
   <string name="im_bug_report_skip">不提交</string>
   <string name="im_bug_report_reopen">再次打开 GitHub</string>
+  <string name="workspace_screen_ssh_tailnet_unreachable">通过 Tailscale 连不上这台电脑。请确认手机和电脑上的 Tailscale 都已打开，并且 tailnet 的访问规则允许这台手机访问电脑的 SSH 端口。</string>
 </resources>

@@ -2802,4 +2802,5 @@
   <string name="im_bug_report_copy">複製內容</string>
   <string name="im_bug_report_skip">不提交</string>
   <string name="im_bug_report_reopen">再次開啟 GitHub</string>
+  <string name="workspace_screen_ssh_tailnet_unreachable">透過 Tailscale 連不上這台電腦。請確認手機和電腦上的 Tailscale 都已開啟，並且 tailnet 的存取規則允許這支手機連到電腦的 SSH 連接埠。</string>
 </resources>

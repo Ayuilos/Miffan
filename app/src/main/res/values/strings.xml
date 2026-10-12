@@ -2823,4 +2823,5 @@
   <string name="im_bug_report_copy">Copy</string>
   <string name="im_bug_report_skip">Don\'t submit</string>
   <string name="im_bug_report_reopen">Open on GitHub again</string>
+  <string name="workspace_screen_ssh_tailnet_unreachable" tools:ignore="MissingTranslation">Couldn\'t reach the computer over Tailscale. Check that Tailscale is on for both this phone and the computer, and that your tailnet\'s access rules let this phone reach the computer\'s SSH port.</string>
 </resources>

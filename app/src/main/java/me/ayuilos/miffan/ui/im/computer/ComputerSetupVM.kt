@@ -266,7 +266,7 @@ class ComputerSetupVM(
      * [auth] keeps the saved sign-in. Continues to the fingerprint when it is not trusted (new, or the
      * address changed), otherwise straight to connecting and checking.
      */
-    fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?, windows: Boolean) =
+    fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?, windows: Boolean = false) =
         run(ComputerSetupTask.READING_FINGERPRINT) {
             _state.update { it.copy(expectWindows = windows) }
             val host = if (_state.value.editing) {

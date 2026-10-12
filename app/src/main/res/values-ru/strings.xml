@@ -2813,4 +2813,5 @@
   <string name="im_bug_report_copy">Копировать</string>
   <string name="im_bug_report_skip">Не отправлять</string>
   <string name="im_bug_report_reopen">Снова открыть GitHub</string>
+  <string name="workspace_screen_ssh_tailnet_unreachable">Не удаётся подключиться к компьютеру через Tailscale. Убедитесь, что Tailscale включён и на телефоне, и на компьютере, а правила доступа вашей tailnet разрешают этому телефону подключаться к SSH-порту компьютера.</string>
 </resources>

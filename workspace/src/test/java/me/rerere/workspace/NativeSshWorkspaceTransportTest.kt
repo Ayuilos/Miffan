@@ -51,6 +51,15 @@ import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RfbRect
 
 class NativeSshWorkspaceTransportTest {
+    @Test
+    fun hostKeyDiscoveryReportsAnUnreachableServerAsAConnectionFailure() {
+        // A port nothing listens on: the server is never reached, so there is no key to show.
+        val port = java.net.ServerSocket(0).use { it.localPort }
+        val error = runCatching { NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", port, 2_000) }.exceptionOrNull()
+        assertTrue(error is RemoteConnectException)
+        assertEquals("127.0.0.1", (error as RemoteConnectException).host)
+    }
+
     private lateinit var server: SshServer
     private lateinit var directory: Path
     private lateinit var root: Path

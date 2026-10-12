@@ -67,6 +67,12 @@ data class RemoteHostConfig(
 
 data class RemoteHostKey(val algorithm: String, val sha256Fingerprint: String)
 
+/**
+ * The SSH connection to [host] could not be set up. Still a [JSchException] with the same message,
+ * so existing checks keep working; the address lets the UI explain e.g. a Tailscale timeout.
+ */
+class RemoteConnectException(val host: String, cause: JSchException) : JSchException(cause.message, cause)
+
 /** SSH authentication succeeded, but the selected project directory cannot be used. */
 class RemoteWorkspaceDirectoryException(cause: Throwable) :
     IllegalStateException("Remote workspace directory is inaccessible", cause)
@@ -83,14 +89,18 @@ object NativeSshWorkspaceTransport {
         val session = jsch.getSession("miffan-host-key-discovery", host, port)
         session.setConfig("StrictHostKeyChecking", "yes")
         session.setConfig("PreferredAuthentications", "none")
+        var failure: JSchException? = null
         try {
             session.connect(timeoutMillis)
-        } catch (_: JSchException) {
+        } catch (error: JSchException) {
             // Strict checking intentionally rejects the untrusted key before authentication.
+            failure = error
         } finally {
             session.disconnect()
         }
-        return requireNotNull(repository.seenKey) { "Server did not present an SSH host key" }
+        // No key seen means the server was never reached; report why rather than a missing key.
+        return repository.seenKey ?: throw failure?.let { RemoteConnectException(host, it) }
+            ?: IllegalStateException("Server did not present an SSH host key")
     }
 
     fun open(
@@ -135,7 +145,7 @@ object NativeSshWorkspaceTransport {
             session.connect(timeoutMillis)
         } catch (error: Throwable) {
             session.disconnect()
-            throw error
+            throw if (error is JSchException) RemoteConnectException(config.host, error) else error
         }
         return try {
             RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis)

@@ -2804,4 +2804,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_bug_report_copy">コピー</string>
   <string name="im_bug_report_skip">送信しない</string>
   <string name="im_bug_report_reopen">もう一度 GitHub を開く</string>
+  <string name="workspace_screen_ssh_tailnet_unreachable">Tailscale 経由でパソコンに接続できません。スマホとパソコンの両方で Tailscale がオンになっているか、また tailnet のアクセスルールでこのスマホからパソコンの SSH ポートへの接続が許可されているか確認してください。</string>
 </resources>

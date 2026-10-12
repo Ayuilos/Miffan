@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import me.rerere.workspace.RemoteConnectException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.res.Resources
@@ -93,13 +94,26 @@ internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFall
 internal fun isClosedScreenPort(error: Throwable): Boolean =
     generateSequence(error) { it.cause }.any { it is JSchException && it.message?.contains("channel is not opened", ignoreCase = true) == true }
 
+/** Tailscale's address ranges (100.64.0.0/10, fd7a:115c:a1e0::/48) and MagicDNS names on ts.net. */
+internal fun isTailnetAddress(host: String): Boolean {
+    val name = host.trim().removeSurrounding("[", "]").lowercase()
+    if (name.endsWith(".ts.net")) return true
+    if (name.startsWith("fd7a:115c:a1e0:")) return true
+    val octets = name.split('.').map { it.toIntOrNull() ?: return false }
+    return octets.size == 4 && octets.all { it in 0..255 } && octets[0] == 100 && octets[1] in 64..127
+}
+
 /** SSH failures in words the user can act on, instead of the transport's raw message. */
 internal fun remoteSshError(resources: Resources, error: Throwable): String? {
     val chain = generateSequence(error) { it.cause }.toList()
     val ssh = chain.firstOrNull { it is JSchException }?.message.orEmpty()
+    val tailnet = chain.firstNotNullOfOrNull { (it as? RemoteConnectException)?.host }?.let(::isTailnetAddress) == true
     return when {
         ssh.contains("auth", ignoreCase = true) -> resources.getString(R.string.workspace_screen_ssh_auth)
         isClosedScreenPort(error) -> resources.getString(R.string.workspace_screen_port_closed)
+        // Over Tailscale a silent drop is usually Tailscale being off or the tailnet's access rules.
+        tailnet && (chain.any { it is SocketTimeoutException || it is NoRouteToHostException } || ssh.contains("timeout", ignoreCase = true)) ->
+            resources.getString(R.string.workspace_screen_ssh_tailnet_unreachable)
         chain.any { it is SocketTimeoutException } || ssh.contains("timeout", ignoreCase = true) ->
             resources.getString(R.string.workspace_screen_ssh_timeout)
         chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException } ||

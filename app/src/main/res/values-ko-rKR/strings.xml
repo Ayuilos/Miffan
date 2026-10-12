@@ -2804,4 +2804,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_bug_report_copy">복사</string>
   <string name="im_bug_report_skip">제출 안 함</string>
   <string name="im_bug_report_reopen">GitHub 다시 열기</string>
+  <string name="workspace_screen_ssh_tailnet_unreachable">Tailscale을 통해 컴퓨터에 연결할 수 없습니다. 휴대폰과 컴퓨터 모두 Tailscale이 켜져 있는지, 그리고 tailnet 액세스 규칙이 이 휴대폰에서 컴퓨터의 SSH 포트로의 접속을 허용하는지 확인하세요.</string>
 </resources>
