@@ -45,6 +45,7 @@ import androidx.compose.ui.window.PopupProperties
 import dev.chrisbanes.haze.HazeState
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.partner.findPartnerMentions
+import me.ayuilos.miffan.data.partner.partnerMentionNames
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.GlassShadow
 import me.ayuilos.miffan.ui.components.ui.glass
@@ -68,9 +69,12 @@ private const val MAX_QUERY = 24
 
 private fun Char.isAsciiWordChar() = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9' || this == '_' || this == '.'
 
+/** A partner as the owner sees and @s it: a blank name shows as [blankName], as everywhere in the UI. */
+internal data class MentionCandidate(val partner: Assistant, val name: String)
+
 /** Partners whose name contains [query], names starting with it first. A finished name is not offered again. */
-internal fun mentionCandidates(partners: List<Assistant>, query: String): List<Assistant> {
-    val named = partners.filter { it.name.isNotBlank() && it.name != query }
+internal fun mentionCandidates(partners: List<Assistant>, query: String, blankName: String): List<MentionCandidate> {
+    val named = partners.map { MentionCandidate(it, it.name.ifBlank { blankName }) }.filter { it.name != query }
     if (query.isEmpty()) return named
     return named.filter { it.name.contains(query, ignoreCase = true) }
         .sortedBy { if (it.name.startsWith(query, ignoreCase = true)) 0 else 1 }
@@ -87,7 +91,7 @@ internal fun TextFieldValue.insertMention(mention: MentionQuery, name: String): 
 
 /** `@name` tokens for [partners], styled with [style]. */
 internal fun mentionText(text: String, partners: List<Assistant>, style: SpanStyle): AnnotatedString {
-    val mentions = findPartnerMentions(text, partners.map { it.name to it.id })
+    val mentions = findPartnerMentions(text, partnerMentionNames(partners))
     if (mentions.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
         append(text)
@@ -96,7 +100,7 @@ internal fun mentionText(text: String, partners: List<Assistant>, style: SpanSty
 }
 
 internal fun hasPartnerMention(text: String, partners: List<Assistant>) = '@' in text &&
-    findPartnerMentions(text, partners.map { it.name to it.id }).isNotEmpty()
+    findPartnerMentions(text, partnerMentionNames(partners)).isNotEmpty()
 
 /** Colors `@name` tokens in the input as the owner types; the text itself is unchanged. */
 internal class MentionHighlight(private val partners: List<Assistant>, private val color: Color) : VisualTransformation {
@@ -112,7 +116,7 @@ internal class MentionHighlight(private val partners: List<Assistant>, private v
  * and typing keeps narrowing the list.
  */
 @Composable
-internal fun ThreadMentionPopup(candidates: List<Assistant>, width: Int, hazeState: HazeState, onPick: (Assistant) -> Unit) {
+internal fun ThreadMentionPopup(candidates: List<MentionCandidate>, width: Int, hazeState: HazeState, onPick: (MentionCandidate) -> Unit) {
     val shown = remember { MutableTransitionState(false) }
     shown.targetState = candidates.isNotEmpty()
     if (!shown.currentState && !shown.targetState) return
@@ -137,11 +141,11 @@ internal fun ThreadMentionPopup(candidates: List<Assistant>, width: Int, hazeSta
                 GlassShadow(shape, Modifier.matchParentSize())
                 LazyColumn(Modifier.width(with(density) { width.toDp() }).heightIn(max = 248.dp).glass(hazeState, shape),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
-                    items(rows, key = { it.id.toString() }) { partner ->
-                        Row(Modifier.fillMaxWidth().clickable { onPick(partner) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                    items(rows, key = { it.partner.id.toString() }) { candidate ->
+                        Row(Modifier.fillMaxWidth().clickable { onPick(candidate) }.padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AssistantAvatar(partner.name, partner.avatar, Modifier.size(32.dp))
-                            Text(partner.name, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
+                            AssistantAvatar(candidate.partner.name, candidate.partner.avatar, Modifier.size(32.dp))
+                            Text(candidate.name, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }

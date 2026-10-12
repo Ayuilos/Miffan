@@ -130,7 +130,8 @@ internal fun ThreadComposer(
     var field by remember { mutableStateOf(TextFieldValue(input, TextRange(input.length))) }
     if (field.text != input) field = TextFieldValue(input, TextRange(input.length))
     val mention = if (mentionables.isEmpty()) null else field.mentionQuery()
-    val candidates = mention?.let { mentionCandidates(mentionables, it.query) }.orEmpty()
+    val blankName = stringResource(R.string.assistant_page_default_assistant)
+    val candidates = mention?.let { mentionCandidates(mentionables, it.query, blankName) }.orEmpty()
     var pillWidth by remember { mutableIntStateOf(0) }
     val mentionColor = MaterialTheme.colorScheme.primary
     val highlight = remember(mentionables, mentionColor) { MentionHighlight(mentionables, mentionColor) }
@@ -242,8 +243,8 @@ internal fun ThreadComposer(
                 }
             }
             Box(Modifier.weight(1f).onSizeChanged { pillWidth = it.width }) {
-            if (!asrState.isRecording) ThreadMentionPopup(candidates, pillWidth, hazeState) { partner ->
-                mention?.let { field = field.insertMention(it, partner.name); onInput(field.text) }
+            if (!asrState.isRecording) ThreadMentionPopup(candidates, pillWidth, hazeState) { candidate ->
+                mention?.let { field = field.insertMention(it, candidate.name); onInput(field.text) }
             }
             ComposerPill(compact, hazeState, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Row(Modifier.padding(start = 18.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -94,4 +94,20 @@ class PartnerMentionsTest {
         assertEquals(2, PartnerMentionTransformer(event, settings).apply(event.currentMessages).first().parts.size)
         assertEquals(event.currentMessages.last(), PartnerMentionTransformer(event, settings).apply(event.currentMessages).last())
     }
+
+    @Test fun blankNamesMatchTheDefaultAssistantStringInEveryLanguage() {
+        val shown = java.io.File("src/main/res").listFiles { f -> f.name.startsWith("values") }.orEmpty().mapNotNull { dir ->
+            java.io.File(dir, "strings.xml").takeIf { it.exists() }?.readText()
+                ?.let { Regex("""<string name="assistant_page_default_assistant">([^<]*)</string>""").find(it)?.groupValues?.get(1) }
+        }
+        assertEquals(shown.toSet(), BLANK_PARTNER_NAMES.toSet())
+    }
+
+    @Test fun aBlankNamedPartnerIsMentionedByItsShownNameInAnyLanguage() {
+        val blank = Assistant(name = "")
+        val config = Settings(assistants = listOf(a, blank)).withInterfaceMode(InterfaceMode.IM)
+        assertEquals(listOf(blank.id), mentionedOtherPartners("@默认助手 帮我问问", a.id, config))
+        assertEquals(listOf(blank.id), mentionedOtherPartners("ask @Default Assistant", a.id, config))
+        assertTrue(mentionedOtherPartners("@ 帮我问问", a.id, config).isEmpty())
+    }
 }

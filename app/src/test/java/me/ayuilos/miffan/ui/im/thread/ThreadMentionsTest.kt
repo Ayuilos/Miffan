@@ -32,10 +32,18 @@ class ThreadMentionsTest {
     @Test
     fun `candidates put name prefixes first and drop a finished name`() {
         val partners = listOf(writer, bot, b)
-        assertEquals(listOf(writer, bot, b), mentionCandidates(partners, ""))
-        assertEquals(listOf(bot, b), mentionCandidates(partners, "小"))
-        assertEquals(listOf(writer), mentionCandidates(partners, "wri"))
-        assertEquals(listOf(bot), mentionCandidates(partners, "小B"))
+        fun names(query: String) = mentionCandidates(partners, query, "默认助手").map { it.name }
+        assertEquals(listOf("Writing buddy", "小Bot", "小B"), names(""))
+        assertEquals(listOf("小Bot", "小B"), names("小"))
+        assertEquals(listOf("Writing buddy"), names("wri"))
+        assertEquals(listOf("小Bot"), names("小B"))
+    }
+
+    @Test
+    fun `a blank-named partner is offered under its shown name`() {
+        val blank = Assistant(name = "")
+        assertEquals(listOf("默认助手"), mentionCandidates(listOf(blank), "", "默认助手").map { it.name })
+        assertEquals(true, hasPartnerMention("@默认助手 你好", listOf(blank)))
     }
 
     @Test
