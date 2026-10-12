@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.ayuilos.miffan.AppScope
+import me.ayuilos.miffan.data.ai.withSuggestedFastModel
 import me.ayuilos.miffan.data.ai.mcp.launchOAuthAuthorization
 import me.ayuilos.miffan.data.datastore.OPENROUTER_FREE_MODEL_ID
 import me.ayuilos.miffan.data.datastore.OPENROUTER_PROVIDER_ID
@@ -421,7 +422,7 @@ internal fun Settings.withOpenRouterConnection(apiKey: String): Settings {
         providers = updatedProviders,
         chatModelId = freeModel.id,
         enableSuggestion = false,
-    )
+    ).withSuggestedFastModel(connectedProvider, freeModel)
 }
 
 internal fun openRouterHttpError(code: Int, body: String): String {

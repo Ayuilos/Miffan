@@ -37,7 +37,7 @@ class SegmentSummarizer(
             "additional_context" to "",
             "locale" to Locale.getDefault().displayName,
         )
-        val summary = models.compress(prompt, SUMMARY_TIMEOUT_MILLIS) ?: return
+        val summary = models.compress(prompt, SUMMARY_TIMEOUT_MILLIS, segment.assistantId) ?: return
         chatService.updateThreadSegment(segmentId) { it.copy(threadSummary = summary) }
     }
 
