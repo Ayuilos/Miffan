@@ -45,9 +45,9 @@ internal suspend fun buildPartnerMessageTools(
         ),
         Tool(
             name = PartnerMessageTool.NAME,
-            description = "Send a text message to a contact id from list_contacts. A new partner pair requires the owner's approval. Wait up to 90 seconds for a reply; pending means the reply will arrive later. Owner notes are available only inside partner chat perspectives. For partners marked in_this_group, use @name in your group reply instead.",
+            description = "Send a text message to a contact id from partner_mentions or list_contacts. The owner's @mention authorizes contacting that partner in the current IM thread turn; otherwise a new partner pair requires approval. Wait up to 90 seconds for a reply; pending means the reply will arrive later. Owner notes are available only inside partner chat perspectives. For partners marked in_this_group, use @name in your group reply instead.",
             parameters = { InputSchema.Obj(buildJsonObject {
-                put(PartnerMessageTool.ARG_TO, buildJsonObject { put("type", "string"); put("description", "Contact id from list_contacts") })
+                put(PartnerMessageTool.ARG_TO, buildJsonObject { put("type", "string"); put("description", "Contact id from partner_mentions or list_contacts") })
                 put(PartnerMessageTool.ARG_TEXT, buildJsonObject { put("type", "string"); put("description", "Text to send") })
             }, listOf(PartnerMessageTool.ARG_TO, PartnerMessageTool.ARG_TEXT)) },
             needsApproval = { input -> service.needsApproval(caller, input.arg(PartnerMessageTool.ARG_TO), groupMemberIds) },

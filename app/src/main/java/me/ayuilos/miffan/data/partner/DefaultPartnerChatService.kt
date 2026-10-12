@@ -151,8 +151,10 @@ internal class DefaultPartnerChatService(
     internal fun needsApproval(caller: Conversation, to: String, groupMemberIds: Set<Uuid>): Boolean {
         if (to == PartnerMessageTool.OWNER) return false
         val id = runCatching { Uuid.parse(to) }.getOrNull()
-        return refusal(caller, id, groupMemberIds) == null && PartnerPair.of(caller.assistantId, requireNotNull(id)) !in
-            settingsStore.settingsFlow.value.partnerContactGrants
+        val settings = settingsStore.settingsFlow.value
+        return refusal(caller, id, groupMemberIds) == null &&
+            id !in caller.ownerMentionedPartnerIds(settings) &&
+            PartnerPair.of(caller.assistantId, requireNotNull(id)) !in settings.partnerContactGrants
     }
 
     /** Called only by the tool executor, after the existing generation approval gate. */
@@ -170,7 +172,7 @@ internal class DefaultPartnerChatService(
         if (store.exchangeUsage(exchange) > 4) return refused("Exchange limit is 6 messages.")
         val pair = PartnerPair.of(caller.assistantId, b)
         settingsStore.update { settings ->
-            // execute means the owner approved this particular pending call if a grant was missing.
+            // Execution passed the approval gate (including the owner's current-turn @mention).
             if (pair in settings.partnerContactGrants) settings
             else settings.copy(partnerContactGrants = settings.partnerContactGrants + pair)
         }
