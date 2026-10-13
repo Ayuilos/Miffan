@@ -331,12 +331,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     )
                     item(
                         onClick = {
-                            val docUrl = if (java.util.Locale.getDefault().language == "zh") {
-                                "https://github.com/Ayuilos/Miffan/blob/master/README_ZH_CN.md"
-                            } else {
-                                "https://github.com/Ayuilos/Miffan#readme"
-                            }
-                            context.openUrl(docUrl)
+                            context.openUrl(miffanDocsUrl(context.resources.configuration.locales[0].language))
                         },
                         leadingContent = { Icon(HugeIcons.Book01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_documentation_desc)) },
