@@ -44,6 +44,9 @@ interface RemoteHostDAO {
     suspend fun updateScreenConfig(id: String, enabled: Boolean, endpoint: String, auth: String,
         username: String, protocol: String?, rdpUsername: String?, updatedAt: Long, streamEnabled: Boolean? = null): Int
 
+    @Query("UPDATE remote_hosts SET screen_enabled = :enabled, updated_at = :updatedAt WHERE id = :id")
+    suspend fun setScreenEnabled(id: String, enabled: Boolean, updatedAt: Long): Int
+
     @Query("UPDATE remote_hosts SET stream_enabled = :enabled, updated_at = :updatedAt WHERE id = :id")
     suspend fun setStreamEnabled(id: String, enabled: Boolean, updatedAt: Long): Int
 

@@ -113,33 +113,37 @@ internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, platform: RemoteScreenPlat
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.None),
             keyboardActions = KeyboardActions(onDone = { sendKey(RfbKeys.RETURN) }),
         )
-        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-            .horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp)) {
-            fun toggle(modifier: RemoteModifier) {
-                modifiers = if (modifier in modifiers) modifiers - modifier else modifiers + modifier
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+                fun toggle(modifier: RemoteModifier) {
+                    modifiers = if (modifier in modifiers) modifiers - modifier else modifiers + modifier
+                }
+                ScreenKey("Esc") { sendKey(RfbKeys.ESCAPE) }
+                ScreenKey("Tab") { sendKey(RfbKeys.TAB) }
+                ScreenKey("Ctrl", RemoteModifier.CONTROL in modifiers) { toggle(RemoteModifier.CONTROL) }
+                ScreenKey("Alt", RemoteModifier.ALT in modifiers) { toggle(RemoteModifier.ALT) }
+                if (macOS) {
+                    // ⌘ alone does nothing on a Mac, so it only waits for the next key like the others.
+                    ScreenKey("⌘", RemoteModifier.SUPER in modifiers) { toggle(RemoteModifier.SUPER) }
+                } else {
+                    // Win/Super alone opens the Start menu or activities, so a tap presses it at once; a long
+                    // press holds it for the next key (Win+E, Win+→…), and a tap while held lets it go.
+                    val held = RemoteModifier.SUPER in modifiers
+                    val name = if (platform == RemoteScreenPlatform.WINDOWS) "Win" else "Super"
+                    ScreenKey(if (held) "$name +" else name, held,
+                        onLongClick = { if (!held) toggle(RemoteModifier.SUPER) },
+                    ) { if (held) toggle(RemoteModifier.SUPER) else sendKey(RfbKeys.SUPER_L) }
+                }
+                ScreenKey("Shift", RemoteModifier.SHIFT in modifiers) { toggle(RemoteModifier.SHIFT) }
+                listOf("←" to RfbKeys.LEFT, "↑" to RfbKeys.UP, "↓" to RfbKeys.DOWN, "→" to RfbKeys.RIGHT,
+                    "Home" to RfbKeys.HOME, "End" to RfbKeys.END, "PgUp" to RfbKeys.PAGE_UP, "PgDn" to RfbKeys.PAGE_DOWN,
+                ).forEach { (label, code) -> ScreenKey(label) { sendKey(code) } }
+                (1..12).forEach { n -> ScreenKey("F$n") { sendKey(RfbKeys.function(n)) } }
+                ScreenKey("Delete") { sendKey(RfbKeys.DELETE) }
             }
-            ScreenKey("Esc") { sendKey(RfbKeys.ESCAPE) }
-            ScreenKey("Tab") { sendKey(RfbKeys.TAB) }
-            ScreenKey("Ctrl", RemoteModifier.CONTROL in modifiers) { toggle(RemoteModifier.CONTROL) }
-            ScreenKey("Alt", RemoteModifier.ALT in modifiers) { toggle(RemoteModifier.ALT) }
-            if (macOS) {
-                // ⌘ alone does nothing on a Mac, so it only waits for the next key like the others.
-                ScreenKey("⌘", RemoteModifier.SUPER in modifiers) { toggle(RemoteModifier.SUPER) }
-            } else {
-                // Win/Super alone opens the Start menu or activities, so a tap presses it at once; a long
-                // press holds it for the next key (Win+E, Win+→…), and a tap while held lets it go.
-                val held = RemoteModifier.SUPER in modifiers
-                val name = if (platform == RemoteScreenPlatform.WINDOWS) "Win" else "Super"
-                ScreenKey(if (held) "$name +" else name, held,
-                    onLongClick = { if (!held) toggle(RemoteModifier.SUPER) },
-                ) { if (held) toggle(RemoteModifier.SUPER) else sendKey(RfbKeys.SUPER_L) }
-            }
-            ScreenKey("Shift", RemoteModifier.SHIFT in modifiers) { toggle(RemoteModifier.SHIFT) }
-            listOf("←" to RfbKeys.LEFT, "↑" to RfbKeys.UP, "↓" to RfbKeys.DOWN, "→" to RfbKeys.RIGHT,
-                "Home" to RfbKeys.HOME, "End" to RfbKeys.END, "PgUp" to RfbKeys.PAGE_UP, "PgDn" to RfbKeys.PAGE_DOWN,
-            ).forEach { (label, code) -> ScreenKey(label) { sendKey(code) } }
-            (1..12).forEach { n -> ScreenKey("F$n") { sendKey(RfbKeys.function(n)) } }
-            ScreenKey("Delete") { sendKey(RfbKeys.DELETE) }
+            // Enter is pressed far more than the rest, so it stays outside the scrolling keys.
+            ScreenKey("Enter") { sendKey(RfbKeys.RETURN) }
         }
     }
 }

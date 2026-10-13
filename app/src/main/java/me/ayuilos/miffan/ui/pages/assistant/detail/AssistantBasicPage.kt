@@ -460,7 +460,8 @@ internal fun AssistantBasicContent(
 
                     val selectedWorkspace = workspaces.find { it.id == assistant.workspaceId?.toString() }
                     val partnerComputer by rememberPartnerComputer(assistant.id)
-                    val approvalByComputer = partnerComputer?.screenEnabled == true
+                    // Any remote computer, with a screen or not, asks according to the computer setting.
+                    val approvalByComputer = partnerComputer != null
                     WorkspaceShellPermissionControls(
                         shellEnabled = assistant.workspaceShellEnabled,
                         approvalRequired = if (approvalByComputer) assistant.computerUse == ComputerUseMode.ASK
@@ -475,7 +476,7 @@ internal fun AssistantBasicContent(
                     )
                     if (selectedWorkspace?.isRemote == true) {
                         HorizontalDivider()
-                        ComputerUsePermissionControls(assistant, onUpdate)
+                        ComputerUsePermissionControls(assistant, screen = partnerComputer?.screenEnabled != false, onUpdate)
                     }
                 }
             }
@@ -960,7 +961,7 @@ internal fun WorkspaceShellPermissionControls(
 }
 
 @Composable
-private fun ComputerUsePermissionControls(assistant: Assistant, onUpdate: (Assistant) -> Unit) {
+private fun ComputerUsePermissionControls(assistant: Assistant, screen: Boolean, onUpdate: (Assistant) -> Unit) {
     FormItem(
         modifier = Modifier.padding(8.dp),
         label = { Text(stringResource(R.string.computer_use_enabled)) },
@@ -969,6 +970,7 @@ private fun ComputerUsePermissionControls(assistant: Assistant, onUpdate: (Assis
         ComputerUseModeSelector(
             mode = assistant.computerUse,
             enabled = true,
+            screen = screen,
             onMode = { onUpdate(assistant.copy(computerUse = it)) },
             modifier = Modifier.padding(top = 8.dp).testTag("computer-use-mode"),
         )

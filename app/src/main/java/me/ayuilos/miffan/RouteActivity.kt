@@ -94,6 +94,7 @@ import me.ayuilos.miffan.ui.hooks.rememberCustomTtsState
 import me.ayuilos.miffan.ui.im.ImOnboardingPage
 import me.ayuilos.miffan.ui.im.ImSearchPage
 import me.ayuilos.miffan.ui.im.ImMemoryPage
+import me.ayuilos.miffan.ui.im.ImAiServicePage
 import me.ayuilos.miffan.ui.im.ImApprovalHistoryPage
 import me.ayuilos.miffan.ui.im.ImChatBackgroundPage
 import me.ayuilos.miffan.ui.im.ImRevisionHistoryPage
@@ -469,13 +470,14 @@ class RouteActivity : ComponentActivity() {
 
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ComputerSetup> { key ->
-                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit))
+                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen))
                             }
                             entry<Screen.Computers> { ComputersPage() }
                             entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
                             entry<Screen.ComputerScreen> { key -> ComputerScreenPage(key.hostId) }
                             entry<Screen.ApprovalHistory> { key -> ImApprovalHistoryPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ImChatBackground> { key -> ImChatBackgroundPage(key.assistantId) }
+                            entry<Screen.ImAiService> { ImAiServicePage() }
                             entry<Screen.Thread> { key ->
                                 AgentThreadPage(
                                     assistantId = Uuid.parse(key.assistantId),
@@ -815,7 +817,7 @@ sealed interface Screen : NavKey {
 
     /** Connect a computer: for one partner, or with no partner from "my computers"; see ComputerSetupArgs. */
     @Serializable
-    data class ComputerSetup(val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false) : Screen
+    data class ComputerSetup(val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false, val screen: Boolean = false) : Screen
 
     /** Easy chat's list of computers. */
     @Serializable
@@ -833,6 +835,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class ImChatBackground(val assistantId: String) : Screen
+
+    @Serializable
+    data object ImAiService : Screen
 
     @Serializable
     data class Chat(

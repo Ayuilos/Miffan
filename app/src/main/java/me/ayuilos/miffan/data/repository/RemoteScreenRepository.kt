@@ -233,6 +233,16 @@ class RemoteScreenRepository(
         return true
     }
 
+    /**
+     * Turns the screen on or off without touching its saved settings: a computer without a display
+     * (a server, a NAS) is still used through commands. Open viewers on this host are closed.
+     */
+    suspend fun setScreenEnabled(hostId: String, enabled: Boolean): Boolean {
+        val updated = hostDao.setScreenEnabled(hostId, enabled, System.currentTimeMillis()) > 0
+        if (updated) closeHost(hostId)
+        return updated
+    }
+
     /** Updates the independent streaming preference without replacing screen settings or certificate pins. */
     suspend fun setStreamEnabled(hostId: String, enabled: Boolean): Boolean {
         val updated = hostDao.setStreamEnabled(hostId, enabled, System.currentTimeMillis()) > 0

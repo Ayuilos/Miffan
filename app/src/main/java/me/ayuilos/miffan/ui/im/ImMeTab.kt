@@ -39,9 +39,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.ui.im.computer.rememberKnownComputers
-import me.rerere.ai.provider.ModelType
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.AiMagic
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.ArrowUp01
@@ -58,13 +56,10 @@ import me.rerere.hugeicons.stroke.Settings03
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.BackgroundModelHealth
-import me.ayuilos.miffan.data.ai.BackgroundModelSource
 import me.ayuilos.miffan.data.ai.BackgroundTask
 import me.ayuilos.miffan.data.ai.backgroundModelFor
 import me.ayuilos.miffan.data.datastore.isNotConfigured
 import me.ayuilos.miffan.data.model.InterfaceMode
-import me.ayuilos.miffan.ui.components.ai.ModelListSheet
-import me.ayuilos.miffan.ui.components.ai.rememberModelListState
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
 import me.ayuilos.miffan.ui.components.ui.UpdateAvailableBanner
@@ -91,13 +86,8 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
     }
     val backgroundHealth = koinInject<BackgroundModelHealth>()
     val backgroundFailure by backgroundHealth.lastFailure.collectAsStateWithLifecycle()
-    // Memory is the chore every partner relies on, so its model stands for the whole helper.
+    // Memory is the chore every partner relies on, so its health stands for the whole helper.
     val background = settings.backgroundModelFor(BackgroundTask.MEMORY, settings.assistants.find { it.id == settings.assistantId })
-    val backgroundModels = rememberModelListState(
-        background?.takeIf { it.source == BackgroundModelSource.FAST }?.model?.id,
-        settings.providers,
-        ModelType.CHAT,
-    )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -167,44 +157,23 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
                     },
                 )
                 item(
-                    onClick = { navController.navigate(Screen.SettingProvider) },
+                    onClick = { navController.navigate(Screen.ImAiService) },
                     leadingContent = { Icon(HugeIcons.Link01, null) },
                     headlineContent = { Text(stringResource(R.string.im_me_ai_service)) },
                     trailingContent = {
+                        // Background helper problems surface here; the details live inside AI service.
+                        val status = when {
+                            settings.isNotConfigured() -> R.string.im_me_ai_not_connected
+                            backgroundFailure != null || background == null -> R.string.im_me_ai_needs_attention
+                            else -> R.string.im_me_ai_connected
+                        }
                         Text(
-                            text = stringResource(
-                                if (settings.isNotConfigured()) R.string.im_me_ai_not_connected
-                                else R.string.im_me_ai_connected
-                            ),
+                            text = stringResource(status),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (settings.isNotConfigured()) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (status == R.string.im_me_ai_connected) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
                         )
                     },
-                )
-                if (!settings.isNotConfigured()) item(
-                    onClick = backgroundModels::open,
-                    leadingContent = { Icon(HugeIcons.AiMagic, null) },
-                    headlineContent = { Text(stringResource(R.string.im_me_background_model)) },
-                    supportingContent = {
-                        val failure = backgroundFailure
-                        Text(
-                            text = when {
-                                failure != null -> stringResource(R.string.im_me_background_model_failed, failure.message)
-                                background == null -> stringResource(R.string.im_me_background_model_none)
-                                background.source == BackgroundModelSource.FAST -> stringResource(
-                                    R.string.im_me_background_model_fast,
-                                    background.model.displayName.ifBlank { background.model.modelId },
-                                )
-                                else -> stringResource(R.string.im_me_background_model_fallback)
-                            },
-                            color = if (failure != null || background == null) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                 )
             }
         }
@@ -280,11 +249,6 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
                 )
             }
         }
-    }
-
-    ModelListSheet(backgroundModels) { model ->
-        backgroundHealth.dismiss()
-        vm.updateSettings { it.copy(fastModelId = model.id) }
     }
 
     nicknameEditState.EditStateContent { value, onUpdate ->

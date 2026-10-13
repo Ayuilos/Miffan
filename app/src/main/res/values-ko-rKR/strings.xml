@@ -1770,11 +1770,17 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_me_ai_service">AI 서비스</string>
   <string name="im_me_ai_connected">연결됨</string>
   <string name="im_me_ai_not_connected">연결 안 됨</string>
+  <string name="im_me_ai_needs_attention">확인 필요</string>
   <string name="im_me_background_model">백그라운드 정리</string>
   <string name="im_me_background_model_fast">%1$s · 기억, 주제 정리, 요약 담당</string>
   <string name="im_me_background_model_fallback">지금은 채팅 모델로 기억하고 있어요. 가벼운 모델을 고르면 주제도 자동으로 나눠요</string>
   <string name="im_me_background_model_none">사용할 수 없어 파트너가 새로운 내용을 기억하지 않아요</string>
   <string name="im_me_background_model_failed">지난 정리 실패: %1$s</string>
+  <string name="im_ai_service_providers">서비스</string>
+  <string name="im_ai_service_providers_none">아직 연결되지 않았어요. 눌러서 추가하세요</string>
+  <string name="im_ai_service_models">모델</string>
+  <string name="im_ai_service_default_model">기본 모델</string>
+  <string name="im_ai_service_partner_hint">따로 모델을 고르지 않은 파트너는 기본 모델을 사용해요. 특정 파트너만 바꾸려면 그 파트너의 프로필에서 고르세요.</string>
   <string name="im_me_appearance">외관 및 캐릭터</string>
   <string name="im_me_backup">백업 및 복원</string>
   <string name="im_me_notification">알림</string>
@@ -2647,8 +2653,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computers_name_separator">,\u0020</string>
   <string name="im_computers_unused">아직 사용하는 파트너가 없어요</string>
   <string name="im_computer_detail_view_screen">화면 보기</string>
-  <string name="im_computer_detail_set_up_screen">화면 설정</string>
-  <string name="im_computer_detail_set_up_screen_help">이 컴퓨터를 확인하면 나와 파트너가 화면을 볼 수 있어요</string>
   <string name="im_computer_detail_users">이 컴퓨터를 쓰는 파트너</string>
   <string name="im_computer_detail_add_partner">파트너에게 사용 허용</string>
   <string name="im_computer_detail_check">컴퓨터 상태 확인</string>

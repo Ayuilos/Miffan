@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -298,6 +299,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
 
             item("aboutSettings") {
                 val context = LocalContext.current
+                val docsUrl = miffanDocsUrl(LocalConfiguration.current.locales[0].language)
                 val shareText = stringResource(R.string.setting_page_share_text)
                 val share = stringResource(R.string.setting_page_share)
                 val noShareApp = stringResource(R.string.setting_page_no_share_app)
@@ -331,12 +333,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     )
                     item(
                         onClick = {
-                            val docUrl = if (java.util.Locale.getDefault().language == "zh") {
-                                "https://github.com/Ayuilos/Miffan/blob/master/README_ZH_CN.md"
-                            } else {
-                                "https://github.com/Ayuilos/Miffan#readme"
-                            }
-                            context.openUrl(docUrl)
+                            context.openUrl(docsUrl)
                         },
                         leadingContent = { Icon(HugeIcons.Book01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_documentation_desc)) },

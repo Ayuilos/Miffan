@@ -56,9 +56,7 @@ import me.ayuilos.miffan.utils.plus
 fun SettingAboutPage() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val context = LocalContext.current
-    // The guide is published in simplified Chinese and English only.
-    val docsUrl = if (LocalConfiguration.current.locales[0].language == "zh") "https://miffan.ayuilos.me/docs"
-        else "https://miffan.ayuilos.me/docs/en"
+    val docsUrl = miffanDocsUrl(LocalConfiguration.current.locales[0].language)
     val navController = LocalNavController.current
     val emojiOptions = remember {
         listOf(
@@ -191,3 +189,7 @@ fun SettingAboutPage() {
         }
     }
 }
+
+// The guide is published in simplified Chinese and English only.
+internal fun miffanDocsUrl(language: String): String =
+    if (language == "zh") "https://miffan.ayuilos.me/docs" else "https://miffan.ayuilos.me/docs/en"

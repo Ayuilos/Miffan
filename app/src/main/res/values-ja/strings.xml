@@ -1770,11 +1770,17 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_me_ai_service">AI サービス</string>
   <string name="im_me_ai_connected">接続済み</string>
   <string name="im_me_ai_not_connected">未接続</string>
+  <string name="im_me_ai_needs_attention">確認が必要</string>
   <string name="im_me_background_model">バックグラウンド整理</string>
   <string name="im_me_background_model_fast">%1$s · 記憶、話題の整理、要約を担当</string>
   <string name="im_me_background_model_fallback">今はチャットモデルで記憶しています。軽量モデルを選ぶと話題も自動で整理されます</string>
   <string name="im_me_background_model_none">利用できないため、パートナーは新しいことを覚えません</string>
   <string name="im_me_background_model_failed">前回の整理に失敗しました：%1$s</string>
+  <string name="im_ai_service_providers">サービス</string>
+  <string name="im_ai_service_providers_none">まだ接続していません。タップして追加</string>
+  <string name="im_ai_service_models">モデル</string>
+  <string name="im_ai_service_default_model">デフォルトモデル</string>
+  <string name="im_ai_service_partner_hint">個別にモデルを選んでいないパートナーはデフォルトモデルを使います。特定のパートナーだけ変えたいときは、そのプロフィールで選べます。</string>
   <string name="im_me_appearance">外観とキャラクター</string>
   <string name="im_me_backup">バックアップと復元</string>
   <string name="im_me_notification">通知</string>
@@ -2647,8 +2653,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computers_name_separator">、</string>
   <string name="im_computers_unused">まだパートナーは使っていません</string>
   <string name="im_computer_detail_view_screen">画面を表示</string>
-  <string name="im_computer_detail_set_up_screen">画面を設定</string>
-  <string name="im_computer_detail_set_up_screen_help">このコンピューターを確認すると、あなたとパートナーが画面を見られるようになります</string>
   <string name="im_computer_detail_users">このコンピューターを使うパートナー</string>
   <string name="im_computer_detail_add_partner">パートナーに使わせる</string>
   <string name="im_computer_detail_check">コンピューターの状態を確認</string>

@@ -1770,11 +1770,17 @@
   <string name="im_me_ai_service">Сервис ИИ</string>
   <string name="im_me_ai_connected">Подключено</string>
   <string name="im_me_ai_not_connected">Не подключено</string>
+  <string name="im_me_ai_needs_attention">Нужна проверка</string>
   <string name="im_me_background_model">Фоновый помощник</string>
   <string name="im_me_background_model_fast">%1$s · запоминает, разбирает темы и делает выжимки</string>
   <string name="im_me_background_model_fallback">Пока запоминает модель чата. Выберите лёгкую модель, чтобы темы тоже разбирались автоматически</string>
   <string name="im_me_background_model_none">Недоступно, поэтому партнёры не запоминают новое</string>
   <string name="im_me_background_model_failed">Последний запуск не удался: %1$s</string>
+  <string name="im_ai_service_providers">Сервисы</string>
+  <string name="im_ai_service_providers_none">Пока не подключено. Нажмите, чтобы добавить</string>
+  <string name="im_ai_service_models">Модели</string>
+  <string name="im_ai_service_default_model">Модель по умолчанию</string>
+  <string name="im_ai_service_partner_hint">Партнёр без собственной модели использует модель по умолчанию. Чтобы сменить модель одному партнёру, выберите её в его профиле.</string>
   <string name="im_me_appearance">Оформление и персонажи</string>
   <string name="im_me_backup">Резервное копирование</string>
   <string name="im_me_notification">Уведомления</string>
@@ -2650,8 +2656,6 @@
   <string name="im_computers_name_separator">,\u0020</string>
   <string name="im_computers_unused">Пока никто из партнёров не использует</string>
   <string name="im_computer_detail_view_screen">Посмотреть экран</string>
-  <string name="im_computer_detail_set_up_screen">Настроить экран</string>
-  <string name="im_computer_detail_set_up_screen_help">Проверьте этот компьютер, чтобы вы и ваши партнёры могли видеть его экран</string>
   <string name="im_computer_detail_users">Кто использует этот компьютер</string>
   <string name="im_computer_detail_add_partner">Разрешить партнёру использовать</string>
   <string name="im_computer_detail_check">Проверить компьютер</string>

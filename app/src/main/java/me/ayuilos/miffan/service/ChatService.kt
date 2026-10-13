@@ -1435,13 +1435,14 @@ class ChatService(
     }
 
     /**
-     * A remote host with a screen is the partner's computer: its desktop, commands and files all
-     * follow [Assistant.computerUse]. Null for local workspaces and servers without a screen.
+     * A remote host is the partner's computer: its commands and files, and its desktop when it has a
+     * screen, all follow [Assistant.computerUse]. A server or NAS without a screen still has commands
+     * and files to allow. Null for local workspaces.
      */
     private suspend fun partnerComputerUse(assistant: Assistant, workspace: WorkspaceEntity?): ComputerUseMode? {
         if (workspace?.isRemote != true) return null
-        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
-        return assistant.computerUse.takeIf { host.screenEnabled }
+        workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        return assistant.computerUse
     }
 
     // ---- 检查无效消息 ----
