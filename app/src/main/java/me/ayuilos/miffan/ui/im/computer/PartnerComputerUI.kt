@@ -89,8 +89,7 @@ internal fun PartnerComputerPermissionRow(
                 enabled = !busy, onClick = onOpenComputer) {
                 Icon(HugeIcons.ArrowRight01, stringResource(R.string.im_computer_open_details), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            // Without a screen the partner only runs commands there, so there is no computer use to allow.
-            if (computer.screenEnabled) ComputerUseModeSelector(mode, enabled = !busy, onMode = onMode,
+            ComputerUseModeSelector(mode, enabled = !busy, onMode = onMode, screen = computer.screenEnabled,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))
             if (computer.showsEntry) {
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
@@ -126,6 +125,8 @@ internal fun ComputerUseModeSelector(
     enabled: Boolean,
     onMode: (ComputerUseMode) -> Unit,
     modifier: Modifier = Modifier,
+    /** False for a server or NAS without a screen: the modes then only cover commands and files. */
+    screen: Boolean = true,
 ) {
     var confirmAuto by rememberSaveable { mutableStateOf(false) }
     val modes = listOf(
@@ -142,14 +143,14 @@ internal fun ComputerUseModeSelector(
             }
         }
         Text(stringResource(when (mode) {
-            ComputerUseMode.ASK -> R.string.computer_use_mode_ask_help
-            ComputerUseMode.AUTO -> R.string.computer_use_mode_auto_help
-            ComputerUseMode.OFF -> R.string.computer_use_mode_off_help
+            ComputerUseMode.ASK -> if (screen) R.string.computer_use_mode_ask_help else R.string.computer_use_mode_ask_help_no_screen
+            ComputerUseMode.AUTO -> if (screen) R.string.computer_use_mode_auto_help else R.string.computer_use_mode_auto_help_no_screen
+            ComputerUseMode.OFF -> if (screen) R.string.computer_use_mode_off_help else R.string.computer_use_mode_off_help_no_screen
         }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (confirmAuto) AlertDialog(onDismissRequest = { confirmAuto = false },
         title = { Text(stringResource(R.string.computer_use_confirm_auto)) },
-        text = { Text(stringResource(R.string.computer_use_auto_disclosure)) },
+        text = { Text(stringResource(if (screen) R.string.computer_use_auto_disclosure else R.string.computer_use_auto_disclosure_no_screen)) },
         confirmButton = { TextButton(onClick = { confirmAuto = false; onMode(ComputerUseMode.AUTO) }) { Text(stringResource(R.string.common_confirm)) } },
         dismissButton = { TextButton(onClick = { confirmAuto = false }) { Text(stringResource(R.string.common_cancel)) } })
 }

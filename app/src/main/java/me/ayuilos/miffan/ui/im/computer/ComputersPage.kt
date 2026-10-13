@@ -260,9 +260,7 @@ fun ComputerDetailPage(hostId: String) {
             item("users") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
                     partners.forEach { partner ->
-                        // The computer-use mode only matters with a screen to operate.
-                        PartnerRow(partner, trailing = if (current.screenEnabled) stringResource(partner.computerUse.label()) else null,
-                            enabled = !busy) {
+                        PartnerRow(partner, trailing = stringResource(partner.computerUse.label()), enabled = !busy) {
                             nav.navigate(Screen.PartnerProfile(partner.id.toString()))
                         }
                         HorizontalDivider(Modifier.padding(start = 68.dp))
@@ -305,7 +303,7 @@ fun ComputerDetailPage(hostId: String) {
                     else -> stringResource(R.string.im_computer_replaces_phone)
                 }
             },
-            footer = stringResource(if (current.screenEnabled) R.string.im_computer_bind_disclosure else R.string.im_computer_bind_account),
+            footer = stringResource(if (current.screenEnabled) R.string.im_computer_bind_disclosure else R.string.im_computer_bind_disclosure_no_screen),
             onDismiss = { picking = false },
             onPick = { partner -> picking = false; perform { computers.bind(hostId, setOf(partner.id)) } },
         )

@@ -2467,6 +2467,7 @@
   <string name="im_computer_app_key" tools:ignore="MissingTranslation">Miffan key</string>
   <string name="im_computer_authorize_key" tools:ignore="MissingTranslation">Authorize this key</string>
   <string name="im_computer_bind_disclosure" tools:ignore="MissingTranslation">Screenshots will be sent to the current model’s provider. Your partner’s actions run with the permissions of this computer account. Each action will ask you first; you can change this in the partner’s profile.</string>
+  <string name="im_computer_bind_disclosure_no_screen" tools:ignore="MissingTranslation">The partner acts with the permissions of this computer account. It asks you before each action; you can change this on the partner profile.</string>
   <string name="im_computer_chat_help" tools:ignore="MissingTranslation">Talk to your partner while watching the screen</string>
   <string name="im_computer_waiting_for_you" tools:ignore="MissingTranslation">Your partner is waiting for you to confirm</string>
   <string name="im_computer_choose" tools:ignore="MissingTranslation">Choose a computer</string>
@@ -2608,8 +2609,12 @@
   <string name="computer_use_mode_ask_help" tools:ignore="MissingTranslation">Your partner starts on its own when a request needs the computer, and asks in chat before each click, keystroke, command or file change. Looking at the screen and reading files need no approval.</string>
   <string name="computer_use_mode_auto_help" tools:ignore="MissingTranslation">Your partner clicks, types, runs commands and changes files without asking each time. Bringing a window to the front or downloading from the web still asks.</string>
   <string name="computer_use_mode_off_help" tools:ignore="MissingTranslation">Your partner won’t touch this computer at all: it can’t see the screen, operate the desktop, run commands or read and write files, and won’t offer to. You can still open the screen page yourself.</string>
+  <string name="computer_use_mode_ask_help_no_screen" tools:ignore="MissingTranslation">Before running commands or changing files the partner asks you in the chat; reading files needs no asking.</string>
+  <string name="computer_use_mode_auto_help_no_screen" tools:ignore="MissingTranslation">The partner runs commands and changes files directly, without asking each time.</string>
+  <string name="computer_use_mode_off_help_no_screen" tools:ignore="MissingTranslation">The partner leaves this computer alone: no commands, no reading or writing files, and it will not bring it up.</string>
   <string name="computer_use_confirm_auto" tools:ignore="MissingTranslation">Let your partner act directly?</string>
   <string name="computer_use_auto_disclosure" tools:ignore="MissingTranslation">Your partner will click, type, open apps, run commands and change files without asking each time. Screenshots are sent to the current model’s provider, and everything runs with this computer account’s permissions. You can take over at any time on the screen page.</string>
+  <string name="computer_use_auto_disclosure_no_screen" tools:ignore="MissingTranslation">The partner will run commands and change files directly, without asking each time. Everything runs with the permissions of this computer account.</string>
   <string name="computer_use_start" tools:ignore="MissingTranslation">Connect to computer</string>
   <string name="im_computer_disconnect" tools:ignore="MissingTranslation">Disconnect this computer</string>
   <string name="im_computer_disconnect_title" tools:ignore="MissingTranslation">Disconnect %1$s?</string>

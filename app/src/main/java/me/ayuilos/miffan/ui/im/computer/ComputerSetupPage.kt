@@ -173,10 +173,9 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     }
 }
 
-/** What giving the computer to a partner means; screenshots and step approvals only come with the screen. */
+/** What giving the computer to a partner means; screenshots only come with the screen. */
 private fun bindNotes(usesScreen: Boolean): List<Int> =
-    if (usesScreen) listOf(R.string.im_computer_bind_screenshots, R.string.im_computer_bind_account, R.string.im_computer_bind_approval)
-    else listOf(R.string.im_computer_bind_account)
+    listOfNotNull(R.string.im_computer_bind_screenshots.takeIf { usesScreen }, R.string.im_computer_bind_account, R.string.im_computer_bind_approval)
 
 @Composable
 private fun SetupDoneHeader(title: String, help: String) {

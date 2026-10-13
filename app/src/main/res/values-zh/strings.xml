@@ -2458,6 +2458,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_app_key">Miffan 密钥</string>
   <string name="im_computer_authorize_key">允许使用此密钥登录</string>
   <string name="im_computer_bind_disclosure">截图会发送给当前模型的提供商。伙伴的操作以该电脑账户的权限执行。每次操作前都会询问你，可在伙伴资料页修改。</string>
+  <string name="im_computer_bind_disclosure_no_screen">伙伴的操作以该电脑账户的权限执行。每次操作前都会询问你，可在伙伴资料页修改。</string>
   <string name="im_computer_chat_help">边看屏幕，边和伙伴说话</string>
   <string name="im_computer_waiting_for_you">伙伴在等你确认</string>
   <string name="im_computer_choose">选择一台电脑</string>
@@ -2598,8 +2599,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="computer_use_mode_ask_help">需要用电脑时伙伴会自己开始。点击、输入、运行命令、改文件之前，都会先在聊天里问你；看屏幕和读文件不用问。</string>
   <string name="computer_use_mode_auto_help">伙伴直接点击、输入、运行命令和改文件，不再逐步询问；把窗口切到前台、从网上下载文件仍会先问你。</string>
   <string name="computer_use_mode_off_help">伙伴完全不碰这台电脑：不看屏幕、不操作桌面、不运行命令、不读写文件，也不会主动提起。你自己仍然可以打开屏幕页。</string>
+  <string name="computer_use_mode_ask_help_no_screen">运行命令、改文件之前，都会先在聊天里问你；读文件不用问。</string>
+  <string name="computer_use_mode_auto_help_no_screen">伙伴直接运行命令和改文件，不再逐步询问。</string>
+  <string name="computer_use_mode_off_help_no_screen">伙伴完全不碰这台电脑：不运行命令、不读写文件，也不会主动提起。</string>
   <string name="computer_use_confirm_auto">让伙伴直接操作？</string>
   <string name="computer_use_auto_disclosure">伙伴会直接点击、输入、打开应用、运行命令和修改文件，不再逐步询问。截图会发送给当前模型的提供商，所有操作都以这台电脑账户的权限执行。你可以随时在屏幕页接管。</string>
+  <string name="computer_use_auto_disclosure_no_screen">伙伴会直接运行命令和修改文件，不再逐步询问。所有操作都以这台电脑账户的权限执行。</string>
   <string name="computer_use_start">连接电脑</string>
   <string name="im_computer_disconnect">断开这台电脑</string>
   <string name="im_computer_disconnect_title">断开 %1$s？</string>
