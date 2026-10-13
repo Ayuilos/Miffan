@@ -84,10 +84,13 @@ internal fun PartnerComputerPermissionRow(
                     enabled = !busy, onClick = onSetup) { Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 return@Column
             }
-            PartnerComputerRow(stringResource(R.string.im_computer_control), computer.name, enabled = !busy, onClick = onOpenComputer) {
+            PartnerComputerRow(stringResource(R.string.im_computer_control),
+                if (computer.screenEnabled) computer.name else computer.name + " · " + stringResource(R.string.im_computers_screen_missing),
+                enabled = !busy, onClick = onOpenComputer) {
                 Icon(HugeIcons.ArrowRight01, stringResource(R.string.im_computer_open_details), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            ComputerUseModeSelector(mode, enabled = !busy, onMode = onMode,
+            // Without a screen the partner only runs commands there, so there is no computer use to allow.
+            if (computer.screenEnabled) ComputerUseModeSelector(mode, enabled = !busy, onMode = onMode,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))
             if (computer.showsEntry) {
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))

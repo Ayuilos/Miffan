@@ -2489,6 +2489,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_dismiss">关闭</string>
   <string name="im_computer_fingerprint_command">在电脑上查看指纹</string>
   <string name="im_computer_first_message">看看我的电脑屏幕上有什么</string>
+  <string name="im_computer_first_message_no_screen">看看我的电脑现在运行得怎么样</string>
   <string name="im_computer_foreground_warning">会切换到前台，打断你正在使用的窗口。</string>
   <string name="im_computer_generate_key">生成密钥</string>
   <string name="im_computer_give_title">将这台电脑交给 %1$s</string>
@@ -2529,7 +2530,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_phone_switch">改为连接电脑</string>
   <string name="im_computer_replace_phone">%1$s 将不再在这台手机上工作，手机里的文件会保留。</string>
   <string name="im_computer_request_permissions">在 Mac 上请求权限</string>
-  <string name="im_computer_requirements">这台电脑需要开启 SSH 并已登录桌面。Linux 支持 wlroots 系 Wayland（如 niri、Sway、Hyprland）或 X11，GNOME/KDE 暂不支持。macOS 需要开启“远程登录”和“屏幕共享”。</string>
+  <string name="im_computer_requirements">这台电脑需要开启 SSH。要使用屏幕，还需要已登录的桌面：Linux 支持 X11 和 Wayland（包括 GNOME、KDE 和 niri、Sway、Hyprland 等），macOS 需要开启“远程登录”和“屏幕共享”。没有显示器的服务器或 NAS 可以不用屏幕，伙伴通过命令使用它。</string>
   <string name="im_computer_reread_fingerprint">重新读取指纹</string>
   <string name="im_computer_saved_account_failed">无法读取已保存的账户，请重新输入 Mac 账户。</string>
   <string name="im_computer_screen">电脑屏幕</string>
@@ -2563,6 +2564,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_sign_in">登录方式</string>
   <string name="im_computer_other_key">密钥：%1$s · 更换</string>
   <string name="im_computer_prepare_help">伙伴需要一个已登录的桌面、屏幕服务和 cua-driver。</string>
+  <string name="im_computer_prepare_help_no_screen">不用屏幕时，能通过 SSH 连上这台电脑就够了。</string>
+  <string name="im_computer_use_screen">使用屏幕</string>
+  <string name="im_computer_use_screen_on">你和伙伴可以看到屏幕，伙伴可以操作桌面</string>
+  <string name="im_computer_use_screen_off">伙伴只通过命令使用这台电脑，适合没有显示器的服务器或 NAS</string>
   <string name="im_computer_show_commands">查看安装命令</string>
   <string name="im_computer_mac_screen_sharing">macOS 屏幕共享</string>
   <string name="im_computer_test_help">这是这台电脑现在的屏幕，你可以直接在上面操作。</string>
@@ -2575,6 +2580,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_bind_approval">每次操作前都会先问你，可以在伙伴资料页修改。</string>
   <string name="im_computer_done_title">连接好了</string>
   <string name="im_computer_done_help">%1$s 现在可以看到并操作 %2$s 了。</string>
+  <string name="im_computer_done_help_no_screen">%1$s 现在可以在 %2$s 上运行命令了。</string>
   <string name="im_computer_task_creating_key">正在生成密钥…</string>
   <string name="im_computer_task_connecting">正在连接…</string>
   <string name="im_computer_task_fingerprint">正在读取指纹…</string>
@@ -2649,13 +2655,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computers_connect_first">连接一台电脑</string>
   <string name="im_computers_connect_new">连接新电脑</string>
   <string name="im_computers_screen_ready">可以看屏幕</string>
-  <string name="im_computers_screen_missing">屏幕未设置</string>
+  <string name="im_computers_screen_missing">不使用屏幕</string>
   <string name="im_computers_used_by">%1$s 在用</string>
   <string name="im_computers_name_separator">、</string>
   <string name="im_computers_unused">还没有伙伴使用</string>
   <string name="im_computer_detail_view_screen">查看屏幕</string>
-  <string name="im_computer_detail_set_up_screen">设置屏幕</string>
-  <string name="im_computer_detail_set_up_screen_help">检查这台电脑，之后你和伙伴就能看到它的屏幕</string>
   <string name="im_computer_detail_users">谁在用这台电脑</string>
   <string name="im_computer_detail_add_partner">让伙伴使用</string>
   <string name="im_computer_detail_check">检查电脑状态</string>

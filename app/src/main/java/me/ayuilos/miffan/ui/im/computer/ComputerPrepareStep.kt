@@ -43,12 +43,13 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
     val upgrade = probe?.cua?.path != null
     ComputerSetupStepLayout(
         title = stringResource(R.string.im_computer_prepare),
-        supporting = stringResource(R.string.im_computer_prepare_help),
+        supporting = stringResource(if (state.usesScreen) R.string.im_computer_prepare_help else R.string.im_computer_prepare_help_no_screen),
         state = state, onDismissError = vm::dismissError,
         primary = if (state.prepared) SetupAction(stringResource(R.string.im_computer_continue), onClick = vm::continueAfterPrepare)
         else SetupAction(stringResource(R.string.im_computer_recheck), onClick = vm::reprobe),
     ) {
-        if (probe != null) SetupCard(spacing = 0.dp) {
+        SetupCard { ComputerScreenSwitch(state.usesScreen, enabled = !state.busy, onCheckedChange = vm::setWantsScreen) }
+        if (probe != null && state.usesScreen) SetupCard(spacing = 0.dp) {
             val locked = probe.session.lockState == "locked"
             CheckRow(stringResource(R.string.im_computer_desktop), if (state.sessionReady && !locked) CheckStatus.READY else CheckStatus.NEEDED,
                 when {

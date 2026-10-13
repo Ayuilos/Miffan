@@ -469,7 +469,7 @@ class RouteActivity : ComponentActivity() {
 
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ComputerSetup> { key ->
-                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit))
+                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen))
                             }
                             entry<Screen.Computers> { ComputersPage() }
                             entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
@@ -815,7 +815,7 @@ sealed interface Screen : NavKey {
 
     /** Connect a computer: for one partner, or with no partner from "my computers"; see ComputerSetupArgs. */
     @Serializable
-    data class ComputerSetup(val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false) : Screen
+    data class ComputerSetup(val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false, val screen: Boolean = false) : Screen
 
     /** Easy chat's list of computers. */
     @Serializable

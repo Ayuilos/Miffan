@@ -2498,6 +2498,7 @@
   <string name="im_computer_dismiss" tools:ignore="MissingTranslation">Dismiss</string>
   <string name="im_computer_fingerprint_command" tools:ignore="MissingTranslation">See the fingerprint on the computer</string>
   <string name="im_computer_first_message" tools:ignore="MissingTranslation">Tell me what is on my computer screen</string>
+  <string name="im_computer_first_message_no_screen" tools:ignore="MissingTranslation">Tell me how my computer is doing</string>
   <string name="im_computer_foreground_warning" tools:ignore="MissingTranslation">This will switch to the foreground and interrupt the window you are using.</string>
   <string name="im_computer_generate_key" tools:ignore="MissingTranslation">Generate key</string>
   <string name="im_computer_give_title" tools:ignore="MissingTranslation">Give this computer to %1$s</string>
@@ -2538,7 +2539,7 @@
   <string name="im_computer_phone_switch" tools:ignore="MissingTranslation">Connect a computer instead</string>
   <string name="im_computer_replace_phone" tools:ignore="MissingTranslation">%1$s will stop working on this phone. Files there are kept.</string>
   <string name="im_computer_request_permissions" tools:ignore="MissingTranslation">Request permissions on Mac</string>
-  <string name="im_computer_requirements" tools:ignore="MissingTranslation">Your computer needs SSH enabled and a logged-in desktop. Linux supports wlroots Wayland (such as niri, Sway or Hyprland) and X11; GNOME/KDE are not supported yet. On macOS, enable Remote Login and Screen Sharing.</string>
+  <string name="im_computer_requirements" tools:ignore="MissingTranslation">Your computer needs SSH enabled. To use its screen it also needs a logged-in desktop: Linux supports X11 and Wayland (including GNOME, KDE and niri, Sway or Hyprland); on macOS, enable Remote Login and Screen Sharing. A server or NAS without a display can skip the screen, and partners use it through commands.</string>
   <string name="im_computer_reread_fingerprint" tools:ignore="MissingTranslation">Read fingerprint again</string>
   <string name="im_computer_saved_account_failed" tools:ignore="MissingTranslation">Could not read the saved account. Enter the Mac account again.</string>
   <string name="im_computer_screen" tools:ignore="MissingTranslation">Computer screen</string>
@@ -2573,6 +2574,10 @@
   <string name="im_computer_sign_in" tools:ignore="MissingTranslation">Sign in with</string>
   <string name="im_computer_other_key" tools:ignore="MissingTranslation">Key: %1$s · Change</string>
   <string name="im_computer_prepare_help" tools:ignore="MissingTranslation">The partner needs a logged-in desktop, a screen service and cua-driver.</string>
+  <string name="im_computer_prepare_help_no_screen" tools:ignore="MissingTranslation">Without the screen, an SSH connection to this computer is all it needs.</string>
+  <string name="im_computer_use_screen" tools:ignore="MissingTranslation">Use the screen</string>
+  <string name="im_computer_use_screen_on" tools:ignore="MissingTranslation">You and partners can see the screen, and partners can use the desktop</string>
+  <string name="im_computer_use_screen_off" tools:ignore="MissingTranslation">Partners use this computer through commands only, fine for a server or NAS without a display</string>
   <string name="im_computer_show_commands" tools:ignore="MissingTranslation">Show install commands</string>
   <string name="im_computer_mac_screen_sharing" tools:ignore="MissingTranslation">macOS Screen Sharing</string>
   <string name="im_computer_test_help" tools:ignore="MissingTranslation">This is the computer\'s screen right now. You can use it directly.</string>
@@ -2585,6 +2590,7 @@
   <string name="im_computer_bind_approval" tools:ignore="MissingTranslation">It asks you before every action. You can change that in the partner\'s profile.</string>
   <string name="im_computer_done_title" tools:ignore="MissingTranslation">All set</string>
   <string name="im_computer_done_help" tools:ignore="MissingTranslation">%1$s can now see and operate %2$s.</string>
+  <string name="im_computer_done_help_no_screen" tools:ignore="MissingTranslation">%1$s can now run commands on %2$s.</string>
   <string name="im_computer_task_creating_key" tools:ignore="MissingTranslation">Generating a key…</string>
   <string name="im_computer_task_connecting" tools:ignore="MissingTranslation">Connecting…</string>
   <string name="im_computer_task_fingerprint" tools:ignore="MissingTranslation">Reading the fingerprint…</string>
@@ -2659,13 +2665,11 @@
   <string name="im_computers_connect_first" tools:ignore="MissingTranslation">Connect a computer</string>
   <string name="im_computers_connect_new" tools:ignore="MissingTranslation">Connect another computer</string>
   <string name="im_computers_screen_ready" tools:ignore="MissingTranslation">Screen ready</string>
-  <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">Screen not set up</string>
+  <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">No screen</string>
   <string name="im_computers_used_by" tools:ignore="MissingTranslation">Used by %1$s</string>
   <string name="im_computers_name_separator" tools:ignore="MissingTranslation">", "</string>
   <string name="im_computers_unused" tools:ignore="MissingTranslation">No partner uses it yet</string>
   <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">View screen</string>
-  <string name="im_computer_detail_set_up_screen" tools:ignore="MissingTranslation">Set up the screen</string>
-  <string name="im_computer_detail_set_up_screen_help" tools:ignore="MissingTranslation">Check this computer so you and your partners can see its screen</string>
   <string name="im_computer_detail_users" tools:ignore="MissingTranslation">Who uses this computer</string>
   <string name="im_computer_detail_add_partner" tools:ignore="MissingTranslation">Let a partner use it</string>
   <string name="im_computer_detail_check" tools:ignore="MissingTranslation">Check this computer</string>

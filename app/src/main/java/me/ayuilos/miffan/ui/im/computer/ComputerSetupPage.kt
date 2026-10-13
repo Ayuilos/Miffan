@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -46,8 +48,13 @@ import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
 internal fun computerSetupProgress(state: ComputerSetupState): Pair<Int, Int> {
-    val index = state.step.ordinal + 1 - if (!state.isMac && state.step.ordinal > ComputerSetupStep.MAC_ACCOUNT.ordinal) 1 else 0
-    return index to if (state.isMac) 8 else 7
+    // Without a screen there is no Mac account or screen test; Linux and Windows never have the Mac account.
+    val skipped = listOfNotNull(
+        ComputerSetupStep.MAC_ACCOUNT.takeIf { !state.isMac || !state.usesScreen },
+        ComputerSetupStep.TEST.takeIf { !state.usesScreen },
+    )
+    val index = state.step.ordinal + 1 - skipped.count { state.step.ordinal > it.ordinal }
+    return index to ComputerSetupStep.entries.size - skipped.size
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -120,8 +127,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                     SetupCard {
                         SetupComputerRow(host)
                         HorizontalDivider()
-                        listOf(R.string.im_computer_bind_screenshots, R.string.im_computer_bind_account, R.string.im_computer_bind_approval)
-                            .forEach { SetupBullet(stringResource(it)) }
+                        bindNotes(state.usesScreen).forEach { SetupBullet(stringResource(it)) }
                     }
                     when (val old = replaced) {
                         ReplacedBinding.Phone -> SetupWarning(stringResource(R.string.im_computer_replace_phone, name))
@@ -143,7 +149,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                     state.partnerView?.let { ComputerPartnerView(it, Modifier.fillMaxWidth().padding(top = 12.dp)) }
                 } else {
                     val assistantId = forPartner
-                    val draft = stringResource(R.string.im_computer_first_message)
+                    val draft = stringResource(if (state.usesScreen) R.string.im_computer_first_message else R.string.im_computer_first_message_no_screen)
                     ComputerSetupStepLayout(
                         title = null, supporting = null, state = state, onDismissError = vm::dismissError,
                         primary = SetupAction(stringResource(R.string.im_computer_go_chat)) {
@@ -151,13 +157,14 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                             nav.removeAll(Screen.Home) { it == Screen.ComputerSetup(id) || it == Screen.PartnerScreen(id) || it is Screen.Thread && it.assistantId == id }
                             nav.navigate(Screen.Thread(id, text = draft))
                         },
-                        secondary = SetupAction(stringResource(R.string.im_computer_view_screen)) {
+                        secondary = if (state.usesScreen) SetupAction(stringResource(R.string.im_computer_view_screen)) {
                             val id = assistantId.toString()
                             nav.replace(Screen.ComputerSetup(id), Screen.PartnerScreen(id), Screen.Home)
-                        },
+                        } else null,
                     ) {
                         SetupDoneHeader(stringResource(R.string.im_computer_done_title),
-                            stringResource(R.string.im_computer_done_help, name, host?.name.orEmpty()))
+                            stringResource(if (state.usesScreen) R.string.im_computer_done_help else R.string.im_computer_done_help_no_screen,
+                                name, host?.name.orEmpty()))
                         state.partnerView?.let { ComputerPartnerView(it, Modifier.fillMaxWidth().padding(top = 12.dp)) }
                     }
                 }
@@ -165,6 +172,11 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
         }
     }
 }
+
+/** What giving the computer to a partner means; screenshots and step approvals only come with the screen. */
+private fun bindNotes(usesScreen: Boolean): List<Int> =
+    if (usesScreen) listOf(R.string.im_computer_bind_screenshots, R.string.im_computer_bind_account, R.string.im_computer_bind_approval)
+    else listOf(R.string.im_computer_bind_account)
 
 @Composable
 private fun SetupDoneHeader(title: String, help: String) {
@@ -226,8 +238,7 @@ private fun ComputerBindManyStep(vm: ComputerSetupVM, state: ComputerSetupState,
                 }
             }
         }
-        if (picked.isNotEmpty()) listOf(R.string.im_computer_bind_screenshots, R.string.im_computer_bind_account, R.string.im_computer_bind_approval)
-            .forEach { SetupBullet(stringResource(it)) }
+        if (picked.isNotEmpty()) bindNotes(state.usesScreen).forEach { SetupBullet(stringResource(it)) }
     }
 }
 
@@ -392,6 +403,29 @@ private fun SetupComputerRow(host: RemoteHostEntity?) {
             host?.let { Text("${it.username}@${it.host}:${it.port}", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+    }
+}
+
+/**
+ * Whether the computer's screen is used. Off suits a server or NAS without a display: partners
+ * still use the computer through commands.
+ */
+@Composable
+internal fun ComputerScreenSwitch(
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    contentPadding: PaddingValues = PaddingValues(),
+) {
+    Row(Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
+        .padding(contentPadding),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(R.string.im_computer_use_screen), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(if (checked) R.string.im_computer_use_screen_on else R.string.im_computer_use_screen_off),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

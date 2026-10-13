@@ -2645,8 +2645,6 @@
   <string name="im_computers_name_separator">、</string>
   <string name="im_computers_unused">還沒有夥伴使用</string>
   <string name="im_computer_detail_view_screen">查看螢幕</string>
-  <string name="im_computer_detail_set_up_screen">設定螢幕</string>
-  <string name="im_computer_detail_set_up_screen_help">檢查這台電腦，之後你和夥伴就能看到它的螢幕</string>
   <string name="im_computer_detail_users">誰在用這台電腦</string>
   <string name="im_computer_detail_add_partner">讓夥伴使用</string>
   <string name="im_computer_detail_check">檢查電腦狀態</string>

@@ -101,6 +101,8 @@ data class ComputerSetupState(
     val streamReady: Boolean = false,
     /** The user said the computer runs Windows (or it was detected before); only changes instructions. */
     val expectWindows: Boolean = false,
+    /** The user's choice of whether this computer has a screen to use; null follows what the check found. */
+    val wantsScreen: Boolean? = null,
 ) {
     val busy: Boolean get() = task != null
     val isMac: Boolean get() = probe?.os == "macos"
@@ -120,8 +122,15 @@ data class ComputerSetupState(
     } == true
     val cuaReady: Boolean get() = probe?.cua?.ok == true
 
-    /** Everything [ComputerSetupStep.PREPARE] checks is in place. */
-    val prepared: Boolean get() = sessionReady && screenServiceReady && cuaReady
+    /**
+     * Whether the partner gets the screen. Off, the computer is used through commands only, as on a
+     * server or NAS without a display, and the desktop, screen and cua-driver checks are skipped.
+     * Until the user chooses, it is on unless the check found no desktop.
+     */
+    val usesScreen: Boolean get() = wantsScreen ?: probe?.session?.present ?: true
+
+    /** Everything [ComputerSetupStep.PREPARE] checks is in place, or there is nothing to check. */
+    val prepared: Boolean get() = !usesScreen || (sessionReady && screenServiceReady && cuaReady)
 
     /** The partner saw the screen, and on macOS the driver holds both grants. */
     val tested: Boolean get() = partnerChecked && (!isMac || permissions?.complete == true)
@@ -133,7 +142,13 @@ data class ComputerSetupState(
  * starts on that known computer: with [edit] at its connection details, otherwise by connecting and
  * checking it.
  */
-data class ComputerSetupArgs(val assistantId: Uuid? = null, val hostId: String? = null, val edit: Boolean = false)
+data class ComputerSetupArgs(
+    val assistantId: Uuid? = null,
+    val hostId: String? = null,
+    val edit: Boolean = false,
+    /** The user turned the screen on for [hostId]: the check starts with it on even without a desktop found. */
+    val screen: Boolean = false,
+)
 
 /**
  * Guides the user through connecting a computer and giving it to partners. The UI shows
@@ -228,7 +243,7 @@ class ComputerSetupVM(
                     if (it.editing) ComputerSetupStep.ADDRESS else ComputerSetupStep.CHOOSE
                 ComputerSetupStep.MAC_ACCOUNT -> ComputerSetupStep.PREPARE
                 ComputerSetupStep.TEST -> if (it.isMac) ComputerSetupStep.MAC_ACCOUNT else ComputerSetupStep.PREPARE
-                ComputerSetupStep.BIND -> ComputerSetupStep.TEST
+                ComputerSetupStep.BIND -> if (it.usesScreen) ComputerSetupStep.TEST else ComputerSetupStep.PREPARE
                 ComputerSetupStep.CHOOSE, ComputerSetupStep.DONE -> it.step
             }
             it.copy(step = previous, error = null)
@@ -241,7 +256,8 @@ class ComputerSetupVM(
     fun chooseHost(hostId: String) = run(ComputerSetupTask.CONNECTING) {
         val host = requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" }
         _state.value = ComputerSetupState(hostId = host.id, task = ComputerSetupTask.CONNECTING,
-            expectWindows = host.platform == RemotePlatform.WINDOWS.storageName)
+            expectWindows = host.platform == RemotePlatform.WINDOWS.storageName,
+            wantsScreen = true.takeIf { args.screen && hostId == args.hostId })
         if (host.trustedHostKeySha256 == null) readFingerprint(host) else connectAndProbe(host.id)
     }
 
@@ -301,6 +317,11 @@ class ComputerSetupVM(
 
     fun reprobe() = run(ComputerSetupTask.PREPARING) { probe() }
 
+    fun setWantsScreen(wants: Boolean) {
+        if (_state.value.busy) return
+        _state.update { it.copy(wantsScreen = wants, error = null) }
+    }
+
     /** Installs or upgrades cua-driver; call only after the user confirmed [cuaInstallCommand]. */
     fun installCuaDriver() = run(ComputerSetupTask.INSTALLING) {
         val host = currentHost()
@@ -312,6 +333,12 @@ class ComputerSetupVM(
     /** Leaves [ComputerSetupStep.PREPARE] once everything is in place. */
     fun continueAfterPrepare() = run(ComputerSetupTask.SAVING) {
         check(_state.value.prepared) { "The computer is not ready yet" }
+        if (!_state.value.usesScreen) {
+            // Saved screen settings stay, so turning the screen back on only needs the check.
+            screens.setScreenEnabled(currentHost().id, false)
+            _state.update { it.copy(step = ComputerSetupStep.BIND) }
+            return@run
+        }
         if (_state.value.isMac) {
             _state.update { it.copy(step = ComputerSetupStep.MAC_ACCOUNT) }
             return@run
@@ -401,7 +428,12 @@ class ComputerSetupVM(
         _state.update { it.copy(task = ComputerSetupTask.CONNECTING) }
         check(workspaces.testHost(hostId)) { "Connection failed" }
         val workspaceId = partnerComputers.ensureComputerWorkspace(hostId)
-        _state.update { it.copy(workspaceId = workspaceId, step = ComputerSetupStep.PREPARE) }
+        // A screen already in use stays on even if the desktop is signed out right now.
+        val screenOn = workspaces.getHostById(hostId)?.screenEnabled == true
+        _state.update {
+            it.copy(workspaceId = workspaceId, step = ComputerSetupStep.PREPARE,
+                wantsScreen = it.wantsScreen ?: true.takeIf { screenOn })
+        }
         probe()
     }
 

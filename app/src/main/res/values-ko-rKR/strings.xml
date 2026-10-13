@@ -2647,8 +2647,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computers_name_separator">,\u0020</string>
   <string name="im_computers_unused">아직 사용하는 파트너가 없어요</string>
   <string name="im_computer_detail_view_screen">화면 보기</string>
-  <string name="im_computer_detail_set_up_screen">화면 설정</string>
-  <string name="im_computer_detail_set_up_screen_help">이 컴퓨터를 확인하면 나와 파트너가 화면을 볼 수 있어요</string>
   <string name="im_computer_detail_users">이 컴퓨터를 쓰는 파트너</string>
   <string name="im_computer_detail_add_partner">파트너에게 사용 허용</string>
   <string name="im_computer_detail_check">컴퓨터 상태 확인</string>

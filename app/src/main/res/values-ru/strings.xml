@@ -2650,8 +2650,6 @@
   <string name="im_computers_name_separator">,\u0020</string>
   <string name="im_computers_unused">Пока никто из партнёров не использует</string>
   <string name="im_computer_detail_view_screen">Посмотреть экран</string>
-  <string name="im_computer_detail_set_up_screen">Настроить экран</string>
-  <string name="im_computer_detail_set_up_screen_help">Проверьте этот компьютер, чтобы вы и ваши партнёры могли видеть его экран</string>
   <string name="im_computer_detail_users">Кто использует этот компьютер</string>
   <string name="im_computer_detail_add_partner">Разрешить партнёру использовать</string>
   <string name="im_computer_detail_check">Проверить компьютер</string>

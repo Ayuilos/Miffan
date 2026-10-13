@@ -29,6 +29,7 @@ import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
+import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
@@ -186,6 +187,7 @@ fun ComputerDetailPage(hostId: String) {
     val scope = rememberCoroutineScope()
     val computers: PartnerComputers = koinInject()
     val workspaces: WorkspaceRepository = koinInject()
+    val screens: RemoteScreenRepository = koinInject()
     val computer by rememberKnownComputer(hostId)
     val assistants = LocalSettings.current.assistants
     val workspaceList by remember(workspaces) { workspaces.listFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -237,11 +239,17 @@ fun ComputerDetailPage(hostId: String) {
                     }
                 }
             }
-            if (!current.screenEnabled) item("screen_setup") {
+            item("screen") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
-                    DetailRow(stringResource(R.string.im_computer_detail_set_up_screen),
-                        stringResource(R.string.im_computer_detail_set_up_screen_help), enabled = !busy) {
-                        nav.navigate(Screen.ComputerSetup(hostId = hostId))
+                    // On goes through the check first; off keeps the saved screen settings for later.
+                    ComputerScreenSwitch(current.screenEnabled, enabled = !busy, onCheckedChange = { on ->
+                        if (on) nav.navigate(Screen.ComputerSetup(hostId = hostId, screen = true))
+                        else perform { screens.setScreenEnabled(hostId, false) }
+                    }, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp))
+                    if (current.screenEnabled) {
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        DetailRow(stringResource(R.string.im_computer_detail_check), stringResource(R.string.im_computer_detail_check_help),
+                            enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId)) }
                     }
                 }
             }
@@ -252,7 +260,9 @@ fun ComputerDetailPage(hostId: String) {
             item("users") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
                     partners.forEach { partner ->
-                        PartnerRow(partner, trailing = stringResource(partner.computerUse.label()), enabled = !busy) {
+                        // The computer-use mode only matters with a screen to operate.
+                        PartnerRow(partner, trailing = if (current.screenEnabled) stringResource(partner.computerUse.label()) else null,
+                            enabled = !busy) {
                             nav.navigate(Screen.PartnerProfile(partner.id.toString()))
                         }
                         HorizontalDivider(Modifier.padding(start = 68.dp))
@@ -271,12 +281,6 @@ fun ComputerDetailPage(hostId: String) {
             }
             item("manage") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
-                    // Without a screen, "set up the screen" above already runs the same check.
-                    if (current.screenEnabled) {
-                        DetailRow(stringResource(R.string.im_computer_detail_check), stringResource(R.string.im_computer_detail_check_help),
-                            enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId)) }
-                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                    }
                     DetailRow(stringResource(R.string.im_computer_detail_connection), current.address, enabled = !busy) {
                         nav.navigate(Screen.ComputerSetup(hostId = hostId, edit = true))
                     }
@@ -301,7 +305,7 @@ fun ComputerDetailPage(hostId: String) {
                     else -> stringResource(R.string.im_computer_replaces_phone)
                 }
             },
-            footer = stringResource(R.string.im_computer_bind_disclosure),
+            footer = stringResource(if (current.screenEnabled) R.string.im_computer_bind_disclosure else R.string.im_computer_bind_account),
             onDismiss = { picking = false },
             onPick = { partner -> picking = false; perform { computers.bind(hostId, setOf(partner.id)) } },
         )

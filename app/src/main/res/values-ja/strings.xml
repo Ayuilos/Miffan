@@ -2647,8 +2647,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computers_name_separator">、</string>
   <string name="im_computers_unused">まだパートナーは使っていません</string>
   <string name="im_computer_detail_view_screen">画面を表示</string>
-  <string name="im_computer_detail_set_up_screen">画面を設定</string>
-  <string name="im_computer_detail_set_up_screen_help">このコンピューターを確認すると、あなたとパートナーが画面を見られるようになります</string>
   <string name="im_computer_detail_users">このコンピューターを使うパートナー</string>
   <string name="im_computer_detail_add_partner">パートナーに使わせる</string>
   <string name="im_computer_detail_check">コンピューターの状態を確認</string>
