@@ -1780,11 +1780,17 @@
   <string name="im_me_ai_service">AI service</string>
   <string name="im_me_ai_connected">Connected</string>
   <string name="im_me_ai_not_connected">Not connected</string>
+  <string name="im_me_ai_needs_attention">Needs attention</string>
   <string name="im_me_background_model">Background helper</string>
   <string name="im_me_background_model_fast">%1$s · remembers things, sorts topics and recaps them</string>
   <string name="im_me_background_model_fallback">Using the chat model to remember things. Pick a light model to also sort topics automatically</string>
   <string name="im_me_background_model_none">Unavailable, so partners won\'t remember new things</string>
   <string name="im_me_background_model_failed">Last run failed: %1$s</string>
+  <string name="im_ai_service_providers">Providers</string>
+  <string name="im_ai_service_providers_none">Not connected yet. Tap to add one</string>
+  <string name="im_ai_service_models">Models</string>
+  <string name="im_ai_service_default_model">Default model</string>
+  <string name="im_ai_service_partner_hint">A partner without its own model uses the default model. To give one partner a different model, pick it on that partner\'s profile.</string>
   <string name="im_me_appearance">Appearance &amp; characters</string>
   <string name="im_me_backup">Backup &amp; restore</string>
   <string name="im_me_notification">Notifications</string>

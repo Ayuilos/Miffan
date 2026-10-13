@@ -1768,11 +1768,17 @@
   <string name="im_me_ai_service">AI 服務</string>
   <string name="im_me_ai_connected">已連線</string>
   <string name="im_me_ai_not_connected">未連線</string>
+  <string name="im_me_ai_needs_attention">需要檢查</string>
   <string name="im_me_background_model">背景整理</string>
   <string name="im_me_background_model_fast">%1$s · 負責記事、分話題和寫摘要</string>
   <string name="im_me_background_model_fallback">暫用聊天模型記事。選一個輕量模型，還能自動分話題</string>
   <string name="im_me_background_model_none">暫不可用，夥伴不會自動記住新的事</string>
   <string name="im_me_background_model_failed">上次整理失敗：%1$s</string>
+  <string name="im_ai_service_providers">服務商</string>
+  <string name="im_ai_service_providers_none">還沒有連接，點這裡新增</string>
+  <string name="im_ai_service_models">模型</string>
+  <string name="im_ai_service_default_model">預設模型</string>
+  <string name="im_ai_service_partner_hint">夥伴沒有單獨選模型時，就用預設模型。想讓某個夥伴換模型，可以在它的資料頁裡單獨選。</string>
   <string name="im_me_appearance">外觀與角色</string>
   <string name="im_me_backup">備份與還原</string>
   <string name="im_me_notification">通知</string>
