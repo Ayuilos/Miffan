@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.db.fts
 
 import android.util.Log
+import me.ayuilos.miffan.data.ai.AgentAccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.rerere.ai.ui.UIMessage
@@ -17,6 +18,7 @@ data class MessageSearchResult(
     val title: String,
     val updateAt: Instant,
     val snippet: String,
+    val chatId: String? = null,
 )
 
 enum class MessageSearchSort(val orderBy: String) {
@@ -27,7 +29,7 @@ enum class MessageSearchSort(val orderBy: String) {
 
 private const val TAG = "MessageFtsManager"
 
-class MessageFtsManager(private val database: AppDatabase) {
+class MessageFtsManager(private val database: AppDatabase, private val imMode: () -> Boolean = { false }) {
 
     private val db get() = database.openHelper.writableDatabase
 
@@ -64,18 +66,30 @@ class MessageFtsManager(private val database: AppDatabase) {
     suspend fun search(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
+        // A null access preserves the owner UI/web global search.
+        access: AgentAccess? = null,
     ): List<MessageSearchResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<MessageSearchResult>()
         val cursor = db.query(
             """
             SELECT node_id, message_id, conversation_id, title, update_at,
-                   simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet
+                   simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet,
+                   (SELECT chat_id FROM conversationentity WHERE id = conversation_id) AS chat_id
             FROM message_fts
             WHERE text MATCH jieba_query(?)
+              AND conversation_id IN (SELECT id FROM conversationentity WHERE (? IS NULL AND chat_id IS NULL)
+                  OR (assistant_id = ? AND (
+                    (? = 1 AND chat_id IS NULL)
+                    OR (? = 1 AND chat_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM partner_chat_member member
+                      WHERE member.chat_id = conversationentity.chat_id AND member.assistant_id = ?
+                    ))
+                  )))
             ORDER BY ${sort.orderBy}
             LIMIT 50
             """.trimIndent(),
-            arrayOf(keyword)
+            arrayOf<Any?>(keyword, access?.callerId?.toString(), access?.callerId?.toString(),
+                if (access?.ownerInitiated == true) 1 else 0, if (imMode()) 1 else 0, access?.callerId?.toString())
         )
         Log.i(TAG, "search: $keyword")
         cursor.use {
@@ -88,6 +102,7 @@ class MessageFtsManager(private val database: AppDatabase) {
                         title = it.getString(3),
                         updateAt = Instant.ofEpochMilli(it.getLong(4)),
                         snippet = it.getString(5),
+                        chatId = if (it.isNull(6)) null else it.getString(6),
                     )
                 )
             }

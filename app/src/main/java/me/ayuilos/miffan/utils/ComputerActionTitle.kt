@@ -53,6 +53,7 @@ internal fun computerActionTitle(toolName: String, arguments: JsonElement): Comp
         "bring_to_front" -> ComputerActionTitle(R.string.computer_use_bring_to_front)
         "invoke_menu" -> ComputerActionTitle(R.string.computer_use_menu)
         "set_window_frame" -> ComputerActionTitle(R.string.computer_use_window_frame)
+        "clipboard_write" -> ComputerActionTitle(R.string.chat_message_tool_clipboard_write)
         "move_cursor" -> ComputerActionTitle(R.string.computer_use_move_cursor)
         "zoom" -> ComputerActionTitle(R.string.computer_use_zoom)
         "get_screen_size" -> ComputerActionTitle(R.string.computer_use_screen_size)

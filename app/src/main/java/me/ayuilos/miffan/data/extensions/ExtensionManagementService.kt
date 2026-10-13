@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.extensions
 
+import me.ayuilos.miffan.data.ai.AgentAccess
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.ConcurrentHashMap
@@ -30,13 +32,17 @@ class ExtensionManagementService(
 ) {
     private val pendingPreviews = ConcurrentHashMap<String, PendingExtensionPreview>()
 
-    suspend fun catalog(): ExtensionCatalog {
+    suspend fun catalog(access: AgentAccess? = null): ExtensionCatalog {
         val settings = settingsStore.settingsFlow.value
         val workspaces = workspaceRepository.listFlow().first()
-        return buildExtensionCatalog(settings, workspaces)
+        return buildExtensionCatalog(settings, workspaces, access)
     }
 
-    suspend fun preview(changes: List<ExtensionChange>): ExtensionChangePreview {
+    suspend fun preview(changes: List<ExtensionChange>, access: AgentAccess? = null): ExtensionChangePreview {
+        val denied = extensionAccessErrors(changes, access)
+        if (denied.isNotEmpty()) return ExtensionChangePreview(
+            valid = false, changes = emptyList(), summaries = emptyList(), errors = denied,
+        )
         pruneExpiredPreviews()
         val settings = settingsStore.settingsFlow.value
         val resources = currentExternalResources()
@@ -61,14 +67,16 @@ class ExtensionManagementService(
                 settings = settings,
                 resources = resources,
                 createdAtMillis = System.currentTimeMillis(),
+                access = access,
             )
         }
         return preview
     }
 
-    suspend fun apply(previewId: String): ExtensionApplyResult {
+    suspend fun apply(previewId: String, access: AgentAccess? = null): ExtensionApplyResult {
         pruneExpiredPreviews()
-        val pending = pendingPreviews.remove(previewId)
+        val pending = pendingPreviews[previewId]?.takeIf { it.access == access }
+            ?.let { if (pendingPreviews.remove(previewId, it)) it else null }
             ?: return ExtensionApplyResult(
                 applied = false,
                 errors = listOf("Preview not found or expired; create a new preview"),
@@ -162,11 +170,28 @@ class ExtensionManagementService(
     }
 }
 
+/** Check before validation so a denied target cannot reveal configuration through summaries/errors. */
+internal fun extensionAccessErrors(changes: List<ExtensionChange>, access: AgentAccess?): List<String> {
+    if (access == null) return emptyList() // Direct owner settings use.
+    return changes.mapNotNull { change ->
+        val target = when (change) {
+            is ExtensionChange.SetResourceBinding -> change.assistantId
+            is ExtensionChange.SetWorkspace -> change.assistantId
+            is ExtensionChange.SetLocalTool -> change.assistantId
+            is ExtensionChange.SetExternalWebSearch -> change.assistantId
+            is ExtensionChange.UpsertQuickMessage, is ExtensionChange.UpsertModeInjection -> null
+        }
+        if (target != null && !access.canChangeAssistant(target))
+            "Changes to another partner require an owner-initiated turn" else null
+    }.distinct()
+}
+
 private data class PendingExtensionPreview(
     val preview: ExtensionChangePreview,
     val settings: Settings,
     val resources: ExternalResources,
     val createdAtMillis: Long,
+    val access: AgentAccess?,
 )
 
 private class ExtensionValidationException(
@@ -464,9 +489,13 @@ private data class AppliedOperation(
 internal fun buildExtensionCatalog(
     settings: Settings,
     workspaces: List<WorkspaceEntity>,
+    access: AgentAccess? = null,
 ): ExtensionCatalog = ExtensionCatalog(
     assistants = settings.assistants.map { assistant ->
-        ExtensionAssistantCatalogEntry(
+        if (access != null && assistant.id != access.callerId) ExtensionAssistantCatalogEntry(
+            id = assistant.id.toString(),
+            name = me.ayuilos.miffan.data.partner.partnerDisplayName(assistant),
+        ) else ExtensionAssistantCatalogEntry(
             id = assistant.id.toString(),
             name = assistant.name,
             quickMessageIds = assistant.quickMessageIds.map { it.toString() }.sorted(),
@@ -552,6 +581,7 @@ private val localToolDefinitions = listOf(
     LocalToolDefinition("ask_user", LocalToolOption.AskUser),
     LocalToolDefinition("screen_time", LocalToolOption.ScreenTime),
     LocalToolDefinition("calendar", LocalToolOption.Calendar),
+    LocalToolDefinition("bug_report", LocalToolOption.BugReport),
     LocalToolDefinition(
         id = "extension_management",
         option = LocalToolOption.ExtensionManagement,

@@ -15,12 +15,14 @@ class AssistantRemover(
     private val conversationRepo: ConversationRepository,
     private val filesManager: FilesManager,
     private val workspaceRepository: WorkspaceRepository,
+    private val removePartnerChats: suspend (Uuid) -> Unit = {},
 ) {
     fun canRemove(assistantId: Uuid) = assistantId !in DEFAULT_ASSISTANTS_IDS
 
     suspend fun remove(assistant: Assistant) {
         require(canRemove(assistant.id)) { "Built-in assistant ${assistant.id} cannot be removed" }
         workspaceRepository.closeAssistantTerminals(assistant.id.toString())
+        removePartnerChats(assistant.id)
         cleanupAssistantFiles(assistant)
         settingsStore.update { settings ->
             settings.copy(assistants = settings.assistants.filter { it.id != assistant.id })

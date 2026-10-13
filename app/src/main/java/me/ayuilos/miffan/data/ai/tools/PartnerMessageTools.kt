@@ -1,0 +1,64 @@
+package me.ayuilos.miffan.data.ai.tools
+
+import kotlinx.serialization.json.*
+import me.ayuilos.miffan.data.ai.AgentAccess
+import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.PartnerMessageTool
+import me.ayuilos.miffan.data.model.PartnerPair
+import me.ayuilos.miffan.data.partner.DefaultPartnerChatService
+import me.rerere.ai.core.InputSchema
+import me.rerere.ai.core.Tool
+import me.rerere.ai.ui.UIMessagePart
+
+internal suspend fun buildPartnerMessageTools(
+    caller: Conversation,
+    access: AgentAccess,
+    settingsStore: SettingsStore,
+    service: DefaultPartnerChatService,
+): List<Tool> {
+    val groupMemberIds = service.groupMemberIds(caller)
+    return listOf(
+        Tool(
+            name = "list_contacts",
+            description = "List people you can contact using send_message, including whether the owner has authorized each partner pair. Contacts marked in_this_group must be addressed with @name in the group instead of send_message.",
+            parameters = { InputSchema.Obj(buildJsonObject { }) },
+            execute = {
+                val settings = settingsStore.settingsFlow.value
+                val contacts = buildJsonArray {
+                    if (caller.chatId != null) add(buildJsonObject {
+                        put("id", PartnerMessageTool.OWNER)
+                        put("name", settings.displaySetting.userNickname.ifBlank { "主人" })
+                        put("description", "The owner; send a note to your IM thread without generating a reply.")
+                        put("authorized", true)
+                    })
+                    settings.assistants.filter { it.id != access.callerId }.forEach { assistant ->
+                        add(buildJsonObject {
+                            put("id", assistant.id.toString())
+                            put("name", me.ayuilos.miffan.data.partner.partnerDisplayName(assistant))
+                            val tags = me.ayuilos.miffan.data.partner.partnerTagNames(assistant, settings)
+                            if (tags.isNotEmpty()) put("tags", buildJsonArray { tags.forEach { add(it) } })
+                            put("in_this_group", assistant.id in groupMemberIds)
+                            put("authorized", PartnerPair.of(access.callerId, assistant.id) in settings.partnerContactGrants)
+                        })
+                    }
+                }
+                listOf(UIMessagePart.Text(buildJsonObject { put("contacts", contacts) }.toString()))
+            },
+        ),
+        Tool(
+            name = PartnerMessageTool.NAME,
+            description = "Send a text message to a contact id from partner_mentions or list_contacts. The owner's @mention authorizes contacting that partner in the current IM thread turn; otherwise a new partner pair requires approval. In an owner private thread turn not initiated by the owner, every partner message requires approval even for an authorized pair; approval applies only to that message. Wait up to 90 seconds for a reply; pending means the reply will arrive later. Owner notes are available only inside partner chat perspectives. For partners marked in_this_group, use @name in your group reply instead.",
+            parameters = { InputSchema.Obj(buildJsonObject {
+                put(PartnerMessageTool.ARG_TO, buildJsonObject { put("type", "string"); put("description", "Contact id from partner_mentions or list_contacts") })
+                put(PartnerMessageTool.ARG_TEXT, buildJsonObject { put("type", "string"); put("description", "Text to send") })
+            }, listOf(PartnerMessageTool.ARG_TO, PartnerMessageTool.ARG_TEXT)) },
+            needsApproval = { input -> service.needsApproval(caller, access, input.arg(PartnerMessageTool.ARG_TO), groupMemberIds) },
+            execute = { input -> listOf(UIMessagePart.Text(service.send(caller, access,
+                input.arg(PartnerMessageTool.ARG_TO), input.arg(PartnerMessageTool.ARG_TEXT), groupMemberIds).toString())) },
+        ),
+    )
+}
+
+private fun JsonElement.arg(name: String): String = (this as? JsonObject)?.get(name)
+    ?.let { it as? JsonPrimitive }?.takeIf { it.isString }?.content.orEmpty()

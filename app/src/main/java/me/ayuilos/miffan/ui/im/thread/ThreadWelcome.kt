@@ -64,6 +64,7 @@ internal object ThreadWelcome {
         is TimelineItem.DateSeparator -> at
         is TimelineItem.Message -> at
         is TimelineItem.Notice -> notice.at
+        is TimelineItem.Event -> at
         is TimelineItem.Typing -> null
     }
 }

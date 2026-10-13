@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.context.LocalSettings
+import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import androidx.compose.foundation.background
@@ -71,6 +73,7 @@ fun AgentThreadPage(
     assistantId: Uuid,
     focusMessageId: String? = null,
     initialText: String? = null,
+    initialFiles: List<String> = emptyList(),
     vm: AgentThreadVM = koinViewModel { parametersOf(assistantId) },
 ) {
     LifecycleResumeEffect(vm) {
@@ -89,6 +92,8 @@ fun AgentThreadPage(
     val topics by vm.topics.collectAsStateWithLifecycle()
     val reply by vm.replyTarget.collectAsStateWithLifecycle()
     val assistantName = threadAssistantName(assistant)
+    val assistants = LocalSettings.current.assistants
+    val mentionables = remember(assistants, assistantId) { assistants.filter { it.id != assistantId } }
     val nav = LocalNavController.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -273,6 +278,7 @@ fun AgentThreadPage(
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
                 assistant = assistant)
             is TimelineItem.Typing -> ThreadTyping(assistant)
+            is TimelineItem.Event -> ThreadEventLine(item.origin.summary)
             is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
                 onView = { viewingNotice = item.notice },
                 onUndo = {
@@ -338,7 +344,9 @@ fun AgentThreadPage(
                         Row(Modifier.padding(start = 6.dp, end = 18.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             // The reply's thinking and typing play here now that bubbles carry no avatar.
-                            ThreadAvatar(assistant, headerPhase, error = generating.isEmpty() && visibleErrors.isNotEmpty(), modifier = Modifier.size(36.dp))
+                            ThreadAvatar(assistant, headerPhase, error = generating.isEmpty() && visibleErrors.isNotEmpty(), modifier = Modifier.size(36.dp),
+                                running = status != null, runningRing = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                waiting = timeline.any { it is TimelineItem.Message && it.message.parts.any { part -> part is UIMessagePart.Tool && part.isPending } })
                             Column {
                                 Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 // Fades between states and grows or shrinks the line as the status appears or clears.
@@ -391,7 +399,7 @@ fun AgentThreadPage(
                         if (result == SnackbarResult.ActionPerformed) nav.navigate(Screen.SettingSpeech(recognition = true))
                     }
                 },
-                hazeState = hazeState)
+                hazeState = hazeState, mentionables = mentionables, initialFiles = initialFiles)
         }
         // Outside the measured composer so showing it never shifts the list's padding.
         if (!atBottom || highlighted != null) GlassIconButton(hazeState, HugeIcons.ArrowDown01, stringResource(R.string.im_thread_latest),

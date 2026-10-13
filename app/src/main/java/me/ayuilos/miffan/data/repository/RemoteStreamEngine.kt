@@ -33,6 +33,9 @@ import me.rerere.workspace.RemoteWorkspaceSession
 internal data class StreamOpenResult(val session: StreamDesktopSession? = null, val fallback: RemoteStreamFallback? = null, val address: String? = null)
 
 internal class RemoteStreamEngine(private val identities: RemoteStreamIdentityStore, private val routes: RemoteStreamRoutes, private val context: Context) {
+    /** Debug instrumentation can configure an emulator codec without weakening release policy. */
+    internal var configureSessionForTest: ((StreamSession) -> Unit)? = null
+        set(value) { check(me.ayuilos.miffan.BuildConfig.DEBUG); field = value }
     private val pendingUntil = ConcurrentHashMap<String, Long>()
     fun host(ssh: RemoteWorkspaceSession, pin: String?): StreamHost = StreamHost(StreamTcpConnector { port ->
         // :stream routes every HTTP/HTTPS/RTSP TCP port through this connector.
@@ -93,6 +96,7 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
                             runCatching { source.acquireLatestImage()?.close() }
                         }, Handler(drain.looper))
                         delegate = StreamSession(host!!, app, address, config, reader.surface, context)
+                        configureSessionForTest?.invoke(delegate)
                         delegate.start(lifetime)
                         when (val state = delegate.state.first { it !is StreamState.Connecting }) {
                             StreamState.Streaming -> {

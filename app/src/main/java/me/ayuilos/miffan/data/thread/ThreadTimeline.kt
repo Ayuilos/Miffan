@@ -3,12 +3,14 @@ package me.ayuilos.miffan.data.thread
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.MessageOrigin
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.model.MessageRef
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import java.time.Instant
+import me.ayuilos.miffan.utils.stripMarkdown
 import java.time.ZoneId
 import kotlin.uuid.Uuid
 
@@ -44,6 +46,19 @@ sealed interface TimelineItem {
     /** A system line such as a self-configuration or memory change (filled by the revision history). */
     data class Notice(val notice: ThreadNotice) : TimelineItem {
         override val key: String get() = "notice-${notice.id}"
+    }
+
+    /**
+     * A USER message that did not come from the owner but from an event (see
+     * [me.ayuilos.miffan.data.model.MessageOrigin.Event]); shown as a system line, not as the owner's bubble.
+     */
+    data class Event(
+        val segmentId: Uuid,
+        val node: MessageNode,
+        val at: Instant,
+        val origin: me.ayuilos.miffan.data.model.MessageOrigin.Event,
+    ) : TimelineItem {
+        override val key: String get() = "event-${node.message.id}"
     }
 
     /** A segment is waiting for its first reply token. */
@@ -114,7 +129,7 @@ object ThreadTimeline {
             .flatMap { segment ->
                 val newest = segment.currentMessageNodes.lastOrNull()
                 segment.currentMessageNodes.mapNotNull { node ->
-                    if (node.role !in visibleRoles || !seenMessages.add(node.message.id)) return@mapNotNull null
+                    if (node.origin is MessageOrigin.Partner || node.role !in visibleRoles || !seenMessages.add(node.message.id)) return@mapNotNull null
                     // Replies are placed when they arrive, as in a messenger: a finished reply at its
                     // finishing time, a reply still being written at the bottom.
                     val at = when {
@@ -140,7 +155,7 @@ object ThreadTimeline {
                 .takeWhile { it.id != entry.node.id }
                 .lastOrNull { it.role == MessageRole.USER }
                 ?: continue
-            triggerIndex[index] = indexByNodeId[trigger.id] ?: -1
+            if (trigger.origin == null) triggerIndex[index] = indexByNodeId[trigger.id] ?: -1
         }
         val quoted = BooleanArray(entries.size)
         val spans = entries.indices
@@ -151,7 +166,8 @@ object ThreadTimeline {
         var batchEnd = -1
         fun closeBatch() {
             if (batchStart < 0) return
-            val segmentsInBatch = (batchStart..batchEnd).mapTo(HashSet()) { entries[it].segment.id }
+            val segmentsInBatch = (batchStart..batchEnd).filter { triggerIndex[it] >= 0 }
+                .mapTo(HashSet()) { entries[it].segment.id }
             if (segmentsInBatch.size > 1) {
                 for (index in batchStart..batchEnd) if (triggerIndex[index] >= 0) quoted[index] = true
             }
@@ -200,12 +216,21 @@ object ThreadTimeline {
                 entry.at.atZone(zone).toLocalDate() != last.at.atZone(zone).toLocalDate()
             if (separated) items += TimelineItem.DateSeparator(entry.at)
 
+            val event = entry.node.origin as? MessageOrigin.Event
+            if (entry.node.role == MessageRole.USER && event != null) {
+                items += TimelineItem.Event(entry.segment.id, entry.node, entry.at, event)
+                previous = entry
+                previousWasNotice = true
+                continue
+            }
+
             val grouped = !separated && !previousWasNotice && last != null &&
                 last.node.role == entry.node.role &&
                 entry.at.toEpochMilli() - last.at.toEpochMilli() <= GROUP_GAP_MILLIS
 
             val explicit = entry.node.replyTo?.let { ref ->
                 val target = byMessageId[ref.messageId] ?: return@let null
+                if (target.node.origin != null) return@let null
                 Quote(ref, target.node.message.previewText(), topicIndex.getValue(target.segment.id), explicit = true)
             }
             val automatic = if (quoted[index]) {
@@ -250,7 +275,17 @@ object ThreadTimeline {
     }
 }
 
-/** First text of a message on one line, used by quote bars and list previews. */
+/**
+ * The Chats list line for a message: its last text (a reply's conclusion follows its "let me
+ * check"), without Markdown, on one line.
+ */
+fun UIMessage.listPreviewText(): String = listPreviewText(
+    parts.filterIsInstance<UIMessagePart.Text>().lastOrNull { it.text.isNotBlank() }?.text.orEmpty()
+)
+
+fun listPreviewText(text: String): String = text.stripMarkdown().replace(Regex("\\s+"), " ").trim()
+
+/** First text of a message on one line, used by quote bars. */
 fun UIMessage.previewText(): String = parts
     .filterIsInstance<UIMessagePart.Text>()
     .joinToString(" ") { it.text }

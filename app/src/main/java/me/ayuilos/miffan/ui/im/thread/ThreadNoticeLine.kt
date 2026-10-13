@@ -46,3 +46,15 @@ internal fun ThreadNoticeLine(notice: ThreadNotice, name: String, onView: () -> 
         textAlign = TextAlign.Center,
     )
 }
+
+/** What started a turn the owner did not start, such as another partner's late reply. */
+@Composable
+internal fun ThreadEventLine(summary: String) {
+    Text(
+        summary,
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
+}

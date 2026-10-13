@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import me.ayuilos.miffan.R
+import me.rerere.workspace.RemotePlatform
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteStreamStatus
@@ -48,6 +49,9 @@ internal fun RemoteStreamSettings(
 ) {
     val resources = LocalResources.current
     val macOS = RemoteScreenPlatform.parse(host.screenPlatform) == RemoteScreenPlatform.MACOS
+    // Windows connects only through Sunshine, so the switch would change nothing there.
+    val windows = host.platform == RemotePlatform.WINDOWS.storageName
+    val enabled = enabled || windows
     var confirmEncryption by remember(host.id) { mutableStateOf(false) }
     // A result from an earlier host identity must not offer actions on the edited host.
     val current = state.takeIf { it.connectionRevision == host.connectionRevision }
@@ -59,9 +63,10 @@ internal fun RemoteStreamSettings(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.workspace_screen_stream), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Switch(checked = enabled, onCheckedChange = onEnabledChange, enabled = !blocked)
+            if (!windows) Switch(checked = enabled, onCheckedChange = onEnabledChange, enabled = !blocked)
         }
-        Text(stringResource(R.string.workspace_screen_stream_help), style = MaterialTheme.typography.bodySmall,
+        Text(stringResource(if (windows) R.string.workspace_screen_stream_windows_help else R.string.workspace_screen_stream_help),
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!enabled) return@Column
         if (state.phase in setOf(RemoteStreamSetupPhase.CHECKING, RemoteStreamSetupPhase.ENFORCING, RemoteStreamSetupPhase.STARTING)) {

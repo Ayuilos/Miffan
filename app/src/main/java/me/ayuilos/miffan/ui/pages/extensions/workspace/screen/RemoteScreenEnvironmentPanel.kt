@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
+import me.rerere.workspace.RemotePlatform
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
@@ -74,7 +75,22 @@ internal fun RemoteScreenEnvironmentPanel(
             RemoteScreenLog(it.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed), initiallyExpanded = true)
         }
         current?.error?.let { Text(remoteScreenSetupError(resources, it), color = MaterialTheme.colorScheme.error) }
-        if (probe != null) {
+        if (probe != null && probe.os == "windows") {
+            // Windows shows its picture through Sunshine (the card above), so there is no VNC/RDP row.
+            EnvironmentRow(stringResource(R.string.workspace_screen_system), EnvironmentStatus.OK, "Windows · ${probe.arch}")
+            val locked = probe.session.lockState == "locked"
+            EnvironmentRow(stringResource(R.string.workspace_screen_session),
+                if (probe.session.present && !locked) EnvironmentStatus.OK else EnvironmentStatus.ACTION_NEEDED,
+                when {
+                    !probe.session.present -> resources.getString(R.string.workspace_screen_no_session)
+                    locked -> resources.getString(R.string.workspace_screen_session_locked)
+                    else -> resources.getString(R.string.workspace_screen_session_signed_in)
+                })
+            EnvironmentRow(stringResource(R.string.workspace_screen_clipboard), EnvironmentStatus.OK,
+                // The helper starts the bridge on demand whenever cua-driver is usable.
+                resources.getString(if (probe.cua.ok) R.string.workspace_screen_clipboard_windows_bridge
+                    else R.string.workspace_screen_clipboard_windows_task))
+        } else if (probe != null) {
             EnvironmentRow(stringResource(R.string.workspace_screen_system),
                 if (probe.os in setOf("macos", "linux")) EnvironmentStatus.OK else EnvironmentStatus.UNSUPPORTED,
                 "${when (probe.os) { "macos" -> "macOS"; "linux" -> "Linux"; else -> probe.os }} · ${probe.arch}")
@@ -145,6 +161,11 @@ internal fun RemoteScreenEnvironmentPanel(
                     Text(stringResource(if (cuaPath == null) R.string.workspace_screen_install else R.string.workspace_screen_upgrade))
                 }
             }
+            // Never lowered automatically: the user decides on the computer, as with every privilege change.
+            if (cua.permissionReviewNeeded) {
+                EnvironmentRow(stringResource(R.string.workspace_screen_cua_autostart), EnvironmentStatus.ACTION_NEEDED,
+                    resources.getString(R.string.workspace_screen_cua_elevated))
+            }
         }
     }
     pendingInstall?.let { request ->
@@ -156,7 +177,7 @@ internal fun RemoteScreenEnvironmentPanel(
                 Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.workspace_screen_install_disclosure))
-                    RemoteScreenCopyCommand(host.name, remoteCuaDriverCommand(request.upgradePath))
+                    RemoteScreenCopyCommand(host.name, remoteCuaDriverCommand(request.upgradePath, RemotePlatform.parse(host.platform)))
                 }
             },
             confirmButton = {

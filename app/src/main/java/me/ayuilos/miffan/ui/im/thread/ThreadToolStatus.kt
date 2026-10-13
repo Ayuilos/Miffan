@@ -12,12 +12,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.data.revision.RevisionService
+import org.koin.compose.koinInject
+import me.ayuilos.miffan.ui.im.partnerName
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
+import androidx.compose.ui.text.font.FontWeight
 import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
 import me.ayuilos.miffan.ui.components.message.ChatMessageToolStep
 import me.ayuilos.miffan.ui.components.message.ComputerToolUIRenderer
@@ -31,11 +38,13 @@ import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 
 internal const val ASK_USER = "ask_user"
 internal const val REQUEST_WEB_SEARCH = "request_web_search"
+internal const val UPDATE_MY_PROFILE = "update_my_profile"
 
 /**
  * What a streaming reply is doing right now, or null once its own text (or a prompt card) is the feedback.
@@ -48,7 +57,8 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): I
         when (part) {
             is UIMessagePart.Text -> if (part.text.isNotBlank()) return null
             is UIMessagePart.Reasoning -> return R.string.im_thread_status_thinking
-            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending) null else toolStatus(part.toolName)
+            // A partner message has its own line in the reply, which already says it is asking.
+            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending || part.isPartnerMessage()) null else toolStatus(part.toolName)
             is UIMessagePart.ServerTool -> return toolStatus(part.toolName)
             is UIMessagePart.Image, is UIMessagePart.Audio, is UIMessagePart.Video -> return null
             else -> Unit
@@ -66,7 +76,7 @@ private fun toolStatus(name: String): Int =
  */
 internal fun UIMessagePart.Tool.isThreadPrompt(): Boolean =
     approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered) ||
-        isSettledPermission()
+        isSettledPermission() || isPartnerMessage()
 
 /** A permission card the user (or stopping the reply) already settled; it shrinks to a one-line record in place. */
 internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
@@ -77,12 +87,28 @@ internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
 }
 
 @Composable
-internal fun ThreadToolPrompt(tool: UIMessagePart.Tool, onApproval: (String, Boolean) -> Unit, onAnswer: (String, String) -> Unit) {
+internal fun ThreadToolPrompt(
+    tool: UIMessagePart.Tool,
+    onApproval: (String, Boolean) -> Unit,
+    onAnswer: (String, String) -> Unit,
+    assistant: Assistant? = null,
+) {
     when {
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER ->
             ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)), onAnswer)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == UPDATE_MY_PROFILE ->
+            ThreadProfileCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == CREATE_PARTNER ->
+            ThreadCreatePartnerCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && (tool.toolName == CREATE_GROUP_CHAT || tool.toolName == INVITE_TO_GROUP_CHAT) ->
+            ThreadGroupChatCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ORGANIZE_CHAT_LIST ->
+            ThreadOrganizeCard(tool, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == DRAFT_BUG_REPORT ->
+            ThreadBugReportCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
+        tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)
         tool.isSettledPermission() -> ThreadPermissionRecord(tool)
     }
 }
@@ -144,6 +170,7 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
                 Text(stringResource(R.string.im_p5_permission_info), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)))
             }
+            RelayApprovalNotice(tool)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) { Text(stringResource(R.string.im_p5_allow)) }
                 OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
@@ -152,15 +179,62 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
     }
 }
 
-private fun webSearchReason(tool: UIMessagePart.Tool): String? =
-    (tool.inputAsJson() as? JsonObject)?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+private fun webSearchReason(tool: UIMessagePart.Tool): String? = toolArg(tool, "reason")
+
+/** Set by the app when a partner's message, not the owner, started this turn in the owner's private chat. */
+internal fun UIMessagePart.Tool.isRelayApproval(): Boolean =
+    (metadata?.get("approval_reason") as? JsonPrimitive)?.contentOrNull == "owner_thread_non_owner_turn"
+
+/** Why a step that is usually free asks first: another partner's message started this turn. */
+@Composable
+internal fun RelayApprovalNotice(tool: UIMessagePart.Tool) {
+    if (!tool.isRelayApproval()) return
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+        Text(stringResource(R.string.im_relay_approval_notice), Modifier.fillMaxWidth().padding(12.dp),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+    }
+}
+
+/** The partner asks to change its own profile: each changed field, as it is now and as it would become. */
+@Composable
+private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) {
+    val newName = toolArg(tool, "name")?.trim()
+    val preset = toolArg(tool, "avatar_preset")
+    val revisions: RevisionService = koinInject()
+    val previous by produceState<Avatar?>(null, assistant?.id, preset) {
+        value = if (preset == "previous" && assistant != null) runCatching { revisions.previousAvatar(assistant.id) }.getOrNull() else null
+    }
+    val avatarChange = preset != null || toolArg(tool, "avatar_emoji") != null
+    val newAvatar = requestedAvatar(tool, assistant?.avatar, previous)
+    val currentName = assistant?.let { partnerName(it) }
+    AgentChangeCard(tool, onApproval, footer = stringResource(R.string.im_profile_undo)) {
+        if (newName != null) ChangeField(stringResource(R.string.im_profile_name)) {
+            currentName?.let {
+                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+                ChangeArrow()
+            }
+            Text(newName, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false))
+        }
+        if (avatarChange) ChangeField(stringResource(R.string.im_profile_avatar)) {
+            assistant?.let {
+                AssistantAvatar(currentName.orEmpty(), it.avatar, Modifier.size(40.dp))
+                ChangeArrow()
+            }
+            if (newAvatar != null) AssistantAvatar(newName ?: currentName.orEmpty(), newAvatar, Modifier.size(40.dp))
+            else Text(stringResource(R.string.im_profile_avatar_previous), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        toolArg(tool, "system_prompt")?.let { ChangeLongText(stringResource(R.string.im_profile_prompt), it) }
+    }
+}
 
 /**
  * What a settled permission card leaves behind: what was asked and how it was answered,
  * in the same wording as the approval history. Tapping it shows the exact request.
  */
 @Composable
-private fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
+internal fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
     val record = tool.approvalRecord ?: return
     val decision = record.decision ?: return
     val at = record.decidedAt ?: return
@@ -173,6 +247,8 @@ private fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
     val reason = (tool.approvalState as? ToolApprovalState.Denied)?.reason?.takeIf { declined && it.isNotBlank() }
     val title = when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
+        tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
+        tool.toolName == DRAFT_BUG_REPORT -> toolArg(tool, "title")?.let { "bug: $it" } ?: stringResource(R.string.im_bug_report_title)
         computer -> computerActionText(tool)
         else -> renderer.title(context)
     }

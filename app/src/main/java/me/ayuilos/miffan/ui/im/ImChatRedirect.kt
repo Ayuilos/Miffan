@@ -11,6 +11,7 @@ import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.utils.base64Decode
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
@@ -29,7 +30,9 @@ fun ImChatRedirect(key: Screen.Chat, conversations: ConversationRepository = koi
             conversationId?.let { conversations.getConversationById(it) }
                 ?.messageNodes?.firstOrNull { it.id.toString() == nodeId }?.message?.id?.toString()
         }
-        val thread = Screen.Thread(assistantId.toString(), focusMessageId = focus, text = key.text)
+        // Screen.Chat carries its draft Base64-encoded (see ChatPage); the thread takes plain text.
+        val text = key.text?.let { runCatching { it.base64Decode() }.getOrNull() }?.takeIf { it.isNotEmpty() }
+        val thread = Screen.Thread(assistantId.toString(), focusMessageId = focus, text = text, files = key.files)
         // Replace this entry only: switching shells may have reset the stack during the lookup.
         navigator.replace(key, thread, root = Screen.Home)
     }

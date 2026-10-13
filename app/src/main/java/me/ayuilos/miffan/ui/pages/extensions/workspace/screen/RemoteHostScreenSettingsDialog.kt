@@ -48,6 +48,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
+import me.rerere.workspace.RemotePlatform
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
@@ -64,6 +65,7 @@ fun RemoteHostScreenSettingsDialog(
     onSaved: () -> Unit = {},
 ) {
     val resources = LocalResources.current
+    val windows = host.platform == RemotePlatform.WINDOWS.storageName
     var loaded by remember(host.id) { mutableStateOf(false) }
     var configBusy by remember(host.id) { mutableStateOf(false) }
     val environments by vm.screenEnvironments.collectAsStateWithLifecycle()
@@ -195,7 +197,8 @@ fun RemoteHostScreenSettingsDialog(
                             Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !busy)
                         }
                     }
-                    SettingsCard {
+                    // Windows has no VNC or RDP path: Sunshine is its only connection, with its own pairing.
+                    if (!windows) SettingsCard {
                         Text(stringResource(R.string.workspace_screen_endpoint), style = MaterialTheme.typography.titleSmall)
                         Column(Modifier.selectableGroup()) {
                             ScreenSettingOption(mode == ScreenConnectionMode.AUTOMATIC, R.string.workspace_screen_automatic, !busy) { mode = ScreenConnectionMode.AUTOMATIC }
@@ -224,7 +227,7 @@ fun RemoteHostScreenSettingsDialog(
                     SettingsCard {
                         RemoteStreamSettings(host, streamEnabled, { streamEnabled = it; error = null }, streamSetup, vm, blocked = configBusy)
                     }
-                    SettingsCard {
+                    if (!windows) SettingsCard {
                         Text(stringResource(R.string.workspace_screen_auth), style = MaterialTheme.typography.titleSmall)
                         Column(Modifier.selectableGroup()) {
                             RemoteScreenAuth.entries.forEach { option ->

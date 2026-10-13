@@ -54,6 +54,7 @@ import me.ayuilos.miffan.data.model.initialInterfaceMode
 import me.ayuilos.miffan.data.model.Lorebook
 import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
+import me.ayuilos.miffan.data.model.ChatOrganization
 import me.ayuilos.miffan.data.model.Tag
 import me.ayuilos.miffan.data.model.WhaleThemeDiscovery
 import me.ayuilos.miffan.data.revision.AssistantRevisionRecorder
@@ -171,6 +172,8 @@ class SettingsStore(
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
         val ASSISTANTS = stringPreferencesKey("assistants")
         val ASSISTANT_TAGS = stringPreferencesKey("assistant_tags")
+        val PARTNER_CONTACT_GRANTS = stringPreferencesKey("partner_contact_grants")
+        val CHAT_ORGANIZATION = stringPreferencesKey("chat_organization")
         val MIFFAN_HELP_ENABLED = booleanPreferencesKey("miffan_help_enabled")
 
         // 搜索
@@ -267,6 +270,8 @@ class SettingsStore(
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
+                chatOrganization = decodeChatOrganization(preferences[CHAT_ORGANIZATION]),
+                partnerContactGrants = preferences[PARTNER_CONTACT_GRANTS]?.let { JsonInstant.decodeFromString(it) } ?: emptyList(),
                 miffanHelpEnabled = preferences[MIFFAN_HELP_ENABLED] != false,
                 providers = JsonInstant
                     .decodeFromString<List<ProviderSetting>>(preferences[PROVIDERS] ?: "[]")
@@ -505,6 +510,8 @@ class SettingsStore(
             preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
             preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
             preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+            preferences[CHAT_ORGANIZATION] = JsonInstant.encodeToString(settings.chatOrganization)
+            preferences[PARTNER_CONTACT_GRANTS] = JsonInstant.encodeToString(settings.partnerContactGrants)
             preferences[MIFFAN_HELP_ENABLED] = settings.miffanHelpEnabled
 
             preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
@@ -695,6 +702,10 @@ data class Settings(
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,
     val assistantTags: List<Tag> = emptyList(),
+    /** Easy-mode Chats list pins and groups. */
+    val chatOrganization: ChatOrganization = ChatOrganization(),
+    /** Partners the owner allowed to contact each other. */
+    val partnerContactGrants: List<me.ayuilos.miffan.data.model.PartnerPair> = emptyList(),
     val miffanHelpEnabled: Boolean = true,
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),

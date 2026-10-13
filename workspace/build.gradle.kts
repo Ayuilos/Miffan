@@ -5,6 +5,10 @@ plugins {
 
 android {
     namespace = "me.rerere.workspace"
+    testOptions.unitTests.all {
+        it.systemProperty("miffan.p7a.testProperties", providers.gradleProperty("p7aTestProperties")
+            .getOrElse(rootProject.file(".deps/windows-spike/p7-test.properties").absolutePath))
+    }
 
     // PRoot is launched by filesystem path rather than System.loadLibrary(). This also makes
     // the standalone instrumentation APK mirror the main app's extracted-JNI packaging.

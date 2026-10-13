@@ -3,6 +3,7 @@ package me.ayuilos.miffan.ui.im.computer
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -279,7 +281,10 @@ private fun ComputerVerifyStep(vm: ComputerSetupVM, state: ComputerSetupState, h
                 Text(key.sha256Fingerprint, style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
             }
         }
-        SetupDisclosure(stringResource(R.string.im_computer_fingerprint_command)) {
+        if (state.expectWindows) SetupDisclosure(stringResource(R.string.im_computer_fingerprint_command)) {
+            Text(stringResource(R.string.im_computer_fingerprint_windows_help), style = MaterialTheme.typography.bodyMedium)
+            RemoteScreenCopyCommand("", WINDOWS_FINGERPRINT_COMMAND)
+        } else SetupDisclosure(stringResource(R.string.im_computer_fingerprint_command)) {
             RemoteScreenCopyCommand("", "for f in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf \"\$f\"; done")
         }
     }
@@ -395,12 +400,12 @@ private fun SetupComputerRow(host: RemoteHostEntity?) {
 internal fun SetupDisclosure(title: String, initiallyExpanded: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
     Column {
-        Surface(onClick = { expanded = !expanded }, color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.medium) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                Icon(if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01, null, Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.primary)
-            }
+        // No background of its own: it sits on the page and inside cards alike.
+        Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { expanded = !expanded }.padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Icon(if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01, null, Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary)
         }
         AnimatedVisibility(expanded) { Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
     }

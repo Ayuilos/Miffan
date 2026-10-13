@@ -19,6 +19,8 @@ import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.utils.generateUnifiedDiff
+import me.rerere.workspace.RemotePlatform
+import me.rerere.workspace.WindowsRemotePath
 import me.rerere.workspace.GuestPath
 import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceShellStatus
@@ -84,7 +86,7 @@ suspend fun createWorkspaceTools(
     val snapshot = workspaceRepository.currentWorkspaceToolTarget(assistantId, workspaceId, scopeId)
         ?.copy(conversationId = conversationId, conversationCwd = cwd) ?: return emptyList()
     val remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" }
-    val target = WorkspaceToolTarget(workspace, remoteHostLabel, snapshot)
+    val target = WorkspaceToolTarget(workspace, remoteHostLabel, snapshot, remoteHost?.platform == RemotePlatform.WINDOWS.storageName)
     fun needsApproval(name: String) = computerUse?.let { computerWorkspaceApproval(name, it) } ?: if (name == WORKSPACE_SHELL_TOOL_NAME) {
         shellApprovalRequired || shellApprovalTarget?.sameTarget(snapshot) != true
     } else {
@@ -105,7 +107,7 @@ suspend fun createWorkspaceTools(
                 else if (computerUse != null) ToolDecisionVia.NO_ASK_SETTING
                 else shellApprovalVia ?: ToolDecisionVia.STANDING_ALWAYS_ALLOW
             }))
-            if (workspace.isRemote && conversationId != null) add(createTerminalTool(snapshot, shellCwd))
+            if (workspace.isRemote && conversationId != null && !target.windows) add(createTerminalTool(snapshot, shellCwd))
         }
     }
 }
@@ -144,8 +146,12 @@ private data class WorkspaceToolTarget(
     val workspace: WorkspaceEntity,
     val remoteHostLabel: String?,
     val snapshot: WorkspaceToolTargetSnapshot,
+    val windows: Boolean = false,
 ) {
     val root: String get() = workspace.remotePath.orEmpty()
+    val commandRoot: String get() = if (windows) WindowsRemotePath.toLocal(root) else root
+    fun commandCwd(cwd: String?): String = if (windows) WindowsRemotePath.toLocal(
+        WindowsRemotePath.workingDirectory(root, cwd.orEmpty())) else cwd ?: root
     val fileDescription: String get() = if (workspace.isRemote) {
         "Remote SSH files on ${remoteHostLabel ?: "the configured host"}. /workspace maps to the remote directory $root; file paths must be absolute."
     } else {
@@ -386,7 +392,12 @@ private fun createShellTool(
     name = WORKSPACE_SHELL_TOOL_NAME,
     workspaceTarget = target.snapshot,
     description = buildString {
-        if (target.workspace.isRemote) {
+        if (target.windows) {
+            append("Run one Windows PowerShell 5.1 script over SSH on ${target.remoteHostLabel}, starting in '${target.commandRoot}'. ")
+            append("Each command starts a new process; cwd, variables and environment changes do not persist. stdout and stderr are separate. ")
+            append("Use PowerShell syntax, e.g. Get-ChildItem -LiteralPath '.', Get-Content -LiteralPath '中文 file.txt', and Windows paths such as '${target.commandRoot}'. ")
+            append("Interactive terminals are not yet supported. Do not request interactive prompts or start background interactive commands. ")
+        } else if (target.workspace.isRemote) {
             append("Run a command over SSH on ${target.remoteHostLabel ?: "the configured remote host"}, starting in remote directory '${target.root}'. ")
             append("Commands share this chat's persistent POSIX shell and PTY with workspace_terminal. Omit cwd to preserve the current directory; exports and shell state persist. A new session starts at the configured directory. ")
             append("For sudo authentication, request sudo -v through workspace_terminal, then use sudo -n here. If credentials expire, request user authentication again. Never send passwords. Do not start nested interactive shells or background interactive commands. ")
@@ -398,7 +409,7 @@ private fun createShellTool(
             append("Use cwd for a path relative to the workspace files root. ")
         }
         if (!defaultCwd.isNullOrBlank()) {
-            append("Defaults to '$defaultCwd'. ")
+            append("Defaults to '${target.commandCwd(defaultCwd)}'. ")
         }
         if (target.workspace.isRemote) {
             append("Requires a trusted SSH host key and a previously successful connection test. Commands use the remote account's permissions. Timeout or cancellation does not guarantee a started remote process stopped; check state before retrying mutating commands.")
@@ -417,7 +428,9 @@ private fun createShellTool(
                     put("type", "string")
                     put(
                         "description",
-                        if (target.workspace.isRemote) {
+                        if (target.windows) {
+                            "Optional directory relative to '${target.commandRoot}', a virtual /workspace path, or an absolute Windows path inside the workspace. Each process starts at '${target.commandCwd(defaultCwd)}' when omitted."
+                        } else if (target.workspace.isRemote) {
                             "Optional remote working directory relative to '${target.root}', a virtual /workspace path, or a real absolute path inside that directory. Omit or leave empty to preserve the current directory. New sessions start at '${defaultCwd ?: target.root}'."
                         } else if (!defaultCwd.isNullOrBlank()) {
                             "Working directory relative to the workspace files root. Defaults to '$defaultCwd'."
@@ -447,7 +460,7 @@ private fun createShellTool(
             ?.coerceIn(1L, SHELL_TIMEOUT_MAX_SECONDS)
             ?.times(1_000L)
             ?: WorkspaceManager.DEFAULT_COMMAND_TIMEOUT_MS
-        val persistent = if (target.workspace.isRemote && target.snapshot.conversationId != null) {
+        val persistent = if (target.workspace.isRemote && !target.windows && target.snapshot.conversationId != null) {
             workspaceRepository.executeInConversationTerminal(
                 target = target.snapshot, command = command,
                 cwd = params.string("cwd")?.takeIf { it.isNotBlank() },
@@ -466,6 +479,13 @@ private fun createShellTool(
                         put("sessionReused", session.reused)
                         put("sessionOpen", session.sessionOpen)
                         put("outputType", "merged_pty_output")
+                    }
+                    if (target.windows) {
+                        put("platform", "windows")
+                        put("shell", "Windows PowerShell 5.1")
+                        put("statePersists", false)
+                        put("cwd", target.commandCwd(cwd))
+                        put("outputType", "separate_stdout_stderr")
                     }
                     put("exitCode", result.exitCode)
                     put("stdout", result.stdout)

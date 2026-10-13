@@ -45,6 +45,11 @@ data class Conversation(
     val threadSummary: String = "",
     /** Epoch millis when the IM thread closed this segment to new topics; 0 while open. */
     val threadClosedAt: Long = 0,
+    /**
+     * Set on a partner's private perspective segment of a multi-partner chat
+     * ([PartnerChat]); such segments never appear in the partner's IM thread.
+     */
+    val chatId: Uuid? = null,
     @Transient
     val newConversation: Boolean = false
 ) {
@@ -91,6 +96,15 @@ data class Conversation(
     val currentMessages: List<UIMessage>
         get() = currentMessageNodes.map(MessageNode::message)
 
+    /**
+     * The owner message that started the current turn: the last USER message on the current
+     * path, or null when that message came from another partner or an event. Only this message
+     * may authorize self-configuration, permission grants and memory about the owner.
+     */
+    fun ownerTrigger(): MessageRef? = currentMessageNodes.lastOrNull { it.role == MessageRole.USER }
+        ?.takeIf { it.origin == null }
+        ?.let { MessageRef(id, it.message.id) }
+
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? = nodesByMessageId[message.id]
 
     fun getMessageNodeByMessageId(messageId: Uuid): MessageNode? = nodesByMessageId[messageId]
@@ -128,11 +142,12 @@ data class Conversation(
             .filter { it.isNotEmpty() && it.first().parentId == null }
             .toList()
 
-    fun appendMessage(message: UIMessage, replyTo: MessageRef? = null): Conversation = addNodeAndSelect(
+    fun appendMessage(message: UIMessage, replyTo: MessageRef? = null, origin: MessageOrigin? = null): Conversation = addNodeAndSelect(
         MessageNode(
             message = message,
             parentId = currentMessageNodes.lastOrNull()?.id,
             replyTo = replyTo,
+            origin = origin,
         )
     )
 
@@ -274,6 +289,8 @@ data class MessageNode(
     val selectedChildId: Uuid? = null,
     /** The message the user explicitly replied to in the IM timeline. */
     val replyTo: MessageRef? = null,
+    /** Who wrote a USER message when it was not the owner; null means the owner. */
+    val origin: MessageOrigin? = null,
     @Transient
     val isFavorite: Boolean = false,
     @Transient

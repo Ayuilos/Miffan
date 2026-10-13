@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.data.repository
 
+import me.ayuilos.miffan.data.ai.AgentAccess
+
 import android.database.sqlite.SQLiteBlobTooBigException
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -9,7 +11,6 @@ import androidx.paging.map
 import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.rerere.ai.ui.UIMessage
 import me.ayuilos.miffan.data.db.AppDatabase
@@ -43,10 +44,11 @@ class ConversationRepository(
         private const val INITIAL_LOAD_SIZE = 40
     }
 
-    suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10): List<Conversation> {
+    suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10, newestFirst: Boolean = false): List<Conversation> {
         return conversationDAO.getRecentConversationsOfAssistant(
             assistantId = assistantId.toString(),
-            limit = limit
+            limit = limit,
+            newestFirst = newestFirst,
         ).map { entity ->
             val nodes = loadMessageNodes(entity.id)
             conversationEntityToConversation(entity, nodes)
@@ -67,6 +69,20 @@ class ConversationRepository(
     suspend fun getRecentMessages(conversationId: Uuid, limit: Int): List<UIMessage> =
         messageNodeDAO.getRecentMessages(conversationId.toString(), limit).mapNotNull {
             runCatching { JsonInstant.decodeFromString<UIMessage>(it) }.getOrNull()
+        }
+
+    /** Newest nodes, including source metadata for thread previews. */
+    suspend fun getRecentMessageNodes(conversationId: Uuid, limit: Int): List<MessageNode> =
+        messageNodeDAO.getRecentNodes(conversationId.toString(), limit).mapNotNull { entity ->
+            runCatching {
+                MessageNode(
+                    id = Uuid.parse(entity.id),
+                    message = JsonInstant.decodeFromString<UIMessage>(entity.message),
+                    origin = entity.origin.ifEmpty { null }?.let {
+                        JsonInstant.decodeFromString<me.ayuilos.miffan.data.model.MessageOrigin>(it)
+                    },
+                )
+            }.getOrNull()
         }
 
     /** The assistant a conversation belongs to, without loading its messages. */
@@ -317,8 +333,10 @@ class ConversationRepository(
         return conversationDAO.existsById(uuid.toString())
     }
 
-    suspend fun countConversations(): Int {
-        return conversationDAO.countAll()
+    suspend fun isPartnerPerspective(uuid: Uuid): Boolean = conversationDAO.getChatIdOf(uuid.toString()) != null
+
+    suspend fun countConversations(excludePerspectives: Boolean = false): Int {
+        return if (excludePerspectives) conversationDAO.countVisible() else conversationDAO.countAll()
     }
 
     suspend fun insertConversation(conversation: Conversation) {
@@ -361,7 +379,8 @@ class ConversationRepository(
     suspend fun searchMessages(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
-    ) = messageFtsManager.search(keyword, sort)
+        access: AgentAccess? = null,
+    ) = messageFtsManager.search(keyword, sort, access)
 
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
         messageFtsManager.deleteAll()
@@ -377,8 +396,8 @@ class ConversationRepository(
     }
 
     suspend fun deleteConversationOfAssistant(assistantId: Uuid) {
-        getConversationsOfAssistant(assistantId).first().forEach { conversation ->
-            deleteConversation(conversation)
+        conversationDAO.getAllConversationsOfAssistant(assistantId.toString()).forEach { entity ->
+            deleteConversation(conversationEntityToConversation(entity, emptyList()))
         }
     }
 
@@ -401,6 +420,7 @@ class ConversationRepository(
             selectedRootId = conversation.selectedRootId?.toString() ?: "",
             threadSummary = conversation.threadSummary,
             threadClosedAt = conversation.threadClosedAt,
+            chatId = conversation.chatId?.toString(),
         )
     }
 
@@ -425,6 +445,7 @@ class ConversationRepository(
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
             threadSummary = conversationEntity.threadSummary,
             threadClosedAt = conversationEntity.threadClosedAt,
+            chatId = conversationEntity.chatId?.let(Uuid::parse),
         )
     }
 
@@ -465,6 +486,7 @@ class ConversationRepository(
             updateAt = Instant.ofEpochMilli(entity.updateAt),
             messageNodes = emptyList(),
             folderId = entity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
+            chatId = entity.chatId?.let(Uuid::parse),
         )
     }
 
@@ -504,6 +526,7 @@ class ConversationRepository(
                             parentId = entity.parentId.ifEmpty { null }?.let(Uuid::parse),
                             selectedChildId = entity.selectedChildId.ifEmpty { null }?.let(Uuid::parse),
                             replyTo = entity.replyTo.ifEmpty { null }?.let { JsonInstant.decodeFromString<MessageRef>(it) },
+                            origin = entity.origin.ifEmpty { null }?.let { JsonInstant.decodeFromString<me.ayuilos.miffan.data.model.MessageOrigin>(it) },
                             isFavorite = favoriteNodeIds.contains(nodeId),
                             revision = entity.revision,
                         )
@@ -535,6 +558,7 @@ class ConversationRepository(
                 message = JsonInstant.encodeToString(node.message),
                 revision = node.revision,
                 replyTo = node.replyTo?.let { JsonInstant.encodeToString(it) } ?: "",
+                origin = node.origin?.let { JsonInstant.encodeToString(it) } ?: "",
             )
         }
         if (entities.isNotEmpty()) {
@@ -554,6 +578,7 @@ data class LightConversationEntity(
     val createAt: Long,
     val updateAt: Long,
     val folderId: String = "",
+    val chatId: String? = null,
 )
 
 data class ConversationPageResult(

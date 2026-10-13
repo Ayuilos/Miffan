@@ -9,6 +9,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.AssistantMemory
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
@@ -38,6 +39,17 @@ private val memorySignal = Regex(
 )
 
 internal fun hasMemorySignal(text: String): Boolean = memorySignal.containsMatchIn(text)
+
+/** Only owner turns may contribute facts or advance the automatic extraction interval. */
+internal fun memoryExtractionWindow(conversation: Conversation): List<UIMessage>? {
+    if (conversation.ownerTrigger() == null) return null
+    var ownerTurn = false
+    val messages = conversation.currentMessageNodes.filter { node ->
+        if (node.role == MessageRole.USER) ownerTurn = node.origin == null
+        ownerTurn
+    }.map { it.message }
+    return memoryExtractionWindow(messages)
+}
 
 /** The turns to review, or null when this reply should not trigger an extraction. */
 internal fun memoryExtractionWindow(messages: List<UIMessage>): List<UIMessage>? {

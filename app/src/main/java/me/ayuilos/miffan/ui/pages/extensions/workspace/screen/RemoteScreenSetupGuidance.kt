@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import me.rerere.workspace.RemoteConnectException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.res.Resources
@@ -59,6 +60,14 @@ internal fun remoteScreenSetupError(resources: Resources, error: Throwable): Str
         RemoteScreenProblem.RDP_KEYRING_LOCKED -> resources.getString(R.string.workspace_screen_rdp_keyring_locked)
         RemoteScreenProblem.RDP_CREDENTIAL_SETUP_UNAVAILABLE -> resources.getString(R.string.workspace_screen_rdp_credentials_unavailable)
         RemoteScreenProblem.RDP_CERTIFICATE_CHANGED -> resources.getString(R.string.workspace_screen_rdp_certificate_changed)
+        RemoteScreenProblem.WINDOWS_NOT_SUPPORTED -> resources.getString(R.string.workspace_screen_windows_unsupported)
+        RemoteScreenProblem.FIREWALL_REVIEW_NEEDED -> resources.getString(R.string.workspace_screen_firewall_needed)
+        RemoteScreenProblem.FIREWALL_CHECK_FAILED -> resources.getString(R.string.workspace_screen_firewall_check_failed)
+        RemoteScreenProblem.STREAM_UNAVAILABLE -> (error as RemoteScreenUnavailableException).streamFailure?.reason.let { reason ->
+            val text = resources.getString(R.string.workspace_screen_windows_stream_failed,
+                streamFallbackReason(resources, reason ?: RemoteStreamFallbackReason.OTHER))
+            if (reason == RemoteStreamFallbackReason.UDP_UNREACHABLE) text + "\n" + resources.getString(R.string.workspace_screen_windows_udp_hint) else text
+        }
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
 
@@ -85,13 +94,26 @@ internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFall
 internal fun isClosedScreenPort(error: Throwable): Boolean =
     generateSequence(error) { it.cause }.any { it is JSchException && it.message?.contains("channel is not opened", ignoreCase = true) == true }
 
+/** Tailscale's address ranges (100.64.0.0/10, fd7a:115c:a1e0::/48) and MagicDNS names on ts.net. */
+internal fun isTailnetAddress(host: String): Boolean {
+    val name = host.trim().removeSurrounding("[", "]").lowercase()
+    if (name.endsWith(".ts.net")) return true
+    if (name.startsWith("fd7a:115c:a1e0:")) return true
+    val octets = name.split('.').map { it.toIntOrNull() ?: return false }
+    return octets.size == 4 && octets.all { it in 0..255 } && octets[0] == 100 && octets[1] in 64..127
+}
+
 /** SSH failures in words the user can act on, instead of the transport's raw message. */
 internal fun remoteSshError(resources: Resources, error: Throwable): String? {
     val chain = generateSequence(error) { it.cause }.toList()
     val ssh = chain.firstOrNull { it is JSchException }?.message.orEmpty()
+    val tailnet = chain.firstNotNullOfOrNull { (it as? RemoteConnectException)?.host }?.let(::isTailnetAddress) == true
     return when {
         ssh.contains("auth", ignoreCase = true) -> resources.getString(R.string.workspace_screen_ssh_auth)
         isClosedScreenPort(error) -> resources.getString(R.string.workspace_screen_port_closed)
+        // Over Tailscale a silent drop is usually Tailscale being off or the tailnet's access rules.
+        tailnet && (chain.any { it is SocketTimeoutException || it is NoRouteToHostException } || ssh.contains("timeout", ignoreCase = true)) ->
+            resources.getString(R.string.workspace_screen_ssh_tailnet_unreachable)
         chain.any { it is SocketTimeoutException } || ssh.contains("timeout", ignoreCase = true) ->
             resources.getString(R.string.workspace_screen_ssh_timeout)
         chain.any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException } ||

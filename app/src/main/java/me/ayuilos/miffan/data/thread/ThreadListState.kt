@@ -12,9 +12,10 @@ import kotlin.uuid.Uuid
 data class ThreadListPrefs(
     /** When the thread was last seen, for unread badges. */
     val readAt: Map<String, Long> = emptyMap(),
-    val pinned: Set<String> = emptySet(),
     /** Hidden threads reappear once they have activity after this time. */
     val hiddenAt: Map<String, Long> = emptyMap(),
+    /** Collapsed Chats list groups, by group id. */
+    val collapsedGroups: Set<String> = emptySet(),
 )
 
 class ThreadListState(context: Context) {
@@ -30,10 +31,20 @@ class ThreadListState(context: Context) {
         state.update { it.copy(readAt = it.readAt + (key to at)) }
     }
 
-    fun setPinned(assistantId: Uuid, pinned: Boolean) {
-        val key = assistantId.toString()
-        prefs.edit { if (pinned) putBoolean(PINNED + key, true) else remove(PINNED + key) }
-        state.update { it.copy(pinned = if (pinned) it.pinned + key else it.pinned - key) }
+    /** Read-only compatibility access until the settings migration has committed. */
+    internal fun legacyPins(): Set<String> = prefs.all.keys
+        .filter { it.startsWith(PINNED) }.mapTo(HashSet()) { it.removePrefix(PINNED) }
+
+    internal fun clearLegacyPins() {
+        prefs.edit { prefs.all.keys.filter { it.startsWith(PINNED) }.forEach { remove(it) } }
+    }
+
+    fun setGroupCollapsed(groupId: Uuid, collapsed: Boolean) {
+        val key = groupId.toString()
+        prefs.edit { if (collapsed) putBoolean(COLLAPSED + key, true) else remove(COLLAPSED + key) }
+        state.update {
+            it.copy(collapsedGroups = if (collapsed) it.collapsedGroups + key else it.collapsedGroups - key)
+        }
     }
 
     /** Removes the thread from the Chats list until it has new activity; history is kept. */
@@ -50,7 +61,8 @@ class ThreadListState(context: Context) {
         }.toMap()
         return ThreadListPrefs(
             readAt = longs(READ),
-            pinned = all.keys.filter { it.startsWith(PINNED) }.mapTo(HashSet()) { it.removePrefix(PINNED) },
+            collapsedGroups = all.filter { (key, value) -> key.startsWith(COLLAPSED) && value == true }
+                .keys.mapTo(HashSet()) { it.removePrefix(COLLAPSED) },
             hiddenAt = longs(HIDDEN),
         )
     }
@@ -58,6 +70,7 @@ class ThreadListState(context: Context) {
     private companion object {
         const val READ = "read:"
         const val PINNED = "pinned:"
+        const val COLLAPSED = "collapsed:"
         const val HIDDEN = "hidden:"
     }
 }

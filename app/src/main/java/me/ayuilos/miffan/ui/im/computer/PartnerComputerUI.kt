@@ -47,6 +47,9 @@ internal fun computerErrorMessage(resources: Resources, error: Throwable): Strin
             me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteScreenSetupError(resources, error)
         RemoteScreenProblem.NO_WORKSPACE, RemoteScreenProblem.NOT_ENABLED,
         RemoteScreenProblem.BAD_ENDPOINT, RemoteScreenProblem.PASSWORD_MISSING -> resources.getString(R.string.im_computer_setup_needed)
+        RemoteScreenProblem.WINDOWS_NOT_SUPPORTED -> resources.getString(R.string.im_computer_windows_unsupported)
+        RemoteScreenProblem.FIREWALL_REVIEW_NEEDED, RemoteScreenProblem.FIREWALL_CHECK_FAILED, RemoteScreenProblem.STREAM_UNAVAILABLE ->
+            me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteScreenSetupError(resources, error)
         else -> me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteSshError(resources, error)
             ?: error.workspaceErrorMessage(resources) ?: resources.getString(R.string.im_computer_connection_failed)
     }

@@ -119,6 +119,7 @@ internal fun RemoteScreenScaffold(
     val audio by vm.audio.collectAsStateWithLifecycle()
     val platform by vm.platform.collectAsStateWithLifecycle()
     val canUseAutomatic by vm.canUseAutomatic.collectAsStateWithLifecycle()
+    val firewallApplying by vm.firewallApplying.collectAsStateWithLifecycle()
     var trackpad by rememberSaveable { mutableStateOf(false) }
     var keyboard by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -156,6 +157,7 @@ internal fun RemoteScreenScaffold(
     LaunchedEffect(vm, state) {
         if (state !is RemoteScreenUiState.Connected) keyboard = false
     }
+    LaunchedEffect(keyboard) { if (keyboard) vm.prepareTyping() }
     LaunchedEffect(vm) {
         if (vm.metered && !meteredNoticeShown) {
             meteredNoticeShown = true
@@ -168,6 +170,10 @@ internal fun RemoteScreenScaffold(
                     is RemoteScreenNotice.ClipboardFailed -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_paste_failed))
                     is RemoteScreenNotice.MacShortcutFailed -> snackbar.showSnackbar(resources.getString(
                         if (notice.cuaMissing) R.string.workspace_screen_mac_shortcut_needs_cua else R.string.workspace_screen_mac_shortcut_failed))
+                    is RemoteScreenNotice.FirewallFailed -> snackbar.showSnackbar(
+                        notice.detail?.takeIf { it.isNotBlank() }?.let { resources.getString(R.string.workspace_screen_firewall_failed_detail, it) }
+                            ?: resources.getString(R.string.workspace_screen_firewall_failed),
+                        withDismissAction = true, duration = SnackbarDuration.Long)
                     is RemoteScreenNotice.StreamOnMeteredNetwork -> snackbar.showSnackbar(
                         resources.getString(R.string.workspace_screen_stream_metered,
                             remoteScreenQualityLabel(resources, notice.quality), remoteStreamGigabytesPerHour(notice.quality)),
@@ -247,7 +253,8 @@ internal fun RemoteScreenScaffold(
                             Icon(HugeIcons.MoreVertical, contentDescription = stringResource(R.string.workspace_screen_actions))
                         }
                         DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                            val protocol = info?.protocol
+                            // Windows only ever streams, so its levels read as stream levels even before connecting.
+                            val protocol = info?.protocol ?: RemoteDesktopProtocol.STREAM.takeIf { platform == RemoteScreenPlatform.WINDOWS }
                             if (protocol == RemoteDesktopProtocol.RDP) {
                                 // RDP paces and encodes on the computer; there is nothing to choose here.
                                 DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_quality_server)) },
@@ -272,6 +279,8 @@ internal fun RemoteScreenScaffold(
                                     onClick = { vm.setAudio(!on); menu = false })
                             }
                             when {
+                                // Windows has no plain connection to switch to.
+                                platform == RemoteScreenPlatform.WINDOWS -> Unit
                                 protocol == RemoteDesktopProtocol.STREAM -> DropdownMenuItem(
                                     text = { Text(stringResource(R.string.workspace_screen_stream_skip)) },
                                     onClick = { menu = false; vm.reconnectWithStream(false) })
@@ -304,8 +313,12 @@ internal fun RemoteScreenScaffold(
                         settingsText = settingsLabel,
                         onTrustCertificate = vm::trustCertificate,
                         onUseAutomatic = if (canUseAutomatic) vm::useAutomaticConnection else null,
+                        onFixFirewall = vm::applySunshineFirewall,
+                        firewallApplying = firewallApplying,
+                        onSetUpStream = vm::beginWindowsStreamSetup,
                     )
                 }
+                RemoteWindowsStreamSetup(vm)
                 Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Full screen shows who drives in its corner controls instead of over the picture.
@@ -319,7 +332,7 @@ internal fun RemoteScreenScaffold(
                     partnerWaiting = partnerWaiting, onHandBack = vm::handBackToPartner,
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
             }
-            if (keyboard && connected) RemoteScreenKeyboard(vm, macOS = macOS)
+            if (keyboard && connected) RemoteScreenKeyboard(vm, platform)
             if (!fullscreen) bottom()
         }
     }

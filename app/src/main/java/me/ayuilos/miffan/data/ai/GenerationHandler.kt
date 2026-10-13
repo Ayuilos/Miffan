@@ -112,6 +112,8 @@ class GenerationHandler(
         localToolOutputRoot: String? = assistant.workspaceId?.toString(),
         /** Summaries of earlier IM thread segments, appended to the system prompt. */
         threadContext: String? = null,
+        access: AgentAccess,
+        memoryTrigger: MessageRef? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -120,9 +122,7 @@ class GenerationHandler(
         // Memory changes in this turn are attributed to the user message that started it.
         val memoryOrigin = RevisionOrigin(
             author = RevisionAuthor.AGENT,
-            trigger = conversationId?.let { id ->
-                messages.lastOrNull { it.role == MessageRole.USER }?.let { MessageRef(id, it.id) }
-            },
+            trigger = memoryTrigger,
         )
 
         for (stepIndex in 0 until maxSteps) {
@@ -130,22 +130,18 @@ class GenerationHandler(
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
-                if (assistant?.enableMemory == true) {
-                    val memoryAssistantId = if (assistant.useGlobalMemory) {
-                        MemoryRepository.GLOBAL_MEMORY_ID
-                    } else {
-                        assistant.id.toString()
-                    }
+                if (access.ownerInitiated && assistant.enableMemory) {
+                    val memoryAssistantId = access.memoryOwnerId
                     buildMemoryTools(
                         json = json,
                         onCreation = { content ->
                             withContext(memoryOrigin) { memoryRepo.addMemory(memoryAssistantId, content) }
                         },
                         onUpdate = { id, content ->
-                            withContext(memoryOrigin) { memoryRepo.updateContent(id, content) }
+                            withContext(memoryOrigin) { memoryRepo.updateContent(id, content, access) }
                         },
                         onDelete = { id ->
-                            withContext(memoryOrigin) { memoryRepo.deleteMemory(id) }
+                            withContext(memoryOrigin) { memoryRepo.deleteMemory(id, access) }
                         }
                     ).let(this::addAll)
                 }
@@ -238,7 +234,7 @@ class GenerationHandler(
                         toolDef?.needsApproval(tool.inputAsJson()) == true &&
                             tool.approvalState is ToolApprovalState.Auto -> {
                             hasPendingApproval = true
-                            tool.waitForApproval(Clock.System.now().toEpochMilliseconds()).copy(
+                            tool.waitForApproval(Clock.System.now().toEpochMilliseconds(), toolDef.approvalReason).copy(
                                 terminalRequestId = if (tool.toolName == "workspace_terminal") {
                                     java.util.UUID.randomUUID().toString()
                                 } else null,

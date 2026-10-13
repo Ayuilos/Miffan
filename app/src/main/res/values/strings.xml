@@ -1440,6 +1440,8 @@
   <string name="workspace_view_connection_details">View workspace and connection details</string>
   <string name="workspace_login_target">Login target</string>
   <string name="workspace_remote_directory">Remote directory</string>
+  <string name="workspace_remote_system">System</string>
+  <string name="workspace_remote_system_windows">Windows (no interactive terminal yet)</string>
   <string name="workspace_host_identity">Host identity</string>
   <string name="workspace_fingerprint_confirmed">Fingerprint confirmed</string>
   <string name="workspace_fingerprint_unconfirmed">Fingerprint not confirmed</string>
@@ -1612,6 +1614,7 @@
   <string name="workspace_export_private_key">Export private key</string>
   <string name="workspace_terminal_disconnected">Terminal connection interrupted</string>
   <string name="workspace_terminal_connection_failed">Could not connect to remote terminal</string>
+  <string name="workspace_terminal_windows_unsupported">Interactive terminals aren\'t supported on Windows yet. Partners can still run PowerShell commands.</string>
   <string name="workspace_connecting_host">Connecting to %1$s…</string>
   <string name="workspace_remote_host">Remote host</string>
   <string name="workspace_connection_ended_exit">Connection ended · Exit code %1$d</string>
@@ -1757,6 +1760,8 @@
   <string name="im_tab_me">Me</string>
   <string name="im_chats_search">Search partners or messages</string>
   <string name="im_chats_typing">Typing…</string>
+  <string name="im_partner_running">Running</string>
+  <string name="im_partner_waiting">Waiting for you</string>
   <string name="im_chats_empty_title">No chats yet</string>
   <string name="im_chats_empty_desc">Pick a partner and say hi.</string>
   <string name="im_chats_empty_action">Find a partner</string>
@@ -1775,6 +1780,11 @@
   <string name="im_me_ai_service">AI service</string>
   <string name="im_me_ai_connected">Connected</string>
   <string name="im_me_ai_not_connected">Not connected</string>
+  <string name="im_me_background_model">Background helper</string>
+  <string name="im_me_background_model_fast">%1$s · remembers things, sorts topics and recaps them</string>
+  <string name="im_me_background_model_fallback">Using the chat model to remember things. Pick a light model to also sort topics automatically</string>
+  <string name="im_me_background_model_none">Unavailable, so partners won\'t remember new things</string>
+  <string name="im_me_background_model_failed">Last run failed: %1$s</string>
   <string name="im_me_appearance">Appearance &amp; characters</string>
   <string name="im_me_backup">Backup &amp; restore</string>
   <string name="im_me_notification">Notifications</string>
@@ -1848,7 +1858,47 @@
   <string name="im_p5_pin">Pin</string>
   <string name="im_p5_unpin">Unpin</string>
   <string name="im_p5_hide">Hide</string>
-  <string name="im_p5_hide_hint">Hidden chats keep their history and return with new messages</string>
+  <string name="im_chats_move_to_group">Move to group</string>
+  <string name="im_chats_no_group">Remove from group</string>
+  <string name="im_chats_new_group">New group</string>
+  <string name="im_chats_group_name">Group name</string>
+  <string name="im_chats_rename_group">Rename group</string>
+  <string name="im_chats_move_up">Move up</string>
+  <string name="im_chats_move_down">Move down</string>
+  <string name="im_chats_delete_group">Delete group</string>
+  <string name="im_chats_delete_group_title">Delete “%1$s”?</string>
+  <string name="im_chats_delete_group_desc">Its chats move out of the group. No messages are deleted.</string>
+  <string name="im_chats_long_press_hint">Long-press a chat to pin it, move it to a group or hide it. Hidden chats come back with new messages.</string>
+  <string name="im_partner_chat_empty">They haven\'t talked yet.</string>
+  <string name="im_partner_chat_hint">Tap a partner above to choose who answers</string>
+  <string name="im_partner_chat_preview">%1$s: %2$s</string>
+  <string name="im_partner_msg_permission_title">Let %1$s contact %2$s?</string>
+  <string name="im_partner_msg_permission_desc">Once you allow it, they can message each other directly. You can take this back in their profile.</string>
+  <string name="im_partner_msg_asking">Asking %1$s…</string>
+  <string name="im_partner_msg_replied">Talked with %1$s</string>
+  <string name="im_partner_msg_pending">%1$s will reply later</string>
+  <string name="im_partner_msg_refused">Couldn\'t reach %1$s</string>
+  <string name="im_partner_msg_declined">You didn\'t let it contact %1$s</string>
+  <string name="im_partner_contacts">Partners it can contact</string>
+  <string name="im_partner_contacts_none">It hasn\'t been allowed to contact other partners yet.</string>
+  <string name="im_partner_contacts_revoke">Take back</string>
+  <string name="im_gc_create">New group chat</string>
+  <string name="im_gc_create_action">Create (%1$d)</string>
+  <string name="im_gc_name_hint">Group name (optional)</string>
+  <string name="im_gc_pick_hint">Pick 2 to 6 partners. The first one you pick hosts the group: it answers when you don\'t @ anyone.</string>
+  <string name="im_gc_host">Host</string>
+  <string name="im_gc_info">Group info</string>
+  <string name="im_gc_name">Group name</string>
+  <string name="im_gc_members">Members (%1$d)</string>
+  <string name="im_gc_make_host">Make host</string>
+  <string name="im_gc_remove">Remove from group</string>
+  <string name="im_gc_add_members">Add members</string>
+  <string name="im_gc_add_action">Add (%1$d)</string>
+  <string name="im_gc_delete">Delete group chat</string>
+  <string name="im_gc_delete_desc">The group\'s messages are deleted too. The partners themselves stay.</string>
+  <string name="im_gc_mentions_you">@you</string>
+  <string name="im_gc_needs_ok">%1$s needs your OK</string>
+  <string name="im_gc_empty">Say something. The host answers when you don\'t @ anyone.</string>
   <string name="im_p5_image">[Image]</string>
   <string name="im_p5_file">[File]</string>
   <string name="im_p5_you_prefix">You: %1$s</string>
@@ -2216,6 +2266,26 @@
   <string name="workspace_screen_no_output" tools:ignore="MissingTranslation">The command returned no output.</string>
   <string name="workspace_screen_no_workspace" tools:ignore="MissingTranslation">Create a remote workspace for this host first, then check again.</string>
   <string name="workspace_screen_no_session" tools:ignore="MissingTranslation">No logged-in desktop session was found. Log in to the desktop on this computer, then retry.</string>
+  <string name="workspace_screen_session_locked" tools:ignore="MissingTranslation">Locked. Unlock it on this computer first.</string>
+  <string name="workspace_screen_session_signed_in" tools:ignore="MissingTranslation">Signed in</string>
+  <string name="workspace_screen_windows_unsupported" tools:ignore="MissingTranslation">Viewing the screen of a Windows computer isn\'t supported yet. Files and PowerShell commands already work.</string>
+  <string name="workspace_screen_firewall_needed" tools:ignore="MissingTranslation">Sunshine on this computer lets any device on the network reach its management ports. Tighten the firewall before connecting.</string>
+  <string name="workspace_screen_firewall_check_failed" tools:ignore="MissingTranslation">Couldn\'t check this computer\'s firewall, so the connection was not made. Try again.</string>
+  <string name="workspace_screen_windows_stream_failed" tools:ignore="MissingTranslation">Couldn\'t connect to this Windows computer through Sunshine: %1$s.</string>
+  <string name="workspace_screen_windows_udp_hint" tools:ignore="MissingTranslation">The phone and the computer need to be on the same local network, or both connected to Tailscale.</string>
+  <string name="workspace_screen_windows_stream_setup" tools:ignore="MissingTranslation">Set up high-performance connection</string>
+  <string name="workspace_screen_firewall_review" tools:ignore="MissingTranslation">Review changes</string>
+  <string name="workspace_screen_firewall_title" tools:ignore="MissingTranslation">Tighten Sunshine\'s firewall</string>
+  <string name="workspace_screen_firewall_hint" tools:ignore="MissingTranslation">When Sunshine was installed, it let any device reach all of its ports, including its management page. After this change, management and pairing go only through SSH, and only the picture data ports stay open to the networks below.</string>
+  <string name="workspace_screen_firewall_add" tools:ignore="MissingTranslation">Add one rule that allows only UDP 47998–48000 from %1$s</string>
+  <string name="workspace_screen_firewall_backup" tools:ignore="MissingTranslation">The current rules are backed up on the computer before anything changes.</string>
+  <string name="workspace_screen_firewall_apply" tools:ignore="MissingTranslation">Change</string>
+  <string name="workspace_screen_firewall_failed" tools:ignore="MissingTranslation">The firewall wasn\'t changed.</string>
+  <string name="workspace_screen_firewall_failed_detail" tools:ignore="MissingTranslation">The firewall wasn\'t changed: %1$s</string>
+  <plurals name="workspace_screen_firewall_disable" tools:ignore="MissingTranslation">
+    <item quantity="one">Turn off %d allow rule that Sunshine added</item>
+    <item quantity="other">Turn off %d allow rules that Sunshine added</item>
+  </plurals>
   <string name="workspace_screen_config_incomplete" tools:ignore="MissingTranslation">The screen is disabled or its configuration is incomplete. Open screen settings to finish setup.</string>
   <string name="workspace_screen_start_failed" tools:ignore="MissingTranslation">The screen service could not start. Check the output and retry.</string>
   <string name="workspace_screen_system" tools:ignore="MissingTranslation">System</string>
@@ -2227,6 +2297,7 @@
   <string name="workspace_screen_use_automatic" tools:ignore="MissingTranslation">Use automatic connection</string>
   <string name="workspace_screen_stream" tools:ignore="MissingTranslation">High-performance mode</string>
   <string name="workspace_screen_stream_help" tools:ignore="MissingTranslation">Sunshine on the computer encodes the screen with its graphics card, for lower latency and smoother motion. The picture travels straight over the network (UDP) and is always encrypted; when that is not possible, Miffan uses the normal connection. Linux and Mac computers.</string>
+  <string name="workspace_screen_stream_windows_help" tools:ignore="MissingTranslation">Windows computers connect only through Sunshine. Pairing and encryption are set up here; the picture data needs the same local network or Tailscale.</string>
   <string name="workspace_screen_stream_check" tools:ignore="MissingTranslation">Check Sunshine</string>
   <string name="workspace_screen_stream_checking" tools:ignore="MissingTranslation">Checking Sunshine on the computer…</string>
   <string name="workspace_screen_stream_enforcing" tools:ignore="MissingTranslation">Changing Sunshine\'s encryption setting…</string>
@@ -2335,9 +2406,13 @@
   <string name="workspace_screen_hide_output" tools:ignore="MissingTranslation">Hide output</string>
   <string name="workspace_screen_clipboard" tools:ignore="MissingTranslation">Clipboard</string>
   <string name="workspace_screen_clipboard_missing" tools:ignore="MissingTranslation">No clipboard tool was found.</string>
+  <string name="workspace_screen_clipboard_windows_bridge" tools:ignore="MissingTranslation">Through the partner bridge</string>
+  <string name="workspace_screen_clipboard_windows_task" tools:ignore="MissingTranslation">Through a temporary task, a few seconds each time</string>
   <string name="workspace_screen_install_clipboard" tools:ignore="MissingTranslation">Install %1$s to type Chinese and other non-Latin text.</string>
   <string name="workspace_screen_cua" tools:ignore="MissingTranslation">cua-driver · needed for partner computer control</string>
   <string name="workspace_screen_cua_missing" tools:ignore="MissingTranslation">Not installed</string>
+  <string name="workspace_screen_cua_autostart" tools:ignore="MissingTranslation">cua-driver autostart</string>
+  <string name="workspace_screen_cua_elevated" tools:ignore="MissingTranslation">cua-driver starts with administrator rights. Change its autostart task back to normal rights on the computer: otherwise other programs under the same account could use it to act as administrator.</string>
   <string name="workspace_screen_cua_outdated" tools:ignore="MissingTranslation">Version %1$s · required %2$s or newer</string>
   <string name="workspace_screen_unknown_version" tools:ignore="MissingTranslation">Unknown version</string>
   <string name="workspace_screen_install" tools:ignore="MissingTranslation">Install</string>
@@ -2399,6 +2474,9 @@
   <string name="im_computer_clipboard_optional" tools:ignore="MissingTranslation">Optional; install a clipboard tool to type Chinese and other non-Latin text.</string>
   <string name="im_computer_stream" tools:ignore="MissingTranslation">Smoother picture</string>
   <string name="im_computer_stream_optional" tools:ignore="MissingTranslation">Optional. With Sunshine installed on the computer, the picture is smoother and responds faster.</string>
+  <string name="im_computer_sunshine_needed" tools:ignore="MissingTranslation">Install Sunshine on this computer first (github.com/LizardByte/Sunshine/releases), then check again.</string>
+  <string name="im_computer_sunshine_setup_needed" tools:ignore="MissingTranslation">Sunshine is installed. Pair it with this phone to show the picture.</string>
+  <string name="im_computer_sunshine_set_up" tools:ignore="MissingTranslation">Set up</string>
   <string name="im_computer_stream_available" tools:ignore="MissingTranslation">Sunshine is on this computer and can make the picture smoother and faster.</string>
   <string name="im_computer_stream_enabled" tools:ignore="MissingTranslation">On</string>
   <string name="im_computer_stream_enable" tools:ignore="MissingTranslation">Turn on</string>
@@ -2470,6 +2548,7 @@
   <string name="im_computer_screen_start_failed" tools:ignore="MissingTranslation">The screen service could not start. Check again or retry.</string>
   <string name="im_computer_screenshot" tools:ignore="MissingTranslation">Computer screenshot; tap to preview</string>
   <string name="im_computer_setup_needed" tools:ignore="MissingTranslation">Connect and prepare this computer to open its screen.</string>
+  <string name="im_computer_windows_unsupported" tools:ignore="MissingTranslation">Partners can\'t operate Windows computers yet.</string>
   <string name="im_computer_step_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
   <plurals name="im_computer_steps" tools:ignore="MissingTranslation">
     <item quantity="one">Performed %2$d step on %1$s</item>
@@ -2647,6 +2726,38 @@
   <string name="im_step_memory_delete">Forget a memory</string>
   <string name="im_step_memory_read">Check memories</string>
   <string name="im_step_preferences">Update your preferences</string>
+  <string name="im_profile_title">Change partner profile</string>
+  <string name="im_profile_name">Name</string>
+  <string name="im_profile_avatar">Avatar</string>
+  <string name="im_profile_prompt">Persona (replaces the whole text)</string>
+  <string name="im_profile_undo">You can undo this in the revision history.</string>
+  <string name="im_relay_approval_notice">Another partner\'s message started this turn, so steps that could send out your private chat need your OK first.</string>
+  <string name="im_profile_avatar_previous">Earlier avatar</string>
+  <string name="im_change_create_partner">Create a partner</string>
+  <string name="im_change_create_group_chat">Start a group chat</string>
+  <string name="im_change_invite">Invite to the group chat</string>
+  <string name="im_change_organize">Tidy up groups</string>
+  <string name="im_change_create_partner_contact">%1$s will be able to message it directly.</string>
+  <string name="im_change_create_partner_defaults">It starts with the default model and abilities; you can change them in its profile.</string>
+  <string name="im_change_partner_prompt">Persona</string>
+  <string name="im_change_group_title">Group name</string>
+  <string name="im_change_group_members">Members</string>
+  <string name="im_change_invitees">Invited</string>
+  <string name="im_change_op_pin">Pin “%1$s”</string>
+  <string name="im_change_op_unpin">Unpin “%1$s”</string>
+  <string name="im_change_op_create_folder">New group “%1$s”</string>
+  <string name="im_change_op_rename_folder">Rename group “%1$s” to “%2$s”</string>
+  <string name="im_change_op_move">Move “%1$s” into “%2$s”</string>
+  <string name="im_change_op_ungroup">Take “%1$s” out of its group</string>
+  <string name="im_change_op_folder_up">Move group “%1$s” up %2$d</string>
+  <string name="im_change_op_folder_down">Move group “%1$s” down %2$d</string>
+  <string name="im_change_op_delete_folder">Delete the empty group “%1$s”</string>
+  <string name="im_step_create_partner">Created a partner</string>
+  <string name="im_step_create_group_chat">Started a group chat</string>
+  <string name="im_step_invite">Invited partners to a group chat</string>
+  <string name="im_step_organize">Tidied up groups</string>
+  <string name="im_step_view_chat_list">Looked at groups</string>
+  <string name="im_step_profile">Updated own profile</string>
   <string name="im_step_calendar_add">Add a calendar event</string>
   <string name="im_step_calendar_read">Check the calendar</string>
   <string name="im_step_clipboard_write">Copy to the clipboard</string>
@@ -2661,6 +2772,8 @@
   <string name="im_step_screen_time">Check screen time</string>
   <string name="im_step_mcp">Use %2$s from %1$s</string>
   <string name="im_step_tool">Use %1$s</string>
+  <string name="im_step_contacts">Looked at contacts</string>
+  <string name="im_step_environment">Checked own setup</string>
   <string name="im_p5_model">Model</string>
   <string name="im_p5_model_default">Default model · %1$s</string>
   <string name="im_p5_model_no_default">No default model yet</string>
@@ -2683,4 +2796,32 @@
   <string name="update_download_complete_text">Download complete, tap to install</string>
   <string name="update_download_failed_title">Update download failed</string>
   <string name="update_download_failed_text">Unable to download the update. Please try again.</string>
+  <string name="im_computer_system_unix" tools:ignore="MissingTranslation">Mac / Linux</string>
+  <string name="im_computer_system_windows" tools:ignore="MissingTranslation">Windows</string>
+  <string name="im_computer_windows_setup_title" tools:ignore="MissingTranslation">First, prepare the Windows computer</string>
+  <string name="im_computer_windows_setup_admin" tools:ignore="MissingTranslation">On the computer, right-click Start and choose Terminal (Admin) or Windows PowerShell (Admin).</string>
+  <string name="im_computer_windows_setup_paste" tools:ignore="MissingTranslation">Paste the script and press Enter. It turns on Windows\' own SSH service, lets Miffan\'s key sign in, and opens the SSH port only to your local network and Tailscale.</string>
+  <string name="im_computer_windows_setup_fill" tools:ignore="MissingTranslation">Fill in the name, address and username it prints at the end.</string>
+  <string name="im_computer_windows_copy_script" tools:ignore="MissingTranslation">Copy script</string>
+  <string name="im_computer_windows_script_copied" tools:ignore="MissingTranslation">Copied</string>
+  <string name="im_computer_windows_send_script" tools:ignore="MissingTranslation">Send to computer</string>
+  <string name="im_computer_windows_send_help" tools:ignore="MissingTranslation">If the phone and the computer don\'t share a clipboard, send the script to yourself with an app you also use on the computer, such as a chat app.</string>
+  <string name="im_computer_windows_show_script" tools:ignore="MissingTranslation">Show script</string>
+  <string name="im_computer_fingerprint_windows_help" tools:ignore="MissingTranslation">The setup script printed it at the end. To see it again, run this in PowerShell on the computer:</string>
+  <string name="assistant_page_local_tools_bug_report_title">Bug reports</string>
+  <string name="assistant_page_local_tools_bug_report_desc">Let the AI read the app version, device and recent error summaries, and draft a GitHub issue for you to submit</string>
+  <string name="im_step_diagnostics">Checked app diagnostics</string>
+  <string name="im_step_bug_report">Drafted a bug report</string>
+  <string name="im_bug_report_title">Bug report draft</string>
+  <string name="im_bug_report_description">What happened and how to reproduce it</string>
+  <string name="im_bug_report_actual">Actual result</string>
+  <string name="im_bug_report_expected">Expected result</string>
+  <string name="im_bug_report_logs">Related errors</string>
+  <string name="im_bug_report_environment">Environment</string>
+  <string name="im_bug_report_public">You submit it on GitHub with your own account. Once submitted, anyone can see it.</string>
+  <string name="im_bug_report_submit">Submit on GitHub</string>
+  <string name="im_bug_report_copy">Copy</string>
+  <string name="im_bug_report_skip">Don\'t submit</string>
+  <string name="im_bug_report_reopen">Open on GitHub again</string>
+  <string name="workspace_screen_ssh_tailnet_unreachable" tools:ignore="MissingTranslation">Couldn\'t reach the computer over Tailscale. Check that Tailscale is on for both this phone and the computer, and that your tailnet\'s access rules let this phone reach the computer\'s SSH port.</string>
 </resources>

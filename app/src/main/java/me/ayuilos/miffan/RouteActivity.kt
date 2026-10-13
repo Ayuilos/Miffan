@@ -33,6 +33,9 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import me.ayuilos.miffan.ui.pages.chat.ProfessionalChatRoute
+import me.ayuilos.miffan.ui.pages.chat.professionalStartupDestination
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -280,14 +283,14 @@ class RouteActivity : ComponentActivity() {
         super.onNewIntent(intent)
         normalLauncherEntry = isNormalLauncherEntry(intent)
         // Navigate to the chat screen if a conversation ID is provided
-        intent.getStringExtra("conversationId")?.let { text ->
-            navStack?.add(Screen.Chat(text))
+        notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"))?.let {
+            navStack?.add(it)
         }
     }
 
     private fun isNormalLauncherEntry(intent: Intent?): Boolean = intent != null &&
         (intent.action == Intent.ACTION_MAIN || intent.action == null) && intent.data == null &&
-        !intent.hasExtra("conversationId") && !intent.hasExtra(Intent.EXTRA_TEXT) &&
+        !intent.hasExtra("chatId") && !intent.hasExtra("conversationId") && !intent.hasExtra(Intent.EXTRA_TEXT) &&
         !intent.hasExtra(Intent.EXTRA_STREAM)
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -323,24 +326,35 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
-        val startScreen: Screen = if (settings.isNotConfigured()) {
-            Screen.Onboarding
-        } else if (settings.isImMode) {
-            Screen.Home
-        } else {
-            Screen.Chat(
-                id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
-                    Uuid.random().toString()
+        val requestedStartScreen: Screen = remember {
+            notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"))
+                ?: if (settings.isNotConfigured()) {
+                    Screen.Onboarding
+                } else if (settings.isImMode) {
+                    Screen.Home
                 } else {
-                    readStringPreference(
-                        "lastConversationId",
-                        Uuid.random().toString()
-                    ) ?: Uuid.random().toString()
+                    Screen.Chat(
+                        id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
+                            Uuid.random().toString()
+                        } else {
+                            readStringPreference("lastConversationId", null) ?: Uuid.random().toString()
+                        }
+                    )
                 }
-            )
         }
-
-        val backStack = rememberNavBackStack(startScreen)
+        val conversations = koinInject<me.ayuilos.miffan.data.db.dao.ConversationDAO>()
+        val startScreen by produceState<Screen?>(initialValue = null, requestedStartScreen) {
+            value = if (!settings.isImMode && requestedStartScreen is Screen.Chat &&
+                notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId")) == null) {
+                professionalStartupDestination(requestedStartScreen, conversations)
+            } else requestedStartScreen
+        }
+        val resolvedStartScreen = startScreen
+        if (resolvedStartScreen == null) {
+            AppStartupLoading(startupAppearance)
+            return
+        }
+        val backStack = rememberNavBackStack(resolvedStartScreen)
         // Reserve this launch for the workspace introduction, even after it is dismissed.
         // A user skipping several versions should not receive two promotional dialogs in a row.
         val workspaceIntroductionLaunch = rememberSaveable { !settings.remoteWorkspaceIntroSeen }
@@ -430,13 +444,15 @@ class RouteActivity : ComponentActivity() {
                                     ImChatRedirect(key)
                                     return@entry
                                 }
-                                ChatPage(
-                                    id = Uuid.parse(key.id),
-                                    text = key.text,
-                                    files = key.files.map { it.toUri() },
-                                    nodeId = key.nodeId?.let { Uuid.parse(it) },
-                                    messageId = key.messageId?.let { Uuid.parse(it) },
-                                )
+                                ProfessionalChatRoute(key) {
+                                    ChatPage(
+                                        id = Uuid.parse(key.id),
+                                        text = key.text,
+                                        files = key.files.map { it.toUri() },
+                                        nodeId = key.nodeId?.let { Uuid.parse(it) },
+                                        messageId = key.messageId?.let { Uuid.parse(it) },
+                                    )
+                                }
                             }
 
                             entry<Screen.Home>(
@@ -465,7 +481,20 @@ class RouteActivity : ComponentActivity() {
                                     assistantId = Uuid.parse(key.assistantId),
                                     focusMessageId = key.focusMessageId,
                                     initialText = key.text,
+                                    initialFiles = key.files,
                                 )
+                            }
+
+                            entry<Screen.PartnerChat> { key ->
+                                me.ayuilos.miffan.ui.im.PartnerChatPage(chatId = Uuid.parse(key.chatId))
+                            }
+
+                            entry<Screen.GroupCreate> {
+                                me.ayuilos.miffan.ui.im.GroupCreatePage()
+                            }
+
+                            entry<Screen.GroupInfo> { key ->
+                                me.ayuilos.miffan.ui.im.GroupInfoPage(chatId = Uuid.parse(key.chatId))
                             }
 
                             entry<Screen.Onboarding>(
@@ -762,7 +791,24 @@ sealed interface Screen : NavKey {
 
     /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
     @Serializable
-    data class Thread(val assistantId: String, val focusMessageId: String? = null, val text: String? = null) : Screen
+    data class Thread(
+        val assistantId: String,
+        val focusMessageId: String? = null,
+        val text: String? = null,
+        /** Content uris to attach to the draft, e.g. a photo from the camera shortcut. */
+        val files: List<String> = emptyList(),
+    ) : Screen
+
+    /** A chat between partners, which the owner can read and join. */
+    @Serializable
+    data class PartnerChat(val chatId: String) : Screen
+
+    /** Picks the partners of a new group chat. */
+    @Serializable
+    data object GroupCreate : Screen
+
+    @Serializable
+    data class GroupInfo(val chatId: String) : Screen
 
     @Serializable
     data class PartnerScreen(val assistantId: String) : Screen
@@ -957,4 +1003,11 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Stats : Screen
+}
+
+/** Shared by cold launches and notification taps while the activity is already running. */
+internal fun notificationDestination(chatId: String?, conversationId: String?): Screen? = when {
+    chatId != null -> Screen.PartnerChat(chatId)
+    conversationId != null -> Screen.Chat(conversationId)
+    else -> null
 }

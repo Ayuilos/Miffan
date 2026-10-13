@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonObject
@@ -648,7 +649,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
     }
 
     private fun buildContents(messages: List<UIMessage>): JsonArray {
-        return buildJsonArray {
+        val contents = buildJsonArray {
             messages
                 .filter { it.role != MessageRole.SYSTEM && it.isValidToUpload() }
                 .forEach { message ->
@@ -659,6 +660,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     }
                 }
         }
+        return mergeAdjacentGoogleUsers(contents)
     }
 
     private fun JsonArrayBuilder.addModelMessage(message: UIMessage) {
@@ -888,4 +890,17 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             cachedTokens = cachedTokens
         )
     }
+}
+
+/** Request-only normalization; persisted nodes and their source authority remain independent. */
+internal fun mergeAdjacentGoogleUsers(contents: JsonArray): JsonArray {
+    val result = mutableListOf<JsonElement>()
+    contents.forEach { content ->
+        val previous = result.lastOrNull()?.jsonObject
+        val current = content.jsonObject
+        if (previous?.get("role")?.jsonPrimitive?.content == "user" && current["role"]?.jsonPrimitive?.content == "user") {
+            result[result.lastIndex] = JsonObject(previous + ("parts" to JsonArray(previous.getValue("parts").jsonArray + current.getValue("parts").jsonArray)))
+        } else result += content
+    }
+    return JsonArray(result)
 }

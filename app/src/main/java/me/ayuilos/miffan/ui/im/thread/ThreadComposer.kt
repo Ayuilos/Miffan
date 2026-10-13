@@ -9,6 +9,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.em
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.layout.onSizeChanged
+import me.ayuilos.miffan.data.model.Assistant
 import dev.chrisbanes.haze.HazeState
 import me.ayuilos.miffan.ui.components.ui.GlassIconButton
 import me.ayuilos.miffan.ui.components.ui.GlassSurface
@@ -96,6 +104,10 @@ internal fun ThreadComposer(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    /** Other partners the owner can @ in this thread. */
+    mentionables: List<Assistant> = emptyList(),
+    /** Content uris to attach once when the thread opens (shared or shortcut photos). */
+    initialFiles: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -118,6 +130,21 @@ internal fun ThreadComposer(
     val latestInput by rememberUpdatedState(onInput)
     val latestError by rememberUpdatedState(onError)
     val addError = stringResource(R.string.im_thread_attachment_error)
+    // The cursor is needed to find the @ being typed; [input] stays the source of truth for the text.
+    var field by remember { mutableStateOf(TextFieldValue(input, TextRange(input.length))) }
+    if (field.text != input) field = TextFieldValue(input, TextRange(input.length))
+    val mention = if (mentionables.isEmpty()) null else field.mentionQuery()
+    val blankName = stringResource(R.string.assistant_page_default_assistant)
+    val candidates = mention?.let { mentionCandidates(mentionables, it.query, blankName) }.orEmpty()
+    var pillWidth by remember { mutableIntStateOf(0) }
+    val chipName = MaterialTheme.colorScheme.onSecondaryContainer
+    val chipColor = MaterialTheme.colorScheme.secondaryContainer
+    val chipStyle = remember(mentionables, chipName) { MentionChipStyle(mentionables, chipName, CHIP_AVATAR_SLOT) }
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // The field grows and this box scrolls it, so the chip layer drawn over the text scrolls along.
+    val textStyle = MaterialTheme.typography.bodyLarge
+    val maxFieldHeight = with(LocalDensity.current) { textStyle.lineHeight.toDp() } * (if (compact) 2 else 5) + 24.dp
+    val fieldScroll = rememberScrollState()
 
     DisposableEffect(asr) {
         onDispose { if (ownsRecording) asr.stop() }
@@ -149,6 +176,15 @@ internal fun ThreadComposer(
                 latestError(addError)
             } finally { importing = false; cleanup() }
         }
+    }
+    // Saved, so returning to the thread does not attach them again.
+    var attachedInitial by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(initialFiles) {
+        if (attachedInitial || initialFiles.isEmpty()) return@LaunchedEffect
+        attachedInitial = true
+        val (images, others) = initialFiles.map(Uri::parse).partition { files.getFileMimeType(it)?.startsWith("image/") == true }
+        importUris(images, true)
+        importUris(others, false)
     }
     val (_, crop) = useCropLauncher(
         onCroppedImageReady = {
@@ -216,24 +252,32 @@ internal fun ThreadComposer(
                     ThreadAttachmentMenuItem(HugeIcons.Files02, stringResource(R.string.im_thread_file)) { menu = false; documents.launch(arrayOf("*/*")) }
                 }
             }
-            ComposerPill(compact, hazeState, Modifier.weight(1f).heightIn(min = 48.dp)) {
+            Box(Modifier.weight(1f).onSizeChanged { pillWidth = it.width }) {
+            if (!asrState.isRecording) ThreadMentionPopup(candidates, pillWidth, hazeState) { candidate ->
+                mention?.let { field = field.insertMention(it, candidate.name); onInput(field.text) }
+            }
+            ComposerPill(compact, hazeState, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Row(Modifier.padding(start = 18.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (asrState.isRecording) {
                         Text(stringResource(R.string.im_thread_voice_stop), Modifier.weight(1f).padding(vertical = 12.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else BasicTextField(value = input, onValueChange = onInput,
-                        modifier = Modifier.weight(1f).padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) menu = false },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), maxLines = if (compact) 2 else 5,
+                    } else Box(Modifier.weight(1f).heightIn(max = maxFieldHeight).verticalScroll(fieldScroll)) {
+                        BasicTextField(value = field, onValueChange = { field = keepChipsWhole(field, it, mentionables); onInput(field.text) },
+                        visualTransformation = chipStyle, onTextLayout = { textLayout = it },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) menu = false },
+                        textStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { sendDraft() }),
-                        decorationBox = { field ->
+                        decorationBox = { innerField ->
                             Box {
                                 if (input.isEmpty()) Text(if (topicLabel != null) stringResource(R.string.im_thread_in_topic, topicLabel) else stringResource(R.string.im_thread_message),
                                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                field()
+                                MentionChipLayer(field.text, mentionables, textLayout, chipColor)
+                                innerField()
                             }
                         })
+                    }
                     if (!compact) IconButton(onClick = { toggleVoice() }, enabled = loaded && !importing) {
                         Icon(if (asrState.isRecording) HugeIcons.StopCircle else HugeIcons.Mic01,
                             stringResource(if (asrState.isRecording) R.string.im_thread_voice_stop else R.string.im_thread_voice))
@@ -248,6 +292,7 @@ internal fun ThreadComposer(
                         }, enabled = loaded && (stops || (!importing && !asrState.isRecording)),
                     ) { Icon(if (stops) HugeIcons.StopCircle else HugeIcons.ArrowUp02, stringResource(if (stops) R.string.im_thread_stop else R.string.im_thread_send)) }
                 }
+            }
             }
         }
     }
@@ -287,6 +332,9 @@ private fun ThreadAttachmentMenu(expanded: Boolean, onDismiss: () -> Unit, hazeS
 }
 
 private val MENU_SHADOW_ROOM = 48.dp
+
+/** Room the transparent `@` of a mention chip leaves for the partner's avatar. */
+private val CHIP_AVATAR_SLOT = 0.8.em
 
 @Composable
 private fun ThreadAttachmentMenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {

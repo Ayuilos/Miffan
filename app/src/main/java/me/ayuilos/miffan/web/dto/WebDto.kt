@@ -204,7 +204,10 @@ data class ConversationDto(
 data class MessageNodeDto(
     val id: String,
     val messages: List<MessageDto>,
-    val selectIndex: Int
+    val selectIndex: Int,
+    val origin: me.ayuilos.miffan.data.model.MessageOrigin? = null,
+    /** Origin per sibling, in the same order as messages. */
+    val origins: List<me.ayuilos.miffan.data.model.MessageOrigin?> = emptyList(),
 )
 
 @Serializable
@@ -335,6 +338,8 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
             id = node.id.toString(),
             messages = siblings.map { it.message.toDto() },
             selectIndex = siblings.indexOfFirst { it.id == node.id },
+            origin = node.origin,
+            origins = siblings.map { it.origin },
         )
     },
     chatSuggestions = chatSuggestions,

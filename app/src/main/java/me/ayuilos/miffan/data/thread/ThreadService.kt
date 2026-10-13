@@ -1,6 +1,8 @@
 package me.ayuilos.miffan.data.thread
 
 import android.util.Log
+import kotlinx.coroutines.flow.first
+import me.ayuilos.miffan.data.repository.ConversationRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -10,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Conversation
+import me.ayuilos.miffan.data.model.MessageOrigin
 import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.service.ChatService
 import me.ayuilos.miffan.service.hasPendingToolApprovals
@@ -30,6 +33,7 @@ class ThreadService(
     private val settingsStore: SettingsStore,
     private val router: SegmentRouter,
     private val summarizer: SegmentSummarizer,
+    private val conversationRepository: ConversationRepository,
 ) {
     /** Serializes routing so each decision sees the topics that earlier messages just opened. */
     private val routeMutex = Mutex()
@@ -70,7 +74,7 @@ class ThreadService(
             val unsaved = recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
                 Conversation(id = id, assistantId = assistantId, title = topic.label, messageNodes = emptyList(), createAt = topic.at, updateAt = topic.at)
             }
-            val candidates = (segments + unsaved).sortedByDescending { it.updateAt }
+            val candidates = (segments.filter { it.chatId == null } + unsaved).sortedByDescending { it.updateAt }
             val segmentId = if (forced != null) {
                 forced
             } else {
@@ -101,6 +105,59 @@ class ThreadService(
         // cancelling that reply. Sending again also resumes a queue paused by an earlier failure.
         chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId, createdAt = createdAt)
         chatService.resumeMessageQueue(segmentId)
+    }
+
+    /**
+     * Delivers a message the owner did not write and lets the partner answer it, without routing:
+     * into [segmentId] when given (e.g. the topic that asked another partner), otherwise the newest
+     * open segment, otherwise a new one. Returns the segment. The answer arrives like any reply:
+     * unread in the Chats list and a notification while the app is in the background. The turn
+     * has no owner trigger, so it cannot change settings, grant permissions or edit memories.
+     */
+    suspend fun deliverFrom(
+        origin: MessageOrigin,
+        assistantId: Uuid,
+        content: List<UIMessagePart>,
+        segmentId: Uuid? = null,
+    ): Uuid = routeMutex.withLock {
+        requireNotNull(settingsStore.settingsFlow.first { !it.init }.getAssistantById(assistantId)) {
+            "Assistant not found: $assistantId"
+        }
+        val stored = conversationRepository.getConversationsOfAssistant(assistantId).first()
+        val known = stored.mapTo(HashSet()) { it.id }
+        recentTopics.entries.removeAll { it.key in known }
+        val candidates = stored.filter { it.chatId == null } + recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
+            Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
+        }
+        require(segmentId == null || !conversationRepository.isPartnerPerspective(segmentId)) {
+            "Cannot deliver an IM event to a partner perspective"
+        }
+        val selected = segmentId ?: candidates.filter { it.threadClosedAt == 0L }
+            .maxByOrNull { it.updateAt }?.id ?: Uuid.random()
+        val existingAssistant = conversationRepository.getAssistantIdOf(selected)
+        require(existingAssistant == null || existingAssistant == assistantId) { "Segment belongs to another assistant" }
+        if (selected !in known) {
+            recentTopics[selected] = RecentTopic(assistantId, content.filterIsInstance<UIMessagePart.Text>()
+                .joinToString(" ") { it.text }.take(120), Instant.now())
+        }
+        chatService.openThreadSegment(selected, assistantId)
+        chatService.sendMessage(selected, content, immediately = false, origin = origin)
+        chatService.resumeMessageQueue(selected)
+        selected
+    }
+
+    /** Put a partner's note in its owner-facing thread without starting a model turn. */
+    internal suspend fun deliverNote(assistantId: Uuid, origin: MessageOrigin.Event, text: String) = routeMutex.withLock {
+        requireNotNull(settingsStore.settingsFlow.first { !it.init }.getAssistantById(assistantId))
+        val stored = conversationRepository.getConversationsOfAssistant(assistantId).first()
+        val known = stored.mapTo(HashSet()) { it.id }
+        recentTopics.entries.removeAll { it.key in known }
+        val candidates = stored.filter { it.chatId == null && it.threadClosedAt == 0L } +
+            recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
+                Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
+            }
+        val selected = candidates.maxByOrNull { it.updateAt }?.id ?: Uuid.random()
+        chatService.appendPartnerNote(selected, assistantId, origin, text)
     }
 
     /** Forces the next message into a new segment ("换个话题"). */

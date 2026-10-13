@@ -2,10 +2,15 @@ package me.ayuilos.miffan.data.audit
 
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.*
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
-internal fun UIMessagePart.Tool.waitForApproval(at: Long): UIMessagePart.Tool = copy(
+internal fun UIMessagePart.Tool.waitForApproval(at: Long, reason: String? = null): UIMessagePart.Tool = copy(
     approvalState = ToolApprovalState.Pending,
     approvalRecord = approvalRecord ?: ToolApprovalRecord(requestedAt = at),
+    metadata = if (reason == null) metadata else JsonObject(
+        metadata.orEmpty() + ("approval_reason" to JsonPrimitive(reason)),
+    ),
 )
 
 internal fun UIMessagePart.Tool.recordAutomaticApproval(definition: Tool?, at: Long): UIMessagePart.Tool {

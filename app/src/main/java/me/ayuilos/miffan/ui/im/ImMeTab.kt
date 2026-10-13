@@ -39,7 +39,9 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.ui.im.computer.rememberKnownComputers
+import me.rerere.ai.provider.ModelType
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AiMagic
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.ArrowUp01
@@ -55,8 +57,14 @@ import me.rerere.hugeicons.stroke.PaintBoard
 import me.rerere.hugeicons.stroke.Settings03
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.data.ai.BackgroundModelHealth
+import me.ayuilos.miffan.data.ai.BackgroundModelSource
+import me.ayuilos.miffan.data.ai.BackgroundTask
+import me.ayuilos.miffan.data.ai.backgroundModelFor
 import me.ayuilos.miffan.data.datastore.isNotConfigured
 import me.ayuilos.miffan.data.model.InterfaceMode
+import me.ayuilos.miffan.ui.components.ai.ModelListSheet
+import me.ayuilos.miffan.ui.components.ai.rememberModelListState
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
 import me.ayuilos.miffan.ui.components.ui.UpdateAvailableBanner
@@ -64,6 +72,7 @@ import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.EditStateContent
 import me.ayuilos.miffan.ui.hooks.useEditState
 import me.ayuilos.miffan.utils.UpdateInfo
+import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
 @Composable
@@ -80,6 +89,15 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
     val nicknameEditState = useEditState<String> { newNickname ->
         vm.updateSettings { it.copy(displaySetting = it.displaySetting.copy(userNickname = newNickname)) }
     }
+    val backgroundHealth = koinInject<BackgroundModelHealth>()
+    val backgroundFailure by backgroundHealth.lastFailure.collectAsStateWithLifecycle()
+    // Memory is the chore every partner relies on, so its model stands for the whole helper.
+    val background = settings.backgroundModelFor(BackgroundTask.MEMORY, settings.assistants.find { it.id == settings.assistantId })
+    val backgroundModels = rememberModelListState(
+        background?.takeIf { it.source == BackgroundModelSource.FAST }?.model?.id,
+        settings.providers,
+        ModelType.CHAT,
+    )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -164,6 +182,30 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
                         )
                     },
                 )
+                if (!settings.isNotConfigured()) item(
+                    onClick = backgroundModels::open,
+                    leadingContent = { Icon(HugeIcons.AiMagic, null) },
+                    headlineContent = { Text(stringResource(R.string.im_me_background_model)) },
+                    supportingContent = {
+                        val failure = backgroundFailure
+                        Text(
+                            text = when {
+                                failure != null -> stringResource(R.string.im_me_background_model_failed, failure.message)
+                                background == null -> stringResource(R.string.im_me_background_model_none)
+                                background.source == BackgroundModelSource.FAST -> stringResource(
+                                    R.string.im_me_background_model_fast,
+                                    background.model.displayName.ifBlank { background.model.modelId },
+                                )
+                                else -> stringResource(R.string.im_me_background_model_fallback)
+                            },
+                            color = if (failure != null || background == null) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
+                )
             }
         }
         item("general") {
@@ -238,6 +280,11 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
                 )
             }
         }
+    }
+
+    ModelListSheet(backgroundModels) { model ->
+        backgroundHealth.dismiss()
+        vm.updateSettings { it.copy(fastModelId = model.id) }
     }
 
     nicknameEditState.EditStateContent { value, onUpdate ->

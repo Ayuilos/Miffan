@@ -99,6 +99,7 @@ import me.ayuilos.miffan.utils.plus
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceFileEntry
+import me.rerere.workspace.RemotePlatform
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
@@ -249,12 +250,14 @@ fun WorkspaceDetailPage(
                     IconButton(onClick = { vm.refresh() }) {
                         Icon(HugeIcons.Refresh01, contentDescription = workspaceStrings.getString(R.string.workspace_refresh))
                     }
-                    if (state.workspace?.isRemote == true) {
+                    // Windows hosts are workspaces only for now: no screen and no interactive terminal.
+                    if (state.workspace?.isRemote == true && state.remoteHost?.supportsRemoteScreen != false) {
                         IconButton(onClick = { navController.navigate(Screen.WorkspaceScreen(id)) }) {
                             Icon(HugeIcons.Computer, contentDescription = stringResource(R.string.workspace_screen_open))
                         }
                     }
-                    if (state.workspace?.let { it.isRemote || it.shellStatus != WorkspaceShellStatus.DISABLED.name } == true) {
+                    if (state.workspace?.let { if (it.isRemote) state.remoteHost?.supportsInteractiveTerminal != false
+                            else it.shellStatus != WorkspaceShellStatus.DISABLED.name } == true) {
                         IconButton(
                             onClick = {
                                 navController.navigate(
@@ -674,6 +677,9 @@ internal fun WorkspaceBasicPage(
                         if (workspace?.isRemote == true) {
                             WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_login_target), remoteHost?.let { "${it.username}@${it.host}:${it.port}" } ?: workspaceStrings.getString(R.string.workspace_host_config_unavailable))
                             WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_remote_directory), workspace.remotePath.orEmpty())
+                            if (remoteHost?.platform == RemotePlatform.WINDOWS.storageName) {
+                                WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_remote_system), workspaceStrings.getString(R.string.workspace_remote_system_windows))
+                            }
                             WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_host_identity), if (remoteHost?.trustedHostKeySha256 != null) workspaceStrings.getString(R.string.workspace_fingerprint_confirmed) else workspaceStrings.getString(R.string.workspace_fingerprint_unconfirmed))
                             (remoteWorkspaceState?.lastDirectoryCheck?.reason ?: remoteHostState?.lastConnection?.reason)
                                 ?.let { WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_recent_failure), it) }

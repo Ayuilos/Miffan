@@ -30,6 +30,8 @@ data class QueuedMessage(
     val replyTo: MessageRef? = null,
     /** When the user sent it; a queued message keeps its place in the timeline. */
     val createdAt: LocalDateTime? = null,
+    /** Who wrote it when not the owner; see [me.ayuilos.miffan.data.model.MessageOrigin]. */
+    val origin: me.ayuilos.miffan.data.model.MessageOrigin? = null,
 )
 
 data class MessageQueueState(

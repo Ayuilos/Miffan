@@ -15,6 +15,8 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -75,6 +77,12 @@ import me.ayuilos.miffan.data.ai.tools.MiffanHelpClient
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.workspaceToolTargetError
+import me.ayuilos.miffan.data.ai.AgentAccess
+import me.ayuilos.miffan.data.ai.forAgentRelayTurn
+import me.ayuilos.miffan.data.ai.withAgentRelayApproval
+import me.ayuilos.miffan.data.ai.tools.createMyEnvironmentTool
+import me.ayuilos.miffan.data.ai.tools.availableWorkspaceSkills
+import me.ayuilos.miffan.data.partner.ownerMentionedPartnerIds
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
@@ -115,6 +123,10 @@ import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.data.model.isImMode
 import me.ayuilos.miffan.data.model.memoryExtractionEnabled
 import me.ayuilos.miffan.data.ai.MemoryOperation
+import me.ayuilos.miffan.data.ai.BackgroundModelHealth
+import me.ayuilos.miffan.data.ai.BackgroundModelSource
+import me.ayuilos.miffan.data.ai.BackgroundTask
+import me.ayuilos.miffan.data.ai.backgroundModelFor
 import me.ayuilos.miffan.data.ai.buildMemoryExtractionPrompt
 import me.ayuilos.miffan.data.ai.memoryExtractionWindow
 import me.ayuilos.miffan.data.ai.parseMemoryOperations
@@ -123,6 +135,7 @@ import me.ayuilos.miffan.data.revision.RevisionOrigin
 import me.ayuilos.miffan.utils.toLocalString
 import java.time.LocalDate
 import me.ayuilos.miffan.data.model.recentChatsReferenceEnabled
+import me.ayuilos.miffan.data.partner.withPartnerOwnerNote
 import me.ayuilos.miffan.data.thread.ThreadContext
 import me.ayuilos.miffan.data.model.fillModelSnapshots
 import me.ayuilos.miffan.data.model.Assistant
@@ -291,6 +304,8 @@ internal fun Conversation.copyMessagePathForFork(
         val copied = MessageNode(
             message = transformMessage(source.message),
             parentId = copiedNodes.lastOrNull()?.id,
+            replyTo = source.replyTo,
+            origin = source.origin,
         )
         if (copiedNodes.isNotEmpty()) {
             copiedNodes[copiedNodes.lastIndex] = copiedNodes.last().withSelectedChild(copied.id)
@@ -389,6 +404,8 @@ class ChatService(
     private val folderRepository: FolderRepository,
     private val auditRepository: AuditRepository,
     httpClient: OkHttpClient,
+    private val backgroundModelHealth: BackgroundModelHealth = BackgroundModelHealth(),
+    private val recentErrorStore: me.ayuilos.miffan.data.bugreport.RecentErrorStore? = null,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -411,6 +428,9 @@ class ChatService(
         solution: ChatErrorSolution? = null,
     ) {
         if (error is CancellationException) return
+        recentErrorStore?.let { store ->
+            appScope.launch { runCatching { store.record(error, title) } }
+        }
         _errors.update {
             it + ChatError(title = title, error = error, conversationId = conversationId, solution = solution)
         }
@@ -591,6 +611,66 @@ class ChatService(
         }
     }
 
+    /** Generate a private-perspective turn using the same tools, streaming and approval resumptions. */
+    internal suspend fun generatePartnerReply(conversationId: Uuid): String = coroutineScope {
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        val previous = session.state.value
+        val knownErrors = errors.value.mapTo(HashSet()) { it.id }
+        val completed = async(start = CoroutineStart.UNDISPATCHED) {
+            assistantReplyCompleted.first { it.conversationId == conversationId }
+        }
+        val failed = async(start = CoroutineStart.UNDISPATCHED) {
+            errors.first { list -> list.any { it.conversationId == conversationId && it.id !in knownErrors } }
+                .last { it.conversationId == conversationId && it.id !in knownErrors }.error
+        }
+        try {
+            val job = launchGenerationJob(conversationId) { handleMessageComplete(conversationId) }
+            job.join()
+            if (!session.state.value.hasPendingToolApprovals() && !completed.isCompleted && !failed.isCompleted) {
+                error("Partner turn ended without a completed reply")
+            }
+            select<String> {
+                completed.onAwait { completion ->
+                    completion.job.join()
+                    val final = session.state.value
+                    check(final.completedAssistantReplyId(previous) != null)
+                    final.currentMessages.last { it.role == MessageRole.ASSISTANT }.toText()
+                }
+                failed.onAwait { throw it }
+            }
+        } finally {
+            completed.cancel()
+            failed.cancel()
+            session.release()
+        }
+    }
+
+    /** An event may queue behind an approval; keep its handoff lease until its turn settles. */
+    internal suspend fun awaitDeliveredEvent(conversationId: Uuid, origin: me.ayuilos.miffan.data.model.MessageOrigin.Event) {
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        try {
+            session.state.first { conversation -> conversation.currentMessageNodes.any { it.origin == origin } }
+            session.generationJob.first { it == null }
+        } finally { session.release() }
+    }
+
+    /** Append a partner's note directly, without a user send or model generation. */
+    internal suspend fun appendPartnerNote(conversationId: Uuid, assistantId: Uuid,
+        origin: me.ayuilos.miffan.data.model.MessageOrigin.Event, text: String) {
+        openThreadSegment(conversationId, assistantId)
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        try {
+            session.getJob()?.join()
+            val updated = session.state.value.withPartnerOwnerNote(origin, text)
+            saveConversation(conversationId, updated)
+            val name = settingsStore.settingsFlow.value.getAssistantById(assistantId)?.name.orEmpty()
+            appEventBus.emit(AppEvent.ChatGenerationEnded(conversationId, name, text.take(50)))
+        } finally { session.release() }
+    }
+
     // ---- 发送消息 ----
 
     fun sendMessage(
@@ -602,13 +682,15 @@ class ChatService(
         replyTo: MessageRef? = null,
         messageId: Uuid = Uuid.random(),
         createdAt: LocalDateTime? = null,
+        /** Who wrote it when not the owner; null means the owner. */
+        origin: me.ayuilos.miffan.data.model.MessageOrigin? = null,
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
-        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt)
+        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt, origin = origin)
         // A message sent while an approval waits is the user's answer to it, not a turn behind it.
-        val answersApproval = !session.isGenerating && session.state.value.hasPendingToolApprovals()
-        if (immediately || answersApproval) {
+        val answersApproval = origin == null && !session.isGenerating && session.state.value.hasPendingToolApprovals()
+        if ((immediately || answersApproval) && !(origin != null && session.state.value.hasPendingToolApprovals())) {
             sendMessageNow(session, message)
             session.resumeQueue()
         } else {
@@ -619,6 +701,10 @@ class ChatService(
     fun sendQueuedMessageImmediately(conversationId: Uuid, messageId: Uuid) {
         val session = getOrCreateSession(conversationId)
         val message = session.removeQueuedMessage(messageId) ?: return
+        if (message.origin != null && session.state.value.hasPendingToolApprovals()) {
+            session.enqueueMessage(message)
+            return
+        }
         sendMessageNow(session, message)
         session.resumeQueue()
     }
@@ -639,7 +725,12 @@ class ChatService(
             queuedMessage = message,
         ) {
             try {
-                finishInterruptedPendingTools(conversationId, repliedInChat = true)
+                // An approval may have appeared while an interrupted generation was settling.
+                if (message.origin != null && session.state.value.hasPendingToolApprovals()) {
+                    session.enqueueMessage(message)
+                    return@launchGenerationJob
+                }
+                if (message.origin == null) finishInterruptedPendingTools(conversationId, repliedInChat = true)
 
                 val currentConversation = session.state.value
                 val settings = settingsStore.settingsFlow.first()
@@ -655,6 +746,7 @@ class ChatService(
                         parts = processedContent,
                     ).let { if (message.createdAt != null) it.copy(createdAt = message.createdAt) else it },
                     replyTo = message.replyTo,
+                    origin = message.origin,
                 ).copy(updateAt = Instant.now())
                 saveConversation(conversationId, newConversation)
 
@@ -943,37 +1035,19 @@ class ChatService(
         val initialConversation = getConversationFlow(conversationId).value
         val assistant = settings.getAssistantById(initialConversation.assistantId)
             ?: settings.getCurrentAssistant()
-        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+        val configuredModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
             ?: error(context.getString(R.string.chat_page_select_model_first))
 
         val senderName = if (settings.isImMode || assistant.useAssistantAvatar) {
             assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
         } else {
-            model.displayName
+            configuredModel.displayName
         }
-        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
-        val extensionManagementEnabled = shouldEnableExtensionManagement(assistant, model)
 
         runCatching {
 
             // reset suggestions
             updateConversation(conversationId, initialConversation.copy(chatSuggestions = emptyList()))
-
-            // memory tool
-            if (!model.abilities.contains(ModelAbility.TOOL)) {
-                if (
-                    useExternalWebSearch ||
-                    mcpManager.getAllAvailableTools().isNotEmpty() ||
-                    LocalToolOption.ExtensionManagement in assistant.localTools
-                ) {
-                    addError(
-                        IllegalStateException(context.getString(R.string.tools_warning)),
-                        conversationId,
-                        title = context.getString(R.string.error_title_tool_unavailable),
-                        solution = ChatErrorSolution.EnableModelTools,
-                    )
-                }
-            }
 
             // check invalid messages
             checkInvalidMessages(conversationId)
@@ -1017,6 +1091,30 @@ class ChatService(
                     it
                 }
             }
+            val turnConversation = if (messageRange != null) {
+                conversation.copy(messageNodes = conversation.currentMessageNodes.take(messageRange.endInclusive + 1))
+            } else conversation
+            val ownerTrigger = turnConversation.ownerTrigger()
+            val access = AgentAccess.forTurn(assistant, turnConversation)
+            val model = configuredModel.forAgentRelayTurn(access)
+            val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
+            val extensionManagementEnabled = shouldEnableExtensionManagement(assistant, model)
+            // memory tool
+            if (!model.abilities.contains(ModelAbility.TOOL)) {
+                if (
+                    useExternalWebSearch ||
+                    mcpManager.getAllAvailableTools(access).isNotEmpty() ||
+                    LocalToolOption.ExtensionManagement in assistant.localTools
+                ) {
+                    addError(
+                        IllegalStateException(context.getString(R.string.tools_warning)),
+                        conversationId,
+                        title = context.getString(R.string.error_title_tool_unavailable),
+                        solution = ChatErrorSolution.EnableModelTools,
+                    )
+                }
+            }
+
             val computerToolbox = createComputerToolbox(assistant, conversation.id.toString(), generationMessages)
             generationHandler.generateText(
                 settings = settings,
@@ -1025,16 +1123,23 @@ class ChatService(
                 messages = generationMessages,
                 assistant = assistant,
                 conversationId = conversationId,
+                access = access,
+                memoryTrigger = ownerTrigger,
                 conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
                 localToolOutputRoot = boundWorkspace?.takeUnless { it.isRemote }?.root,
-                threadContext = if (settings.isImMode) {
+                threadContext = listOfNotNull(if (conversation.chatId != null) {
+                    getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatStore>().chat(conversation.chatId)?.let {
+                        me.ayuilos.miffan.data.partner.perspectiveContext(it, assistant.id, settings)
+                    }
+                } else if (settings.isImMode) {
                     ThreadContext.build(conversationRepo, assistant.id, conversation.id)
                 } else {
                     null
-                },
+                }, me.ayuilos.miffan.data.bugreport.bugReportSuggestionHint(access, settings))
+                    .joinToString("\n\n").takeIf { it.isNotBlank() },
                 memories = if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
                 } else {
@@ -1044,9 +1149,10 @@ class ChatService(
                     addAll(inputTransformers)
                     add(templateTransformer)
                     add(workspaceReminderTransformer)
+                    add(me.ayuilos.miffan.data.ai.transformers.PartnerMentionTransformer(turnConversation, settings))
                 },
                 outputTransformers = outputTransformers,
-                dynamicTools = { computerToolbox?.tools().orEmpty() },
+                dynamicTools = { computerToolbox?.tools().orEmpty().withAgentRelayApproval(access, dynamic = true) },
                 tools = buildList {
                     val miffanHelpEnabled = shouldEnableMiffanHelp(
                         assistant = assistant,
@@ -1060,38 +1166,68 @@ class ChatService(
                         addAll(createSearchTools(settings))
                     }
                     addAll(localTools.getTools(assistant.localTools))
+                    addAll(me.ayuilos.miffan.data.bugreport.createBugReportTools(assistant.localTools, access) {
+                        me.ayuilos.miffan.data.bugreport.deviceDiagnostics(context, settings.isImMode)
+                            .copy(recentErrors = recentErrorStore?.recent().orEmpty())
+                    })
                     if (extensionManagementEnabled) {
-                        addAll(createExtensionManagementTools(extensionManagementService))
+                        addAll(createExtensionManagementTools(extensionManagementService, access))
                     }
                     if (assistant.recentChatsReferenceEnabled(settings)) {
-                        addAll(createConversationTools(conversationRepo, assistant.id))
+                        addAll(createConversationTools(conversationRepo, access, settings,
+                            if (settings.isImMode) getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>() else null))
                     }
                     if (settings.isImMode) {
-                        val trigger = conversation.currentMessages.lastOrNull { it.role == MessageRole.USER }
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildPartnerMessageTools(
+                            turnConversation, access, settingsStore, getKoin().get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>()))
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildSelfProfileTools(
+                            access = access,
+                            isImMode = settings.isImMode,
+                            settingsStore = settingsStore,
+                            ownerTrigger = ownerTrigger,
+                            revisionService = getKoin().get<me.ayuilos.miffan.data.revision.RevisionService>(),
+                            emojiValues = {
+                                me.ayuilos.miffan.data.ai.tools.profileEmojiValues(me.ayuilos.miffan.utils.EmojiUtils.loadEmoji(context))
+                            },
+                        ))
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildCreatePartnerTools(
+                            access, settings.isImMode, settingsStore, ownerTrigger,
+                            emojiValues = { me.ayuilos.miffan.data.ai.tools.profileEmojiValues(me.ayuilos.miffan.utils.EmojiUtils.loadEmoji(context)) },
+                        ))
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildGroupChatTools(
+                            access, settings.isImMode, settingsStore, ownerTrigger,
+                            getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>(),
+                        ))
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildChatListTools(
+                            access, settings.isImMode, settingsStore, ownerTrigger,
+                            getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>(),
+                        ))
+                        val trigger = ownerTrigger
                         addAll(
                             buildSelfConfigTools(
                                 assistantId = assistant.id,
                                 settingsStore = settingsStore,
-                                trigger = trigger?.let { MessageRef(conversation.id, it.id) },
-                                triggerText = trigger?.toText().orEmpty(),
+                                trigger = trigger,
+                                triggerText = trigger?.let { conversation.getMessageNodeByMessageId(it.messageId)?.message?.toText() }.orEmpty(),
                                 webSearchEnabled = assistant.enableWebSearch,
                             )
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
+                    val builtInSkills = buildList {
+                        if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
+                        if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
+                    }
                     if (miffanHelpEnabled || extensionManagementEnabled || availableSkills.isNotEmpty()) {
                         addAll(
                             createSkillTools(
                                 allSkills = availableSkills,
-                                builtInSkills = buildList {
-                                    if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
-                                    if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
-                                },
+                                builtInSkills = builtInSkills,
                                 workspaceReady = workspaceReady && assistant.workspaceShellEnabled,
                             )
                         )
                     }
-                    mcpManager.getAllAvailableTools().also { allTools ->
+                    mcpManager.getAllAvailableTools(access).also { allTools ->
                         val invalidNames = allTools
                             .map { it.second }
                             .distinct()
@@ -1121,7 +1257,27 @@ class ChatService(
                             )
                         )
                     }
-                },
+                    if (settings.isImMode) {
+                        val registeredTools = toList()
+                        val chatService = getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatService>()
+                        val host = boundWorkspace?.remoteHostId?.let { workspaceRepository.getHostById(it) }
+                        add(createMyEnvironmentTool(
+                            access = access,
+                            settings = settings,
+                            model = model,
+                            providerName = model.findProvider(settings.providers)?.name.orEmpty(),
+                            toolNames = { (registeredTools + computerToolbox?.tools().orEmpty()).mapTo(hashSetOf()) { it.name } },
+                            skillNames = builtInSkills.map { it.name } +
+                                availableWorkspaceSkills(availableSkills, builtInSkills,
+                                    workspaceReady && assistant.workspaceShellEnabled).map { it.name },
+                            workspaceName = boundWorkspace?.name,
+                            computerName = host?.takeIf { it.screenEnabled }?.name,
+                            groups = { chatService.observeSummaries().first().map { it.chat } },
+                            turnContactIds = if (access.ownerInitiated)
+                                turnConversation.ownerMentionedPartnerIds(settings).toSet() else emptySet(),
+                        ))
+                    }
+                }.withAgentRelayApproval(access),
             ).onCompletion { cause ->
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
@@ -1138,7 +1294,7 @@ class ChatService(
                         AppEvent.ChatGenerationEnded(
                             conversationId = conversationId,
                             senderName = senderName,
-                            contentPreview = updatedConversation.currentMessages.lastOrNull()?.toText()?.take(50)?.trim() ?: "",
+                            contentPreview = if (conversation.chatId == null) updatedConversation.currentMessages.lastOrNull()?.toText()?.take(50)?.trim() ?: "" else null,
                             pendingApprovals = updatedConversation.pendingApprovalTools(),
                         )
                     )
@@ -1152,7 +1308,7 @@ class ChatService(
 
                         // 通知等边缘副作用由 ChatNotificationManager 消费；
                         // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
-                        chunk.messages.lastOrNull()?.let { lastMessage ->
+                        chunk.messages.lastOrNull()?.takeIf { conversation.chatId == null }?.let { lastMessage ->
                             appEventBus.tryEmit(
                                 AppEvent.ChatGenerationUpdate(conversationId, lastMessage, senderName)
                             )
@@ -1180,11 +1336,9 @@ class ChatService(
                 )
             }
 
-            launchWithConversationReference(conversationId) {
-                generateTitle(conversationId, finalConversation)
-            }
-            launchWithConversationReference(conversationId) {
-                generateSuggestion(conversationId, finalConversation)
+            if (finalConversation.chatId == null) {
+                launchWithConversationReference(conversationId) { generateTitle(conversationId, finalConversation) }
+                launchWithConversationReference(conversationId) { generateSuggestion(conversationId, finalConversation) }
             }
             launchWithConversationReference(conversationId) {
                 extractMemories(conversationId, assistant.id, finalConversation)
@@ -1323,6 +1477,7 @@ class ChatService(
         conversation: Conversation,
         force: Boolean = false
     ) = withContext(Dispatchers.IO) {
+        if (conversation.chatId != null) return@withContext
         val shouldGenerate = when {
             force -> true
             conversation.title.isBlank() -> true
@@ -1353,30 +1508,37 @@ class ChatService(
     ): String? = withContext(Dispatchers.IO) {
         runCatching {
             val settings = settingsStore.settingsFlow.first()
-            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
+            val assistant = settings.getAssistantById(conversation.assistantId)
+            val model = settings.backgroundModelFor(BackgroundTask.TITLE, assistant)?.model
                 ?: return@runCatching null
             val provider = model.findProvider(settings.providers) ?: return@runCatching null
 
             val providerHandler = providerManager.getProviderByType(provider)
-            val result = providerHandler.generateText(
-                providerSetting = provider,
-                messages = listOf(
-                    UIMessage.user(
-                        prompt = settings.titlePrompt.applyPlaceholders(
-                            "locale" to Locale.getDefault().displayName,
-                            "content" to conversation.currentMessages
-                                .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
+            val result = try {
+                providerHandler.generateText(
+                    providerSetting = provider,
+                    messages = listOf(
+                        UIMessage.user(
+                            prompt = settings.titlePrompt.applyPlaceholders(
+                                "locale" to Locale.getDefault().displayName,
+                                "content" to conversation.currentMessages
+                                    .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
+                        ),
                     ),
-                ),
-                params = backgroundTextGenerationParams(
-                    model = model,
-                    reasoningLevel = if (model.id == settings.fastModelId) {
-                        settings.fastModelReasoningLevel
-                    } else {
-                        ReasoningLevel.AUTO
-                    },
-                ),
-            )
+                    params = backgroundTextGenerationParams(
+                        model = model,
+                        reasoningLevel = if (model.id == settings.fastModelId) {
+                            settings.fastModelReasoningLevel
+                        } else {
+                            ReasoningLevel.AUTO
+                        },
+                    ),
+                )
+            } catch (error: Exception) {
+                backgroundModelHealth.reportFailure(BackgroundTask.TITLE, model, error)
+                throw error
+            }
+            backgroundModelHealth.reportSuccess(BackgroundTask.TITLE)
             result.message.toText().trim().takeIf { it.isNotEmpty() }
         }.onFailure {
             if (it is CancellationException) throw it
@@ -1401,49 +1563,58 @@ class ChatService(
         conversation: Conversation,
     ) = withContext(Dispatchers.IO) {
         runCatching {
+            val trigger = conversation.ownerTrigger() ?: return@runCatching
             val settings = settingsStore.settingsFlow.first()
             // Read the assistant now: memory may have been switched off while the reply streamed.
             val assistant = settings.getAssistantById(assistantId) ?: return@runCatching
             if (!assistant.memoryExtractionEnabled(settings)) return@runCatching
-            val messages = conversation.currentMessages
-            val window = memoryExtractionWindow(messages) ?: return@runCatching
-            // Only the fast model runs this, so it never adds hidden cost on the chat model.
-            val model = settings.findModelById(settings.fastModelId) ?: return@runCatching
+            val window = memoryExtractionWindow(conversation) ?: return@runCatching
+            // Throttled extraction may borrow the partner's chat model only in easy chat.
+            val choice = settings.backgroundModelFor(BackgroundTask.MEMORY, assistant) ?: return@runCatching
+            val model = choice.model
             val provider = model.findProvider(settings.providers) ?: return@runCatching
 
-            val ownerId = if (assistant.useGlobalMemory) {
-                MemoryRepository.GLOBAL_MEMORY_ID
-            } else {
-                assistant.id.toString()
-            }
+            val access = AgentAccess.forTurn(assistant, conversation)
+            val ownerId = access.memoryOwnerId
             memoryExtractionLock.withLock {
                 val memories = memoryRepository.getMemoriesOfAssistant(ownerId)
-                val result = providerManager.getProviderByType(provider).generateText(
-                    providerSetting = provider,
-                    messages = listOf(
-                        UIMessage.user(
-                            buildMemoryExtractionPrompt(
-                                memories = memories,
-                                window = window,
-                                today = LocalDate.now().toLocalString(true),
+                // LOW avoids OFF's rejected none/minimal effort on always-reasoning chat models.
+                val reasoningLevel = if (choice.source == BackgroundModelSource.CHAT_FALLBACK) {
+                    ReasoningLevel.LOW
+                } else {
+                    settings.fastModelReasoningLevel
+                }
+                val result = try {
+                    providerManager.getProviderByType(provider).generateText(
+                        providerSetting = provider,
+                        messages = listOf(
+                            UIMessage.user(
+                                buildMemoryExtractionPrompt(
+                                    memories = memories,
+                                    window = window,
+                                    today = LocalDate.now().toLocalString(true),
+                                )
                             )
-                        )
-                    ),
-                    params = backgroundTextGenerationParams(model, settings.fastModelReasoningLevel),
-                )
+                        ),
+                        params = backgroundTextGenerationParams(model, reasoningLevel),
+                    )
+                } catch (error: Exception) {
+                    backgroundModelHealth.reportFailure(BackgroundTask.MEMORY, model, error)
+                    throw error
+                }
+                backgroundModelHealth.reportSuccess(BackgroundTask.MEMORY)
                 val operations = parseMemoryOperations(result.message.toText(), memories.map { it.id }.toSet())
                 if (operations.isEmpty()) return@withLock
 
                 val origin = RevisionOrigin(
                     author = RevisionAuthor.AGENT,
-                    trigger = messages.lastOrNull { it.role == MessageRole.USER }
-                        ?.let { MessageRef(conversationId, it.id) },
+                    trigger = trigger,
                 )
                 withContext(origin) {
                     operations.forEach { operation ->
                         when (operation) {
                             is MemoryOperation.Create -> memoryRepository.addMemory(ownerId, operation.content)
-                            is MemoryOperation.Edit -> memoryRepository.updateContent(operation.id, operation.content)
+                            is MemoryOperation.Edit -> memoryRepository.updateContent(operation.id, operation.content, access)
                         }
                     }
                 }
@@ -1754,6 +1925,8 @@ class ChatService(
         val editedNode = MessageNode(
             message = editedMessage,
             parentId = sourceNode.parentId,
+            replyTo = sourceNode.replyTo,
+            origin = sourceNode.origin,
         )
         val updatedConversation = currentConversation
             .selectNode(sourceNode.id)
@@ -1878,6 +2051,11 @@ class ChatService(
         if (session.generationVersion != generationVersion) return
         finishInterruptedPendingTools(conversationId)
         saveConversation(conversationId, session.state.value)
+    }
+
+    internal suspend fun discardPartnerSegment(conversationId: Uuid) {
+        workspaceRepository.closeConversationTerminal(conversationId.toString())
+        discardSession(conversationId)
     }
 
     /** Deleting a conversation also discards its unsent messages and stops its turn chain. */

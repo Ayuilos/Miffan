@@ -99,6 +99,10 @@ class WorkspaceRepository(
             expectedTarget = target, persistentCommands = true,
         ) },
         validate = { target -> validateWorkspaceToolTarget(target, target.workspaceId, requireShell = true) },
+        singleExecution = { target -> !supportsInteractiveTerminal(target.workspaceId) },
+        executeSingle = { target, command, cwd, timeout ->
+            executeCommand(target.workspaceId, command, cwd, timeout, scopeId = target.scopeId, expectedTarget = target)
+        },
     )
     val conversationShellStates get() = conversationShells.states
 
@@ -122,6 +126,12 @@ class WorkspaceRepository(
     val remoteHostStates: StateFlow<Map<String, RemoteHostRuntimeState>> = remoteRuntime.hostStates
     val remoteWorkspaceStates: StateFlow<Map<String, RemoteWorkspaceRuntimeState>> = remoteRuntime.workspaceStates
     val remoteConnectionStates: StateFlow<Map<String, RemoteConnectionStatus>> = remoteConnections.states
+
+    /** UI and tool factories can inspect this without trying to open a PTY. */
+    suspend fun supportsInteractiveTerminal(id: String): Boolean {
+        val workspace = dao.getById(id) ?: return false
+        return !workspace.isRemote || workspace.remoteHostId?.let { hostDao.getById(it)?.supportsInteractiveTerminal } == true
+    }
 
     private fun remoteIdentity(workspace: WorkspaceEntity, host: RemoteHostEntity) =
         RemoteConnectionIdentity(workspace.id, host.id, host.connectionRevision,
@@ -152,6 +162,7 @@ class WorkspaceRepository(
                     if (verifyPath && result.resolvedRoot != identity.remotePath) {
                         throw WorkspaceToolTargetChangedException()
                     }
+                    hostDao.updateDetectedPlatform(identity.hostId, identity.connectionRevision, result.platform.storageName)
                     opened.compareAndSet(result, null)
                     return@acquire result
                 } catch (error: Exception) {
@@ -512,7 +523,8 @@ class WorkspaceRepository(
                 stage = RemoteConnectionStage.FINISHED
                 throw error
             }
-            runRemoteInterruptible { remoteTransport.open(config).use { } }
+            val platform = runRemoteInterruptible { remoteTransport.open(config).use { it.platform } }
+            hostDao.updateDetectedPlatform(id, revision, platform.storageName)
             remoteRuntime.connected(id, revision = revision)
             stage = RemoteConnectionStage.OPERATING
         } catch (error: CancellationException) {
@@ -550,11 +562,13 @@ class WorkspaceRepository(
     suspend fun remoteHome(id: String): String {
         val host = hostDao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, id))
         val config = host.config()
-        val home = runRemoteInterruptible {
+        val (platform, home) = runRemoteInterruptible {
             remoteTransport.open(config).use { session ->
-                session.execute("printf '%s' \"\$HOME\"", timeoutMillis = 15_000).stdout.trim()
+                session.platform to if (session.platform == me.rerere.workspace.RemotePlatform.WINDOWS) session.homeDirectory
+                else session.execute("printf '%s' \"\$HOME\"", timeoutMillis = 15_000).stdout.trim()
             }
         }
+        hostDao.updateDetectedPlatform(id, host.connectionRevision, platform.storageName)
         require(home.startsWith('/') && home != "/" && home.none { it == '\n' || it == '\u0000' }) {
             workspaceStrings.getString(R.string.workspace_error_absolute_path)
         }
@@ -610,7 +624,10 @@ class WorkspaceRepository(
             stage = RemoteConnectionStage.OPERATING
             remoteRuntime.connected(hostId, workspaceId, revision)
             val result = runRemoteOperation(opened) {
-                opened.execute("pwd", timeoutMillis = 15_000)
+                if (opened.platform == me.rerere.workspace.RemotePlatform.WINDOWS) {
+                    // Opening already verified the selected directory using SFTP.
+                    WorkspaceCommandResult(exitCode = 0, stdout = opened.resolvedRoot, stderr = "")
+                } else opened.execute("pwd", timeoutMillis = 15_000)
             }
             when {
                 result.timedOut -> {
@@ -893,6 +910,7 @@ class WorkspaceRepository(
         require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
         val hostId = requireNotNull(workspace.remoteHostId)
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
+        if (!host.supportsInteractiveTerminal) throw me.rerere.workspace.RemoteTerminalUnsupportedException()
         val revision = host.connectionRevision
         if ((expectedHostId != null && expectedHostId != hostId) ||
             (expectedHostRevision != null && expectedHostRevision != revision) ||

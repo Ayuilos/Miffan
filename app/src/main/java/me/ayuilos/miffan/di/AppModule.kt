@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.di
 
+import kotlinx.coroutines.launch
+
 import me.ayuilos.miffan.data.revision.RevisionNoticeSource
 import me.ayuilos.miffan.data.revision.RevisionService
 import me.ayuilos.miffan.data.thread.LlmTopicClassifier
@@ -88,6 +90,8 @@ val appModule = module {
         )
     }
 
+    single { me.ayuilos.miffan.data.bugreport.RecentErrorStore(java.io.File(get<android.app.Application>().filesDir, "diagnostics/recent_errors.json")) }
+
     single {
         ChatService(
             context = get(),
@@ -109,10 +113,31 @@ val appModule = module {
             folderRepository = get(),
             auditRepository = get(),
             httpClient = get(),
+            backgroundModelHealth = get(),
+            recentErrorStore = get(),
         )
     }
 
-    single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>()) }
+    single<me.ayuilos.miffan.data.partner.PartnerChatStore> { me.ayuilos.miffan.data.partner.RoomPartnerChatStore(get(), { get() }) }
+    single<me.ayuilos.miffan.data.partner.PartnerChatRuntime> {
+        me.ayuilos.miffan.data.partner.ChatServicePartnerRuntime(get(), get(), { get<ChatService>() }, { get<ThreadService>() })
+    }
+    single { me.ayuilos.miffan.data.partner.DefaultPartnerChatService(get(), get(), get(), get<AppScope>(),
+        listPrefs = get<me.ayuilos.miffan.data.thread.ThreadListState>().value,
+        notifications = me.ayuilos.miffan.data.partner.PartnerGroupNotifications { chat, message, trigger ->
+            get<ChatNotificationManager>().notifyGroupMessage(chat, message, trigger)
+        }) }
+    single<me.ayuilos.miffan.data.partner.PartnerChatService> { get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>() }
+
+    single {
+        val store = get<me.ayuilos.miffan.data.bugreport.RecentErrorStore>()
+        val scope = get<AppScope>()
+        me.ayuilos.miffan.data.ai.BackgroundModelHealth { task, error ->
+            scope.launch { runCatching { store.record(error, "Background helper: ${task.name}") } }
+        }
+    }
+
+    single { ThreadModels(settingsStore = get(), providerManager = get(), scope = get<AppScope>(), backgroundModelHealth = get()) }
 
     single<SegmentRouter> { SmartSegmentRouter(LlmTopicClassifier(get())) }
 
@@ -130,7 +155,7 @@ val appModule = module {
 
     single<ThreadNoticeSource> { RevisionNoticeSource(revisions = get(), settingsStore = get()) }
 
-    single { ThreadService(chatService = get(), settingsStore = get(), router = get(), summarizer = get()) }
+    single { ThreadService(chatService = get(), settingsStore = get(), router = get(), summarizer = get(), conversationRepository = get()) }
 
     single {
         WebServerManager(

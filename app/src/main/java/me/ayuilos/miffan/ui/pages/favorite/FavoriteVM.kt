@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.model.isImMode
 import kotlinx.coroutines.flow.stateIn
 import me.ayuilos.miffan.data.db.entity.FavoriteEntity
 import me.ayuilos.miffan.data.favorite.NodeFavoriteAdapter
@@ -23,9 +27,15 @@ data class NodeFavoriteListItem(
 
 class FavoriteVM(
     private val favoriteRepository: FavoriteRepository,
+    settingsStore: SettingsStore,
 ) : ViewModel() {
-    val nodeFavorites = favoriteRepository
-        .listByType(FavoriteType.NODE)
+    val nodeFavorites = settingsStore.settingsFlow
+        .map { it.isImMode }
+        .distinctUntilChanged()
+        .flatMapLatest { im ->
+            if (im) favoriteRepository.listByType(FavoriteType.NODE)
+            else favoriteRepository.listVisibleByType(FavoriteType.NODE)
+        }
         .map { favorites ->
             favorites.mapNotNull { entity ->
                 val ref = NodeFavoriteAdapter.decodeRef(entity) ?: return@mapNotNull null

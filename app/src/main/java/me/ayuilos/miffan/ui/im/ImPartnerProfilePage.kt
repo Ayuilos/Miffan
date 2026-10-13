@@ -47,6 +47,8 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     val usesPhone by rememberPartnerUsesPhone(vm.assistantId)
     val memories by vm.memories.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val partnerChats: me.ayuilos.miffan.data.partner.PartnerChatService = org.koin.compose.koinInject()
+    val currentSettings = LocalSettings.current
     val snackbar = remember { SnackbarHostState() }
     var editing by rememberSaveable { mutableStateOf(false) }
     var deleteConfirm by rememberSaveable { mutableStateOf(false) }
@@ -101,6 +103,28 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                     onOpenComputer = { computer?.hostId?.let { nav.navigate(Screen.ComputerDetail(it)) } })
             }
             item("remember") { ImCapabilityRow(stringResource(R.string.im_p5_remember), partner.enableMemory, !busy) { enabled -> perform { vm.update { it.copy(enableMemory = enabled) } } } }
+            val contacts = currentSettings.let { settings ->
+                settings.partnerContactGrants.mapNotNull { pair ->
+                    val other = when (partner.id) { pair.first -> pair.second; pair.second -> pair.first; else -> null }
+                    other?.let { id -> settings.assistants.firstOrNull { it.id == id } }
+                }
+            }
+            // Only once the owner allowed a contact: the approval card said this is where it can be taken back.
+            if (contacts.isNotEmpty()) item("contacts") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(R.string.im_partner_contacts), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp))
+                    contacts.forEach { other ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AssistantAvatar(other.name, other.avatar, Modifier.size(32.dp))
+                            Text(partnerName(other), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            TextButton(enabled = !busy, onClick = { scope.launch { partnerChats.revokeContact(partner.id, other.id) } }) {
+                                Text(stringResource(R.string.im_partner_contacts_revoke))
+                            }
+                        }
+                    }
+                }
+            }
             item("history") { ImSettingRow(stringResource(R.string.im_p5_settings_history), { nav.navigate(Screen.RevisionHistory(RevisionSubject.ASSISTANT.name, assistantId)) }) }
             item("approvals") { ImSettingRow(stringResource(R.string.im_audit_title), { nav.navigate(Screen.ApprovalHistory(assistantId)) }) }
             item("background") { ImSettingRow(stringResource(R.string.im_p5_background), { nav.navigate(Screen.ImChatBackground(assistantId)) }) }

@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,8 @@ import me.ayuilos.miffan.data.repository.RemoteRdpCertificateChangedException
 import me.ayuilos.miffan.data.repository.RemoteScreenProblem
 import me.ayuilos.miffan.data.repository.RemoteScreenUnavailableException
 import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
+import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
+import me.ayuilos.miffan.data.repository.RemoteSunshineFirewallPlan
 
 @Composable
 internal fun RemoteScreenFailureContent(
@@ -41,6 +44,11 @@ internal fun RemoteScreenFailureContent(
     onTrustCertificate: ((String) -> Unit)? = null,
     /** Switches a fixed endpoint nothing listens on to automatic connection; null hides the action. */
     onUseAutomatic: (() -> Unit)? = null,
+    /** Applies the Windows firewall plan the user just confirmed; null hides the action. */
+    onFixFirewall: ((RemoteSunshineFirewallPlan) -> Unit)? = null,
+    firewallApplying: Boolean = false,
+    /** Walks a Windows computer through Sunshine start, encryption and pairing; null hides the action. */
+    onSetUpStream: (() -> Unit)? = null,
 ) {
     val resources = LocalResources.current
     val error = (state as? RemoteScreenUiState.Failed)?.error
@@ -57,7 +65,16 @@ internal fun RemoteScreenFailureContent(
     }
     var confirmTrust by remember(error) { mutableStateOf(false) }
     // Unspecified unavailable problems keep P1's settings action; ordinary failures still retry.
-    val settingsOnly = unavailable != null && !retryOnly && !missingServer
+    // Nothing on the computer or in settings fixes an unsupported platform, so it offers no action.
+    val unsupported = unavailable?.problem == RemoteScreenProblem.WINDOWS_NOT_SUPPORTED
+    val firewallPlan = unavailable?.firewallCheck?.suggestedPlan
+        ?.takeIf { unavailable.problem == RemoteScreenProblem.FIREWALL_REVIEW_NEEDED }
+    val streamSetup = onSetUpStream.takeIf { unavailable?.problem == RemoteScreenProblem.STREAM_UNAVAILABLE &&
+        unavailable.streamFailure?.reason in WINDOWS_SETUP_FIXES }
+    // Windows problems are fixed here or on the computer, never in the VNC/RDP settings.
+    val windowsProblem = unavailable?.problem in WINDOWS_PROBLEMS
+    val settingsOnly = unavailable != null && !retryOnly && !missingServer && !unsupported && !windowsProblem
+    var reviewFirewall by remember(error) { mutableStateOf(false) }
     Surface(modifier.padding(24.dp).fillMaxWidth(), shape = MaterialTheme.shapes.large) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -71,17 +88,28 @@ internal fun RemoteScreenFailureContent(
                 RemoteScreenProblem.NO_RDP_SERVER -> RemoteScreenRdpInstallGuidance(unavailable.desktop)
                 else -> Unit
             }
+            if (unavailable?.problem == RemoteScreenProblem.FIREWALL_REVIEW_NEEDED && firewallPlan == null) {
+                unavailable.firewallCheck?.planDetail?.takeIf { it.isNotBlank() }?.let { RemoteScreenLog(it) }
+            }
             if (unavailable?.problem == RemoteScreenProblem.VNC_START_FAILED || unavailable?.problem == RemoteScreenProblem.RDP_START_FAILED) {
                 unavailable.detail?.takeIf { it.isNotBlank() }?.let { RemoteScreenLog(it) }
             }
             Row {
+                if (firewallPlan != null && onFixFirewall != null) {
+                    TextButton(enabled = !firewallApplying, onClick = { reviewFirewall = true }) {
+                        Text(stringResource(R.string.workspace_screen_firewall_review))
+                    }
+                }
+                if (streamSetup != null) {
+                    TextButton(onClick = streamSetup) { Text(stringResource(R.string.workspace_screen_windows_stream_setup)) }
+                }
                 if (onUseAutomatic != null) {
                     TextButton(onClick = onUseAutomatic) { Text(stringResource(R.string.workspace_screen_use_automatic)) }
                 }
                 if (changedCertificate != null && onTrustCertificate != null) {
                     TextButton(onClick = { confirmTrust = true }) { Text(stringResource(R.string.workspace_screen_rdp_trust)) }
                 }
-                if (!settingsOnly) {
+                if (!settingsOnly && !unsupported && !firewallApplying) {
                     TextButton(onClick = onRetry) {
                         Text(stringResource(if (error != null) R.string.workspace_screen_retry else R.string.workspace_screen_reconnect))
                     }
@@ -93,6 +121,10 @@ internal fun RemoteScreenFailureContent(
                 }
             }
         }
+    }
+    if (reviewFirewall && firewallPlan != null && onFixFirewall != null) {
+        RemoteSunshineFirewallDialog(firewallPlan, onDismiss = { reviewFirewall = false },
+            onConfirm = { reviewFirewall = false; onFixFirewall(firewallPlan) })
     }
     if (confirmTrust && changedCertificate != null && onTrustCertificate != null) {
         val actual = changedCertificate.actual
@@ -125,4 +157,34 @@ private fun FingerprintBlock(label: String, sha256: String) {
         Text(sha256.replace(":", "").uppercase().chunked(4).chunked(4).joinToString("\n") { it.joinToString(" ") },
             fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+private val WINDOWS_PROBLEMS = setOf(RemoteScreenProblem.FIREWALL_REVIEW_NEEDED, RemoteScreenProblem.FIREWALL_CHECK_FAILED,
+    RemoteScreenProblem.STREAM_UNAVAILABLE)
+
+/** Failures the Sunshine enable flow can fix from the phone. */
+private val WINDOWS_SETUP_FIXES = setOf(RemoteStreamFallbackReason.SUNSHINE_NOT_RUNNING,
+    RemoteStreamFallbackReason.ENCRYPTION_NOT_ENFORCED, RemoteStreamFallbackReason.NOT_PAIRED)
+
+/** Shows exactly what changes on the computer before anything is written; the computer re-checks the plan. */
+@Composable
+private fun RemoteSunshineFirewallDialog(plan: RemoteSunshineFirewallPlan, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.workspace_screen_firewall_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.workspace_screen_firewall_hint))
+                if (plan.disableRules.isNotEmpty()) {
+                    Text(pluralStringResource(R.plurals.workspace_screen_firewall_disable, plan.disableRules.size, plan.disableRules.size))
+                }
+                plan.addRule?.let { rule ->
+                    Text(stringResource(R.string.workspace_screen_firewall_add, rule.sources.joinToString(", ")))
+                }
+                Text(stringResource(R.string.workspace_screen_firewall_backup), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.workspace_screen_firewall_apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }

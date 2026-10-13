@@ -1,6 +1,14 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import androidx.compose.foundation.background
+import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -43,7 +51,8 @@ private const val INPUT_ANCHOR = "\u200B"
 private fun emptyInput() = TextFieldValue(INPUT_ANCHOR, TextRange(1))
 
 @Composable
-internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, macOS: Boolean) {
+internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, platform: RemoteScreenPlatform) {
+    val macOS = platform == RemoteScreenPlatform.MACOS
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var value by remember { mutableStateOf(emptyInput()) }
@@ -113,7 +122,18 @@ internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, macOS: Boolean) {
             ScreenKey("Tab") { sendKey(RfbKeys.TAB) }
             ScreenKey("Ctrl", RemoteModifier.CONTROL in modifiers) { toggle(RemoteModifier.CONTROL) }
             ScreenKey("Alt", RemoteModifier.ALT in modifiers) { toggle(RemoteModifier.ALT) }
-            ScreenKey(if (macOS) "⌘" else "Super", RemoteModifier.SUPER in modifiers) { toggle(RemoteModifier.SUPER) }
+            if (macOS) {
+                // ⌘ alone does nothing on a Mac, so it only waits for the next key like the others.
+                ScreenKey("⌘", RemoteModifier.SUPER in modifiers) { toggle(RemoteModifier.SUPER) }
+            } else {
+                // Win/Super alone opens the Start menu or activities, so a tap presses it at once; a long
+                // press holds it for the next key (Win+E, Win+→…), and a tap while held lets it go.
+                val held = RemoteModifier.SUPER in modifiers
+                val name = if (platform == RemoteScreenPlatform.WINDOWS) "Win" else "Super"
+                ScreenKey(if (held) "$name +" else name, held,
+                    onLongClick = { if (!held) toggle(RemoteModifier.SUPER) },
+                ) { if (held) toggle(RemoteModifier.SUPER) else sendKey(RfbKeys.SUPER_L) }
+            }
             ScreenKey("Shift", RemoteModifier.SHIFT in modifiers) { toggle(RemoteModifier.SHIFT) }
             listOf("←" to RfbKeys.LEFT, "↑" to RfbKeys.UP, "↓" to RfbKeys.DOWN, "→" to RfbKeys.RIGHT,
                 "Home" to RfbKeys.HOME, "End" to RfbKeys.END, "PgUp" to RfbKeys.PAGE_UP, "PgDn" to RfbKeys.PAGE_DOWN,
@@ -125,8 +145,23 @@ internal fun RemoteScreenKeyboard(vm: RemoteScreenVM, macOS: Boolean) {
 }
 
 @Composable
-private fun ScreenKey(label: String, selected: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-    TextButton(onClick, Modifier.heightIn(min = 48.dp).then(
+private fun ScreenKey(label: String, selected: Boolean = false, enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+    val modifier = Modifier.heightIn(min = 48.dp).then(
         if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.shapes.small) else Modifier,
-    ), enabled = enabled) { Text(label) }
+    )
+    if (onLongClick == null) {
+        TextButton(onClick, modifier, enabled = enabled) { Text(label) }
+        return
+    }
+    // TextButton has no long press; this draws the same text button around a combined click.
+    val haptics = LocalHapticFeedback.current
+    Box(modifier.clip(ButtonDefaults.textShape)
+        .combinedClickable(enabled = enabled, role = Role.Button, onClick = onClick,
+            onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() })
+        .padding(ButtonDefaults.TextButtonContentPadding),
+        contentAlignment = Alignment.Center) {
+        Text(label, style = MaterialTheme.typography.labelLarge,
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+    }
 }

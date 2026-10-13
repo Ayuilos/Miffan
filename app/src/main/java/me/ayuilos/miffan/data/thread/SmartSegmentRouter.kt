@@ -35,7 +35,7 @@ class SmartSegmentRouter(
 ) : SegmentRouter {
     override suspend fun route(request: RouteRequest): RouteDecision {
         val now = request.now.toEpochMilli()
-        val open = request.segments.filter { it.threadClosedAt == 0L }.sortedByDescending { it.updateAt }
+        val open = request.segments.filter { it.chatId == null && it.threadClosedAt == 0L }.sortedByDescending { it.updateAt }
         val newest = open.firstOrNull() ?: return RouteDecision.New("no open segment")
         val stale = open.filterTo(HashSet()) { now - it.updateAt.toEpochMilli() > idleMillis }.mapTo(HashSet()) { it.id }
         if (newest.id in stale) return RouteDecision.New("thread idle", closeSegmentIds = stale)

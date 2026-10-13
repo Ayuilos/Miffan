@@ -33,8 +33,11 @@ class StreamDesktopSession internal constructor(
     private var watcher: Job? = null
     private var target: Surface? = null
     private var paused = false
-    private data class ClipboardWrite(val text: String, val paste: Boolean)
-    private val writes = Channel<ClipboardWrite>(32)
+    /** Typed input in order: clipboard pastes and plain key taps share one queue so they never overtake. */
+    private sealed interface InputWrite
+    private data class ClipboardWrite(val text: String, val paste: Boolean) : InputWrite
+    private data class KeyTaps(val text: String) : InputWrite
+    private val writes = Channel<InputWrite>(Channel.UNLIMITED)
     private val input = StreamDesktopInput(delegate::mousePosition, delegate::mouseButton, delegate::scroll, delegate::key, platform)
     override val audio: RemoteAudioControl = object : RemoteAudioControl {
         override val enabled = requireNotNull(delegate.audio).enabled
@@ -65,9 +68,10 @@ class StreamDesktopSession internal constructor(
     override var statsLogger: ((RemoteScreenStats) -> Unit)? = null
     init {
         lifetime.launch {
-            for (write in writes) {
+            for (write in writes) when (write) {
+                is KeyTaps -> if (!closed.get()) write.text.forEach { input.key(it.code, true); input.key(it.code, false) }
                 // A failed write must never paste the previous clipboard contents.
-                try { writeClipboard(write.text); if (write.paste && !closed.get()) input.paste() }
+                is ClipboardWrite -> try { writeClipboard(write.text); if (write.paste && !closed.get()) input.paste() }
                 catch (error: kotlinx.coroutines.CancellationException) { throw error }
                 catch (_: Exception) { /* SSH failure is surfaced by the lease; keep the input worker alive. */ }
             }
@@ -93,7 +97,24 @@ class StreamDesktopSession internal constructor(
         if (!closed.get()) videoSize.value?.let { input.pointer(x, y, buttons, it) }
     }
     override fun key(keysym: Int, down: Boolean) { if (!closed.get()) input.key(keysym, down) }
-    override fun typeText(text: String): Boolean = !closed.get() && writes.trySend(ClipboardWrite(text, true)).isSuccess
+    /**
+     * Digits and spaces go as real keys: they arrive at once and pass a desktop IME untouched.
+     * Everything else is pasted, so a Chinese IME on the computer cannot turn letters into words.
+     */
+    override fun typeText(text: String): Boolean {
+        if (closed.get()) return false
+        var start = 0
+        while (start < text.length) {
+            val keys = text[start].isTypedAsKey()
+            var end = start + 1
+            while (end < text.length && text[end].isTypedAsKey() == keys) end++
+            val part = text.substring(start, end)
+            if (!writes.trySend(if (keys) KeyTaps(part) else ClipboardWrite(part, true)).isSuccess) return false
+            start = end
+        }
+        return true
+    }
+    private fun Char.isTypedAsKey() = this in '0'..'9' || this == ' '
     override fun sendClipboard(text: String) { if (!closed.get()) writes.trySend(ClipboardWrite(text, false)) }
     override fun close() {
         if (closed.compareAndSet(false, true)) {

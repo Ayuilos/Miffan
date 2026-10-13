@@ -46,6 +46,9 @@ class RemoteConversationShellHandle internal constructor(
 internal class RemoteConversationShells(
     private val open: suspend (WorkspaceToolTargetSnapshot) -> RemoteTerminalConnection,
     private val validate: suspend (WorkspaceToolTargetSnapshot) -> Unit,
+    private val singleExecution: suspend (WorkspaceToolTargetSnapshot) -> Boolean = { false },
+    private val executeSingle: suspend (WorkspaceToolTargetSnapshot, String, String, Long) -> WorkspaceCommandResult =
+        { _, _, _, _ -> error("Single command execution is unavailable") },
 ) {
     private val mutex = Mutex()
     private val sessions = ConcurrentHashMap<String, RemoteConversationShellHandle>()
@@ -61,6 +64,14 @@ internal class RemoteConversationShells(
         onOutput: suspend (ByteArray) -> Unit = {},
         onReady: suspend (RemoteConversationShellHandle) -> Unit = {},
     ): RemoteConversationCommandResult = withContext(Dispatchers.IO) {
+        if (singleExecution(target)) {
+            validate(target)
+            requireNotNull(timeoutMillis) { "Windows does not yet support interactive terminal commands" }
+            target.conversationId?.let { close(it) }
+            val result = executeSingle(target, command, cwd?.takeIf { it.isNotBlank() } ?: defaultCwd.orEmpty(), timeoutMillis)
+            onOutput(result.stdout.toByteArray(Charsets.UTF_8))
+            return@withContext RemoteConversationCommandResult(result, "", reused = false, sessionOpen = false)
+        }
         val conversationId = requireNotNull(target.conversationId) { "A saved conversation is required for a persistent terminal" }
         val (handle, reused) = mutex.withLock {
             try {

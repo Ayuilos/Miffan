@@ -59,11 +59,11 @@ internal data class ThreadStep(
 
 /**
  * The steps behind a reply. Computer actions have their own card, and prompts the user answers
- * (questions, permission requests, refused calls) already show in the chat.
+ * (questions, permission requests, refused calls) and partner messages already show in the chat.
  */
 internal fun threadSteps(parts: List<UIMessagePart>): List<ThreadStep> = parts.mapNotNull { part ->
     (part as? UIMessagePart.Tool)?.takeUnless {
-        it.isComputerTool() || it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
+        it.isComputerTool() || it.isPartnerMessage() || it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
             it.isPending || it.approvalState is ToolApprovalState.Denied
     }?.let(::threadStep)
 }
@@ -91,7 +91,7 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
         "workspace_publish_files" -> step(R.string.im_step_publish, changes = true)
         "workspace_fetch_url", "scrape_web" -> step(R.string.im_step_read_web)
         "search_web" -> step(R.string.im_step_search)
-        "conversation_search", "recent_chats" -> step(R.string.im_step_chats)
+        "conversation_search", "recent_chats", "read_partner_chat" -> step(R.string.im_step_chats)
         "memory_tool" -> when (arg("action")) {
             "create" -> step(R.string.im_step_memory_save, changes = true)
             "edit" -> step(R.string.im_step_memory_edit, changes = true)
@@ -99,6 +99,12 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
             else -> step(R.string.im_step_memory_read)
         }
         "update_my_preferences" -> step(R.string.im_step_preferences, changes = true)
+        UPDATE_MY_PROFILE -> step(R.string.im_step_profile, changes = true)
+        CREATE_PARTNER -> step(R.string.im_step_create_partner, changes = true)
+        CREATE_GROUP_CHAT -> step(R.string.im_step_create_group_chat, changes = true)
+        INVITE_TO_GROUP_CHAT -> step(R.string.im_step_invite, changes = true)
+        ORGANIZE_CHAT_LIST -> step(R.string.im_step_organize, changes = true)
+        VIEW_CHAT_LIST -> step(R.string.im_step_view_chat_list)
         "calendar_create" -> step(R.string.im_step_calendar_add, changes = true)
         "calendar_query" -> step(R.string.im_step_calendar_read)
         "clipboard_tool" -> if (arg("action") == "write") step(R.string.im_step_clipboard_write, changes = true)
@@ -111,6 +117,10 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
         "miffan_help" -> step(R.string.im_step_help)
         "get_time_info" -> step(R.string.im_step_time)
         "get_screen_time" -> step(R.string.im_step_screen_time)
+        "list_contacts" -> step(R.string.im_step_contacts)
+        "my_environment" -> step(R.string.im_step_environment)
+        APP_DIAGNOSTICS -> step(R.string.im_step_diagnostics)
+        DRAFT_BUG_REPORT -> step(R.string.im_step_bug_report)
         // An outside tool may change anything, so it always counts.
         else -> if (tool.toolName.startsWith(MCP_PREFIX)) {
             val name = tool.toolName.removePrefix(MCP_PREFIX)

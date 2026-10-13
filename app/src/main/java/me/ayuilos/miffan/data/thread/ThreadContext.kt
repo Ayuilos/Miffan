@@ -28,7 +28,7 @@ class SegmentSummarizer(
 
     suspend fun summarize(segmentId: Uuid) {
         val segment = conversationRepository.getConversationById(segmentId) ?: return
-        if (segment.threadSummary.isNotBlank()) return
+        if (segment.chatId != null || segment.threadSummary.isNotBlank()) return
         val messages = segment.currentMessages.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
         if (messages.isEmpty()) return
         val prompt = settingsStore.settingsFlow.value.compressPrompt.applyPlaceholders(
@@ -37,7 +37,7 @@ class SegmentSummarizer(
             "additional_context" to "",
             "locale" to Locale.getDefault().displayName,
         )
-        val summary = models.compress(prompt, SUMMARY_TIMEOUT_MILLIS) ?: return
+        val summary = models.compress(prompt, SUMMARY_TIMEOUT_MILLIS, segment.assistantId) ?: return
         chatService.updateThreadSegment(segmentId) { it.copy(threadSummary = summary) }
     }
 
