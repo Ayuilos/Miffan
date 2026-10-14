@@ -61,9 +61,10 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
             when (state.step) {
-                // Known computers are offered only when a partner asked for one; "my computers" lists them already.
-                ComputerSetupStep.FIND -> ComputerFindStep(vm, state, if (forPartner != null) hosts else emptyList())
-                ComputerSetupStep.MANUAL -> ComputerManualStep(vm, state, host)
+                ComputerSetupStep.FIND -> ComputerFindStep(vm, state, hosts) { hostId ->
+                    nav.navigate(Screen.ComputerSetup(forPartner?.toString(), hostId, edit = true))
+                }
+                ComputerSetupStep.MANUAL -> if (state.editing) ComputerSettingsStep(vm, state, host) else ComputerManualStep(vm, state)
                 ComputerSetupStep.SIGN_IN -> ComputerSignInStep(vm, state)
                 ComputerSetupStep.KEY -> ComputerKeyStep(vm, state)
                 ComputerSetupStep.WINDOWS -> ComputerWindowsStep(vm, state)

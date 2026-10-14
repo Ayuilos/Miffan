@@ -2704,7 +2704,24 @@
   <string name="im_computer_tailnet_help" tools:ignore="MissingTranslation">When both the computer and this phone run Tailscale, it connects even off this Wi‑Fi.</string>
   <string name="im_computer_tailnet_none" tools:ignore="MissingTranslation">No computer with remote login found on Tailscale</string>
   <string name="im_computer_tailnet_note" tools:ignore="MissingTranslation">Only computers with remote login on are listed. Speed depends on both networks.</string>
-  <string name="im_computer_tailnet_notice" tools:ignore="MissingTranslation">%1$d more on Tailscale</string>
+  <string name="im_computer_my_computers" tools:ignore="MissingTranslation">My computers</string>
+  <string name="im_computer_new_found" tools:ignore="MissingTranslation">New computers</string>
+  <string name="im_computer_saved_searching" tools:ignore="MissingTranslation">%1$s · Looking…</string>
+  <string name="im_computer_saved_missing" tools:ignore="MissingTranslation">%1$s · Not found right now. It may be off.</string>
+  <string name="im_computer_saved_missing_other_system" tools:ignore="MissingTranslation">%1$s · Not found right now. It may be running its other system.</string>
+  <string name="im_computer_same_address" tools:ignore="MissingTranslation">Same address as “%1$s”. It may be that computer\'s other system.</string>
+  <string name="im_computer_connection_ways" tools:ignore="MissingTranslation">Addresses</string>
+  <string name="im_computer_address_local" tools:ignore="MissingTranslation">Local network</string>
+  <string name="im_computer_address_other" tools:ignore="MissingTranslation">Other network</string>
+  <string name="im_computer_address_last_used" tools:ignore="MissingTranslation">Last used</string>
+  <string name="im_computer_add_address" tools:ignore="MissingTranslation">Add address</string>
+  <string name="im_computer_remove_address" tools:ignore="MissingTranslation">Remove address</string>
+  <string name="im_computer_addresses_help" tools:ignore="MissingTranslation">Miffan uses whichever address answers: Wi‑Fi at home, Tailscale when you\'re away. When it finds this computer on another network, it remembers the new address.</string>
+  <string name="im_computer_sign_in_section" tools:ignore="MissingTranslation">Sign-in</string>
+  <string name="im_computer_sign_in_method" tools:ignore="MissingTranslation">Method</string>
+  <string name="im_computer_method_key" tools:ignore="MissingTranslation">Miffan\'s key</string>
+  <string name="im_computer_method_password" tools:ignore="MissingTranslation">Password</string>
+  <string name="im_computer_tailnet_notice" tools:ignore="MissingTranslation">%1$d more new on Tailscale</string>
   <string name="im_computer_tailnet_notice_help" tools:ignore="MissingTranslation">Computers that aren\'t nearby work too</string>
   <string name="im_computer_tailnet_open" tools:ignore="MissingTranslation">Choose</string>
   <string name="im_computer_tailnet_title" tools:ignore="MissingTranslation">Pick a computer far away</string>

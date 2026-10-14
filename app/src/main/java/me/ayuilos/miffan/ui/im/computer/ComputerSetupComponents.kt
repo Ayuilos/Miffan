@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.remote.NearbySystem
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.InformationCircle
 import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
@@ -167,25 +168,69 @@ internal fun NearbySystem.label(detail: String? = null): String = when (this) {
 }
 
 @Composable
-internal fun DeviceTile(icon: ImageVector, size: Dp = 48.dp) {
-    Box(Modifier.size(size).clip(RoundedCornerShape(size / 3)).background(MaterialTheme.colorScheme.primaryContainer),
+internal fun DeviceTile(icon: ImageVector, size: Dp = 48.dp, dimmed: Boolean = false) {
+    Box(Modifier.size(size).clip(RoundedCornerShape(size / 3))
+        .background(if (dimmed) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center) {
-        Icon(icon, null, Modifier.size(size / 2), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        Icon(icon, null, Modifier.size(size / 2),
+            tint = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }
 
-/** A computer to pick: large, tappable, with its system's mark. */
+/**
+ * A computer to pick: large, tappable, with its system's mark. [dimmed] for one that is not around
+ * right now; [badges] follow the subtitle, [footer] sits under it.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ComputerCard(name: String, subtitle: String?, icon: ImageVector, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun ComputerCard(
+    name: String,
+    subtitle: String?,
+    icon: ImageVector,
+    enabled: Boolean = true,
+    dimmed: Boolean = false,
+    badges: (@Composable () -> Unit)? = null,
+    footer: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            DeviceTile(icon)
-            Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            DeviceTile(icon, dimmed = dimmed)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically) {
+                    subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    badges?.invoke()
+                }
+                footer?.let { Spacer(Modifier.height(4.dp)); it() }
             }
             Icon(HugeIcons.ArrowRight01, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A small tag naming a network a computer was found on. */
+@Composable
+internal fun NetworkTag(icon: ImageVector, label: String) {
+    Surface(shape = RoundedCornerShape(11.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+        Row(Modifier.heightIn(min = 22.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(icon, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A gentle caution inside a card, such as a found computer that may be a saved one's other system. */
+@Composable
+internal fun CardHint(text: String) {
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(HugeIcons.InformationCircle, null, Modifier.size(14.dp).padding(top = 2.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
+            Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
         }
     }
 }

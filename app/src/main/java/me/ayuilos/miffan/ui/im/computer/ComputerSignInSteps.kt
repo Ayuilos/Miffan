@@ -210,52 +210,35 @@ private fun HandOverButtons(subject: String, text: String, onHandedOver: () -> U
     }
 }
 
-/**
- * Typing an address, the fallback when nothing shows up nearby; and, for a saved computer, its
- * connection settings.
- */
+/** Typing an address, the fallback when nothing shows up nearby. */
 @Composable
-internal fun ComputerManualStep(vm: ComputerSetupVM, state: ComputerSetupState, host: RemoteHostEntity?) {
-    val editing = state.editing
+internal fun ComputerManualStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     var address by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf(state.username) }
     var port by rememberSaveable { mutableStateOf("22") }
     var name by rememberSaveable { mutableStateOf("") }
-    var prefilled by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(host?.id) {
-        if (editing && host != null && !prefilled) {
-            address = host.host; username = host.username; port = host.port.toString(); name = host.name
-            prefilled = true
-        }
-    }
     // Read through normalizeAddressInput, never rewritten while typing: that would break the IME's composition.
     val typed = normalizeAddressInput(address)
     val parsed = parseSshTarget(typed)
     val finalAddress = parsed?.host ?: typed.trim()
     val finalUser = parsed?.username ?: username.trim()
     val finalPort = (parsed?.port?.toString() ?: port).toIntOrNull()
-    val valid = finalAddress.isNotBlank() && finalPort in 1..65535 && (!editing || (prefilled && finalUser.isNotBlank()))
+    val valid = finalAddress.isNotBlank() && finalPort in 1..65535
     SetupScreen(
-        title = stringResource(if (editing) R.string.im_computer_edit_title else R.string.im_computer_manual_title),
-        subtitle = if (editing) null else stringResource(R.string.im_computer_manual_help),
+        title = stringResource(R.string.im_computer_manual_title),
+        subtitle = stringResource(R.string.im_computer_manual_help),
         state = state, onDismissError = vm::dismissError,
-        primary = SetupAction(stringResource(if (editing) R.string.im_computer_save_continue else R.string.im_computer_next), enabled = valid) {
-            if (editing) vm.saveConnection(name.trim(), finalAddress, finalPort!!, finalUser)
-            else vm.submitManual(finalAddress, finalPort!!, finalUser, name.trim())
+        primary = SetupAction(stringResource(R.string.im_computer_next), enabled = valid) {
+            vm.submitManual(finalAddress, finalPort!!, finalUser, name.trim())
         },
-        secondary = if (editing) SetupAction(stringResource(R.string.im_computer_sign_in_again), onClick = vm::changeSignIn) else null,
     ) {
         SetupGroup {
-            if (editing) SetupField(stringResource(R.string.im_computer_name), name, { name = it }, enabled = !state.busy, divider = true)
             SetupField(stringResource(R.string.im_computer_address), address, { address = it }, enabled = !state.busy,
                 placeholder = stringResource(R.string.im_computer_address_placeholder), keyboardType = KeyboardType.Uri, divider = true)
             SetupField(stringResource(R.string.im_computer_account), parsed?.username ?: username, { username = it }, enabled = !state.busy,
-                placeholder = stringResource(if (editing) R.string.im_computer_account_placeholder else R.string.im_computer_account_optional),
-                divider = editing)
-            if (editing) SetupField(stringResource(R.string.im_computer_port), port, { if (it.all(Char::isDigit) && it.length <= 5) port = it },
-                enabled = !state.busy, keyboardType = KeyboardType.Number)
+                placeholder = stringResource(R.string.im_computer_account_optional))
         }
-        if (!editing) SetupDisclosure(stringResource(R.string.im_computer_more_settings)) {
+        SetupDisclosure(stringResource(R.string.im_computer_more_settings)) {
             SetupGroup {
                 SetupField(stringResource(R.string.im_computer_port), parsed?.port?.toString() ?: port,
                     { if (it.all(Char::isDigit) && it.length <= 5) port = it }, enabled = !state.busy, keyboardType = KeyboardType.Number, divider = true)

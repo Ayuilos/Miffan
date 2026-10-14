@@ -31,12 +31,17 @@ import me.rerere.hugeicons.stroke.Wifi01
 import org.koin.compose.koinInject
 
 /**
- * Finding the computer, the way phones find a speaker or a printer: what is on this Wi-Fi shows up by
- * itself; computers reached through Tailscale are announced separately and listed on their own
- * page; typing an address is the fallback at the bottom.
+ * Finding the computer, the way a phone lists Bluetooth devices: computers already added come first
+ * and open as they are; computers new on this Wi-Fi follow; new ones reached through Tailscale are
+ * announced separately and listed on their own page; typing an address is the fallback at the bottom.
  */
 @Composable
-internal fun ComputerFindStep(vm: ComputerSetupVM, state: ComputerSetupState, hosts: List<RemoteHostEntity>) {
+internal fun ComputerFindStep(
+    vm: ComputerSetupVM,
+    state: ComputerSetupState,
+    hosts: List<RemoteHostEntity>,
+    onOpenSettings: (hostId: String) -> Unit,
+) {
     // Android 17 asks before an app may reach devices on the local network.
     val permission = if (Build.VERSION.SDK_INT >= 37) rememberPermissionState(PermissionLocalNetwork) else null
     permission?.let { PermissionManager(permissionState = it) }
@@ -48,9 +53,13 @@ internal fun ComputerFindStep(vm: ComputerSetupVM, state: ComputerSetupState, ho
         .collectAsStateWithLifecycle(NearbyScan(emptyList(), searching = true))
     var tailnet by rememberSaveable { mutableStateOf(false) }
     BackHandler(tailnet) { tailnet = false }
+    LaunchedEffect(scan.computers) { vm.learnAddresses(scan.computers) }
 
-    val local = scan.computers.filter { it.network == NearbyNetwork.LOCAL }
-    val remote = scan.computers.filter { it.network == NearbyNetwork.TAILSCALE }
+    // Saved computers show once, under "my computers", whichever networks found them.
+    val found = scan.computers.groupBy { hosts.savedMatch(it)?.id }
+    val fresh = found[null].orEmpty()
+    val local = fresh.filter { it.network == NearbyNetwork.LOCAL }
+    val remote = fresh.filter { it.network == NearbyNetwork.TAILSCALE }
     val pick: (NearbyComputer) -> Unit = vm::pickNearby
 
     if (tailnet) {
@@ -81,13 +90,18 @@ internal fun ComputerFindStep(vm: ComputerSetupVM, state: ComputerSetupState, ho
         primary = null,
     ) {
         if (hosts.isNotEmpty()) {
-            SectionLabel(stringResource(R.string.im_computer_saved_computers))
+            SectionLabel(stringResource(R.string.im_computer_my_computers))
             hosts.forEach { host ->
-                ComputerCard(host.name, stringResource(R.string.im_computer_saved_subtitle),
-                    host.system().icon(),
-                    enabled = !state.busy) { vm.chooseHost(host.id, fromList = true) }
+                val seen = found[host.id].orEmpty()
+                val missing = allowed && !scan.searching && seen.isEmpty()
+                SavedCard(host, seen, searching = allowed && scan.searching, missing = missing,
+                    otherSystemUp = missing && fresh.any { hosts.sharingAddressWith(it)?.id == host.id },
+                    enabled = !state.busy) {
+                    // One that is not around opens its settings: connecting would only fail.
+                    if (missing) onOpenSettings(host.id) else vm.chooseHost(host.id, fromList = true)
+                }
             }
-            Spacer(Modifier.height(4.dp))
+            SectionLabel(stringResource(R.string.im_computer_new_found))
         }
         if (!allowed) {
             SetupCard {
@@ -114,8 +128,40 @@ internal fun ComputerFindStep(vm: ComputerSetupVM, state: ComputerSetupState, ho
     }
 }
 
+/** A saved computer: where this search found it, or that it is not around. */
 @Composable
-private fun SectionLabel(text: String) {
+private fun SavedCard(
+    host: RemoteHostEntity,
+    seen: List<NearbyComputer>,
+    searching: Boolean,
+    missing: Boolean,
+    otherSystemUp: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val kind = host.system().label()
+    ComputerCard(host.name,
+        when {
+            seen.isNotEmpty() -> kind
+            missing && otherSystemUp -> stringResource(R.string.im_computer_saved_missing_other_system, kind)
+            missing -> stringResource(R.string.im_computer_saved_missing, kind)
+            searching -> stringResource(R.string.im_computer_saved_searching, kind)
+            else -> kind
+        },
+        host.system().icon(), enabled = enabled, dimmed = missing,
+        badges = if (seen.isEmpty()) null else ({
+            seen.map { it.network }.distinct().sorted().forEach { network ->
+                when (network) {
+                    NearbyNetwork.LOCAL -> NetworkTag(HugeIcons.Wifi01, "Wi‑Fi")
+                    NearbyNetwork.TAILSCALE -> NetworkTag(TailscaleLogo, "Tailscale")
+                }
+            }
+        }),
+        onClick = onClick)
+}
+
+@Composable
+internal fun SectionLabel(text: String) {
     Text(text, Modifier.padding(start = 4.dp, top = 4.dp), style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
@@ -136,13 +182,11 @@ private fun SearchStatus(searching: Boolean, found: Int, emptyText: String) {
 
 @Composable
 private fun NearbyCard(computer: NearbyComputer, hosts: List<RemoteHostEntity>, enabled: Boolean, onClick: () -> Unit) {
-    // A computer already added keeps the name it was saved under, whichever network found it.
-    val saved = hosts.savedMatch(computer)
-    val system = computer.system.takeIf { it != NearbySystem.UNKNOWN } ?: saved?.system() ?: NearbySystem.UNKNOWN
-    val kind = system.label(computer.detail.takeIf { system == computer.system })
-    ComputerCard(saved?.name ?: computer.name ?: computer.host,
-        if (saved != null) stringResource(R.string.im_computer_nearby_saved, kind) else kind,
-        system.icon(), enabled = enabled, onClick = onClick)
+    // A new computer at a saved one's address is most likely that machine's other system.
+    val sibling = hosts.sharingAddressWith(computer)
+    ComputerCard(computer.name ?: computer.host, computer.system.label(computer.detail), computer.system.icon(), enabled = enabled,
+        footer = sibling?.let { { CardHint(stringResource(R.string.im_computer_same_address, it.name)) } },
+        onClick = onClick)
 }
 
 @Composable

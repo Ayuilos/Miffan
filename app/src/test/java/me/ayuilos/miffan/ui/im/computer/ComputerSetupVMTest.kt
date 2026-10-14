@@ -220,6 +220,48 @@ class ComputerSetupVMTest {
     }
 
     @Test
+    fun `a saved computer is known at any of its addresses`() {
+        val host = Fixture().host.copy(trustedHostKeySha256 = null, alternateAddresses = "[{\"host\":\"100.64.0.5\",\"port\":22}]")
+        val tailscale = NearbyComputer(null, "100.64.0.5", 22, NearbySystem.UNKNOWN, network = NearbyNetwork.TAILSCALE)
+        assertEquals(host, listOf(host).savedMatch(tailscale))
+        // Another identity at that address is a different computer: its other system on a dual-boot machine.
+        val other = tailscale.copy(hostKey = "another fingerprint")
+        val pinned = host.copy(trustedHostKeySha256 = "fingerprint")
+        assertEquals(pinned, listOf(pinned).sharingAddressWith(other))
+        assertNull(listOf(pinned).savedMatch(other))
+    }
+
+    @Test
+    fun `a saved computer's identity at a new address is remembered`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.learnHostAddress(any(), any(), any(), any()) } returns true
+        val vm = vm(f)
+        runCurrent()
+        val seen = NearbyComputer(null, "100.64.0.5", 22, NearbySystem.UNKNOWN, network = NearbyNetwork.TAILSCALE, hostKey = "fingerprint")
+        vm.learnAddresses(listOf(seen, seen.copy(host = "10.0.0.9", hostKey = "someone else")))
+        vm.learnAddresses(listOf(seen))
+        runCurrent()
+        coVerify(exactly = 1) { f.workspaces.learnHostAddress("host", "100.64.0.5", 22, "fingerprint") }
+        coVerify(exactly = 0) { f.workspaces.learnHostAddress(any(), "10.0.0.9", any(), any()) }
+    }
+
+    @Test
+    fun `addresses are added and removed on the connection settings`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.addHostAddress(any(), any(), any()) } returns true
+        coEvery { f.workspaces.removeHostAddress(any(), any(), any()) } returns true
+        val vm = vm(f, ComputerSetupArgs(hostId = "host", edit = true))
+        runCurrent()
+        vm.addAddress(" 100.64.0.5:2222 ")
+        vm.addAddress("cachyos.ts.net")
+        vm.removeAddress(me.ayuilos.miffan.data.db.entity.RemoteHostAddress("server.internal", 22))
+        runCurrent()
+        coVerify { f.workspaces.addHostAddress("host", "100.64.0.5", 2222) }
+        coVerify { f.workspaces.addHostAddress("host", "cachyos.ts.net", 22) }
+        coVerify { f.workspaces.removeHostAddress("host", "server.internal", 22) }
+    }
+
+    @Test
     fun `a guessed name gives way to the computer's own after sign-in`() = runTest {
         val f = Fixture()
         coEvery { f.workspaces.createHost(any(), any(), any(), any(), any(), any()) } answers {

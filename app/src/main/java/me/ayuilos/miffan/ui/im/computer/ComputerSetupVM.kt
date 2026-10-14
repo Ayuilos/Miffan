@@ -26,6 +26,7 @@ import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
+import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
@@ -749,6 +750,61 @@ class ComputerSetupVM(
         _state.update { it.copy(step = ComputerSetupStep.DONE, history = emptyList()) }
     }
 
+    // ---- Addresses ----
+
+    private val learning = mutableSetOf<Pair<String, String>>()
+
+    /**
+     * A saved computer seen with its own identity at an address it does not have yet (its Tailscale
+     * address while it was saved over Wi-Fi): remembered, so it is reachable from either network.
+     */
+    fun learnAddresses(computers: List<NearbyComputer>) {
+        computers.forEach { computer ->
+            val key = computer.hostKey ?: return@forEach
+            val host = hosts.value.find { it.trustedHostKeySha256 == key } ?: return@forEach
+            if (host.addresses.any { it.host == computer.host && it.port == computer.port }) return@forEach
+            if (!learning.add(host.id to "${computer.host}:${computer.port}")) return@forEach
+            viewModelScope.launch {
+                try {
+                    workspaces.learnHostAddress(host.id, computer.host, computer.port, key)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Learning is a convenience; the address can still be added by hand.
+                }
+            }
+        }
+    }
+
+    /** Adds an address typed on the connection settings, `host` or `host:port`. */
+    fun addAddress(input: String) {
+        val hostId = _state.value.hostId ?: return
+        val parsed = parseSshTarget(normalizeAddressInput(input))
+        val address = parsed?.host ?: input.trim()
+        if (address.isBlank()) return
+        val port = parsed?.port ?: mainPort(hostId)
+        editAddresses { check(workspaces.addHostAddress(hostId, address, port)) { "Computer not found" } }
+    }
+
+    fun removeAddress(address: RemoteHostAddress) {
+        val hostId = _state.value.hostId ?: return
+        editAddresses { check(workspaces.removeHostAddress(hostId, address.host, address.port)) { "Computer not found" } }
+    }
+
+    private fun mainPort(hostId: String): Int = hosts.value.find { it.id == hostId }?.port ?: 22
+
+    private fun editAddresses(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _state.update { it.copy(error = error) }
+            }
+        }
+    }
+
     // ---- Helpers ----
 
     private suspend fun savedMacAccount(hostId: String): String? = try {
@@ -819,10 +875,16 @@ class ComputerSetupVM(
  * for the saved one; the address decides otherwise.
  */
 internal fun List<RemoteHostEntity>.savedMatch(computer: NearbyComputer): RemoteHostEntity? {
-    val sameAddress = { host: RemoteHostEntity -> host.host == computer.host && host.port == computer.port }
-    val key = computer.hostKey ?: return find(sameAddress)
-    return find { it.trustedHostKeySha256 == key } ?: find { sameAddress(it) && it.trustedHostKeySha256 == null }
+    val key = computer.hostKey ?: return find { it.reachedAt(computer) }
+    return find { it.trustedHostKeySha256 == key } ?: find { it.reachedAt(computer) && it.trustedHostKeySha256 == null }
 }
+
+/** A saved computer at [computer]'s address that is not [computer]: on a dual-boot machine, its other system. */
+internal fun List<RemoteHostEntity>.sharingAddressWith(computer: NearbyComputer): RemoteHostEntity? =
+    if (savedMatch(computer) != null) null else find { it.reachedAt(computer) }
+
+private fun RemoteHostEntity.reachedAt(computer: NearbyComputer) =
+    addresses.any { it.host == computer.host && it.port == computer.port }
 
 /** A saved computer's system, from what its screen check or connection found. */
 internal fun RemoteHostEntity.system(): NearbySystem = when {
