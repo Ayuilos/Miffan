@@ -119,6 +119,17 @@ class PartnerComputersTest {
     }
 
     @Test
+    fun `computer address follows last successful address and falls back to main`() = runTest {
+        val f = Fixture()
+        val row = host().copy(alternateAddresses = "[{\"host\":\"fe80::1\",\"port\":2222}]",
+            lastAddressValue = "[fe80::1]:2222")
+        f.hosts.value = listOf(row)
+        assertEquals("user@[fe80::1]:2222", f.computers.observeAll().first().single().address)
+        f.hosts.value = listOf(row.copy(lastAddressValue = "removed:22"))
+        assertEquals("user@host.internal", f.computers.observeAll().first().single().address)
+    }
+
+    @Test
     fun `observers react to binding and host changes but suppress equivalent results`() = runTest {
         val f = Fixture()
         val one = workspace(1)

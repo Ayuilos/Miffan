@@ -141,10 +141,12 @@ class PartnerComputers(
         val hostWorkspaces = workspaceList.filter { it.isRemote && it.remoteHostId == host.id }
         val workspace = computerWorkspace(host.id, hostWorkspaces, assistants)
         val workspaceIds = hostWorkspaces.map { it.id }.toSet()
+        val address = host.lastAddress ?: host.addresses.first()
         return KnownComputer(
             hostId = host.id,
             name = host.name,
-            address = "${host.username}@${host.host}" + if (host.port != 22) ":${host.port}" else "",
+            address = "${host.username}@${if (':' in address.host) "[${address.host.removeSurrounding("[", "]")}]" else address.host}" +
+                if (address.port != 22) ":${address.port}" else "",
             platform = computerPlatform(host),
             screenEnabled = host.screenEnabled,
             workspaceId = workspace?.id,

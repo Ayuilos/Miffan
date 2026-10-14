@@ -19,6 +19,8 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.SshKeyDAO
+import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
+import me.ayuilos.miffan.data.db.entity.encodeRemoteHostAddresses
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
@@ -36,6 +38,8 @@ import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import me.rerere.workspace.NativeSshWorkspaceTransport
 import me.rerere.workspace.RemoteAuthentication
+import me.rerere.workspace.shouldTryNextRemoteAddress
+import me.rerere.workspace.tryRemoteAddresses
 import me.rerere.workspace.RemoteHostConfig
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RemoteTerminalSession
@@ -52,8 +56,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.Closeable
 import java.util.UUID
-import java.net.ConnectException
-import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -149,13 +151,11 @@ class WorkspaceRepository(
                 val opened = AtomicReference<RemoteWorkspaceSession?>()
                 val disposed = AtomicBoolean(false)
                 try {
-                    val result = runRemoteInterruptible {
-                        remoteTransport.open(config).also { session ->
-                            if (disposed.get()) session.close()
-                            else {
-                                opened.set(session)
-                                if (disposed.get()) opened.getAndSet(null)?.close()
-                            }
+                    val result = connectSavedHost(identity.hostId, config, identity.connectionRevision) { session ->
+                        if (disposed.get()) session.close()
+                        else {
+                            opened.set(session)
+                            if (disposed.get()) opened.getAndSet(null)?.close()
                         }
                     }
                     currentCoroutineContext().ensureActive()
@@ -179,12 +179,77 @@ class WorkspaceRepository(
         }
 
     /** Only the initial handshake is retried, never a dispatched file or shell operation. */
-    private fun Throwable.retryableConnectionFailure(): Boolean =
-        this is SocketTimeoutException || this is ConnectException ||
-            (this is JSchException &&
-                (cause?.retryableConnectionFailure() == true ||
-                    message?.contains("timeout", ignoreCase = true) == true ||
-                    message?.contains("connection refused", ignoreCase = true) == true))
+    private fun Throwable.retryableConnectionFailure(): Boolean = shouldTryNextRemoteAddress(this)
+
+    /** All saved-host SSH opens share address order, pin checks, and success bookkeeping. */
+    private suspend fun connectSavedHost(
+        hostId: String,
+        config: RemoteHostConfig,
+        revision: String,
+        onOpened: (RemoteWorkspaceSession) -> Unit = {},
+    ): RemoteWorkspaceSession {
+        val host = hostDao.getById(hostId)
+            ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, hostId))
+        if (host.connectionRevision != revision || host.trustedHostKeySha256 != config.trustedHostKeySha256 ||
+            host.username != config.username) {
+            throw WorkspaceToolTargetChangedException()
+        }
+        return tryRemoteAddresses(host.connectionAddresses) { address ->
+            val opened = AtomicReference<RemoteWorkspaceSession?>()
+            val disposed = AtomicBoolean(false)
+            try {
+                val session = runRemoteInterruptible {
+                    remoteTransport.open(config.copy(host = address.host, port = address.port),
+                        timeoutMillis = if (host.addresses.size > 1 && address != host.lastAddress) 4_000 else 10_000).also {
+                        if (disposed.get()) it.close()
+                        else {
+                            opened.set(it)
+                            if (disposed.get()) opened.getAndSet(null)?.close()
+                        }
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                recordSuccessfulAddress(host, address)
+                onOpened(session)
+                opened.compareAndSet(session, null)
+                session
+            } finally {
+                disposed.set(true)
+                opened.getAndSet(null)?.let { session ->
+                    withContext(NonCancellable + Dispatchers.IO) { session.close() }
+                }
+            }
+        }
+    }
+
+    private suspend fun <T> withSavedHostConnection(
+        host: RemoteHostEntity,
+        config: RemoteHostConfig,
+        block: (RemoteWorkspaceSession) -> T,
+    ): T {
+        val session = connectSavedHost(host.id, config, host.connectionRevision)
+        try {
+            return runRemoteInterruptible { block(session) }
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+        }
+    }
+
+    private suspend fun recordSuccessfulAddress(host: RemoteHostEntity, address: RemoteHostAddress) {
+        while (true) {
+            val current = hostDao.getById(host.id) ?: return
+            if (current.connectionRevision != host.connectionRevision || address !in current.addresses) return
+            if (hostDao.updateLastAddress(current.id, address.storageValue, current.connectionRevision,
+                    current.host, current.port, current.alternateAddresses) > 0) return
+            currentCoroutineContext().ensureActive()
+        }
+    }
+
+    private suspend fun discoverSavedHostKey(host: RemoteHostEntity): RemoteHostKey =
+        tryRemoteAddresses(host.connectionAddresses) { address ->
+            runRemoteInterruptible { remoteTransport.discoverHostKey(address.host, address.port,
+                timeoutMillis = if (host.addresses.size > 1 && address != host.lastAddress) 4_000 else 10_000) }
+        }
 
     private suspend fun <T> runRemoteOperation(session: RemoteWorkspaceSession, block: () -> T): T {
         val operation = session.newOperation()
@@ -478,19 +543,56 @@ class WorkspaceRepository(
         return true
     }
 
+    suspend fun addHostAddress(id: String, host: String, port: Int): Boolean =
+        editHostAddresses(id, host, port)
+
+    suspend fun removeHostAddress(id: String, host: String, port: Int): Boolean =
+        editHostAddresses(id, host, port, remove = true)
+
+    /** Discovery may learn an address, but can never establish or replace trust. */
+    suspend fun learnHostAddress(id: String, host: String, port: Int, hostKeySha256: String): Boolean =
+        editHostAddresses(id, host, port, requiredPin = hostKeySha256)
+
+    private suspend fun editHostAddresses(
+        id: String, host: String, port: Int, remove: Boolean = false, requiredPin: String? = null,
+    ): Boolean {
+        while (true) {
+            val current = hostDao.getById(id) ?: return false
+            if (requiredPin != null && (current.trustedHostKeySha256 == null || current.trustedHostKeySha256 != requiredPin)) return false
+            val address = RemoteHostAddress(host.trim().also {
+                require(it.isNotEmpty() && it.none { char -> char.isWhitespace() || char == '\u0000' }) {
+                    workspaceStrings.getString(R.string.workspace_error_host_address_required)
+                }
+            }, port.also { require(it in 1..65535) { workspaceStrings.getString(R.string.workspace_error_port_invalid) } })
+            val addresses = current.addresses
+            val updated = if (remove) {
+                if (address !in addresses) return true
+                if (addresses.size == 1) return false
+                addresses - address
+            } else {
+                if (address in addresses) return true
+                addresses + address
+            }
+            val last = current.lastAddress?.takeIf { it in updated }?.storageValue
+            if (hostDao.compareAndSetAddresses(id, updated.first().host, updated.first().port,
+                    encodeRemoteHostAddresses(updated.drop(1)), last, current.host, current.port,
+                    current.alternateAddresses, current.lastAddressValue, current.connectionRevision,
+                    current.trustedHostKeySha256) > 0) return true
+            currentCoroutineContext().ensureActive()
+        }
+    }
+
     /** Discover without authentication; the UI must display and explicitly confirm this key. */
     suspend fun discoverHostKey(id: String): RemoteHostKey {
         val host = hostDao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, id))
-        return runRemoteInterruptible { remoteTransport.discoverHostKey(host.host, host.port) }
+        return discoverSavedHostKey(host)
     }
 
     /** Re-check the presented key at trust time to avoid pinning a stale fingerprint. */
     suspend fun trustHostKey(id: String, fingerprintSha256: String): Boolean {
         val host = hostDao.getById(id) ?: return false
         require(fingerprintSha256.isNotBlank()) { workspaceStrings.getString(R.string.workspace_error_fingerprint_required) }
-        val liveKey = runRemoteInterruptible {
-            remoteTransport.discoverHostKey(host.host, host.port)
-        }
+        val liveKey = discoverSavedHostKey(host)
         require(liveKey.sha256Fingerprint == fingerprintSha256) {
             workspaceStrings.getString(R.string.workspace_error_host_key_changed)
         }
@@ -523,7 +625,7 @@ class WorkspaceRepository(
                 stage = RemoteConnectionStage.FINISHED
                 throw error
             }
-            val platform = runRemoteInterruptible { remoteTransport.open(config).use { it.platform } }
+            val platform = withSavedHostConnection(host, config) { it.platform }
             hostDao.updateDetectedPlatform(id, revision, platform.storageName)
             remoteRuntime.connected(id, revision = revision)
             stage = RemoteConnectionStage.OPERATING
@@ -562,11 +664,9 @@ class WorkspaceRepository(
     suspend fun remoteHome(id: String): String {
         val host = hostDao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, id))
         val config = host.config()
-        val (platform, home) = runRemoteInterruptible {
-            remoteTransport.open(config).use { session ->
-                session.platform to if (session.platform == me.rerere.workspace.RemotePlatform.WINDOWS) session.homeDirectory
-                else session.execute("printf '%s' \"\$HOME\"", timeoutMillis = 15_000).stdout.trim()
-            }
+        val (platform, home) = withSavedHostConnection(host, config) { session ->
+            session.platform to if (session.platform == me.rerere.workspace.RemotePlatform.WINDOWS) session.homeDirectory
+            else session.execute("printf '%s' \"\$HOME\"", timeoutMillis = 15_000).stdout.trim()
         }
         hostDao.updateDetectedPlatform(id, host.connectionRevision, platform.storageName)
         require(home.startsWith('/') && home != "/" && home.none { it == '\n' || it == '\u0000' }) {

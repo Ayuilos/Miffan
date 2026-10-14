@@ -77,6 +77,7 @@ val dataSourceModule = module {
                 me.ayuilos.miffan.data.db.migrations.Migration_34_35,
                 me.ayuilos.miffan.data.db.migrations.Migration_35_36,
                 me.ayuilos.miffan.data.db.migrations.Migration_36_37,
+                me.ayuilos.miffan.data.db.migrations.Migration_37_38,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {

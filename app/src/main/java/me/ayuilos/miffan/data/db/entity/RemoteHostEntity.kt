@@ -39,7 +39,14 @@ data class RemoteHostEntity(
     @ColumnInfo("rdp_certificate_sha256") val rdpCertificateSha256: String? = null,
     @ColumnInfo("stream_enabled", defaultValue = "0") val streamEnabled: Boolean = false,
     @ColumnInfo("stream_certificate_sha256") val streamCertificateSha256: String? = null,
+    @ColumnInfo("alternate_addresses", defaultValue = "'[]'") val alternateAddresses: String = "[]",
+    @ColumnInfo("last_address") val lastAddressValue: String? = null,
 ) {
+    val addresses: List<RemoteHostAddress> get() =
+        (listOf(RemoteHostAddress(host, port)) + decodeRemoteHostAddresses(alternateAddresses)).distinct()
+    val lastAddress: RemoteHostAddress? get() = addresses.firstOrNull { it.storageValue == lastAddressValue }
+    val connectionAddresses: List<RemoteHostAddress> get() =
+        (listOfNotNull(lastAddress) + addresses).distinct()
     val supportsInteractiveTerminal: Boolean get() = me.rerere.workspace.RemotePlatform.parse(platform).supportsInteractiveTerminal
     val supportsRemoteScreen: Boolean get() = true
 }

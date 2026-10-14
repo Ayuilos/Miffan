@@ -51,6 +51,7 @@ class RemoteTerminalConnectionTest {
         coEvery { dao.getById("ws") } returns workspace
         coEvery { hostDao.getById("host") } answers { host }
         coEvery { hostDao.updateDetectedPlatform("host", any(), any()) } returns 1
+        coEvery { hostDao.updateLastAddress("host", any(), any(), any(), any(), any()) } returns 1
         every { credentials.load("host") } returns RemoteAuthentication.Password("test")
         every { transport.open(any(), any(), any()) } returns session
         every { session.resolvedRoot } returns "/srv/project"
@@ -91,6 +92,21 @@ class RemoteTerminalConnectionTest {
         repo.disconnectRemoteWorkspace("ws")
         verify(exactly = 1) { session.close() }
         assertEquals(RemoteConnectionActivity.IDLE, repo.remoteHostStates.value.getValue("host").activity)
+    }
+
+    @Test fun addressChangesKeepExistingSessionAndWorkspaceIdentity() = runBlocking {
+        val repo = repository()
+        coEvery { hostDao.compareAndSetAddresses(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } answers {
+            host = host.copy(host = arg(1), port = arg(2), alternateAddresses = arg(3), lastAddressValue = arg(4))
+            1
+        }
+        repo.connectRemoteWorkspace("ws")
+        assertTrue(repo.addHostAddress("host", "100.64.0.5", 22))
+        assertTrue(repo.removeHostAddress("host", "server.internal", 22))
+        repo.connectRemoteWorkspace("ws")
+        assertEquals("v1", host.connectionRevision)
+        verify(exactly = 1) { transport.open(any(), any(), any()) }
+        verify(exactly = 0) { session.close() }
     }
 
     @Test fun windowsCapabilityRejectsTerminalBeforeOpeningConnection() = runBlocking {
