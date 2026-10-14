@@ -776,7 +776,8 @@ else:
         for line in output(args).splitlines():
             name = line.split()[0] if line.split() else ''
             if 'sunshine' in name.lower() and name.endswith('.service'):
-                units.add(name)
+                # Packages alias the unit (sunshine.service -> app-dev.lizardbyte.app.Sunshine.service): count it once.
+                units.add(output(['systemctl', '--user', 'show', name, '--property=Id', '--value']) or name)
     active_units = sorted(name for name in units if output(['systemctl', '--user', 'is-active', name]) == 'active')
     unit = active_units[0] if len(active_units) == 1 else (next(iter(units)) if len(units) == 1 else None)
     running = bool(active_units)
@@ -926,7 +927,9 @@ def unpair():
     print(json.dumps(dict(removed=count, restarted=stopped)))
 
 if mode == 'unpair':
-    if not installed or (not app if mac else not unit): finish(False, 'Cannot verify Sunshine service for unpairing')
+    # Sunshine uninstalled since pairing: nothing is left that trusts this phone.
+    if not installed: print(json.dumps(dict(removed=0, restarted=False))); sys.exit(0)
+    if not app if mac else not unit: finish(False, 'Cannot verify Sunshine service for unpairing')
     unpair(); sys.exit(0)
 
 def integer(name, default):
