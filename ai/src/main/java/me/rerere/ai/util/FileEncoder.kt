@@ -56,7 +56,7 @@ internal fun mapExifOrientationToTransform(orientation: Int): ExifTransformType 
 
 fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<EncodedImage> = runCatching {
     when {
-        this.url.startsWith("file://") -> {
+        this.url.startsWith("file:") -> {
             val filePath =
                 this.url.toUri().path ?: throw IllegalArgumentException("Invalid file URI: ${this.url}")
             val file = File(filePath)
@@ -87,7 +87,7 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
 
 fun UIMessagePart.Video.encodeBase64Media(withPrefix: Boolean = true): Result<EncodedMedia> = runCatching {
     when {
-        this.url.startsWith("file://") -> {
+        this.url.startsWith("file:") -> {
             val filePath =
                 this.url.toUri().path ?: throw IllegalArgumentException("Invalid file URI: ${this.url}")
             val file = File(filePath)
@@ -121,7 +121,7 @@ fun UIMessagePart.Video.encodeBase64(withPrefix: Boolean = true): Result<String>
 
 fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String> = runCatching {
     when {
-        this.url.startsWith("file://") -> {
+        this.url.startsWith("file:") -> {
             val filePath =
                 this.url.toUri().path ?: throw IllegalArgumentException("Invalid file URI: ${this.url}")
             val file = File(filePath)

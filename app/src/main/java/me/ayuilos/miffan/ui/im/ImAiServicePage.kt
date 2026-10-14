@@ -11,6 +11,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -26,6 +29,9 @@ import me.ayuilos.miffan.data.ai.BackgroundTask
 import me.ayuilos.miffan.data.ai.backgroundModelFor
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.findModelById
+import me.ayuilos.miffan.data.datastore.findProvider
+import me.ayuilos.miffan.data.ai.tools.imageToolModelOrNull
+import me.ayuilos.miffan.ui.pages.setting.ImageToolModelSheet
 import me.ayuilos.miffan.data.datastore.isNotConfigured
 import me.ayuilos.miffan.ui.components.ai.ModelListSheet
 import me.ayuilos.miffan.ui.components.ai.rememberModelListState
@@ -35,6 +41,7 @@ import me.rerere.ai.provider.ModelType
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.AiMagic
 import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Image03
 import me.rerere.hugeicons.stroke.Link01
 import me.rerere.hugeicons.stroke.Message01
 import org.koin.compose.koinInject
@@ -56,6 +63,10 @@ fun ImAiServicePage(settingsStore: SettingsStore = koinInject(), backgroundHealt
         settings.providers,
         ModelType.CHAT,
     )
+
+    val imageModel = settings.imageToolModelOrNull()
+    val imageProvider = imageModel?.findProvider(settings.providers)
+    var imageSheetVisible by remember { mutableStateOf(false) }
 
     Scaffold(topBar = { ImPageBar(stringResource(R.string.im_me_ai_service)) }) { padding ->
         LazyColumn(
@@ -128,6 +139,22 @@ fun ImAiServicePage(settingsStore: SettingsStore = koinInject(), backgroundHealt
                         },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
+                    item(
+                        onClick = { imageSheetVisible = true },
+                        leadingContent = { Icon(HugeIcons.Image03, null) },
+                        headlineContent = { Text("画图") },
+                        supportingContent = {
+                            Text(
+                                text = imageModel?.let { model ->
+                                    listOfNotNull(model.displayName.ifBlank { model.modelId }, imageProvider?.name).joinToString(" · ")
+                                } ?: "未开启 · 选一个画图模型，伙伴就能帮你画图、改图",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
+                    )
                 }
             }
             if (!settings.isNotConfigured()) item("hint") {
@@ -141,6 +168,14 @@ fun ImAiServicePage(settingsStore: SettingsStore = koinInject(), backgroundHealt
         }
     }
 
+    if (imageSheetVisible) {
+        ImageToolModelSheet(
+            settings = settings,
+            onUpdate = { updated -> scope.launch { settingsStore.update(updated) } },
+            onDismiss = { imageSheetVisible = false },
+            easy = true,
+        )
+    }
     ModelListSheet(defaultModels) { model ->
         scope.launch { settingsStore.update { it.copy(chatModelId = model.id) } }
     }

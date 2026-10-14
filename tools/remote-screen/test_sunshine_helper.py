@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline helper acceptance: fake user unit/package/network tools; never connects to a host."""
+import hashlib
 import json
 import os
 import plistlib
@@ -28,7 +29,14 @@ if name == 'systemctl':
         print('{ path=/usr/bin/sunshine ; argv[]=/usr/bin/sunshine ; }')
     elif '--property=WorkingDirectory' in sys.argv:
         print(str(root))
+    elif 'stop' in sys.argv:
+        if settings.get('stop_error'): sys.exit(1)
+        settings['running'] = False
+        (root / 'settings.json').write_text(json.dumps(settings))
+        state = root / 'config/sunshine/sunshine_state.json'
+        if settings.get('flush_state'): state.write_text(json.dumps(settings['flush_state']))
     elif 'restart' in sys.argv or 'start' in sys.argv:
+        if settings.get('start_error'): sys.exit(1)
         sys.exit(0)
     else: sys.exit(1)
 elif name == 'ss':
@@ -129,6 +137,67 @@ class SunshineFixture(unittest.TestCase):
         self.assertNotIn('\nsunshine ', '\n' + (self.root / 'commands.log').read_text())
         return result.returncode, json.loads(result.stdout)
 
+class SunshineUnpairTest(SunshineFixture):
+    def setUp(self):
+        super().setUp()
+        self.pem = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.pem').read_text()
+        self.fingerprint = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.sha256').read_text().strip()
+        self.other = dict(name='Miffan', cert=self.pem, uuid='other')
+        import base64
+        self.other['cert'] = '-----BEGIN CERTIFICATE-----\n' + base64.b64encode(b'other DER').decode() + '\n-----END CERTIFICATE-----'
+        self.state = self.config.parent / 'sunshine_state.json'
+        self.data = dict(root=dict(uniqueid='server', named_devices=[dict(name='renamed phone', cert=self.pem, uuid='phone'), self.other], unknown=dict(nested=[1, '保留', None])), unknown_top=True)
+        self.state.write_text(json.dumps(self.data, indent=2))
+        self.state.chmod(0o640)
+        # Existing service discovery reads proc for running Linux; redirect only those reads.
+        self.helper = self.root / 'miffan.sh'
+        source = HELPER.read_text().replace("pathlib.Path('/proc/' + pid + '/cmdline').read_bytes().decode().split('\\0')", "['/usr/bin/sunshine']").replace("pathlib.Path(os.readlink('/proc/' + pid + '/cwd'))", 'pathlib.Path.home()')
+        self.helper.write_text(source)
+    def test_matching_fingerprint_removes_only_this_phone_and_preserves_state(self):
+        self.data['root']['named_devices'].append(dict(name='duplicate', cert=self.pem, uuid='duplicate'))
+        self.state.write_text(json.dumps(self.data))
+        before = self.state.stat()
+        code, result = self.call('unpair', permission=self.fingerprint.upper(), running=True, busy=True)
+        self.assertEqual(0, code); self.assertEqual(dict(removed=2, restarted=True), result)
+        expected = self.data; expected['root']['named_devices'] = [self.other]
+        self.assertEqual(expected, json.loads(self.state.read_text()))
+        after = self.state.stat()
+        self.assertEqual((before.st_mode, before.st_uid, before.st_gid), (after.st_mode, after.st_uid, after.st_gid))
+        commands = (self.root / 'commands.log').read_text()
+        self.assertLess(commands.index('systemctl --user stop'), commands.index('systemctl --user start'))
+    def test_no_match_changes_no_bytes_or_services(self):
+        before = self.state.read_bytes()
+        code, result = self.call('unpair', permission='0'*64, running=True)
+        self.assertEqual(0, code); self.assertEqual(dict(removed=0, restarted=False), result)
+        self.assertEqual(before, self.state.read_bytes())
+        commands = (self.root / 'commands.log').read_text()
+        self.assertNotIn('--user stop', commands); self.assertNotIn('--user start', commands)
+    def test_stopped_sunshine_is_not_started(self):
+        code, result = self.call('unpair', permission=self.fingerprint)
+        self.assertEqual(0, code); self.assertEqual(dict(removed=1, restarted=False), result)
+        self.assertNotIn('--user start', (self.root / 'commands.log').read_text())
+    def test_shutdown_flush_is_reread_and_unknown_keys_are_kept(self):
+        flushed = json.loads(json.dumps(self.data)); flushed['new_key'] = {'from_shutdown': 1}
+        code, result = self.call('unpair', permission=self.fingerprint, running=True, flush_state=flushed)
+        self.assertEqual(0, code); self.assertTrue(result['restarted'])
+        self.assertEqual(flushed['new_key'], json.loads(self.state.read_text())['new_key'])
+    def test_stop_failure_keeps_state(self):
+        before = self.state.read_bytes()
+        code, result = self.call('unpair', permission=self.fingerprint, running=True, stop_error=True)
+        self.assertEqual(1, code); self.assertFalse(result['success']); self.assertEqual(before, self.state.read_bytes())
+    def test_custom_relative_and_absolute_state_paths(self):
+        for custom in (self.config.parent / 'custom.json', self.root / 'absolute state.json'):
+            self.state.rename(custom)
+            self.config.write_text('file_state = ' + (custom.name if custom.parent == self.config.parent else str(custom)) + '\n')
+            code, result = self.call('unpair', permission=self.fingerprint)
+            self.assertEqual(0, code); self.assertEqual(1, result['removed'])
+            custom.write_text(json.dumps(self.data)); custom.rename(self.state)
+    def test_invalid_fingerprint_and_invalid_json_keep_state(self):
+        for fingerprint, content in [('invalid', json.dumps(self.data)), (self.fingerprint, '{invalid')]:
+            self.state.write_text(content)
+            code, result = self.call('unpair', permission=fingerprint)
+            self.assertEqual(1, code); self.assertFalse(result['success']); self.assertEqual(content, self.state.read_text())
+
 class SunshineHelperTest(SunshineFixture):
     def test_probe_is_read_only_and_reports_filtered_addresses(self):
         before = self.config.read_bytes()
@@ -210,6 +279,24 @@ class SunshineMacHelperTest(SunshineFixture):
         (self.root / 'bin/python3').symlink_to(sys.executable)
     def call(self, mode='probe', permission=None, **settings):
         return super().call(mode, permission=permission, platform='Darwin', **settings)
+    def test_mac_unpair_stops_and_reopens_only_when_paired(self):
+        pem = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.pem').read_text()
+        fingerprint = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.sha256').read_text().strip()
+        state = self.config.parent / 'sunshine_state.json'
+        data = dict(root=dict(uniqueid='server', named_devices=[dict(name='renamed', cert=pem)], unknown=dict(keep=True)))
+        state.write_text(json.dumps(data, indent=2))
+        before = state.read_bytes()
+        code, result = self.call('unpair', permission='0'*64, running=True)
+        self.assertEqual(0, code); self.assertEqual(dict(removed=0, restarted=False), result)
+        self.assertEqual(before, state.read_bytes())
+        self.assertNotIn('osascript', (self.root / 'commands.log').read_text())
+        code, result = self.call('unpair', permission=fingerprint, running=True, busy=True)
+        self.assertEqual(0, code); self.assertEqual(dict(removed=1, restarted=True), result)
+        data['root']['named_devices'] = []
+        self.assertEqual(data, json.loads(state.read_text()))
+        commands = (self.root / 'commands.log').read_text()
+        self.assertLess(commands.index('osascript -e quit app id'), commands.index('open -a'))
+
     def test_mac_probe_bundle_defaults_addresses_and_permissions_unknown(self):
         before = self.config.read_bytes()
         code, probe = self.call(unrelated_port=True, running=True, display=False)

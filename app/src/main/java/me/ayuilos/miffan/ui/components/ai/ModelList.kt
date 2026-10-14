@@ -168,11 +168,12 @@ fun ModelSelector(
     type: ModelType,
     modifier: Modifier = Modifier,
     onlyIcon: Boolean = false,
-    allowClear: Boolean = false,
+    onClear: (() -> Unit)? = null,
+    defaultModelId: Uuid? = null,
     onSelect: (Model) -> Unit
 ) {
     val state = rememberModelListState(
-        modelId = modelId,
+        modelId = modelId ?: defaultModelId,
         providers = providers,
         type = type,
     )
@@ -181,8 +182,9 @@ fun ModelSelector(
         state = state,
         modifier = modifier,
         onlyIcon = onlyIcon,
-        allowClear = allowClear,
-        onClear = { onSelect(Model()) },
+        allowClear = onClear != null,
+        onClear = { onClear?.invoke() },
+        isDefault = modelId == null && defaultModelId != null,
     )
 
     ModelListSheet(
@@ -198,6 +200,7 @@ internal fun ModelSelectorButton(
     onlyIcon: Boolean = false,
     allowClear: Boolean = false,
     onClear: () -> Unit = {},
+    isDefault: Boolean = false,
 ) {
     val model = state.currentModel
 
@@ -220,13 +223,17 @@ internal fun ModelSelectorButton(
                     )
                 }
                 Text(
-                    text = model?.displayName ?: stringResource(R.string.model_list_select_model),
+                    text = when {
+                        model == null -> stringResource(R.string.model_list_select_model)
+                        isDefault -> stringResource(R.string.im_p5_model_default, model.displayName)
+                        else -> model.displayName
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            if (allowClear && model != null) {
+            if (allowClear) {
                 IconButton(
                     onClick = onClear,
                 ) {

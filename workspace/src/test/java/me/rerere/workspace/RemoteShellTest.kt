@@ -33,6 +33,8 @@ class RemoteShellTest {
         assertEquals("/c:/Users/Ekk", WindowsRemotePath.toSftp("c:\\Users\\Ekk"))
         assertEquals("$root/子目录", WindowsRemotePath.workingDirectory(root, "c:\\Users\\Ekk\\中文 空格'\\子目录"))
         assertEquals("$root/子目录", WindowsRemotePath.workingDirectory(root, "/c:/Users/Ekk/中文 空格'/子目录"))
+        // A session not rooted in a workspace starts commands in the account's home.
+        assertEquals("C:\\Users\\ekk", WindowsRemotePath.toLocal(WindowsRemotePath.workingDirectory("/", "/C:/Users/ekk")))
         assertThrows(IllegalArgumentException::class.java) { WindowsRemotePath.workingDirectory(root, "D:\\other") }
         assertThrows(IllegalArgumentException::class.java) { WindowsRemotePath.workingDirectory(root, "../other") }
         assertThrows(IllegalArgumentException::class.java) { WindowsRemotePath.toLocal("/home/user") }

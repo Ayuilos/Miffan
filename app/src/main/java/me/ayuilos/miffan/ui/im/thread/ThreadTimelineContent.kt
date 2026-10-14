@@ -150,7 +150,7 @@ internal fun ThreadMessageBubble(
         when (part) {
             is UIMessagePart.Text -> part.text.isNotBlank()
             is UIMessagePart.Image, is UIMessagePart.Document -> true
-            is UIMessagePart.Tool -> part.isThreadPrompt()
+            is UIMessagePart.Tool -> part.isThreadPrompt() || part.showsInThread(item.streaming)
             else -> false
         }
     }
@@ -196,7 +196,7 @@ internal fun ThreadMessageBubble(
                                     computerTargetName(part, computer, stringResource(R.string.im_computer_computer)),
                                     canOpenComputer(part, computer), onComputerScreen, onToolApproval)
                                 else ThreadToolPrompt(part, onToolApproval, onToolAnswer, assistant)
-                            }
+                            } else if (part.isImageGeneration()) ThreadGeneratedImages(part, item.streaming)
                             else -> Unit
                         }
                     }

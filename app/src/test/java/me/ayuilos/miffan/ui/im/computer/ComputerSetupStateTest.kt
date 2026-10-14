@@ -22,16 +22,16 @@ class ComputerSetupStateTest {
     )
 
     @Test
-    fun linuxIsPreparedWithoutARunningServerBecauseTheHelperStartsIt() {
-        assertTrue(ComputerSetupState(probe = probe()).prepared)
+    fun linuxIsReadyWithoutARunningServerBecauseTheHelperStartsIt() {
+        assertTrue(ComputerSetupState(probe = probe()).ready)
     }
 
     @Test
-    fun eachMissingPieceBlocksPreparation() {
-        assertFalse(ComputerSetupState(probe = probe(session = false), wantsScreen = true).prepared)
-        assertFalse(ComputerSetupState(probe = probe(server = "none")).prepared)
-        assertFalse(ComputerSetupState(probe = probe(cuaOk = false)).prepared)
-        assertFalse(ComputerSetupState().prepared)
+    fun eachMissingPieceBlocksReadiness() {
+        assertFalse(ComputerSetupState(probe = probe(session = false), wantsScreen = true).ready)
+        assertFalse(ComputerSetupState(probe = probe(server = "none")).ready)
+        assertFalse(ComputerSetupState(probe = probe(cuaOk = false)).ready)
+        assertFalse(ComputerSetupState().ready)
     }
 
     @Test
@@ -44,34 +44,35 @@ class ComputerSetupStateTest {
     }
 
     @Test
-    fun withoutTheScreenNothingNeedsChecking() {
-        assertTrue(ComputerSetupState(probe = probe(session = false, server = "none", cuaOk = false)).prepared)
-        // A failed check still lets a server or NAS continue once the screen is off.
-        assertTrue(ComputerSetupState(wantsScreen = false).prepared)
-    }
-
-    @Test
-    fun progressSkipsTheScreenStepsWithoutAScreen() {
-        assertEquals(4 to 6, computerSetupProgress(ComputerSetupState(step = ComputerSetupStep.PREPARE, wantsScreen = false)))
-        assertEquals(5 to 6, computerSetupProgress(ComputerSetupState(step = ComputerSetupStep.BIND, wantsScreen = false)))
-        assertEquals(6 to 7, computerSetupProgress(ComputerSetupState(step = ComputerSetupStep.BIND, probe = probe())))
-        val mac = probe(os = "macos", server = "macos-screen-sharing", running = true)
-        assertEquals(7 to 8, computerSetupProgress(ComputerSetupState(step = ComputerSetupStep.BIND, probe = mac)))
-        assertEquals(5 to 6, computerSetupProgress(ComputerSetupState(step = ComputerSetupStep.BIND, probe = mac, wantsScreen = false)))
+    fun withoutTheScreenOnlyTheConnectionCounts() {
+        assertTrue(ComputerSetupState(probe = probe(session = false, server = "none", cuaOk = false)).ready)
+        // A server or NAS continues once connected, whatever its screen checks say.
+        assertTrue(ComputerSetupState(probe = probe(cuaOk = false), wantsScreen = false).ready)
+        assertFalse(ComputerSetupState(wantsScreen = false).ready)
     }
 
     @Test
     fun macScreenSharingMustBeSwitchedOn() {
-        assertFalse(ComputerSetupState(probe = probe(os = "macos", server = "macos-screen-sharing")).prepared)
-        assertTrue(ComputerSetupState(probe = probe(os = "macos", server = "macos-screen-sharing", running = true)).prepared)
+        val off = probe(os = "macos", server = "macos-screen-sharing")
+        val on = probe(os = "macos", server = "macos-screen-sharing", running = true)
+        assertFalse(ComputerSetupState(probe = off).machineReady)
+        assertTrue(ComputerSetupState(probe = on).machineReady)
     }
 
     @Test
-    fun macNeedsBothGrantsBeforeTheTestPasses() {
+    fun macNeedsItsAccountAndBothGrants() {
         val mac = probe(os = "macos", server = "macos-screen-sharing", running = true)
-        assertFalse(ComputerSetupState(probe = mac, partnerChecked = true).tested)
-        assertFalse(ComputerSetupState(probe = mac, partnerChecked = true, permissions = ComputerPermissions(true, false)).tested)
-        assertTrue(ComputerSetupState(probe = mac, partnerChecked = true, permissions = ComputerPermissions(true, true)).tested)
-        assertTrue(ComputerSetupState(probe = probe(), partnerChecked = true).tested)
+        assertFalse(ComputerSetupState(probe = mac).ready)
+        assertFalse(ComputerSetupState(probe = mac, macAccount = "ekk").ready)
+        assertFalse(ComputerSetupState(probe = mac, macAccount = "ekk", permissions = ComputerPermissions(true, false)).ready)
+        assertTrue(ComputerSetupState(probe = mac, macAccount = "ekk", permissions = ComputerPermissions(true, true)).ready)
+        assertFalse(ComputerSetupState(probe = mac, permissions = ComputerPermissions(true, true)).ready)
+    }
+
+    @Test
+    fun systemComesFromTheFoundComputerUntilTheProbeSaysOtherwise() {
+        val target = SetupTarget("box", "10.0.0.2", 22, me.ayuilos.miffan.data.remote.NearbySystem.WINDOWS)
+        assertTrue(ComputerSetupState(target = target).isWindows)
+        assertFalse(ComputerSetupState(target = target, probe = probe()).isWindows)
     }
 }

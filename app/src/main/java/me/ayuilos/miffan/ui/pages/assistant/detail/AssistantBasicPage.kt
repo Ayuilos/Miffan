@@ -522,6 +522,10 @@ internal fun AssistantBasicContent(
                         modelId = assistant.chatModelId,
                         providers = providers,
                         type = ModelType.CHAT,
+                        defaultModelId = LocalSettings.current.chatModelId,
+                        onClear = if (assistant.chatModelId != null) {
+                            { onUpdate(assistant.copy(chatModelId = null)) }
+                        } else null,
                         onSelect = {
                             onUpdate(
                                 assistant.copy(

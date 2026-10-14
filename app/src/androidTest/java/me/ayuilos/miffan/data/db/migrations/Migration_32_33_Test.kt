@@ -63,4 +63,19 @@ class Migration_32_33_Test {
             assertEquals(0, dao.pinPairedStreamCertificate(host.id, pin, host.connectionRevision, pin, 7))
         } finally { db.close() }
     }
+
+    @Test fun helperPlatformUpdateOnlyFillsBlankForSameIdentityAndPreservesRdpUsername() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
+        try {
+            val dao = db.remoteHostDao()
+            val host = RemoteHostEntity("probe", "Computer", "localhost", 22, "ssh-user", "key",
+                trustedHostKeySha256 = "ssh-pin", createdAt = 1, updatedAt = 1, rdpUsername = "rdp-user")
+            dao.insert(host)
+            assertEquals(0, dao.updateProbedScreenPlatform(host.id, "stale", "windows"))
+            assertEquals(1, dao.updateProbedScreenPlatform(host.id, host.connectionRevision, "linux"))
+            assertEquals(host.copy(screenPlatform = "linux"), dao.getById(host.id))
+            assertEquals(0, dao.updateProbedScreenPlatform(host.id, host.connectionRevision, "windows"))
+            assertEquals(host.copy(screenPlatform = "linux"), dao.getById(host.id))
+        } finally { db.close() }
+    }
 }

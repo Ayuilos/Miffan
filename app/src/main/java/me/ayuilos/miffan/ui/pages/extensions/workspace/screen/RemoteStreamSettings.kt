@@ -89,7 +89,7 @@ internal fun RemoteStreamSettings(
             Text(stringResource(R.string.workspace_screen_stream_enforce_failed), color = MaterialTheme.colorScheme.error)
             RemoteScreenLog(it.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed), initiallyExpanded = true)
         }
-        current?.pairingError?.let { Text(stringResource(R.string.workspace_screen_stream_pair_failed), color = MaterialTheme.colorScheme.error) }
+        current?.pairingError?.let { Text(streamPairingErrorText(it), color = MaterialTheme.colorScheme.error) }
         if (current?.paired == true) Text(stringResource(R.string.workspace_screen_stream_pair_done), color = MaterialTheme.colorScheme.primary)
         if (status != null) {
             EnvironmentRow(stringResource(R.string.workspace_screen_stream_sunshine),
@@ -273,4 +273,15 @@ internal fun RemoteStreamPairingDialog(pin: String?, onCancel: () -> Unit) {
         confirmButton = {},
         dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) } },
     )
+}
+
+/** Sunshine refusing the PIN keeps the plain advice; anything else says what went wrong. */
+@Composable
+internal fun streamPairingErrorText(error: Throwable): String {
+    val refused = generateSequence(error) { it.cause }.any {
+        it is me.rerere.stream.StreamException && it.reason == me.rerere.stream.StreamFailureReason.HOST_REJECTED
+    }
+    val detail = error.localizedMessage?.trim()?.takeIf { it.isNotEmpty() }
+    return if (refused || detail == null) stringResource(R.string.workspace_screen_stream_pair_failed)
+        else stringResource(R.string.workspace_screen_stream_pair_failed_detail, detail)
 }

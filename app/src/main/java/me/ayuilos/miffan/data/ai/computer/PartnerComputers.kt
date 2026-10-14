@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.ai.computer
 
 import me.rerere.workspace.RemotePlatform
+import me.rerere.workspace.shouldTryNextRemoteAddress
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -15,6 +16,7 @@ import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.repository.WorkspaceToolTargetChangedException
 import kotlin.uuid.Uuid
 
 /** The computer a partner is bound to: a remote workspace and the host behind it. */
@@ -54,6 +56,11 @@ data class KnownComputer(
 
 /** Deleting a computer that still has professional-interface workspaces is refused. */
 class ComputerHasWorkspacesException(val count: Int) : IllegalStateException("The computer still has $count other workspaces")
+
+enum class ForgetOutcome { FORGOTTEN, NOT_NEEDED, SHARED, ALREADY_GONE }
+
+class ComputerUnreachableException(val manualCommand: String, cause: Throwable? = null) :
+    IllegalStateException("The computer cannot be reached. Miffan has kept its saved record.", cause)
 
 /** Resolves which computer, if any, a partner is bound to. */
 class PartnerComputers(
@@ -112,13 +119,48 @@ class PartnerComputers(
      * its saved credentials. Throws [ComputerHasWorkspacesException] without changing anything when the
      * host has other workspaces.
      */
-    suspend fun delete(hostId: String): Unit {
+    suspend fun delete(hostId: String): Unit { delete(hostId, forgetOnComputer = false) }
+
+    /** Same pinned machine, account and key are still used by another saved host. */
+    suspend fun sharesComputerAccess(hostId: String): Boolean {
+        val host = workspaces.getHostById(hostId) ?: return false
+        return sharesComputerAccess(host, workspaces.listHostsFlow().first())
+    }
+
+    private fun sharesComputerAccess(host: RemoteHostEntity, hosts: List<RemoteHostEntity>): Boolean =
+        host.sshKeyId != null && host.trustedHostKeySha256 != null && hosts.any {
+            it.id != host.id && it.trustedHostKeySha256 == host.trustedHostKeySha256 &&
+                it.username == host.username && it.sshKeyId == host.sshKeyId
+        }
+
+    suspend fun delete(hostId: String, forgetOnComputer: Boolean): ForgetOutcome {
         val workspaceList = workspaces.listFlow().first()
         val workspace = computerWorkspace(hostId, workspaceList, settingsStore.settingsFlow.value.assistants)
         val otherCount = workspaceList.count { it.isRemote && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
         if (otherCount > 0) throw ComputerHasWorkspacesException(otherCount)
+        val host = if (forgetOnComputer) workspaces.getHostById(hostId) else null
+        val outcome = when {
+            host?.sshKeyId == null -> ForgetOutcome.NOT_NEEDED
+            sharesComputerAccess(host, workspaces.listHostsFlow().first()) -> ForgetOutcome.SHARED
+            else -> {
+                val key = requireNotNull(workspaces.getSshKeyById(host.sshKeyId)) { "Miffan SSH key not found" }
+                val command = revokeMiffanKeyCommand(key.publicKey, RemotePlatform.parse(host.platform))
+                try {
+                    // The repository unpairs Sunshine on this same verified connection before revoking.
+                    if (workspaces.revokeComputerAccess(hostId, command, host.connectionRevision)) ForgetOutcome.FORGOTTEN
+                    else ForgetOutcome.ALREADY_GONE
+                } catch (error: Exception) {
+                    if (shouldTryNextRemoteAddress(error)) throw ComputerUnreachableException(command, error)
+                    throw error
+                }
+            }
+        }
+        if (host != null && workspaces.getHostById(hostId)?.connectionRevision != host.connectionRevision) {
+            throw WorkspaceToolTargetChangedException()
+        }
         workspace?.let { workspaces.delete(it.id) }
         workspaces.deleteHost(hostId)
+        return outcome
     }
 
     private fun computerWorkspace(
@@ -141,10 +183,12 @@ class PartnerComputers(
         val hostWorkspaces = workspaceList.filter { it.isRemote && it.remoteHostId == host.id }
         val workspace = computerWorkspace(host.id, hostWorkspaces, assistants)
         val workspaceIds = hostWorkspaces.map { it.id }.toSet()
+        val address = host.lastAddress ?: host.addresses.first()
         return KnownComputer(
             hostId = host.id,
             name = host.name,
-            address = "${host.username}@${host.host}" + if (host.port != 22) ":${host.port}" else "",
+            address = "${host.username}@${if (':' in address.host) "[${address.host.removeSurrounding("[", "]")}]" else address.host}" +
+                if (address.port != 22) ":${address.port}" else "",
             platform = computerPlatform(host),
             screenEnabled = host.screenEnabled,
             workspaceId = workspace?.id,

@@ -6,9 +6,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.jcraft.jsch.JSchHostKeyException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,67 +26,101 @@ import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
+import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
+import me.ayuilos.miffan.data.remote.NearbyComputer
+import me.ayuilos.miffan.data.remote.NearbyNameSource
+import me.ayuilos.miffan.data.remote.NearbyNetwork
+import me.ayuilos.miffan.data.remote.NearbySystem
+import me.ayuilos.miffan.data.remote.nearbyBannerSystem
+import me.ayuilos.miffan.data.remote.probeNearbySsh
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
+import me.ayuilos.miffan.data.repository.KeySignInCheck
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
+import me.rerere.workspace.RemoteConnectException
+import me.rerere.workspace.RemotePasswordSignInFailure
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RemotePlatform
 import kotlin.uuid.Uuid
 
-/** Steps of "connect a computer for the partner", in order. */
+/** Screens of "connect a computer"; the user moves between them, [ComputerSetupState.history] remembers the way back. */
 enum class ComputerSetupStep {
-    /** Pick a computer Miffan already knows, or add a new one. */
-    CHOOSE,
-    /** Address, account and sign-in method of a new computer. */
-    ADDRESS,
-    /** Confirm the computer's SSH host key fingerprint. */
+    /** Computers on this Wi-Fi (and, on request, on Tailscale), plus the ones Miffan already knows. */
+    FIND,
+    /** Type an address; also the connection settings of a saved computer. */
+    MANUAL,
+    /** The account of a Mac or Linux computer; one that already lets Miffan's key in goes straight on. */
+    SIGN_IN,
+    /** The password for that account, when Miffan's key is not let in yet. */
+    PASSWORD,
+    /** Run one command on the computer so Miffan's key may sign in. */
+    KEY,
+    /** Run the setup script on a Windows computer, which also authorizes Miffan's key. */
+    WINDOWS,
+    /** Only when a saved computer's identity changed: a strong warning before trusting the new one. */
     VERIFY,
-    /** Desktop session, screen service and cua-driver checks, with fixes. */
-    PREPARE,
-    /** macOS only: the account Screen Sharing signs in with. */
-    MAC_ACCOUNT,
-    /** Live screen preview, macOS permissions and a read-only look by the partner. */
-    TEST,
-    /** Give this computer to the partner. */
-    BIND,
+    /** Everything the partner needs, checked and fixed in one list. */
+    READY,
+    /** Who gets the computer, under the live screen. */
+    SHARE,
     DONE,
 }
 
-/** Long-running work, shown as progress; at most one runs at a time. */
 /** What binding a computer would replace: the phone's own workspace, or another computer. */
 sealed interface ReplacedBinding {
     data object Phone : ReplacedBinding
     data class Computer(val name: String) : ReplacedBinding
 }
 
-enum class ComputerSetupTask { CREATING_KEY, CONNECTING, READING_FINGERPRINT, VERIFYING, PREPARING, INSTALLING, SAVING, CHECKING, BINDING }
-
-sealed interface ComputerSetupAuth {
-    data class Password(val value: String) : ComputerSetupAuth {
-        override fun toString(): String = "Password([redacted])"
-    }
-
-    /** A key generated in Miffan; the user adds its public half to the computer first. */
-    data class AppKey(val keyId: String) : ComputerSetupAuth
+/** Long-running work, shown as progress; at most one runs at a time. */
+enum class ComputerSetupTask {
+    CREATING_KEY, LOOKING_UP, CONNECTING, VERIFYING, PREPARING, INSTALLING, SAVING, CHECKING, BINDING, OPENING_SETTINGS,
 }
 
+/** Reads the Mac's grants every few seconds for about two minutes after asking for them. */
+private const val PERMISSION_WATCH_INTERVAL_MS = 3_000L
+private const val PERMISSION_WATCH_ROUNDS = 40
+
+/** Tries with the key when the user comes back from the computer; few, so sshd's failure limits stay far away. */
+private const val QUIET_KEY_TRIES = 4
+
+/** Sharing in System Settings; the second form is for macOS 12 and older. */
+private const val MAC_SHARING_SETTINGS_COMMAND =
+    "open 'x-apple.systempreferences:com.apple.Sharing-Settings.extension' 2>/dev/null || open /System/Library/PreferencePanes/SharingPref.prefPane"
+
+/** The computer being connected, as found nearby or typed in, before or after Miffan saved it. */
+data class SetupTarget(
+    val name: String,
+    val host: String,
+    val port: Int,
+    val system: NearbySystem = NearbySystem.UNKNOWN,
+    val network: NearbyNetwork = NearbyNetwork.LOCAL,
+    /** The name came from a network lookup or the address; the computer's own name replaces it after sign-in. */
+    val nameGuessed: Boolean = false,
+    /** The SSH identity seen while finding it, unverified; tells apart two systems at one address. */
+    val hostKey: String? = null,
+)
+
 data class ComputerSetupState(
-    val step: ComputerSetupStep = ComputerSetupStep.CHOOSE,
+    val step: ComputerSetupStep = ComputerSetupStep.FIND,
+    /** Screens to go back to, most recent last; empty means back leaves the setup. */
+    val history: List<ComputerSetupStep> = emptyList(),
     val task: ComputerSetupTask? = null,
     val error: Throwable? = null,
+    val target: SetupTarget? = null,
+    /** The account typed so far, carried between the sign-in screens. */
+    val username: String = "",
     val hostId: String? = null,
-    /** Shown on [ComputerSetupStep.VERIFY]; trusting it requires the same fingerprint live. */
+    /** Shown on [ComputerSetupStep.VERIFY]: the computer's new identity. */
     val hostKey: RemoteHostKey? = null,
-    /** True when this host already trusted a different key: show a strong warning. */
-    val hostKeyChanged: Boolean = false,
     val workspaceId: String? = null,
     val probe: RemoteMachineProbe? = null,
     /** The host identity [probe] was read from; high-performance setup refuses a different one. */
@@ -92,21 +128,34 @@ data class ComputerSetupState(
     val install: RemoteCommandOutcome? = null,
     /** macOS grants of the remote cua-driver; null on Linux or before checking. */
     val permissions: ComputerPermissions? = null,
+    /** The account Screen Sharing signs in with on a Mac, once saved. */
+    val macAccount: String? = null,
     /** What the partner saw in the read-only check. */
     val partnerView: Bitmap? = null,
     val partnerChecked: Boolean = false,
-    /** The address step edits this host's saved connection details. */
+    /** Editing a saved computer's connection settings. */
     val editing: Boolean = false,
     /** Windows only: Sunshine is installed, running, encrypted and paired for [hostRevision]. */
     val streamReady: Boolean = false,
-    /** The user said the computer runs Windows (or it was detected before); only changes instructions. */
-    val expectWindows: Boolean = false,
     /** The user's choice of whether this computer has a screen to use; null follows what the check found. */
     val wantsScreen: Boolean? = null,
+    /** The computer does not take passwords: [ComputerSetupStep.KEY] says so and is the only way in. */
+    val passwordRefused: Boolean = false,
+    /** [ComputerSetupStep.KEY]: the computer did not accept Miffan's key (yet). */
+    val keyRefused: Boolean = false,
+    /** [ComputerSetupStep.MANUAL]: nothing answered as a computer with remote login at that address. */
+    val unreachable: Boolean = false,
 ) {
     val busy: Boolean get() = task != null
-    val isMac: Boolean get() = probe?.os == "macos"
-    val isWindows: Boolean get() = probe?.os == "windows"
+    /** The computer's system: what the check found, else what finding it suggested. */
+    val system: NearbySystem get() = when (probe?.os) {
+        "macos" -> NearbySystem.MAC
+        "windows" -> NearbySystem.WINDOWS
+        "linux" -> NearbySystem.LINUX
+        else -> target?.system ?: NearbySystem.UNKNOWN
+    }
+    val isMac: Boolean get() = probe?.os?.let { it == "macos" } ?: (target?.system == NearbySystem.MAC)
+    val isWindows: Boolean get() = probe?.os?.let { it == "windows" } ?: (target?.system == NearbySystem.WINDOWS)
 
     val sessionReady: Boolean get() = probe?.session?.present == true
     /**
@@ -124,23 +173,24 @@ data class ComputerSetupState(
 
     /**
      * Whether the partner gets the screen. Off, the computer is used through commands only, as on a
-     * server or NAS without a display, and the desktop, screen and cua-driver checks are skipped.
-     * Until the user chooses, it is on unless the check found no desktop.
+     * server or NAS without a display, and the screen checks are skipped. Until the user chooses, it
+     * is on unless the check found no desktop.
      */
     val usesScreen: Boolean get() = wantsScreen ?: probe?.session?.present ?: true
 
-    /** Everything [ComputerSetupStep.PREPARE] checks is in place, or there is nothing to check. */
-    val prepared: Boolean get() = !usesScreen || (sessionReady && screenServiceReady && cuaReady)
+    /** Desktop, screen service and cua-driver: what the probe can see. */
+    val machineReady: Boolean get() = sessionReady && screenServiceReady && cuaReady
+    val macAccountReady: Boolean get() = !isMac || macAccount != null
+    val grantsReady: Boolean get() = !isMac || permissions?.complete == true
 
-    /** The partner saw the screen, and on macOS the driver holds both grants. */
-    val tested: Boolean get() = partnerChecked && (!isMac || permissions?.complete == true)
+    /** Everything [ComputerSetupStep.READY] lists is done, or there is nothing to check. */
+    val ready: Boolean get() = probe != null && (!usesScreen || (machineReady && macAccountReady && grantsReady))
 }
 
 /**
- * Where the setup starts. With [assistantId] it ends by giving the computer to that partner; without
- * it (opened from "my computers") it ends by letting the user pick any partners, or none. [hostId]
- * starts on that known computer: with [edit] at its connection details, otherwise by connecting and
- * checking it.
+ * Where the setup starts. With [assistantId] it ends by offering the computer to that partner; without
+ * it (opened from "my computers") any partners, or none. [hostId] starts on that saved computer: with
+ * [edit] at its connection settings, otherwise by connecting and checking it.
  */
 data class ComputerSetupArgs(
     val assistantId: Uuid? = null,
@@ -151,9 +201,10 @@ data class ComputerSetupArgs(
 )
 
 /**
- * Guides the user through connecting a computer and giving it to partners. The UI shows
- * [state] and collects input; every step that trusts a host, runs software on it, stores a
- * credential or changes the partner happens here and only on an explicit user action.
+ * Guides the user through connecting a computer and giving it to partners. The UI shows [state] and
+ * collects input; anything that runs software on the computer, stores a credential or changes a
+ * partner happens here and only on an explicit user action. A computer's identity is trusted the
+ * first time Miffan connects to it; a changed identity stops at [ComputerSetupStep.VERIFY].
  */
 class ComputerSetupVM(
     private val args: ComputerSetupArgs,
@@ -168,17 +219,18 @@ class ComputerSetupVM(
 
     private val _state = MutableStateFlow(
         if (args.hostId != null && args.edit) ComputerSetupState(
-            step = ComputerSetupStep.ADDRESS, hostId = args.hostId, editing = true,
+            step = ComputerSetupStep.MANUAL, hostId = args.hostId, editing = true,
         ) else ComputerSetupState(),
     )
     val state: StateFlow<ComputerSetupState> = _state.asStateFlow()
 
-    /** Computers Miffan already knows; the user may pick one instead of adding a new one. */
+    /** Computers Miffan already knows. */
     val hosts: StateFlow<List<RemoteHostEntity>> = workspaces.listHostsFlow()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val sshKeys: StateFlow<List<SshKeyEntity>> = workspaces.listSshKeysFlow()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** Miffan's own key, made on first need; the key and Windows screens show its public half. */
+    private val _appKey = MutableStateFlow<SshKeyEntity?>(null)
+    val appKey: StateFlow<SshKeyEntity?> = _appKey.asStateFlow()
 
     /**
      * What the partner is bound to now, when it is not the workspace being set up; binding replaces
@@ -192,7 +244,28 @@ class ComputerSetupVM(
         else ReplacedBinding.Computer(hostList.find { it.id == workspace.remoteHostId }?.name ?: workspace.name)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** Partners already bound to a workspace of the computer being set up. */
+    val boundPartnerIds: StateFlow<Set<Uuid>> = combine(
+        settingsStore.settingsFlow, workspaces.listFlow(), _state,
+    ) { settings, list, state ->
+        val hostId = state.hostId ?: return@combine emptySet()
+        val workspaceIds = list.filter { it.isRemote && it.remoteHostId == hostId }.map { it.id }.toSet()
+        settings.assistants.filter { it.workspaceId?.toString() in workspaceIds }.map { it.id }.toSet()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
     private var job: Job? = null
+
+    /**
+     * The password this setup signed in with, kept in memory only: a Mac's Screen Sharing signs in
+     * with the same account, so the setup does not ask again.
+     */
+    private var signInPassword: String? = null
+    /** Miffan's key, authorized through the session the password opens; see [switchToKey]. */
+    private var keyToAuthorize: String? = null
+    private var permissionWatch: Job? = null
+    private var quietKeyTries = 0
+    /** A computer saved in this setup under a guessed name, renamed once it says what it is called. */
+    private var guessedNameHostId: String? = null
 
     private val streamSetup = RemoteStreamSetupController(screens, viewModelScope)
     /** Optional high-performance mode for the computer being set up; see [RemoteStreamSetupController]. */
@@ -207,6 +280,12 @@ class ComputerSetupVM(
                     current.copy(streamReady = setup?.streamReady == true)
                 }
             }
+        }
+        when {
+            args.hostId != null && args.edit -> viewModelScope.launch {
+                workspaces.getHostById(args.hostId)?.let { host -> _state.update { it.copy(target = host.target(), username = host.username) } }
+            }
+            args.hostId != null -> chooseHost(args.hostId)
         }
     }
 
@@ -224,90 +303,185 @@ class ComputerSetupVM(
     fun openSunshineSettings(permission: RemoteSunshinePermission) =
         withProbedHost { hostId, revision -> streamSetup.openPermissionSettings(hostId, revision, permission) }
 
-    init {
-        if (args.hostId != null && !args.edit) chooseHost(args.hostId)
-    }
-
     /** The exact command [installCuaDriver] runs, for the confirmation dialog. */
     fun cuaInstallCommand(): String = RemoteScreenRepository.cuaDriverCommand(upgradePath(),
         if (_state.value.probe?.os == "windows") RemotePlatform.WINDOWS else RemotePlatform.POSIX)
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
-    /** Back one step; leaves created hosts and workspaces in place (they are reused next time). */
-    fun back() {
+    /** Back one screen; false when there is none and the setup should close. Saved computers stay saved. */
+    fun back(): Boolean {
+        val state = _state.value
+        if (state.busy || state.history.isEmpty()) return false
+        _state.update { it.copy(step = it.history.last(), history = it.history.dropLast(1), error = null, keyRefused = false, unreachable = false) }
+        return true
+    }
+
+    private fun go(step: ComputerSetupStep, update: (ComputerSetupState) -> ComputerSetupState = { it }) = _state.update {
+        val next = update(it)
+        if (it.step == step) next.copy(error = null) else next.copy(step = step, history = next.history + it.step, error = null)
+    }
+
+    // ---- Finding the computer ----
+
+    /** A computer found nearby: a saved one is checked again, a new one asks for the account. */
+    fun pickNearby(computer: NearbyComputer) {
         if (_state.value.busy) return
-        _state.update {
-            val previous = when (it.step) {
-                ComputerSetupStep.ADDRESS, ComputerSetupStep.VERIFY, ComputerSetupStep.PREPARE ->
-                    if (it.editing) ComputerSetupStep.ADDRESS else ComputerSetupStep.CHOOSE
-                ComputerSetupStep.MAC_ACCOUNT -> ComputerSetupStep.PREPARE
-                ComputerSetupStep.TEST -> if (it.isMac) ComputerSetupStep.MAC_ACCOUNT else ComputerSetupStep.PREPARE
-                ComputerSetupStep.BIND -> if (it.usesScreen) ComputerSetupStep.TEST else ComputerSetupStep.PREPARE
-                ComputerSetupStep.CHOOSE, ComputerSetupStep.DONE -> it.step
-            }
-            it.copy(step = previous, error = null)
+        hosts.value.savedMatch(computer)?.let {
+            chooseHost(it.id, fromList = true)
+            return
+        }
+        val target = SetupTarget(computer.name ?: defaultComputerName(computer.host), computer.host, computer.port,
+            computer.system, computer.network, nameGuessed = computer.nameSource != NearbyNameSource.MDNS, hostKey = computer.hostKey)
+        go(if (computer.system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN) {
+            // Another computer's account is no guess for this one.
+            val sameComputer = it.hostId == null && it.target?.host == computer.host
+            it.copy(target = target, hostId = null, passwordRefused = false, keyRefused = false,
+                username = if (sameComputer) it.username else "")
         }
     }
 
-    fun addNewComputer() = _state.update { ComputerSetupState(step = ComputerSetupStep.ADDRESS) }
-
-    /** Continue with a known computer: verify its key if it has none, otherwise connect. */
-    fun chooseHost(hostId: String) = run(ComputerSetupTask.CONNECTING) {
-        val host = requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" }
-        _state.value = ComputerSetupState(hostId = host.id, task = ComputerSetupTask.CONNECTING,
-            expectWindows = host.platform == RemotePlatform.WINDOWS.storageName,
-            wantsScreen = true.takeIf { args.screen && hostId == args.hostId })
-        if (host.trustedHostKeySha256 == null) readFingerprint(host) else connectAndProbe(host.id)
-    }
+    fun addManually() = go(ComputerSetupStep.MANUAL) { it.copy(unreachable = false, username = if (it.hostId == null) it.username else "") }
 
     /**
-     * Generates a key in Miffan; the UI shows its public key for the user to authorize. With
-     * [reuseExisting] a key that already exists is used instead: [sshKeys] may not have loaded yet.
+     * An address typed in: asks the port whether it is a computer with remote login, without
+     * signing in, and continues with the screen that fits its system.
      */
-    fun createAppKey(reuseExisting: Boolean = false, onCreated: (SshKeyEntity) -> Unit) = run(ComputerSetupTask.CREATING_KEY) {
-        val existing = workspaces.listSshKeysFlow().first()
-        if (reuseExisting && existing.isNotEmpty()) {
-            withContext(Dispatchers.Main) { onCreated(existing.first()) }
+    fun submitManual(address: String, port: Int, username: String, name: String) = run(ComputerSetupTask.LOOKING_UP) {
+        val banner = probeNearbySsh(address, port, connectTimeoutMillis = 4_000, bannerTimeoutMillis = 4_000)
+        if (banner == null) {
+            _state.update { it.copy(unreachable = true, target = SetupTarget(name.ifBlank { defaultComputerName(address) }, address, port)) }
             return@run
         }
-        val taken = existing.map { it.name }.toSet()
-        val name = generateSequence(1) { it + 1 }.map { if (it == 1) "Miffan" else "Miffan $it" }.first { it !in taken }
-        val key = workspaces.generateSshKey(name)
-        withContext(Dispatchers.Main) { onCreated(key) }
+        val system = nearbyBannerSystem(banner).system
+        val target = SetupTarget(name.ifBlank { defaultComputerName(address) }, address, port, system, nameGuessed = name.isBlank())
+        go(if (system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN) {
+            it.copy(target = target, username = username.ifBlank { it.username }, unreachable = false)
+        }
+    }
+
+    /** Nothing answered: a Windows computer gets remote login from the setup script. */
+    fun continueAsWindows() = go(ComputerSetupStep.WINDOWS) {
+        it.copy(target = it.target?.copy(system = NearbySystem.WINDOWS), unreachable = false)
+    }
+
+    /** Saves a saved computer's address, port, account and name, then checks it again. */
+    fun saveConnection(name: String, address: String, port: Int, username: String) = run(ComputerSetupTask.SAVING) {
+        val hostId = requireNotNull(_state.value.hostId)
+        check(workspaces.updateHost(hostId, name.ifBlank { defaultComputerName(address) }, address, port, username)) { "Computer not found" }
+        if (name.isNotBlank()) guessedNameHostId = null
+        connect(requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" })
+    }
+
+    /** Connection settings: sign in again, with a password or the key. */
+    fun changeSignIn() {
+        val state = _state.value
+        val target = state.target ?: return
+        go(if (target.system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN)
+    }
+
+    /** A saved computer: connect and check it. */
+    fun chooseHost(hostId: String, fromList: Boolean = false) = run(ComputerSetupTask.CONNECTING) {
+        val host = requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" }
+        _state.update {
+            // Checking a saved computer opens straight on its checks, which show the connection.
+            val base = if (fromList) it else ComputerSetupState(step = ComputerSetupStep.READY)
+            base.copy(hostId = host.id, target = host.target(), username = host.username, task = ComputerSetupTask.CONNECTING,
+                wantsScreen = true.takeIf { args.screen && hostId == args.hostId })
+        }
+        connect(host)
+    }
+
+    // ---- Signing in ----
+
+    fun setUsername(username: String) = _state.update { it.copy(username = username) }
+
+    /**
+     * The account, first: a computer that still has Miffan's key (added before, deleted from the phone
+     * but not from the computer) signs in with it and never asks for the password.
+     */
+    fun continueWithAccount(username: String) = run(ComputerSetupTask.CONNECTING) {
+        val target = requireNotNull(_state.value.target) { "No computer chosen" }
+        _state.update { it.copy(username = username) }
+        val keyId = _appKey.value?.id ?: workspaces.listSshKeysFlow().first().firstOrNull()?.id
+        val accepted = keyId != null &&
+            workspaces.checkKeySignIn(target.host, target.port, username, keyId) == KeySignInCheck.ACCEPTED
+        if (accepted) connect(saveHost(username, authentication = null, sshKeyId = keyId))
+        else go(ComputerSetupStep.PASSWORD)
+    }
+
+    /** Sign in with Miffan's key instead of a password. */
+    fun useKey() = go(ComputerSetupStep.KEY) { it.copy(passwordRefused = false, keyRefused = false) }
+
+    /** Leave this computer and look for another; anything already saved stays saved. */
+    fun findAnother() {
+        if (_state.value.busy) return
+        signInPassword = null
+        keyToAuthorize = null
+        quietKeyTries = 0
+        _state.value = ComputerSetupState()
+    }
+
+    /** Windows set up without a found address: what the script printed. */
+    fun setWindowsAddress(address: String) {
+        val parsed = parseSshTarget(address)
+        val host = parsed?.host ?: address
+        _state.update {
+            it.copy(target = SetupTarget(defaultComputerName(host), host, parsed?.port ?: 22, NearbySystem.WINDOWS, nameGuessed = true),
+                username = parsed?.username ?: it.username)
+        }
+    }
+
+    /** Makes Miffan's key if there is none yet; reuses the first one otherwise. */
+    fun ensureAppKey() {
+        if (_appKey.value != null) return
+        viewModelScope.launch {
+            try {
+                _appKey.value = appKeyId().let { workspaces.getSshKeyById(it) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _state.update { it.copy(error = error) }
+            }
+        }
+    }
+
+    /** Signs in once with the password, puts Miffan's key on the computer and signs in with that from then on. */
+    fun signIn(username: String, password: String) = run(ComputerSetupTask.CONNECTING) {
+        val keyId = appKeyId()
+        signInPassword = password
+        keyToAuthorize = keyId
+        _state.update { it.copy(username = username) }
+        connect(saveHost(username, RemoteAuthentication.Password(password), sshKeyId = null))
     }
 
     /**
-     * Saves a new computer, or with [ComputerSetupArgs.edit] updates the one being edited; there a null
-     * [auth] keeps the saved sign-in. Continues to the fingerprint when it is not trusted (new, or the
-     * address changed), otherwise straight to connecting and checking.
+     * The user ran the key command (or the Windows script): signs in with Miffan's key. [quiet] is
+     * the automatic try when the user comes back to the app; it shows no progress and keeps quiet
+     * about a refusal.
      */
-    fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?, windows: Boolean = false) =
-        run(ComputerSetupTask.READING_FINGERPRINT) {
-            _state.update { it.copy(expectWindows = windows) }
-            val host = if (_state.value.editing) {
-                val hostId = requireNotNull(_state.value.hostId)
-                check(workspaces.updateHost(hostId, name, address, port, username,
-                    authentication = (auth as? ComputerSetupAuth.Password)?.let { RemoteAuthentication.Password(it.value) },
-                    sshKeyId = (auth as? ComputerSetupAuth.AppKey)?.keyId,
-                )) { "Computer not found" }
-                requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" }
-            } else {
-                when (auth) {
-                    is ComputerSetupAuth.Password -> workspaces.createHost(name, address, port, username,
-                        authentication = RemoteAuthentication.Password(auth.value))
-                    is ComputerSetupAuth.AppKey -> workspaces.createHost(name, address, port, username, sshKeyId = auth.keyId)
-                    null -> error("Sign-in method required")
-                }
-            }
-            _state.update { it.copy(hostId = host.id) }
-            if (host.trustedHostKeySha256 == null) readFingerprint(host) else connectAndProbe(host.id)
+    fun signInWithKey(username: String, quiet: Boolean = false) {
+        if (quiet) {
+            val state = _state.value
+            if (state.busy || quietKeyTries >= QUIET_KEY_TRIES || username.isBlank() ||
+                state.step !in setOf(ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS)) return
+            quietKeyTries++
         }
+        run(ComputerSetupTask.CONNECTING) {
+            signInPassword = null
+            keyToAuthorize = null
+            _state.update { it.copy(username = username, keyRefused = it.keyRefused && quiet) }
+            try {
+                connect(saveHost(username, authentication = null, sshKeyId = appKeyId()), quiet = quiet)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (!quiet) throw error
+            }
+        }
+    }
 
-    /** Reads the fingerprint again, e.g. after the user compared it with the computer. */
-    fun rereadFingerprint() = run(ComputerSetupTask.READING_FINGERPRINT) { readFingerprint(currentHost()) }
-
-    /** Trusts the fingerprint the user saw; refused if the live key differs from it. */
+    /** Trusts the changed identity the user was warned about; refused if the live key differs from it. */
     fun trustAndConnect() = run(ComputerSetupTask.VERIFYING) {
         val host = currentHost()
         val key = requireNotNull(_state.value.hostKey) { "No fingerprint to trust" }
@@ -315,11 +489,170 @@ class ComputerSetupVM(
         connectAndProbe(host.id)
     }
 
+    /** Before the screens that sign in; same key as the command shows. */
+    private suspend fun appKeyId(): String {
+        _appKey.value?.let { return it.id }
+        val existing = workspaces.listSshKeysFlow().first()
+        val key = existing.firstOrNull() ?: run {
+            val taken = existing.map { it.name }.toSet()
+            val name = generateSequence(1) { it + 1 }.map { if (it == 1) "Miffan" else "Miffan $it" }.first { it !in taken }
+            workspaces.generateSshKey(name)
+        }
+        _appKey.value = key
+        return key.id
+    }
+
+    /**
+     * The computer being set up, saved with this sign-in: the one already saved in this setup or
+     * with the same address and account, else a new one.
+     */
+    private suspend fun saveHost(username: String, authentication: RemoteAuthentication?, sshKeyId: String?): RemoteHostEntity {
+        val state = _state.value
+        val target = requireNotNull(state.target) { "No computer chosen" }
+        val existing = state.hostId?.let { workspaces.getHostById(it) }
+            ?: hosts.value.find {
+                it.host == target.host && it.port == target.port && it.username == username &&
+                    (target.hostKey == null || it.trustedHostKeySha256 == null || it.trustedHostKeySha256 == target.hostKey)
+            }
+        val host = if (existing != null) {
+            check(workspaces.updateHost(existing.id, existing.name, existing.host, existing.port, username,
+                authentication = authentication, sshKeyId = sshKeyId)) { "Computer not found" }
+            requireNotNull(workspaces.getHostById(existing.id)) { "Computer not found" }
+        } else {
+            workspaces.createHost(target.name, target.host, target.port, username, authentication = authentication, sshKeyId = sshKeyId)
+                .also { if (target.nameGuessed) guessedNameHostId = it.id }
+        }
+        _state.update { it.copy(hostId = host.id) }
+        return host
+    }
+
+    /** Trusts a computer's identity the first time, then connects; see [connectAndProbe]. */
+    private suspend fun connect(host: RemoteHostEntity, quiet: Boolean = false) {
+        if (host.trustedHostKeySha256 == null) {
+            val key = workspaces.discoverHostKey(host.id)
+            check(workspaces.trustHostKey(host.id, key.sha256Fingerprint)) { "Computer not found" }
+        }
+        connectAndProbe(host.id, quiet)
+    }
+
+    private suspend fun connectAndProbe(hostId: String, quiet: Boolean = false) {
+        if (!quiet) _state.update { it.copy(task = ComputerSetupTask.CONNECTING) }
+        try {
+            check(workspaces.testHost(hostId)) { "Connection failed" }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            val chain = generateSequence<Throwable>(error) { it.cause }
+            val connect = chain.firstNotNullOfOrNull { it as? RemoteConnectException }
+            when {
+                chain.any { it is JSchHostKeyException } -> {
+                    // A saved computer answered with another identity: warn, never trust silently.
+                    val key = workspaces.discoverHostKey(hostId)
+                    go(ComputerSetupStep.VERIFY) { it.copy(hostKey = key) }
+                }
+                connect?.passwordSignIn == RemotePasswordSignInFailure.NOT_OFFERED ->
+                    go(ComputerSetupStep.KEY) { it.copy(passwordRefused = true, keyRefused = false) }
+                // A saved computer that no longer accepts its sign-in (a changed password, a wrong
+                // account) asks to sign in again instead of stopping at an error.
+                !quiet && _state.value.step == ComputerSetupStep.FIND && connect != null &&
+                    (connect.passwordSignIn != null || connect.message?.startsWith("Auth ") == true) -> {
+                    val keyed = workspaces.getHostById(hostId)?.sshKeyId != null
+                    if (keyed) go(ComputerSetupStep.KEY) { it.copy(passwordRefused = false, keyRefused = true) }
+                    else {
+                        go(ComputerSetupStep.PASSWORD) { it.copy(passwordRefused = false, keyRefused = false) }
+                        _state.update { it.copy(error = error) }
+                    }
+                }
+                _state.value.step in setOf(ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS) &&
+                    connect != null && connect.passwordSignIn == null && connect.message?.startsWith("Auth ") == true ->
+                    _state.update { it.copy(keyRefused = !quiet || it.keyRefused) }
+                quiet -> Unit
+                else -> throw error
+            }
+            return
+        }
+        val workspaceId = partnerComputers.ensureComputerWorkspace(hostId)
+        keyToAuthorize?.let { keyId ->
+            keyToAuthorize = null
+            switchToKey(hostId, workspaceId, keyId)
+        }
+        // A screen already in use stays on even if the desktop is signed out right now.
+        val host = workspaces.getHostById(hostId)
+        val macAccount = savedMacAccount(hostId)
+        _state.update {
+            // Back from the checks leads to choosing another computer, never to signing in again.
+            it.copy(step = ComputerSetupStep.READY,
+                history = listOfNotNull(ComputerSetupStep.FIND.takeIf { _ -> it.step == ComputerSetupStep.FIND || ComputerSetupStep.FIND in it.history }),
+                error = null, workspaceId = workspaceId, passwordRefused = false, keyRefused = false, macAccount = macAccount,
+                target = host?.target() ?: it.target, wantsScreen = it.wantsScreen ?: true.takeIf { host?.screenEnabled == true })
+        }
+        probe()
+    }
+
+    /**
+     * Password sign-in: authorizes Miffan's key through the session the password opened, then signs
+     * in with the key, which also deletes the saved password. Anything going wrong keeps the
+     * password, which is known to work.
+     */
+    private suspend fun switchToKey(hostId: String, workspaceId: String, keyId: String) {
+        val password = signInPassword ?: return
+        val host = workspaces.getHostById(hostId) ?: return
+        var keyed = false
+        val switched = try {
+            val key = workspaces.getSshKeyById(keyId) ?: return
+            val result = workspaces.executeCommand(workspaceId, authorizeKeyCommand(key.publicKey), timeoutMillis = 20_000)
+            if (result.exitCode != 0 || result.timedOut) return
+            check(workspaces.updateHost(hostId, host.name, host.host, host.port, host.username, sshKeyId = keyId))
+            keyed = true
+            workspaces.testHost(hostId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        if (switched || !keyed) return
+        workspaces.updateHost(hostId, host.name, host.host, host.port, host.username,
+            authentication = RemoteAuthentication.Password(password))
+        check(workspaces.testHost(hostId)) { "Connection failed" }
+    }
+
+    // ---- Getting ready ----
+
     fun reprobe() = run(ComputerSetupTask.PREPARING) { probe() }
+
+    /**
+     * Checks again without showing progress, while the user fixes something at the computer; the
+     * result is dropped if the user started anything meanwhile. Failures are ignored: the visible
+     * check reports them.
+     */
+    fun quietRecheck() {
+        val start = _state.value
+        if (start.busy || start.step != ComputerSetupStep.READY || start.ready || !start.usesScreen) return
+        // Windows' screen is Sunshine, which its own setup flow checks; the probe would not see it change.
+        if (start.sessionReady && start.cuaReady && (start.isWindows || start.screenServiceReady)) return
+        val hostId = start.hostId ?: return
+        viewModelScope.launch {
+            val host = workspaces.getHostById(hostId) ?: return@launch
+            val probe = try {
+                screens.probeHost(host.id, host.connectionRevision)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            var changed = false
+            _state.update {
+                if (it.busy || it.step != ComputerSetupStep.READY || it.hostId != hostId) it
+                else it.copy(probe = probe, hostRevision = host.connectionRevision).also { changed = true }
+            }
+            if (changed) afterProbe()
+        }
+    }
 
     fun setWantsScreen(wants: Boolean) {
         if (_state.value.busy) return
         _state.update { it.copy(wantsScreen = wants, error = null) }
+        if (wants) viewModelScope.launch { afterProbe() }
     }
 
     /** Installs or upgrades cua-driver; call only after the user confirmed [cuaInstallCommand]. */
@@ -330,121 +663,206 @@ class ComputerSetupVM(
         probe()
     }
 
-    /** Leaves [ComputerSetupStep.PREPARE] once everything is in place. */
-    fun continueAfterPrepare() = run(ComputerSetupTask.SAVING) {
-        check(_state.value.prepared) { "The computer is not ready yet" }
-        if (!_state.value.usesScreen) {
-            // Saved screen settings stay, so turning the screen back on only needs the check.
-            screens.setScreenEnabled(currentHost().id, false)
-            _state.update { it.copy(step = ComputerSetupStep.BIND) }
-            return@run
-        }
-        if (_state.value.isMac) {
-            _state.update { it.copy(step = ComputerSetupStep.MAC_ACCOUNT) }
-            return@run
-        }
-        val host = currentHost()
-        // A screen the user already set up in professional mode keeps its settings.
-        if (!host.screenEnabled) {
-            screens.updateConfig(host.id, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
-                auth = RemoteScreenAuth.NONE, username = "", password = null)
-        }
-        _state.update { it.copy(step = ComputerSetupStep.TEST) }
+    /** macOS: opens Sharing in System Settings on the Mac, where Screen Sharing is switched on. */
+    fun openMacSharingSettings() = run(ComputerSetupTask.OPENING_SETTINGS) {
+        val workspaceId = requireNotNull(_state.value.workspaceId)
+        val result = workspaces.executeCommand(workspaceId, MAC_SHARING_SETTINGS_COMMAND, timeoutMillis = 15_000)
+        check(result.exitCode == 0 && !result.timedOut) { result.stderr.ifBlank { "Could not open System Settings" } }
     }
 
-    /** Whether the Mac already has a saved Screen Sharing account; the user may keep it. */
-    suspend fun savedMacAccount(): String? {
-        val config = screens.getConfig(currentHost().id) ?: return null
-        return config.username.ifBlank { null }?.takeIf { config.auth == RemoteScreenAuth.MACOS_ACCOUNT && config.hasPassword }
-    }
-
-    /** Saves the macOS account Screen Sharing signs in with. [password] null keeps the saved one. */
-    fun saveMacAccount(username: String, password: String?) = run(ComputerSetupTask.SAVING) {
+    /** Saves the macOS account Screen Sharing signs in with. */
+    fun saveMacAccount(username: String, password: String) = run(ComputerSetupTask.SAVING) {
         val host = currentHost()
         screens.updateConfig(host.id, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
             auth = RemoteScreenAuth.MACOS_ACCOUNT, username = username.ifBlank { host.username }, password = password)
-        _state.update { it.copy(step = ComputerSetupStep.TEST) }
+        _state.update { it.copy(macAccount = username.ifBlank { host.username }) }
+        afterProbe()
     }
 
     /**
-     * The partner's read-only look: macOS grants (read-only), then one desktop screenshot.
-     * Nothing on the computer changes.
+     * macOS: raise the system permission dialogs on the Mac for missing grants, then keep reading
+     * the grants (read-only) while the user answers them.
      */
+    fun requestMacPermissions() = run(ComputerSetupTask.CHECKING) {
+        val workspaceId = requireNotNull(_state.value.workspaceId)
+        _state.update { it.copy(permissions = registry.permissions(workspaceId, prompt = true)) }
+        if (_state.value.permissions?.complete == false) watchMacPermissions(workspaceId)
+    }
+
+    private fun watchMacPermissions(workspaceId: String) {
+        permissionWatch?.cancel()
+        permissionWatch = viewModelScope.launch {
+            repeat(PERMISSION_WATCH_ROUNDS) {
+                delay(PERMISSION_WATCH_INTERVAL_MS)
+                val current = _state.value
+                if (current.step != ComputerSetupStep.READY || current.workspaceId != workspaceId) return@launch
+                if (current.busy) return@repeat
+                val grants = try {
+                    registry.permissions(workspaceId, prompt = false)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    return@repeat
+                } ?: return@launch
+                _state.update { if (it.workspaceId == workspaceId) it.copy(permissions = grants) else it }
+                if (grants.complete) return@launch
+            }
+        }
+    }
+
+    /** Leaves [ComputerSetupStep.READY] once everything is in place. */
+    fun continueToShare() = run(ComputerSetupTask.SAVING) {
+        check(_state.value.ready) { "The computer is not ready yet" }
+        // Saved screen settings stay, so turning the screen back on only needs the check.
+        if (!_state.value.usesScreen) screens.setScreenEnabled(currentHost().id, false)
+        go(ComputerSetupStep.SHARE)
+    }
+
+    /**
+     * Once the machine is ready, saves what the screen signs in with (on a Mac the saved account or
+     * the password this setup signed in with) and reads the Mac's grants, so the list fills itself.
+     */
+    private suspend fun afterProbe() {
+        val state = _state.value
+        if (!state.usesScreen || !state.machineReady) return
+        val host = workspaces.getHostById(state.hostId ?: return) ?: return
+        if (state.isMac) {
+            if (state.macAccount == null) {
+                val password = signInPassword ?: return
+                screens.updateConfig(host.id, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
+                    auth = RemoteScreenAuth.MACOS_ACCOUNT, username = host.username, password = password)
+                _state.update { it.copy(macAccount = host.username) }
+            } else if (!host.screenEnabled) {
+                screens.setScreenEnabled(host.id, true)
+            }
+            if (_state.value.permissions?.complete != true) {
+                val grants = runCatching { registry.permissions(requireNotNull(state.workspaceId), prompt = false) }.getOrNull()
+                _state.update { it.copy(permissions = grants ?: it.permissions) }
+            }
+        } else if (!host.screenEnabled) {
+            // A screen the user already set up in professional mode keeps its settings.
+            screens.updateConfig(host.id, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
+                auth = RemoteScreenAuth.NONE, username = "", password = null)
+        }
+    }
+
+    // ---- Sharing ----
+
+    /** The partner's read-only look: one desktop screenshot. Nothing on the computer changes. */
     fun checkPartner() = run(ComputerSetupTask.CHECKING) {
         val workspaceId = requireNotNull(_state.value.workspaceId)
-        // Linux drivers also answer check_permissions, with macOS TCC fields that mean nothing there.
-        val permissions = if (_state.value.isMac) registry.permissions(workspaceId, prompt = false) else null
-        _state.update { it.copy(permissions = permissions, partnerChecked = false) }
-        if (permissions?.complete == false) return@run
+        _state.update { it.copy(partnerChecked = false) }
         val png = registry.desktopScreenshot(workspaceId) ?: error("cua-driver returned no screenshot")
         val bitmap = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(png, 0, png.size) }
             ?: error("Unreadable screenshot")
         _state.update { it.copy(partnerView = bitmap, partnerChecked = true) }
     }
 
-    /** macOS: raise the system permission dialogs on the Mac for missing grants. */
-    fun requestMacPermissions() = run(ComputerSetupTask.CHECKING) {
-        val workspaceId = requireNotNull(_state.value.workspaceId)
-        _state.update { it.copy(permissions = registry.permissions(workspaceId, prompt = true)) }
-    }
-
-    fun continueAfterTest() {
-        if (!_state.value.tested || _state.value.busy) return
-        _state.update { it.copy(step = ComputerSetupStep.BIND) }
-    }
-
     /**
-     * Binds the partner to this computer and allows computer use with approval kept on. The UI
-     * shows the disclosure (screenshots go to the model provider) before calling this.
+     * Binds the partners to this computer with approval kept on. The UI shows what that means
+     * (screenshots go to the model provider) before calling this.
      */
-    /**
-     * Partners already bound to a workspace of the computer being set up; the bind step shows them as
-     * already using it.
-     */
-    val boundPartnerIds: StateFlow<Set<Uuid>> = combine(
-        settingsStore.settingsFlow, workspaces.listFlow(), _state,
-    ) { settings, list, state ->
-        val hostId = state.hostId ?: return@combine emptySet()
-        val workspaceIds = list.filter { it.isRemote && it.remoteHostId == hostId }.map { it.id }.toSet()
-        settings.assistants.filter { it.workspaceId?.toString() in workspaceIds }.map { it.id }.toSet()
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
-
     fun bind(assistantIds: Set<Uuid>): Unit = run(ComputerSetupTask.BINDING) {
         partnerComputers.bind(requireNotNull(_state.value.hostId), assistantIds)
-        _state.update { it.copy(step = ComputerSetupStep.DONE) }
+        _state.update { it.copy(step = ComputerSetupStep.DONE, history = emptyList()) }
     }
 
-    private suspend fun readFingerprint(host: RemoteHostEntity) {
-        val key = workspaces.discoverHostKey(host.id)
-        _state.update {
-            it.copy(
-                step = ComputerSetupStep.VERIFY, hostId = host.id, hostKey = key,
-                hostKeyChanged = host.trustedHostKeySha256 != null && host.trustedHostKeySha256 != key.sha256Fingerprint,
-            )
+    // ---- Addresses ----
+
+    private val learning = mutableSetOf<Pair<String, String>>()
+
+    /**
+     * A saved computer seen with its own identity at an address it does not have yet (its Tailscale
+     * address while it was saved over Wi-Fi): remembered, so it is reachable from either network.
+     */
+    fun learnAddresses(computers: List<NearbyComputer>) {
+        computers.forEach { computer ->
+            val key = computer.hostKey ?: return@forEach
+            val host = hosts.value.find { it.trustedHostKeySha256 == key } ?: return@forEach
+            if (host.addresses.any { it.host == computer.host && it.port == computer.port }) return@forEach
+            if (!learning.add(host.id to "${computer.host}:${computer.port}")) return@forEach
+            viewModelScope.launch {
+                try {
+                    workspaces.learnHostAddress(host.id, computer.host, computer.port, key)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Learning is a convenience; the address can still be added by hand.
+                }
+            }
         }
     }
 
-    private suspend fun connectAndProbe(hostId: String) {
-        _state.update { it.copy(task = ComputerSetupTask.CONNECTING) }
-        check(workspaces.testHost(hostId)) { "Connection failed" }
-        val workspaceId = partnerComputers.ensureComputerWorkspace(hostId)
-        // A screen already in use stays on even if the desktop is signed out right now.
-        val screenOn = workspaces.getHostById(hostId)?.screenEnabled == true
-        _state.update {
-            it.copy(workspaceId = workspaceId, step = ComputerSetupStep.PREPARE,
-                wantsScreen = it.wantsScreen ?: true.takeIf { screenOn })
+    /** Adds an address typed on the connection settings, `host` or `host:port`. */
+    fun addAddress(input: String) {
+        val hostId = _state.value.hostId ?: return
+        val parsed = parseSshTarget(normalizeAddressInput(input))
+        val address = parsed?.host ?: input.trim()
+        if (address.isBlank()) return
+        val port = parsed?.port ?: mainPort(hostId)
+        editAddresses { check(workspaces.addHostAddress(hostId, address, port)) { "Computer not found" } }
+    }
+
+    fun removeAddress(address: RemoteHostAddress) {
+        val hostId = _state.value.hostId ?: return
+        editAddresses { check(workspaces.removeHostAddress(hostId, address.host, address.port)) { "Computer not found" } }
+    }
+
+    private fun mainPort(hostId: String): Int = hosts.value.find { it.id == hostId }?.port ?: 22
+
+    private fun editAddresses(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _state.update { it.copy(error = error) }
+            }
         }
-        probe()
+    }
+
+    // ---- Helpers ----
+
+    private suspend fun savedMacAccount(hostId: String): String? = try {
+        val config = screens.getConfig(hostId)
+        config?.username?.ifBlank { null }?.takeIf { config.auth == RemoteScreenAuth.MACOS_ACCOUNT && config.hasPassword }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
     }
 
     private suspend fun probe() {
         _state.update { it.copy(task = ComputerSetupTask.PREPARING) }
         val host = currentHost()
         val probe = screens.probeHost(host.id, host.connectionRevision)
-        _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision, step = ComputerSetupStep.PREPARE) }
+        _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision) }
+        adoptComputerName(host, probe.hostname)
         // Sunshine is optional on Linux and macOS and required on Windows; its check runs beside the others.
         if (probe.os in setOf("linux", "macos", "windows")) streamSetup.check(host.id, host.connectionRevision)
+        afterProbe()
     }
+
+    /**
+     * A computer saved here under a name guessed from the network (a DNS alias, an address) takes the
+     * name it calls itself, and so does its partner workspace if that still carries the guess.
+     */
+    private suspend fun adoptComputerName(host: RemoteHostEntity, hostname: String?) {
+        val name = hostname?.trim()?.takeIf { it.isNotEmpty() }
+        if (host.id == guessedNameHostId && name != null && name != host.name) {
+            guessedNameHostId = null
+            workspaces.updateHost(host.id, name, host.host, host.port, host.username)
+            _state.value.workspaceId?.let { id ->
+                val workspace = workspaces.getById(id)
+                if (workspace?.name == host.name && !workspaces.isNameTaken(name, id)) workspaces.rename(id, name)
+            }
+        }
+        // The probe also recorded the computer's system.
+        workspaces.getHostById(host.id)?.let { saved -> _state.update { it.copy(target = saved.target()) } }
+    }
+
+    private fun RemoteHostEntity.target() = SetupTarget(name, host, port, system())
 
     private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path
 
@@ -466,4 +884,29 @@ class ComputerSetupVM(
             }
         }
     }
+}
+
+/**
+ * The saved computer [computer] is. Its identity decides when known, so the same computer is recognised
+ * over another network and a dual-boot computer's other system, at the same address, is not mistaken
+ * for the saved one; the address decides otherwise.
+ */
+internal fun List<RemoteHostEntity>.savedMatch(computer: NearbyComputer): RemoteHostEntity? {
+    val key = computer.hostKey ?: return find { it.reachedAt(computer) }
+    return find { it.trustedHostKeySha256 == key } ?: find { it.reachedAt(computer) && it.trustedHostKeySha256 == null }
+}
+
+/** A saved computer at [computer]'s address that is not [computer]: on a dual-boot machine, its other system. */
+internal fun List<RemoteHostEntity>.sharingAddressWith(computer: NearbyComputer): RemoteHostEntity? =
+    if (savedMatch(computer) != null) null else find { it.reachedAt(computer) }
+
+private fun RemoteHostEntity.reachedAt(computer: NearbyComputer) =
+    addresses.any { it.host == computer.host && it.port == computer.port }
+
+/** A saved computer's system, from what its screen check or connection found. */
+internal fun RemoteHostEntity.system(): NearbySystem = when {
+    screenPlatform == "macos" -> NearbySystem.MAC
+    screenPlatform == "linux" -> NearbySystem.LINUX
+    screenPlatform == "windows" || platform == RemotePlatform.WINDOWS.storageName -> NearbySystem.WINDOWS
+    else -> NearbySystem.UNKNOWN
 }

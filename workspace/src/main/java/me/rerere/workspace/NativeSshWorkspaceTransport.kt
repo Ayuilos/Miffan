@@ -13,6 +13,7 @@ import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.SftpATTRS
 import com.jcraft.jsch.SftpException
+import com.jcraft.jsch.UIKeyboardInteractive
 import com.jcraft.jsch.UserInfo
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -20,9 +21,14 @@ import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
+import java.net.InetSocketAddress
+import java.net.Socket
+import javax.net.SocketFactory
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
+import java.util.Timer
+import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
@@ -71,7 +77,59 @@ data class RemoteHostKey(val algorithm: String, val sha256Fingerprint: String)
  * The SSH connection to [host] could not be set up. Still a [JSchException] with the same message,
  * so existing checks keep working; the address lets the UI explain e.g. a Tailscale timeout.
  */
-class RemoteConnectException(val host: String, cause: JSchException) : JSchException(cause.message, cause)
+class RemoteConnectException(
+    val host: String,
+    cause: JSchException,
+    /** Set when a password sign-in failed authentication; null for every other failure. */
+    val passwordSignIn: RemotePasswordSignInFailure? = null,
+    /** The account that tried to sign in, when the failure was authentication. */
+    val username: String? = null,
+) : JSchException(cause.message, cause)
+
+enum class RemotePasswordSignInFailure {
+    /** The server never asked for a password: it only allows other methods, usually keys. */
+    NOT_OFFERED,
+    /** The server asked and refused the password (or the username). */
+    REJECTED,
+}
+
+/**
+ * Answers the server's password requests, by the "password" method or a keyboard-interactive
+ * password prompt, at most once per connection so a wrong password costs one attempt. Other
+ * keyboard-interactive prompts (one-time codes and the like) are never sent the password.
+ *
+ * Declining a keyboard-interactive round still makes JSch send empty answers, which a server counts
+ * as another failed attempt, so such rounds abort the connection with [PasswordSignInStopped]
+ * instead. Declining the "password" method sends nothing.
+ */
+private class PasswordSignInStopped(val failure: RemotePasswordSignInFailure) : RuntimeException("Auth fail")
+
+private class PasswordAnswer(private val password: String) : UserInfo, UIKeyboardInteractive {
+    @Volatile var asked = false
+        private set
+
+    private fun take(): Boolean = if (asked) false else true.also { asked = true }
+
+    override fun getPassphrase(): String? = null
+    override fun getPassword(): String = password
+    override fun promptPassword(message: String?): Boolean = take()
+    override fun promptPassphrase(message: String?): Boolean = false
+    override fun promptYesNo(message: String?): Boolean = false
+    override fun showMessage(message: String?) = Unit
+
+    override fun promptKeyboardInteractive(
+        destination: String?, name: String?, instruction: String?, prompt: Array<String>, echo: BooleanArray,
+    ): Array<String> = when {
+        // An empty round carries only instructions; answering it is not an attempt.
+        prompt.isEmpty() -> emptyArray()
+        prompt.size == 1 && !echo[0] && isPasswordPrompt(prompt[0]) && take() -> arrayOf(password)
+        else -> throw PasswordSignInStopped(if (asked) RemotePasswordSignInFailure.REJECTED else RemotePasswordSignInFailure.NOT_OFFERED)
+    }
+
+    private fun isPasswordPrompt(text: String): Boolean =
+        listOf("password", "passwort", "mot de passe", "contraseña", "пароль", "密码", "密碼", "パスワード", "암호", "비밀번호")
+            .any { text.contains(it, ignoreCase = true) }
+}
 
 /** SSH authentication succeeded, but the selected project directory cannot be used. */
 class RemoteWorkspaceDirectoryException(cause: Throwable) :
@@ -82,11 +140,68 @@ class RemoteWorkspaceDirectoryException(cause: Throwable) :
  * untrusted until the user compares it with a separately obtained server fingerprint.
  */
 object NativeSshWorkspaceTransport {
-    fun discoverHostKey(host: String, port: Int = 22, timeoutMillis: Int = 10_000): RemoteHostKey {
+    /** One key-only handshake, with ephemeral host-key acceptance and no SFTP or trust writes. */
+    fun checkKeySignIn(
+        host: String, port: Int, username: String, authentication: RemoteAuthentication.PrivateKey,
+        timeoutMillis: Int = 6_000,
+    ): KeySignInCheck {
+        require(host.isNotBlank() && port in 1..65535 && username.isNotBlank() && timeoutMillis > 0)
+        val jsch = JSch().apply {
+            hostKeyRepository = FingerprintHostKeyRepository(null, acceptUntrusted = true)
+            if (authentication.filePath != null) addIdentity(authentication.filePath)
+            else addIdentity("miffan-key-probe", authentication.pem.toByteArray(StandardCharsets.UTF_8),
+                null, authentication.passphrase?.toByteArray(StandardCharsets.UTF_8))
+        }
+        val session = jsch.getSession(username, host, port)
+        session.setConfig("StrictHostKeyChecking", "yes")
+        session.setConfig("PreferredAuthentications", "publickey")
+        session.timeout = timeoutMillis
+        val expired = AtomicBoolean(false)
+        val deadline = Timer("miffan-key-probe", true)
+        deadline.schedule(object : TimerTask() {
+            override fun run() { expired.set(true); session.disconnect() }
+        }, timeoutMillis.toLong())
+        return try {
+            session.connect(timeoutMillis)
+            if (expired.get()) KeySignInCheck.UNREACHABLE else KeySignInCheck.ACCEPTED
+        } catch (error: JSchException) {
+            when {
+                expired.get() -> KeySignInCheck.UNREACHABLE
+                isRemoteKeyAuthenticationRefused(error) -> KeySignInCheck.REFUSED
+                shouldTryNextRemoteAddress(error) -> KeySignInCheck.UNREACHABLE
+                else -> throw error
+            }
+        } finally {
+            deadline.cancel()
+            session.disconnect()
+        }
+    }
+
+    fun discoverHostKey(
+        host: String, port: Int = 22, timeoutMillis: Int = 10_000,
+        socketFactory: SocketFactory? = null,
+    ): RemoteHostKey {
         require(host.isNotBlank() && port in 1..65535 && timeoutMillis > 0)
         val repository = FingerprintHostKeyRepository(null)
         val jsch = JSch().apply { hostKeyRepository = repository }
         val session = jsch.getSession("miffan-host-key-discovery", host, port)
+        socketFactory?.let { factory ->
+            session.setSocketFactory(object : com.jcraft.jsch.SocketFactory {
+                override fun createSocket(host: String, port: Int): Socket {
+                    val socket = factory.createSocket()
+                    try {
+                        socket.connect(InetSocketAddress(host, port), timeoutMillis)
+                        return socket
+                    } catch (error: Throwable) {
+                        runCatching { socket.close() }
+                        throw error
+                    }
+                }
+                override fun getInputStream(socket: Socket): InputStream = socket.getInputStream()
+                override fun getOutputStream(socket: Socket): OutputStream = socket.getOutputStream()
+            })
+        }
+        session.timeout = timeoutMillis
         session.setConfig("StrictHostKeyChecking", "yes")
         session.setConfig("PreferredAuthentications", "none")
         var failure: JSchException? = null
@@ -132,20 +247,27 @@ object NativeSshWorkspaceTransport {
         session.setConfig(
             "PreferredAuthentications",
             when (config.authentication) {
-                is RemoteAuthentication.Password -> "password"
+                is RemoteAuthentication.Password -> "password,keyboard-interactive"
                 is RemoteAuthentication.PrivateKey -> "publickey"
             },
         )
-        if (config.authentication is RemoteAuthentication.Password) {
-            session.setPassword(config.authentication.value)
-        }
+        // Not setPassword: the answer object tells whether the server asked for a password at all.
+        val passwordAnswer = (config.authentication as? RemoteAuthentication.Password)?.let { PasswordAnswer(it.value) }
+        passwordAnswer?.let(session::setUserInfo)
         session.timeout = 60_000
         session.setServerAliveInterval(10_000)
         try {
             session.connect(timeoutMillis)
         } catch (error: Throwable) {
             session.disconnect()
-            throw if (error is JSchException) RemoteConnectException(config.host, error) else error
+            if (error is PasswordSignInStopped) throw RemoteConnectException(config.host, JSchException("Auth fail", error),
+                error.failure, config.username)
+            if (error !is JSchException) throw error
+            // JSch reports both as "Auth fail" or, after a declined second prompt, "Auth cancel".
+            val authFailed = error.message?.startsWith("Auth ") == true
+            throw RemoteConnectException(config.host, error, passwordSignIn = passwordAnswer?.takeIf { authFailed }?.let {
+                if (it.asked) RemotePasswordSignInFailure.REJECTED else RemotePasswordSignInFailure.NOT_OFFERED
+            }, username = config.username.takeIf { authFailed })
         }
         return try {
             RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis)
@@ -268,7 +390,9 @@ class RemoteWorkspaceSession internal constructor(
         stdin: InputStream? = null,
     ): WorkspaceCommandResult {
         require(timeoutMillis > 0 && maxOutputBytes > 0)
-        val directory = if (platform == RemotePlatform.WINDOWS) WindowsRemotePath.workingDirectory(paths.root, workingDirectory)
+        val directory = if (platform == RemotePlatform.WINDOWS) WindowsRemotePath.workingDirectory(paths.root,
+                // A session without a workspace is rooted at "/", which is no Windows directory: start at home.
+                workingDirectory.ifEmpty { if (paths.root == "/") homeDirectory else workingDirectory })
             else paths.absolute(workingDirectory, allowRoot = true)
         withSftp { sftp, _ -> requireDirectoryPath(sftp, directory) }
         checkOpen()
@@ -741,7 +865,7 @@ private fun closeSshChannelOnIo(channel: Channel, input: InputStream, output: Ou
     }
 }
 
-private class FingerprintHostKeyRepository(private val trusted: String?) : HostKeyRepository {
+private class FingerprintHostKeyRepository(private val trusted: String?, private val acceptUntrusted: Boolean = false) : HostKeyRepository {
     var seenKey: RemoteHostKey? = null
         private set
 
@@ -750,7 +874,7 @@ private class FingerprintHostKeyRepository(private val trusted: String?) : HostK
             .encodeToString(MessageDigest.getInstance("SHA-256").digest(key))
         val algorithm = try { HostKey(host, key).type } catch (_: JSchException) { "unknown" }
         seenKey = RemoteHostKey(algorithm, fingerprint)
-        return if (trusted == fingerprint) HostKeyRepository.OK else HostKeyRepository.NOT_INCLUDED
+        return if (acceptUntrusted || trusted == fingerprint) HostKeyRepository.OK else HostKeyRepository.NOT_INCLUDED
     }
 
     override fun add(hostkey: HostKey, ui: UserInfo?) = Unit

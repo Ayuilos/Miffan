@@ -24,6 +24,7 @@ import me.rerere.ai.provider.ImageGenerationParams
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderSetting
@@ -82,6 +83,12 @@ class OpenAIProvider(
             val requestBuilder = Request.Builder()
                 .url(openAIModelsUrl(providerSetting))
                 .get()
+                .apply {
+                    // Magpie opts image drawers into /models; other compatible providers ignore this header.
+                    if (providerSetting.authType != OpenAIAuthType.CHATGPT_SUBSCRIPTION) {
+                        header("X-Magpie-Drawers", "1")
+                    }
+                }
             val request = authenticator.authenticate(requestBuilder, providerSetting).build()
 
             val response = client.newCall(request).await()
@@ -211,16 +218,31 @@ class OpenAIProvider(
             "Expected OpenAI provider setting"
         }
 
+        if (providerSetting.isOpenRouter()) {
+            val builder = openRouterImagesRequestBuilder(providerSetting, params.model, params.prompt,
+                params.numOfImages, params.size, customHeaders = params.customHeaders, customBody = params.customBody)
+                .configureReferHeaders(providerSetting.baseUrl)
+            val request = authenticator.authenticate(builder, providerSetting).build()
+            val items = withContext(Dispatchers.IO) {
+                client.newCall(request).await().use { response ->
+                    check(response.isSuccessful) { "Failed to generate image: ${response.code} ${response.body.string()}" }
+                    parseImageResponse(response.body.string())
+                }
+            }
+            items.forEach { emit(it) }
+            return@flow
+        }
+
         val requestBody = json.encodeToString(
             buildJsonObject {
                 put("model", params.model.modelId)
                 put("prompt", params.prompt)
-                put("n", params.numOfImages)
+                if (params.numOfImages > 1) put("n", params.numOfImages)
                 
                 val isGrok = providerSetting.baseUrl.contains("x.ai", ignoreCase = true) || 
                     params.model.modelId.contains("grok", ignoreCase = true)
                 
-                if (params.size.isNotBlank() && !isGrok) {
+                if (params.size.isNotBlank() && params.size != "auto" && !isGrok) {
                     put("size", params.size)
                 }
             }
@@ -259,13 +281,35 @@ class OpenAIProvider(
             "At least one image is required"
         }
 
+        if (providerSetting.isOpenRouter()) {
+            val items = withContext(Dispatchers.IO) {
+                val builder = openRouterImagesRequestBuilder(providerSetting, params.model, params.prompt,
+                    params.numOfImages, params.size, images = params.images,
+                    customHeaders = params.customHeaders, customBody = params.customBody)
+                    .configureReferHeaders(providerSetting.baseUrl)
+                val request = authenticator.authenticate(builder, providerSetting).build()
+                client.newCall(request).await().use { response ->
+                    check(response.isSuccessful) { "Failed to edit image: ${response.code} ${response.body.string()}" }
+                    parseImageResponse(response.body.string())
+                }
+            }
+            items.forEach { emit(it) }
+            return@flow
+        }
+
         val bodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("model", params.model.modelId)
-            .addFormDataPart("prompt", params.prompt)
-            .addFormDataPart("n", params.numOfImages.toString())
-        if (params.size.isNotBlank()) {
-            bodyBuilder.addFormDataPart("size", params.size)
+        val fields = buildJsonObject {
+            put("model", params.model.modelId)
+            put("prompt", params.prompt)
+            if (params.numOfImages > 1) put("n", params.numOfImages)
+            val isGrok = providerSetting.baseUrl.contains("x.ai", ignoreCase = true) ||
+                params.model.modelId.contains("grok", ignoreCase = true)
+            if (params.size.isNotBlank() && params.size != "auto" && !isGrok) put("size", params.size)
+        }.mergeCustomBody(params.customBody)
+        fields.forEach { (key, value) ->
+            // Scalars become form values; objects and arrays are JSON-encoded in a single field.
+            bodyBuilder.addFormDataPart(key, if (value is JsonPrimitive) value.content else value.toString())
         }
 
         val imageFieldName = if (params.images.size == 1) "image" else "image[]"
@@ -282,14 +326,6 @@ class OpenAIProvider(
                 imageFile.name,
                 imageFile.asRequestBody(imageFile.imageMediaType().toMediaType())
             )
-        }
-
-        params.customBody.forEach { customBody ->
-            val value = when (val element = customBody.value) {
-                is JsonPrimitive -> element.contentOrNull ?: element.toString()
-                else -> element.toString()
-            }
-            bodyBuilder.addFormDataPart(customBody.key, value)
         }
 
         val requestBuilder = Request.Builder()
@@ -316,14 +352,7 @@ class OpenAIProvider(
         val data = body["data"]?.jsonArray ?: error("No data in image response")
         return data.map { element ->
             val obj = element.jsonObject
-            val b64Json = obj["b64_json"]?.jsonPrimitive?.contentOrNull
-            if (b64Json != null) {
-                val outputFormat = obj["output_format"]?.jsonPrimitive?.contentOrNull ?: defaultFormat
-                ImageGenerationItem(
-                    data = b64Json,
-                    mimeType = outputFormat.toImageMimeType(),
-                )
-            } else {
+            obj.base64ImageOrNull(defaultFormat) ?: run {
                 val url = obj["url"]?.jsonPrimitive?.contentOrNull
                     ?: error("No b64_json or url in image response")
                 downloadImageAsBase64(url)
@@ -359,12 +388,6 @@ class OpenAIProvider(
         else -> "image/png"
     }
 
-    private fun String.toImageMimeType(): String = when (lowercase()) {
-        "jpg", "jpeg" -> "image/jpeg"
-        "webp" -> "image/webp"
-        else -> "image/png"
-    }
-
     companion object {
         private val SUPPORTED_EDIT_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp")
     }
@@ -389,6 +412,8 @@ internal fun parseOpenAIModels(body: String): List<Model> {
 
     return data.mapNotNull { modelJson ->
         val modelObj = modelJson.jsonObject
+        val kind = modelObj["kind"]?.jsonPrimitive?.contentOrNull
+        if (kind == "video" || kind == "decision") return@mapNotNull null
         if (modelObj["supported_in_api"]?.jsonPrimitive?.booleanOrNull == false) {
             return@mapNotNull null
         }
@@ -403,10 +428,14 @@ internal fun parseOpenAIModels(body: String): List<Model> {
             ?: modelObj["name"]?.jsonPrimitive?.contentOrNull
             ?: id
         val architecture = modelObj["architecture"]?.jsonObjectOrNull
+        val modalities = modelObj["modalities"]?.jsonObjectOrNull
         val inputModalities = architecture?.modalities("input_modalities")
             ?: modelObj.modalities("input_modalities")
+            ?: modalities?.modalities("input")
         val outputModalities = architecture?.modalities("output_modalities")
             ?: modelObj.modalities("output_modalities")
+            ?: modalities?.modalities("output")
+            ?: listOf(Modality.IMAGE).takeIf { kind == "image" }
         val reasoningCapabilities = modelObj.reasoningCapabilities()
         val abilities = modelObj.supportedAbilities()
         val discoveredCapabilities = if (
@@ -424,6 +453,8 @@ internal fun parseOpenAIModels(body: String): List<Model> {
         Model(
             modelId = id,
             displayName = displayName,
+            // Only explicit Images API rows use IMAGE; chat image-output models stay CHAT.
+            type = if (kind == "image") ModelType.IMAGE else ModelType.CHAT,
             reasoningCapabilities = reasoningCapabilities,
             discoveredCapabilities = discoveredCapabilities,
         )

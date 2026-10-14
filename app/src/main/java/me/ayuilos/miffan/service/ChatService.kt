@@ -158,6 +158,10 @@ import java.io.File
 import java.time.Instant
 import java.util.Locale
 import kotlin.uuid.Uuid
+import me.ayuilos.miffan.data.ai.tools.canOutputImage
+import me.ayuilos.miffan.data.ai.tools.imageToolModelOrNull
+import me.ayuilos.miffan.data.ai.tools.createImageGenerationTool
+import me.ayuilos.miffan.data.ai.transformers.ImageIdTransformer
 import okhttp3.OkHttpClient
 
 private const val TAG = "ChatService"
@@ -403,7 +407,7 @@ class ChatService(
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
     private val auditRepository: AuditRepository,
-    httpClient: OkHttpClient,
+    private val httpClient: OkHttpClient,
     private val backgroundModelHealth: BackgroundModelHealth = BackgroundModelHealth(),
     private val recentErrorStore: me.ayuilos.miffan.data.bugreport.RecentErrorStore? = null,
 ) {
@@ -1115,6 +1119,7 @@ class ChatService(
                 }
             }
 
+            val imageToolEnabled = !model.canOutputImage()
             val computerToolbox = createComputerToolbox(assistant, conversation.id.toString(), generationMessages)
             generationHandler.generateText(
                 settings = settings,
@@ -1146,6 +1151,7 @@ class ChatService(
                     memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
                 },
                 inputTransformers = buildList {
+                    if (imageToolEnabled && settings.imageToolModelOrNull() != null) add(ImageIdTransformer)
                     addAll(inputTransformers)
                     add(templateTransformer)
                     add(workspaceReminderTransformer)
@@ -1154,6 +1160,15 @@ class ChatService(
                 outputTransformers = outputTransformers,
                 dynamicTools = { computerToolbox?.tools().orEmpty().withAgentRelayApproval(access, dynamic = true) },
                 tools = buildList {
+                    if (imageToolEnabled) {
+                        add(createImageGenerationTool(
+                            settings = { settingsStore.settingsFlow.value },
+                            messages = { getConversationFlow(conversationId).value.currentMessages },
+                            providerManager = providerManager,
+                            filesManager = filesManager,
+                            httpClient = httpClient,
+                        ))
+                    }
                     val miffanHelpEnabled = shouldEnableMiffanHelp(
                         assistant = assistant,
                         model = model,

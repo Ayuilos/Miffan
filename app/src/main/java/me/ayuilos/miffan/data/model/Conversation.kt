@@ -340,10 +340,10 @@ private fun List<UIMessagePart>.collectAllParts(): List<UIMessagePart> =
  * 提取 part 中引用的本地文件 URI，新增文件类型时只需在此处添加。
  */
 private fun UIMessagePart.fileUri(): Uri? = when (this) {
-    is UIMessagePart.Image -> url.takeIf { it.startsWith("file://") }?.toUri()
-    is UIMessagePart.Document -> url.takeIf { it.startsWith("file://") }?.toUri()
-    is UIMessagePart.Video -> url.takeIf { it.startsWith("file://") }?.toUri()
-    is UIMessagePart.Audio -> url.takeIf { it.startsWith("file://") }?.toUri()
+    is UIMessagePart.Image -> url.takeIf { it.startsWith("file:") }?.toUri()
+    is UIMessagePart.Document -> url.takeIf { it.startsWith("file:") }?.toUri()
+    is UIMessagePart.Video -> url.takeIf { it.startsWith("file:") }?.toUri()
+    is UIMessagePart.Audio -> url.takeIf { it.startsWith("file:") }?.toUri()
     else -> null
 }
 

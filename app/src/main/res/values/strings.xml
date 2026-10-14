@@ -2328,6 +2328,7 @@
   <string name="workspace_screen_stream_pair_starting" tools:ignore="MissingTranslation">Asking Sunshine to pair…</string>
   <string name="workspace_screen_stream_pair_waiting" tools:ignore="MissingTranslation">Waiting for the PIN on the computer…</string>
   <string name="workspace_screen_stream_pair_failed" tools:ignore="MissingTranslation">Pairing did not finish. Check the PIN and try again.</string>
+  <string name="workspace_screen_stream_pair_failed_detail" tools:ignore="MissingTranslation">Pairing did not finish: %1$s</string>
   <string name="workspace_screen_stream_pair_done" tools:ignore="MissingTranslation">Paired.</string>
   <string name="workspace_screen_stream_addresses" tools:ignore="MissingTranslation">Addresses</string>
   <string name="workspace_screen_stream_no_addresses" tools:ignore="MissingTranslation">No address found that the phone could reach.</string>
@@ -2467,7 +2468,7 @@
   <string name="im_computer_action_error" tools:ignore="MissingTranslation">The computer action failed.</string>
   <string name="im_computer_add" tools:ignore="MissingTranslation">Add a new computer</string>
   <string name="im_computer_address" tools:ignore="MissingTranslation">Address</string>
-  <string name="im_computer_address_hint" tools:ignore="MissingTranslation">Tailscale name or IP address</string>
+  <string name="im_computer_address_hint" tools:ignore="MissingTranslation">IP, Tailscale name, or paste user@host:port</string>
   <string name="im_computer_address_title" tools:ignore="MissingTranslation">Where is your computer?</string>
   <string name="im_computer_allow" tools:ignore="MissingTranslation">Allow</string>
   <string name="im_computer_app_key" tools:ignore="MissingTranslation">Miffan key</string>
@@ -2509,20 +2510,20 @@
   <string name="im_computer_foreground_warning" tools:ignore="MissingTranslation">This will switch to the foreground and interrupt the window you are using.</string>
   <string name="im_computer_generate_key" tools:ignore="MissingTranslation">Generate key</string>
   <string name="im_computer_give_title" tools:ignore="MissingTranslation">Give this computer to %1$s</string>
-  <string name="im_computer_give_to" tools:ignore="MissingTranslation">Give to %1$s</string>
+  <string name="im_computer_give_to" tools:ignore="MissingTranslation">Let %1$s use it</string>
   <string name="im_computer_go_chat" tools:ignore="MissingTranslation">Go to chat</string>
-  <string name="im_computer_identity_changed" tools:ignore="MissingTranslation">This computer’s identity differs from last time. Verify the new fingerprint before connecting.</string>
+  <string name="im_computer_identity_changed" tools:ignore="MissingTranslation">Last time it had another identity. It may have been reinstalled, or something may be pretending to be it. If it has two systems and is running the other one now, don\'t continue here: add that system as a new computer instead.</string>
   <string name="im_computer_install" tools:ignore="MissingTranslation">Install</string>
-  <string name="im_computer_install_confirm" tools:ignore="MissingTranslation">Install or upgrade cua-driver?</string>
+  <string name="im_computer_install_confirm" tools:ignore="MissingTranslation">Install the control helper?</string>
   <string name="im_computer_install_disclosure" tools:ignore="MissingTranslation">The complete command below will download and install software from cua.ai / GitHub on your computer. cua-driver enables anonymous telemetry by default; you can disable it in its settings. On macOS, grant Accessibility and Screen Recording permissions after installation.</string>
   <string name="im_computer_install_failed" tools:ignore="MissingTranslation">Installation or upgrade failed</string>
   <string name="im_computer_install_success" tools:ignore="MissingTranslation">Installation or upgrade completed</string>
   <string name="im_computer_installing" tools:ignore="MissingTranslation">Installing… This may take a few minutes.</string>
-  <string name="im_computer_key_command_help" tools:ignore="MissingTranslation">Run this once on that computer so Miffan\'s key can sign in, then tap Continue.</string>
+  <string name="im_computer_key_command_help" tools:ignore="MissingTranslation">Run this once in a terminal on that computer so Miffan\'s key can sign in. It ends by printing the username to fill in.</string>
   <string name="im_computer_let_partner_look" tools:ignore="MissingTranslation">Let the partner take a look</string>
-  <string name="im_computer_mac_account" tools:ignore="MissingTranslation">Screen Sharing account</string>
-  <string name="im_computer_mac_account_help" tools:ignore="MissingTranslation">Screen Sharing needs the login account of this Mac, even when SSH uses a key. The password is stored securely on your phone.</string>
-  <string name="im_computer_mac_sharing_help" tools:ignore="MissingTranslation">Enable Screen Sharing in System Settings → General → Sharing on your Mac.</string>
+  <string name="im_computer_mac_account" tools:ignore="MissingTranslation">Mac account</string>
+  <string name="im_computer_mac_account_help" tools:ignore="MissingTranslation">Screen Sharing signs in with this Mac\'s account and password. The password stays on this phone.</string>
+  <string name="im_computer_mac_sharing_help" tools:ignore="MissingTranslation">On the Mac: System Settings › General › Sharing › Screen Sharing.</string>
   <string name="im_computer_name" tools:ignore="MissingTranslation">Computer name</string>
   <string name="im_computer_needs_attention" tools:ignore="MissingTranslation">Needs attention</string>
   <string name="im_computer_no_desktop" tools:ignore="MissingTranslation">Log in to the desktop on this computer, then check again.</string>
@@ -2534,7 +2535,7 @@
   <string name="im_computer_partner_view" tools:ignore="MissingTranslation">What your partner saw</string>
   <string name="im_computer_password" tools:ignore="MissingTranslation">Password</string>
   <string name="im_computer_password_login" tools:ignore="MissingTranslation">Password</string>
-  <string name="im_computer_permissions_help" tools:ignore="MissingTranslation">Allow the dialogs on your Mac using the preview above, or enable cua-driver in System Settings → Privacy &amp; Security. Then tap “Let the partner take a look” again.</string>
+  <string name="im_computer_permissions_help" tools:ignore="MissingTranslation">Allow the dialogs on your Mac using the preview above, or enable cua-driver in System Settings → Privacy &amp; Security. Setup continues by itself once both are on.</string>
   <string name="im_computer_port" tools:ignore="MissingTranslation">Port</string>
   <string name="im_computer_prepare" tools:ignore="MissingTranslation">Check the computer</string>
   <string name="im_computer_ready" tools:ignore="MissingTranslation">Ready</string>
@@ -2564,7 +2565,7 @@
   </plurals>
   <string name="im_computer_taken_over" tools:ignore="MissingTranslation">You took over the screen; the partner stopped</string>
   <string name="im_computer_test" tools:ignore="MissingTranslation">Try it</string>
-  <string name="im_computer_trust_connect" tools:ignore="MissingTranslation">Confirm and connect</string>
+  <string name="im_computer_trust_connect" tools:ignore="MissingTranslation">It\'s my computer, connect</string>
   <string name="im_computer_unsupported_desktop" tools:ignore="MissingTranslation">GNOME and KDE desktops are not supported yet.</string>
   <string name="im_computer_upgrade" tools:ignore="MissingTranslation">Upgrade</string>
   <string name="im_computer_use_saved_account" tools:ignore="MissingTranslation">Use saved account</string>
@@ -2604,7 +2605,168 @@
   <string name="im_computer_task_verifying" tools:ignore="MissingTranslation">Confirming the computer…</string>
   <string name="im_computer_task_checking" tools:ignore="MissingTranslation">Checking the computer…</string>
   <string name="im_computer_task_saving" tools:ignore="MissingTranslation">Saving…</string>
+  <string name="im_computer_account" tools:ignore="MissingTranslation">Account</string>
+  <string name="im_computer_account_optional" tools:ignore="MissingTranslation">Optional</string>
+  <string name="im_computer_account_placeholder" tools:ignore="MissingTranslation">The name you sign in with</string>
+  <string name="im_computer_add_by_address" tools:ignore="MissingTranslation">Add by address</string>
+  <string name="im_computer_address_placeholder" tools:ignore="MissingTranslation">IP, Tailscale name or user@host</string>
+  <string name="im_computer_check_chinese" tools:ignore="MissingTranslation">Type Chinese and other languages (optional)</string>
+  <string name="im_computer_check_chinese_help" tools:ignore="MissingTranslation">Install a clipboard tool so partners can type more than English letters.</string>
+  <string name="im_computer_check_commands_only" tools:ignore="MissingTranslation">Used through commands only</string>
+  <string name="im_computer_check_connected" tools:ignore="MissingTranslation">Connected</string>
+  <string name="im_computer_check_connecting" tools:ignore="MissingTranslation">Connecting…</string>
+  <string name="im_computer_check_grants" tools:ignore="MissingTranslation">Tap “Allow” on the Mac</string>
+  <string name="im_computer_check_grants_done" tools:ignore="MissingTranslation">Allowed to control the Mac</string>
+  <string name="im_computer_check_grants_help" tools:ignore="MissingTranslation">The Mac asks you to let the helper control it: Accessibility and Screen Recording.</string>
+  <string name="im_computer_check_hd" tools:ignore="MissingTranslation">HD mode (optional)</string>
+  <string name="im_computer_check_hd_done" tools:ignore="MissingTranslation">HD mode on</string>
+  <string name="im_computer_check_hd_help" tools:ignore="MissingTranslation">Sunshine is on this computer: smoother picture, lower delay.</string>
+  <string name="im_computer_check_helper" tools:ignore="MissingTranslation">Install the control helper</string>
+  <string name="im_computer_check_helper_done" tools:ignore="MissingTranslation">Control helper ready</string>
+  <string name="im_computer_check_helper_help" tools:ignore="MissingTranslation">Lets partners click and type on the computer. Downloads from cua.ai.</string>
+  <string name="im_computer_check_mac_account" tools:ignore="MissingTranslation">Mac password for Screen Sharing</string>
+  <string name="im_computer_check_mac_account_done" tools:ignore="MissingTranslation">Screen Sharing signs in as %1$s</string>
+  <string name="im_computer_check_mac_account_help" tools:ignore="MissingTranslation">Screen Sharing signs in with your Mac account. The password stays on this phone.</string>
+  <string name="im_computer_check_mac_sharing" tools:ignore="MissingTranslation">Turn on Screen Sharing</string>
+  <string name="im_computer_check_screen" tools:ignore="MissingTranslation">Set up seeing the screen</string>
+  <string name="im_computer_check_screen_done" tools:ignore="MissingTranslation">Can see the screen</string>
+  <string name="im_computer_check_screen_help" tools:ignore="MissingTranslation">This computer needs a screen-sharing app first.</string>
+  <string name="im_computer_check_sign_in_desktop" tools:ignore="MissingTranslation">Sign in on the computer</string>
+  <string name="im_computer_check_sign_in_desktop_help" tools:ignore="MissingTranslation">Nobody is signed in on its screen right now. Sign in there, or use it through commands only.</string>
+  <string name="im_computer_check_unlock" tools:ignore="MissingTranslation">Unlock the computer</string>
+  <string name="im_computer_check_unlock_help" tools:ignore="MissingTranslation">The screen is locked. Unlock it at the computer.</string>
+  <string name="im_computer_check_windows_screen_help" tools:ignore="MissingTranslation">Windows shows its screen through Sunshine. Set it up once.</string>
+  <string name="im_computer_connect_action" tools:ignore="MissingTranslation">Connect</string>
+  <string name="im_computer_copy" tools:ignore="MissingTranslation">Copy</string>
+  <string name="im_computer_dont_connect" tools:ignore="MissingTranslation">Don\'t connect</string>
+  <string name="im_computer_fill_in" tools:ignore="MissingTranslation">Fill in</string>
+  <string name="im_computer_find_another" tools:ignore="MissingTranslation">Choose another computer</string>
+  <string name="im_computer_find_help" tools:ignore="MissingTranslation">Keep the computer on and on the same Wi‑Fi as this phone.</string>
+  <string name="im_computer_find_title" tools:ignore="MissingTranslation">Find your computer</string>
+  <string name="im_computer_first_message_tidy" tools:ignore="MissingTranslation">Tidy up the screenshots on my desktop</string>
+  <string name="im_computer_go_chat_with" tools:ignore="MissingTranslation">Chat with %1$s</string>
+  <string name="im_computer_hide_password" tools:ignore="MissingTranslation">Hide password</string>
+  <string name="im_computer_how_to" tools:ignore="MissingTranslation">How to</string>
+  <string name="im_computer_identity_changed_title" tools:ignore="MissingTranslation">This computer looks different</string>
+  <string name="im_computer_installing_short" tools:ignore="MissingTranslation">Installing…</string>
+  <string name="im_computer_is_windows" tools:ignore="MissingTranslation">It\'s a Windows computer</string>
+  <string name="im_computer_key_auto" tools:ignore="MissingTranslation">After running it, come back here and setup continues by itself.</string>
+  <string name="im_computer_key_done" tools:ignore="MissingTranslation">I\'ve run it</string>
+  <string name="im_computer_key_help" tools:ignore="MissingTranslation">Run one line on the computer and Miffan signs in with its own key, no password needed.</string>
+  <string name="im_computer_key_only_help" tools:ignore="MissingTranslation">%1$s doesn\'t allow password sign-in. Do one thing on it to give Miffan its key.</string>
+  <string name="im_computer_key_only_title" tools:ignore="MissingTranslation">This computer only takes keys</string>
+  <string name="im_computer_key_refused" tools:ignore="MissingTranslation">Not connected yet. Check that the command ran without errors and the account name is right.</string>
+  <string name="im_computer_key_step_account" tools:ignore="MissingTranslation">Fill in the account it showed at the end</string>
+  <string name="im_computer_key_step_paste" tools:ignore="MissingTranslation">Paste this line and press Enter</string>
+  <string name="im_computer_key_step_terminal" tools:ignore="MissingTranslation">Open Terminal on that computer</string>
+  <string name="im_computer_key_title" tools:ignore="MissingTranslation">Sign in with a key</string>
+  <string name="im_computer_kind_unknown" tools:ignore="MissingTranslation">Computer</string>
+  <string name="im_computer_local_network_allow" tools:ignore="MissingTranslation">Allow</string>
+  <string name="im_computer_local_network_help" tools:ignore="MissingTranslation">Miffan needs permission to look for computers on your Wi‑Fi.</string>
+  <string name="im_computer_local_network_title" tools:ignore="MissingTranslation">Allow finding nearby devices</string>
+  <string name="im_computer_manual_help" tools:ignore="MissingTranslation">An IP, a Tailscale name, or paste user@host:port.</string>
+  <string name="im_computer_manual_title" tools:ignore="MissingTranslation">Enter the computer\'s address</string>
+  <string name="im_computer_more_settings" tools:ignore="MissingTranslation">More settings</string>
+  <string name="im_computer_nearby_found" tools:ignore="MissingTranslation">%1$d nearby</string>
+  <string name="im_computer_nearby_none" tools:ignore="MissingTranslation">No computer with remote login found nearby</string>
+  <string name="im_computer_nearby_saved" tools:ignore="MissingTranslation">%1$s · Added</string>
+  <string name="im_computer_next" tools:ignore="MissingTranslation">Next</string>
+  <string name="im_computer_no_screen" tools:ignore="MissingTranslation">This computer has no screen, use commands only</string>
+  <string name="im_computer_not_found_title" tools:ignore="MissingTranslation">Don\'t see your computer?</string>
+  <string name="im_computer_operate_from_phone" tools:ignore="MissingTranslation">Use it from here</string>
+  <string name="im_computer_other_sign_in" tools:ignore="MissingTranslation">Sign in another way</string>
+  <string name="im_computer_password_note" tools:ignore="MissingTranslation">The password signs in just this once. After that Miffan connects with its own key.</string>
+  <string name="im_computer_password_note_mac" tools:ignore="MissingTranslation">The password signs in once; after that Miffan uses its own key. Screen Sharing also uses this account, and its password stays on this phone.</string>
+  <string name="im_computer_pick_someone" tools:ignore="MissingTranslation">Pick a partner</string>
+  <string name="im_computer_ready_connecting_help" tools:ignore="MissingTranslation">Connecting to the computer.</string>
+  <string name="im_computer_ready_done_help" tools:ignore="MissingTranslation">Everything is in place.</string>
+  <string name="im_computer_ready_done_title" tools:ignore="MissingTranslation">%1$s is ready</string>
+  <string name="im_computer_ready_help" tools:ignore="MissingTranslation">A minute or two. Anything that needs you shows a button; the rest happens by itself.</string>
+  <string name="im_computer_ready_title" tools:ignore="MissingTranslation">Getting %1$s ready</string>
+  <string name="im_computer_request_on_mac" tools:ignore="MissingTranslation">Ask on the Mac</string>
+  <string name="im_computer_save" tools:ignore="MissingTranslation">Save</string>
+  <string name="im_computer_saved_computers" tools:ignore="MissingTranslation">Your computers</string>
+  <string name="im_computer_saved_subtitle" tools:ignore="MissingTranslation">Added before</string>
+  <string name="im_computer_searching" tools:ignore="MissingTranslation">Looking nearby…</string>
+  <string name="im_computer_searching_found" tools:ignore="MissingTranslation">Looking nearby… %1$d found</string>
+  <string name="im_computer_share_help" tools:ignore="MissingTranslation">You can change this any time in My computers.</string>
+  <string name="im_computer_share_note" tools:ignore="MissingTranslation">Partners ask before every action. Screenshots go to the AI service the partner uses.</string>
+  <string name="im_computer_share_note_no_screen" tools:ignore="MissingTranslation">Partners ask before every command they run.</string>
+  <string name="im_computer_share_title" tools:ignore="MissingTranslation">Who should help you with it?</string>
+  <string name="im_computer_show_command" tools:ignore="MissingTranslation">Show the command</string>
+  <string name="im_computer_show_password" tools:ignore="MissingTranslation">Show password</string>
+  <string name="im_computer_sign_in_again" tools:ignore="MissingTranslation">Sign in again</string>
+  <string name="im_computer_sign_in_help" tools:ignore="MissingTranslation">Use the account you sign in to the computer with.</string>
+  <string name="im_computer_sign_in_help_mac" tools:ignore="MissingTranslation">Use the account you sign in to your Mac with.</string>
+  <string name="im_computer_sign_in_title" tools:ignore="MissingTranslation">Sign in to this computer</string>
+  <string name="im_computer_switches_computer" tools:ignore="MissingTranslation">%1$s moves from its current computer to this one.</string>
+  <string name="im_computer_switches_phone" tools:ignore="MissingTranslation">%1$s stops working on this phone; its files there stay.</string>
+  <string name="im_computer_tailnet_back" tools:ignore="MissingTranslation">Back to nearby computers</string>
+  <string name="im_computer_tailnet_help" tools:ignore="MissingTranslation">When both the computer and this phone run Tailscale, it connects even off this Wi‑Fi.</string>
+  <string name="im_computer_tailnet_none" tools:ignore="MissingTranslation">No computer with remote login found on Tailscale</string>
+  <string name="im_computer_tailnet_note" tools:ignore="MissingTranslation">Only computers with remote login on are listed. Speed depends on both networks.</string>
+  <string name="im_computer_my_computers" tools:ignore="MissingTranslation">My computers</string>
+  <string name="im_computer_new_found" tools:ignore="MissingTranslation">New computers</string>
+  <string name="im_computer_saved_searching" tools:ignore="MissingTranslation">%1$s · Looking…</string>
+  <string name="im_computer_saved_missing" tools:ignore="MissingTranslation">%1$s · Not found right now. It may be off.</string>
+  <string name="im_computer_saved_missing_other_system" tools:ignore="MissingTranslation">%1$s · Not found right now. It may be running its other system.</string>
+  <string name="im_computer_same_address" tools:ignore="MissingTranslation">Same address as “%1$s”. It may be that computer\'s other system.</string>
+  <string name="im_computer_connection_ways" tools:ignore="MissingTranslation">Addresses</string>
+  <string name="im_computer_address_local" tools:ignore="MissingTranslation">Local network</string>
+  <string name="im_computer_address_other" tools:ignore="MissingTranslation">Other network</string>
+  <string name="im_computer_address_last_used" tools:ignore="MissingTranslation">Last used</string>
+  <string name="im_computer_add_address" tools:ignore="MissingTranslation">Add address</string>
+  <string name="im_computer_remove_address" tools:ignore="MissingTranslation">Remove address</string>
+  <string name="im_computer_addresses_help" tools:ignore="MissingTranslation">Miffan uses whichever address answers: Wi‑Fi at home, Tailscale when you\'re away. When it finds this computer on another network, it remembers the new address.</string>
+  <string name="im_computer_sign_in_section" tools:ignore="MissingTranslation">Sign-in</string>
+  <string name="im_computer_sign_in_method" tools:ignore="MissingTranslation">Method</string>
+  <string name="im_computer_method_key" tools:ignore="MissingTranslation">Miffan\'s key</string>
+  <string name="im_computer_method_password" tools:ignore="MissingTranslation">Password</string>
+  <string name="im_computer_account_first_help" tools:ignore="MissingTranslation">First, the account you use to sign in to this computer.</string>
+  <string name="im_computer_account_first_help_mac" tools:ignore="MissingTranslation">First, the account you use to sign in to this Mac.</string>
+  <string name="im_computer_account_first_note" tools:ignore="MissingTranslation">If you added this computer before, Miffan signs in with its own key and won\'t need the password.</string>
+  <string name="im_computer_password_step_help" tools:ignore="MissingTranslation">This computer doesn\'t know Miffan yet. Enter the password once.</string>
+  <string name="im_computer_change" tools:ignore="MissingTranslation">Change</string>
+  <string name="im_computer_delete_forget" tools:ignore="MissingTranslation">Also make the computer forget Miffan</string>
+  <string name="im_computer_delete_forget_help" tools:ignore="MissingTranslation">Removes Miffan\'s key, high-quality mode pairing and helper from the computer, so this phone can\'t connect to it anymore. Nothing else on the computer is touched.</string>
+  <string name="im_computer_delete_shared" tools:ignore="MissingTranslation">“%1$s” is the same computer and account and stays in Miffan, so the key stays on the computer.</string>
+  <string name="im_computer_delete_offline_title" tools:ignore="MissingTranslation">Can\'t reach the computer</string>
+  <string name="im_computer_delete_offline" tools:ignore="MissingTranslation">Miffan\'s key can\'t be removed from it right now. You can delete it from the phone only, and later run this line in the computer\'s terminal:</string>
+  <string name="im_computer_delete_offline_later" tools:ignore="MissingTranslation">Or cancel, and delete it again once the computer is on.</string>
+  <string name="im_computer_delete_phone_only" tools:ignore="MissingTranslation">Delete from phone only</string>
+  <string name="im_computer_forgetting" tools:ignore="MissingTranslation">Making the computer forget Miffan…</string>
+  <string name="im_computer_delete_offline_sunshine" tools:ignore="MissingTranslation">High-quality mode is still paired too: open Sunshine\'s web page and remove Miffan under Clients.</string>
+  <string name="im_computer_tailnet_notice" tools:ignore="MissingTranslation">%1$d more new on Tailscale</string>
+  <string name="im_computer_tailnet_notice_help" tools:ignore="MissingTranslation">Computers that aren\'t nearby work too</string>
+  <string name="im_computer_tailnet_open" tools:ignore="MissingTranslation">Choose</string>
+  <string name="im_computer_tailnet_title" tools:ignore="MissingTranslation">Pick a computer far away</string>
+  <string name="im_computer_task_looking_up" tools:ignore="MissingTranslation">Looking for it…</string>
+  <string name="im_computer_tip_linux" tools:ignore="MissingTranslation">Make sure the SSH service (sshd) is running and the firewall lets it through</string>
+  <string name="im_computer_tip_mac" tools:ignore="MissingTranslation">Turn on Remote Login in System Settings › General › Sharing</string>
+  <string name="im_computer_tip_windows" tools:ignore="MissingTranslation">Add by address below, then run the setup script once</string>
+  <string name="im_computer_try_saying" tools:ignore="MissingTranslation">Try saying</string>
+  <string name="im_computer_unreachable" tools:ignore="MissingTranslation">%1$s isn\'t answering</string>
+  <string name="im_computer_unreachable_help" tools:ignore="MissingTranslation">Check that it\'s on and has remote login turned on (Mac: Sharing › Remote Login). Not on this Wi‑Fi? Try its Tailscale name. A Windows computer needs the setup script first.</string>
+  <string name="im_computer_use_screen_again" tools:ignore="MissingTranslation">Use its screen after all</string>
+  <string name="im_computer_via_tailscale" tools:ignore="MissingTranslation">Through Tailscale</string>
+  <string name="im_computer_windows_help" tools:ignore="MissingTranslation">Only once: it turns on Windows\' own remote login and allows Miffan\'s key.</string>
+  <string name="im_computer_windows_step_admin" tools:ignore="MissingTranslation">On the computer, right-click Start and choose Terminal (Admin)</string>
+  <string name="im_computer_windows_step_fill" tools:ignore="MissingTranslation">Fill in the account the script showed at the end</string>
+  <string name="im_computer_windows_step_fill_both" tools:ignore="MissingTranslation">Fill in the address and account the script showed at the end</string>
+  <string name="im_computer_windows_step_paste" tools:ignore="MissingTranslation">Paste the setup script and press Enter</string>
+  <string name="im_computer_windows_title" tools:ignore="MissingTranslation">Prepare this Windows computer</string>
+  <string name="im_computer_name_optional" tools:ignore="MissingTranslation">Name (optional)</string>
+  <string name="im_computer_nearby" tools:ignore="MissingTranslation">Nearby computers</string>
+  <string name="im_computer_key_command" tools:ignore="MissingTranslation">Run a command</string>
+  <string name="im_computer_password_help" tools:ignore="MissingTranslation">Miffan signs in with this password once, adds its own key to the computer and uses the key from then on. On a Mac, Screen Sharing signs in with this account too, and that password is kept securely on this phone.</string>
+  <string name="im_computer_password_not_allowed" tools:ignore="MissingTranslation">This computer only accepts key sign-in. Run the command below once in a terminal on it, then tap Continue.</string>
+  <string name="im_computer_auto_recheck" tools:ignore="MissingTranslation">Fix it on the computer and this page updates by itself.</string>
+  <string name="im_computer_mac_open_sharing" tools:ignore="MissingTranslation">Open Sharing settings on the Mac</string>
+  <string name="im_computer_task_opening_settings" tools:ignore="MissingTranslation">Opening settings…</string>
   <string name="workspace_screen_ssh_auth" tools:ignore="MissingTranslation">The computer refused the sign-in. Check that Miffan\'s key or password is still allowed there.</string>
+  <string name="workspace_screen_ssh_password_not_allowed" tools:ignore="MissingTranslation">This computer does not allow password sign-in, only keys.</string>
+  <string name="workspace_screen_ssh_password_wrong" tools:ignore="MissingTranslation">The username or password is wrong.</string>
+  <string name="workspace_screen_ssh_password_wrong_root" tools:ignore="MissingTranslation">The password was refused. If the username is right, this computer may not let root sign in with a password (often the default): use another account, or Run a command to use Miffan\'s key.</string>
   <string name="workspace_screen_ssh_timeout" tools:ignore="MissingTranslation">The computer didn\'t answer in time. Check that it is on and reachable, for example that Tailscale is connected.</string>
   <string name="workspace_screen_ssh_unreachable" tools:ignore="MissingTranslation">Can\'t reach the computer. Check the address and that SSH is turned on.</string>
   <string name="workspace_screen_clipboard_new" tools:ignore="MissingTranslation">The computer copied something</string>
@@ -2701,8 +2863,8 @@
   <string name="im_computer_already_using" tools:ignore="MissingTranslation">Already uses it</string>
   <string name="im_computer_bind_many_title" tools:ignore="MissingTranslation">Which partners may use this computer?</string>
   <string name="im_computer_bind_many_help" tools:ignore="MissingTranslation">You can change this later in My computers.</string>
-  <string name="im_computer_bind_many_confirm" tools:ignore="MissingTranslation">Give it to %1$d partners</string>
-  <string name="im_computer_bind_none" tools:ignore="MissingTranslation">Done, no partner for now</string>
+  <string name="im_computer_bind_many_confirm" tools:ignore="MissingTranslation">Let %1$d partners use it</string>
+  <string name="im_computer_bind_none" tools:ignore="MissingTranslation">Not now</string>
   <string name="im_computer_connected_title" tools:ignore="MissingTranslation">Connected</string>
   <string name="im_computer_connected_help" tools:ignore="MissingTranslation">%1$s is ready.</string>
   <string name="im_computer_done" tools:ignore="MissingTranslation">Done</string>

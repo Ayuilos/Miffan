@@ -74,6 +74,8 @@ data class TextGenerationParams(
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBody: List<CustomBody> = emptyList(),
     val sessionId: String? = null,
+    /** Extra fields for the Responses image_generation tool object, not the request root. */
+    val imageGenerationOptions: List<CustomBody> = emptyList(),
 )
 
 @Serializable

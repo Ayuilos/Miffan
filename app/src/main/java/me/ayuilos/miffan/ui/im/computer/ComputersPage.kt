@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -13,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -24,6 +27,7 @@ import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.computer.ComputerHasWorkspacesException
+import me.ayuilos.miffan.data.ai.computer.ComputerUnreachableException
 import me.ayuilos.miffan.data.ai.computer.KnownComputer
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.model.Assistant
@@ -170,7 +174,12 @@ private fun RemoteScreenPlatform.label(): String? = when (this) {
     RemoteScreenPlatform.UNKNOWN -> null
 }
 
-private fun RemoteScreenPlatform.icon(): ImageVector = if (this == RemoteScreenPlatform.MACOS) HugeIcons.Apple else HugeIcons.Computer
+private fun RemoteScreenPlatform.icon(): ImageVector = when (this) {
+    RemoteScreenPlatform.MACOS -> AppleLogo
+    RemoteScreenPlatform.LINUX -> LinuxLogo
+    RemoteScreenPlatform.WINDOWS -> WindowsLogo
+    RemoteScreenPlatform.UNKNOWN -> HugeIcons.Computer
+}
 
 @Composable
 private fun ComputerBadge(platform: RemoteScreenPlatform, size: Dp) {
@@ -196,6 +205,12 @@ fun ComputerDetailPage(hostId: String) {
     var picking by rememberSaveable { mutableStateOf(false) }
     var choosingScreen by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf(false) }
+    var forgetting by remember { mutableStateOf(false) }
+    // Set when the computer could not be reached to remove Miffan's key: what to run on it later.
+    var offlineCommand by rememberSaveable { mutableStateOf<String?>(null) }
+    // Whether that computer also still trusts this phone for high-quality mode.
+    var offlinePaired by rememberSaveable { mutableStateOf(false) }
+    val hostList by remember(workspaces) { workspaces.listHostsFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
     var loaded by remember { mutableStateOf(false) }
     LaunchedEffect(computer) {
         if (computer != null) loaded = true
@@ -324,26 +339,90 @@ fun ComputerDetailPage(hostId: String) {
                 title = { Text(stringResource(R.string.im_computer_delete_blocked_title)) },
                 text = { Text(stringResource(R.string.im_computer_delete_blocked, current.otherWorkspaceCount)) },
                 confirmButton = { TextButton(onClick = { deleting = false }) { Text(stringResource(R.string.common_confirm)) } })
-            else AlertDialog(onDismissRequest = { deleting = false },
-                title = { Text(stringResource(R.string.im_computer_delete_title, current.name)) },
+            else {
+                val host = hostList.find { it.id == hostId }
+                // The same machine and account saved again keeps working only if its key stays.
+                val sibling = host?.let { h ->
+                    hostList.firstOrNull { it.id != h.id && h.trustedHostKeySha256 != null && it.trustedHostKeySha256 == h.trustedHostKeySha256 &&
+                        it.username == h.username && it.sshKeyId == h.sshKeyId }
+                }
+                val canForget = host?.sshKeyId != null && sibling == null
+                var forget by rememberSaveable { mutableStateOf(true) }
+                AlertDialog(onDismissRequest = { deleting = false },
+                    title = { Text(stringResource(R.string.im_computer_delete_title, current.name)) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            val names = partners.map { threadAssistantName(it) }.joinToString(stringResource(R.string.im_computers_name_separator))
+                            if (partners.isNotEmpty()) Text(stringResource(R.string.im_computer_delete_partners, names))
+                            when {
+                                canForget -> Surface(onClick = { forget = !forget }, shape = MaterialTheme.shapes.large,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                                    Row(Modifier.padding(start = 4.dp, end = 14.dp, top = 6.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Checkbox(checked = forget, onCheckedChange = { forget = it })
+                                        Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(stringResource(R.string.im_computer_delete_forget), style = MaterialTheme.typography.titleSmall)
+                                            Text(stringResource(R.string.im_computer_delete_forget_help), style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                                sibling != null -> Text(stringResource(R.string.im_computer_delete_shared, sibling.name))
+                                else -> Text(stringResource(R.string.im_computer_delete_help))
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            deleting = false
+                            val revoke = canForget && forget
+                            forgetting = revoke
+                            perform {
+                                try { computers.delete(hostId, forgetOnComputer = revoke) }
+                                catch (error: ComputerHasWorkspacesException) {
+                                    deleting = true // Shows the blocked explanation with the fresh count.
+                                } catch (error: ComputerUnreachableException) {
+                                    offlineCommand = error.manualCommand
+                                    offlinePaired = host?.streamCertificateSha256 != null
+                                } finally { forgetting = false }
+                            }
+                        }) { Text(stringResource(R.string.im_computer_delete_confirm), color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = { TextButton(onClick = { deleting = false }) { Text(stringResource(R.string.common_cancel)) } })
+            }
+        }
+        if (forgetting) AlertDialog(onDismissRequest = {}, confirmButton = {},
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
+                    Text(stringResource(R.string.im_computer_forgetting))
+                }
+            })
+        offlineCommand?.let { command ->
+            AlertDialog(onDismissRequest = { offlineCommand = null },
+                title = { Text(stringResource(R.string.im_computer_delete_offline_title)) },
                 text = {
-                    val names = partners.map { threadAssistantName(it) }.joinToString(stringResource(R.string.im_computers_name_separator))
-                    Text(listOfNotNull(
-                        names.takeIf { partners.isNotEmpty() }?.let { stringResource(R.string.im_computer_delete_partners, it) },
-                        stringResource(R.string.im_computer_delete_help),
-                    ).joinToString("\n\n"))
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.im_computer_delete_offline))
+                        val context = LocalContext.current
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.weight(1f)) { CommandPreview(command) }
+                            FilledTonalButton(onClick = {
+                                context.getSystemService(ClipboardManager::class.java)
+                                    ?.setPrimaryClip(ClipData.newPlainText("Miffan", command))
+                            }) { Text(stringResource(R.string.im_computer_copy)) }
+                        }
+                        if (offlinePaired) Text(stringResource(R.string.im_computer_delete_offline_sunshine))
+                        Text(stringResource(R.string.im_computer_delete_offline_later), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        deleting = false
-                        perform {
-                            try { computers.delete(hostId) } catch (error: ComputerHasWorkspacesException) {
-                                deleting = true // Shows the blocked explanation with the fresh count.
-                            }
-                        }
-                    }) { Text(stringResource(R.string.im_computer_delete_confirm), color = MaterialTheme.colorScheme.error) }
+                        offlineCommand = null
+                        perform { computers.delete(hostId, forgetOnComputer = false) }
+                    }) { Text(stringResource(R.string.im_computer_delete_phone_only), color = MaterialTheme.colorScheme.error) }
                 },
-                dismissButton = { TextButton(onClick = { deleting = false }) { Text(stringResource(R.string.common_cancel)) } })
+                dismissButton = { TextButton(onClick = { offlineCommand = null }) { Text(stringResource(R.string.common_cancel)) } })
         }
     }
 }

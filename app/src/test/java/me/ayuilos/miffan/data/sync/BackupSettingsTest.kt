@@ -24,6 +24,16 @@ class BackupSettingsTest {
     }
 
     @Test
+    fun `image tool model selection survives shared backup codec and missing field defaults to disabled`() {
+        val modelId = Uuid.random()
+        val encoded = JsonInstant.encodeBackupSettings(Settings(imageToolModelId = modelId), 1)
+        val migrated = SettingsJsonMigrator.migrate(encoded)
+        assertEquals(modelId, JsonInstant.decodeFromString<Settings>(migrated).imageToolModelId)
+        val legacy = JsonObject(JsonInstant.parseToJsonElement(encoded).jsonObject - "imageToolModelId").toString()
+        assertEquals(null, JsonInstant.decodeFromString<Settings>(SettingsJsonMigrator.migrate(legacy)).imageToolModelId)
+    }
+
+    @Test
     fun `older backups without launch count restore zero`() {
         val encoded = JsonInstant.encodeBackupSettings(Settings(), 137)
         val legacy = JsonObject(JsonInstant.parseToJsonElement(encoded).jsonObject - "launchCount").toString()

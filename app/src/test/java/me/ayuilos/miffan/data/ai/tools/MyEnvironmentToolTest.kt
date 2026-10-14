@@ -76,6 +76,24 @@ class MyEnvironmentToolTest {
         assertTrue(partner.getValue("abilities").toString().contains("仅参与的伙伴聊天"))
     }
 
+    @Test fun imageToolAbilityReportsConfiguredModelOnlyWhenRegistered() {
+        val imageModel = Model(modelId = "image-model", displayName = "Image model", type = ModelType.IMAGE)
+        val configured = settings.copy(imageToolModelId = imageModel.id,
+            providers = listOf(ProviderSetting.OpenAI(models = listOf(imageModel))))
+        val enabled = environment(configured, tools = setOf("generate_image"))
+        assertTrue(enabled.getValue("abilities").toString().contains("generate_image"))
+        assertTrue(enabled.getValue("abilities").toString().contains("Image model"))
+        assertFalse(environment(configured).getValue("abilities").toString().contains("Image model"))
+    }
+
+    @Test fun unconfiguredImageToolAbilityExplainsSetupApproval() {
+        val abilities = environment(tools = setOf("generate_image")).getValue("abilities").toString()
+        assertTrue(abilities.contains("generate_image: drawing not set up yet"))
+        assertTrue(abilities.contains("pauses for the user to enable drawing"))
+        assertTrue(abilities.contains("approving draws the image"))
+        assertFalse(environment().getValue("abilities").toString().contains("generate_image"))
+    }
+
     @Test fun blankNameAvatarVariantsAndNoBindingsUseSafeDisplayValues() {
         for ((avatar, type) in listOf(Avatar.Dummy to "default",
             Avatar.Emoji("secret-avatar-content") to "emoji", Avatar.WhaleGirl() to "whale_girl")) {

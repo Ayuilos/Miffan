@@ -57,8 +57,9 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): I
         when (part) {
             is UIMessagePart.Text -> if (part.text.isNotBlank()) return null
             is UIMessagePart.Reasoning -> return R.string.im_thread_status_thinking
-            // A partner message has its own line in the reply, which already says it is asking.
-            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending || part.isPartnerMessage()) null else toolStatus(part.toolName)
+            // A partner message has its own line in the reply, which already says it is asking; a drawing has its placeholder.
+            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending || part.isPartnerMessage() ||
+                part.isImageGeneration()) null else toolStatus(part.toolName)
             is UIMessagePart.ServerTool -> return toolStatus(part.toolName)
             is UIMessagePart.Image, is UIMessagePart.Audio, is UIMessagePart.Video -> return null
             else -> Unit
@@ -76,7 +77,7 @@ private fun toolStatus(name: String): Int =
  */
 internal fun UIMessagePart.Tool.isThreadPrompt(): Boolean =
     approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered) ||
-        isSettledPermission() || isPartnerMessage()
+        (isSettledPermission() && !isImageGeneration()) || isPartnerMessage()
 
 /** A permission card the user (or stopping the reply) already settled; it shrinks to a one-line record in place. */
 internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
@@ -106,6 +107,8 @@ internal fun ThreadToolPrompt(
             ThreadOrganizeCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == DRAFT_BUG_REPORT ->
             ThreadBugReportCard(tool, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.isImageGeneration() ->
+            ThreadDrawingSetupCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
         tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)

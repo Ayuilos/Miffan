@@ -52,6 +52,26 @@ import me.rerere.workspace.screen.RfbRect
 
 class NativeSshWorkspaceTransportTest {
     @Test
+    fun hostKeyDiscoveryUsesProvidedSocketFactoryAndStopsBeforeAuthentication() {
+        val sockets = AtomicInteger()
+        val authenticated = AtomicBoolean(false)
+        server.passwordAuthenticator = { _, _, _ -> authenticated.set(true); false }
+        val factory = object : javax.net.SocketFactory() {
+            override fun createSocket(): java.net.Socket = java.net.Socket().also { sockets.incrementAndGet() }
+            override fun createSocket(host: String, port: Int): java.net.Socket = error("Must use timed connect")
+            override fun createSocket(host: String, port: Int, local: InetAddress, localPort: Int): java.net.Socket = error("Must use timed connect")
+            override fun createSocket(host: InetAddress, port: Int): java.net.Socket = error("Must use timed connect")
+            override fun createSocket(host: InetAddress, port: Int, local: InetAddress, localPort: Int): java.net.Socket = error("Must use timed connect")
+        }
+        val expected = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        val actual = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port, 2_500, factory)
+        assertEquals(expected, actual)
+        assertTrue(actual.sha256Fingerprint.matches(Regex("SHA256:[A-Za-z0-9+/]{43}")))
+        assertEquals(1, sockets.get())
+        assertFalse(authenticated.get())
+    }
+
+    @Test
     fun hostKeyDiscoveryReportsAnUnreachableServerAsAConnectionFailure() {
         // A port nothing listens on: the server is never reached, so there is no key to show.
         val port = java.net.ServerSocket(0).use { it.localPort }
@@ -79,7 +99,12 @@ class NativeSshWorkspaceTransportTest {
     @Before fun startServer() {
         directory = Files.createTempDirectory("miffan-ssh-test")
         root = Files.createDirectory(directory.resolve("workspace"))
-        server = SshServer.setUpDefaultServer().apply {
+        server = newServer()
+    }
+
+    /** The test server; [configure] runs before start, since the offered sign-in methods are fixed then. */
+    private fun newServer(configure: SshServer.() -> Unit = {}): SshServer =
+        SshServer.setUpDefaultServer().apply {
             host = "127.0.0.1"
             port = 0
             keyPairProvider = SimpleGeneratorHostKeyProvider(directory.resolve("hostkey.ser"))
@@ -185,7 +210,16 @@ class NativeSshWorkspaceTransportTest {
                     override fun destroy(channel: ChannelSession) { process?.destroyForcibly() }
                 }
             }
+            configure()
             start()
+        }
+
+    /** Replaces the running server with one that offers only [methods]. */
+    private fun restartOffering(vararg methods: org.apache.sshd.server.auth.UserAuthFactory, configure: SshServer.() -> Unit = {}) {
+        server.stop(true)
+        server = newServer {
+            userAuthFactories = methods.toList()
+            configure()
         }
     }
 
@@ -376,6 +410,47 @@ class NativeSshWorkspaceTransportTest {
         }
     }
 
+
+    @Test fun keyProbeAcceptsUntrustedHostKeyAndRefusesOtherKeysWithoutPasswordFallback() {
+        val accepted = SshKeyCodec.generate()
+        val passwordAttempts = AtomicInteger()
+        restartOffering(org.apache.sshd.server.auth.pubkey.UserAuthPublicKeyFactory.INSTANCE,
+            org.apache.sshd.server.auth.password.UserAuthPasswordFactory.INSTANCE,
+            org.apache.sshd.server.auth.keyboard.UserAuthKeyboardInteractiveFactory.INSTANCE) {
+            publickeyAuthenticator = org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator { username, key, _ ->
+                username == "test" && PublicKeyEntry.toString(key) == accepted.publicKey.substringBeforeLast(' ')
+            }
+            passwordAuthenticator = org.apache.sshd.server.auth.password.PasswordAuthenticator { _, _, _ ->
+                passwordAttempts.incrementAndGet(); true
+            }
+        }
+        // A probe doesn't require SFTP or a usable workspace directory.
+        server.subsystemFactories = emptyList()
+        assertEquals(KeySignInCheck.ACCEPTED, NativeSshWorkspaceTransport.checkKeySignIn(
+            "127.0.0.1", server.port, "test", RemoteAuthentication.PrivateKey(accepted.privateKeyPem), 2_000))
+        assertEquals(KeySignInCheck.REFUSED, NativeSshWorkspaceTransport.checkKeySignIn(
+            "127.0.0.1", server.port, "test", RemoteAuthentication.PrivateKey(SshKeyCodec.generate().privateKeyPem), 2_000))
+        assertEquals(0, passwordAttempts.get())
+        // The probe's ephemeral acceptance cannot change the normal connection's pin checking.
+        assertThrows(RemoteConnectException::class.java) {
+            NativeSshWorkspaceTransport.open(config("SHA256:" + "A".repeat(43)).copy(
+                authentication = RemoteAuthentication.PrivateKey(accepted.privateKeyPem)))
+        }
+    }
+
+    @Test fun keyProbeMapsUnreachableAndTimesOutAStalledHandshake() {
+        val authentication = RemoteAuthentication.PrivateKey(SshKeyCodec.generate().privateKeyPem)
+        val closedPort = ServerSocket(0).use { it.localPort }
+        assertEquals(KeySignInCheck.UNREACHABLE, NativeSshWorkspaceTransport.checkKeySignIn(
+            "127.0.0.1", closedPort, "test", authentication, 300))
+        ServerSocket(0).use { listener ->
+            val started = System.nanoTime()
+            assertEquals(KeySignInCheck.UNREACHABLE, NativeSshWorkspaceTransport.checkKeySignIn(
+                "127.0.0.1", listener.localPort, "test", authentication, 300))
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 2_000)
+        }
+    }
+
     @Test fun generatedPublicKeyAuthenticatesToKeyOnlyServer() {
         val accepted = SshKeyCodec.generate()
         server.passwordAuthenticator = { _, _, _ -> false }
@@ -395,6 +470,51 @@ class NativeSshWorkspaceTransportTest {
                 authentication = RemoteAuthentication.PrivateKey(other.privateKeyPem),
             ))
         }
+    }
+
+    private fun passwordFailure(configuration: RemoteHostConfig): RemotePasswordSignInFailure? =
+        assertThrows(RemoteConnectException::class.java) { NativeSshWorkspaceTransport.open(configuration) }.passwordSignIn
+
+    @Test fun keyOnlyServerReportsPasswordNotOffered() {
+        restartOffering(org.apache.sshd.server.auth.pubkey.UserAuthPublicKeyFactory.INSTANCE) {
+            publickeyAuthenticator = org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator { _, _, _ -> false }
+        }
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        assertEquals(RemotePasswordSignInFailure.NOT_OFFERED, passwordFailure(config(hostKey.sha256Fingerprint)))
+    }
+
+    @Test fun wrongPasswordIsRejectedAfterOneAttempt() {
+        val attempts = AtomicInteger()
+        server.passwordAuthenticator = { _, _, _ -> attempts.incrementAndGet(); false }
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        val failure = assertThrows(RemoteConnectException::class.java) { NativeSshWorkspaceTransport.open(config(hostKey.sha256Fingerprint)) }
+        assertEquals(RemotePasswordSignInFailure.REJECTED, failure.passwordSignIn)
+        assertEquals("test", failure.username)
+        // Password and keyboard-interactive both reach this authenticator; only one try is made.
+        assertEquals(1, attempts.get())
+    }
+
+    @Test fun keyboardInteractiveOnlyServerAcceptsThePassword() {
+        restartOffering(org.apache.sshd.server.auth.keyboard.UserAuthKeyboardInteractiveFactory.INSTANCE)
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        NativeSshWorkspaceTransport.open(config(hostKey.sha256Fingerprint)).use {
+            assertEquals("authenticated", it.execute("printf authenticated").stdout)
+        }
+    }
+
+    @Test fun wrongPasswordOnKeyboardInteractiveOnlyServerIsTriedOnce() {
+        val attempts = AtomicInteger()
+        restartOffering(org.apache.sshd.server.auth.keyboard.UserAuthKeyboardInteractiveFactory.INSTANCE) {
+            passwordAuthenticator = org.apache.sshd.server.auth.password.PasswordAuthenticator { _, _, _ -> attempts.incrementAndGet(); false }
+        }
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        assertEquals(RemotePasswordSignInFailure.REJECTED, passwordFailure(config(hostKey.sha256Fingerprint)))
+        assertEquals(1, attempts.get())
+    }
+
+    @Test fun nonAuthenticationFailuresCarryNoPasswordVerdict() {
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        assertEquals(null, passwordFailure(config(hostKey.sha256Fingerprint.dropLast(2) + "AA")))
     }
 
     @Test fun discoversPinsAndUsesSshAndSftp() {

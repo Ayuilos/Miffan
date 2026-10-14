@@ -307,7 +307,7 @@ class ResponseAPI(
                                 add(buildJsonObject {
                                     put("type", "image_generation")
                                     put("model", "gpt-image-2")
-                                })
+                                }.mergeCustomBody(params.imageGenerationOptions))
                             }
                         }
                     }
@@ -564,7 +564,6 @@ class ResponseAPI(
     }
 
     internal fun parseResponseOutput(jsonObject: JsonObject): TextGenerationResult {
-        println(jsonObject)
         val outputs = jsonObject["output"]?.jsonArray ?: error("output not found")
         val parts = arrayListOf<UIMessagePart>()
 
@@ -650,8 +649,23 @@ class ResponseAPI(
                                 )
                             }
 
+                            "refusal" -> parts.add(UIMessagePart.Text(
+                                part["refusal"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            ))
+
                             else -> error("unknown part type $partType")
                         }
+                    }
+                }
+
+                "image_generation_call" -> {
+                    output["result"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { data ->
+                        val mimeType = when (output["output_format"]?.jsonPrimitive?.contentOrNull) {
+                            "jpeg", "jpg" -> "image/jpeg"
+                            "webp" -> "image/webp"
+                            else -> "image/png"
+                        }
+                        parts.add(UIMessagePart.Image("data:$mimeType;base64,$data"))
                     }
                 }
 

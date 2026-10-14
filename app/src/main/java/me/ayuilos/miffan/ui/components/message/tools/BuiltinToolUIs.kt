@@ -45,6 +45,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.highlight.CodeHighlightText
 import me.rerere.hugeicons.HugeIcons
@@ -52,6 +53,7 @@ import me.rerere.hugeicons.stroke.Clipboard
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.GlobalSearch
+import me.rerere.hugeicons.stroke.Image03
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Message02
 import me.rerere.hugeicons.stroke.QuillWrite01
@@ -823,5 +825,41 @@ private fun ScrapeWebPreview(content: JsonElement) {
                 }
             }
         }
+    }
+}
+
+/**
+ * 画图: 标题随状态变化, 摘要显示提示词或失败原因; 生成的图片由工具卡片通用逻辑展示
+ */
+object GenerateImageToolUI : ToolUIRenderer {
+    override val toolName: String = "generate_image"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Image03
+
+    private fun error(context: ToolUIContext): String? = context.content.getStringContent("error")
+
+    @Composable
+    override fun title(context: ToolUIContext): String = when {
+        context.tool.approvalState is ToolApprovalState.Pending -> "画图还没开启，选一个画图模型后继续"
+        context.loading || context.content == null -> "正在画图"
+        context.content.getStringContent("setup_required") == "true" -> "画图未开启"
+        error(context) != null -> "没画出来"
+        else -> "画好了"
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        error(context) != null || context.arguments.getStringContent("prompt") != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val error = error(context)
+        Text(
+            text = error ?: context.arguments.getStringContent("prompt").orEmpty(),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.shimmer(isLoading = context.loading),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
