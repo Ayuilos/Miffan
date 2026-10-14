@@ -40,10 +40,11 @@ class NearbyComputerDiscovery internal constructor(
     fun observe(): Flow<NearbyScan> = callbackFlow {
         val manager = runCatching { context.getSystemService(NsdManager::class.java) }.getOrNull()
         val networks = findNearbyNetworks(context)
-        val local = networks.firstOrNull { it.kind == NearbyNetwork.LOCAL }
         val tailscaleActive = networks.any { it.kind == NearbyNetwork.TAILSCALE }
-        // Bind probes to the physical network, rather than letting the default VPN route them.
-        val socketFactory = local?.network?.socketFactory ?: SocketFactory.getDefault()
+        // A VPN that disallows bypass can reject binding to the physical network.
+        // Choose once per network and reuse the result for every kind of probe.
+        val socketFactories = networks.associate { it.kind to chooseNearbySocketFactory(it.network.socketFactory) }
+        val socketFactory = socketFactories[NearbyNetwork.LOCAL] ?: SocketFactory.getDefault()
         val probeSlots = Semaphore(48)
         // Key exchanges never occupy sweep slots or hold up SweepDone.
         val hostKeySlots = Semaphore(4)
@@ -182,7 +183,7 @@ class NearbyComputerDiscovery internal constructor(
                             if (event.sweep) sweepHosts.add(machine)
                             publish()
                             if (hostKeysRequested.add(target)) launch {
-                                val factory = networks.firstOrNull { it.kind == target.network }?.network?.socketFactory ?: socketFactory
+                                val factory = socketFactories[target.network] ?: socketFactory
                                 val key = hostKeySlots.withPermit { hostKeyProbe(target.host, target.port, factory, 2_500) }
                                 events.trySend(DiscoveryEvent.HostKey(target, key))
                             }
@@ -223,7 +224,7 @@ class NearbyComputerDiscovery internal constructor(
                 networks.forEach { selected ->
                     val info = selected.info
                     val prefix = if (selected.kind == NearbyNetwork.TAILSCALE) 24 else info.prefix
-                    val factory = selected.network.socketFactory
+                    val factory = socketFactories.getValue(selected.kind)
                     val connectTimeout = if (selected.kind == NearbyNetwork.TAILSCALE) 700 else 400
                     nearbySweepAddresses(info.address, prefix).forEach { host ->
                         launch {

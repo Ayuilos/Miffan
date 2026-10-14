@@ -25,6 +25,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetAddress
+import java.net.Socket
+import java.net.SocketException
 import javax.net.SocketFactory
 
 /** The JVM Android stub's SDK_INT is zero, so these exercise the serial legacy resolver. */
@@ -253,6 +255,46 @@ class NearbyComputerDiscoveryLifecycleTest {
     }
 
     @Test
+    fun rejectedBindingsUseDefaultFactoryForSweepsHintsAndHostKeys() = runTest {
+        val connectivity = mockk<ConnectivityManager>()
+        val wifiFactory = mockk<SocketFactory>()
+        val vpnFactory = mockk<SocketFactory>()
+        val wifiNetwork = network(connectivity, "192.168.31.1", 30, vpn = false, wifiFactory)
+        val vpnNetwork = network(connectivity, "100.64.0.4", 32, vpn = true, vpnFactory)
+        every { wifiFactory.createSocket() } throws SocketException("Operation not permitted")
+        every { vpnFactory.createSocket() } throws SocketException("Operation not permitted")
+        every { context.getSystemService(ConnectivityManager::class.java) } returns connectivity
+        every { connectivity.allNetworks } returns arrayOf(wifiNetwork, vpnNetwork)
+        probeBanner = { host, _ ->
+            if (host in setOf("192.168.31.2", "192.168.31.3", "100.64.0.5")) "SSH-2.0-OpenSSH_10.6" else null
+        }
+        val keys = mutableListOf<Pair<String, SocketFactory>>()
+        probeKey = { host, _, factory, _ -> keys += host to factory; null }
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            discovery.observe().collect { }
+        }
+        runCurrent()
+        assertEquals(254, probes.size)
+        assertEquals(setOf("192.168.31.2", "100.64.0.5"), keys.map { it.first }.toSet())
+
+        // This address is outside the sweep; its mDNS hint must use the same fallback.
+        val hint = service("Computer", "192.168.31.3")
+        listeners.getValue("_smb._tcp").onServiceFound(hint)
+        runCurrent()
+        resolutions.single().second.onServiceResolved(hint)
+        runCurrent()
+
+        assertEquals(255, probes.size)
+        assertEquals(setOf("192.168.31.2", "192.168.31.3", "100.64.0.5"), keys.map { it.first }.toSet())
+        val fallback = SocketFactory.getDefault()
+        assertTrue(probes.all { it.second === fallback })
+        assertTrue(keys.all { it.second === fallback })
+        verify(exactly = 1) { wifiFactory.createSocket() }
+        verify(exactly = 1) { vpnFactory.createSocket() }
+        collector.cancelAndJoin()
+    }
+
+    @Test
     fun fingerprintsUseBannerNetworksAndPublishAfterSweepWithoutRetryingHints() = runTest {
         val connectivity = mockk<ConnectivityManager>()
         val wifiFactory = mockk<SocketFactory>()
@@ -344,6 +386,7 @@ class NearbyComputerDiscoveryLifecycleTest {
         vpn: Boolean,
         factory: SocketFactory,
     ): Network {
+        every { factory.createSocket() } returns mockk<Socket>(relaxed = true)
         val network = mockk<Network>()
         val address = mockk<LinkAddress> {
             every { this@mockk.address } returns InetAddress.getByName(ip)
