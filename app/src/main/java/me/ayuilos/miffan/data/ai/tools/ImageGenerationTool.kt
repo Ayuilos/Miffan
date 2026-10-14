@@ -27,6 +27,8 @@ import java.io.File
 import java.net.URI
 import java.util.Base64
 
+const val GENERATE_IMAGE_TOOL = "generate_image"
+
 fun Model.canOutputImage(): Boolean = Modality.IMAGE in outputModalities ||
     BuiltInTools.ImageGeneration in tools || type == ModelType.IMAGE
 
@@ -102,10 +104,10 @@ internal fun createImageGenerationTool(
     val displayName = settings().imageToolModelOrNull()?.let { it.displayName.ifBlank { it.modelId } }
         ?: "the configured image model"
     return Tool(
-        name = "generate_image",
+        name = GENERATE_IMAGE_TOOL,
         description = "Generate or edit images with $displayName. Write a detailed visual prompt. " +
             "To edit or combine images, pass their image ids in reference_images (at most 4). " +
-            "The user already sees generated images in the tool card; do not re-embed them with Markdown. " +
+            "The app already shows the generated images to the user in your reply; do not re-embed them with Markdown. " +
             "Briefly tell the user what was made.",
         parameters = {
             InputSchema.Obj(

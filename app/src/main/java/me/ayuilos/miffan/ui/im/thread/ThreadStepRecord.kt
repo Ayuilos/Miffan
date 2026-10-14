@@ -63,7 +63,7 @@ internal data class ThreadStep(
  */
 internal fun threadSteps(parts: List<UIMessagePart>): List<ThreadStep> = parts.mapNotNull { part ->
     (part as? UIMessagePart.Tool)?.takeUnless {
-        it.isComputerTool() || it.isPartnerMessage() || it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
+        it.isComputerTool() || it.isPartnerMessage() || it.isImageGeneration() || it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
             it.isPending || it.approvalState is ToolApprovalState.Denied
     }?.let(::threadStep)
 }

@@ -57,8 +57,9 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): I
         when (part) {
             is UIMessagePart.Text -> if (part.text.isNotBlank()) return null
             is UIMessagePart.Reasoning -> return R.string.im_thread_status_thinking
-            // A partner message has its own line in the reply, which already says it is asking.
-            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending || part.isPartnerMessage()) null else toolStatus(part.toolName)
+            // A partner message has its own line in the reply, which already says it is asking; a drawing has its placeholder.
+            is UIMessagePart.Tool -> return if (part.approvalState is ToolApprovalState.Pending || part.isPartnerMessage() ||
+                part.isImageGeneration()) null else toolStatus(part.toolName)
             is UIMessagePart.ServerTool -> return toolStatus(part.toolName)
             is UIMessagePart.Image, is UIMessagePart.Audio, is UIMessagePart.Video -> return null
             else -> Unit
