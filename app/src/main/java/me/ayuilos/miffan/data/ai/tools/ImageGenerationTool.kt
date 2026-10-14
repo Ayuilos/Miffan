@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.tools
 
+import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filter
@@ -72,7 +73,7 @@ fun createImageGenerationTool(
         val mimeType = generatedImageMimeType(bytes)
         val extension = mimeType.substringAfter('/').let { if (it == "jpeg") "jpg" else it }
         val stored = filesManager.saveUploadFromBytes(bytes, "image.$extension", mimeType)
-        filesManager.getFile(stored).toURI().toString()
+        filesManager.getFile(stored).toUri().toString()
     },
     downloadImage = { url ->
         httpClient.newCall(Request.Builder().url(url).build()).await().use { response ->

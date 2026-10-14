@@ -24,6 +24,7 @@ import me.rerere.ai.provider.ImageGenerationParams
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderSetting
@@ -82,6 +83,12 @@ class OpenAIProvider(
             val requestBuilder = Request.Builder()
                 .url(openAIModelsUrl(providerSetting))
                 .get()
+                .apply {
+                    // Magpie opts image drawers into /models; other compatible providers ignore this header.
+                    if (providerSetting.authType != OpenAIAuthType.CHATGPT_SUBSCRIPTION) {
+                        header("X-Magpie-Drawers", "1")
+                    }
+                }
             val request = authenticator.authenticate(requestBuilder, providerSetting).build()
 
             val response = client.newCall(request).await()
@@ -321,7 +328,9 @@ class OpenAIProvider(
                 val outputFormat = obj["output_format"]?.jsonPrimitive?.contentOrNull ?: defaultFormat
                 ImageGenerationItem(
                     data = b64Json,
-                    mimeType = outputFormat.toImageMimeType(),
+                    mimeType = obj["mime_type"]?.jsonPrimitive?.contentOrNull
+                        ?.takeIf { it.startsWith("image/") }
+                        ?: outputFormat.toImageMimeType(),
                 )
             } else {
                 val url = obj["url"]?.jsonPrimitive?.contentOrNull
@@ -389,6 +398,8 @@ internal fun parseOpenAIModels(body: String): List<Model> {
 
     return data.mapNotNull { modelJson ->
         val modelObj = modelJson.jsonObject
+        val kind = modelObj["kind"]?.jsonPrimitive?.contentOrNull
+        if (kind == "video" || kind == "decision") return@mapNotNull null
         if (modelObj["supported_in_api"]?.jsonPrimitive?.booleanOrNull == false) {
             return@mapNotNull null
         }
@@ -403,10 +414,14 @@ internal fun parseOpenAIModels(body: String): List<Model> {
             ?: modelObj["name"]?.jsonPrimitive?.contentOrNull
             ?: id
         val architecture = modelObj["architecture"]?.jsonObjectOrNull
+        val modalities = modelObj["modalities"]?.jsonObjectOrNull
         val inputModalities = architecture?.modalities("input_modalities")
             ?: modelObj.modalities("input_modalities")
+            ?: modalities?.modalities("input")
         val outputModalities = architecture?.modalities("output_modalities")
             ?: modelObj.modalities("output_modalities")
+            ?: modalities?.modalities("output")
+            ?: listOf(Modality.IMAGE).takeIf { kind == "image" }
         val reasoningCapabilities = modelObj.reasoningCapabilities()
         val abilities = modelObj.supportedAbilities()
         val discoveredCapabilities = if (
@@ -424,6 +439,8 @@ internal fun parseOpenAIModels(body: String): List<Model> {
         Model(
             modelId = id,
             displayName = displayName,
+            // Only explicit Images API rows use IMAGE; chat image-output models stay CHAT.
+            type = if (kind == "image") ModelType.IMAGE else ModelType.CHAT,
             reasoningCapabilities = reasoningCapabilities,
             discoveredCapabilities = discoveredCapabilities,
         )
