@@ -48,7 +48,7 @@ class NearbyComputerDiscoveryTest {
     fun mdnsNameAndPortWinAndBannerFillsSystemRegardlessOfSourceOrder() {
         val ad = NearbyAdvertisement("Recognisable computer", "192.168.1.10", 2222)
         val banner = NearbyComputer("reverse-name", ad.host, 22, NearbySystem.LINUX, "Debian")
-        val expected = listOf(NearbyComputer(ad.name, ad.host, 2222, NearbySystem.LINUX, "Debian"))
+        val expected = listOf(NearbyComputer(ad.name, ad.host, 2222, NearbySystem.LINUX, "Debian", nameSource = NearbyNameSource.MDNS))
         assertEquals(expected, mergeNearbyComputers(listOf(ad), listOf(banner)))
         assertEquals(expected, mergeNearbyComputers(listOf(ad, ad.copy(name = "Sunshine", sshPort = null)), listOf(banner)))
     }
@@ -57,9 +57,9 @@ class NearbyComputerDiscoveryTest {
     fun hintsNeedBannerAndAppleEvidenceCanFillUnknownSystem() {
         val ad = NearbyAdvertisement("Mac", "192.168.1.10", null, apple = true)
         assertEquals(emptyList<NearbyComputer>(), mergeNearbyComputers(listOf(ad), emptyList()))
-        assertEquals(listOf(NearbyComputer(ad.name, ad.host, 22, NearbySystem.MAC)),
+        assertEquals(listOf(NearbyComputer(ad.name, ad.host, 22, NearbySystem.MAC, nameSource = NearbyNameSource.MDNS)),
             mergeNearbyComputers(listOf(ad), listOf(NearbyComputer(null, ad.host, 22, NearbySystem.UNKNOWN))))
-        assertEquals(listOf(NearbyComputer(ad.name, ad.host, 2222, NearbySystem.MAC)),
+        assertEquals(listOf(NearbyComputer(ad.name, ad.host, 2222, NearbySystem.MAC, nameSource = NearbyNameSource.MDNS)),
             mergeNearbyComputers(listOf(ad.copy(sshPort = 2222)), emptyList()))
     }
 
@@ -77,8 +77,8 @@ class NearbyComputerDiscoveryTest {
         val computer = NearbyComputer(null, "192.168.1.10", 22, NearbySystem.UNKNOWN)
         assertEquals(listOf(computer), mergeNearbyComputers(emptyList(), listOf(computer)))
         val ads = listOf(NearbyAdvertisement("Alpha", computer.host, 22), NearbyAdvertisement("Beta", computer.host, 2222))
-        assertEquals(listOf(computer.copy(name = "Alpha")), mergeNearbyComputers(ads, listOf(computer)))
-        assertEquals(listOf(computer.copy(name = "Beta", port = 2222)), mergeNearbyComputers(ads.drop(1), listOf(computer)))
+        assertEquals(listOf(computer.copy(name = "Alpha", nameSource = NearbyNameSource.MDNS)), mergeNearbyComputers(ads, listOf(computer)))
+        assertEquals(listOf(computer.copy(name = "Beta", port = 2222, nameSource = NearbyNameSource.MDNS)), mergeNearbyComputers(ads.drop(1), listOf(computer)))
     }
 
     @Test
@@ -154,7 +154,7 @@ class NearbyComputerDiscoveryTest {
         val overlap = tailscale.copy(host = local.host, name = "tailnet-name", system = NearbySystem.WINDOWS)
         assertEquals(setOf(local, overlap), mergeNearbyComputers(emptyList(), listOf(local, overlap)).toSet())
         val ads = listOf(NearbyAdvertisement("LAN name", local.host, 22))
-        assertEquals(setOf(local.copy(name = "LAN name"), overlap), mergeNearbyComputers(ads, listOf(local, overlap)).toSet())
+        assertEquals(setOf(local.copy(name = "LAN name", nameSource = NearbyNameSource.MDNS), overlap), mergeNearbyComputers(ads, listOf(local, overlap)).toSet())
     }
 
     @Test
@@ -162,6 +162,60 @@ class NearbyComputerDiscoveryTest {
         assertEquals("cachyos-x8664", nearbyReverseName("100.64.0.5", "cachyos-x8664.tail123.ts.net.", network = NearbyNetwork.TAILSCALE))
         assertEquals("cachyos-x8664", nearbyReverseName("100.64.0.5", "cachyos-x8664.headscale.example.", network = NearbyNetwork.TAILSCALE))
         assertNull(nearbyReverseName("100.64.0.5", "100.64.0.5", network = NearbyNetwork.TAILSCALE))
+    }
+
+    @Test
+    fun hostKeySharesLanIdentityWithFrigateAliasWithoutLosingEitherNetwork() {
+        val local = NearbyComputer("cachyos-x8664", "192.168.31.61", 22, NearbySystem.LINUX, "CachyOS",
+            hostKey = "SHA256:same", nameSource = NearbyNameSource.LOCAL_DNS)
+        val tailscale = NearbyComputer("frigate", "100.64.0.5", 22, NearbySystem.UNKNOWN,
+            network = NearbyNetwork.TAILSCALE, hostKey = local.hostKey, nameSource = NearbyNameSource.TAILSCALE_DNS)
+        val expected = setOf(local, tailscale.copy(name = local.name, nameSource = local.nameSource,
+            system = local.system, detail = local.detail))
+        assertEquals(expected, mergeNearbyComputers(emptyList(), listOf(local, tailscale)).toSet())
+        assertEquals(expected, mergeNearbyComputers(emptyList(), listOf(tailscale, local)).toSet())
+        assertEquals(setOf(local, tailscale.copy(hostKey = "SHA256:other")),
+            mergeNearbyComputers(emptyList(), listOf(local, tailscale.copy(hostKey = "SHA256:other"))).toSet())
+    }
+
+    @Test
+    fun mdnsAppleEvidenceWinsAndLosingItRestoresDnsAndBannerEvidence() {
+        val local = NearbyComputer("local-dns", "192.168.1.10", 22, NearbySystem.LINUX, "Debian",
+            hostKey = "SHA256:same", nameSource = NearbyNameSource.LOCAL_DNS)
+        val tailscale = local.copy(name = "tail-dns", host = "100.64.0.5", network = NearbyNetwork.TAILSCALE,
+            system = NearbySystem.UNKNOWN, detail = null, nameSource = NearbyNameSource.TAILSCALE_DNS)
+        val ad = NearbyAdvertisement("My Mac", local.host, null, apple = true)
+        val merged = mergeNearbyComputers(listOf(ad), listOf(tailscale, local))
+        assertEquals(2, merged.size)
+        merged.forEach {
+            assertEquals(ad.name, it.name)
+            assertEquals(NearbyNameSource.MDNS, it.nameSource)
+            assertEquals(NearbySystem.MAC, it.system)
+            assertNull(it.detail)
+        }
+        mergeNearbyComputers(emptyList(), listOf(local, tailscale)).forEach {
+            assertEquals(local.name, it.name)
+            assertEquals(NearbySystem.LINUX, it.system)
+            assertEquals("Debian", it.detail)
+        }
+    }
+
+    @Test
+    fun sameKeyKeepsOneAddressPerNetworkAndDoesNotMatchUnnamedKeys() {
+        val first = NearbyComputer(null, "192.168.1.10", 22, NearbySystem.UNKNOWN, hostKey = "SHA256:same")
+        val second = first.copy(host = "192.168.1.11", name = "Computer", system = NearbySystem.LINUX,
+            detail = "Arch", nameSource = NearbyNameSource.LOCAL_DNS)
+        assertEquals(listOf(first.copy(name = second.name, nameSource = second.nameSource,
+            system = second.system, detail = second.detail)), mergeNearbyComputers(emptyList(), listOf(second, first)))
+        val unrelated = listOf(first.copy(hostKey = null), second.copy(hostKey = null))
+        assertEquals(unrelated.toSet(), mergeNearbyComputers(emptyList(), unrelated).toSet())
+    }
+
+    @Test
+    fun onlyFingerprintForPublishedPortCanJoinMachines() {
+        val ad = NearbyAdvertisement("Separate SSH server", "192.168.1.10", 2222)
+        val otherPort = NearbyComputer("Linux", ad.host, 22, NearbySystem.LINUX, hostKey = "SHA256:other-port")
+        assertNull(mergeNearbyComputers(listOf(ad), listOf(otherPort)).single().hostKey)
     }
 
     private fun addresses(vararg hosts: String): List<InetAddress> = hosts.map(InetAddress::getByName)

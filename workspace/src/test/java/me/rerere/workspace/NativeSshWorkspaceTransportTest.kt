@@ -52,6 +52,26 @@ import me.rerere.workspace.screen.RfbRect
 
 class NativeSshWorkspaceTransportTest {
     @Test
+    fun hostKeyDiscoveryUsesProvidedSocketFactoryAndStopsBeforeAuthentication() {
+        val sockets = AtomicInteger()
+        val authenticated = AtomicBoolean(false)
+        server.passwordAuthenticator = { _, _, _ -> authenticated.set(true); false }
+        val factory = object : javax.net.SocketFactory() {
+            override fun createSocket(): java.net.Socket = java.net.Socket().also { sockets.incrementAndGet() }
+            override fun createSocket(host: String, port: Int): java.net.Socket = error("Must use timed connect")
+            override fun createSocket(host: String, port: Int, local: InetAddress, localPort: Int): java.net.Socket = error("Must use timed connect")
+            override fun createSocket(host: InetAddress, port: Int): java.net.Socket = error("Must use timed connect")
+            override fun createSocket(host: InetAddress, port: Int, local: InetAddress, localPort: Int): java.net.Socket = error("Must use timed connect")
+        }
+        val expected = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        val actual = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port, 2_500, factory)
+        assertEquals(expected, actual)
+        assertTrue(actual.sha256Fingerprint.matches(Regex("SHA256:[A-Za-z0-9+/]{43}")))
+        assertEquals(1, sockets.get())
+        assertFalse(authenticated.get())
+    }
+
+    @Test
     fun hostKeyDiscoveryReportsAnUnreachableServerAsAConnectionFailure() {
         // A port nothing listens on: the server is never reached, so there is no key to show.
         val port = java.net.ServerSocket(0).use { it.localPort }

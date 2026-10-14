@@ -61,6 +61,11 @@ interface RemoteHostDAO {
     @Query("UPDATE remote_hosts SET screen_platform = :platform, rdp_username = COALESCE(:username, rdp_username) WHERE id = :id")
     suspend fun updateDetectedScreen(id: String, platform: String, username: String?): Int
 
+    /** A helper probe fills only an unknown platform, without changing screen credentials. */
+    @Query("""UPDATE remote_hosts SET screen_platform = :platform
+        WHERE id = :id AND connection_revision = :revision AND TRIM(screen_platform) = ''""")
+    suspend fun updateProbedScreenPlatform(id: String, revision: String, platform: String): Int
+
     /** A connection finishing after an SSH identity edit cannot update the new host. */
     @Query("UPDATE remote_hosts SET platform = :platform WHERE id = :id AND connection_revision = :revision")
     suspend fun updateDetectedPlatform(id: String, revision: String, platform: String): Int

@@ -100,6 +100,7 @@ data class RemoteMachineProbe(
     val vnc: Vnc,
     val clipboard: String? = null,
     val rdp: Rdp = Rdp(),
+    val hostname: String? = null,
 ) {
     @Serializable
     data class Session(val present: Boolean, val type: String, val desktop: String? = null,
@@ -637,11 +638,18 @@ class RemoteScreenRepository(
     suspend fun hostIdOf(workspaceId: String): String? = workspaceDao.getById(workspaceId)?.remoteHostId
 
     /** Installs or refreshes the helper and describes the machine behind [workspaceId]. */
-    suspend fun probe(workspaceId: String): RemoteMachineProbe = withRemote(workspaceId) { ssh ->
-        ensureHelper(ssh)
-        val result = ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000)
-        check(result.exitCode == 0) { result.stderr.ifBlank { "Remote probe failed" } }
-        json.decodeFromString<RemoteMachineProbe>(result.stdout.trim().lineSequence().last())
+    suspend fun probe(workspaceId: String): RemoteMachineProbe {
+        val host = hostIdOf(workspaceId)?.let { hostDao.getById(it) }
+        val probe = withRemote(workspaceId) { ssh ->
+            ensureHelper(ssh)
+            val result = ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000)
+            check(result.exitCode == 0 && !result.timedOut) { result.stderr.ifBlank { "Remote probe failed" } }
+            json.decodeFromString<RemoteMachineProbe>(result.stdout.trim().lineSequence().last())
+        }
+        if (host != null && host.screenPlatform.isBlank() && probe.os in setOf("macos", "linux", "windows")) {
+            hostDao.updateProbedScreenPlatform(host.id, host.connectionRevision, probe.os)
+        }
+        return probe
     }
 
     /**

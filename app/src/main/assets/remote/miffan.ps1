@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 8
+$script:HelperVersion = 9
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -234,6 +234,7 @@ function Get-MachineProbe {
     $osInfo = Get-CimInstance Win32_OperatingSystem
     $gpu = @(Get-CimInstance Win32_VideoController | ForEach-Object { [string]$_.Name })
     return @{ helper = $script:HelperVersion; os = 'windows'; arch = [string]$env:PROCESSOR_ARCHITECTURE;
+        hostname = $(if ([string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) { $null } else { [string]$env:COMPUTERNAME });
         session = $session; cua = (Get-CuaStatus); vnc = @{server=$null;running=$false}; rdp = @{server=$null;running=$false}; clipboard = 'interactive-task';
         os_version = [string]$osInfo.Caption; os_version_number = [string]$osInfo.Version; os_build = [string]$osInfo.BuildNumber;
         displays = $null; display_state = 'unknown'; gpu = $gpu }

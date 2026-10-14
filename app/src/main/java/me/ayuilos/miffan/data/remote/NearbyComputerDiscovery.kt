@@ -32,9 +32,10 @@ import javax.net.SocketFactory
 
 class NearbyComputerDiscovery internal constructor(
     private val context: Context,
+    private val hostKeyProbe: suspend (String, Int, SocketFactory, Int) -> String? = ::probeNearbyHostKey,
     private val probe: suspend (String, Int, SocketFactory, Int) -> String?,
 ) {
-    constructor(context: Context) : this(context, { host, port, factory, timeout -> probeNearbySsh(host, port, factory, timeout) })
+    constructor(context: Context) : this(context, probe = { host, port, factory, timeout -> probeNearbySsh(host, port, factory, timeout) })
     /** Cold; LAN and Tailscale sweeps run once while mDNS continues until collection is cancelled. */
     fun observe(): Flow<NearbyScan> = callbackFlow {
         val manager = runCatching { context.getSystemService(NsdManager::class.java) }.getOrNull()
@@ -44,6 +45,8 @@ class NearbyComputerDiscovery internal constructor(
         // Bind probes to the physical network, rather than letting the default VPN route them.
         val socketFactory = local?.network?.socketFactory ?: SocketFactory.getDefault()
         val probeSlots = Semaphore(48)
+        // Key exchanges never occupy sweep slots or hold up SweepDone.
+        val hostKeySlots = Semaphore(4)
         val dnsExecutor = Executors.newFixedThreadPool(4) { runnable ->
             Thread(runnable, "nearby-reverse-dns").apply { isDaemon = true }
         }
@@ -57,6 +60,7 @@ class NearbyComputerDiscovery internal constructor(
             val sweepHosts = mutableSetOf<Pair<NearbyNetwork, String>>()
             val hintProbes = mutableSetOf<ProbeTarget>()
             val namesRequested = mutableSetOf<Pair<NearbyNetwork, String>>()
+            val hostKeysRequested = mutableSetOf<ProbeTarget>()
             val queue = ArrayDeque<TrackedService>()
             var searching = true
             var resolving: TrackedService? = null
@@ -173,10 +177,15 @@ class NearbyComputerDiscovery internal constructor(
                             val evidence = nearbyBannerSystem(event.banner)
                             val target = event.target
                             val machine = target.network to target.host
-                            banners[target] = NearbyComputer(banners[target]?.name, target.host, target.port,
-                                evidence.system, evidence.detail, target.network)
+                            banners[target] = (banners[target] ?: NearbyComputer(null, target.host, target.port,
+                                NearbySystem.UNKNOWN, network = target.network)).copy(system = evidence.system, detail = evidence.detail)
                             if (event.sweep) sweepHosts.add(machine)
                             publish()
+                            if (hostKeysRequested.add(target)) launch {
+                                val factory = networks.firstOrNull { it.kind == target.network }?.network?.socketFactory ?: socketFactory
+                                val key = hostKeySlots.withPermit { hostKeyProbe(target.host, target.port, factory, 2_500) }
+                                events.trySend(DiscoveryEvent.HostKey(target, key))
+                            }
                             val hasMdnsName = target.network == NearbyNetwork.LOCAL && advertisements.values.any { it.host == target.host }
                             if (event.sweep && !hasMdnsName && namesRequested.add(machine)) launch {
                                 val domains = networks.firstOrNull { it.kind == target.network }?.info?.domains.orEmpty()
@@ -186,8 +195,16 @@ class NearbyComputerDiscovery internal constructor(
                         }
                         is DiscoveryEvent.Named -> {
                             banners.keys.filter { (it.network to it.host) == event.machine }.forEach { target ->
-                                banners[target] = banners.getValue(target).copy(name = event.name)
+                                banners[target] = banners.getValue(target).copy(name = event.name,
+                                    nameSource = if (event.name == null) null else if (target.network == NearbyNetwork.LOCAL)
+                                        NearbyNameSource.LOCAL_DNS else NearbyNameSource.TAILSCALE_DNS)
                             }
+                            publish()
+                        }
+                        is DiscoveryEvent.HostKey -> {
+                            val computer = banners[event.target] ?: continue
+                            if (event.key == null) continue
+                            banners[event.target] = computer.copy(hostKey = event.key)
                             publish()
                         }
                         DiscoveryEvent.SweepDone -> {
@@ -309,6 +326,7 @@ private sealed interface DiscoveryEvent {
     data class Resolved(val service: TrackedService, val info: NsdServiceInfo?) : DiscoveryEvent
     data class Checked(val target: ProbeTarget, val banner: String?, val sweep: Boolean) : DiscoveryEvent
     data class Named(val machine: Pair<NearbyNetwork, String>, val name: String?) : DiscoveryEvent
+    data class HostKey(val target: ProbeTarget, val key: String?) : DiscoveryEvent
     data object SweepDone : DiscoveryEvent
 }
 

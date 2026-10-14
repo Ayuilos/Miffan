@@ -6,6 +6,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteScreenHelperTest {
+    @Test fun hostnameAcceptsNewProbesAndDefaultsToNullForLegacyHelpers() {
+        val legacy = """{"helper":16,"os":"linux","arch":"x86_64","session":{"present":false,"type":"none"},"cua":{"min":"0.34.0","ok":false},"vnc":{}}"""
+        assertNull(parseHelperProbe(legacy).hostname)
+        assertNull(parseHelperProbe(legacy.dropLast(1) + """, "hostname":null}""").hostname)
+        assertEquals("CachyOS Desktop", parseHelperProbe(legacy.dropLast(1) + """, "hostname":"CachyOS Desktop"}""").hostname)
+    }
     private fun probe(desktop: String, os: String = "linux") = parseHelperProbe(
         """{"helper":7,"os":"$os","arch":"aarch64","cua":{"min":"0.34.0","ok":false},"vnc":{},"session":{"present":true,"type":"wayland","desktop":"$desktop"},"rdp":{"server":"krdp","version":"6.7.5","running":false},"future":true}""")
     @Test fun automaticProtocolPreservesVncForOtherDesktopsAndManualEndpoints() {

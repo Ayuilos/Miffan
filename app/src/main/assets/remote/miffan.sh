@@ -16,7 +16,7 @@
 #   miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows
 #                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 
-MIFFAN_HELPER_VERSION=16
+MIFFAN_HELPER_VERSION=17
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1002,6 +1002,23 @@ SUNSHINE_PY
 
 # --- probe -------------------------------------------------------------------------------
 
+computer_name() {
+    name=""
+    case "$1" in
+        macos)
+            name=$(scutil --get ComputerName 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            [ -n "$name" ] || name=$(hostname -s 2>/dev/null)
+            ;;
+        linux)
+            name=$(hostnamectl --pretty 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            [ -n "$name" ] || name=$(hostnamectl --static 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            [ -n "$name" ] || name=$(cat /etc/hostname 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            [ -n "$name" ] || name=$(hostname 2>/dev/null)
+            ;;
+    esac
+    printf '%s' "$name" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 probe() {
     platform=$(os)
     has_session=false
@@ -1022,8 +1039,8 @@ probe() {
         if [ -n "$version" ] && version_at_least "$version" "$MIFFAN_CUA_MIN_VERSION"; then meets=true; fi
     fi
     clipboard=$(clip_tool) || clipboard=""
-    printf '{"helper":%s,"os":"%s","arch":%s,"session":{"present":%s,"type":"%s","desktop":%s},' \
-        "$MIFFAN_HELPER_VERSION" "$platform" "$(json_str "$(uname -m)")" "$has_session" "$type" "$(json_or_null "$desktop")"
+    printf '{"helper":%s,"os":"%s","arch":%s,"hostname":%s,"session":{"present":%s,"type":"%s","desktop":%s},' \
+        "$MIFFAN_HELPER_VERSION" "$platform" "$(json_str "$(uname -m)")" "$(json_or_null "$(computer_name "$platform")")" "$has_session" "$type" "$(json_or_null "$desktop")"
     printf '"cua":{"path":%s,"version":%s,"min":"%s","ok":%s},' \
         "$(json_or_null "$cua")" "$(json_or_null "$version")" "$MIFFAN_CUA_MIN_VERSION" "$meets"
     printf '"rdp":%s,"vnc":%s,"clipboard":%s}\n' "$(rdp_probe_json)" "$(vnc_status_json)" "$(json_or_null "${clipboard##*/}")"

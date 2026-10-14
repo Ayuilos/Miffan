@@ -31,8 +31,9 @@ class WindowsScreenRepositoryTest {
     private var approvedStdin: String? = null
     private var firewallExitCode = 0
     private var sunshineInstalled = true
-    private var installedVersion = "8"
+    private var installedVersion = "9"
     private var installedBytes: ByteArray? = null
+    private var probeExitCode = 0
     private var firewall = WindowsScreenHelperTest.reviewJson
     private fun repo(): RemoteScreenRepository {
         val context = mockk<Context>(relaxed = true)
@@ -49,7 +50,7 @@ class WindowsScreenRepositoryTest {
             val command = firstArg<String>(); commands += command
             val output = when {
                 command == windowsHelperVersionCommand -> installedVersion
-                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "8"; "" }
+                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "9"; "" }
                 command.endsWith("sunshine firewall check") -> firewall
                 command.endsWith("sunshine firewall apply") -> {
                     approvedStdin = arg<InputStream?>(4)!!.readBytes().toString(Charsets.UTF_8)
@@ -57,10 +58,14 @@ class WindowsScreenRepositoryTest {
                 }
                 command.endsWith("sunshine probe") -> """{"installed":$sunshineInstalled,"running":true,"active_stream":false,"lan_encryption_mode":2,"wan_encryption_mode":2}"""
                 command.endsWith("cua install") -> """{"success":true,"version":"0.34.0","autostart_run_level":"Limited"}"""
-                command.endsWith(" probe") -> """{"helper":2,"os":"windows","arch":"AMD64","session":{"present":true,"type":"console"},"cua":{"min":"0.34.0","ok":false},"vnc":{}}"""
+                command.endsWith(" probe") -> """{"helper":9,"os":"windows","hostname":"Windows Desktop","arch":"AMD64","session":{"present":true,"type":"console"},"cua":{"min":"0.34.0","ok":false},"vnc":{}}"""
                 else -> error("Unexpected command: $command")
             }
-            WorkspaceCommandResult(if (command.endsWith("sunshine firewall check")) firewallExitCode else 0, output, "")
+            WorkspaceCommandResult(when {
+                command.endsWith("sunshine firewall check") -> firewallExitCode
+                command == screenHelperCommand(RemotePlatform.WINDOWS, "probe") -> probeExitCode
+                else -> 0
+            }, output, "")
         }
         coEvery { workspaces.openLeasedRemote<Closeable>(any(), any()) } answers {
             LeasedRemote(secondArg<(RemoteWorkspaceSession) -> Closeable>()(ssh)) {}
@@ -130,5 +135,26 @@ class WindowsScreenRepositoryTest {
         val repository = repo()
         assertTrue(runCatching { repository.checkSunshineFirewall("host", "stale") }.exceptionOrNull() is WorkspaceToolTargetChangedException)
         assertTrue(commands.isEmpty())
+    }
+
+    @Test fun successfulHostAndWorkspaceProbesFillUnknownPlatformAndReadHostname() = runBlocking {
+        val repository = repo()
+        coEvery { hosts.updateProbedScreenPlatform(host.id, host.connectionRevision, "windows") } returns 1
+        assertEquals("Windows Desktop", repository.probeHost(host.id, host.connectionRevision).hostname)
+        assertEquals("Windows Desktop", repository.probe(workspace.id).hostname)
+        coVerify(exactly = 2) { hosts.updateProbedScreenPlatform(host.id, host.connectionRevision, "windows") }
+        coVerify(exactly = 0) { hosts.updateDetectedScreen(any(), any(), any()) }
+    }
+
+    @Test fun failedProbeAndExistingPlatformDoNotWriteDetectedScreenSettings() = runBlocking {
+        val repository = repo()
+        probeExitCode = 1
+        assertTrue(runCatching { repository.probe(workspace.id) }.isFailure)
+        coVerify(exactly = 0) { hosts.updateProbedScreenPlatform(any(), any(), any()) }
+        probeExitCode = 0
+        coEvery { hosts.getById(host.id) } returns host.copy(screenPlatform = "linux", rdpUsername = "rdp-user")
+        assertEquals("windows", repository.probe(workspace.id).os)
+        coVerify(exactly = 0) { hosts.updateProbedScreenPlatform(any(), any(), any()) }
+        coVerify(exactly = 0) { hosts.updateDetectedScreen(any(), any(), any()) }
     }
 }

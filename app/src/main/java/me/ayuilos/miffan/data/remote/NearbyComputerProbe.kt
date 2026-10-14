@@ -1,8 +1,10 @@
 package me.ayuilos.miffan.data.remote
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.Inet4Address
@@ -12,9 +14,11 @@ import java.net.InetSocketAddress
 import java.util.concurrent.ExecutorService
 import javax.net.SocketFactory
 import kotlin.coroutines.resume
+import me.rerere.workspace.NativeSshWorkspaceTransport
 
 enum class NearbySystem { MAC, WINDOWS, LINUX, UNKNOWN }
 enum class NearbyNetwork { LOCAL, TAILSCALE }
+enum class NearbyNameSource { MDNS, LOCAL_DNS, TAILSCALE_DNS }
 
 data class NearbyComputer(
     /** DNS-SD instance name, else reverse DNS; null if only the address is known. */
@@ -25,6 +29,8 @@ data class NearbyComputer(
     val system: NearbySystem,
     val detail: String? = null,
     val network: NearbyNetwork = NearbyNetwork.LOCAL,
+    val hostKey: String? = null,
+    val nameSource: NearbyNameSource? = null,
 )
 
 data class NearbyScan(
@@ -174,6 +180,18 @@ internal data class NearbyAdvertisement(
     val apple: Boolean = false,
 )
 
+/** Exchanges the SSH host key, then rejects it before any authentication takes place. */
+internal suspend fun probeNearbyHostKey(host: String, port: Int, socketFactory: SocketFactory, timeoutMillis: Int): String? =
+    try {
+        runInterruptible(Dispatchers.IO) {
+            NativeSshWorkspaceTransport.discoverHostKey(host, port, timeoutMillis, socketFactory).sha256Fingerprint
+        }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        null
+    }
+
 internal fun nearbyAppleEvidence(type: String, model: String?): Boolean =
     type == "_sftp-ssh._tcp" || type == "_companion-link._tcp" ||
         (type == "_device-info._tcp" && model?.startsWith("Mac") == true)
@@ -185,18 +203,48 @@ internal fun mergeNearbyComputers(
 ): List<NearbyComputer> {
     val ads = advertisements.groupBy { NearbyNetwork.LOCAL to it.host }
     val checked = probes.groupBy { it.network to it.host }
-    return (ads.keys + checked.keys).mapNotNull { key ->
+    val computers = (ads.keys + checked.keys).mapNotNull { key ->
         val (network, host) = key
         val hints = ads[key].orEmpty().sortedWith(compareBy<NearbyAdvertisement> { it.sshPort == null }.thenBy { it.name })
         val advertisedPort = hints.firstOrNull { it.sshPort != null }?.sshPort
         val evidence = checked[key].orEmpty()
         if (advertisedPort == null && evidence.isEmpty()) return@mapNotNull null
         val port = advertisedPort ?: evidence.first().port
-        val banner = evidence.firstOrNull { it.port == port } ?: evidence.firstOrNull()
-        val system = banner?.system?.takeIf { it != NearbySystem.UNKNOWN }
-            ?: if (hints.any { it.apple }) NearbySystem.MAC else NearbySystem.UNKNOWN
-        NearbyComputer(hints.firstOrNull()?.name ?: evidence.firstOrNull { it.name != null }?.name, host, port, system, banner?.detail, network)
-    }.sortedWith(compareBy<NearbyComputer, String>(String.CASE_INSENSITIVE_ORDER) { it.name ?: it.host }.thenBy { it.host })
+        val banner = evidence.sortedWith(compareBy<NearbyComputer> { it.system == NearbySystem.UNKNOWN }
+            .thenBy { it.detail.isNullOrBlank() }.thenBy { it.port != port }).firstOrNull()
+        val apple = hints.any { it.apple }
+        val named = evidence.filter { !it.name.isNullOrBlank() }.minByOrNull { nameRank(it.nameSource) }
+        NearbyComputer(
+            hints.firstOrNull()?.name ?: named?.name, host, port,
+            if (apple) NearbySystem.MAC else banner?.system ?: NearbySystem.UNKNOWN,
+            if (apple) null else banner?.detail, network,
+            evidence.firstOrNull { it.port == port }?.hostKey,
+            if (hints.isNotEmpty()) NearbyNameSource.MDNS else named?.nameSource,
+        )
+    }
+    // Source state stays untouched: a lost advertisement must be able to reveal the DNS name.
+    val identified = computers.filter { !it.hostKey.isNullOrBlank() }.groupBy { it.hostKey }
+    val merged = computers.filter { it.hostKey.isNullOrBlank() } + identified.values.flatMap { machine ->
+        val named = machine.filter { !it.name.isNullOrBlank() }.minByOrNull { nameRank(it.nameSource) }
+        val apple = machine.any { it.network == NearbyNetwork.LOCAL && ads[NearbyNetwork.LOCAL to it.host].orEmpty().any { ad -> ad.apple } }
+        val evidence = machine.sortedWith(compareBy<NearbyComputer> { it.system == NearbySystem.UNKNOWN }
+            .thenBy { it.detail.isNullOrBlank() }).first()
+        machine.groupBy { it.network }.values.map { entries ->
+            entries.minWith(compareBy<NearbyComputer> { it.host }.thenBy { it.port }).copy(
+                name = named?.name, nameSource = named?.nameSource,
+                system = if (apple) NearbySystem.MAC else evidence.system,
+                detail = if (apple) null else evidence.detail,
+            )
+        }
+    }
+    return merged.sortedWith(compareBy<NearbyComputer, String>(String.CASE_INSENSITIVE_ORDER) { it.name ?: it.host }.thenBy { it.host })
+}
+
+private fun nameRank(source: NearbyNameSource?): Int = when (source) {
+    NearbyNameSource.MDNS -> 0
+    NearbyNameSource.LOCAL_DNS -> 1
+    NearbyNameSource.TAILSCALE_DNS -> 2
+    null -> 3
 }
 
 internal fun chooseNearbyComputerAddress(addresses: List<InetAddress>): String? {

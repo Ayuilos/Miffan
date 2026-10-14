@@ -38,7 +38,10 @@ class NearbyComputerDiscoveryLifecycleTest {
     private val listeners = mutableMapOf<String, NsdManager.DiscoveryListener>()
     private var probeBanner: suspend (String, Int) -> String? = { _, _ -> null }
     private val probes = mutableListOf<Triple<String, SocketFactory, Int>>()
-    private val discovery = NearbyComputerDiscovery(context) { host, port, factory, timeout ->
+    private var probeKey: suspend (String, Int, SocketFactory, Int) -> String? = { _, _, _, _ -> null }
+    private val discovery = NearbyComputerDiscovery(context, hostKeyProbe = { host, port, factory, timeout ->
+        probeKey(host, port, factory, timeout)
+    }) { host, port, factory, timeout ->
         probes += Triple(host, factory, timeout)
         probeBanner(host, port)
     }
@@ -105,7 +108,7 @@ class NearbyComputerDiscoveryLifecycleTest {
         assertEquals(emptyList<NearbyComputer>(), emissions.last().computers)
         resolutions[1].second.onServiceResolved(second)
         runCurrent()
-        assertEquals(listOf(NearbyComputer("Linux", "192.168.1.11", 22, NearbySystem.UNKNOWN)), emissions.last().computers)
+        assertEquals(listOf(NearbyComputer("Linux", "192.168.1.11", 22, NearbySystem.UNKNOWN, nameSource = NearbyNameSource.MDNS)), emissions.last().computers)
         discoveryListener.captured.onServiceLost(second)
         runCurrent()
         assertEquals(emptyList<NearbyComputer>(), emissions.last().computers)
@@ -132,7 +135,7 @@ class NearbyComputerDiscoveryLifecycleTest {
         assertEquals(emptyList<NearbyComputer>(), emissions.last().computers)
         resolutions[1].second.onServiceResolved(second)
         runCurrent()
-        assertEquals(listOf(NearbyComputer("Linux", "192.168.1.11", 22, NearbySystem.UNKNOWN)), emissions.last().computers)
+        assertEquals(listOf(NearbyComputer("Linux", "192.168.1.11", 22, NearbySystem.UNKNOWN, nameSource = NearbyNameSource.MDNS)), emissions.last().computers)
         collector.cancelAndJoin()
     }
 
@@ -168,10 +171,10 @@ class NearbyComputerDiscoveryLifecycleTest {
         runCurrent()
         resolutions[1].second.onServiceResolved(sftp)
         runCurrent()
-        assertEquals(listOf(NearbyComputer("Computer", "192.168.1.10", 22, NearbySystem.MAC)), emissions.last().computers)
+        assertEquals(listOf(NearbyComputer("Computer", "192.168.1.10", 22, NearbySystem.MAC, nameSource = NearbyNameSource.MDNS)), emissions.last().computers)
         listeners.getValue("_sftp-ssh._tcp").onServiceLost(sftp)
         runCurrent()
-        assertEquals(listOf(NearbyComputer("Computer", "192.168.1.10", 22, NearbySystem.UNKNOWN)), emissions.last().computers)
+        assertEquals(listOf(NearbyComputer("Computer", "192.168.1.10", 22, NearbySystem.UNKNOWN, nameSource = NearbyNameSource.MDNS)), emissions.last().computers)
         collector.cancelAndJoin()
     }
 
@@ -193,7 +196,7 @@ class NearbyComputerDiscoveryLifecycleTest {
         assertEquals(emptyList<NearbyComputer>(), emissions.last().computers)
         banner.complete("SSH-2.0-OpenSSH_9.6 CachyOS")
         runCurrent()
-        assertEquals(listOf(NearbyComputer("CachyOS Sunshine", "192.168.1.61", 22, NearbySystem.LINUX, "CachyOS")), emissions.last().computers)
+        assertEquals(listOf(NearbyComputer("CachyOS Sunshine", "192.168.1.61", 22, NearbySystem.LINUX, "CachyOS", nameSource = NearbyNameSource.MDNS)), emissions.last().computers)
         listeners.getValue("_nvstream._tcp").onServiceLost(hint)
         runCurrent()
         assertEquals(emptyList<NearbyComputer>(), emissions.last().computers)
@@ -246,6 +249,91 @@ class NearbyComputerDiscoveryLifecycleTest {
         runCurrent()
         assertEquals(254, probes.size)
         assertEquals(NearbyScan(emptyList(), searching = false, tailscaleActive = true), emissions.last())
+        collector.cancelAndJoin()
+    }
+
+    @Test
+    fun fingerprintsUseBannerNetworksAndPublishAfterSweepWithoutRetryingHints() = runTest {
+        val connectivity = mockk<ConnectivityManager>()
+        val wifiFactory = mockk<SocketFactory>()
+        val vpnFactory = mockk<SocketFactory>()
+        val wifiNetwork = network(connectivity, "192.168.31.1", 30, vpn = false, wifiFactory)
+        val vpnNetwork = network(connectivity, "100.64.0.4", 32, vpn = true, vpnFactory)
+        every { context.getSystemService(ConnectivityManager::class.java) } returns connectivity
+        every { connectivity.allNetworks } returns arrayOf(wifiNetwork, vpnNetwork)
+        probeBanner = { host, _ ->
+            when (host) {
+                "192.168.31.2" -> "SSH-2.0-OpenSSH_10.6 CachyOS"
+                "100.64.0.5" -> "SSH-2.0-OpenSSH_10.6"
+                else -> null
+            }
+        }
+        val key = CompletableDeferred<String?>()
+        val requests = mutableListOf<Triple<String, SocketFactory, Int>>()
+        probeKey = { host, port, factory, timeout ->
+            assertEquals(22, port)
+            requests += Triple(host, factory, timeout)
+            key.await()
+        }
+        val emissions = mutableListOf<NearbyScan>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            discovery.observe().collect { emissions += it }
+        }
+        runCurrent()
+        assertEquals(false, emissions.last().searching)
+        assertEquals(2, emissions.last().computers.size)
+        assertTrue(emissions.last().computers.all { it.hostKey == null })
+        assertEquals(setOf(Triple("192.168.31.2", wifiFactory, 2_500), Triple("100.64.0.5", vpnFactory, 2_500)), requests.toSet())
+        val ad = service("CachyOS Computer", "192.168.31.2")
+        discoveryListener.captured.onServiceFound(ad)
+        runCurrent()
+        resolutions.single().second.onServiceResolved(ad)
+        runCurrent()
+        key.complete("SHA256:shared")
+        runCurrent()
+        assertEquals(false, emissions.last().searching)
+        emissions.last().computers.forEach {
+            assertEquals("SHA256:shared", it.hostKey)
+            assertEquals("CachyOS Computer", it.name)
+            assertEquals(NearbyNameSource.MDNS, it.nameSource)
+            assertEquals(NearbySystem.LINUX, it.system)
+            assertEquals("CachyOS", it.detail)
+        }
+        // Another service for the same endpoint must not start another host-key attempt.
+        listeners.getValue("_smb._tcp").onServiceFound(ad)
+        runCurrent()
+        resolutions.last().second.onServiceResolved(ad)
+        runCurrent()
+        assertEquals(2, requests.size)
+        collector.cancelAndJoin()
+    }
+
+    @Test
+    fun hintFingerprintsAreBoundedAndLateResultCannotRestoreLostService() = runTest {
+        probeBanner = { _, _ -> "SSH-2.0-OpenSSH_10.6" }
+        val key = CompletableDeferred<String?>()
+        var requests = 0
+        probeKey = { _, _, _, _ -> requests++; key.await() }
+        val emissions = mutableListOf<NearbyScan>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            discovery.observe().collect { emissions += it }
+        }
+        runCurrent()
+        val ads = (10..15).map { service("Computer $it", "192.168.1.$it") }
+        ads.forEach { ad ->
+            listeners.getValue("_smb._tcp").onServiceFound(ad)
+            runCurrent()
+            resolutions.last().second.onServiceResolved(ad)
+            runCurrent()
+        }
+        assertEquals(6, emissions.last().computers.size)
+        assertEquals(4, requests)
+        ads.forEach { listeners.getValue("_smb._tcp").onServiceLost(it) }
+        runCurrent()
+        key.complete(null)
+        runCurrent()
+        assertEquals(6, requests)
+        assertEquals(emptyList<NearbyComputer>(), emissions.last().computers)
         collector.cancelAndJoin()
     }
 

@@ -21,6 +21,9 @@ import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
+import java.net.InetSocketAddress
+import java.net.Socket
+import javax.net.SocketFactory
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
@@ -135,11 +138,31 @@ class RemoteWorkspaceDirectoryException(cause: Throwable) :
  * untrusted until the user compares it with a separately obtained server fingerprint.
  */
 object NativeSshWorkspaceTransport {
-    fun discoverHostKey(host: String, port: Int = 22, timeoutMillis: Int = 10_000): RemoteHostKey {
+    fun discoverHostKey(
+        host: String, port: Int = 22, timeoutMillis: Int = 10_000,
+        socketFactory: SocketFactory? = null,
+    ): RemoteHostKey {
         require(host.isNotBlank() && port in 1..65535 && timeoutMillis > 0)
         val repository = FingerprintHostKeyRepository(null)
         val jsch = JSch().apply { hostKeyRepository = repository }
         val session = jsch.getSession("miffan-host-key-discovery", host, port)
+        socketFactory?.let { factory ->
+            session.setSocketFactory(object : com.jcraft.jsch.SocketFactory {
+                override fun createSocket(host: String, port: Int): Socket {
+                    val socket = factory.createSocket()
+                    try {
+                        socket.connect(InetSocketAddress(host, port), timeoutMillis)
+                        return socket
+                    } catch (error: Throwable) {
+                        runCatching { socket.close() }
+                        throw error
+                    }
+                }
+                override fun getInputStream(socket: Socket): InputStream = socket.getInputStream()
+                override fun getOutputStream(socket: Socket): OutputStream = socket.getOutputStream()
+            })
+        }
+        session.timeout = timeoutMillis
         session.setConfig("StrictHostKeyChecking", "yes")
         session.setConfig("PreferredAuthentications", "none")
         var failure: JSchException? = null
