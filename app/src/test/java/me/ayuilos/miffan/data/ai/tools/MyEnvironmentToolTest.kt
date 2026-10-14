@@ -86,10 +86,11 @@ class MyEnvironmentToolTest {
         assertFalse(environment(configured).getValue("abilities").toString().contains("Image model"))
     }
 
-    @Test fun unconfiguredImageToolAbilityExplainsEnablementButton() {
+    @Test fun unconfiguredImageToolAbilityExplainsSetupApproval() {
         val abilities = environment(tools = setOf("generate_image")).getValue("abilities").toString()
         assertTrue(abilities.contains("generate_image: drawing not set up yet"))
-        assertTrue(abilities.contains("button to enable it"))
+        assertTrue(abilities.contains("pauses for the user to enable drawing"))
+        assertTrue(abilities.contains("approving draws the image"))
         assertFalse(environment().getValue("abilities").toString().contains("generate_image"))
     }
 

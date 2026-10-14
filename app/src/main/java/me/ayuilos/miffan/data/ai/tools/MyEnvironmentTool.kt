@@ -79,7 +79,7 @@ internal fun buildMyEnvironment(
                 val imageModel = settings.imageToolModelOrNull()
                 add(if (imageModel != null) {
                     "generate_image: generate or edit images with ${imageModel.displayName.ifBlank { imageModel.modelId }}"
-                } else "generate_image: drawing not set up yet (calling it shows the user a button to enable it)")
+                } else "generate_image: drawing not set up yet (calling it pauses for the user to enable drawing; approving draws the image, declining skips it)")
             }
             if (caller.enableMemory) {
                 val scope = if (access.memoryOwnerId == me.ayuilos.miffan.data.repository.MemoryRepository.GLOBAL_MEMORY_ID)

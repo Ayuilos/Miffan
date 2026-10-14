@@ -39,8 +39,10 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.pages.setting.ImageToolModelSheet
-import me.rerere.hugeicons.stroke.Refresh01
-import me.rerere.hugeicons.stroke.Tick02
+import androidx.compose.material3.OutlinedButton
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import me.rerere.ai.ui.ToolApprovalState
 import org.koin.compose.koinInject
 import me.ayuilos.miffan.ui.components.richtext.ZoomableAsyncImage
 import me.ayuilos.miffan.ui.modifier.shimmer
@@ -58,7 +60,8 @@ internal fun UIMessagePart.Tool.generatedImages(): List<UIMessagePart.Image> =
  * the image is drawn and the image itself afterwards. A failed drawing shows nothing; the reply explains it.
  */
 internal fun UIMessagePart.Tool.showsInThread(streaming: Boolean): Boolean =
-    isImageGeneration() && (generatedImages().isNotEmpty() || needsDrawingSetup() || (streaming && !isExecuted))
+    isImageGeneration() && approvalState !is ToolApprovalState.Pending && approvalState !is ToolApprovalState.Denied &&
+        (generatedImages().isNotEmpty() || (streaming && !isExecuted))
 
 /** The tool ran before drawing was set up; the bubble offers to turn it on (contract: `setup_required`). */
 internal fun UIMessagePart.Tool.needsDrawingSetup(): Boolean {
@@ -69,16 +72,8 @@ internal fun UIMessagePart.Tool.needsDrawingSetup(): Boolean {
 }
 
 @Composable
-internal fun ThreadGeneratedImages(
-    tool: UIMessagePart.Tool,
-    streaming: Boolean,
-    canRegenerate: Boolean,
-    onRegenerate: () -> Unit,
-) {
-    if (tool.needsDrawingSetup()) {
-        DrawingSetupCard(canRegenerate = canRegenerate && !streaming, onRegenerate = onRegenerate)
-        return
-    }
+internal fun ThreadGeneratedImages(tool: UIMessagePart.Tool, streaming: Boolean) {
+    if (tool.needsDrawingSetup()) return
     val images = tool.generatedImages()
     if (images.isEmpty()) {
         if (streaming && !tool.isExecuted) DrawingPlaceholder()
@@ -116,14 +111,27 @@ private fun DrawingPlaceholder() {
     }
 }
 
+/**
+ * A drawing paused because no image model is chosen yet. Picking one approves this very call, so the same
+ * reply carries on into the drawing; "not now" declines it like any permission.
+ */
 @Composable
-private fun DrawingSetupCard(canRegenerate: Boolean, onRegenerate: () -> Unit) {
+internal fun ThreadDrawingSetupCard(tool: UIMessagePart.Tool, onApproval: (String, Boolean) -> Unit) {
     val settings = LocalSettings.current
     val settingsStore = koinInject<SettingsStore>()
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
+    var answered by remember(tool.toolCallId) { mutableStateOf(false) }
     val model = settings.imageToolModelOrNull()
-    val enabled = model != null
+
+    fun approveOnceSaved() {
+        answered = true
+        scope.launch {
+            // The call runs with the stored settings, so wait for the choice to land before resuming it.
+            withTimeoutOrNull(3_000) { settingsStore.settingsFlow.first { it.imageToolModelOrNull() != null } }
+            onApproval(tool.toolCallId, true)
+        }
+    }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -134,15 +142,13 @@ private fun DrawingSetupCard(canRegenerate: Boolean, onRegenerate: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (enabled) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(40.dp),
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(if (enabled) HugeIcons.Tick02 else HugeIcons.Image03, null, Modifier.size(22.dp))
-                    }
+                    Box(contentAlignment = Alignment.Center) { Icon(HugeIcons.Image03, null, Modifier.size(22.dp)) }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(if (enabled) "画图已开启" else "画图还没开启", style = MaterialTheme.typography.titleSmall)
+                    Text(if (model != null) "画图已开启" else "画图还没开启", style = MaterialTheme.typography.titleSmall)
                     Text(
                         text = if (model != null) {
                             listOfNotNull(model.displayName.ifBlank { model.modelId }, model.findProvider(settings.providers)?.name)
@@ -155,15 +161,17 @@ private fun DrawingSetupCard(canRegenerate: Boolean, onRegenerate: () -> Unit) {
                     )
                 }
             }
-            if (!enabled) {
-                Button(onClick = { picking = true }, modifier = Modifier.fillMaxWidth().heightAtLeast(min = 44.dp)) {
-                    Text("选择画图模型")
-                }
-            } else if (canRegenerate) {
-                Button(onClick = onRegenerate, modifier = Modifier.fillMaxWidth().heightAtLeast(min = 44.dp)) {
-                    Icon(HugeIcons.Refresh01, null, Modifier.size(18.dp))
-                    Text("再画一次", modifier = Modifier.padding(start = 6.dp))
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = !answered,
+                    onClick = { if (model != null) approveOnceSaved() else picking = true },
+                    modifier = Modifier.weight(1f).heightAtLeast(min = 44.dp),
+                ) { Text(if (model != null) "开始画图" else "选择画图模型") }
+                OutlinedButton(
+                    enabled = !answered,
+                    onClick = { answered = true; onApproval(tool.toolCallId, false) },
+                    modifier = Modifier.heightAtLeast(min = 44.dp),
+                ) { Text("先不用") }
             }
         }
     }
@@ -171,7 +179,10 @@ private fun DrawingSetupCard(canRegenerate: Boolean, onRegenerate: () -> Unit) {
     if (picking) {
         ImageToolModelSheet(
             settings = settings,
-            onUpdate = { updated -> scope.launch { settingsStore.update(updated) } },
+            onUpdate = { updated ->
+                scope.launch { settingsStore.update(updated) }
+                if (updated.imageToolModelOrNull() != null) approveOnceSaved()
+            },
             onDismiss = { picking = false },
             easy = true,
         )

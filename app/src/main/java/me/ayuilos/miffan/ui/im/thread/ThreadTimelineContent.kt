@@ -196,7 +196,7 @@ internal fun ThreadMessageBubble(
                                     computerTargetName(part, computer, stringResource(R.string.im_computer_computer)),
                                     canOpenComputer(part, computer), onComputerScreen, onToolApproval)
                                 else ThreadToolPrompt(part, onToolApproval, onToolAnswer, assistant)
-                            } else if (part.isImageGeneration()) ThreadGeneratedImages(part, item.streaming, item.canRegenerate, onRegenerate)
+                            } else if (part.isImageGeneration()) ThreadGeneratedImages(part, item.streaming)
                             else -> Unit
                         }
                     }

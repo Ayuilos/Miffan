@@ -173,6 +173,24 @@ class ImageGenerationToolTest {
         assertFalse((output[0] as UIMessagePart.Text).text.contains("setup_required"))
     }
 
+    @Test fun approvalUsesLiveConfigurationAndReasonIsOnlySetForUnconfiguredTurns() {
+        var current = settings().copy(imageToolModelId = null)
+        val tool = tool(FakeProvider(), { current })
+        assertEquals("image_setup", IMAGE_SETUP_APPROVAL_REASON)
+        assertEquals(IMAGE_SETUP_APPROVAL_REASON, tool.approvalReason)
+        assertTrue(tool.needsApproval(args()))
+        assertNull(tool.autoApprovedBy(args()))
+        assertTrue(tool.description.contains("pauses the call"))
+        current = settings()
+        assertFalse(tool.needsApproval(args()))
+        val configuredTool = tool(FakeProvider(), { current })
+        assertFalse(configuredTool.needsApproval(args()))
+        assertNull(configuredTool.approvalReason)
+        assertNull(configuredTool.autoApprovedBy(args()))
+        current = current.copy(imageToolModelId = null)
+        assertTrue(configuredTool.needsApproval(args()))
+    }
+
     @Test fun subscriptionChatModelsDrawViaResponsesWithoutChangingStoredModel() = runTest {
         val override = ProviderSetting.OpenAI(authType = OpenAIAuthType.CHATGPT_SUBSCRIPTION)
         for (useOverwrite in listOf(false, true)) {

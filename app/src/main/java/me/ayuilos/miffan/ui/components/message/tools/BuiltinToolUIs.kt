@@ -45,6 +45,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.highlight.CodeHighlightText
 import me.rerere.hugeicons.HugeIcons
@@ -839,6 +840,7 @@ object GenerateImageToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String = when {
+        context.tool.approvalState is ToolApprovalState.Pending -> "画图还没开启，选一个画图模型后继续"
         context.loading || context.content == null -> "正在画图"
         context.content.getStringContent("setup_required") == "true" -> "画图未开启"
         error(context) != null -> "没画出来"

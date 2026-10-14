@@ -77,7 +77,7 @@ private fun toolStatus(name: String): Int =
  */
 internal fun UIMessagePart.Tool.isThreadPrompt(): Boolean =
     approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered) ||
-        isSettledPermission() || isPartnerMessage()
+        (isSettledPermission() && !isImageGeneration()) || isPartnerMessage()
 
 /** A permission card the user (or stopping the reply) already settled; it shrinks to a one-line record in place. */
 internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
@@ -107,6 +107,8 @@ internal fun ThreadToolPrompt(
             ThreadOrganizeCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == DRAFT_BUG_REPORT ->
             ThreadBugReportCard(tool, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.isImageGeneration() ->
+            ThreadDrawingSetupCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
         tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)

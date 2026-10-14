@@ -29,6 +29,7 @@ import java.util.Base64
 import kotlin.uuid.Uuid
 
 const val GENERATE_IMAGE_TOOL = "generate_image"
+const val IMAGE_SETUP_APPROVAL_REASON = "image_setup"
 
 fun Model.canOutputImage(): Boolean = Modality.IMAGE in outputModalities ||
     BuiltInTools.ImageGeneration in tools || type == ModelType.IMAGE
@@ -125,10 +126,12 @@ internal fun createImageGenerationTool(
     val displayName = settings().imageToolModelOrNull()?.let { it.displayName.ifBlank { it.modelId } }
     return Tool(
         name = GENERATE_IMAGE_TOOL,
+        needsApproval = { settings().imageToolModelOrNull() == null },
+        approvalReason = if (displayName == null) IMAGE_SETUP_APPROVAL_REASON else null,
         description = if (displayName == null) {
-            "Image drawing is not set up yet. If the user wants a picture, call this tool anyway; " +
-                "the app will show the user a button to turn drawing on. Keep your reply short, " +
-                "do not explain settings paths, and wait for the user to enable drawing."
+            "Image drawing is not set up yet. If the user wants a picture, call this tool anyway: " +
+                "the app pauses the call and asks the user to turn drawing on. If they do, the image is drawn " +
+                "and returned to you as usual; if they decline, reply briefly without explaining settings."
         } else "Generate or edit images with $displayName. Write a detailed visual prompt. " +
             "To edit or combine images, pass their image ids in reference_images (at most 4). " +
             "The app already shows the generated images to the user in your reply; do not re-embed them with Markdown. " +
