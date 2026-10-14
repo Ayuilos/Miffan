@@ -231,6 +231,12 @@ internal fun ImageToolModelSheet(
                 close()
                 nav.navigate(Screen.SettingProvider)
             },
+            onTurnOff = if (selectedId != null) {
+                {
+                    onUpdate(settings.copy(imageToolModelId = null))
+                    close()
+                }
+            } else null,
         ) else Column(
             modifier = Modifier
                 .fillMaxHeight(0.85f)

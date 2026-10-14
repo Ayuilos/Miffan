@@ -84,6 +84,7 @@ internal fun EasyImageModelContent(
     onConnectOpenRouter: () -> Unit,
     onRetry: () -> Unit,
     onOpenProviders: () -> Unit,
+    onTurnOff: (() -> Unit)?,
 ) {
     if (subscription.isEmpty() && others.isEmpty() && !openRouterConnected) {
         NoDrawingService(connecting, connectError, onConnectOpenRouter, onOpenProviders)
@@ -251,11 +252,18 @@ internal fun EasyImageModelContent(
                 }
             }
         }
-        TextButton(
-            onClick = { details = !details },
+        Row(
             modifier = Modifier.align(Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(if (details) "隐藏模型细节" else "显示模型 ID 和计价细节")
+            TextButton(onClick = { details = !details }) {
+                Text(if (details) "隐藏模型细节" else "显示模型 ID 和计价细节")
+            }
+            onTurnOff?.let { turnOff ->
+                TextButton(onClick = turnOff) {
+                    Text("关闭画图", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }
