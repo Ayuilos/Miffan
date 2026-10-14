@@ -133,7 +133,7 @@ private sealed interface CatalogState {
 }
 
 @Composable
-private fun ImageToolModelSheet(
+internal fun ImageToolModelSheet(
     settings: Settings,
     onUpdate: (Settings) -> Unit,
     onDismiss: () -> Unit,
