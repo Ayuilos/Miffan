@@ -223,7 +223,7 @@ private fun OptionalRows(vm: ComputerSetupVM, state: ComputerSetupState, stream:
     val clipboardRow = probe.os == "linux" && !probe.usesRdp && probe.clipboard.isNullOrBlank()
     if (stream?.status?.installed == true && (probe.os == "linux" || probe.os == "macos")) {
         val on = stream.streamReady && stream.enabled == true
-        ChecklistRow(if (on) CheckState.DONE else CheckState.TODO,
+        ChecklistRow(if (on) CheckState.DONE else CheckState.OPTIONAL,
             stringResource(if (on) R.string.im_computer_check_hd_done else R.string.im_computer_check_hd),
             if (on) null else stringResource(R.string.im_computer_check_hd_help), divider = clipboardRow) {
             if (!on) SunshineControls(stream, macOS = probe.os == "macos", required = false, busy = state.busy || enablingStream,
@@ -232,7 +232,7 @@ private fun OptionalRows(vm: ComputerSetupVM, state: ComputerSetupState, stream:
     }
     if (clipboardRow) {
         val tool = when (probe.session.type) { "wayland" -> "wl-clipboard"; "x11" -> "xclip"; else -> null }
-        ChecklistRow(CheckState.TODO, stringResource(R.string.im_computer_check_chinese), stringResource(R.string.im_computer_check_chinese_help),
+        ChecklistRow(CheckState.OPTIONAL, stringResource(R.string.im_computer_check_chinese), stringResource(R.string.im_computer_check_chinese_help),
             divider = false) {
             if (tool != null) SetupDisclosure(stringResource(R.string.im_computer_how_to)) {
                 RemoteScreenCopyCommand("Arch Linux", "sudo pacman -S $tool")

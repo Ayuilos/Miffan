@@ -45,4 +45,10 @@ class ComputerAddressParsingTest {
         assertEquals(true, command.contains("grep -qxF 'ssh-ed25519 AAAA miffan' ~/.ssh/authorized_keys ||"))
         assertEquals(true, command.endsWith("&& whoami"))
     }
+
+    @Test
+    fun `full-width punctuation from Chinese keyboards becomes ASCII`() {
+        assertEquals("10.0.2.2", normalizeAddressInput("10。0。2。2"))
+        assertEquals("ekk@box:22", normalizeAddressInput("ekk＠box：２２"))
+    }
 }

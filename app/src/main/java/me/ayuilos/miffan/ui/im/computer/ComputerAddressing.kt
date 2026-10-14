@@ -71,3 +71,15 @@ internal fun defaultComputerName(address: String): String {
     val numeric = host.contains(':') || host.split('.').all { it.toIntOrNull() != null }
     return if (numeric) host else host.substringBefore('.')
 }
+
+/** What a Chinese or Japanese keyboard types for "." ":" "@" and spaces, turned back into ASCII for an address. */
+internal fun normalizeAddressInput(text: String): String = buildString(text.length) {
+    for (char in text) append(when (char) {
+        '。', '．', '｡' -> '.'
+        '：' -> ':'
+        '＠' -> '@'
+        '　' -> ' '
+        in '０'..'９' -> '0' + (char - '０')
+        else -> char
+    })
+}

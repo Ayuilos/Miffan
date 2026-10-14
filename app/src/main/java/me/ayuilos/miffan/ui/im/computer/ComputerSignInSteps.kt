@@ -109,7 +109,7 @@ internal fun ComputerKeyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
                 } ?: LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             SetupInstruction(3, stringResource(R.string.im_computer_key_step_account)) {
-                SetupGroup(Modifier.fillMaxWidth()) {
+                SetupGroup(Modifier.fillMaxWidth(), nested = true) {
                     SetupField(stringResource(R.string.im_computer_account), username, { username = it }, enabled = !state.busy,
                         placeholder = stringResource(R.string.im_computer_account_placeholder))
                 }
@@ -144,7 +144,7 @@ internal fun ComputerWindowsStep(vm: ComputerSetupVM, state: ComputerSetupState)
         state = state, onDismissError = vm::dismissError, centered = true,
         hero = { ComputerHero(WindowsLogo, state.target?.name) },
         primary = SetupAction(stringResource(R.string.im_computer_key_done), enabled = canSignIn) {
-            if (needsAddress) vm.setWindowsAddress(address.trim())
+            if (needsAddress) vm.setWindowsAddress(normalizeAddressInput(address).trim())
             vm.signInWithKey(username.trim())
         },
         secondary = SetupAction(stringResource(R.string.im_computer_find_another), onClick = vm::findAnother),
@@ -158,7 +158,7 @@ internal fun ComputerWindowsStep(vm: ComputerSetupVM, state: ComputerSetupState)
                 } ?: LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             SetupInstruction(3, stringResource(if (needsAddress) R.string.im_computer_windows_step_fill_both else R.string.im_computer_windows_step_fill)) {
-                SetupGroup(Modifier.fillMaxWidth()) {
+                SetupGroup(Modifier.fillMaxWidth(), nested = true) {
                     if (needsAddress) SetupField(stringResource(R.string.im_computer_address), address, { address = it }, enabled = !state.busy,
                         keyboardType = KeyboardType.Uri, divider = true)
                     SetupField(stringResource(R.string.im_computer_account), username, { username = it }, enabled = !state.busy)
@@ -228,8 +228,10 @@ internal fun ComputerManualStep(vm: ComputerSetupVM, state: ComputerSetupState, 
             prefilled = true
         }
     }
-    val parsed = parseSshTarget(address)
-    val finalAddress = parsed?.host ?: address.trim()
+    // Read through normalizeAddressInput, never rewritten while typing: that would break the IME's composition.
+    val typed = normalizeAddressInput(address)
+    val parsed = parseSshTarget(typed)
+    val finalAddress = parsed?.host ?: typed.trim()
     val finalUser = parsed?.username ?: username.trim()
     val finalPort = (parsed?.port?.toString() ?: port).toIntOrNull()
     val valid = finalAddress.isNotBlank() && finalPort in 1..65535 && (!editing || (prefilled && finalUser.isNotBlank()))

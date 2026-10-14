@@ -170,7 +170,12 @@ private fun RemoteScreenPlatform.label(): String? = when (this) {
     RemoteScreenPlatform.UNKNOWN -> null
 }
 
-private fun RemoteScreenPlatform.icon(): ImageVector = if (this == RemoteScreenPlatform.MACOS) HugeIcons.Apple else HugeIcons.Computer
+private fun RemoteScreenPlatform.icon(): ImageVector = when (this) {
+    RemoteScreenPlatform.MACOS -> AppleLogo
+    RemoteScreenPlatform.LINUX -> LinuxLogo
+    RemoteScreenPlatform.WINDOWS -> WindowsLogo
+    RemoteScreenPlatform.UNKNOWN -> HugeIcons.Computer
+}
 
 @Composable
 private fun ComputerBadge(platform: RemoteScreenPlatform, size: Dp) {

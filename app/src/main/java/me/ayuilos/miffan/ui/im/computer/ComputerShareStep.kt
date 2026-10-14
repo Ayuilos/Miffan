@@ -63,14 +63,17 @@ internal fun ComputerShareStep(vm: ComputerSetupVM, state: ComputerSetupState, f
         hero = {
             val workspaceId = state.workspaceId
             if (state.usesScreen && workspaceId != null) key(workspaceId) { LivePreview(workspaceId, state.busy, state.partnerChecked) }
-            else DeviceTile((state.target?.system ?: me.ayuilos.miffan.data.remote.NearbySystem.UNKNOWN).icon(), size = 72.dp)
+            else DeviceTile(state.system.icon(), size = 72.dp)
         },
         primary = SetupAction(when {
             picked.isEmpty() -> stringResource(R.string.im_computer_pick_someone)
             picked.size == 1 -> stringResource(R.string.im_computer_give_to, threadAssistantName(first))
             else -> stringResource(R.string.im_computer_bind_many_confirm, picked.size)
         }, enabled = picked.isNotEmpty()) { vm.bind(picked.map { it.id }.toSet()) },
-        secondary = SetupAction(stringResource(R.string.im_computer_bind_none)) { vm.bind(emptySet()) },
+        // A computer someone already uses is not "kept from partners": it is just done.
+        secondary = SetupAction(stringResource(if (bound.isEmpty()) R.string.im_computer_bind_none else R.string.im_computer_done)) {
+            vm.bind(emptySet())
+        },
     ) {
         PartnerGrid(assistants, bound, selected, enabled = !state.busy) { id ->
             selected = if (id in selected) selected - id else selected + id
@@ -170,7 +173,7 @@ internal fun ComputerDoneStep(
         state = state, onDismissError = vm::dismissError, centered = true,
         hero = {
             Row(Modifier.padding(top = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                DeviceTile((state.target?.system ?: me.ayuilos.miffan.data.remote.NearbySystem.UNKNOWN).icon(), size = 88.dp)
+                DeviceTile(state.system.icon(), size = 88.dp)
                 Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) {
                     HorizontalDivider(Modifier.fillMaxWidth(), thickness = 2.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
                     Box(Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {

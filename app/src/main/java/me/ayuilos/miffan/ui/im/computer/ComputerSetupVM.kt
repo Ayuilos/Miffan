@@ -138,6 +138,13 @@ data class ComputerSetupState(
     val unreachable: Boolean = false,
 ) {
     val busy: Boolean get() = task != null
+    /** The computer's system: what the check found, else what finding it suggested. */
+    val system: NearbySystem get() = when (probe?.os) {
+        "macos" -> NearbySystem.MAC
+        "windows" -> NearbySystem.WINDOWS
+        "linux" -> NearbySystem.LINUX
+        else -> target?.system ?: NearbySystem.UNKNOWN
+    }
     val isMac: Boolean get() = probe?.os?.let { it == "macos" } ?: (target?.system == NearbySystem.MAC)
     val isWindows: Boolean get() = probe?.os?.let { it == "windows" } ?: (target?.system == NearbySystem.WINDOWS)
 
@@ -737,10 +744,7 @@ class ComputerSetupVM(
         afterProbe()
     }
 
-    private fun RemoteHostEntity.target() = SetupTarget(name, host, port, when {
-        platform == RemotePlatform.WINDOWS.storageName -> NearbySystem.WINDOWS
-        else -> NearbySystem.UNKNOWN
-    })
+    private fun RemoteHostEntity.target() = SetupTarget(name, host, port, system())
 
     private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path
 
@@ -762,4 +766,12 @@ class ComputerSetupVM(
             }
         }
     }
+}
+
+/** A saved computer's system, from what its screen check or connection found. */
+internal fun RemoteHostEntity.system(): NearbySystem = when {
+    screenPlatform == "macos" -> NearbySystem.MAC
+    screenPlatform == "linux" -> NearbySystem.LINUX
+    screenPlatform == "windows" || platform == RemotePlatform.WINDOWS.storageName -> NearbySystem.WINDOWS
+    else -> NearbySystem.UNKNOWN
 }

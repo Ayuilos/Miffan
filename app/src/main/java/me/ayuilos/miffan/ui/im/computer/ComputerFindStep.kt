@@ -28,7 +28,6 @@ import me.ayuilos.miffan.ui.components.ui.permission.rememberPermissionState
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.InformationCircle
 import me.rerere.hugeicons.stroke.Wifi01
-import me.rerere.workspace.RemotePlatform
 import org.koin.compose.koinInject
 
 /**
@@ -85,7 +84,7 @@ internal fun ComputerFindStep(vm: ComputerSetupVM, state: ComputerSetupState, ho
             SectionLabel(stringResource(R.string.im_computer_saved_computers))
             hosts.forEach { host ->
                 ComputerCard(host.name, stringResource(R.string.im_computer_saved_subtitle),
-                    (if (host.platform == RemotePlatform.WINDOWS.storageName) NearbySystem.WINDOWS else NearbySystem.UNKNOWN).icon(),
+                    host.system().icon(),
                     enabled = !state.busy) { vm.chooseHost(host.id, fromList = true) }
             }
             Spacer(Modifier.height(4.dp))

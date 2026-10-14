@@ -26,6 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalResources
@@ -201,8 +204,14 @@ internal fun SearchingPulse() {
 
 /** A white group of rows, like a settings list. */
 @Composable
-internal fun SetupGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Surface(modifier, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(20.dp)) {
+internal fun SetupGroup(
+    modifier: Modifier = Modifier,
+    /** Inside a card the group sits one step darker, so it still reads as fields. */
+    nested: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(modifier, color = if (nested) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(if (nested) 14.dp else 20.dp)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).animateContentSize(), content = content)
     }
 }
@@ -220,14 +229,19 @@ internal fun SetupField(
     divider: Boolean = false,
 ) {
     var visible by rememberSaveable { mutableStateOf(false) }
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
     Column {
-        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically,
+        // The whole row is the field: tapping the label starts typing too.
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
+            .clickable(enabled = enabled, interactionSource = null, indication = null) { focus.requestFocus(); keyboard?.show() },
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(label, Modifier.widthIn(min = 64.dp), style = MaterialTheme.typography.bodyLarge)
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty() && placeholder != null) Text(placeholder, style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                BasicTextField(value, onValueChange, Modifier.fillMaxWidth().semantics { contentDescription = label }, enabled = enabled,
+                BasicTextField(value, onValueChange, Modifier.fillMaxWidth().focusRequester(focus).semantics { contentDescription = label }, enabled = enabled,
                     singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     visualTransformation = if (password && !visible) PasswordVisualTransformation() else VisualTransformation.None,
@@ -277,7 +291,11 @@ internal fun CommandPreview(command: String) {
     }
 }
 
-internal enum class CheckState { DONE, TODO, WAITING, LATER }
+internal enum class CheckState {
+    DONE, TODO, WAITING, LATER,
+    /** Nice to have: a faint ring, but its action stays usable. */
+    OPTIONAL,
+}
 
 /**
  * One item of the get-ready list: a tick when done, a ring while it needs the user, a spinner while
@@ -298,7 +316,7 @@ internal fun ChecklistRow(state: CheckState, title: String, detail: String? = nu
                     }
                     CheckState.WAITING -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     else -> Box(Modifier.size(22.dp).border(2.dp,
-                        if (faint) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary, CircleShape))
+                        if (faint || state == CheckState.OPTIONAL) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary, CircleShape))
                 }
             }
             Column(Modifier.weight(1f).alpha(if (faint) 0.6f else 1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
