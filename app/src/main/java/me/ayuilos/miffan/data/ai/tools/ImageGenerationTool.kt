@@ -17,10 +17,12 @@ import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.*
+import me.rerere.ai.provider.providers.openai.usesOpenRouterImagesApi
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.http.await
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import java.security.MessageDigest
 import java.io.File
@@ -76,12 +78,15 @@ internal fun availableImageReferences(messages: List<UIMessage>): Map<String, UI
 internal fun resolveImageReferences(ids: List<String>, messages: List<UIMessage>): List<UIMessagePart.Image> {
     require(ids.size <= 4) { "reference_images accepts at most 4 image ids" }
     val available = availableImageReferences(messages)
-    val unknown = ids.filter { it !in available }
+    val unknown = ids.filter { it !in available && !isHttpImageUrl(it) }
     require(unknown.isEmpty()) {
         "Unknown image ids: ${unknown.joinToString()}. Available image ids: ${available.keys.joinToString().ifEmpty { "none" }}"
     }
-    return ids.map { available.getValue(it) }
+    return ids.map { available[it] ?: UIMessagePart.Image(it) }
 }
+
+private fun isHttpImageUrl(value: String): Boolean =
+    (value.startsWith("http://") || value.startsWith("https://")) && value.toHttpUrlOrNull() != null
 
 fun createImageGenerationTool(
     settings: () -> Settings,
@@ -105,6 +110,7 @@ fun createImageGenerationTool(
             response.body.bytes()
         }
     },
+    downloadReferenceImage = { ReferenceImageDownloader(httpClient).download(it) },
 )
 
 internal fun generatedImageMimeType(bytes: ByteArray): String = when {
@@ -122,6 +128,7 @@ internal fun createImageGenerationTool(
     provider: (ProviderSetting) -> Provider<ProviderSetting>,
     saveImage: suspend (ByteArray) -> String,
     downloadImage: suspend (String) -> ByteArray,
+    downloadReferenceImage: suspend (String) -> ByteArray,
 ): Tool {
     val displayName = settings().imageToolModelOrNull()?.let { it.displayName.ifBlank { it.modelId } }
     return Tool(
@@ -133,7 +140,7 @@ internal fun createImageGenerationTool(
                 "the app pauses the call and asks the user to turn drawing on. If they do, the image is drawn " +
                 "and returned to you as usual; if they decline, reply briefly without explaining settings."
         } else "Generate or edit images with $displayName. Write a detailed visual prompt. " +
-            "To edit or combine images, pass their image ids in reference_images (at most 4). " +
+            "To edit or combine images, pass image ids from this chat, or https image URLs, in reference_images (at most 4). " +
             "The app already shows the generated images to the user in your reply; do not re-embed them with Markdown. " +
             "Briefly tell the user what was made.",
         parameters = {
@@ -142,6 +149,7 @@ internal fun createImageGenerationTool(
                     put("prompt", buildJsonObject { put("type", "string") })
                     put("reference_images", buildJsonObject {
                         put("type", "array")
+                        put("description", "Image ids from this chat, or http(s) image URLs (at most 4).")
                         put("items", buildJsonObject { put("type", "string") })
                         put("maxItems", 4)
                     })
@@ -163,7 +171,8 @@ internal fun createImageGenerationTool(
                         ?: error("Image generation isn't configured: the image model's provider is missing.")
                     val builtInImageTool = BuiltInTools.ImageGeneration in model.tools ||
                         current.subscriptionImageProvider(model) != null
-                    val providerSetting = if (builtInImageTool && model.type != ModelType.IMAGE && resolvedProvider is ProviderSetting.OpenAI) {
+                    val useImagesApi = model.type == ModelType.IMAGE || model.usesOpenRouterImagesApi(resolvedProvider)
+                    val providerSetting = if (builtInImageTool && !useImagesApi && resolvedProvider is ProviderSetting.OpenAI) {
                         resolvedProvider.copy(useResponseApi = true)
                     } else resolvedProvider
                     val input = args.jsonObject
@@ -175,12 +184,16 @@ internal fun createImageGenerationTool(
                                 ?: error("reference_images must contain image id strings")
                         }
                     }.orEmpty()
-                    val references = resolveImageReferences(ids, messages())
-                    require(references.isEmpty() || model.type == ModelType.IMAGE || builtInImageTool || Modality.IMAGE in model.inputModalities) {
+                    val references = resolveImageReferences(ids, messages()).mapIndexed { index, reference ->
+                        if (isHttpImageUrl(reference.url)) localizeImage(reference, saveImage,
+                            if (isHttpImageUrl(ids[index])) downloadReferenceImage else downloadImage, fallbackToUrl = false)
+                        else reference
+                    }
+                    require(references.isEmpty() || useImagesApi || builtInImageTool || Modality.IMAGE in model.inputModalities) {
                         "The configured image model does not accept reference images. Select a model with image input support."
                     }
                     val implementation = provider(providerSetting)
-                    val response = if (model.type == ModelType.IMAGE) {
+                    val response = if (useImagesApi) {
                         val flow = if (references.isEmpty()) {
                             implementation.generateImage(providerSetting, ImageGenerationParams(
                                 model = model,

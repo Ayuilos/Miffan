@@ -71,6 +71,21 @@ class OpenRouterImageModelsTest {
         assertTrue(updated.imageToolModelOrNull()!!.canOutputImage())
     }
 
+    @Test fun imageOnlyModelsUseImagesTypeAndRepairExistingChatEntryWithoutChangingUuid() {
+        val discovered = parseOpenRouterImageModels(sample).first()
+        val connected = Settings().withOpenRouterConnection("test-key")
+        val (added, uuid) = requireNotNull(connected.withOpenRouterImageModel(discovered))
+        assertEquals(ModelType.IMAGE, added.imageToolModelOrNull()!!.type)
+        assertEquals(listOf(Modality.IMAGE), added.imageToolModelOrNull()!!.outputModalities)
+        val legacy = added.copy(providers = added.providers.map { provider ->
+            provider.copyProvider(models = provider.models.map { if (it.id == uuid) it.copy(type = ModelType.CHAT) else it })
+        })
+        val (repaired, reusedUuid) = requireNotNull(legacy.withOpenRouterImageModel(discovered))
+        assertEquals(uuid, reusedUuid)
+        assertEquals(ModelType.IMAGE, repaired.imageToolModelOrNull()!!.type)
+        assertEquals(discovered.inputModalities, repaired.imageToolModelOrNull()!!.inputModalities)
+    }
+
     @Test fun requiresConnectedOpenRouterProvider() {
         val model = parseOpenRouterImageModels(sample).first()
         assertNull(Settings(providers = emptyList()).withOpenRouterImageModel(model))

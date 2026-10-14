@@ -218,6 +218,21 @@ class OpenAIProvider(
             "Expected OpenAI provider setting"
         }
 
+        if (providerSetting.isOpenRouter()) {
+            val builder = openRouterImagesRequestBuilder(providerSetting, params.model, params.prompt,
+                params.numOfImages, params.size, customHeaders = params.customHeaders, customBody = params.customBody)
+                .configureReferHeaders(providerSetting.baseUrl)
+            val request = authenticator.authenticate(builder, providerSetting).build()
+            val items = withContext(Dispatchers.IO) {
+                client.newCall(request).await().use { response ->
+                    check(response.isSuccessful) { "Failed to generate image: ${response.code} ${response.body.string()}" }
+                    parseImageResponse(response.body.string())
+                }
+            }
+            items.forEach { emit(it) }
+            return@flow
+        }
+
         val requestBody = json.encodeToString(
             buildJsonObject {
                 put("model", params.model.modelId)
@@ -264,6 +279,22 @@ class OpenAIProvider(
         }
         require(params.images.isNotEmpty()) {
             "At least one image is required"
+        }
+
+        if (providerSetting.isOpenRouter()) {
+            val items = withContext(Dispatchers.IO) {
+                val builder = openRouterImagesRequestBuilder(providerSetting, params.model, params.prompt,
+                    params.numOfImages, params.size, images = params.images,
+                    customHeaders = params.customHeaders, customBody = params.customBody)
+                    .configureReferHeaders(providerSetting.baseUrl)
+                val request = authenticator.authenticate(builder, providerSetting).build()
+                client.newCall(request).await().use { response ->
+                    check(response.isSuccessful) { "Failed to edit image: ${response.code} ${response.body.string()}" }
+                    parseImageResponse(response.body.string())
+                }
+            }
+            items.forEach { emit(it) }
+            return@flow
         }
 
         val bodyBuilder = MultipartBody.Builder()
@@ -323,16 +354,7 @@ class OpenAIProvider(
         val data = body["data"]?.jsonArray ?: error("No data in image response")
         return data.map { element ->
             val obj = element.jsonObject
-            val b64Json = obj["b64_json"]?.jsonPrimitive?.contentOrNull
-            if (b64Json != null) {
-                val outputFormat = obj["output_format"]?.jsonPrimitive?.contentOrNull ?: defaultFormat
-                ImageGenerationItem(
-                    data = b64Json,
-                    mimeType = obj["mime_type"]?.jsonPrimitive?.contentOrNull
-                        ?.takeIf { it.startsWith("image/") }
-                        ?: outputFormat.toImageMimeType(),
-                )
-            } else {
+            obj.base64ImageOrNull(defaultFormat) ?: run {
                 val url = obj["url"]?.jsonPrimitive?.contentOrNull
                     ?: error("No b64_json or url in image response")
                 downloadImageAsBase64(url)
@@ -363,12 +385,6 @@ class OpenAIProvider(
     }
 
     private fun File.imageMediaType(): String = when (extension.lowercase()) {
-        "jpg", "jpeg" -> "image/jpeg"
-        "webp" -> "image/webp"
-        else -> "image/png"
-    }
-
-    private fun String.toImageMimeType(): String = when (lowercase()) {
         "jpg", "jpeg" -> "image/jpeg"
         "webp" -> "image/webp"
         else -> "image/png"

@@ -102,7 +102,7 @@ fun Settings.withOpenRouterImageModel(model: OpenRouterImageModel): Pair<Setting
     val existing = provider.models.firstOrNull { it.modelId == model.id }
     val stored = ModelRegistry.resolveCapabilities(
         (existing ?: Model(modelId = model.id, displayName = model.name)).copy(
-            type = ModelType.CHAT,
+            type = if (Modality.TEXT in model.outputModalities) ModelType.CHAT else ModelType.IMAGE,
             discoveredCapabilities = DiscoveredModelCapabilities(
                 inputModalities = model.inputModalities,
                 outputModalities = model.outputModalities,

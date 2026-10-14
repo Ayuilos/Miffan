@@ -429,12 +429,22 @@ internal fun ImageModelRow(
     }
 }
 
-/** "免费" or the output price per million tokens, e.g. "$30/M 输出". */
+/**
+ * Free only when OpenRouter lists prices and every one is zero: image-only models keep prompt and completion at 0
+ * and bill through image_output / image_token, so those two alone say nothing.
+ */
+internal fun OpenRouterImageModel.isFree(): Boolean {
+    val prices = pricing.values.map { it.toBigDecimalOrNull() }
+    return prices.isNotEmpty() && prices.all { it != null && it.signum() == 0 }
+}
+
+/** "免费", "价格不固定" for routers (negative prices), else the image output price, e.g. "$30/M 图像输出". */
 internal fun OpenRouterImageModel.priceLabel(): String? {
-    val prompt = pricing["prompt"]?.toBigDecimalOrNull()
-    val completion = pricing["completion"]?.toBigDecimalOrNull() ?: return null
-    if (completion.signum() == 0 && (prompt == null || prompt.signum() == 0)) return "免费"
-    if (completion.signum() < 0) return null
-    val perMillion = completion.multiply(BigDecimal(1_000_000)).setScale(2, RoundingMode.HALF_UP).stripTrailingZeros()
-    return "$${perMillion.toPlainString()}/M 输出"
+    if (isFree()) return "免费"
+    if (pricing.values.any { (it.toBigDecimalOrNull()?.signum() ?: 0) < 0 }) return "价格不固定"
+    val (key, perToken) = listOf("image_output", "image_token", "completion").firstNotNullOfOrNull { key ->
+        pricing[key]?.toBigDecimalOrNull()?.takeIf { it.signum() > 0 }?.let { key to it }
+    } ?: return "按用量计费"
+    val perMillion = perToken.multiply(BigDecimal(1_000_000)).setScale(2, RoundingMode.HALF_UP).stripTrailingZeros()
+    return "$${perMillion.toPlainString()}/M ${if (key == "completion") "输出" else "图像输出"}"
 }

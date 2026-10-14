@@ -35,7 +35,7 @@ class ImageGenerationToolTest {
         download: suspend (String) -> ByteArray = { error("Download unavailable") },
     ) = createImageGenerationTool(current, messages, { fake }, { bytes ->
         temporary.newFile("${java.util.UUID.randomUUID()}.png").apply { writeBytes(bytes) }.toURI().toString()
-    }, download)
+    }, download, download)
 
     @Test fun eligibilityIncludesEveryImageGenerationKind() {
         assertFalse(Model().canOutputImage())
@@ -94,6 +94,95 @@ class ImageGenerationToolTest {
         assertEquals("Draw a red bowl", fake.imageParams!!.prompt)
         assertNull(fake.params)
         assertNull(fake.editParams)
+    }
+
+    @Test fun legacyOpenRouterImageOnlyChatModelsUseImagesApiWhileGeminiStaysOnChat() = runTest {
+        val flux = model.copy(modelId = "black-forest-labs/flux-3-image", outputModalities = listOf(Modality.IMAGE))
+        val gemini = model.copy(modelId = "google/gemini-2.5-flash-image")
+        for (selected in listOf(flux, gemini)) {
+            val provider = ProviderSetting.OpenAI(baseUrl = "https://openrouter.ai/api/v1", models = listOf(selected))
+            val current = Settings(providers = listOf(provider), imageToolModelId = selected.id)
+            val fake = FakeProvider(UIMessage.assistant("").copy(parts = listOf(UIMessagePart.Image(dataUrl))))
+                .apply { imageItems = listOf(ImageGenerationItem(Base64.getEncoder().encodeToString(png), "image/png")) }
+            val output = tool(fake, { current }).execute(args())
+            assertTrue(output[1] is UIMessagePart.Image)
+            assertEquals(ModelType.CHAT, selected.type)
+            if (selected == flux) {
+                assertNotNull(fake.imageParams)
+                assertNull(fake.params)
+            } else {
+                assertNotNull(fake.params)
+                assertNull(fake.imageParams)
+            }
+        }
+    }
+
+    @Test fun openRouterRoutingUsesEffectiveProviderOverwrite() = runTest {
+        val flux = model.copy(outputModalities = listOf(Modality.IMAGE),
+            providerOverwrite = ProviderSetting.OpenAI(baseUrl = "https://openrouter.ai/api/v1"))
+        val fake = FakeProvider().apply { imageItems = listOf(ImageGenerationItem(Base64.getEncoder().encodeToString(png), "image/png")) }
+        val output = tool(fake, { settings(flux) }).execute(args())
+        assertTrue(output[1] is UIMessagePart.Image)
+        assertNotNull(fake.imageParams)
+        assertNull(fake.params)
+    }
+
+    @Test fun referenceUrlsAreAcceptedAndDownloadedBeforeCallingEitherProviderApi() = runTest {
+        val url = "https://images.example/reference.png"
+        assertEquals(listOf(UIMessagePart.Image(url)), resolveImageReferences(listOf(url), emptyList()))
+        assertThrows(IllegalArgumentException::class.java) { resolveImageReferences(listOf("data:image/png;base64,AQID"), emptyList()) }
+        assertThrows(IllegalArgumentException::class.java) { resolveImageReferences(List(5) { url }, emptyList()) }
+        for (imageApi in listOf(false, true)) {
+            val selected = if (imageApi) model.copy(type = ModelType.IMAGE) else model
+            val fake = FakeProvider(UIMessage.assistant("").copy(parts = listOf(UIMessagePart.Image(dataUrl))))
+                .apply { imageItems = listOf(ImageGenerationItem(Base64.getEncoder().encodeToString(png), "image/png")) }
+            var downloaded = false
+            val output = tool(fake, { settings(selected) }, download = {
+                assertEquals(url, it)
+                downloaded = true
+                png
+            }).execute(args(url))
+            assertTrue(output[1] is UIMessagePart.Image)
+            assertTrue(downloaded)
+            val referenceFile = if (imageApi) java.io.File(fake.editParams!!.images.single()) else {
+                val image = fake.messages.single().parts.filterIsInstance<UIMessagePart.Image>().single()
+                assertTrue(image.url.startsWith("file:"))
+                java.io.File(java.net.URI(image.url))
+            }
+            assertArrayEquals(png, referenceFile.readBytes())
+        }
+    }
+
+    @Test fun explicitReferenceUrlsUseTheGuardAndReturnReadableErrorsBeforeProviderExecution() = runTest {
+        val fake = FakeProvider()
+        var ordinaryDownloads = 0
+        val client = okhttp3.OkHttpClient.Builder().dns(okhttp3.Dns {
+            listOf(java.net.InetAddress.getByName("8.8.8.8"))
+        }).build()
+        val guarded = createImageGenerationTool({ settings() }, { emptyList() }, { fake },
+            saveImage = { error("Rejected reference must not be saved") },
+            downloadImage = { ordinaryDownloads++; png },
+            downloadReferenceImage = { ReferenceImageDownloader(client).download(it) })
+        val output = guarded.execute(args("http://127.0.0.1/private.png"))
+        val error = Json.parseToJsonElement((output.single() as UIMessagePart.Text).text).jsonObject
+        assertTrue(error["error"]!!.jsonPrimitive.content.startsWith(REFERENCE_IMAGE_URL_ERROR))
+        assertEquals(0, ordinaryDownloads)
+        assertNull(fake.params)
+    }
+
+    @Test fun chatImageIdsAndProviderReturnedUrlsRetainTheirOrdinaryDownloader() = runTest {
+        val url = "http://127.0.0.1/provider-image.png"
+        val image = UIMessagePart.Image(url)
+        val fake = FakeProvider(UIMessage.assistant("").copy(parts = listOf(image)))
+        var ordinaryDownloads = 0
+        val unguardedProviderImages = createImageGenerationTool({ settings() },
+            { listOf(UIMessage.assistant("").copy(parts = listOf(image))) }, { fake },
+            saveImage = { bytes -> temporary.newFile().apply { writeBytes(bytes) }.toURI().toString() },
+            downloadImage = { assertEquals(url, it); ordinaryDownloads++; png },
+            downloadReferenceImage = { error("Only explicit reference URLs use the new guard") })
+        val output = unguardedProviderImages.execute(args(imageIdForUrl(url)))
+        assertTrue(output[1] is UIMessagePart.Image)
+        assertEquals(2, ordinaryDownloads)
     }
 
     @Test fun imagesApiEditsWithDecodedLocalFilePaths() = runTest {

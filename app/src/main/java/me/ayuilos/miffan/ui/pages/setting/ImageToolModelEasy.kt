@@ -54,8 +54,6 @@ private sealed interface Recommendation {
     data class Catalog(val model: OpenRouterImageModel) : Recommendation
 }
 
-private fun OpenRouterImageModel.isFree(): Boolean = priceLabel() == "免费"
-
 private fun OpenRouterImageModel.editLabel(): String =
     if (Modality.IMAGE in inputModalities) "可改图" else "只画新图"
 

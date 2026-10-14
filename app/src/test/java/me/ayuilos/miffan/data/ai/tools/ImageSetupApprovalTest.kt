@@ -48,6 +48,7 @@ class ImageSetupApprovalTest {
         settings = { current }, messages = { emptyList() }, provider = { imageProvider },
         saveImage = { bytes -> temporary.newFile().apply { writeBytes(bytes) }.toURI().toString() },
         downloadImage = { error("Unexpected download") },
+        downloadReferenceImage = { error("Unexpected reference download") },
     )
 
     private fun handler(): GenerationHandler {

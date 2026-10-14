@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import me.rerere.ai.provider.ImageEditParams
 import me.rerere.ai.provider.ImageGenerationParams
 import me.rerere.ai.provider.Model
@@ -92,5 +93,36 @@ class OpenAIImagesApiCompatibilityTest {
                 assertArrayEquals(bytes, Buffer().also { part.body.writeTo(it) }.readByteArray())
             }
         }
+    }
+
+    @Test fun openRouterGenerationAndEditsUseAuthenticatedJsonImagesEndpointAndMediaType() = runTest {
+        val requests = mutableListOf<Request>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            requests.add(chain.request())
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("""{"data":[{"b64_json":"AQIDBA==","media_type":"image/webp"}]}"""
+                    .toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val provider = OpenAIProvider(client)
+        val setting = setting.copy(baseUrl = "https://openrouter.ai/api/v1", apiKey = "test-key")
+        val model = model.copy(modelId = "black-forest-labs/flux-3-image")
+        val generated = provider.generateImage(setting, ImageGenerationParams(model, "Draw a bowl")).toList()
+        assertEquals("image/webp", generated.single().mimeType)
+        assertArrayEquals(bytes, Base64.getDecoder().decode(generated.single().data))
+        val file = temporary.newFile("reference.png").apply { writeBytes(bytes) }
+        val url = "https://images.example/reference.png"
+        val edited = provider.editImage(setting, ImageEditParams(model, "Edit the bowl", listOf(file.absolutePath, url))).toList()
+        assertEquals("image/webp", edited.single().mimeType)
+        assertEquals(2, requests.size)
+        requests.forEach { request ->
+            assertEquals("https://openrouter.ai/api/v1/images", request.url.toString())
+            assertEquals("POST", request.method)
+            assertEquals("Bearer test-key", request.header("Authorization"))
+            assertEquals("application/json", request.header("Content-Type"))
+            assertFalse(request.body is MultipartBody)
+        }
+        val editBody = Json.parseToJsonElement(Buffer().also { requests.last().body!!.writeTo(it) }.readUtf8()).jsonObject
+        val references = editBody["input_references"]!!.jsonArray.map { it.jsonObject["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content }
+        assertEquals(listOf("data:image/png;base64,AQIDBA==", url), references)
     }
 }
