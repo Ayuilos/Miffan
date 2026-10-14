@@ -27,6 +27,8 @@ import javax.net.SocketFactory
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
+import java.util.Timer
+import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
@@ -138,6 +140,43 @@ class RemoteWorkspaceDirectoryException(cause: Throwable) :
  * untrusted until the user compares it with a separately obtained server fingerprint.
  */
 object NativeSshWorkspaceTransport {
+    /** One key-only handshake, with ephemeral host-key acceptance and no SFTP or trust writes. */
+    fun checkKeySignIn(
+        host: String, port: Int, username: String, authentication: RemoteAuthentication.PrivateKey,
+        timeoutMillis: Int = 6_000,
+    ): KeySignInCheck {
+        require(host.isNotBlank() && port in 1..65535 && username.isNotBlank() && timeoutMillis > 0)
+        val jsch = JSch().apply {
+            hostKeyRepository = FingerprintHostKeyRepository(null, acceptUntrusted = true)
+            if (authentication.filePath != null) addIdentity(authentication.filePath)
+            else addIdentity("miffan-key-probe", authentication.pem.toByteArray(StandardCharsets.UTF_8),
+                null, authentication.passphrase?.toByteArray(StandardCharsets.UTF_8))
+        }
+        val session = jsch.getSession(username, host, port)
+        session.setConfig("StrictHostKeyChecking", "yes")
+        session.setConfig("PreferredAuthentications", "publickey")
+        session.timeout = timeoutMillis
+        val expired = AtomicBoolean(false)
+        val deadline = Timer("miffan-key-probe", true)
+        deadline.schedule(object : TimerTask() {
+            override fun run() { expired.set(true); session.disconnect() }
+        }, timeoutMillis.toLong())
+        return try {
+            session.connect(timeoutMillis)
+            if (expired.get()) KeySignInCheck.UNREACHABLE else KeySignInCheck.ACCEPTED
+        } catch (error: JSchException) {
+            when {
+                expired.get() -> KeySignInCheck.UNREACHABLE
+                isRemoteKeyAuthenticationRefused(error) -> KeySignInCheck.REFUSED
+                shouldTryNextRemoteAddress(error) -> KeySignInCheck.UNREACHABLE
+                else -> throw error
+            }
+        } finally {
+            deadline.cancel()
+            session.disconnect()
+        }
+    }
+
     fun discoverHostKey(
         host: String, port: Int = 22, timeoutMillis: Int = 10_000,
         socketFactory: SocketFactory? = null,
@@ -824,7 +863,7 @@ private fun closeSshChannelOnIo(channel: Channel, input: InputStream, output: Ou
     }
 }
 
-private class FingerprintHostKeyRepository(private val trusted: String?) : HostKeyRepository {
+private class FingerprintHostKeyRepository(private val trusted: String?, private val acceptUntrusted: Boolean = false) : HostKeyRepository {
     var seenKey: RemoteHostKey? = null
         private set
 
@@ -833,7 +872,7 @@ private class FingerprintHostKeyRepository(private val trusted: String?) : HostK
             .encodeToString(MessageDigest.getInstance("SHA-256").digest(key))
         val algorithm = try { HostKey(host, key).type } catch (_: JSchException) { "unknown" }
         seenKey = RemoteHostKey(algorithm, fingerprint)
-        return if (trusted == fingerprint) HostKeyRepository.OK else HostKeyRepository.NOT_INCLUDED
+        return if (acceptUntrusted || trusted == fingerprint) HostKeyRepository.OK else HostKeyRepository.NOT_INCLUDED
     }
 
     override fun add(hostkey: HostKey, ui: UserInfo?) = Unit

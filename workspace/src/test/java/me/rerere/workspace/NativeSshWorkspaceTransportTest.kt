@@ -410,6 +410,47 @@ class NativeSshWorkspaceTransportTest {
         }
     }
 
+
+    @Test fun keyProbeAcceptsUntrustedHostKeyAndRefusesOtherKeysWithoutPasswordFallback() {
+        val accepted = SshKeyCodec.generate()
+        val passwordAttempts = AtomicInteger()
+        restartOffering(org.apache.sshd.server.auth.pubkey.UserAuthPublicKeyFactory.INSTANCE,
+            org.apache.sshd.server.auth.password.UserAuthPasswordFactory.INSTANCE,
+            org.apache.sshd.server.auth.keyboard.UserAuthKeyboardInteractiveFactory.INSTANCE) {
+            publickeyAuthenticator = org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator { username, key, _ ->
+                username == "test" && PublicKeyEntry.toString(key) == accepted.publicKey.substringBeforeLast(' ')
+            }
+            passwordAuthenticator = org.apache.sshd.server.auth.password.PasswordAuthenticator { _, _, _ ->
+                passwordAttempts.incrementAndGet(); true
+            }
+        }
+        // A probe doesn't require SFTP or a usable workspace directory.
+        server.subsystemFactories = emptyList()
+        assertEquals(KeySignInCheck.ACCEPTED, NativeSshWorkspaceTransport.checkKeySignIn(
+            "127.0.0.1", server.port, "test", RemoteAuthentication.PrivateKey(accepted.privateKeyPem), 2_000))
+        assertEquals(KeySignInCheck.REFUSED, NativeSshWorkspaceTransport.checkKeySignIn(
+            "127.0.0.1", server.port, "test", RemoteAuthentication.PrivateKey(SshKeyCodec.generate().privateKeyPem), 2_000))
+        assertEquals(0, passwordAttempts.get())
+        // The probe's ephemeral acceptance cannot change the normal connection's pin checking.
+        assertThrows(RemoteConnectException::class.java) {
+            NativeSshWorkspaceTransport.open(config("SHA256:" + "A".repeat(43)).copy(
+                authentication = RemoteAuthentication.PrivateKey(accepted.privateKeyPem)))
+        }
+    }
+
+    @Test fun keyProbeMapsUnreachableAndTimesOutAStalledHandshake() {
+        val authentication = RemoteAuthentication.PrivateKey(SshKeyCodec.generate().privateKeyPem)
+        val closedPort = ServerSocket(0).use { it.localPort }
+        assertEquals(KeySignInCheck.UNREACHABLE, NativeSshWorkspaceTransport.checkKeySignIn(
+            "127.0.0.1", closedPort, "test", authentication, 300))
+        ServerSocket(0).use { listener ->
+            val started = System.nanoTime()
+            assertEquals(KeySignInCheck.UNREACHABLE, NativeSshWorkspaceTransport.checkKeySignIn(
+                "127.0.0.1", listener.localPort, "test", authentication, 300))
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 2_000)
+        }
+    }
+
     @Test fun generatedPublicKeyAuthenticatesToKeyOnlyServer() {
         val accepted = SshKeyCodec.generate()
         server.passwordAuthenticator = { _, _, _ -> false }

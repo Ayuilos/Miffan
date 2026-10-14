@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.data.ai.computer
 
+import com.jcraft.jsch.JSchChangedHostKeyException
+import java.net.ConnectException
+import me.ayuilos.miffan.data.db.entity.SshKeyEntity
+import me.rerere.workspace.RemotePlatform
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.coVerifyOrder
@@ -261,4 +265,99 @@ class PartnerComputersTest {
         coVerify(exactly = 0) { f.repository.delete(any()) }
         coVerify(exactly = 0) { f.repository.remoteHome(any()) }
     }
+    private fun Fixture.prepareForget(): String {
+        val keyed = host().copy(sshKeyId = "key", authType = "MANAGED_KEY")
+        hosts.value = listOf(keyed)
+        workspaceList.value = listOf(workspace(1))
+        coEvery { repository.getSshKeyById("key") } returns SshKeyEntity(
+            "key", "Miffan", "ssh-ed25519", "ssh-ed25519 AAAA miffan", "fp", 1, 1,
+        )
+        coEvery { repository.delete(any()) } returns true
+        coEvery { repository.deleteHost(any()) } returns true
+        return revokeMiffanKeyCommand("ssh-ed25519 AAAA miffan", RemotePlatform.POSIX)
+    }
+
+    @Test fun `forget revokes before deleting workspace and host`() = runTest {
+        val f = Fixture()
+        val command = f.prepareForget()
+        coEvery { f.repository.revokeComputerAccess("host", command, "legacy") } returns true
+        assertEquals(ForgetOutcome.FORGOTTEN, f.computers.delete("host", true))
+        coVerifyOrder {
+            f.repository.revokeComputerAccess("host", command, "legacy")
+            f.repository.delete(workspace(1).id)
+            f.repository.deleteHost("host")
+        }
+    }
+
+    @Test fun `refused key is already gone and allows local deletion`() = runTest {
+        val f = Fixture()
+        val command = f.prepareForget()
+        coEvery { f.repository.revokeComputerAccess("host", command, "legacy") } returns false
+        assertEquals(ForgetOutcome.ALREADY_GONE, f.computers.delete("host", true))
+        coVerify(exactly = 1) { f.repository.deleteHost("host") }
+    }
+
+    @Test fun `unreachable computer retains workspace host and settings and supplies exact command`() = runTest {
+        val f = Fixture()
+        val command = f.prepareForget()
+        coEvery { f.repository.revokeComputerAccess("host", command, "legacy") } throws ConnectException("Connection refused")
+        val error = runCatching { f.computers.delete("host", true) }.exceptionOrNull()
+        assertTrue(error is ComputerUnreachableException)
+        assertEquals(command, (error as ComputerUnreachableException).manualCommand)
+        coVerify(exactly = 0) { f.repository.delete(any()) }
+        coVerify(exactly = 0) { f.repository.deleteHost(any()) }
+        coVerify(exactly = 0) { f.store.update(any<(Settings) -> Settings>()) }
+        assertEquals(ForgetOutcome.NOT_NEEDED, f.computers.delete("host", false))
+        coVerify(exactly = 1) { f.repository.revokeComputerAccess(any(), any(), any()) }
+        coVerify(exactly = 1) { f.repository.deleteHost("host") }
+    }
+
+    @Test fun `identity mismatch and cleanup failure propagate and retain records`() = runTest {
+        for (failure in listOf(JSchChangedHostKeyException::class.java.getDeclaredConstructor(String::class.java).apply { isAccessible = true }.newInstance("changed"), IllegalStateException("Cannot edit authorized keys"))) {
+            val f = Fixture()
+            val command = f.prepareForget()
+            coEvery { f.repository.revokeComputerAccess("host", command, "legacy") } throws failure
+            assertTrue(failure === runCatching { f.computers.delete("host", true) }.exceptionOrNull())
+            coVerify(exactly = 0) { f.repository.delete(any()) }
+            coVerify(exactly = 0) { f.repository.deleteHost(any()) }
+        }
+    }
+
+    @Test fun `shared computer account and key skip cleanup`() = runTest {
+        val f = Fixture()
+        f.prepareForget()
+        f.hosts.value += f.hosts.value.single().copy(id = "other", host = "alternate.address")
+        assertTrue(f.computers.sharesComputerAccess("host"))
+        assertEquals(ForgetOutcome.SHARED, f.computers.delete("host", true))
+        coVerify(exactly = 0) { f.repository.getSshKeyById(any()) }
+        coVerify(exactly = 0) { f.repository.revokeComputerAccess(any(), any(), any()) }
+        coVerify(exactly = 1) { f.repository.deleteHost("host") }
+    }
+
+    @Test fun `sharing requires nonnull pin and same account and key`() = runTest {
+        val f = Fixture()
+        f.prepareForget()
+        val original = f.hosts.value.single()
+        for (other in listOf(original.copy(id = "other", username = "someone"),
+            original.copy(id = "other", sshKeyId = "other-key"),
+            original.copy(id = "other", trustedHostKeySha256 = "other-machine"))) {
+            f.hosts.value = listOf(original, other)
+            assertEquals(false, f.computers.sharesComputerAccess("host"))
+        }
+        f.hosts.value = listOf(original.copy(trustedHostKeySha256 = null), original.copy(id = "other", trustedHostKeySha256 = null))
+        assertEquals(false, f.computers.sharesComputerAccess("host"))
+    }
+
+    @Test fun `password host needs no cleanup and workspace check precedes revoke`() = runTest {
+        val f = Fixture()
+        f.hosts.value = listOf(host())
+        coEvery { f.repository.deleteHost(any()) } returns true
+        assertEquals(ForgetOutcome.NOT_NEEDED, f.computers.delete("host", true))
+        coVerify(exactly = 0) { f.repository.revokeComputerAccess(any(), any(), any()) }
+        f.prepareForget()
+        f.workspaceList.value += workspace(2)
+        assertTrue(runCatching { f.computers.delete("host", true) }.exceptionOrNull() is ComputerHasWorkspacesException)
+        coVerify(exactly = 0) { f.repository.revokeComputerAccess(any(), any(), any()) }
+    }
+
 }

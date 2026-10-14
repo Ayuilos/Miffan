@@ -40,6 +40,7 @@ import me.rerere.workspace.NativeSshWorkspaceTransport
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.shouldTryNextRemoteAddress
 import me.rerere.workspace.tryRemoteAddresses
+import me.rerere.workspace.isRemoteKeyAuthenticationRefused
 import me.rerere.workspace.RemoteHostConfig
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RemoteTerminalSession
@@ -673,6 +674,44 @@ class WorkspaceRepository(
             workspaceStrings.getString(R.string.workspace_error_absolute_path)
         }
         return home
+    }
+
+    /** Probe only: never records an address, platform, or trusted fingerprint. */
+    suspend fun checkKeySignIn(host: String, port: Int, username: String, sshKeyId: String): KeySignInCheck {
+        val authentication = loadVerifiedSshKey(sshKeyId)
+        return runRemoteInterruptible {
+            remoteTransport.checkKeySignIn(host, port, username, authentication, timeoutMillis = 6_000)
+        }
+    }
+
+    /** Fresh pinned saved-host connection; false means the server refused the key before dispatch. */
+    suspend fun revokeComputerAccess(hostId: String, command: String, expectedConnectionRevision: String? = null): Boolean {
+        val host = requireNotNull(hostDao.getById(hostId)) { "Computer not found" }
+        if (expectedConnectionRevision != null && host.connectionRevision != expectedConnectionRevision) {
+            throw WorkspaceToolTargetChangedException()
+        }
+        require(host.sshKeyId != null) { "Computer does not use a Miffan key" }
+        val config = host.config()
+        require(config.authentication is RemoteAuthentication.PrivateKey) { "Computer does not sign in with a key" }
+        val session = try {
+            connectSavedHost(host.id, config, host.connectionRevision)
+        } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
+            if (isRemoteKeyAuthenticationRefused(error)) return false
+            throw error
+        }
+        try {
+            if (hostDao.getById(hostId)?.connectionRevision != host.connectionRevision) {
+                throw WorkspaceToolTargetChangedException()
+            }
+            val result = runRemoteOperation(session) { session.execute(command, timeoutMillis = 30_000) }
+            check(!result.timedOut && result.exitCode == 0) {
+                "Could not forget Miffan on the computer: ${result.stderr.trim().ifEmpty { result.stdout.trim() }}"
+            }
+            return true
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+        }
     }
 
     suspend fun deleteHost(id: String): Boolean {
