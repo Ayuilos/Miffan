@@ -39,6 +39,7 @@ import me.rerere.workspace.WorkspaceCommandResult
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -232,6 +233,49 @@ class ComputerSetupVMTest {
         vm.signIn("ekk", "password")
         runCurrent()
         coVerify(exactly = 0) { f.workspaces.updateHost("host", "macbook", any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a saved computer that refuses its sign-in asks to sign in again`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.testHost("host") } throws failure(RemotePasswordSignInFailure.REJECTED)
+        val vm = vm(f)
+        runCurrent()
+        vm.pickNearby(nearby(host = "server.internal"))
+        runCurrent()
+        assertEquals(ComputerSetupStep.SIGN_IN, vm.state.value.step)
+        assertEquals("user", vm.state.value.username)
+        assertNotNull(vm.state.value.error)
+        assertTrue(vm.back())
+        assertEquals(ComputerSetupStep.FIND, vm.state.value.step)
+    }
+
+    @Test
+    fun `a saved computer that refuses the key asks for the key again`() = runTest {
+        val f = Fixture()
+        f.host = f.host.copy(authType = "MANAGED_KEY", sshKeyId = "key")
+        coEvery { f.workspaces.testHost("host") } throws failure()
+        val vm = vm(f)
+        runCurrent()
+        vm.pickNearby(nearby(host = "server.internal"))
+        runCurrent()
+        assertEquals(ComputerSetupStep.KEY, vm.state.value.step)
+        assertTrue(vm.state.value.keyRefused)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun `a new computer does not inherit another computer's account`() = runTest {
+        val f = Fixture()
+        val vm = vm(f)
+        vm.pickNearby(nearby())
+        vm.setUsername("ekk")
+        assertTrue(vm.back())
+        vm.pickNearby(nearby())
+        assertEquals("ekk", vm.state.value.username)
+        assertTrue(vm.back())
+        vm.pickNearby(nearby(host = "10.0.0.3"))
+        assertEquals("", vm.state.value.username)
     }
 
     @Test

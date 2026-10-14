@@ -328,11 +328,14 @@ class ComputerSetupVM(
         val target = SetupTarget(computer.name ?: defaultComputerName(computer.host), computer.host, computer.port,
             computer.system, computer.network, nameGuessed = computer.nameSource != NearbyNameSource.MDNS)
         go(if (computer.system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN) {
-            it.copy(target = target, hostId = null, passwordRefused = false, keyRefused = false)
+            // Another computer's account is no guess for this one.
+            val sameComputer = it.hostId == null && it.target?.host == computer.host
+            it.copy(target = target, hostId = null, passwordRefused = false, keyRefused = false,
+                username = if (sameComputer) it.username else "")
         }
     }
 
-    fun addManually() = go(ComputerSetupStep.MANUAL) { it.copy(unreachable = false) }
+    fun addManually() = go(ComputerSetupStep.MANUAL) { it.copy(unreachable = false, username = if (it.hostId == null) it.username else "") }
 
     /**
      * An address typed in: asks the port whether it is a computer with remote login, without
@@ -526,6 +529,17 @@ class ComputerSetupVM(
                 }
                 connect?.passwordSignIn == RemotePasswordSignInFailure.NOT_OFFERED ->
                     go(ComputerSetupStep.KEY) { it.copy(passwordRefused = true, keyRefused = false) }
+                // A saved computer that no longer accepts its sign-in (a changed password, a wrong
+                // account) asks to sign in again instead of stopping at an error.
+                !quiet && _state.value.step == ComputerSetupStep.FIND && connect != null &&
+                    (connect.passwordSignIn != null || connect.message?.startsWith("Auth ") == true) -> {
+                    val keyed = workspaces.getHostById(hostId)?.sshKeyId != null
+                    if (keyed) go(ComputerSetupStep.KEY) { it.copy(passwordRefused = false, keyRefused = true) }
+                    else {
+                        go(ComputerSetupStep.SIGN_IN) { it.copy(passwordRefused = false, keyRefused = false) }
+                        _state.update { it.copy(error = error) }
+                    }
+                }
                 _state.value.step in setOf(ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS) &&
                     connect != null && connect.passwordSignIn == null && connect.message?.startsWith("Auth ") == true ->
                     _state.update { it.copy(keyRefused = !quiet || it.keyRefused) }
