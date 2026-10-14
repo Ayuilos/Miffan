@@ -353,6 +353,8 @@ class ComputerSetupVM(
     fun quietRecheck() {
         val start = _state.value
         if (start.busy || start.step != ComputerSetupStep.PREPARE || start.prepared) return
+        // Windows' screen is Sunshine, which its own setup flow checks; the probe would not see it change.
+        if (start.sessionReady && start.cuaReady && (start.isWindows || start.screenServiceReady)) return
         val hostId = start.hostId ?: return
         viewModelScope.launch {
             val host = workspaces.getHostById(hostId) ?: return@launch
@@ -400,19 +402,19 @@ class ComputerSetupVM(
             return@run
         }
         if (_state.value.isMac) {
-            // Screen Sharing signs in with the Mac account: reuse a saved one, or the password this
-            // setup signed in with. Back from the test still leads to the account to change it.
+            // Screen Sharing signs in with the Mac account: reuse a saved one (a null password keeps
+            // it), or the password this setup signed in with. Saving also turns the screen on. Back
+            // from the test still leads to the account, to change it.
             val host = currentHost()
-            val password = signInPassword
-            when {
-                savedMacAccount() != null -> Unit
-                password != null -> screens.updateConfig(host.id, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
-                    auth = RemoteScreenAuth.MACOS_ACCOUNT, username = host.username, password = password)
-                else -> {
-                    _state.update { it.copy(step = ComputerSetupStep.MAC_ACCOUNT) }
-                    return@run
-                }
+            val account: Pair<String, String?>? = savedMacAccount()?.let { it to null }
+                ?: signInPassword?.let { host.username to it }
+            if (account == null) {
+                _state.update { it.copy(step = ComputerSetupStep.MAC_ACCOUNT) }
+                return@run
             }
+            val (username, password) = account
+            screens.updateConfig(host.id, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
+                auth = RemoteScreenAuth.MACOS_ACCOUNT, username = username, password = password)
             _state.update { it.copy(step = ComputerSetupStep.TEST) }
             return@run
         }
