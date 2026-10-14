@@ -390,7 +390,9 @@ class RemoteWorkspaceSession internal constructor(
         stdin: InputStream? = null,
     ): WorkspaceCommandResult {
         require(timeoutMillis > 0 && maxOutputBytes > 0)
-        val directory = if (platform == RemotePlatform.WINDOWS) WindowsRemotePath.workingDirectory(paths.root, workingDirectory)
+        val directory = if (platform == RemotePlatform.WINDOWS) WindowsRemotePath.workingDirectory(paths.root,
+                // A session without a workspace is rooted at "/", which is no Windows directory: start at home.
+                workingDirectory.ifEmpty { if (paths.root == "/") homeDirectory else workingDirectory })
             else paths.absolute(workingDirectory, allowRoot = true)
         withSftp { sftp, _ -> requireDirectoryPath(sftp, directory) }
         checkOpen()
