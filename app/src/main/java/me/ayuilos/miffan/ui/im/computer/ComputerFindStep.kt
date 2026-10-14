@@ -136,11 +136,13 @@ private fun SearchStatus(searching: Boolean, found: Int, emptyText: String) {
 
 @Composable
 private fun NearbyCard(computer: NearbyComputer, hosts: List<RemoteHostEntity>, enabled: Boolean, onClick: () -> Unit) {
-    val saved = hosts.any { it.host == computer.host && it.port == computer.port }
-    val kind = computer.system.label(computer.detail)
-    ComputerCard(computer.name ?: computer.host,
-        if (saved) stringResource(R.string.im_computer_nearby_saved, kind) else kind,
-        computer.system.icon(), enabled = enabled, onClick = onClick)
+    // A computer already added keeps the name it was saved under, whichever network found it.
+    val saved = hosts.savedMatch(computer)
+    val system = computer.system.takeIf { it != NearbySystem.UNKNOWN } ?: saved?.system() ?: NearbySystem.UNKNOWN
+    val kind = system.label(computer.detail.takeIf { system == computer.system })
+    ComputerCard(saved?.name ?: computer.name ?: computer.host,
+        if (saved != null) stringResource(R.string.im_computer_nearby_saved, kind) else kind,
+        system.icon(), enabled = enabled, onClick = onClick)
 }
 
 @Composable

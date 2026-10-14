@@ -31,6 +31,7 @@ import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.remote.NearbyComputer
+import me.ayuilos.miffan.data.remote.NearbyNameSource
 import me.ayuilos.miffan.data.remote.NearbyNetwork
 import me.ayuilos.miffan.data.remote.NearbySystem
 import me.ayuilos.miffan.data.remote.nearbyBannerSystem
@@ -98,6 +99,8 @@ data class SetupTarget(
     val port: Int,
     val system: NearbySystem = NearbySystem.UNKNOWN,
     val network: NearbyNetwork = NearbyNetwork.LOCAL,
+    /** The name came from a network lookup or the address; the computer's own name replaces it after sign-in. */
+    val nameGuessed: Boolean = false,
 )
 
 data class ComputerSetupState(
@@ -255,6 +258,8 @@ class ComputerSetupVM(
     private var keyToAuthorize: String? = null
     private var permissionWatch: Job? = null
     private var quietKeyTries = 0
+    /** A computer saved in this setup under a guessed name, renamed once it says what it is called. */
+    private var guessedNameHostId: String? = null
 
     private val streamSetup = RemoteStreamSetupController(screens, viewModelScope)
     /** Optional high-performance mode for the computer being set up; see [RemoteStreamSetupController]. */
@@ -316,12 +321,12 @@ class ComputerSetupVM(
     /** A computer found nearby: a saved one is checked again, a new one asks for the account. */
     fun pickNearby(computer: NearbyComputer) {
         if (_state.value.busy) return
-        hosts.value.find { it.host == computer.host && it.port == computer.port }?.let {
+        hosts.value.savedMatch(computer)?.let {
             chooseHost(it.id, fromList = true)
             return
         }
         val target = SetupTarget(computer.name ?: defaultComputerName(computer.host), computer.host, computer.port,
-            computer.system, computer.network)
+            computer.system, computer.network, nameGuessed = computer.nameSource != NearbyNameSource.MDNS)
         go(if (computer.system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN) {
             it.copy(target = target, hostId = null, passwordRefused = false, keyRefused = false)
         }
@@ -340,7 +345,7 @@ class ComputerSetupVM(
             return@run
         }
         val system = nearbyBannerSystem(banner).system
-        val target = SetupTarget(name.ifBlank { defaultComputerName(address) }, address, port, system)
+        val target = SetupTarget(name.ifBlank { defaultComputerName(address) }, address, port, system, nameGuessed = name.isBlank())
         go(if (system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN) {
             it.copy(target = target, username = username.ifBlank { it.username }, unreachable = false)
         }
@@ -355,6 +360,7 @@ class ComputerSetupVM(
     fun saveConnection(name: String, address: String, port: Int, username: String) = run(ComputerSetupTask.SAVING) {
         val hostId = requireNotNull(_state.value.hostId)
         check(workspaces.updateHost(hostId, name.ifBlank { defaultComputerName(address) }, address, port, username)) { "Computer not found" }
+        if (name.isNotBlank()) guessedNameHostId = null
         connect(requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" })
     }
 
@@ -398,7 +404,7 @@ class ComputerSetupVM(
         val parsed = parseSshTarget(address)
         val host = parsed?.host ?: address
         _state.update {
-            it.copy(target = SetupTarget(defaultComputerName(host), host, parsed?.port ?: 22, NearbySystem.WINDOWS),
+            it.copy(target = SetupTarget(defaultComputerName(host), host, parsed?.port ?: 22, NearbySystem.WINDOWS, nameGuessed = true),
                 username = parsed?.username ?: it.username)
         }
     }
@@ -488,6 +494,7 @@ class ComputerSetupVM(
             requireNotNull(workspaces.getHostById(existing.id)) { "Computer not found" }
         } else {
             workspaces.createHost(target.name, target.host, target.port, username, authentication = authentication, sshKeyId = sshKeyId)
+                .also { if (target.nameGuessed) guessedNameHostId = it.id }
         }
         _state.update { it.copy(hostId = host.id) }
         return host
@@ -739,9 +746,28 @@ class ComputerSetupVM(
         val host = currentHost()
         val probe = screens.probeHost(host.id, host.connectionRevision)
         _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision) }
+        adoptComputerName(host, probe.hostname)
         // Sunshine is optional on Linux and macOS and required on Windows; its check runs beside the others.
         if (probe.os in setOf("linux", "macos", "windows")) streamSetup.check(host.id, host.connectionRevision)
         afterProbe()
+    }
+
+    /**
+     * A computer saved here under a name guessed from the network (a DNS alias, an address) takes the
+     * name it calls itself, and so does its partner workspace if that still carries the guess.
+     */
+    private suspend fun adoptComputerName(host: RemoteHostEntity, hostname: String?) {
+        val name = hostname?.trim()?.takeIf { it.isNotEmpty() }
+        if (host.id == guessedNameHostId && name != null && name != host.name) {
+            guessedNameHostId = null
+            workspaces.updateHost(host.id, name, host.host, host.port, host.username)
+            _state.value.workspaceId?.let { id ->
+                val workspace = workspaces.getById(id)
+                if (workspace?.name == host.name && !workspaces.isNameTaken(name, id)) workspaces.rename(id, name)
+            }
+        }
+        // The probe also recorded the computer's system.
+        workspaces.getHostById(host.id)?.let { saved -> _state.update { it.copy(target = saved.target()) } }
     }
 
     private fun RemoteHostEntity.target() = SetupTarget(name, host, port, system())
@@ -767,6 +793,11 @@ class ComputerSetupVM(
         }
     }
 }
+
+/** The saved computer [computer] is: the same address, or the same identity reached over another network. */
+internal fun List<RemoteHostEntity>.savedMatch(computer: NearbyComputer): RemoteHostEntity? =
+    find { it.host == computer.host && it.port == computer.port }
+        ?: computer.hostKey?.let { key -> find { it.trustedHostKeySha256 == key } }
 
 /** A saved computer's system, from what its screen check or connection found. */
 internal fun RemoteHostEntity.system(): NearbySystem = when {

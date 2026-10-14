@@ -25,6 +25,8 @@ import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.remote.NearbyComputer
+import me.ayuilos.miffan.data.remote.NearbyNameSource
+import me.ayuilos.miffan.data.remote.NearbyNetwork
 import me.ayuilos.miffan.data.remote.NearbySystem
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
@@ -188,6 +190,48 @@ class ComputerSetupVMTest {
         // Back from the checks returns to finding, never to signing in.
         assertTrue(vm.back())
         assertEquals(ComputerSetupStep.FIND, vm.state.value.step)
+    }
+
+    @Test
+    fun `the same computer found on another network is the saved one`() = runTest {
+        val f = Fixture()
+        val vm = vm(f)
+        runCurrent()
+        vm.pickNearby(NearbyComputer("frigate", "100.64.0.5", 22, NearbySystem.UNKNOWN,
+            network = NearbyNetwork.TAILSCALE, hostKey = "fingerprint"))
+        runCurrent()
+        assertEquals(ComputerSetupStep.READY, vm.state.value.step)
+        coVerify(exactly = 0) { f.workspaces.createHost(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a guessed name gives way to the computer's own after sign-in`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.createHost(any(), any(), any(), any(), any(), any()) } answers {
+            f.host = f.host.copy(name = firstArg(), trustedHostKeySha256 = null); f.host
+        }
+        coEvery { f.screens.probeHost("host", any()) } returns f.probe.copy(hostname = "cachyos-x8664", os = "linux")
+        coEvery { f.workspaces.getById(f.workspaceId) } returns workspace(f.workspaceId).copy(name = "frigate")
+        coEvery { f.workspaces.isNameTaken("cachyos-x8664", f.workspaceId) } returns false
+        coEvery { f.workspaces.rename(f.workspaceId, "cachyos-x8664") } returns true
+        val vm = vm(f)
+        vm.pickNearby(NearbyComputer("frigate", "100.64.0.5", 22, NearbySystem.UNKNOWN,
+            network = NearbyNetwork.TAILSCALE, nameSource = NearbyNameSource.TAILSCALE_DNS))
+        vm.signIn("ekk", "password")
+        runCurrent()
+        coVerify { f.workspaces.updateHost("host", "cachyos-x8664", "server.internal", 22, any(), null, null) }
+        coVerify { f.workspaces.rename(f.workspaceId, "cachyos-x8664") }
+    }
+
+    @Test
+    fun `a name the computer announced itself is kept`() = runTest {
+        val f = Fixture()
+        coEvery { f.screens.probeHost("host", any()) } returns f.probe.copy(hostname = "macbook")
+        val vm = vm(f)
+        vm.pickNearby(NearbyComputer("Ekk's MacBook Pro", "10.0.0.2", 22, NearbySystem.MAC, nameSource = NearbyNameSource.MDNS))
+        vm.signIn("ekk", "password")
+        runCurrent()
+        coVerify(exactly = 0) { f.workspaces.updateHost("host", "macbook", any(), any(), any(), any(), any()) }
     }
 
     @Test
