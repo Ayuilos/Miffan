@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.data.remote.NearbyComputer
 import me.ayuilos.miffan.data.remote.NearbyComputerDiscovery
+import me.ayuilos.miffan.data.remote.NearbyScan
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Computer
 import org.koin.compose.koinInject
@@ -207,9 +208,9 @@ internal fun ComputerAddressStep(
             }
         }
         if (windows && changeSignIn) WindowsSetupCard(selectedKey, keyPicker)
-        // Macs with Remote Login (and Linux with avahi) announce themselves; Windows does not.
+        // Discovery combines advertised computers with hosts found by an SSH address sweep.
         if (!edit && !fixingSignIn && !windows) NearbyComputers(enabled = editable, selected = finalAddress to finalPort) { computer ->
-            if (name.isBlank() || name == nearbyName) name = computer.name
+            if (name.isBlank() || name == nearbyName) name = computer.name.orEmpty()
             nearbyName = computer.name
             address = computer.host
             port = computer.port.toString()
@@ -273,7 +274,8 @@ internal fun ComputerAddressStep(
 @Composable
 private fun NearbyComputers(enabled: Boolean, selected: Pair<String, String>, onPick: (NearbyComputer) -> Unit) {
     val discovery: NearbyComputerDiscovery = koinInject()
-    val nearby by remember(discovery) { discovery.observe() }.collectAsStateWithLifecycle(emptyList())
+    val scan by remember(discovery) { discovery.observe() }.collectAsStateWithLifecycle(NearbyScan(emptyList(), true))
+    val nearby = scan.computers
     AnimatedVisibility(nearby.isNotEmpty()) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(stringResource(R.string.im_computer_nearby), Modifier.padding(horizontal = 4.dp),
@@ -284,7 +286,7 @@ private fun NearbyComputers(enabled: Boolean, selected: Pair<String, String>, on
                         selected = selected == (computer.host to computer.port.toString()),
                         enabled = enabled,
                         onClick = { onPick(computer) },
-                        label = { Text(computer.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        label = { Text(computer.name ?: computer.host, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingIcon = { Icon(HugeIcons.Computer, null, Modifier.size(18.dp)) },
                     )
                 }

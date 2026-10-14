@@ -35,39 +35,133 @@ class NearbyComputerDiscoveryTest {
     }
 
     @Test
-    fun lostServiceIsRemovedByInstanceName() {
-        val first = NearbyComputer("Mac", "192.168.1.10", 22)
-        val second = NearbyComputer("Linux", "192.168.1.11", 22)
-        val computers = mergeNearbyComputer(mergeNearbyComputer(emptyMap(), first), second)
-        assertEquals(listOf(second), sortNearbyComputers(removeNearbyComputer(computers, first.name)))
-        assertEquals(emptyList<NearbyComputer>(), sortNearbyComputers(removeNearbyComputer(mapOf(first.name to first), first.name)))
+    fun bannerIdentifiesWindowsAndLinuxButNotGenericOpenSsh() {
+        assertEquals(NearbyBanner(NearbySystem.WINDOWS), nearbyBannerSystem("SSH-2.0-OpenSSH_for_Windows_9.5"))
+        for (distribution in listOf("Ubuntu", "Debian", "Raspbian", "Fedora", "Arch", "CachyOS", "Alpine", "NixOS")) {
+            assertEquals(NearbyBanner(NearbySystem.LINUX, distribution), nearbyBannerSystem("SSH-2.0-OpenSSH_9.6p1 $distribution-3"))
+        }
+        assertEquals(NearbyBanner(NearbySystem.UNKNOWN), nearbyBannerSystem("SSH-2.0-OpenSSH_9.6"))
+        assertEquals(NearbyBanner(NearbySystem.UNKNOWN), nearbyBannerSystem("SSH-2.0-OpenSSH_9.6 March-1"))
     }
 
     @Test
-    fun sameInstanceNameReplacesItsPreviousAddress() {
-        val original = NearbyComputer("Mac", "192.168.1.10", 22)
-        val updated = original.copy(host = "192.168.1.11")
-        assertEquals(listOf(updated), sortNearbyComputers(mergeNearbyComputer(mapOf(original.name to original), updated)))
+    fun mdnsNameAndPortWinAndBannerFillsSystemRegardlessOfSourceOrder() {
+        val ad = NearbyAdvertisement("Recognisable computer", "192.168.1.10", 2222)
+        val banner = NearbyComputer("reverse-name", ad.host, 22, NearbySystem.LINUX, "Debian")
+        val expected = listOf(NearbyComputer(ad.name, ad.host, 2222, NearbySystem.LINUX, "Debian"))
+        assertEquals(expected, mergeNearbyComputers(listOf(ad), listOf(banner)))
+        assertEquals(expected, mergeNearbyComputers(listOf(ad, ad.copy(name = "Sunshine", sshPort = null)), listOf(banner)))
     }
 
     @Test
-    fun duplicateHostAndPortCollapsesButDifferentPortsRemain() {
-        val first = NearbyComputer("Alpha", "192.168.1.10", 22)
-        val alias = first.copy(name = "Beta")
-        val otherPort = first.copy(name = "Gamma", port = 2222)
-        val computers = listOf(alias, otherPort, first).associateBy { it.name }
-        assertEquals(listOf(first, otherPort), sortNearbyComputers(computers))
-        assertEquals(listOf(alias, otherPort), sortNearbyComputers(removeNearbyComputer(computers, first.name)))
+    fun hintsNeedBannerAndAppleEvidenceCanFillUnknownSystem() {
+        val ad = NearbyAdvertisement("Mac", "192.168.1.10", null, apple = true)
+        assertEquals(emptyList<NearbyComputer>(), mergeNearbyComputers(listOf(ad), emptyList()))
+        assertEquals(listOf(NearbyComputer(ad.name, ad.host, 22, NearbySystem.MAC)),
+            mergeNearbyComputers(listOf(ad), listOf(NearbyComputer(null, ad.host, 22, NearbySystem.UNKNOWN))))
+        assertEquals(listOf(NearbyComputer(ad.name, ad.host, 2222, NearbySystem.MAC)),
+            mergeNearbyComputers(listOf(ad.copy(sshPort = 2222)), emptyList()))
     }
 
     @Test
-    fun namesAreSortedCaseInsensitively() {
-        val computers = listOf(
-            NearbyComputer("zebra", "192.168.1.10", 22),
-            NearbyComputer("Beta", "192.168.1.11", 22),
-            NearbyComputer("alpha", "192.168.1.12", 22),
-        ).associateBy { it.name }
-        assertEquals(listOf("alpha", "Beta", "zebra"), sortNearbyComputers(computers).map { it.name })
+    fun appleEvidenceRequiresMacModelOrKnownServiceType() {
+        org.junit.Assert.assertTrue(nearbyAppleEvidence("_sftp-ssh._tcp", null))
+        org.junit.Assert.assertTrue(nearbyAppleEvidence("_companion-link._tcp", null))
+        org.junit.Assert.assertTrue(nearbyAppleEvidence("_device-info._tcp", "MacBookPro18,3"))
+        org.junit.Assert.assertFalse(nearbyAppleEvidence("_device-info._tcp", "iPhone15,2"))
+        org.junit.Assert.assertFalse(nearbyAppleEvidence("_ssh._tcp", null))
+    }
+
+    @Test
+    fun sweepOnlyHostMayHaveNoNameAndAliasesCollapseByHost() {
+        val computer = NearbyComputer(null, "192.168.1.10", 22, NearbySystem.UNKNOWN)
+        assertEquals(listOf(computer), mergeNearbyComputers(emptyList(), listOf(computer)))
+        val ads = listOf(NearbyAdvertisement("Alpha", computer.host, 22), NearbyAdvertisement("Beta", computer.host, 2222))
+        assertEquals(listOf(computer.copy(name = "Alpha")), mergeNearbyComputers(ads, listOf(computer)))
+        assertEquals(listOf(computer.copy(name = "Beta", port = 2222)), mergeNearbyComputers(ads.drop(1), listOf(computer)))
+    }
+
+    @Test
+    fun sweepIsCappedAndExcludesOwnNetworkAndBroadcast() {
+        val slash24 = nearbySweepAddresses("192.168.31.10", 24)
+        assertEquals(253, slash24.size)
+        assertEquals("192.168.31.1", slash24.first())
+        assertEquals("192.168.31.254", slash24.last())
+        org.junit.Assert.assertFalse("192.168.31.10" in slash24)
+        assertEquals(slash24, nearbySweepAddresses("192.168.31.10", 16))
+        val slash25 = nearbySweepAddresses("192.168.31.140", 25)
+        assertEquals(125, slash25.size)
+        assertEquals("192.168.31.129", slash25.first())
+        assertEquals("192.168.31.254", slash25.last())
+        org.junit.Assert.assertFalse("192.168.31.140" in slash25)
+        assertEquals(listOf("192.168.31.142"), nearbySweepAddresses("192.168.31.141", 30))
+        assertEquals(emptyList<String>(), nearbySweepAddresses("192.168.31.141", 31))
+        assertEquals(emptyList<String>(), nearbySweepAddresses("192.168.31.141", 32))
+        assertEquals(emptyList<String>(), nearbySweepAddresses("invalid", 24))
+    }
+
+    @Test
+    fun physicalNetworkIsChosenInsteadOfVpnEvenWhenVpnReportsWifi() {
+        val vpn = NearbyInterface("100.100.1.1", 32, wifi = true, vpn = true)
+        val cellular = NearbyInterface("10.0.0.1", 24)
+        val ethernet = NearbyInterface("192.168.2.10", 24, ethernet = true)
+        val wifi = NearbyInterface("192.168.31.10", 24, wifi = true)
+        assertEquals(wifi, chooseNearbyInterface(listOf(vpn, cellular, ethernet, wifi)))
+        assertEquals(ethernet, chooseNearbyInterface(listOf(vpn, cellular, ethernet)))
+        assertNull(chooseNearbyInterface(listOf(vpn, cellular)))
+    }
+
+    @Test
+    fun reverseNameOnlyStripsFinalLocalOrRouterDomain() {
+        assertNull(nearbyReverseName("192.168.31.61", "192.168.31.61"))
+        assertEquals("cachyos-x8664", nearbyReverseName("192.168.31.61", "cachyos-x8664.lan."))
+        assertEquals("Mac", nearbyReverseName("192.168.31.61", "Mac.LOCAL"))
+        assertEquals("linux", nearbyReverseName("192.168.31.61", "linux.home"))
+        assertEquals("linux", nearbyReverseName("192.168.31.61", "linux.router.example", listOf("router.example")))
+        assertEquals("linux.lan.example", nearbyReverseName("192.168.31.61", "linux.lan.example"))
+    }
+
+    @Test
+    fun tailscaleDetectionNeedsBothVpnAndCgnatAddress() {
+        val headscale = NearbyInterface("100.64.0.4", 32, vpn = true)
+        assertEquals(headscale, chooseNearbyTailscaleInterface(listOf(headscale)))
+        assertEquals(headscale.copy(address = "100.127.255.254"),
+            chooseNearbyTailscaleInterface(listOf(headscale.copy(address = "100.127.255.254"))))
+        for (address in listOf("100.63.255.255", "100.128.0.1", "192.168.1.4", "invalid")) {
+            assertNull(chooseNearbyTailscaleInterface(listOf(headscale.copy(address = address))))
+        }
+        assertNull(chooseNearbyTailscaleInterface(listOf(headscale.copy(vpn = false, wifi = true))))
+        assertNull(chooseNearbyInterface(listOf(headscale)))
+    }
+
+    @Test
+    fun tailscaleRangeUsesOwnSlash24AndExcludesPhone() {
+        val addresses = nearbySweepAddresses("100.64.0.4", 24)
+        assertEquals(253, addresses.size)
+        assertEquals("100.64.0.1", addresses.first())
+        assertEquals("100.64.0.254", addresses.last())
+        org.junit.Assert.assertTrue("100.64.0.5" in addresses)
+        org.junit.Assert.assertFalse("100.64.0.4" in addresses)
+        org.junit.Assert.assertFalse("100.64.1.5" in addresses)
+    }
+
+    @Test
+    fun networkTagsArePreservedAndNeverMergedAcrossNetworks() {
+        val local = NearbyComputer("CachyOS", "192.168.31.61", 22, NearbySystem.LINUX, "Arch")
+        val tailscale = local.copy(host = "100.64.0.5", network = NearbyNetwork.TAILSCALE)
+        assertEquals(setOf(local, tailscale), mergeNearbyComputers(emptyList(), listOf(local, tailscale)).toSet())
+        // Even an overlapping address on two networks has independent names and evidence.
+        val overlap = tailscale.copy(host = local.host, name = "tailnet-name", system = NearbySystem.WINDOWS)
+        assertEquals(setOf(local, overlap), mergeNearbyComputers(emptyList(), listOf(local, overlap)).toSet())
+        val ads = listOf(NearbyAdvertisement("LAN name", local.host, 22))
+        assertEquals(setOf(local.copy(name = "LAN name"), overlap), mergeNearbyComputers(ads, listOf(local, overlap)).toSet())
+    }
+
+    @Test
+    fun tailscaleReverseNamesUseOnlyFirstLabelForMagicDnsAndHeadscale() {
+        assertEquals("cachyos-x8664", nearbyReverseName("100.64.0.5", "cachyos-x8664.tail123.ts.net.", network = NearbyNetwork.TAILSCALE))
+        assertEquals("cachyos-x8664", nearbyReverseName("100.64.0.5", "cachyos-x8664.headscale.example.", network = NearbyNetwork.TAILSCALE))
+        assertNull(nearbyReverseName("100.64.0.5", "100.64.0.5", network = NearbyNetwork.TAILSCALE))
     }
 
     private fun addresses(vararg hosts: String): List<InetAddress> = hosts.map(InetAddress::getByName)

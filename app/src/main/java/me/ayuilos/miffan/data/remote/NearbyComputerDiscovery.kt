@@ -1,6 +1,9 @@
 package me.ayuilos.miffan.data.remote
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
@@ -11,6 +14,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -18,58 +22,59 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.net.Inet4Address
-import java.net.Inet6Address
-import java.net.InetAddress
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import javax.net.SocketFactory
 
-data class NearbyComputer(
-    /** DNS-SD instance name, e.g. "Ekk's MacBook Pro"; what the user recognises. */
-    val name: String,
-    /** Numeric address to connect to; IPv4 preferred, never link-local IPv6. */
-    val host: String,
-    val port: Int,
-)
-
-class NearbyComputerDiscovery(private val context: Context) {
-    /**
-     * Computers on the local network that advertise `_ssh._tcp`, sorted by name, updated as they
-     * appear and disappear. Cold: discovery runs only while collected and stops on cancellation.
-     * Emits an empty list first. Unavailable networking and discovery/resolve failures are ignored.
-     */
-    fun observe(): Flow<List<NearbyComputer>> = callbackFlow {
+class NearbyComputerDiscovery internal constructor(
+    private val context: Context,
+    private val probe: suspend (String, Int, SocketFactory, Int) -> String?,
+) {
+    constructor(context: Context) : this(context, { host, port, factory, timeout -> probeNearbySsh(host, port, factory, timeout) })
+    /** Cold; LAN and Tailscale sweeps run once while mDNS continues until collection is cancelled. */
+    fun observe(): Flow<NearbyScan> = callbackFlow {
         val manager = runCatching { context.getSystemService(NsdManager::class.java) }.getOrNull()
-        if (manager == null) {
-            close()
-            return@callbackFlow
+        val networks = findNearbyNetworks(context)
+        val local = networks.firstOrNull { it.kind == NearbyNetwork.LOCAL }
+        val tailscaleActive = networks.any { it.kind == NearbyNetwork.TAILSCALE }
+        // Bind probes to the physical network, rather than letting the default VPN route them.
+        val socketFactory = local?.network?.socketFactory ?: SocketFactory.getDefault()
+        val probeSlots = Semaphore(48)
+        val dnsExecutor = Executors.newFixedThreadPool(4) { runnable ->
+            Thread(runnable, "nearby-reverse-dns").apply { isDaemon = true }
         }
-
-        // Binder callbacks only write to this thread-safe channel. The worker exclusively owns
-        // the maps and resolve queue, including registration and cleanup of service callbacks.
         val events = Channel<DiscoveryEvent>(Channel.UNLIMITED)
-        val listener = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(serviceType: String) = Unit
-            override fun onDiscoveryStopped(serviceType: String) { close() }
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { close() }
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
-            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                events.trySend(DiscoveryEvent.Found(serviceInfo))
-            }
-            override fun onServiceLost(serviceInfo: NsdServiceInfo) {
-                events.trySend(DiscoveryEvent.Lost(serviceInfo.serviceName))
-            }
-        }
+        val listeners = mutableListOf<NsdManager.DiscoveryListener>()
         val worker = launch {
-            val services = mutableMapOf<String, TrackedService>()
-            var computers = emptyMap<String, NearbyComputer>()
+            // Only this worker mutates discovery state; Binder and IO callbacks post events.
+            val services = mutableMapOf<ServiceKey, TrackedService>()
+            val advertisements = mutableMapOf<ServiceKey, NearbyAdvertisement>()
+            val banners = mutableMapOf<ProbeTarget, NearbyComputer>()
+            val sweepHosts = mutableSetOf<Pair<NearbyNetwork, String>>()
+            val hintProbes = mutableSetOf<ProbeTarget>()
+            val namesRequested = mutableSetOf<Pair<NearbyNetwork, String>>()
             val queue = ArrayDeque<TrackedService>()
+            var searching = true
             var resolving: TrackedService? = null
             var timeout: Job? = null
 
-            fun publish(service: TrackedService, info: NsdServiceInfo?) {
-                val name = service.info.serviceName
-                if (services[name] !== service) return // Lost or replaced while resolving.
+            fun publish() {
+                // A successful hint probe is evidence only while its advertisement still exists.
+                val visibleProbes = banners.values.filter { computer ->
+                    (computer.network to computer.host) in sweepHosts ||
+                        (computer.network == NearbyNetwork.LOCAL && advertisements.values.any {
+                            it.host == computer.host && (it.sshPort ?: 22) == computer.port
+                        })
+                }
+                trySend(NearbyScan(mergeNearbyComputers(advertisements.values, visibleProbes), searching, tailscaleActive))
+            }
+
+            fun update(service: TrackedService, info: NsdServiceInfo?) {
+                if (services[service.key] !== service) return
                 val addresses = if (info == null) emptyList() else if (Build.VERSION.SDK_INT >= 34) {
                     info.hostAddresses
                 } else {
@@ -77,25 +82,33 @@ class NearbyComputerDiscovery(private val context: Context) {
                     listOfNotNull(info.host)
                 }
                 val host = chooseNearbyComputerAddress(addresses)
-                computers = if (host != null && info != null && info.port in 1..65535) {
-                    mergeNearbyComputer(computers, NearbyComputer(name, host, info.port))
+                val ssh = service.key.type in SSH_TYPES
+                if (host != null && info != null && (!ssh || info.port in 1..65535)) {
+                    val apple = nearbyAppleEvidence(service.key.type, info.attributes["model"]?.toString(Charsets.UTF_8))
+                    val ad = NearbyAdvertisement(service.key.name, host, if (ssh) info.port else null, apple)
+                    advertisements[service.key] = ad
+                    val target = ProbeTarget(host, ad.sshPort ?: 22, NearbyNetwork.LOCAL)
+                    if (target !in banners && hintProbes.add(target)) launch {
+                        val banner = probeSlots.withPermit { probe(target.host, target.port, socketFactory, 400) }
+                        events.trySend(DiscoveryEvent.Checked(target, banner, sweep = false))
+                    }
                 } else {
-                    removeNearbyComputer(computers, name)
+                    advertisements.remove(service.key)
                 }
-                trySend(sortNearbyComputers(computers))
+                publish()
             }
 
             @Suppress("DEPRECATION")
             fun resolveNext() {
                 while (resolving == null && queue.isNotEmpty()) {
                     val service = queue.removeFirst()
-                    if (services[service.info.serviceName] !== service) continue
+                    if (services[service.key] !== service) continue
                     resolving = service
                     timeout = launch {
                         delay(RESOLVE_TIMEOUT_MILLIS)
                         events.trySend(DiscoveryEvent.Resolved(service, null))
                     }
-                    val resolveListener = object : NsdManager.ResolveListener {
+                    val listener = object : NsdManager.ResolveListener {
                         override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
                             events.trySend(DiscoveryEvent.Resolved(service, null))
                         }
@@ -103,31 +116,32 @@ class NearbyComputerDiscovery(private val context: Context) {
                             events.trySend(DiscoveryEvent.Resolved(service, serviceInfo))
                         }
                     }
-                    // Before API 34 NSD has no resolution cancellation API. A timeout advances
-                    // our queue; a late result is ignored instead of resurrecting an old entry.
-                    runCatching { manager.resolveService(service.info, resolveListener) }
+                    // Legacy resolution has no cancellation API. Late callbacks are ignored.
+                    runCatching { manager?.resolveService(service.info, listener) }
                         .onFailure { events.trySend(DiscoveryEvent.Resolved(service, null)) }
                 }
             }
 
             fun remove(service: TrackedService) {
-                val name = service.info.serviceName
-                if (services[name] !== service) return
-                services.remove(name)
+                if (services[service.key] !== service) return
+                services.remove(service.key)
                 queue.remove(service)
                 service.stopWatching?.invoke()
-                computers = removeNearbyComputer(computers, name)
-                trySend(sortNearbyComputers(computers))
+                advertisements.remove(service.key)
+                publish()
             }
 
             try {
+                publish()
                 for (event in events) {
                     when (event) {
                         is DiscoveryEvent.Found -> {
                             val name = event.info.serviceName
-                            if (name.isNullOrBlank() || name in services) continue
-                            val service = TrackedService(event.info)
-                            services[name] = service
+                            if (name.isNullOrBlank()) continue
+                            val key = ServiceKey(event.type, name)
+                            if (key in services || manager == null) continue
+                            val service = TrackedService(key, event.info)
+                            services[key] = service
                             if (Build.VERSION.SDK_INT >= 34) {
                                 runCatching {
                                     service.stopWatching = watchService(
@@ -141,16 +155,44 @@ class NearbyComputerDiscovery(private val context: Context) {
                                 resolveNext()
                             }
                         }
-                        is DiscoveryEvent.Lost -> services[event.name]?.let(::remove)
-                        is DiscoveryEvent.Updated -> publish(event.service, event.info)
+                        is DiscoveryEvent.Lost -> services[event.key]?.let(::remove)
+                        is DiscoveryEvent.Stopped -> services.values.filter { it.key.type == event.type }.forEach(::remove)
+                        is DiscoveryEvent.Updated -> update(event.service, event.info)
                         is DiscoveryEvent.Unavailable -> remove(event.service)
                         is DiscoveryEvent.Resolved -> {
                             if (resolving !== event.service) continue
                             timeout?.cancel()
                             timeout = null
                             resolving = null
-                            publish(event.service, event.info)
+                            update(event.service, event.info)
                             resolveNext()
+                        }
+                        is DiscoveryEvent.Checked -> {
+                            if (!event.sweep) hintProbes.remove(event.target)
+                            if (event.banner == null) continue
+                            val evidence = nearbyBannerSystem(event.banner)
+                            val target = event.target
+                            val machine = target.network to target.host
+                            banners[target] = NearbyComputer(banners[target]?.name, target.host, target.port,
+                                evidence.system, evidence.detail, target.network)
+                            if (event.sweep) sweepHosts.add(machine)
+                            publish()
+                            val hasMdnsName = target.network == NearbyNetwork.LOCAL && advertisements.values.any { it.host == target.host }
+                            if (event.sweep && !hasMdnsName && namesRequested.add(machine)) launch {
+                                val domains = networks.firstOrNull { it.kind == target.network }?.info?.domains.orEmpty()
+                                val name = lookupNearbyName(target.host, domains, dnsExecutor, target.network)
+                                events.trySend(DiscoveryEvent.Named(machine, name))
+                            }
+                        }
+                        is DiscoveryEvent.Named -> {
+                            banners.keys.filter { (it.network to it.host) == event.machine }.forEach { target ->
+                                banners[target] = banners.getValue(target).copy(name = event.name)
+                            }
+                            publish()
+                        }
+                        DiscoveryEvent.SweepDone -> {
+                            searching = false
+                            publish()
                         }
                     }
                 }
@@ -159,42 +201,115 @@ class NearbyComputerDiscovery(private val context: Context) {
                 services.values.forEach { it.stopWatching?.invoke() }
             }
         }
+        val sweep = launch {
+            coroutineScope {
+                networks.forEach { selected ->
+                    val info = selected.info
+                    val prefix = if (selected.kind == NearbyNetwork.TAILSCALE) 24 else info.prefix
+                    val factory = selected.network.socketFactory
+                    val connectTimeout = if (selected.kind == NearbyNetwork.TAILSCALE) 700 else 400
+                    nearbySweepAddresses(info.address, prefix).forEach { host ->
+                        launch {
+                            val banner = probeSlots.withPermit { probe(host, 22, factory, connectTimeout) }
+                            events.trySend(DiscoveryEvent.Checked(ProbeTarget(host, 22, selected.kind), banner, sweep = true))
+                        }
+                    }
+                }
+            }
+            // Both physical-network and VPN probes have completed; mDNS continues independently.
+            events.trySend(DiscoveryEvent.SweepDone)
+        }
 
         var multicastLock: WifiManager.MulticastLock? = null
         try {
-            runCatching {
-                context.applicationContext.getSystemService(WifiManager::class.java)
-                    ?.createMulticastLock("nearby-computers")?.also {
-                        multicastLock = it
-                        it.setReferenceCounted(false)
-                        it.acquire()
+            if (manager != null) {
+                runCatching {
+                    context.applicationContext.getSystemService(WifiManager::class.java)
+                        ?.createMulticastLock("nearby-computers")?.also {
+                            multicastLock = it
+                            it.setReferenceCounted(false)
+                            it.acquire()
+                        }
+                }
+                SERVICE_TYPES.forEach { type ->
+                    val listener = object : NsdManager.DiscoveryListener {
+                        override fun onDiscoveryStarted(serviceType: String) = Unit
+                        override fun onDiscoveryStopped(serviceType: String) { events.trySend(DiscoveryEvent.Stopped(type)) }
+                        override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { events.trySend(DiscoveryEvent.Stopped(type)) }
+                        override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
+                        override fun onServiceFound(serviceInfo: NsdServiceInfo) { events.trySend(DiscoveryEvent.Found(type, serviceInfo)) }
+                        override fun onServiceLost(serviceInfo: NsdServiceInfo) { events.trySend(DiscoveryEvent.Lost(ServiceKey(type, serviceInfo.serviceName))) }
                     }
+                    listeners += listener
+                    runCatching { manager.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
+                        .onFailure { events.trySend(DiscoveryEvent.Stopped(type)) }
+                }
             }
-            runCatching { manager.discoverServices("_ssh._tcp", NsdManager.PROTOCOL_DNS_SD, listener) }
-                .onFailure { close() }
             awaitClose()
         } finally {
             events.close()
-            withContext(NonCancellable) { worker.cancelAndJoin() }
-            // A failed start or a concurrently stopped discovery can invalidate this listener.
-            runCatching { manager.stopServiceDiscovery(listener) }
+            withContext(NonCancellable) {
+                sweep.cancelAndJoin()
+                worker.cancelAndJoin()
+            }
+            listeners.forEach { runCatching { manager?.stopServiceDiscovery(it) } }
             runCatching { multicastLock?.takeIf { it.isHeld }?.release() }
+            dnsExecutor.shutdownNow()
         }
-    }.conflate().onStart { emit(emptyList()) }.distinctUntilChanged()
+    }.conflate().onStart { emit(NearbyScan(emptyList(), searching = true)) }.distinctUntilChanged()
 }
+
+private data class SelectedNetwork(val network: Network, val info: NearbyInterface, val kind: NearbyNetwork)
+
+private fun findNearbyNetworks(context: Context): List<SelectedNetwork> = runCatching {
+    val manager = context.getSystemService(ConnectivityManager::class.java) ?: return@runCatching emptyList()
+    val candidates = manager.allNetworks.flatMap { network ->
+        val capabilities = manager.getNetworkCapabilities(network) ?: return@flatMap emptyList()
+        val properties = manager.getLinkProperties(network) ?: return@flatMap emptyList()
+        properties.linkAddresses.mapNotNull { address ->
+            val ip = address.address as? Inet4Address ?: return@mapNotNull null
+            if (ip.isLoopbackAddress || ip.isAnyLocalAddress || ip.isMulticastAddress) return@mapNotNull null
+            network to NearbyInterface(
+                address = ip.hostAddress ?: return@mapNotNull null,
+                prefix = address.prefixLength,
+                wifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+                ethernet = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
+                vpn = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
+                domains = properties.domains?.split(Regex("\\s+")).orEmpty(),
+            )
+        }
+    }
+    val interfaces = candidates.map { it.second }
+    listOfNotNull(
+        chooseNearbyInterface(interfaces)?.let { info ->
+            SelectedNetwork(candidates.first { it.second == info }.first, info, NearbyNetwork.LOCAL)
+        },
+        chooseNearbyTailscaleInterface(interfaces)?.let { info ->
+            SelectedNetwork(candidates.first { it.second == info }.first, info, NearbyNetwork.TAILSCALE)
+        },
+    )
+}.getOrDefault(emptyList())
 
 private const val RESOLVE_TIMEOUT_MILLIS = 5_000L
-
-private class TrackedService(val info: NsdServiceInfo) {
+private val SSH_TYPES = setOf("_ssh._tcp", "_sftp-ssh._tcp")
+private val SERVICE_TYPES = SSH_TYPES + setOf(
+    "_nvstream._tcp", "_rfb._tcp", "_smb._tcp", "_workstation._tcp", "_device-info._tcp", "_companion-link._tcp",
+)
+private data class ServiceKey(val type: String, val name: String)
+private data class ProbeTarget(val host: String, val port: Int, val network: NearbyNetwork)
+private class TrackedService(val key: ServiceKey, val info: NsdServiceInfo) {
     var stopWatching: (() -> Unit)? = null
 }
-
 private sealed interface DiscoveryEvent {
-    data class Found(val info: NsdServiceInfo) : DiscoveryEvent
-    data class Lost(val name: String) : DiscoveryEvent
+    data class Found(val type: String, val info: NsdServiceInfo) : DiscoveryEvent
+    data class Lost(val key: ServiceKey) : DiscoveryEvent
+    data class Stopped(val type: String) : DiscoveryEvent
     data class Updated(val service: TrackedService, val info: NsdServiceInfo) : DiscoveryEvent
     data class Unavailable(val service: TrackedService) : DiscoveryEvent
     data class Resolved(val service: TrackedService, val info: NsdServiceInfo?) : DiscoveryEvent
+    data class Checked(val target: ProbeTarget, val banner: String?, val sweep: Boolean) : DiscoveryEvent
+    data class Named(val machine: Pair<NearbyNetwork, String>, val name: String?) : DiscoveryEvent
+    data object SweepDone : DiscoveryEvent
 }
 
 @RequiresApi(34)
@@ -213,30 +328,3 @@ private fun watchService(
     manager.registerServiceInfoCallback(info, Executor { it.run() }, callback)
     return { runCatching { manager.unregisterServiceInfoCallback(callback) } }
 }
-
-internal fun chooseNearbyComputerAddress(addresses: List<InetAddress>): String? {
-    val usable = addresses.filterNot { it.isLoopbackAddress || it.isAnyLocalAddress || it.isMulticastAddress }
-    val address = usable.firstOrNull { it is Inet4Address }
-        ?: usable.firstOrNull {
-            it is Inet6Address && !it.isLinkLocalAddress && !it.isSiteLocalAddress &&
-                // Unique-local IPv6 (fc00::/7) is not globally routable either.
-                (it.address[0].toInt() and 0xfe) != 0xfc
-        }
-    return address?.hostAddress
-}
-
-internal fun mergeNearbyComputer(
-    computers: Map<String, NearbyComputer>,
-    computer: NearbyComputer,
-): Map<String, NearbyComputer> = computers + (computer.name to computer)
-
-internal fun removeNearbyComputer(
-    computers: Map<String, NearbyComputer>,
-    name: String,
-): Map<String, NearbyComputer> = computers - name
-
-internal fun sortNearbyComputers(computers: Map<String, NearbyComputer>): List<NearbyComputer> =
-    computers.values
-        .sortedWith(compareBy<NearbyComputer, String>(String.CASE_INSENSITIVE_ORDER) { it.name }.thenBy { it.name })
-        // Keep aliases in state so losing the displayed name can reveal another advertisement.
-        .distinctBy { it.host to it.port }
