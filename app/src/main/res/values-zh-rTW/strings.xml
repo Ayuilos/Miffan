@@ -2549,6 +2549,7 @@
   <string name="im_computer_task_checking">正在檢查電腦…</string>
   <string name="im_computer_task_saving">正在儲存…</string>
   <string name="im_computer_name_optional">名稱（選填）</string>
+  <string name="im_computer_nearby">附近的電腦</string>
   <string name="im_computer_key_command">執行指令</string>
   <string name="im_computer_password_help">Miffan 會用這個密碼登入一次，把自己的金鑰加到這台電腦上，之後改用金鑰登入。如果是 Mac，螢幕共享也會用這個帳號登入，它的密碼會安全地保存在手機上。</string>
   <string name="im_computer_auto_recheck">在電腦上處理好之後，這裡會自動更新。</string>

@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -10,6 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.ayuilos.miffan.data.remote.NearbyComputer
+import me.ayuilos.miffan.data.remote.NearbyComputerDiscovery
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Computer
+import org.koin.compose.koinInject
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -113,6 +121,8 @@ internal fun ComputerAddressStep(
     // Editing keeps the saved sign-in unless the user asks to change it.
     var changeSignIn by rememberSaveable { mutableStateOf(!edit) }
     var prefilled by rememberSaveable { mutableStateOf(false) }
+    // The name a nearby computer filled in, replaced when another one is picked.
+    var nearbyName by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(host?.id) {
         if (edit && host != null && !prefilled) {
             name = host.name; address = host.host; port = host.port.toString(); username = host.username
@@ -187,6 +197,13 @@ internal fun ComputerAddressStep(
             }
         }
         if (windows && changeSignIn) WindowsSetupCard(selectedKey, keyPicker)
+        // Macs with Remote Login (and Linux with avahi) announce themselves; Windows does not.
+        if (!edit && !windows) NearbyComputers(enabled = editable, selected = finalAddress to finalPort) { computer ->
+            if (name.isBlank() || name == nearbyName) name = computer.name
+            nearbyName = computer.name
+            address = computer.host
+            port = computer.port.toString()
+        }
         SetupCard {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(address, { address = it }, label = { Text(stringResource(R.string.im_computer_address)) },
@@ -204,7 +221,7 @@ internal fun ComputerAddressStep(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.im_computer_name_optional)) },
-                placeholder = finalAddress.takeIf { it.isNotBlank() }?.let { { Text(defaultComputerName(it)) } },
+                placeholder = { if (finalAddress.isNotBlank()) Text(defaultComputerName(finalAddress)) },
                 enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
         if (!changeSignIn) SetupCard {
@@ -241,3 +258,28 @@ internal fun ComputerAddressStep(
         }
     }
 }
+
+/** Computers on this network that accept SSH, as chips that fill in the address; nothing when none. */
+@Composable
+private fun NearbyComputers(enabled: Boolean, selected: Pair<String, String>, onPick: (NearbyComputer) -> Unit) {
+    val discovery: NearbyComputerDiscovery = koinInject()
+    val nearby by remember(discovery) { discovery.observe() }.collectAsStateWithLifecycle(emptyList())
+    AnimatedVisibility(nearby.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.im_computer_nearby), Modifier.padding(horizontal = 4.dp),
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                nearby.forEach { computer ->
+                    FilterChip(
+                        selected = selected == (computer.host to computer.port.toString()),
+                        enabled = enabled,
+                        onClick = { onPick(computer) },
+                        label = { Text(computer.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { Icon(HugeIcons.Computer, null, Modifier.size(18.dp)) },
+                    )
+                }
+            }
+        }
+    }
+}
+

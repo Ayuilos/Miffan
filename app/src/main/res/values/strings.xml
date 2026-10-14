@@ -2605,6 +2605,7 @@
   <string name="im_computer_task_checking" tools:ignore="MissingTranslation">Checking the computer…</string>
   <string name="im_computer_task_saving" tools:ignore="MissingTranslation">Saving…</string>
   <string name="im_computer_name_optional" tools:ignore="MissingTranslation">Name (optional)</string>
+  <string name="im_computer_nearby" tools:ignore="MissingTranslation">Nearby computers</string>
   <string name="im_computer_key_command" tools:ignore="MissingTranslation">Run a command</string>
   <string name="im_computer_password_help" tools:ignore="MissingTranslation">Miffan signs in with this password once, adds its own key to the computer and uses the key from then on. On a Mac, Screen Sharing signs in with this account too, and that password is kept securely on this phone.</string>
   <string name="im_computer_auto_recheck" tools:ignore="MissingTranslation">Fix it on the computer and this page updates by itself.</string>

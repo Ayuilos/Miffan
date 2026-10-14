@@ -2595,6 +2595,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_task_checking">正在检查电脑…</string>
   <string name="im_computer_task_saving">正在保存…</string>
   <string name="im_computer_name_optional">名称（可选）</string>
+  <string name="im_computer_nearby">附近的电脑</string>
   <string name="im_computer_key_command">运行命令</string>
   <string name="im_computer_password_help">Miffan 用这个密码登录一次，把自己的密钥加到这台电脑上，之后改用密钥登录。如果是 Mac，屏幕共享也会用这个账户登录，它的密码会安全地保存在手机上。</string>
   <string name="im_computer_auto_recheck">在电脑上处理好之后，这里会自动更新。</string>
