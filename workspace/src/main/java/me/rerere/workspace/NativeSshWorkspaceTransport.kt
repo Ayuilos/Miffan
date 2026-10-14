@@ -77,6 +77,8 @@ class RemoteConnectException(
     cause: JSchException,
     /** Set when a password sign-in failed authentication; null for every other failure. */
     val passwordSignIn: RemotePasswordSignInFailure? = null,
+    /** The account that tried to sign in, when the failure was authentication. */
+    val username: String? = null,
 ) : JSchException(cause.message, cause)
 
 enum class RemotePasswordSignInFailure {
@@ -196,13 +198,14 @@ object NativeSshWorkspaceTransport {
             session.connect(timeoutMillis)
         } catch (error: Throwable) {
             session.disconnect()
-            if (error is PasswordSignInStopped) throw RemoteConnectException(config.host, JSchException("Auth fail", error), error.failure)
+            if (error is PasswordSignInStopped) throw RemoteConnectException(config.host, JSchException("Auth fail", error),
+                error.failure, config.username)
             if (error !is JSchException) throw error
             // JSch reports both as "Auth fail" or, after a declined second prompt, "Auth cancel".
             val authFailed = error.message?.startsWith("Auth ") == true
             throw RemoteConnectException(config.host, error, passwordSignIn = passwordAnswer?.takeIf { authFailed }?.let {
                 if (it.asked) RemotePasswordSignInFailure.REJECTED else RemotePasswordSignInFailure.NOT_OFFERED
-            })
+            }, username = config.username.takeIf { authFailed })
         }
         return try {
             RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis)

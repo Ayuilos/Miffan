@@ -2561,6 +2561,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_ssh_auth">コンピューターがログインを拒否しました。Miffan のキーまたはパスワードが引き続き許可されているか確認してください。</string>
   <string name="workspace_screen_ssh_password_not_allowed">このコンピューターはパスワードでのログインを許可していません。キーのみ使用できます。</string>
   <string name="workspace_screen_ssh_password_wrong">ユーザー名またはパスワードが正しくありません。</string>
+  <string name="workspace_screen_ssh_password_wrong_root">パスワードが拒否されました。パスワードが正しい場合、このコンピューターは root のパスワードログインを許可していない可能性があります（多くのシステムの既定）。別のアカウントを使うか、「コマンドを実行」で Miffan のキーを使ってください。</string>
   <string name="workspace_screen_ssh_timeout">コンピューターから時間内に応答がありませんでした。電源が入っていて接続できること（例：Tailscale が接続中であること）を確認してください。</string>
   <string name="workspace_screen_ssh_unreachable">コンピューターに接続できません。アドレスと SSH が有効になっていることを確認してください。</string>
   <string name="workspace_screen_clipboard_new">コンピューターで新しい内容がコピーされました</string>

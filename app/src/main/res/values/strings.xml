@@ -2615,6 +2615,7 @@
   <string name="workspace_screen_ssh_auth" tools:ignore="MissingTranslation">The computer refused the sign-in. Check that Miffan\'s key or password is still allowed there.</string>
   <string name="workspace_screen_ssh_password_not_allowed" tools:ignore="MissingTranslation">This computer does not allow password sign-in, only keys.</string>
   <string name="workspace_screen_ssh_password_wrong" tools:ignore="MissingTranslation">The username or password is wrong.</string>
+  <string name="workspace_screen_ssh_password_wrong_root" tools:ignore="MissingTranslation">The password was refused. If the username is right, this computer may not let root sign in with a password (often the default): use another account, or Run a command to use Miffan\'s key.</string>
   <string name="workspace_screen_ssh_timeout" tools:ignore="MissingTranslation">The computer didn\'t answer in time. Check that it is on and reachable, for example that Tailscale is connected.</string>
   <string name="workspace_screen_ssh_unreachable" tools:ignore="MissingTranslation">Can\'t reach the computer. Check the address and that SSH is turned on.</string>
   <string name="workspace_screen_clipboard_new" tools:ignore="MissingTranslation">The computer copied something</string>

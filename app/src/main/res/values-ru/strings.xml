@@ -2564,6 +2564,7 @@
   <string name="workspace_screen_ssh_auth">Компьютер отклонил вход. Проверьте, что ключу или паролю Miffan по-прежнему разрешён доступ.</string>
   <string name="workspace_screen_ssh_password_not_allowed">Этот компьютер не разрешает вход по паролю, только по ключу.</string>
   <string name="workspace_screen_ssh_password_wrong">Неверное имя пользователя или пароль.</string>
+  <string name="workspace_screen_ssh_password_wrong_root">Пароль отклонён. Если он верный, возможно, этот компьютер не разрешает root входить по паролю (так часто бывает по умолчанию): используйте другую учётную запись или «Выполнить команду», чтобы Miffan входил по ключу.</string>
   <string name="workspace_screen_ssh_timeout">Компьютер не ответил вовремя. Проверьте, включён ли он и доступен ли, например подключён ли Tailscale.</string>
   <string name="workspace_screen_ssh_unreachable">Не удаётся подключиться к компьютеру. Проверьте адрес и убедитесь, что SSH включён.</string>
   <string name="workspace_screen_clipboard_new">На компьютере скопировано новое содержимое</string>

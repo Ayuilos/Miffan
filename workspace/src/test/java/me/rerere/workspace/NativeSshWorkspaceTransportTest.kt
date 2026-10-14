@@ -426,7 +426,9 @@ class NativeSshWorkspaceTransportTest {
         val attempts = AtomicInteger()
         server.passwordAuthenticator = { _, _, _ -> attempts.incrementAndGet(); false }
         val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
-        assertEquals(RemotePasswordSignInFailure.REJECTED, passwordFailure(config(hostKey.sha256Fingerprint)))
+        val failure = assertThrows(RemoteConnectException::class.java) { NativeSshWorkspaceTransport.open(config(hostKey.sha256Fingerprint)) }
+        assertEquals(RemotePasswordSignInFailure.REJECTED, failure.passwordSignIn)
+        assertEquals("test", failure.username)
         // Password and keyboard-interactive both reach this authenticator; only one try is made.
         assertEquals(1, attempts.get())
     }

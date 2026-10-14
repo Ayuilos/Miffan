@@ -2559,6 +2559,7 @@
   <string name="workspace_screen_ssh_auth">電腦拒絕了登入，請確認 Miffan 的金鑰或密碼在那台電腦上仍然有效。</string>
   <string name="workspace_screen_ssh_password_not_allowed">這台電腦不允許用密碼登入，只接受金鑰。</string>
   <string name="workspace_screen_ssh_password_wrong">使用者名稱或密碼不正確。</string>
+  <string name="workspace_screen_ssh_password_wrong_root">密碼被拒絕了。如果密碼沒錯，可能是這台電腦不允許 root 用密碼登入（很多系統預設如此）：換一個帳號，或改用「執行指令」讓 Miffan 用金鑰登入。</string>
   <string name="workspace_screen_ssh_timeout">電腦沒有及時回應，請確認它已開機且能連上，例如 Tailscale 已連線。</string>
   <string name="workspace_screen_ssh_unreachable">無法連接這台電腦，請檢查位址，並確認已啟用 SSH。</string>
   <string name="workspace_screen_clipboard_new">電腦上複製了新內容</string>
