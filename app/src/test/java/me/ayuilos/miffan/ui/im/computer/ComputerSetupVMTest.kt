@@ -206,6 +206,20 @@ class ComputerSetupVMTest {
     }
 
     @Test
+    fun `the other system of a dual-boot computer is a computer of its own`() = runTest {
+        val f = Fixture()
+        val vm = vm(f)
+        runCurrent()
+        vm.pickNearby(NearbyComputer("cachyos", "server.internal", 22, NearbySystem.UNKNOWN, hostKey = "another fingerprint"))
+        runCurrent()
+        assertEquals(ComputerSetupStep.SIGN_IN, vm.state.value.step)
+        vm.signIn("user", "password")
+        runCurrent()
+        // Same address and account as the saved one, but another identity: saved anew, not over it.
+        coVerify { f.workspaces.createHost("cachyos", "server.internal", 22, "user", any(), null) }
+    }
+
+    @Test
     fun `a guessed name gives way to the computer's own after sign-in`() = runTest {
         val f = Fixture()
         coEvery { f.workspaces.createHost(any(), any(), any(), any(), any(), any()) } answers {

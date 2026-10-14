@@ -2466,7 +2466,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_give_title">このコンピューターを %1$s に渡す</string>
   <string name="im_computer_give_to">%1$s に使ってもらう</string>
   <string name="im_computer_go_chat">チャットを開く</string>
-  <string name="im_computer_identity_changed">前回の接続時とは識別情報が異なります。システムを再インストールしたか、別のコンピューターがなりすましている可能性があります。自分のコンピューターだと確かめてから続けてください。</string>
+  <string name="im_computer_identity_changed">前回の接続時とは識別情報が異なります。システムを再インストールしたか、別のコンピューターがなりすましている可能性があります。デュアルブートで今は別のシステムが起動している場合は、ここでは続けずに、一覧に戻ってそのシステムを新しいコンピューターとして追加してください。</string>
   <string name="im_computer_install">インストール</string>
   <string name="im_computer_install_confirm">操作ヘルパーをインストールしますか？</string>
   <string name="im_computer_install_disclosure">以下のコマンドを実行すると、cua.ai / GitHub からソフトウェアをダウンロードして、このコンピューターにインストールします。cua-driver は匿名テレメトリーが初期設定で有効です。設定から無効にできます。macOS ではインストール後にアクセシビリティと画面収録の許可が必要です。</string>

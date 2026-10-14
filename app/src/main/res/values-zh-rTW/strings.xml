@@ -2464,7 +2464,7 @@
   <string name="im_computer_give_title">將這台電腦交給 %1$s</string>
   <string name="im_computer_give_to">讓 %1$s 使用</string>
   <string name="im_computer_go_chat">去聊天</string>
-  <string name="im_computer_identity_changed">上次連線時它是另一個身分。可能是重灌了系統，也可能有別的機器在冒充它。確認是你的電腦再繼續。</string>
+  <string name="im_computer_identity_changed">上次連線時它是另一個身分。可能是重灌了系統，也可能有別的機器在冒充它。如果這台電腦裝了雙系統、現在開著的是另一個系統，別在這裡繼續，回到列表把這個系統新增成一台新電腦。</string>
   <string name="im_computer_install">安裝</string>
   <string name="im_computer_install_confirm">安裝操作小助手？</string>
   <string name="im_computer_install_disclosure">下方完整指令會從 cua.ai / GitHub 下載軟體並安裝到你的電腦。cua-driver 預設會啟用匿名遙測，你可以在其設定中關閉。macOS 安裝後需要授予輔助使用和螢幕錄製權限。</string>

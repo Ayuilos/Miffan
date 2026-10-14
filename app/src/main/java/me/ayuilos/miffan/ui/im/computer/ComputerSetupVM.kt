@@ -101,6 +101,8 @@ data class SetupTarget(
     val network: NearbyNetwork = NearbyNetwork.LOCAL,
     /** The name came from a network lookup or the address; the computer's own name replaces it after sign-in. */
     val nameGuessed: Boolean = false,
+    /** The SSH identity seen while finding it, unverified; tells apart two systems at one address. */
+    val hostKey: String? = null,
 )
 
 data class ComputerSetupState(
@@ -326,7 +328,7 @@ class ComputerSetupVM(
             return
         }
         val target = SetupTarget(computer.name ?: defaultComputerName(computer.host), computer.host, computer.port,
-            computer.system, computer.network, nameGuessed = computer.nameSource != NearbyNameSource.MDNS)
+            computer.system, computer.network, nameGuessed = computer.nameSource != NearbyNameSource.MDNS, hostKey = computer.hostKey)
         go(if (computer.system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN) {
             // Another computer's account is no guess for this one.
             val sameComputer = it.hostId == null && it.target?.host == computer.host
@@ -490,7 +492,10 @@ class ComputerSetupVM(
         val state = _state.value
         val target = requireNotNull(state.target) { "No computer chosen" }
         val existing = state.hostId?.let { workspaces.getHostById(it) }
-            ?: hosts.value.find { it.host == target.host && it.port == target.port && it.username == username }
+            ?: hosts.value.find {
+                it.host == target.host && it.port == target.port && it.username == username &&
+                    (target.hostKey == null || it.trustedHostKeySha256 == null || it.trustedHostKeySha256 == target.hostKey)
+            }
         val host = if (existing != null) {
             check(workspaces.updateHost(existing.id, existing.name, existing.host, existing.port, username,
                 authentication = authentication, sshKeyId = sshKeyId)) { "Computer not found" }
@@ -808,10 +813,16 @@ class ComputerSetupVM(
     }
 }
 
-/** The saved computer [computer] is: the same address, or the same identity reached over another network. */
-internal fun List<RemoteHostEntity>.savedMatch(computer: NearbyComputer): RemoteHostEntity? =
-    find { it.host == computer.host && it.port == computer.port }
-        ?: computer.hostKey?.let { key -> find { it.trustedHostKeySha256 == key } }
+/**
+ * The saved computer [computer] is. Its identity decides when known, so the same computer is recognised
+ * over another network and a dual-boot computer's other system, at the same address, is not mistaken
+ * for the saved one; the address decides otherwise.
+ */
+internal fun List<RemoteHostEntity>.savedMatch(computer: NearbyComputer): RemoteHostEntity? {
+    val sameAddress = { host: RemoteHostEntity -> host.host == computer.host && host.port == computer.port }
+    val key = computer.hostKey ?: return find(sameAddress)
+    return find { it.trustedHostKeySha256 == key } ?: find { sameAddress(it) && it.trustedHostKeySha256 == null }
+}
 
 /** A saved computer's system, from what its screen check or connection found. */
 internal fun RemoteHostEntity.system(): NearbySystem = when {

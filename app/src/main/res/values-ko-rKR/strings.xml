@@ -2466,7 +2466,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_give_title">이 컴퓨터를 %1$s에게 연결</string>
   <string name="im_computer_give_to">%1$s가 사용하도록 허용</string>
   <string name="im_computer_go_chat">채팅으로 이동</string>
-  <string name="im_computer_identity_changed">지난번 연결 때와 식별 정보가 달라요. 시스템을 다시 설치했거나 다른 컴퓨터가 이 컴퓨터인 척하고 있을 수 있어요. 내 컴퓨터가 맞는지 확인한 뒤 계속하세요.</string>
+  <string name="im_computer_identity_changed">지난번 연결 때와 식별 정보가 달라요. 시스템을 다시 설치했거나 다른 컴퓨터가 이 컴퓨터인 척하고 있을 수 있어요. 듀얼 부팅 컴퓨터에서 지금 다른 시스템이 켜져 있다면 여기서 계속하지 말고, 목록으로 돌아가 그 시스템을 새 컴퓨터로 추가하세요.</string>
   <string name="im_computer_install">설치</string>
   <string name="im_computer_install_confirm">조작 도우미를 설치할까요?</string>
   <string name="im_computer_install_disclosure">아래 전체 명령은 컴퓨터에서 cua.ai / GitHub의 소프트웨어를 다운로드해 설치해요. cua-driver는 기본적으로 익명 사용 통계를 전송하며 설정에서 끌 수 있어요. macOS에서는 설치 후 손쉬운 사용 및 화면 기록 권한을 허용하세요.</string>

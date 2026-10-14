@@ -2502,7 +2502,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_give_title">将这台电脑交给 %1$s</string>
   <string name="im_computer_give_to">让 %1$s 使用</string>
   <string name="im_computer_go_chat">去聊天</string>
-  <string name="im_computer_identity_changed">上次连接时它是另一个身份。可能是重装了系统，也可能有别的机器在冒充它。确认是你的电脑再继续。</string>
+  <string name="im_computer_identity_changed">上次连接时它是另一个身份。可能是重装了系统，也可能有别的机器在冒充它。如果这台电脑装了双系统、现在开着的是另一个系统，别在这里继续，回到列表把这个系统添加成一台新电脑。</string>
   <string name="im_computer_install">安装</string>
   <string name="im_computer_install_confirm">安装操作小助手？</string>
   <string name="im_computer_install_disclosure">下方完整命令会从 cua.ai / GitHub 下载软件并安装到你的电脑。cua-driver 默认开启匿名遥测，可在其设置中关闭。macOS 安装后需要授予辅助功能和屏幕录制权限。</string>

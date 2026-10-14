@@ -2511,7 +2511,7 @@
   <string name="im_computer_give_title" tools:ignore="MissingTranslation">Give this computer to %1$s</string>
   <string name="im_computer_give_to" tools:ignore="MissingTranslation">Let %1$s use it</string>
   <string name="im_computer_go_chat" tools:ignore="MissingTranslation">Go to chat</string>
-  <string name="im_computer_identity_changed" tools:ignore="MissingTranslation">Last time it had another identity. It may have been reinstalled, or something may be pretending to be it. Continue only if you\'re sure it\'s your computer.</string>
+  <string name="im_computer_identity_changed" tools:ignore="MissingTranslation">Last time it had another identity. It may have been reinstalled, or something may be pretending to be it. If it has two systems and is running the other one now, don\'t continue here: add that system as a new computer instead.</string>
   <string name="im_computer_install" tools:ignore="MissingTranslation">Install</string>
   <string name="im_computer_install_confirm" tools:ignore="MissingTranslation">Install the control helper?</string>
   <string name="im_computer_install_disclosure" tools:ignore="MissingTranslation">The complete command below will download and install software from cua.ai / GitHub on your computer. cua-driver enables anonymous telemetry by default; you can disable it in its settings. On macOS, grant Accessibility and Screen Recording permissions after installation.</string>
