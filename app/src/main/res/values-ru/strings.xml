@@ -2479,7 +2479,7 @@
   <string name="im_computer_key_command_help">Один раз выполните эту команду в терминале на том компьютере, чтобы Miffan мог входить с помощью своего ключа. В конце появится имя пользователя, которое нужно ввести.</string>
   <string name="im_computer_let_partner_look">Разрешить партнёру посмотреть</string>
   <string name="im_computer_mac_account">Учётная запись Mac</string>
-  <string name="im_computer_mac_account_help">Screen Sharing входит с учётной записью и паролем этого Mac. Пароль хранится только на этом телефоне.</string>
+  <string name="im_computer_mac_account_help">«Общий экран» входит с учётной записью и паролем этого Mac. Пароль хранится только на этом телефоне.</string>
   <string name="im_computer_mac_sharing_help">На Mac: «Системные настройки › Основные › Общий доступ › Общий экран».</string>
   <string name="im_computer_name">Имя компьютера</string>
   <string name="im_computer_needs_attention">Требуется внимание</string>
@@ -2504,7 +2504,7 @@
   <string name="im_computer_phone_switch">Подключить компьютер вместо этого</string>
   <string name="im_computer_replace_phone">%1$s больше не будет работать на этом телефоне. Файлы на нём сохранятся.</string>
   <string name="im_computer_request_permissions">Запросить разрешения на Mac</string>
-  <string name="im_computer_requirements">Для вашего компьютера должны быть включены SSH и выполнен вход в систему на рабочем столе. Linux поддерживает wlroots Wayland (например, niri, Sway или Hyprland) и X11; GNOME/KDE пока не поддерживаются. На macOS включите Remote Login и Screen Sharing.</string>
+  <string name="im_computer_requirements">Для вашего компьютера должны быть включены SSH и выполнен вход в систему на рабочем столе. Linux поддерживает wlroots Wayland (например, niri, Sway или Hyprland) и X11; GNOME/KDE пока не поддерживаются. На macOS включите Remote Login и «Общий экран».</string>
   <string name="im_computer_reread_fingerprint">Снова прочитать отпечаток</string>
   <string name="im_computer_saved_account_failed">Не удалось прочитать сохранённую учётную запись. Введите учётную запись Mac ещё раз.</string>
   <string name="im_computer_screen">Экран компьютера</string>
@@ -2572,10 +2572,10 @@
   <string name="im_computer_check_helper">Установить помощника для управления</string>
   <string name="im_computer_check_helper_done">Помощник для управления готов</string>
   <string name="im_computer_check_helper_help">Позволяет партнёрам нажимать и вводить текст на компьютере. Скачивается с cua.ai.</string>
-  <string name="im_computer_check_mac_account">Пароль Mac для Screen Sharing</string>
-  <string name="im_computer_check_mac_account_done">Screen Sharing входит под учётной записью %1$s</string>
-  <string name="im_computer_check_mac_account_help">Screen Sharing входит с вашей учётной записью Mac. Пароль хранится только на этом телефоне.</string>
-  <string name="im_computer_check_mac_sharing">Включить Screen Sharing</string>
+  <string name="im_computer_check_mac_account">Пароль Mac для «Общий экран»</string>
+  <string name="im_computer_check_mac_account_done">«Общий экран» входит под учётной записью %1$s</string>
+  <string name="im_computer_check_mac_account_help">«Общий экран» входит с вашей учётной записью Mac. Пароль хранится только на этом телефоне.</string>
+  <string name="im_computer_check_mac_sharing">Включить «Общий экран»</string>
   <string name="im_computer_check_screen">Настроить просмотр экрана</string>
   <string name="im_computer_check_screen_done">Экран доступен для просмотра</string>
   <string name="im_computer_check_screen_help">Сначала этому компьютеру нужно приложение для общего доступа к экрану.</string>
@@ -2624,7 +2624,7 @@
   <string name="im_computer_operate_from_phone">Управлять с этого телефона</string>
   <string name="im_computer_other_sign_in">Войти другим способом</string>
   <string name="im_computer_password_note">Пароль нужен только для этого входа. Дальше Miffan подключается со своим ключом.</string>
-  <string name="im_computer_password_note_mac">Пароль нужен для одного входа; дальше Miffan использует свой ключ. Screen Sharing тоже использует эту учётную запись, а её пароль хранится только на этом телефоне.</string>
+  <string name="im_computer_password_note_mac">Пароль нужен для одного входа; дальше Miffan использует свой ключ. «Общий экран» тоже использует эту учётную запись, а её пароль хранится только на этом телефоне.</string>
   <string name="im_computer_pick_someone">Выбрать партнёра</string>
   <string name="im_computer_ready_connecting_help">Подключаемся к компьютеру.</string>
   <string name="im_computer_ready_done_help">Всё готово к работе.</string>
@@ -2675,7 +2675,7 @@
   <string name="im_computer_name_optional">Имя (необязательно)</string>
   <string name="im_computer_nearby">Компьютеры поблизости</string>
   <string name="im_computer_key_command">Выполнить команду</string>
-  <string name="im_computer_password_help">Miffan один раз войдёт с этим паролем, добавит свой ключ на компьютер и дальше будет входить с помощью ключа. На Mac эта учётная запись также используется для входа в Screen Sharing, а её пароль надёжно хранится на этом телефоне.</string>
+  <string name="im_computer_password_help">Miffan один раз войдёт с этим паролем, добавит свой ключ на компьютер и дальше будет входить с помощью ключа. На Mac эта учётная запись также используется для входа в «Общий экран», а её пароль надёжно хранится на этом телефоне.</string>
   <string name="im_computer_password_not_allowed">Этот компьютер принимает только вход по ключу. Один раз выполните команду ниже в терминале на нём, затем нажмите «Продолжить».</string>
   <string name="im_computer_auto_recheck">Устраните проблему на компьютере, и эта страница обновится автоматически.</string>
   <string name="im_computer_mac_open_sharing">Открыть настройки общего доступа на Mac</string>

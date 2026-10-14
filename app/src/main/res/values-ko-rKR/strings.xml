@@ -2476,7 +2476,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_key_command_help">Miffan 키로 로그인할 수 있도록 해당 컴퓨터의 터미널에서 이 명령을 한 번 실행하세요. 마지막에 입력할 사용자 이름이 표시돼요.</string>
   <string name="im_computer_let_partner_look">파트너에게 화면 보여주기</string>
   <string name="im_computer_mac_account">Mac 계정</string>
-  <string name="im_computer_mac_account_help">Screen Sharing은 이 Mac의 계정과 비밀번호로 로그인해요. 비밀번호는 이 휴대폰에만 저장돼요.</string>
+  <string name="im_computer_mac_account_help">화면 공유은 이 Mac의 계정과 비밀번호로 로그인해요. 비밀번호는 이 휴대폰에만 저장돼요.</string>
   <string name="im_computer_mac_sharing_help">Mac에서 ‘시스템 설정 › 일반 › 공유 › 화면 공유’를 여세요.</string>
   <string name="im_computer_name">컴퓨터 이름</string>
   <string name="im_computer_needs_attention">확인이 필요해요</string>
@@ -2501,7 +2501,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_phone_switch">대신 컴퓨터 연결</string>
   <string name="im_computer_replace_phone">%1$s는 더 이상 이 휴대폰에서 작업하지 않아요. 휴대폰의 파일은 그대로 남아요.</string>
   <string name="im_computer_request_permissions">Mac에서 권한 요청</string>
-  <string name="im_computer_requirements">컴퓨터에서 SSH를 켜고 데스크톱에 로그인해야 해요. Linux는 wlroots Wayland(niri, Sway, Hyprland 등)와 X11을 지원해요. GNOME/KDE는 아직 지원하지 않아요. macOS에서는 Remote Login과 Screen Sharing를 켜세요.</string>
+  <string name="im_computer_requirements">컴퓨터에서 SSH를 켜고 데스크톱에 로그인해야 해요. Linux는 wlroots Wayland(niri, Sway, Hyprland 등)와 X11을 지원해요. GNOME/KDE는 아직 지원하지 않아요. macOS에서는 Remote Login과 화면 공유를 켜세요.</string>
   <string name="im_computer_reread_fingerprint">지문 다시 읽기</string>
   <string name="im_computer_saved_account_failed">저장된 계정을 읽지 못했어요. Mac 계정을 다시 입력하세요.</string>
   <string name="im_computer_screen">컴퓨터 화면</string>
@@ -2569,10 +2569,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_check_helper">조작 도우미 설치</string>
   <string name="im_computer_check_helper_done">조작 도우미가 준비됐어요</string>
   <string name="im_computer_check_helper_help">파트너가 컴퓨터에서 클릭하고 글자를 입력할 수 있게 해줘요. cua.ai에서 다운로드해요.</string>
-  <string name="im_computer_check_mac_account">Screen Sharing에 쓸 Mac 비밀번호</string>
-  <string name="im_computer_check_mac_account_done">Screen Sharing은 %1$s 계정으로 로그인해요</string>
-  <string name="im_computer_check_mac_account_help">Screen Sharing은 Mac 계정으로 로그인해요. 비밀번호는 이 휴대폰에만 저장돼요.</string>
-  <string name="im_computer_check_mac_sharing">Screen Sharing 켜기</string>
+  <string name="im_computer_check_mac_account">화면 공유에 쓸 Mac 비밀번호</string>
+  <string name="im_computer_check_mac_account_done">화면 공유은 %1$s 계정으로 로그인해요</string>
+  <string name="im_computer_check_mac_account_help">화면 공유은 Mac 계정으로 로그인해요. 비밀번호는 이 휴대폰에만 저장돼요.</string>
+  <string name="im_computer_check_mac_sharing">화면 공유 켜기</string>
   <string name="im_computer_check_screen">화면을 볼 수 있게 설정</string>
   <string name="im_computer_check_screen_done">화면을 볼 수 있어요</string>
   <string name="im_computer_check_screen_help">이 컴퓨터에 먼저 화면 공유 앱이 필요해요.</string>
@@ -2621,7 +2621,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_operate_from_phone">이 휴대폰에서 조작</string>
   <string name="im_computer_other_sign_in">다른 방법으로 로그인</string>
   <string name="im_computer_password_note">비밀번호는 이번 로그인에만 써요. 이후에는 Miffan이 자신의 키로 연결해요.</string>
-  <string name="im_computer_password_note_mac">비밀번호는 이번 로그인에만 쓰고, 이후에는 Miffan이 자신의 키로 연결해요. Screen Sharing도 이 계정을 쓰며 비밀번호는 이 휴대폰에만 저장돼요.</string>
+  <string name="im_computer_password_note_mac">비밀번호는 이번 로그인에만 쓰고, 이후에는 Miffan이 자신의 키로 연결해요. 화면 공유도 이 계정을 쓰며 비밀번호는 이 휴대폰에만 저장돼요.</string>
   <string name="im_computer_pick_someone">파트너 선택</string>
   <string name="im_computer_ready_connecting_help">컴퓨터에 연결하고 있어요.</string>
   <string name="im_computer_ready_done_help">모든 준비가 끝났어요.</string>
@@ -2672,7 +2672,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_name_optional">이름(선택 사항)</string>
   <string name="im_computer_nearby">주변 컴퓨터</string>
   <string name="im_computer_key_command">명령 실행</string>
-  <string name="im_computer_password_help">Miffan은 이 비밀번호로 한 번 로그인해 컴퓨터에 자체 키를 추가하고, 이후에는 키로 로그인해요. Mac에서는 Screen Sharing도 이 계정으로 로그인하며, 비밀번호는 이 휴대폰에 안전하게 저장돼요.</string>
+  <string name="im_computer_password_help">Miffan은 이 비밀번호로 한 번 로그인해 컴퓨터에 자체 키를 추가하고, 이후에는 키로 로그인해요. Mac에서는 화면 공유도 이 계정으로 로그인하며, 비밀번호는 이 휴대폰에 안전하게 저장돼요.</string>
   <string name="im_computer_password_not_allowed">이 컴퓨터는 키 로그인만 허용해요. 해당 컴퓨터의 터미널에서 아래 명령을 한 번 실행한 다음 계속을 탭하세요.</string>
   <string name="im_computer_auto_recheck">컴퓨터에서 문제를 해결하면 이 페이지가 자동으로 업데이트돼요.</string>
   <string name="im_computer_mac_open_sharing">Mac에서 공유 설정 열기</string>

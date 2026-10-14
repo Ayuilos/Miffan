@@ -2476,7 +2476,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_key_command_help">そのコンピューターのターミナルでこのコマンドを一度実行すると、Miffan のキーでログインできるようになります。最後に、入力するユーザー名が表示されます。</string>
   <string name="im_computer_let_partner_look">パートナーに画面を見てもらう</string>
   <string name="im_computer_mac_account">Mac アカウント</string>
-  <string name="im_computer_mac_account_help">Screen Sharing はこの Mac のアカウントとパスワードでログインします。パスワードはこのスマホにだけ保存されます。</string>
+  <string name="im_computer_mac_account_help">画面共有 はこの Mac のアカウントとパスワードでログインします。パスワードはこのスマホにだけ保存されます。</string>
   <string name="im_computer_mac_sharing_help">Mac で「システム設定 › 一般 › 共有 › 画面共有」を開いてください。</string>
   <string name="im_computer_name">コンピューター名</string>
   <string name="im_computer_needs_attention">対応が必要</string>
@@ -2501,7 +2501,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_phone_switch">代わりにコンピューターを接続</string>
   <string name="im_computer_replace_phone">%1$s はこのスマホで作業しなくなります。スマホ内のファイルは残ります。</string>
   <string name="im_computer_request_permissions">Mac でアクセス許可を求める</string>
-  <string name="im_computer_requirements">コンピューターでは SSH を有効にし、デスクトップにログインしておく必要があります。Linux は wlroots 系 Wayland（niri、Sway、Hyprland など）と X11 に対応しています。GNOME / KDE はまだ対応していません。macOS では Remote Login と Screen Sharing を有効にしてください。</string>
+  <string name="im_computer_requirements">コンピューターでは SSH を有効にし、デスクトップにログインしておく必要があります。Linux は wlroots 系 Wayland（niri、Sway、Hyprland など）と X11 に対応しています。GNOME / KDE はまだ対応していません。macOS では Remote Login と 画面共有 を有効にしてください。</string>
   <string name="im_computer_reread_fingerprint">フィンガープリントを再読み込み</string>
   <string name="im_computer_saved_account_failed">保存したアカウントを読み取れませんでした。Mac のアカウントをもう一度入力してください。</string>
   <string name="im_computer_screen">コンピューター画面</string>
@@ -2569,10 +2569,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_check_helper">操作ヘルパーをインストール</string>
   <string name="im_computer_check_helper_done">操作ヘルパーの準備完了</string>
   <string name="im_computer_check_helper_help">パートナーがコンピューターでクリックや文字入力をできるようにします。cua.ai からダウンロードします。</string>
-  <string name="im_computer_check_mac_account">Screen Sharing 用の Mac パスワード</string>
-  <string name="im_computer_check_mac_account_done">Screen Sharing は %1$s でログインします</string>
-  <string name="im_computer_check_mac_account_help">Screen Sharing は Mac のアカウントでログインします。パスワードはこのスマホにだけ保存されます。</string>
-  <string name="im_computer_check_mac_sharing">Screen Sharing をオンにする</string>
+  <string name="im_computer_check_mac_account">画面共有 用の Mac パスワード</string>
+  <string name="im_computer_check_mac_account_done">画面共有 は %1$s でログインします</string>
+  <string name="im_computer_check_mac_account_help">画面共有 は Mac のアカウントでログインします。パスワードはこのスマホにだけ保存されます。</string>
+  <string name="im_computer_check_mac_sharing">画面共有 をオンにする</string>
   <string name="im_computer_check_screen">画面を見られるようにする</string>
   <string name="im_computer_check_screen_done">画面が見られます</string>
   <string name="im_computer_check_screen_help">このコンピューターには、まず画面共有アプリが必要です。</string>
@@ -2621,7 +2621,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_operate_from_phone">このスマホから操作</string>
   <string name="im_computer_other_sign_in">別の方法でログイン</string>
   <string name="im_computer_password_note">パスワードは今回のログインだけに使います。その後は Miffan が自分のキーで接続します。</string>
-  <string name="im_computer_password_note_mac">パスワードは今回のログインだけに使い、その後は Miffan が自分のキーで接続します。Screen Sharing もこのアカウントを使い、パスワードはこのスマホにだけ保存されます。</string>
+  <string name="im_computer_password_note_mac">パスワードは今回のログインだけに使い、その後は Miffan が自分のキーで接続します。画面共有 もこのアカウントを使い、パスワードはこのスマホにだけ保存されます。</string>
   <string name="im_computer_pick_someone">パートナーを選ぶ</string>
   <string name="im_computer_ready_connecting_help">コンピューターに接続しています。</string>
   <string name="im_computer_ready_done_help">すべて準備できました。</string>
@@ -2672,7 +2672,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_name_optional">名前（任意）</string>
   <string name="im_computer_nearby">近くのコンピューター</string>
   <string name="im_computer_key_command">コマンドを実行</string>
-  <string name="im_computer_password_help">Miffan はこのパスワードで一度ログインし、自分のキーをコンピューターに追加します。以後はキーでログインします。Mac では Screen Sharing もこのアカウントでログインし、そのパスワードはこのスマートフォンに安全に保存されます。</string>
+  <string name="im_computer_password_help">Miffan はこのパスワードで一度ログインし、自分のキーをコンピューターに追加します。以後はキーでログインします。Mac では 画面共有 もこのアカウントでログインし、そのパスワードはこのスマートフォンに安全に保存されます。</string>
   <string name="im_computer_password_not_allowed">このコンピューターはキーでのログインのみ受け付けます。そのコンピューターのターミナルで下のコマンドを一度実行してから、「続行」をタップしてください。</string>
   <string name="im_computer_auto_recheck">コンピューターで問題を解決すると、このページは自動で更新されます。</string>
   <string name="im_computer_mac_open_sharing">Mac で共有設定を開く</string>
