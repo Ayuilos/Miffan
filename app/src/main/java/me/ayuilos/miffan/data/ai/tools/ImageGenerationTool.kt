@@ -26,13 +26,34 @@ import java.security.MessageDigest
 import java.io.File
 import java.net.URI
 import java.util.Base64
+import kotlin.uuid.Uuid
 
 const val GENERATE_IMAGE_TOOL = "generate_image"
 
 fun Model.canOutputImage(): Boolean = Modality.IMAGE in outputModalities ||
     BuiltInTools.ImageGeneration in tools || type == ModelType.IMAGE
 
-fun Settings.imageToolModelOrNull(): Model? = findModelById(imageToolModelId)?.takeIf { it.canOutputImage() }
+private fun Settings.subscriptionImageProvider(model: Model): ProviderSetting.OpenAI? =
+    (model.findProvider(providers) as? ProviderSetting.OpenAI)?.takeIf {
+        model.type == ModelType.CHAT && it.enabled && it.authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION
+    }
+
+fun Settings.canDrawWith(model: Model): Boolean = model.canOutputImage() || subscriptionImageProvider(model) != null
+
+fun Settings.imageToolModelOrNull(): Model? = findModelById(imageToolModelId)?.takeIf { canDrawWith(it) }
+
+data class SubscriptionImageOption(val providerId: Uuid, val providerName: String, val model: Model)
+
+/** Reuse a light chat model to drive Responses image generation; no duplicate model configurations. */
+fun Settings.subscriptionImageOptions(): List<SubscriptionImageOption> = providers
+    .filterIsInstance<ProviderSetting.OpenAI>()
+    .filter { it.enabled && it.authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION }
+    .mapNotNull { provider ->
+        val chatModels = provider.models.filter { it.type == ModelType.CHAT }
+        val model = chatModels.firstOrNull { it.modelId.contains("mini", ignoreCase = true) }
+            ?: chatModels.firstOrNull() ?: return@mapNotNull null
+        SubscriptionImageOption(provider.id, provider.name, model)
+    }
 
 /** Stable for both attachments and tool outputs; never exposes a local path to the model. */
 fun imageIdForUrl(url: String): String = "img_" + MessageDigest.getInstance("SHA-256")
@@ -102,10 +123,13 @@ internal fun createImageGenerationTool(
     downloadImage: suspend (String) -> ByteArray,
 ): Tool {
     val displayName = settings().imageToolModelOrNull()?.let { it.displayName.ifBlank { it.modelId } }
-        ?: "the configured image model"
     return Tool(
         name = GENERATE_IMAGE_TOOL,
-        description = "Generate or edit images with $displayName. Write a detailed visual prompt. " +
+        description = if (displayName == null) {
+            "Image drawing is not set up yet. If the user wants a picture, call this tool anyway; " +
+                "the app will show the user a button to turn drawing on. Keep your reply short, " +
+                "do not explain settings paths, and wait for the user to enable drawing."
+        } else "Generate or edit images with $displayName. Write a detailed visual prompt. " +
             "To edit or combine images, pass their image ids in reference_images (at most 4). " +
             "The app already shows the generated images to the user in your reply; do not re-embed them with Markdown. " +
             "Briefly tell the user what was made.",
@@ -126,11 +150,16 @@ internal fun createImageGenerationTool(
             withContext(Dispatchers.IO) {
                 try {
                     val current = settings()
-                    val model = current.imageToolModelOrNull()
-                        ?: error("Image generation isn't configured. Ask the user to select an image-output model in settings.")
+                    val model = current.imageToolModelOrNull() ?: return@withContext listOf(UIMessagePart.Text(
+                        buildJsonObject {
+                            put("setup_required", true)
+                            put("message", "Image drawing is not set up yet. The user is shown a button to turn it on; tell them briefly and wait.")
+                        }.toString()
+                    ))
                     val resolvedProvider = model.findProvider(current.providers)
                         ?: error("Image generation isn't configured: the image model's provider is missing.")
-                    val builtInImageTool = BuiltInTools.ImageGeneration in model.tools
+                    val builtInImageTool = BuiltInTools.ImageGeneration in model.tools ||
+                        current.subscriptionImageProvider(model) != null
                     val providerSetting = if (builtInImageTool && model.type != ModelType.IMAGE && resolvedProvider is ProviderSetting.OpenAI) {
                         resolvedProvider.copy(useResponseApi = true)
                     } else resolvedProvider

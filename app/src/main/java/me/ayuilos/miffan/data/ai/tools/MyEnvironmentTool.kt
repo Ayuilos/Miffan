@@ -76,9 +76,10 @@ internal fun buildMyEnvironment(
             if (BuiltInTools.UrlContext in model.tools) add("网页内容读取")
             if (BuiltInTools.ImageGeneration in model.tools || model.canOutputImage()) add("图像生成")
             if ("generate_image" in toolNames) {
-                settings.imageToolModelOrNull()?.let { imageModel ->
-                    add("generate_image: generate or edit images with ${imageModel.displayName.ifBlank { imageModel.modelId }}")
-                }
+                val imageModel = settings.imageToolModelOrNull()
+                add(if (imageModel != null) {
+                    "generate_image: generate or edit images with ${imageModel.displayName.ifBlank { imageModel.modelId }}"
+                } else "generate_image: drawing not set up yet (calling it shows the user a button to enable it)")
             }
             if (caller.enableMemory) {
                 val scope = if (access.memoryOwnerId == me.ayuilos.miffan.data.repository.MemoryRepository.GLOBAL_MEMORY_ID)

@@ -840,6 +840,7 @@ object GenerateImageToolUI : ToolUIRenderer {
     @Composable
     override fun title(context: ToolUIContext): String = when {
         context.loading || context.content == null -> "正在画图"
+        context.content.getStringContent("setup_required") == "true" -> "画图未开启"
         error(context) != null -> "没画出来"
         else -> "画好了"
     }

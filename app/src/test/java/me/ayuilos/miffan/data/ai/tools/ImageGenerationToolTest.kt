@@ -137,15 +137,62 @@ class ImageGenerationToolTest {
         assertEquals(reference, fake.messages.single().parts.last())
     }
 
-    @Test fun noImageMissingConfigurationAndUnknownReferencesReturnReadableErrors() = runTest {
+    @Test fun noImageAndUnknownReferencesReturnReadableErrors() = runTest {
         val refusal = tool(FakeProvider(UIMessage.assistant("I cannot create that image."))).execute(args())
         assertTrue((refusal.single() as UIMessagePart.Text).text.contains("I cannot create that image."))
-        val missing = tool(FakeProvider(), { settings().copy(imageToolModelId = null) }).execute(args())
-        assertTrue((missing.single() as UIMessagePart.Text).text.contains("isn't configured"))
         val fake = FakeProvider()
         val unknown = tool(fake).execute(args("unknown"))
         assertTrue((unknown.single() as UIMessagePart.Text).text.contains("Available image ids: none"))
         assertNull(fake.params)
+    }
+
+    @Test fun unconfiguredToolReturnsExactSetupContractWithoutCallingProvider() = runTest {
+        val fake = FakeProvider()
+        for (current in listOf(settings().copy(imageToolModelId = null), settings(Model(modelId = "plain-chat")))) {
+            val tool = tool(fake, { current })
+            assertTrue(tool.description.contains("not set up yet"))
+            assertTrue(tool.description.contains("call this tool anyway"))
+            val output = tool.execute(args())
+            assertEquals(1, output.size)
+            assertEquals(Json.parseToJsonElement("""{"setup_required":true,"message":"Image drawing is not set up yet. The user is shown a button to turn it on; tell them briefly and wait."}"""),
+                Json.parseToJsonElement((output.single() as UIMessagePart.Text).text))
+        }
+        assertNull(fake.params)
+        assertNull(fake.imageParams)
+    }
+
+    @Test fun configuredAfterBuildDrawsUsingCurrentSettings() = runTest {
+        var current = settings().copy(imageToolModelId = null)
+        val fake = FakeProvider(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Image(dataUrl))))
+        val tool = tool(fake, { current })
+        assertTrue(tool.description.contains("not set up yet"))
+        current = settings()
+        val output = tool.execute(args())
+        assertTrue(output[1] is UIMessagePart.Image)
+        assertEquals(model.id, fake.params!!.model.id)
+        assertFalse((output[0] as UIMessagePart.Text).text.contains("setup_required"))
+    }
+
+    @Test fun subscriptionChatModelsDrawViaResponsesWithoutChangingStoredModel() = runTest {
+        val override = ProviderSetting.OpenAI(authType = OpenAIAuthType.CHATGPT_SUBSCRIPTION)
+        for (useOverwrite in listOf(false, true)) {
+            val chat = Model(modelId = "gpt-chat-mini", providerOverwrite = override.takeIf { useOverwrite })
+            val provider = ProviderSetting.OpenAI(models = listOf(chat),
+                authType = if (useOverwrite) OpenAIAuthType.API_KEY else OpenAIAuthType.CHATGPT_SUBSCRIPTION)
+            val current = Settings(providers = listOf(provider), imageToolModelId = chat.id)
+            val fake = FakeProvider(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Image(dataUrl))))
+            val output = tool(fake, { current }).execute(args())
+            assertTrue(output[1] is UIMessagePart.Image)
+            val actualProvider = fake.providerSetting as ProviderSetting.OpenAI
+            assertTrue(actualProvider.useResponseApi)
+            assertEquals(OpenAIAuthType.CHATGPT_SUBSCRIPTION, actualProvider.authType)
+            assertEquals(setOf(BuiltInTools.ImageGeneration), fake.params!!.model.tools)
+            assertTrue(fake.params!!.tools.isEmpty())
+            assertTrue(fake.messages.single().toText().contains("image_generation tool"))
+            assertFalse(chat.canOutputImage())
+            assertTrue(chat.tools.isEmpty())
+            assertEquals(chat, current.providers.single().models.single())
+        }
     }
 
     @Test fun downloadsRemoteImagesAndFallsBackToUrlOnDownloadFailure() = runTest {

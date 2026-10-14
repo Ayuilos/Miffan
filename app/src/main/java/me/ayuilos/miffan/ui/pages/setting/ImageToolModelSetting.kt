@@ -49,6 +49,9 @@ import me.ayuilos.miffan.data.ai.openrouter.openRouterApiKeyOrNull
 import me.ayuilos.miffan.data.ai.openrouter.withOpenRouterImageModel
 import me.ayuilos.miffan.data.ai.tools.canOutputImage
 import me.ayuilos.miffan.data.ai.tools.imageToolModelOrNull
+import me.ayuilos.miffan.data.ai.tools.subscriptionImageOptions
+import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.data.datastore.OPENROUTER_PROVIDER_ID
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
@@ -126,7 +129,7 @@ internal fun ImageToolModelSettingItem(
     }
 }
 
-private sealed interface CatalogState {
+internal sealed interface CatalogState {
     data object Loading : CatalogState
     data class Ready(val models: List<OpenRouterImageModel>) : CatalogState
     data class Failed(val message: String) : CatalogState
@@ -137,7 +140,9 @@ internal fun ImageToolModelSheet(
     settings: Settings,
     onUpdate: (Settings) -> Unit,
     onDismiss: () -> Unit,
+    easy: Boolean = false,
 ) {
+    val nav = LocalNavController.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberBottomSheetState(
         initialValue = SheetValue.Hidden,
@@ -189,8 +194,10 @@ internal fun ImageToolModelSheet(
     }
 
     val selectedId = settings.imageToolModelOrNull()?.id
+    val subscription = settings.subscriptionImageOptions()
+    val subscriptionModelIds = subscription.map { it.model.id }.toSet()
     val added: List<Pair<ProviderSetting, Model>> = settings.providers.flatMap { provider ->
-        provider.models.filter { it.canOutputImage() }.map { provider to it }
+        provider.models.filter { it.canOutputImage() || it.id in subscriptionModelIds }.map { provider to it }
     }
     val addedOpenRouterIds = added
         .filter { (provider, _) -> provider.id == OPENROUTER_PROVIDER_ID }
@@ -200,7 +207,31 @@ internal fun ImageToolModelSheet(
     fun matches(vararg texts: String) = q.isEmpty() || texts.any { it.contains(q, ignoreCase = true) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
+        if (easy) EasyImageModelContent(
+            settings = settings,
+            subscription = subscription,
+            others = added.filter { (provider, model) ->
+                provider.id != OPENROUTER_PROVIDER_ID && model.id !in subscriptionModelIds
+            },
+            catalog = (catalog as? CatalogState.Ready)?.models,
+            catalogFailed = catalog is CatalogState.Failed,
+            openRouterConnected = apiKey != null,
+            connecting = authState == OpenRouterAuthState.Authorizing,
+            connectError = (authState as? OpenRouterAuthState.Error)?.message,
+            pendingPickId = pendingPick?.id,
+            selectedId = selectedId,
+            onPickModel = { model ->
+                onUpdate(settings.copy(imageToolModelId = model.id))
+                close()
+            },
+            onPickCatalog = ::pick,
+            onConnectOpenRouter = { authService.startAuthorization() },
+            onRetry = { reload++ },
+            onOpenProviders = {
+                close()
+                nav.navigate(Screen.SettingProvider)
+            },
+        ) else Column(
             modifier = Modifier
                 .fillMaxHeight(0.85f)
                 .padding(horizontal = 16.dp)
@@ -342,7 +373,7 @@ private fun ConnectOpenRouterCard(
 }
 
 @Composable
-private fun ImageModelRow(
+internal fun ImageModelRow(
     iconName: String,
     title: String,
     subtitle: String,
@@ -393,7 +424,7 @@ private fun ImageModelRow(
 }
 
 /** "免费" or the output price per million tokens, e.g. "$30/M 输出". */
-private fun OpenRouterImageModel.priceLabel(): String? {
+internal fun OpenRouterImageModel.priceLabel(): String? {
     val prompt = pricing["prompt"]?.toBigDecimalOrNull()
     val completion = pricing["completion"]?.toBigDecimalOrNull() ?: return null
     if (completion.signum() == 0 && (prompt == null || prompt.signum() == 0)) return "免费"

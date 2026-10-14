@@ -86,6 +86,13 @@ class MyEnvironmentToolTest {
         assertFalse(environment(configured).getValue("abilities").toString().contains("Image model"))
     }
 
+    @Test fun unconfiguredImageToolAbilityExplainsEnablementButton() {
+        val abilities = environment(tools = setOf("generate_image")).getValue("abilities").toString()
+        assertTrue(abilities.contains("generate_image: drawing not set up yet"))
+        assertTrue(abilities.contains("button to enable it"))
+        assertFalse(environment().getValue("abilities").toString().contains("generate_image"))
+    }
+
     @Test fun blankNameAvatarVariantsAndNoBindingsUseSafeDisplayValues() {
         for ((avatar, type) in listOf(Avatar.Dummy to "default",
             Avatar.Emoji("secret-avatar-content") to "emoji", Avatar.WhaleGirl() to "whale_girl")) {

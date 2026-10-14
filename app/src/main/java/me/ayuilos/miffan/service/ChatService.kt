@@ -1119,7 +1119,7 @@ class ChatService(
                 }
             }
 
-            val imageToolEnabled = settings.imageToolModelOrNull() != null && !model.canOutputImage()
+            val imageToolEnabled = !model.canOutputImage()
             val computerToolbox = createComputerToolbox(assistant, conversation.id.toString(), generationMessages)
             generationHandler.generateText(
                 settings = settings,
@@ -1151,7 +1151,7 @@ class ChatService(
                     memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
                 },
                 inputTransformers = buildList {
-                    if (imageToolEnabled) add(ImageIdTransformer)
+                    if (imageToolEnabled && settings.imageToolModelOrNull() != null) add(ImageIdTransformer)
                     addAll(inputTransformers)
                     add(templateTransformer)
                     add(workspaceReminderTransformer)

@@ -173,6 +173,7 @@ fun ImAiServicePage(settingsStore: SettingsStore = koinInject(), backgroundHealt
             settings = settings,
             onUpdate = { updated -> scope.launch { settingsStore.update(updated) } },
             onDismiss = { imageSheetVisible = false },
+            easy = true,
         )
     }
     ModelListSheet(defaultModels) { model ->

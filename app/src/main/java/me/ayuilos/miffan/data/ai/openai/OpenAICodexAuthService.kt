@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.ai.openai
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,8 +21,11 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.provider.OPENAI_CODEX_BASE_URL
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.OpenAICodexCredentials
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.providers.openai.OpenAICodexTokenProvider
+import me.rerere.ai.provider.providers.openai.OpenAIProvider
+import me.rerere.ai.registry.ModelRegistry
 import me.rerere.common.http.await
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import okhttp3.FormBody
@@ -94,7 +98,40 @@ class OpenAICodexAuthService(
         }
         credentialCache[providerId] = credentials
         persistCredentials(providerId, credentials, activateSubscription = true)
+        ensureSubscriptionChatModel(providerId)
         return credentials
+    }
+
+    /** Await discovery and persistence before the sign-in UI reads back the provider's models. */
+    internal suspend fun ensureSubscriptionChatModel(providerId: Uuid) = withContext(Dispatchers.IO) {
+        val provider = settingsStore.settingsFlow.value.providers.filterIsInstance<ProviderSetting.OpenAI>()
+            .firstOrNull { it.id == providerId && it.enabled && it.authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION }
+            ?: return@withContext
+        if (provider.models.any { it.type == ModelType.CHAT }) return@withContext
+        val discovered = try {
+            OpenAIProvider(httpClient).listModels(provider).filter { discovered ->
+                discovered.type == ModelType.CHAT && provider.models.none { it.modelId == discovered.modelId }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // A catalog outage must not undo a successful login; models can still be added later.
+            return@withContext
+        }
+        val selected = discovered.firstOrNull { it.modelId.contains("mini", ignoreCase = true) }
+            ?: discovered.firstOrNull() ?: return@withContext
+        val model = ModelRegistry.resolveCapabilities(selected)
+        settingsStore.update { settings ->
+            settings.copy(providers = settings.providers.map { current ->
+                if (current is ProviderSetting.OpenAI && current.id == providerId && current.enabled &&
+                    current.authType == OpenAIAuthType.CHATGPT_SUBSCRIPTION &&
+                    current.codexCredentials?.accountId == provider.codexCredentials?.accountId &&
+                    current.models.none { it.type == ModelType.CHAT || it.modelId == model.modelId }
+                ) {
+                    current.copy(models = current.models + model)
+                } else current
+            })
+        }
     }
 
     suspend fun signOut(providerId: Uuid) {

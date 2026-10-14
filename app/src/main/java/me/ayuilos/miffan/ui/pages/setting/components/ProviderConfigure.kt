@@ -233,6 +233,9 @@ private fun ProviderConfigureOpenAI(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val codexAuthService = koinInject<OpenAICodexAuthService>()
+    val settingsStore = koinInject<me.ayuilos.miffan.data.datastore.SettingsStore>()
+    // Sign-in takes minutes; read the provider as it is when it finishes, not as it was when it started.
+    val currentProvider by androidx.compose.runtime.rememberUpdatedState(provider)
     var authJob by remember(provider.id) { mutableStateOf<Job?>(null) }
     var deviceCode by remember(provider.id) { mutableStateOf<OpenAICodexDeviceCode?>(null) }
     var authError by remember(provider.id) { mutableStateOf<String?>(null) }
@@ -358,8 +361,16 @@ private fun ProviderConfigureOpenAI(
                                     launchOAuthAuthorization(context.applicationContext, code.verificationUrl)
                                 }
                                 deviceCode = null
+                                // Sign-in stores the account and may discover its models; keep those, plus any model added here meanwhile.
+                                val edited = currentProvider
+                                val stored = settingsStore.settingsFlow.value.providers
+                                    .firstOrNull { it.id == edited.id } as? ProviderSetting.OpenAI
+                                val models = stored?.models.orEmpty().let { storedModels ->
+                                    storedModels + edited.models.filter { model -> storedModels.none { it.id == model.id } }
+                                }
                                 onEdit(
-                                    provider.copy(
+                                    edited.copy(
+                                        models = models,
                                         authType = OpenAIAuthType.CHATGPT_SUBSCRIPTION,
                                         codexCredentials = credentials,
                                         baseUrl = OPENAI_CODEX_BASE_URL,
