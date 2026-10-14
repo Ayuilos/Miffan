@@ -153,16 +153,10 @@ fun UIAvatar(
 
     Box(modifier = modifier.then(Modifier.size(32.dp))) {
         val unframed = transparentCharacter || value is Avatar.WhaleGirl
-        Surface(
-            shape = if (unframed) RectangleShape else rememberAvatarShape(loading),
-            modifier = Modifier.fillMaxSize(),
-            onClick = {
-                onClick?.invoke()
-                if (onUpdate != null) showPickOption = true
-            },
-            tonalElevation = if (unframed) 0.dp else 4.dp,
-            color = if (unframed) Color.Transparent else MaterialTheme.colorScheme.secondaryContainer,
-        ) {
+        val shape = if (unframed) RectangleShape else rememberAvatarShape(loading)
+        val elevation = if (unframed) 0.dp else 4.dp
+        val color = if (unframed) Color.Transparent else MaterialTheme.colorScheme.secondaryContainer
+        val face: @Composable () -> Unit = {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.fillMaxSize()
@@ -211,6 +205,18 @@ fun UIAvatar(
                     }
                 }
             }
+        }
+        // Only an avatar that does something takes the tap; otherwise it reaches the row or cell holding it.
+        if (onClick != null || onUpdate != null) {
+            Surface(
+                onClick = {
+                    onClick?.invoke()
+                    if (onUpdate != null) showPickOption = true
+                },
+                shape = shape, modifier = Modifier.fillMaxSize(), tonalElevation = elevation, color = color, content = face,
+            )
+        } else {
+            Surface(shape = shape, modifier = Modifier.fillMaxSize(), tonalElevation = elevation, color = color, content = face)
         }
 
         // Show edit icon when editable
