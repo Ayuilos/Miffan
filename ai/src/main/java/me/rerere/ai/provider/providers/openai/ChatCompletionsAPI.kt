@@ -258,12 +258,13 @@ class ChatCompletionsAPI(
             // open router适配
             if(isOpenRouter) {
                 params.sessionId?.let { put("session_id", it) }
-                if(params.model.outputModalities.contains(Modality.IMAGE)) {
-                    put("modalities", buildJsonArray {
-                        add("image")
-                        add("text")
-                    })
-                }
+            }
+            if(params.model.outputModalities.contains(Modality.IMAGE)) {
+                // 只出图的模型(如 FLUX)必须只声明 image, 否则 OpenRouter 会拒绝
+                put("modalities", buildJsonArray {
+                    add("image")
+                    if (Modality.TEXT in params.model.outputModalities) add("text")
+                })
             }
 
             if (params.model.abilities.contains(ModelAbility.REASONING)) {

@@ -92,6 +92,7 @@ object ToolUIRegistry {
     private val renderers: Map<String, ToolUIRenderer> = listOf(
         MemoryToolUI,
         SearchWebToolUI,
+        GenerateImageToolUI,
         ScrapeWebToolUI,
         GetTimeInfoToolUI,
         ClipboardToolUI,

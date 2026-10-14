@@ -374,7 +374,7 @@ internal fun Settings.openRouterApiKeyOrNull(): String? = openRouterProvider()
     ?.trim()
     ?.takeIf(String::isNotBlank)
 
-private fun Settings.openRouterProvider(): ProviderSetting.OpenAI? {
+internal fun Settings.openRouterProvider(): ProviderSetting.OpenAI? {
     val openRouterProviders = providers
         .filterIsInstance<ProviderSetting.OpenAI>()
         .filter { provider ->

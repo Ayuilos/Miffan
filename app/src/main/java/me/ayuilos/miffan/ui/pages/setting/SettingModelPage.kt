@@ -165,6 +165,9 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
             )
         }
         item {
+            ImageToolModelSettingItem(settings = settings, onUpdate = vm::updateSettings)
+        }
+        item {
             ModelSettingItem(
                 title = stringResource(R.string.setting_model_page_compress_model),
                 description = stringResource(R.string.setting_model_page_compress_model_desc),

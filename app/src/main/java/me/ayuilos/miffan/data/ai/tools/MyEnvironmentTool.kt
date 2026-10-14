@@ -74,7 +74,12 @@ internal fun buildMyEnvironment(
         put("abilities", buildJsonArray {
             if ("search_web" in toolNames || BuiltInTools.Search in model.tools) add("联网搜索")
             if (BuiltInTools.UrlContext in model.tools) add("网页内容读取")
-            if (BuiltInTools.ImageGeneration in model.tools) add("图像生成")
+            if (BuiltInTools.ImageGeneration in model.tools || model.canOutputImage()) add("图像生成")
+            if ("generate_image" in toolNames) {
+                settings.imageToolModelOrNull()?.let { imageModel ->
+                    add("generate_image: generate or edit images with ${imageModel.displayName.ifBlank { imageModel.modelId }}")
+                }
+            }
             if (caller.enableMemory) {
                 val scope = if (access.memoryOwnerId == me.ayuilos.miffan.data.repository.MemoryRepository.GLOBAL_MEMORY_ID)
                     "全局记忆" else "自己的记忆"

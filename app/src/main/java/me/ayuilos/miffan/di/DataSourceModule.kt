@@ -287,6 +287,8 @@ val dataSourceModule = module {
         )
     }
 
+    single { me.ayuilos.miffan.data.ai.openrouter.OpenRouterImageModelService(get()) }
+
     single {
         OpenRouterAuthService(
             context = get(),
