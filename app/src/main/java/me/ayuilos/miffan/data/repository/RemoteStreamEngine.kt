@@ -47,11 +47,32 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
     }
     suspend fun status(ssh: RemoteWorkspaceSession, row: RemoteHostEntity, probe: SunshineProbe): RemoteStreamStatus {
         verifyCertificate(row.streamCertificateSha256, probe)
-        val paired = if (probe.installed && probe.running) withTimeout(10_000) { host(ssh, row.streamCertificateSha256).serverInfo().paired } else false
+        val paired = if (!probe.installed || !probe.running) false
+            else if (row.streamCertificateSha256 != null) withTimeout(10_000) { host(ssh, row.streamCertificateSha256).serverInfo().paired }
+            else trustedPairing(ssh, probe) != null
+
         return RemoteStreamStatus(probe.installed, probe.version, probe.running, probe.encryptionEnforced, paired,
             probe.activeStream, candidates(row, probe).addresses, probe.displayAsleep,
             probe.permissions?.screenRecording, probe.permissions?.accessibility, probe.permissionsFromLog == true)
     }
+    /**
+     * Sunshine's certificate when Sunshine already trusts this phone although this installation has not
+     * recorded it (pairing confirmed on the computer, then failed or was interrupted here). The certificate
+     * comes from the helper over the verified SSH session, and the HTTPS check pins it, so a pairing seen
+     * this way is as trustworthy as one made here. Null when not paired, or when Sunshine refuses this
+     * phone's certificate.
+     */
+    suspend fun trustedPairing(ssh: RemoteWorkspaceSession, probe: SunshineProbe): String? {
+        val certificate = probe.certificateSha256 ?: return null
+        return try {
+            certificate.takeIf { withTimeout(10_000) { host(ssh, certificate).serverInfo().paired } }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            if (cancelled is kotlinx.coroutines.TimeoutCancellationException) null else throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private suspend fun candidates(row: RemoteHostEntity, probe: SunshineProbe, network: StreamNetworkSnapshot = routes.snapshot()): StreamCandidates = withContext(Dispatchers.IO) {
         orderStreamCandidates(routes.cached(row.id, row.connectionRevision, network.key), probe.candidates,
             withTimeoutOrNull(3_000) { resolveStreamHost(row.host) }.orEmpty(), network)

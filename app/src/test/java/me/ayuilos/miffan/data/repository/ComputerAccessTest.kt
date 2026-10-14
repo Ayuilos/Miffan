@@ -103,7 +103,7 @@ class ComputerAccessTest {
     @Test fun `paired host unpairs on the verified session before key revocation`() = runTest {
         val f = Fixture(paired = true)
         every { f.transport.open(any(), any(), any()) } returns f.session
-        every { f.unpair.unpair(f.session) } just Runs
+        every { f.unpair.unpair(f.session) } returns RemoteSunshineUnpair.Result(removed = 1, restarted = true)
         every { f.session.execute("revoke", any(), any(), any(), any()) } returns WorkspaceCommandResult(0, "", "")
         assertTrue(f.repository.revokeComputerAccess("host", "revoke", "legacy"))
         verifyOrder {

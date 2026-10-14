@@ -10,8 +10,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.security.SecureRandom
 import java.io.ByteArrayInputStream
 import java.io.Closeable
@@ -182,6 +184,7 @@ class RemoteScreenRepository(
     private val streamRoutes = RemoteStreamRoutes(context)
     private val streams = RemoteStreamEngine(RemoteStreamIdentityStore(context), streamRoutes, context.applicationContext)
     private val helper = RemoteMiffanHelper(assets)
+    private val sunshinePairings = RemoteSunshineUnpair(context)
     private val json = Json { ignoreUnknownKeys = true }
 
     private val lock = Any()
@@ -264,7 +267,18 @@ class RemoteScreenRepository(
         return withStreamRemote(workspaceId) { ssh ->
             ensureRevision(hostId, expectedRevision)
             ensureHelper(ssh)
-            try { streams.status(ssh, row, sunshineProbe(ssh)) }
+            try {
+                val probe = sunshineProbe(ssh)
+                streams.status(ssh, row, probe).also { status ->
+                    // Paired on the computer but never recorded here: record it rather than pair again.
+                    if (status.paired && row.streamCertificateSha256 == null) {
+                        val certificate = checkNotNull(probe.certificateSha256)
+                        check(hostDao.pinPairedStreamCertificate(hostId, certificate, expectedRevision, null, System.currentTimeMillis()) == 1) {
+                            "Host identity or certificate trust changed while checking the pairing"
+                        }
+                    }
+                }
+            }
             catch (error: me.rerere.stream.StreamException) {
                 if (error.reason == me.rerere.stream.StreamFailureReason.CERTIFICATE_MISMATCH)
                     throw streamCertificateFailure(row.streamCertificateSha256, sunshineProbe(ssh).certificateSha256)
@@ -289,6 +303,14 @@ class RemoteScreenRepository(
             val pairingCertificate = if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS)
                 requireNotNull(probe.certificateSha256) { "Windows Sunshine public certificate unavailable" }
                 else row.streamCertificateSha256
+            // Sunshine 2026.914 and older keep a second record when a phone pairs again, then refuse it as
+            // ambiguous at the last step; start from none. Best effort: newer Sunshine replaces it anyway.
+            val cleared = runCatching { sunshinePairings.unpair(ssh) }.getOrNull()
+            if (cleared?.restarted == true) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+                withTimeoutOrNull(20_000) {
+                    while (runCatching { streams.host(ssh, null).serverInfo() }.isFailure) delay(500)
+                }
+            }
             val streamHost = streams.host(ssh, pairingCertificate)
             val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val paired = lifetime.async {

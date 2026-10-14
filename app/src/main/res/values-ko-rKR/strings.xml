@@ -2287,6 +2287,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_stream_pair_starting">Sunshine에 페어링을 요청하는 중…</string>
   <string name="workspace_screen_stream_pair_waiting">컴퓨터에서 PIN을 입력하기를 기다리는 중…</string>
   <string name="workspace_screen_stream_pair_failed">페어링이 끝나지 않았습니다. PIN을 확인하고 다시 시도하세요.</string>
+  <string name="workspace_screen_stream_pair_failed_detail">페어링이 끝나지 않았습니다: %1$s</string>
   <string name="workspace_screen_stream_pair_done">페어링했습니다.</string>
   <string name="workspace_screen_stream_addresses">주소</string>
   <string name="workspace_screen_stream_no_addresses">휴대폰이 연결할 수 있는 주소를 찾지 못했습니다.</string>

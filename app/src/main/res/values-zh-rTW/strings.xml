@@ -2285,6 +2285,7 @@
   <string name="workspace_screen_stream_pair_starting">正在向 Sunshine 發起配對…</string>
   <string name="workspace_screen_stream_pair_waiting">等待在電腦上輸入 PIN…</string>
   <string name="workspace_screen_stream_pair_failed">配對未完成。請核對 PIN 後重試。</string>
+  <string name="workspace_screen_stream_pair_failed_detail">配對未完成：%1$s</string>
   <string name="workspace_screen_stream_pair_done">已配對。</string>
   <string name="workspace_screen_stream_addresses">位址</string>
   <string name="workspace_screen_stream_no_addresses">找不到手機可以連線的位址。</string>

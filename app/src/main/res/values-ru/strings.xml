@@ -2290,6 +2290,7 @@
   <string name="workspace_screen_stream_pair_starting">Запрашиваем сопряжение у Sunshine…</string>
   <string name="workspace_screen_stream_pair_waiting">Ждём ввода PIN на компьютере…</string>
   <string name="workspace_screen_stream_pair_failed">Сопряжение не завершилось. Проверьте PIN и попробуйте снова.</string>
+  <string name="workspace_screen_stream_pair_failed_detail">Сопряжение не завершилось: %1$s</string>
   <string name="workspace_screen_stream_pair_done">Сопряжено.</string>
   <string name="workspace_screen_stream_addresses">Адреса</string>
   <string name="workspace_screen_stream_no_addresses">Не найдено адресов, к которым может подключиться телефон.</string>

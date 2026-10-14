@@ -2328,6 +2328,7 @@
   <string name="workspace_screen_stream_pair_starting" tools:ignore="MissingTranslation">Asking Sunshine to pair…</string>
   <string name="workspace_screen_stream_pair_waiting" tools:ignore="MissingTranslation">Waiting for the PIN on the computer…</string>
   <string name="workspace_screen_stream_pair_failed" tools:ignore="MissingTranslation">Pairing did not finish. Check the PIN and try again.</string>
+  <string name="workspace_screen_stream_pair_failed_detail" tools:ignore="MissingTranslation">Pairing did not finish: %1$s</string>
   <string name="workspace_screen_stream_pair_done" tools:ignore="MissingTranslation">Paired.</string>
   <string name="workspace_screen_stream_addresses" tools:ignore="MissingTranslation">Addresses</string>
   <string name="workspace_screen_stream_no_addresses" tools:ignore="MissingTranslation">No address found that the phone could reach.</string>

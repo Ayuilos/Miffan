@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.streamPairingErrorText
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenRdpInstallGuidance
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServer
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.usesRdp
@@ -275,7 +276,7 @@ private fun SunshineControls(
     if (macOS && status?.installed == true && !stream.busy) {
         RemoteSunshinePermissions(status, stream, enabled = !busy, onOpen = onOpenSettings)
     }
-    if (stream.pairingError != null) Text(stringResource(R.string.workspace_screen_stream_pair_failed), color = MaterialTheme.colorScheme.error)
+    stream.pairingError?.let { Text(streamPairingErrorText(it), color = MaterialTheme.colorScheme.error) }
     if (stream.enforcementError != null || stream.enforcement?.success == false) {
         Text(stringResource(R.string.workspace_screen_stream_enforce_failed), color = MaterialTheme.colorScheme.error)
     }
