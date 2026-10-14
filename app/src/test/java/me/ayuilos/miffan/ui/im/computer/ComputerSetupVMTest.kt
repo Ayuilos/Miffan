@@ -29,6 +29,7 @@ import me.ayuilos.miffan.data.remote.NearbyNameSource
 import me.ayuilos.miffan.data.remote.NearbyNetwork
 import me.ayuilos.miffan.data.remote.NearbySystem
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
+import me.ayuilos.miffan.data.repository.KeySignInCheck
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
@@ -299,7 +300,7 @@ class ComputerSetupVMTest {
         runCurrent()
         vm.pickNearby(nearby(host = "server.internal"))
         runCurrent()
-        assertEquals(ComputerSetupStep.SIGN_IN, vm.state.value.step)
+        assertEquals(ComputerSetupStep.PASSWORD, vm.state.value.step)
         assertEquals("user", vm.state.value.username)
         assertNotNull(vm.state.value.error)
         assertTrue(vm.back())
@@ -332,6 +333,34 @@ class ComputerSetupVMTest {
         assertTrue(vm.back())
         vm.pickNearby(nearby(host = "10.0.0.3"))
         assertEquals("", vm.state.value.username)
+    }
+
+    @Test
+    fun `a computer that still has Miffan's key signs in without a password`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.checkKeySignIn("10.0.0.2", 22, "ekk", "key") } returns KeySignInCheck.ACCEPTED
+        val vm = vm(f)
+        vm.pickNearby(nearby())
+        vm.continueWithAccount("ekk")
+        runCurrent()
+        coVerify { f.workspaces.createHost("box", "10.0.0.2", 22, "ekk", null, "key") }
+        assertEquals(ComputerSetupStep.READY, vm.state.value.step)
+    }
+
+    @Test
+    fun `a computer without Miffan's key asks for the password next`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.checkKeySignIn(any(), any(), any(), any()) } returns KeySignInCheck.REFUSED
+        val vm = vm(f)
+        vm.pickNearby(nearby())
+        vm.continueWithAccount("ekk")
+        runCurrent()
+        assertEquals(ComputerSetupStep.PASSWORD, vm.state.value.step)
+        assertEquals("ekk", vm.state.value.username)
+        coVerify(exactly = 0) { f.workspaces.createHost(any(), any(), any(), any(), any(), any()) }
+        // Changing the account goes back to it.
+        assertTrue(vm.back())
+        assertEquals(ComputerSetupStep.SIGN_IN, vm.state.value.step)
     }
 
     @Test

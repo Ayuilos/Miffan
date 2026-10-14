@@ -43,20 +43,18 @@ private fun ComputerHero(icon: ImageVector, name: String?) {
     }
 }
 
-/** Account and password, nothing else: Miffan turns the password into its own key right away. */
+/** The account, alone first, the way big sign-in pages ask: the password only if it is needed. */
 @Composable
 internal fun ComputerSignInStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     val target = state.target
     var username by rememberSaveable(target?.host) { mutableStateOf(state.username) }
-    // Credentials never enter saved instance state.
-    var password by remember(target?.host) { mutableStateOf("") }
     SetupScreen(
         title = stringResource(R.string.im_computer_sign_in_title),
-        subtitle = stringResource(if (state.isMac) R.string.im_computer_sign_in_help_mac else R.string.im_computer_sign_in_help),
+        subtitle = stringResource(if (state.isMac) R.string.im_computer_account_first_help_mac else R.string.im_computer_account_first_help),
         state = state, onDismissError = vm::dismissError, centered = true,
         hero = { ComputerHero((target?.system ?: NearbySystem.UNKNOWN).icon(), target?.name) },
-        primary = SetupAction(stringResource(R.string.im_computer_connect_action), enabled = username.isNotBlank() && password.isNotEmpty()) {
-            vm.signIn(username.trim(), password)
+        primary = SetupAction(stringResource(R.string.im_computer_next), enabled = username.isNotBlank()) {
+            vm.continueWithAccount(username.trim())
         },
         secondary = SetupAction(stringResource(R.string.im_computer_other_sign_in)) {
             vm.setUsername(username.trim())
@@ -65,7 +63,37 @@ internal fun ComputerSignInStep(vm: ComputerSetupVM, state: ComputerSetupState) 
     ) {
         SetupGroup {
             SetupField(stringResource(R.string.im_computer_account), username, { username = it }, enabled = !state.busy,
-                placeholder = stringResource(R.string.im_computer_account_placeholder), divider = true)
+                placeholder = stringResource(R.string.im_computer_account_placeholder))
+        }
+        SetupNote(HugeIcons.Key01, stringResource(R.string.im_computer_account_first_note))
+    }
+}
+
+/** The password for the account just given; Miffan turns it into its own key right away. */
+@Composable
+internal fun ComputerPasswordStep(vm: ComputerSetupVM, state: ComputerSetupState) {
+    val target = state.target
+    // Credentials never enter saved instance state.
+    var password by remember(target?.host, state.username) { mutableStateOf("") }
+    SetupScreen(
+        title = stringResource(R.string.im_computer_sign_in_title),
+        subtitle = stringResource(R.string.im_computer_password_step_help),
+        state = state, onDismissError = vm::dismissError, centered = true,
+        hero = { ComputerHero((target?.system ?: NearbySystem.UNKNOWN).icon(), target?.name) },
+        primary = SetupAction(stringResource(R.string.im_computer_connect_action), enabled = password.isNotEmpty()) {
+            vm.signIn(state.username, password)
+        },
+        secondary = SetupAction(stringResource(R.string.im_computer_other_sign_in), onClick = vm::useKey),
+    ) {
+        SetupGroup {
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.im_computer_account), Modifier.widthIn(min = 64.dp), style = MaterialTheme.typography.bodyLarge)
+                Text(state.username, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { vm.back() }, enabled = !state.busy) { Text(stringResource(R.string.im_computer_change)) }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             SetupField(stringResource(R.string.im_computer_password), password, { password = it }, enabled = !state.busy, password = true)
         }
         SetupNote(HugeIcons.LockKey, stringResource(if (state.isMac) R.string.im_computer_password_note_mac else R.string.im_computer_password_note))

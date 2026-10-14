@@ -39,6 +39,7 @@ import me.ayuilos.miffan.data.remote.nearbyBannerSystem
 import me.ayuilos.miffan.data.remote.probeNearbySsh
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
+import me.ayuilos.miffan.data.repository.KeySignInCheck
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
@@ -56,8 +57,10 @@ enum class ComputerSetupStep {
     FIND,
     /** Type an address; also the connection settings of a saved computer. */
     MANUAL,
-    /** Account and password of a Mac or Linux computer. */
+    /** The account of a Mac or Linux computer; one that already lets Miffan's key in goes straight on. */
     SIGN_IN,
+    /** The password for that account, when Miffan's key is not let in yet. */
+    PASSWORD,
     /** Run one command on the computer so Miffan's key may sign in. */
     KEY,
     /** Run the setup script on a Windows computer, which also authorizes Miffan's key. */
@@ -393,6 +396,20 @@ class ComputerSetupVM(
 
     fun setUsername(username: String) = _state.update { it.copy(username = username) }
 
+    /**
+     * The account, first: a computer that still has Miffan's key (added before, deleted from the phone
+     * but not from the computer) signs in with it and never asks for the password.
+     */
+    fun continueWithAccount(username: String) = run(ComputerSetupTask.CONNECTING) {
+        val target = requireNotNull(_state.value.target) { "No computer chosen" }
+        _state.update { it.copy(username = username) }
+        val keyId = _appKey.value?.id ?: workspaces.listSshKeysFlow().first().firstOrNull()?.id
+        val accepted = keyId != null &&
+            workspaces.checkKeySignIn(target.host, target.port, username, keyId) == KeySignInCheck.ACCEPTED
+        if (accepted) connect(saveHost(username, authentication = null, sshKeyId = keyId))
+        else go(ComputerSetupStep.PASSWORD)
+    }
+
     /** Sign in with Miffan's key instead of a password. */
     fun useKey() = go(ComputerSetupStep.KEY) { it.copy(passwordRefused = false, keyRefused = false) }
 
@@ -542,7 +559,7 @@ class ComputerSetupVM(
                     val keyed = workspaces.getHostById(hostId)?.sshKeyId != null
                     if (keyed) go(ComputerSetupStep.KEY) { it.copy(passwordRefused = false, keyRefused = true) }
                     else {
-                        go(ComputerSetupStep.SIGN_IN) { it.copy(passwordRefused = false, keyRefused = false) }
+                        go(ComputerSetupStep.PASSWORD) { it.copy(passwordRefused = false, keyRefused = false) }
                         _state.update { it.copy(error = error) }
                     }
                 }

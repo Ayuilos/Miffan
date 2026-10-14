@@ -19,7 +19,7 @@ import org.koin.core.parameter.parametersOf
 /** Which of the four dots a screen lights: find, sign in, get ready, share. */
 private fun ComputerSetupStep.dot(): Int? = when (this) {
     ComputerSetupStep.FIND, ComputerSetupStep.MANUAL -> 0
-    ComputerSetupStep.SIGN_IN, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
+    ComputerSetupStep.SIGN_IN, ComputerSetupStep.PASSWORD, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
     ComputerSetupStep.READY -> 2
     ComputerSetupStep.SHARE -> 3
     ComputerSetupStep.DONE -> null
@@ -66,6 +66,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 }
                 ComputerSetupStep.MANUAL -> if (state.editing) ComputerSettingsStep(vm, state, host) else ComputerManualStep(vm, state)
                 ComputerSetupStep.SIGN_IN -> ComputerSignInStep(vm, state)
+                ComputerSetupStep.PASSWORD -> ComputerPasswordStep(vm, state)
                 ComputerSetupStep.KEY -> ComputerKeyStep(vm, state)
                 ComputerSetupStep.WINDOWS -> ComputerWindowsStep(vm, state)
                 ComputerSetupStep.VERIFY -> ComputerVerifyStep(vm, state)
