@@ -28,6 +28,7 @@ import me.ayuilos.miffan.data.repository.RemoteHostCredentialStore
 import me.ayuilos.miffan.data.repository.RemoteScreenCredentialStore
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.SshKeyCredentialStore
+import me.ayuilos.miffan.data.remote.NearbyComputerDiscovery
 import me.rerere.workspace.AndroidPageSize
 import me.rerere.workspace.ProotShellRunner
 import me.rerere.workspace.RootfsInstaller
@@ -123,6 +124,8 @@ val repositoryModule = module {
     single { WorkspaceNetworkBroker() }
 
     single { RemoteHostCredentialStore(get()) }
+
+    single { NearbyComputerDiscovery(get()) }
 
     single { SshKeyCredentialStore(get()) }
 
