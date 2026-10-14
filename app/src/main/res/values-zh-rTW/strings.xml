@@ -2552,10 +2552,13 @@
   <string name="im_computer_nearby">附近的電腦</string>
   <string name="im_computer_key_command">執行指令</string>
   <string name="im_computer_password_help">Miffan 會用這個密碼登入一次，把自己的金鑰加到這台電腦上，之後改用金鑰登入。如果是 Mac，螢幕共享也會用這個帳號登入，它的密碼會安全地保存在手機上。</string>
+  <string name="im_computer_password_not_allowed">這台電腦只接受金鑰登入。請在電腦的終端機執行一次下面的指令，然後點「繼續」。</string>
   <string name="im_computer_auto_recheck">在電腦上處理好之後，這裡會自動更新。</string>
   <string name="im_computer_mac_open_sharing">在 Mac 上開啟共享設定</string>
   <string name="im_computer_task_opening_settings">正在開啟設定…</string>
   <string name="workspace_screen_ssh_auth">電腦拒絕了登入，請確認 Miffan 的金鑰或密碼在那台電腦上仍然有效。</string>
+  <string name="workspace_screen_ssh_password_not_allowed">這台電腦不允許用密碼登入，只接受金鑰。</string>
+  <string name="workspace_screen_ssh_password_wrong">使用者名稱或密碼不正確。</string>
   <string name="workspace_screen_ssh_timeout">電腦沒有及時回應，請確認它已開機且能連上，例如 Tailscale 已連線。</string>
   <string name="workspace_screen_ssh_unreachable">無法連接這台電腦，請檢查位址，並確認已啟用 SSH。</string>
   <string name="workspace_screen_clipboard_new">電腦上複製了新內容</string>

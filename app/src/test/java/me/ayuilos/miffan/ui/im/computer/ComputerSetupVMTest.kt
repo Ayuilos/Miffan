@@ -26,7 +26,9 @@ import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
+import me.rerere.workspace.RemoteConnectException
 import me.rerere.workspace.RemoteHostKey
+import me.rerere.workspace.RemotePasswordSignInFailure
 import me.rerere.workspace.WorkspaceCommandResult
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -335,5 +337,37 @@ class ComputerSetupVMTest {
         assertEquals(ComputerSetupStep.TEST, vm.state.value.step)
         vm.back()
         assertEquals(ComputerSetupStep.MAC_ACCOUNT, vm.state.value.step)
+    }
+
+    private fun passwordFailure(failure: RemotePasswordSignInFailure) =
+        RemoteConnectException("server.internal", com.jcraft.jsch.JSchException("Auth fail"), failure)
+
+    @Test
+    fun `computer without password sign-in returns to the address step to switch the same computer to the key`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.testHost("host") } throws passwordFailure(RemotePasswordSignInFailure.NOT_OFFERED) andThen true
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        assertEquals(ComputerSetupStep.ADDRESS, vm.state.value.step)
+        assertTrue(vm.state.value.passwordRefused)
+        assertNull(vm.state.value.error)
+        vm.submitAddress("Server", "server.internal", 22, "user", ComputerSetupAuth.AppKey("key"))
+        runCurrent()
+        coVerify { f.workspaces.updateHost("host", "Server", "server.internal", 22, "user", null, "key") }
+        coVerify(exactly = 0) { f.workspaces.createHost(any(), any(), any(), any(), any(), any()) }
+        assertEquals(ComputerSetupStep.PREPARE, vm.state.value.step)
+        assertFalse(vm.state.value.passwordRefused)
+    }
+
+    @Test
+    fun `wrong password stays an error where it happened`() = runTest {
+        val f = Fixture()
+        val error = passwordFailure(RemotePasswordSignInFailure.REJECTED)
+        coEvery { f.workspaces.testHost("host") } throws error
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        assertEquals(error, vm.state.value.error)
+        assertFalse(vm.state.value.passwordRefused)
+        assertEquals(ComputerSetupStep.CHOOSE, vm.state.value.step)
     }
 }

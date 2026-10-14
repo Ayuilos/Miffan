@@ -36,6 +36,8 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupC
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
+import me.rerere.workspace.RemoteConnectException
+import me.rerere.workspace.RemotePasswordSignInFailure
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RemotePlatform
 import kotlin.uuid.Uuid
@@ -118,6 +120,11 @@ data class ComputerSetupState(
     val expectWindows: Boolean = false,
     /** The user's choice of whether this computer has a screen to use; null follows what the check found. */
     val wantsScreen: Boolean? = null,
+    /**
+     * The computer [hostId] does not take passwords: the address step switches it to Miffan's key
+     * instead of adding another computer.
+     */
+    val passwordRefused: Boolean = false,
 ) {
     val busy: Boolean get() = task != null
     val isMac: Boolean get() = probe?.os == "macos"
@@ -313,7 +320,7 @@ class ComputerSetupVM(
                 signInPassword = it?.value
                 keyToAuthorize = it?.keyId
             }
-            val host = if (_state.value.editing) {
+            val host = if (_state.value.editing || _state.value.passwordRefused) {
                 val hostId = requireNotNull(_state.value.hostId)
                 check(workspaces.updateHost(hostId, name, address, port, username,
                     authentication = (auth as? ComputerSetupAuth.Password)?.let { RemoteAuthentication.Password(it.value) },
@@ -529,7 +536,16 @@ class ComputerSetupVM(
 
     private suspend fun connectAndProbe(hostId: String) {
         _state.update { it.copy(task = ComputerSetupTask.CONNECTING) }
-        check(workspaces.testHost(hostId)) { "Connection failed" }
+        try {
+            check(workspaces.testHost(hostId)) { "Connection failed" }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (error.passwordSignInFailure() != RemotePasswordSignInFailure.NOT_OFFERED) throw error
+            _state.update { it.copy(step = ComputerSetupStep.ADDRESS, passwordRefused = true) }
+            return
+        }
+        _state.update { it.copy(passwordRefused = false) }
         val workspaceId = partnerComputers.ensureComputerWorkspace(hostId)
         keyToAuthorize?.let { keyId ->
             keyToAuthorize = null
@@ -579,6 +595,9 @@ class ComputerSetupVM(
         // Sunshine is optional on Linux and macOS and required on Windows; its check runs beside the others.
         if (probe.os in setOf("linux", "macos", "windows")) streamSetup.check(host.id, host.connectionRevision)
     }
+
+    private fun Throwable.passwordSignInFailure(): RemotePasswordSignInFailure? =
+        generateSequence(this) { it.cause }.firstNotNullOfOrNull { (it as? RemoteConnectException)?.passwordSignIn }
 
     private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path
 

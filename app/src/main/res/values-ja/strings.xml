@@ -2554,10 +2554,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_nearby">近くのコンピューター</string>
   <string name="im_computer_key_command">コマンドを実行</string>
   <string name="im_computer_password_help">Miffan はこのパスワードで一度ログインし、自分のキーをコンピューターに追加します。以後はキーでログインします。Mac では Screen Sharing もこのアカウントでログインし、そのパスワードはこのスマートフォンに安全に保存されます。</string>
+  <string name="im_computer_password_not_allowed">このコンピューターはキーでのログインのみ受け付けます。そのコンピューターのターミナルで下のコマンドを一度実行してから、「続行」をタップしてください。</string>
   <string name="im_computer_auto_recheck">コンピューターで問題を解決すると、このページは自動で更新されます。</string>
   <string name="im_computer_mac_open_sharing">Mac で共有設定を開く</string>
   <string name="im_computer_task_opening_settings">設定を開いています…</string>
   <string name="workspace_screen_ssh_auth">コンピューターがログインを拒否しました。Miffan のキーまたはパスワードが引き続き許可されているか確認してください。</string>
+  <string name="workspace_screen_ssh_password_not_allowed">このコンピューターはパスワードでのログインを許可していません。キーのみ使用できます。</string>
+  <string name="workspace_screen_ssh_password_wrong">ユーザー名またはパスワードが正しくありません。</string>
   <string name="workspace_screen_ssh_timeout">コンピューターから時間内に応答がありませんでした。電源が入っていて接続できること（例：Tailscale が接続中であること）を確認してください。</string>
   <string name="workspace_screen_ssh_unreachable">コンピューターに接続できません。アドレスと SSH が有効になっていることを確認してください。</string>
   <string name="workspace_screen_clipboard_new">コンピューターで新しい内容がコピーされました</string>

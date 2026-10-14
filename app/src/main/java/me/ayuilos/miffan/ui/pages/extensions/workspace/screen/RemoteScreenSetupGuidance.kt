@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import me.rerere.workspace.RemoteConnectException
+import me.rerere.workspace.RemotePasswordSignInFailure
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.res.Resources
@@ -108,7 +109,10 @@ internal fun remoteSshError(resources: Resources, error: Throwable): String? {
     val chain = generateSequence(error) { it.cause }.toList()
     val ssh = chain.firstOrNull { it is JSchException }?.message.orEmpty()
     val tailnet = chain.firstNotNullOfOrNull { (it as? RemoteConnectException)?.host }?.let(::isTailnetAddress) == true
+    val passwordSignIn = chain.firstNotNullOfOrNull { (it as? RemoteConnectException)?.passwordSignIn }
     return when {
+        passwordSignIn == RemotePasswordSignInFailure.NOT_OFFERED -> resources.getString(R.string.workspace_screen_ssh_password_not_allowed)
+        passwordSignIn == RemotePasswordSignInFailure.REJECTED -> resources.getString(R.string.workspace_screen_ssh_password_wrong)
         ssh.contains("auth", ignoreCase = true) -> resources.getString(R.string.workspace_screen_ssh_auth)
         isClosedScreenPort(error) -> resources.getString(R.string.workspace_screen_port_closed)
         // Over Tailscale a silent drop is usually Tailscale being off or the tailnet's access rules.

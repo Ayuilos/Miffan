@@ -79,7 +79,12 @@ class NativeSshWorkspaceTransportTest {
     @Before fun startServer() {
         directory = Files.createTempDirectory("miffan-ssh-test")
         root = Files.createDirectory(directory.resolve("workspace"))
-        server = SshServer.setUpDefaultServer().apply {
+        server = newServer()
+    }
+
+    /** The test server; [configure] runs before start, since the offered sign-in methods are fixed then. */
+    private fun newServer(configure: SshServer.() -> Unit = {}): SshServer =
+        SshServer.setUpDefaultServer().apply {
             host = "127.0.0.1"
             port = 0
             keyPairProvider = SimpleGeneratorHostKeyProvider(directory.resolve("hostkey.ser"))
@@ -185,7 +190,16 @@ class NativeSshWorkspaceTransportTest {
                     override fun destroy(channel: ChannelSession) { process?.destroyForcibly() }
                 }
             }
+            configure()
             start()
+        }
+
+    /** Replaces the running server with one that offers only [methods]. */
+    private fun restartOffering(vararg methods: org.apache.sshd.server.auth.UserAuthFactory, configure: SshServer.() -> Unit = {}) {
+        server.stop(true)
+        server = newServer {
+            userAuthFactories = methods.toList()
+            configure()
         }
     }
 
@@ -395,6 +409,49 @@ class NativeSshWorkspaceTransportTest {
                 authentication = RemoteAuthentication.PrivateKey(other.privateKeyPem),
             ))
         }
+    }
+
+    private fun passwordFailure(configuration: RemoteHostConfig): RemotePasswordSignInFailure? =
+        assertThrows(RemoteConnectException::class.java) { NativeSshWorkspaceTransport.open(configuration) }.passwordSignIn
+
+    @Test fun keyOnlyServerReportsPasswordNotOffered() {
+        restartOffering(org.apache.sshd.server.auth.pubkey.UserAuthPublicKeyFactory.INSTANCE) {
+            publickeyAuthenticator = org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator { _, _, _ -> false }
+        }
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        assertEquals(RemotePasswordSignInFailure.NOT_OFFERED, passwordFailure(config(hostKey.sha256Fingerprint)))
+    }
+
+    @Test fun wrongPasswordIsRejectedAfterOneAttempt() {
+        val attempts = AtomicInteger()
+        server.passwordAuthenticator = { _, _, _ -> attempts.incrementAndGet(); false }
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        assertEquals(RemotePasswordSignInFailure.REJECTED, passwordFailure(config(hostKey.sha256Fingerprint)))
+        // Password and keyboard-interactive both reach this authenticator; only one try is made.
+        assertEquals(1, attempts.get())
+    }
+
+    @Test fun keyboardInteractiveOnlyServerAcceptsThePassword() {
+        restartOffering(org.apache.sshd.server.auth.keyboard.UserAuthKeyboardInteractiveFactory.INSTANCE)
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        NativeSshWorkspaceTransport.open(config(hostKey.sha256Fingerprint)).use {
+            assertEquals("authenticated", it.execute("printf authenticated").stdout)
+        }
+    }
+
+    @Test fun wrongPasswordOnKeyboardInteractiveOnlyServerIsTriedOnce() {
+        val attempts = AtomicInteger()
+        restartOffering(org.apache.sshd.server.auth.keyboard.UserAuthKeyboardInteractiveFactory.INSTANCE) {
+            passwordAuthenticator = org.apache.sshd.server.auth.password.PasswordAuthenticator { _, _, _ -> attempts.incrementAndGet(); false }
+        }
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        assertEquals(RemotePasswordSignInFailure.REJECTED, passwordFailure(config(hostKey.sha256Fingerprint)))
+        assertEquals(1, attempts.get())
+    }
+
+    @Test fun nonAuthenticationFailuresCarryNoPasswordVerdict() {
+        val hostKey = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        assertEquals(null, passwordFailure(config(hostKey.sha256Fingerprint.dropLast(2) + "AA")))
     }
 
     @Test fun discoversPinsAndUsesSshAndSftp() {

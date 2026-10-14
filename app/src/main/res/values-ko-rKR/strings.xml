@@ -2554,10 +2554,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_nearby">주변 컴퓨터</string>
   <string name="im_computer_key_command">명령 실행</string>
   <string name="im_computer_password_help">Miffan은 이 비밀번호로 한 번 로그인해 컴퓨터에 자체 키를 추가하고, 이후에는 키로 로그인해요. Mac에서는 Screen Sharing도 이 계정으로 로그인하며, 비밀번호는 이 휴대폰에 안전하게 저장돼요.</string>
+  <string name="im_computer_password_not_allowed">이 컴퓨터는 키 로그인만 허용해요. 해당 컴퓨터의 터미널에서 아래 명령을 한 번 실행한 다음 계속을 탭하세요.</string>
   <string name="im_computer_auto_recheck">컴퓨터에서 문제를 해결하면 이 페이지가 자동으로 업데이트돼요.</string>
   <string name="im_computer_mac_open_sharing">Mac에서 공유 설정 열기</string>
   <string name="im_computer_task_opening_settings">설정 여는 중…</string>
   <string name="workspace_screen_ssh_auth">컴퓨터가 로그인을 거부했어요. Miffan의 키나 비밀번호가 아직 허용되는지 확인하세요.</string>
+  <string name="workspace_screen_ssh_password_not_allowed">이 컴퓨터는 비밀번호 로그인을 허용하지 않고 키만 허용해요.</string>
+  <string name="workspace_screen_ssh_password_wrong">사용자 이름 또는 비밀번호가 올바르지 않아요.</string>
   <string name="workspace_screen_ssh_timeout">컴퓨터가 제때 응답하지 않았어요. 전원이 켜져 있고 연결 가능한지 확인하세요. 예를 들어 Tailscale이 연결되어 있는지 확인하세요.</string>
   <string name="workspace_screen_ssh_unreachable">컴퓨터에 연결할 수 없어요. 주소를 확인하고 SSH가 켜져 있는지 확인하세요.</string>
   <string name="workspace_screen_clipboard_new">컴퓨터에서 항목을 복사했어요</string>

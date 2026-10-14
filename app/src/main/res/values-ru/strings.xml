@@ -2557,10 +2557,13 @@
   <string name="im_computer_nearby">Компьютеры поблизости</string>
   <string name="im_computer_key_command">Выполнить команду</string>
   <string name="im_computer_password_help">Miffan один раз войдёт с этим паролем, добавит свой ключ на компьютер и дальше будет входить с помощью ключа. На Mac эта учётная запись также используется для входа в Screen Sharing, а её пароль надёжно хранится на этом телефоне.</string>
+  <string name="im_computer_password_not_allowed">Этот компьютер принимает только вход по ключу. Один раз выполните команду ниже в терминале на нём, затем нажмите «Продолжить».</string>
   <string name="im_computer_auto_recheck">Устраните проблему на компьютере, и эта страница обновится автоматически.</string>
   <string name="im_computer_mac_open_sharing">Открыть настройки общего доступа на Mac</string>
   <string name="im_computer_task_opening_settings">Открытие настроек…</string>
   <string name="workspace_screen_ssh_auth">Компьютер отклонил вход. Проверьте, что ключу или паролю Miffan по-прежнему разрешён доступ.</string>
+  <string name="workspace_screen_ssh_password_not_allowed">Этот компьютер не разрешает вход по паролю, только по ключу.</string>
+  <string name="workspace_screen_ssh_password_wrong">Неверное имя пользователя или пароль.</string>
   <string name="workspace_screen_ssh_timeout">Компьютер не ответил вовремя. Проверьте, включён ли он и доступен ли, например подключён ли Tailscale.</string>
   <string name="workspace_screen_ssh_unreachable">Не удаётся подключиться к компьютеру. Проверьте адрес и убедитесь, что SSH включён.</string>
   <string name="workspace_screen_clipboard_new">На компьютере скопировано новое содержимое</string>

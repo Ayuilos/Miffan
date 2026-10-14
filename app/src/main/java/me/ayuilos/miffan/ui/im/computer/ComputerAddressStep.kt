@@ -123,8 +123,16 @@ internal fun ComputerAddressStep(
     var prefilled by rememberSaveable { mutableStateOf(false) }
     // The name a nearby computer filled in, replaced when another one is picked.
     var nearbyName by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(host?.id) {
-        if (edit && host != null && !prefilled) {
+    // The computer refused password sign-in: same computer, switched to Miffan's key.
+    val fixingSignIn = state.passwordRefused
+    LaunchedEffect(fixingSignIn) {
+        if (fixingSignIn) {
+            changeSignIn = true
+            passwordLogin = false
+        }
+    }
+    LaunchedEffect(host?.id, fixingSignIn) {
+        if ((edit || fixingSignIn) && host != null && !prefilled) {
             name = host.name; address = host.host; port = host.port.toString(); username = host.username
             keyId = host.sshKeyId
             windows = host.platform == RemotePlatform.WINDOWS.storageName
@@ -138,7 +146,7 @@ internal fun ComputerAddressStep(
     // Windows needs the setup script anyway, and the script authorizes a key: no password option there.
     val usePassword = passwordLogin && !windows
     // submitAddress has already saved this computer even when fingerprint reading fails.
-    val retryFingerprint = state.hostId != null && !edit
+    val retryFingerprint = state.hostId != null && !edit && !fixingSignIn
     val editable = !state.busy && !retryFingerprint
     // Every way in ends with Miffan's key (password sign-in authorizes it), so make one up front.
     LaunchedEffect(keys.isEmpty(), changeSignIn) {
@@ -159,7 +167,8 @@ internal fun ComputerAddressStep(
         parsed.port?.let { port = it.toString() }
     }
     val valid = finalAddress.isNotBlank() && finalUsername.isNotBlank() && finalPort.toIntOrNull() in 1..65535 &&
-        (!changeSignIn || if (usePassword) password.isNotEmpty() && selectedKey != null else selectedKey != null) && (!edit || prefilled)
+        (!changeSignIn || if (usePassword) password.isNotEmpty() && selectedKey != null else selectedKey != null) &&
+        (!(edit || fixingSignIn) || prefilled)
     ComputerSetupStepLayout(
         title = stringResource(if (edit) R.string.im_computer_edit_title else R.string.im_computer_address_title),
         supporting = stringResource(if (edit) R.string.im_computer_edit_help else R.string.im_computer_address_help),
@@ -174,6 +183,7 @@ internal fun ComputerAddressStep(
             }, windows)
         },
     ) {
+        if (fixingSignIn) SetupWarning(stringResource(R.string.im_computer_password_not_allowed))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             SegmentedButton(selected = !windows, enabled = editable, onClick = { windows = false },
                 shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text(stringResource(R.string.im_computer_system_unix)) }
@@ -198,7 +208,7 @@ internal fun ComputerAddressStep(
         }
         if (windows && changeSignIn) WindowsSetupCard(selectedKey, keyPicker)
         // Macs with Remote Login (and Linux with avahi) announce themselves; Windows does not.
-        if (!edit && !windows) NearbyComputers(enabled = editable, selected = finalAddress to finalPort) { computer ->
+        if (!edit && !fixingSignIn && !windows) NearbyComputers(enabled = editable, selected = finalAddress to finalPort) { computer ->
             if (name.isBlank() || name == nearbyName) name = computer.name
             nearbyName = computer.name
             address = computer.host

@@ -2608,10 +2608,13 @@
   <string name="im_computer_nearby" tools:ignore="MissingTranslation">Nearby computers</string>
   <string name="im_computer_key_command" tools:ignore="MissingTranslation">Run a command</string>
   <string name="im_computer_password_help" tools:ignore="MissingTranslation">Miffan signs in with this password once, adds its own key to the computer and uses the key from then on. On a Mac, Screen Sharing signs in with this account too, and that password is kept securely on this phone.</string>
+  <string name="im_computer_password_not_allowed" tools:ignore="MissingTranslation">This computer only accepts key sign-in. Run the command below once in a terminal on it, then tap Continue.</string>
   <string name="im_computer_auto_recheck" tools:ignore="MissingTranslation">Fix it on the computer and this page updates by itself.</string>
   <string name="im_computer_mac_open_sharing" tools:ignore="MissingTranslation">Open Sharing settings on the Mac</string>
   <string name="im_computer_task_opening_settings" tools:ignore="MissingTranslation">Opening settings…</string>
   <string name="workspace_screen_ssh_auth" tools:ignore="MissingTranslation">The computer refused the sign-in. Check that Miffan\'s key or password is still allowed there.</string>
+  <string name="workspace_screen_ssh_password_not_allowed" tools:ignore="MissingTranslation">This computer does not allow password sign-in, only keys.</string>
+  <string name="workspace_screen_ssh_password_wrong" tools:ignore="MissingTranslation">The username or password is wrong.</string>
   <string name="workspace_screen_ssh_timeout" tools:ignore="MissingTranslation">The computer didn\'t answer in time. Check that it is on and reachable, for example that Tailscale is connected.</string>
   <string name="workspace_screen_ssh_unreachable" tools:ignore="MissingTranslation">Can\'t reach the computer. Check the address and that SSH is turned on.</string>
   <string name="workspace_screen_clipboard_new" tools:ignore="MissingTranslation">The computer copied something</string>
