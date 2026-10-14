@@ -2467,7 +2467,7 @@
   <string name="im_computer_action_error" tools:ignore="MissingTranslation">The computer action failed.</string>
   <string name="im_computer_add" tools:ignore="MissingTranslation">Add a new computer</string>
   <string name="im_computer_address" tools:ignore="MissingTranslation">Address</string>
-  <string name="im_computer_address_hint" tools:ignore="MissingTranslation">Tailscale name or IP address</string>
+  <string name="im_computer_address_hint" tools:ignore="MissingTranslation">IP, Tailscale name, or paste user@host:port</string>
   <string name="im_computer_address_title" tools:ignore="MissingTranslation">Where is your computer?</string>
   <string name="im_computer_allow" tools:ignore="MissingTranslation">Allow</string>
   <string name="im_computer_app_key" tools:ignore="MissingTranslation">Miffan key</string>
@@ -2518,7 +2518,7 @@
   <string name="im_computer_install_failed" tools:ignore="MissingTranslation">Installation or upgrade failed</string>
   <string name="im_computer_install_success" tools:ignore="MissingTranslation">Installation or upgrade completed</string>
   <string name="im_computer_installing" tools:ignore="MissingTranslation">Installing… This may take a few minutes.</string>
-  <string name="im_computer_key_command_help" tools:ignore="MissingTranslation">Run this once on that computer so Miffan\'s key can sign in, then tap Continue.</string>
+  <string name="im_computer_key_command_help" tools:ignore="MissingTranslation">Run this once in a terminal on that computer so Miffan\'s key can sign in. It ends by printing the username to fill in.</string>
   <string name="im_computer_let_partner_look" tools:ignore="MissingTranslation">Let the partner take a look</string>
   <string name="im_computer_mac_account" tools:ignore="MissingTranslation">Screen Sharing account</string>
   <string name="im_computer_mac_account_help" tools:ignore="MissingTranslation">Screen Sharing needs the login account of this Mac, even when SSH uses a key. The password is stored securely on your phone.</string>
@@ -2534,7 +2534,7 @@
   <string name="im_computer_partner_view" tools:ignore="MissingTranslation">What your partner saw</string>
   <string name="im_computer_password" tools:ignore="MissingTranslation">Password</string>
   <string name="im_computer_password_login" tools:ignore="MissingTranslation">Password</string>
-  <string name="im_computer_permissions_help" tools:ignore="MissingTranslation">Allow the dialogs on your Mac using the preview above, or enable cua-driver in System Settings → Privacy &amp; Security. Then tap “Let the partner take a look” again.</string>
+  <string name="im_computer_permissions_help" tools:ignore="MissingTranslation">Allow the dialogs on your Mac using the preview above, or enable cua-driver in System Settings → Privacy &amp; Security. Setup continues by itself once both are on.</string>
   <string name="im_computer_port" tools:ignore="MissingTranslation">Port</string>
   <string name="im_computer_prepare" tools:ignore="MissingTranslation">Check the computer</string>
   <string name="im_computer_ready" tools:ignore="MissingTranslation">Ready</string>
@@ -2604,6 +2604,12 @@
   <string name="im_computer_task_verifying" tools:ignore="MissingTranslation">Confirming the computer…</string>
   <string name="im_computer_task_checking" tools:ignore="MissingTranslation">Checking the computer…</string>
   <string name="im_computer_task_saving" tools:ignore="MissingTranslation">Saving…</string>
+  <string name="im_computer_name_optional" tools:ignore="MissingTranslation">Name (optional)</string>
+  <string name="im_computer_key_command" tools:ignore="MissingTranslation">Run a command</string>
+  <string name="im_computer_password_help" tools:ignore="MissingTranslation">Miffan signs in with this password once, adds its own key to the computer and uses the key from then on. On a Mac, Screen Sharing signs in with this account too, and that password is kept securely on this phone.</string>
+  <string name="im_computer_auto_recheck" tools:ignore="MissingTranslation">Fix it on the computer and this page updates by itself.</string>
+  <string name="im_computer_mac_open_sharing" tools:ignore="MissingTranslation">Open Sharing settings on the Mac</string>
+  <string name="im_computer_task_opening_settings" tools:ignore="MissingTranslation">Opening settings…</string>
   <string name="workspace_screen_ssh_auth" tools:ignore="MissingTranslation">The computer refused the sign-in. Check that Miffan\'s key or password is still allowed there.</string>
   <string name="workspace_screen_ssh_timeout" tools:ignore="MissingTranslation">The computer didn\'t answer in time. Check that it is on and reachable, for example that Tailscale is connected.</string>
   <string name="workspace_screen_ssh_unreachable" tools:ignore="MissingTranslation">Can\'t reach the computer. Check the address and that SSH is turned on.</string>

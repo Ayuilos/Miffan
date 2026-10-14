@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -65,11 +66,25 @@ sealed interface ReplacedBinding {
     data class Computer(val name: String) : ReplacedBinding
 }
 
-enum class ComputerSetupTask { CREATING_KEY, CONNECTING, READING_FINGERPRINT, VERIFYING, PREPARING, INSTALLING, SAVING, CHECKING, BINDING }
+enum class ComputerSetupTask {
+    CREATING_KEY, CONNECTING, READING_FINGERPRINT, VERIFYING, PREPARING, INSTALLING, SAVING, CHECKING, BINDING, OPENING_SETTINGS,
+}
+
+/** Reads the Mac's grants every few seconds for about two minutes after asking for them. */
+private const val PERMISSION_WATCH_INTERVAL_MS = 3_000L
+private const val PERMISSION_WATCH_ROUNDS = 40
+
+/** Sharing in System Settings; the second form is for macOS 12 and older. */
+private const val MAC_SHARING_SETTINGS_COMMAND =
+    "open 'x-apple.systempreferences:com.apple.Sharing-Settings.extension' 2>/dev/null || open /System/Library/PreferencePanes/SharingPref.prefPane"
 
 sealed interface ComputerSetupAuth {
-    data class Password(val value: String) : ComputerSetupAuth {
-        override fun toString(): String = "Password([redacted])"
+    /**
+     * With [keyId], the password only signs in once: the setup authorizes that Miffan key with it and
+     * signs in with the key from then on.
+     */
+    data class Password(val value: String, val keyId: String? = null) : ComputerSetupAuth {
+        override fun toString(): String = "Password([redacted], keyId=$keyId)"
     }
 
     /** A key generated in Miffan; the user adds its public half to the computer first. */
@@ -194,6 +209,15 @@ class ComputerSetupVM(
 
     private var job: Job? = null
 
+    /**
+     * The password this setup signed in with, kept in memory only: a Mac's Screen Sharing signs in
+     * with the same account, so the setup can skip asking for it again.
+     */
+    private var signInPassword: String? = null
+    /** The key to authorize with the password session, see [ComputerSetupAuth.Password.keyId]. */
+    private var keyToAuthorize: String? = null
+    private var permissionWatch: Job? = null
+
     private val streamSetup = RemoteStreamSetupController(screens, viewModelScope)
     /** Optional high-performance mode for the computer being set up; see [RemoteStreamSetupController]. */
     val streamSetups = streamSetup.states
@@ -285,6 +309,10 @@ class ComputerSetupVM(
     fun submitAddress(name: String, address: String, port: Int, username: String, auth: ComputerSetupAuth?, windows: Boolean = false) =
         run(ComputerSetupTask.READING_FINGERPRINT) {
             _state.update { it.copy(expectWindows = windows) }
+            (auth as? ComputerSetupAuth.Password).let {
+                signInPassword = it?.value
+                keyToAuthorize = it?.keyId
+            }
             val host = if (_state.value.editing) {
                 val hostId = requireNotNull(_state.value.hostId)
                 check(workspaces.updateHost(hostId, name, address, port, username,
@@ -317,6 +345,38 @@ class ComputerSetupVM(
 
     fun reprobe() = run(ComputerSetupTask.PREPARING) { probe() }
 
+    /**
+     * Checks again without showing progress, while the user fixes something at the computer; the
+     * result is dropped if the user started anything meanwhile. Failures are ignored: the visible
+     * check reports them.
+     */
+    fun quietRecheck() {
+        val start = _state.value
+        if (start.busy || start.step != ComputerSetupStep.PREPARE || start.prepared) return
+        val hostId = start.hostId ?: return
+        viewModelScope.launch {
+            val host = workspaces.getHostById(hostId) ?: return@launch
+            val probe = try {
+                screens.probeHost(host.id, host.connectionRevision)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            _state.update {
+                if (it.busy || it.step != ComputerSetupStep.PREPARE || it.hostId != hostId) it
+                else it.copy(probe = probe, hostRevision = host.connectionRevision)
+            }
+        }
+    }
+
+    /** macOS: opens Sharing in System Settings on the Mac, where Screen Sharing is switched on. */
+    fun openMacSharingSettings() = run(ComputerSetupTask.OPENING_SETTINGS) {
+        val workspaceId = requireNotNull(_state.value.workspaceId)
+        val result = workspaces.executeCommand(workspaceId, MAC_SHARING_SETTINGS_COMMAND, timeoutMillis = 15_000)
+        check(result.exitCode == 0 && !result.timedOut) { result.stderr.ifBlank { "Could not open System Settings" } }
+    }
+
     fun setWantsScreen(wants: Boolean) {
         if (_state.value.busy) return
         _state.update { it.copy(wantsScreen = wants, error = null) }
@@ -340,7 +400,20 @@ class ComputerSetupVM(
             return@run
         }
         if (_state.value.isMac) {
-            _state.update { it.copy(step = ComputerSetupStep.MAC_ACCOUNT) }
+            // Screen Sharing signs in with the Mac account: reuse a saved one, or the password this
+            // setup signed in with. Back from the test still leads to the account to change it.
+            val host = currentHost()
+            val password = signInPassword
+            when {
+                savedMacAccount() != null -> Unit
+                password != null -> screens.updateConfig(host.id, enabled = true, endpoint = RemoteScreenEndpoint.Helper,
+                    auth = RemoteScreenAuth.MACOS_ACCOUNT, username = host.username, password = password)
+                else -> {
+                    _state.update { it.copy(step = ComputerSetupStep.MAC_ACCOUNT) }
+                    return@run
+                }
+            }
+            _state.update { it.copy(step = ComputerSetupStep.TEST) }
             return@run
         }
         val host = currentHost()
@@ -382,10 +455,38 @@ class ComputerSetupVM(
         _state.update { it.copy(partnerView = bitmap, partnerChecked = true) }
     }
 
-    /** macOS: raise the system permission dialogs on the Mac for missing grants. */
+    /**
+     * macOS: raise the system permission dialogs on the Mac for missing grants, then keep reading
+     * the grants (read-only) while the user answers them, and take the partner's look once both are on.
+     */
     fun requestMacPermissions() = run(ComputerSetupTask.CHECKING) {
         val workspaceId = requireNotNull(_state.value.workspaceId)
         _state.update { it.copy(permissions = registry.permissions(workspaceId, prompt = true)) }
+        if (_state.value.permissions?.complete == false) watchMacPermissions(workspaceId)
+    }
+
+    private fun watchMacPermissions(workspaceId: String) {
+        permissionWatch?.cancel()
+        permissionWatch = viewModelScope.launch {
+            repeat(PERMISSION_WATCH_ROUNDS) {
+                delay(PERMISSION_WATCH_INTERVAL_MS)
+                val current = _state.value
+                if (current.step != ComputerSetupStep.TEST || current.workspaceId != workspaceId) return@launch
+                if (current.busy) return@repeat
+                val grants = try {
+                    registry.permissions(workspaceId, prompt = false)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    return@repeat
+                } ?: return@launch
+                _state.update { if (it.workspaceId == workspaceId) it.copy(permissions = grants) else it }
+                if (grants.complete) {
+                    checkPartner()
+                    return@launch
+                }
+            }
+        }
     }
 
     fun continueAfterTest() {
@@ -428,6 +529,10 @@ class ComputerSetupVM(
         _state.update { it.copy(task = ComputerSetupTask.CONNECTING) }
         check(workspaces.testHost(hostId)) { "Connection failed" }
         val workspaceId = partnerComputers.ensureComputerWorkspace(hostId)
+        keyToAuthorize?.let { keyId ->
+            keyToAuthorize = null
+            switchToKey(hostId, workspaceId, keyId)
+        }
         // A screen already in use stays on even if the desktop is signed out right now.
         val screenOn = workspaces.getHostById(hostId)?.screenEnabled == true
         _state.update {
@@ -435,6 +540,33 @@ class ComputerSetupVM(
                 wantsScreen = it.wantsScreen ?: true.takeIf { screenOn })
         }
         probe()
+    }
+
+    /**
+     * Password sign-in: authorizes Miffan's key through the session the password opened, then signs
+     * in with the key, which also deletes the saved password. Anything going wrong keeps the
+     * password, which is known to work.
+     */
+    private suspend fun switchToKey(hostId: String, workspaceId: String, keyId: String) {
+        val password = signInPassword ?: return
+        val host = workspaces.getHostById(hostId) ?: return
+        var keyed = false
+        val switched = try {
+            val key = workspaces.getSshKeyById(keyId) ?: return
+            val result = workspaces.executeCommand(workspaceId, authorizeKeyCommand(key.publicKey), timeoutMillis = 20_000)
+            if (result.exitCode != 0 || result.timedOut) return
+            check(workspaces.updateHost(hostId, host.name, host.host, host.port, host.username, sshKeyId = keyId))
+            keyed = true
+            workspaces.testHost(hostId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        if (switched || !keyed) return
+        workspaces.updateHost(hostId, host.name, host.host, host.port, host.username,
+            authentication = RemoteAuthentication.Password(password))
+        check(workspaces.testHost(hostId)) { "Connection failed" }
     }
 
     private suspend fun probe() {

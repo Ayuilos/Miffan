@@ -24,7 +24,11 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupP
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupState
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteScreenSetupError
 import androidx.compose.ui.platform.LocalResources
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.CheckmarkCircle01
@@ -41,6 +45,17 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
     // RDP carries the clipboard itself, so GNOME and KDE need no clipboard tool.
     val clipboard = if (rdp) stringResource(R.string.workspace_screen_clipboard_rdp) else probe?.clipboard?.takeIf { it.isNotBlank() }
     val upgrade = probe?.cua?.path != null
+    // The user is likely fixing something at the computer: pick it up without asking for a tap.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(vm, lifecycle, state.prepared, state.usesScreen) {
+        if (state.prepared || !state.usesScreen) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                delay(QUIET_RECHECK_INTERVAL_MS)
+                vm.quietRecheck()
+            }
+        }
+    }
     ComputerSetupStepLayout(
         title = stringResource(R.string.im_computer_prepare),
         supporting = stringResource(if (state.usesScreen) R.string.im_computer_prepare_help else R.string.im_computer_prepare_help_no_screen),
@@ -74,7 +89,12 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
                 }) {
                 when {
                     state.screenServiceReady -> Unit
-                    state.isMac -> Text(stringResource(R.string.im_computer_mac_sharing_help), style = MaterialTheme.typography.bodyMedium)
+                    state.isMac -> {
+                        Text(stringResource(R.string.im_computer_mac_sharing_help), style = MaterialTheme.typography.bodyMedium)
+                        FilledTonalButton(enabled = !state.busy, onClick = vm::openMacSharingSettings) {
+                            Text(stringResource(R.string.im_computer_mac_open_sharing))
+                        }
+                    }
                     rdp -> RemoteScreenRdpInstallGuidance(probe.session.desktop)
                     else -> RemoteScreenVncInstallGuidance(probe.session.type, probe.session.desktop)
                 }
@@ -110,6 +130,10 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
                     onEnable = { enablingStream = true }, onRecheck = vm::checkStream, onOpenSettings = vm::openSunshineSettings)
             }
         }
+        if (probe != null && state.usesScreen && !state.prepared) {
+            Text(stringResource(R.string.im_computer_auto_recheck), Modifier.padding(horizontal = 4.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
     if (enablingStream && stream != null) {
         RemoteStreamEnableFlow(stream, onStart = vm::startSunshine, onEnforce = vm::enforceStreamEncryption, onPair = vm::pairStream,
@@ -130,6 +154,8 @@ internal fun ComputerPrepareStep(vm: ComputerSetupVM, state: ComputerSetupState)
             dismissButton = { TextButton(onClick = { installCommand = null }) { Text(stringResource(R.string.common_cancel)) } })
     }
 }
+
+private const val QUIET_RECHECK_INTERVAL_MS = 5_000L
 
 private enum class CheckStatus { READY, NEEDED, OPTIONAL }
 

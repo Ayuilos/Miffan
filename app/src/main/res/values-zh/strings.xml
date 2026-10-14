@@ -2458,7 +2458,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_action_error">电脑操作失败。</string>
   <string name="im_computer_add">添加一台新电脑</string>
   <string name="im_computer_address">地址</string>
-  <string name="im_computer_address_hint">可填 Tailscale 名称或 IP 地址</string>
+  <string name="im_computer_address_hint">IP、Tailscale 名称，或直接粘贴 user@host:port</string>
   <string name="im_computer_address_title">这台电脑在哪里</string>
   <string name="im_computer_allow">允许</string>
   <string name="im_computer_app_key">Miffan 密钥</string>
@@ -2509,7 +2509,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_install_failed">安装或升级失败</string>
   <string name="im_computer_install_success">安装或升级完成</string>
   <string name="im_computer_installing">正在安装，可能需要几分钟。</string>
-  <string name="im_computer_key_command_help">在那台电脑上运行一次这条命令，允许 Miffan 的密钥登录，然后点“继续”。</string>
+  <string name="im_computer_key_command_help">在那台电脑的终端里运行一次这条命令，允许 Miffan 的密钥登录。命令最后会显示要填的用户名。</string>
   <string name="im_computer_let_partner_look">让伙伴看一眼</string>
   <string name="im_computer_mac_account">屏幕共享账户</string>
   <string name="im_computer_mac_account_help">屏幕共享需要这台 Mac 的登录账户，即使用密钥连接 SSH 也需要。密码会安全地保存在手机上。</string>
@@ -2525,7 +2525,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_partner_view">伙伴看到的画面</string>
   <string name="im_computer_password">密码</string>
   <string name="im_computer_password_login">密码</string>
-  <string name="im_computer_permissions_help">请在上方预览中允许 Mac 上的系统对话框，或到“系统设置 → 隐私与安全性”中为 cua-driver 开启权限，然后再点“让伙伴看一眼”。</string>
+  <string name="im_computer_permissions_help">请在上方预览中允许 Mac 上的系统对话框，或到“系统设置 → 隐私与安全性”中为 cua-driver 开启权限。两项都开启后会自动继续。</string>
   <string name="im_computer_port">端口</string>
   <string name="im_computer_prepare">检查这台电脑</string>
   <string name="im_computer_ready">已就绪</string>
@@ -2594,6 +2594,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_task_verifying">正在确认电脑身份…</string>
   <string name="im_computer_task_checking">正在检查电脑…</string>
   <string name="im_computer_task_saving">正在保存…</string>
+  <string name="im_computer_name_optional">名称（可选）</string>
+  <string name="im_computer_key_command">运行命令</string>
+  <string name="im_computer_password_help">Miffan 用这个密码登录一次，把自己的密钥加到这台电脑上，之后改用密钥登录。如果是 Mac，屏幕共享也会用这个账户登录，它的密码会安全地保存在手机上。</string>
+  <string name="im_computer_auto_recheck">在电脑上处理好之后，这里会自动更新。</string>
+  <string name="im_computer_mac_open_sharing">在 Mac 上打开共享设置</string>
+  <string name="im_computer_task_opening_settings">正在打开设置…</string>
   <string name="workspace_screen_ssh_auth">电脑拒绝了登录。请确认 Miffan 的密钥或密码在那台电脑上仍然有效。</string>
   <string name="workspace_screen_ssh_timeout">电脑没有及时响应。请确认它已开机并且能连上，比如 Tailscale 已连接。</string>
   <string name="workspace_screen_ssh_unreachable">连不上这台电脑。请检查地址，并确认它开启了 SSH。</string>

@@ -364,6 +364,7 @@ private fun ComputerSetupTask.label(): Int = when (this) {
     ComputerSetupTask.INSTALLING -> R.string.im_computer_installing
     ComputerSetupTask.CHECKING -> R.string.im_computer_partner_checking
     ComputerSetupTask.SAVING, ComputerSetupTask.BINDING -> R.string.im_computer_task_saving
+    ComputerSetupTask.OPENING_SETTINGS -> R.string.im_computer_task_opening_settings
 }
 
 /** The IM card: a rounded, low-contrast container for one group of content. */

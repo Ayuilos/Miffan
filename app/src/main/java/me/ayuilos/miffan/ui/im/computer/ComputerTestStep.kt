@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,14 @@ import org.koin.core.parameter.parametersOf
 @Composable
 internal fun ComputerTestStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     val needsGrants = state.isMac && state.permissions?.complete == false
+    // The look is read-only, so it runs once by itself; the button stays for trying again.
+    var autoChecked by rememberSaveable(state.workspaceId) { mutableStateOf(false) }
+    LaunchedEffect(state.busy, autoChecked) {
+        if (!autoChecked && !state.busy && !state.partnerChecked) {
+            autoChecked = true
+            vm.checkPartner()
+        }
+    }
     ComputerSetupStepLayout(
         title = stringResource(R.string.im_computer_test),
         supporting = stringResource(R.string.im_computer_test_help),

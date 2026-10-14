@@ -65,16 +65,7 @@ internal fun WindowsSetupCard(key: SshKeyEntity?, keyPicker: @Composable () -> U
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(if (copied) R.string.im_computer_windows_script_copied else R.string.im_computer_windows_copy_script))
             }
-            OutlinedButton(onClick = {
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_SUBJECT, "Miffan Windows setup")
-                    .putExtra(Intent.EXTRA_TEXT, script)
-                context.startActivity(Intent.createChooser(send, null))
-            }) {
-                Icon(HugeIcons.Share08, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.im_computer_windows_send_script))
-            }
+            SendToComputerButton("Miffan Windows setup", script, outlined = true)
         }
         Text(stringResource(R.string.im_computer_windows_send_help), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -89,6 +80,28 @@ internal fun WindowsSetupCard(key: SshKeyEntity?, keyPicker: @Composable () -> U
         }
         keyPicker()
     }
+}
+
+/**
+ * Shares [text] to an app the user also has on the computer (a chat app's "file transfer" chat,
+ * mail, notes): the phone's clipboard rarely reaches the computer.
+ */
+@Composable
+internal fun SendToComputerButton(subject: String, text: String, outlined: Boolean = false) {
+    val context = LocalContext.current
+    val send = {
+        val intent = Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, subject)
+            .putExtra(Intent.EXTRA_TEXT, text)
+        context.startActivity(Intent.createChooser(intent, null))
+    }
+    val content: @Composable RowScope.() -> Unit = {
+        Icon(HugeIcons.Share08, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(R.string.im_computer_windows_send_script))
+    }
+    if (outlined) OutlinedButton(onClick = send, content = content)
+    else TextButton(onClick = send, contentPadding = PaddingValues(0.dp), content = content)
 }
 
 @Composable

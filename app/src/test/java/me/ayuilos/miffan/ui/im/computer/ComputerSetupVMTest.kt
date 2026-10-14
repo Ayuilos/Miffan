@@ -17,6 +17,9 @@ import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
+import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
+import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
@@ -24,6 +27,7 @@ import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
+import me.rerere.workspace.WorkspaceCommandResult
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -264,5 +268,72 @@ class ComputerSetupVMTest {
         assertEquals(ComputerSetupStep.ADDRESS, vm.state.value.step)
         assertEquals(error, vm.state.value.error)
         assertFalse(vm.state.value.busy)
+    }
+
+    private fun signInWithPassword(f: Fixture, vm: ComputerSetupVM) {
+        coEvery { f.workspaces.getSshKeyById("key") } returns
+            SshKeyEntity("key", "Miffan", "ssh-ed25519", "ssh-ed25519 AAAA miffan", "fp", 1, 1)
+        coEvery { f.workspaces.executeCommand(any(), any(), any(), any(), any(), any(), any()) } returns
+            WorkspaceCommandResult(0, "", "")
+        vm.submitAddress("Server", "server.internal", 22, "user", ComputerSetupAuth.Password("password", keyId = "key"))
+    }
+
+    @Test
+    fun `password sign-in authorizes the app key and switches to it`() = runTest {
+        val f = Fixture()
+        val vm = vm(f, ComputerSetupArgs(hostId = "host", edit = true))
+        signInWithPassword(f, vm)
+        runCurrent()
+        coVerify { f.workspaces.executeCommand(f.workspaceId, match { "ssh-ed25519 AAAA miffan" in it && "authorized_keys" in it }, any(), any(), any(), any(), any()) }
+        coVerify { f.workspaces.updateHost("host", "Server", "server.internal", 22, "user", null, "key") }
+        coVerify(exactly = 1) { f.workspaces.updateHost(any(), any(), any(), any(), any(), RemoteAuthentication.Password("password"), null) }
+        assertEquals(ComputerSetupStep.PREPARE, vm.state.value.step)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun `password stays when the computer refuses the authorized key`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.testHost("host") } returnsMany listOf(true, false, true)
+        val vm = vm(f, ComputerSetupArgs(hostId = "host", edit = true))
+        signInWithPassword(f, vm)
+        runCurrent()
+        coVerify(exactly = 2) { f.workspaces.updateHost(any(), any(), any(), any(), any(), RemoteAuthentication.Password("password"), null) }
+        assertEquals(ComputerSetupStep.PREPARE, vm.state.value.step)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun `failed key command keeps the password without trying the key`() = runTest {
+        val f = Fixture()
+        val vm = vm(f, ComputerSetupArgs(hostId = "host", edit = true))
+        signInWithPassword(f, vm)
+        coEvery { f.workspaces.executeCommand(any(), any(), any(), any(), any(), any(), any()) } returns
+            WorkspaceCommandResult(1, "", "Permission denied")
+        runCurrent()
+        coVerify(exactly = 0) { f.workspaces.updateHost(any(), any(), any(), any(), any(), null, "key") }
+        assertEquals(ComputerSetupStep.PREPARE, vm.state.value.step)
+    }
+
+    @Test
+    fun `mac screen sharing reuses the sign-in password and skips the account step`() = runTest {
+        val f = Fixture()
+        coEvery { f.screens.probeHost("host", any()) } returns f.probe.copy(
+            os = "macos", session = RemoteMachineProbe.Session(present = true, type = "quartz"),
+            vnc = RemoteMachineProbe.Vnc(server = "macos-screen-sharing", running = true),
+        )
+        coEvery { f.screens.getConfig("host") } returns null
+        coEvery { f.screens.updateConfig(any(), any(), any(), any(), any(), any(), any(), any()) } returns true
+        coEvery { f.screens.streamStatus(any(), any()) } throws IllegalStateException("no sunshine")
+        val vm = vm(f, ComputerSetupArgs(hostId = "host", edit = true))
+        signInWithPassword(f, vm)
+        runCurrent()
+        assertTrue(vm.state.value.prepared)
+        vm.continueAfterPrepare()
+        runCurrent()
+        coVerify { f.screens.updateConfig("host", true, RemoteScreenEndpoint.Helper, RemoteScreenAuth.MACOS_ACCOUNT, "user", "password", any(), any()) }
+        assertEquals(ComputerSetupStep.TEST, vm.state.value.step)
+        vm.back()
+        assertEquals(ComputerSetupStep.MAC_ACCOUNT, vm.state.value.step)
     }
 }

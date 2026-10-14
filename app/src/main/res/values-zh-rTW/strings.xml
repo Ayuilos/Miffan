@@ -2422,7 +2422,7 @@
   <string name="im_computer_action_error">電腦操作失敗。</string>
   <string name="im_computer_add">新增一台電腦</string>
   <string name="im_computer_address">位址</string>
-  <string name="im_computer_address_hint">Tailscale 名稱或 IP 位址</string>
+  <string name="im_computer_address_hint">IP、Tailscale 名稱，或直接貼上 user@host:port</string>
   <string name="im_computer_address_title">你的電腦在哪裡？</string>
   <string name="im_computer_allow">允許</string>
   <string name="im_computer_app_key">Miffan 金鑰</string>
@@ -2471,7 +2471,7 @@
   <string name="im_computer_install_failed">安裝或升級失敗</string>
   <string name="im_computer_install_success">安裝或升級已完成</string>
   <string name="im_computer_installing">正在安裝，可能需要幾分鐘。</string>
-  <string name="im_computer_key_command_help">在那台電腦上執行一次這條指令，允許 Miffan 的金鑰登入，然後點「繼續」。</string>
+  <string name="im_computer_key_command_help">在那台電腦的終端機執行一次這條指令，允許 Miffan 的金鑰登入。指令最後會顯示要填的使用者名稱。</string>
   <string name="im_computer_let_partner_look">讓夥伴看一眼</string>
   <string name="im_computer_mac_account">Screen Sharing 帳號</string>
   <string name="im_computer_mac_account_help">Screen Sharing 需要這台 Mac 的登入帳號，即使用金鑰連接 SSH 也一樣。密碼會安全地儲存在手機上。</string>
@@ -2487,7 +2487,7 @@
   <string name="im_computer_partner_view">夥伴看到的畫面</string>
   <string name="im_computer_password">密碼</string>
   <string name="im_computer_password_login">密碼</string>
-  <string name="im_computer_permissions_help">請透過上方預覽，在 Mac 的系統對話框中允許存取，或到「系統設定 → 隱私權與安全性」為 cua-driver 開啟權限。然後再點「讓夥伴看一眼」。</string>
+  <string name="im_computer_permissions_help">請透過上方預覽，在 Mac 的系統對話框中允許存取，或到「系統設定 → 隱私權與安全性」為 cua-driver 開啟權限。兩項都開啟後會自動繼續。</string>
   <string name="im_computer_port">連接埠</string>
   <string name="im_computer_prepare">檢查這台電腦</string>
   <string name="im_computer_ready">已就緒</string>
@@ -2548,6 +2548,12 @@
   <string name="im_computer_task_verifying">正在確認電腦身分…</string>
   <string name="im_computer_task_checking">正在檢查電腦…</string>
   <string name="im_computer_task_saving">正在儲存…</string>
+  <string name="im_computer_name_optional">名稱（選填）</string>
+  <string name="im_computer_key_command">執行指令</string>
+  <string name="im_computer_password_help">Miffan 會用這個密碼登入一次，把自己的金鑰加到這台電腦上，之後改用金鑰登入。如果是 Mac，螢幕共享也會用這個帳號登入，它的密碼會安全地保存在手機上。</string>
+  <string name="im_computer_auto_recheck">在電腦上處理好之後，這裡會自動更新。</string>
+  <string name="im_computer_mac_open_sharing">在 Mac 上開啟共享設定</string>
+  <string name="im_computer_task_opening_settings">正在開啟設定…</string>
   <string name="workspace_screen_ssh_auth">電腦拒絕了登入，請確認 Miffan 的金鑰或密碼在那台電腦上仍然有效。</string>
   <string name="workspace_screen_ssh_timeout">電腦沒有及時回應，請確認它已開機且能連上，例如 Tailscale 已連線。</string>
   <string name="workspace_screen_ssh_unreachable">無法連接這台電腦，請檢查位址，並確認已啟用 SSH。</string>
