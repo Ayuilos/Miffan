@@ -2424,7 +2424,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_action_error">컴퓨터 작업에 실패했어요.</string>
   <string name="im_computer_add">새 컴퓨터 추가</string>
   <string name="im_computer_address">주소</string>
-  <string name="im_computer_address_hint">Tailscale 이름 또는 IP 주소</string>
+  <string name="im_computer_address_hint">IP 주소, Tailscale 이름 또는 user@host:port 붙여넣기</string>
   <string name="im_computer_address_title">컴퓨터는 어디에 있나요?</string>
   <string name="im_computer_allow">허용</string>
   <string name="im_computer_app_key">Miffan 키</string>
@@ -2473,7 +2473,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_install_failed">설치 또는 업데이트에 실패했어요</string>
   <string name="im_computer_install_success">설치 또는 업데이트가 완료됐어요</string>
   <string name="im_computer_installing">설치 중… 몇 분 정도 걸릴 수 있어요.</string>
-  <string name="im_computer_key_command_help">Miffan 키로 로그인할 수 있도록 해당 컴퓨터에서 이 명령을 한 번 실행한 다음 계속을 탭하세요.</string>
+  <string name="im_computer_key_command_help">Miffan 키로 로그인할 수 있도록 해당 컴퓨터의 터미널에서 이 명령을 한 번 실행하세요. 마지막에 입력할 사용자 이름이 표시돼요.</string>
   <string name="im_computer_let_partner_look">파트너에게 화면 보여주기</string>
   <string name="im_computer_mac_account">Screen Sharing 계정</string>
   <string name="im_computer_mac_account_help">SSH에 키를 사용하더라도 Screen Sharing에는 이 Mac의 로그인 계정이 필요해요. 비밀번호는 휴대폰에 안전하게 저장돼요.</string>
@@ -2489,7 +2489,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_partner_view">파트너가 본 화면</string>
   <string name="im_computer_password">비밀번호</string>
   <string name="im_computer_password_login">비밀번호</string>
-  <string name="im_computer_permissions_help">위 미리보기에서 Mac의 대화상자를 허용하거나 시스템 설정 → 개인정보 보호 및 보안에서 cua-driver를 활성화하세요. 그런 다음 ‘파트너에게 화면 보여주기’를 다시 탭하세요.</string>
+  <string name="im_computer_permissions_help">위 미리보기에서 Mac의 대화상자를 허용하거나 시스템 설정 → 개인정보 보호 및 보안에서 cua-driver에 권한을 허용하세요. 두 권한이 모두 켜지면 설정이 자동으로 계속돼요.</string>
   <string name="im_computer_port">포트</string>
   <string name="im_computer_prepare">컴퓨터 확인</string>
   <string name="im_computer_ready">준비됨</string>
@@ -2550,6 +2550,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_task_verifying">컴퓨터 확인 중…</string>
   <string name="im_computer_task_checking">컴퓨터 확인 중…</string>
   <string name="im_computer_task_saving">저장 중…</string>
+  <string name="im_computer_name_optional">이름(선택 사항)</string>
+  <string name="im_computer_nearby">주변 컴퓨터</string>
+  <string name="im_computer_key_command">명령 실행</string>
+  <string name="im_computer_password_help">Miffan은 이 비밀번호로 한 번 로그인해 컴퓨터에 자체 키를 추가하고, 이후에는 키로 로그인해요. Mac에서는 Screen Sharing도 이 계정으로 로그인하며, 비밀번호는 이 휴대폰에 안전하게 저장돼요.</string>
+  <string name="im_computer_auto_recheck">컴퓨터에서 문제를 해결하면 이 페이지가 자동으로 업데이트돼요.</string>
+  <string name="im_computer_mac_open_sharing">Mac에서 공유 설정 열기</string>
+  <string name="im_computer_task_opening_settings">설정 여는 중…</string>
   <string name="workspace_screen_ssh_auth">컴퓨터가 로그인을 거부했어요. Miffan의 키나 비밀번호가 아직 허용되는지 확인하세요.</string>
   <string name="workspace_screen_ssh_timeout">컴퓨터가 제때 응답하지 않았어요. 전원이 켜져 있고 연결 가능한지 확인하세요. 예를 들어 Tailscale이 연결되어 있는지 확인하세요.</string>
   <string name="workspace_screen_ssh_unreachable">컴퓨터에 연결할 수 없어요. 주소를 확인하고 SSH가 켜져 있는지 확인하세요.</string>

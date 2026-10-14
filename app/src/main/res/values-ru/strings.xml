@@ -2427,7 +2427,7 @@
   <string name="im_computer_action_error">Не удалось выполнить действие на компьютере.</string>
   <string name="im_computer_add">Добавить компьютер</string>
   <string name="im_computer_address">Адрес</string>
-  <string name="im_computer_address_hint">Имя Tailscale или IP-адрес</string>
+  <string name="im_computer_address_hint">IP-адрес, имя Tailscale или вставьте user@host:port</string>
   <string name="im_computer_address_title">Где находится ваш компьютер?</string>
   <string name="im_computer_allow">Разрешить</string>
   <string name="im_computer_app_key">Ключ Miffan</string>
@@ -2476,7 +2476,7 @@
   <string name="im_computer_install_failed">Не удалось установить или обновить</string>
   <string name="im_computer_install_success">Установка или обновление завершены</string>
   <string name="im_computer_installing">Установка… Это может занять несколько минут.</string>
-  <string name="im_computer_key_command_help">Один раз выполните эту команду на том компьютере, чтобы Miffan мог входить с помощью своего ключа, затем нажмите «Продолжить».</string>
+  <string name="im_computer_key_command_help">Один раз выполните эту команду в терминале на том компьютере, чтобы Miffan мог входить с помощью своего ключа. В конце появится имя пользователя, которое нужно ввести.</string>
   <string name="im_computer_let_partner_look">Разрешить партнёру посмотреть</string>
   <string name="im_computer_mac_account">Учётная запись Screen Sharing</string>
   <string name="im_computer_mac_account_help">Для Screen Sharing нужна учётная запись этого Mac, даже если для SSH используется ключ. Пароль надёжно хранится на вашем телефоне.</string>
@@ -2492,7 +2492,7 @@
   <string name="im_computer_partner_view">Что увидел партнёр</string>
   <string name="im_computer_password">Пароль</string>
   <string name="im_computer_password_login">Пароль</string>
-  <string name="im_computer_permissions_help">Разрешите запросы на Mac с помощью предпросмотра выше или включите cua-driver в разделе «Системные настройки → Конфиденциальность и безопасность». Затем снова нажмите «Разрешить партнёру посмотреть».</string>
+  <string name="im_computer_permissions_help">Разрешите запросы на Mac с помощью предпросмотра выше или включите cua-driver в разделе «Системные настройки → Конфиденциальность и безопасность». Когда оба разрешения будут включены, настройка продолжится автоматически.</string>
   <string name="im_computer_port">Порт</string>
   <string name="im_computer_prepare">Проверить компьютер</string>
   <string name="im_computer_ready">Готово</string>
@@ -2553,6 +2553,13 @@
   <string name="im_computer_task_verifying">Подтверждение компьютера…</string>
   <string name="im_computer_task_checking">Проверка компьютера…</string>
   <string name="im_computer_task_saving">Сохранение…</string>
+  <string name="im_computer_name_optional">Имя (необязательно)</string>
+  <string name="im_computer_nearby">Компьютеры поблизости</string>
+  <string name="im_computer_key_command">Выполнить команду</string>
+  <string name="im_computer_password_help">Miffan один раз войдёт с этим паролем, добавит свой ключ на компьютер и дальше будет входить с помощью ключа. На Mac эта учётная запись также используется для входа в Screen Sharing, а её пароль надёжно хранится на этом телефоне.</string>
+  <string name="im_computer_auto_recheck">Устраните проблему на компьютере, и эта страница обновится автоматически.</string>
+  <string name="im_computer_mac_open_sharing">Открыть настройки общего доступа на Mac</string>
+  <string name="im_computer_task_opening_settings">Открытие настроек…</string>
   <string name="workspace_screen_ssh_auth">Компьютер отклонил вход. Проверьте, что ключу или паролю Miffan по-прежнему разрешён доступ.</string>
   <string name="workspace_screen_ssh_timeout">Компьютер не ответил вовремя. Проверьте, включён ли он и доступен ли, например подключён ли Tailscale.</string>
   <string name="workspace_screen_ssh_unreachable">Не удаётся подключиться к компьютеру. Проверьте адрес и убедитесь, что SSH включён.</string>

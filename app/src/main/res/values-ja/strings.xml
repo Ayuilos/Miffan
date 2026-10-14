@@ -2424,7 +2424,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_action_error">コンピューターの操作に失敗しました。</string>
   <string name="im_computer_add">新しいコンピューターを追加</string>
   <string name="im_computer_address">アドレス</string>
-  <string name="im_computer_address_hint">Tailscale の名前または IP アドレス</string>
+  <string name="im_computer_address_hint">IP アドレス、Tailscale の名前、または user@host:port を貼り付け</string>
   <string name="im_computer_address_title">コンピューターはどこにありますか？</string>
   <string name="im_computer_allow">許可</string>
   <string name="im_computer_app_key">Miffan キー</string>
@@ -2473,7 +2473,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_install_failed">インストールまたはアップグレードに失敗しました</string>
   <string name="im_computer_install_success">インストールまたはアップグレードが完了しました</string>
   <string name="im_computer_installing">インストール中… 数分かかることがあります。</string>
-  <string name="im_computer_key_command_help">このコンピューターで一度このコマンドを実行して Miffan のキーでログインできるようにし、続行をタップしてください。</string>
+  <string name="im_computer_key_command_help">そのコンピューターのターミナルでこのコマンドを一度実行すると、Miffan のキーでログインできるようになります。最後に、入力するユーザー名が表示されます。</string>
   <string name="im_computer_let_partner_look">パートナーに画面を見てもらう</string>
   <string name="im_computer_mac_account">Screen Sharing アカウント</string>
   <string name="im_computer_mac_account_help">SSH にキーを使う場合でも、Screen Sharing にはこの Mac のログインアカウントが必要です。パスワードはスマートフォンに安全に保存されます。</string>
@@ -2489,7 +2489,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_partner_view">パートナーに見えた画面</string>
   <string name="im_computer_password">パスワード</string>
   <string name="im_computer_password_login">パスワード</string>
-  <string name="im_computer_permissions_help">上のプレビューを使って Mac のダイアログを許可するか、システム設定 → プライバシーとセキュリティで cua-driver を有効にしてください。その後、もう一度「パートナーに画面を見てもらう」をタップしてください。</string>
+  <string name="im_computer_permissions_help">上のプレビューで Mac のダイアログを許可するか、システム設定 → プライバシーとセキュリティで cua-driver にアクセス許可を与えてください。両方の許可が有効になると、設定は自動で続行されます。</string>
   <string name="im_computer_port">ポート</string>
   <string name="im_computer_prepare">コンピューターを確認</string>
   <string name="im_computer_ready">準備完了</string>
@@ -2550,6 +2550,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_task_verifying">コンピューターを確認中…</string>
   <string name="im_computer_task_checking">コンピューターをチェック中…</string>
   <string name="im_computer_task_saving">保存中…</string>
+  <string name="im_computer_name_optional">名前（任意）</string>
+  <string name="im_computer_nearby">近くのコンピューター</string>
+  <string name="im_computer_key_command">コマンドを実行</string>
+  <string name="im_computer_password_help">Miffan はこのパスワードで一度ログインし、自分のキーをコンピューターに追加します。以後はキーでログインします。Mac では Screen Sharing もこのアカウントでログインし、そのパスワードはこのスマートフォンに安全に保存されます。</string>
+  <string name="im_computer_auto_recheck">コンピューターで問題を解決すると、このページは自動で更新されます。</string>
+  <string name="im_computer_mac_open_sharing">Mac で共有設定を開く</string>
+  <string name="im_computer_task_opening_settings">設定を開いています…</string>
   <string name="workspace_screen_ssh_auth">コンピューターがログインを拒否しました。Miffan のキーまたはパスワードが引き続き許可されているか確認してください。</string>
   <string name="workspace_screen_ssh_timeout">コンピューターから時間内に応答がありませんでした。電源が入っていて接続できること（例：Tailscale が接続中であること）を確認してください。</string>
   <string name="workspace_screen_ssh_unreachable">コンピューターに接続できません。アドレスと SSH が有効になっていることを確認してください。</string>
