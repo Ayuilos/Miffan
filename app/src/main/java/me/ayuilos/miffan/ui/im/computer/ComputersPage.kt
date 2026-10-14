@@ -208,6 +208,8 @@ fun ComputerDetailPage(hostId: String) {
     var forgetting by remember { mutableStateOf(false) }
     // Set when the computer could not be reached to remove Miffan's key: what to run on it later.
     var offlineCommand by rememberSaveable { mutableStateOf<String?>(null) }
+    // Whether that computer also still trusts this phone for high-quality mode.
+    var offlinePaired by rememberSaveable { mutableStateOf(false) }
     val hostList by remember(workspaces) { workspaces.listHostsFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
     var loaded by remember { mutableStateOf(false) }
     LaunchedEffect(computer) {
@@ -380,6 +382,7 @@ fun ComputerDetailPage(hostId: String) {
                                     deleting = true // Shows the blocked explanation with the fresh count.
                                 } catch (error: ComputerUnreachableException) {
                                     offlineCommand = error.manualCommand
+                                    offlinePaired = host?.streamCertificateSha256 != null
                                 } finally { forgetting = false }
                             }
                         }) { Text(stringResource(R.string.im_computer_delete_confirm), color = MaterialTheme.colorScheme.error) }
@@ -408,6 +411,7 @@ fun ComputerDetailPage(hostId: String) {
                                     ?.setPrimaryClip(ClipData.newPlainText("Miffan", command))
                             }) { Text(stringResource(R.string.im_computer_copy)) }
                         }
+                        if (offlinePaired) Text(stringResource(R.string.im_computer_delete_offline_sunshine))
                         Text(stringResource(R.string.im_computer_delete_offline_later), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

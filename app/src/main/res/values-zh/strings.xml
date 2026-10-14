@@ -2717,13 +2717,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_password_step_help">这台电脑还不认识 Miffan，输一次密码就好。</string>
   <string name="im_computer_change">更改</string>
   <string name="im_computer_delete_forget">同时让电脑忘掉 Miffan</string>
-  <string name="im_computer_delete_forget_help">删掉电脑上的 Miffan 钥匙和小工具，这部手机就再也登不上它。电脑上的其他文件不受影响。</string>
+  <string name="im_computer_delete_forget_help">删掉电脑上的 Miffan 钥匙、高清模式配对和小工具，这部手机就再也连不上它。电脑上的其他文件不受影响。</string>
   <string name="im_computer_delete_shared">「%1$s」是同一台电脑、同一个账户，还留在 Miffan 里，所以电脑上的钥匙会保留。</string>
   <string name="im_computer_delete_offline_title">电脑现在连不上</string>
   <string name="im_computer_delete_offline">没法删掉它上面的 Miffan 钥匙。可以先只从手机上删除，等电脑开着时，在它的终端里运行这一行：</string>
   <string name="im_computer_delete_offline_later">也可以先取消，等它开机后再来删除。</string>
   <string name="im_computer_delete_phone_only">只从手机上删除</string>
   <string name="im_computer_forgetting">正在让电脑忘掉 Miffan…</string>
+  <string name="im_computer_delete_offline_sunshine">高清模式的配对也还在：打开 Sunshine 的网页后台，在「客户端」里删掉 Miffan。</string>
   <string name="im_computer_tailnet_notice">Tailscale 上还有 %1$d 台新电脑</string>
   <string name="im_computer_tailnet_notice_help">不在身边的电脑也能连</string>
   <string name="im_computer_tailnet_open">去选择</string>
