@@ -31,7 +31,7 @@ class WindowsScreenRepositoryTest {
     private var approvedStdin: String? = null
     private var firewallExitCode = 0
     private var sunshineInstalled = true
-    private var installedVersion = "9"
+    private var installedVersion = "10"
     private var installedBytes: ByteArray? = null
     private var probeExitCode = 0
     private var firewall = WindowsScreenHelperTest.reviewJson
@@ -50,7 +50,7 @@ class WindowsScreenRepositoryTest {
             val command = firstArg<String>(); commands += command
             val output = when {
                 command == windowsHelperVersionCommand -> installedVersion
-                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "9"; "" }
+                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "10"; "" }
                 command.endsWith("sunshine firewall check") -> firewall
                 command.endsWith("sunshine firewall apply") -> {
                     approvedStdin = arg<InputStream?>(4)!!.readBytes().toString(Charsets.UTF_8)
@@ -58,7 +58,7 @@ class WindowsScreenRepositoryTest {
                 }
                 command.endsWith("sunshine probe") -> """{"installed":$sunshineInstalled,"running":true,"active_stream":false,"lan_encryption_mode":2,"wan_encryption_mode":2}"""
                 command.endsWith("cua install") -> """{"success":true,"version":"0.34.0","autostart_run_level":"Limited"}"""
-                command.endsWith(" probe") -> """{"helper":9,"os":"windows","hostname":"Windows Desktop","arch":"AMD64","session":{"present":true,"type":"console"},"cua":{"min":"0.34.0","ok":false},"vnc":{}}"""
+                command.endsWith(" probe") -> """{"helper":10,"os":"windows","hostname":"Windows Desktop","arch":"AMD64","session":{"present":true,"type":"console"},"cua":{"min":"0.34.0","ok":false},"vnc":{}}"""
                 else -> error("Unexpected command: $command")
             }
             WorkspaceCommandResult(when {

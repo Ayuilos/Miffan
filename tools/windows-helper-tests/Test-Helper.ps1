@@ -31,6 +31,78 @@ Test 'public X509 DER fingerprint, not PEM text' {
     Assert-True ((Get-BytesSha256 $script:Utf8.GetBytes($pem)) -ne $expected) 'PEM hash differs'
     Assert-Throws { Get-CertificateFingerprint '-----BEGIN CERTIFICATE-----AA==-----END CERTIFICATE-----' } 'invalid X509 rejected'
 }
+Test 'Sunshine pairing edits match certificate only and preserve unknown state' {
+    $pem = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $hash = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.sha256')).Trim()
+    $original = ConvertTo-Json -Depth 100 -Compress -InputObject @{root=@{uniqueid='server';named_devices=@(
+        @{name='renamed phone';cert=$pem;uuid='phone'},
+        @{name='Miffan';uuid='other';unknown=@{nested=@(1,'保留',$null)}},
+        @{name='duplicate';cert=$pem;uuid='duplicate'});unknown=@{nested=@('keep',$true)}};unknown_top=123}
+    $edited = Edit-SunshinePairing $original $hash.ToUpperInvariant()
+    Assert-Equal $edited.removed 2 'all and only matching certificates removed'
+    $data = ConvertFrom-Json $edited.content
+    Assert-Equal $data.root.uniqueid 'server' 'server identity kept'
+    Assert-Equal $data.root.named_devices.Count 1 'other device kept'
+    Assert-Equal $data.root.named_devices[0].name 'Miffan' 'name does not identify phone'
+    Assert-Equal $data.root.named_devices[0].unknown.nested[1] '保留' 'nested unknown keys kept'
+    Assert-Equal $data.unknown_top 123 'unknown top-level key kept'
+    $unchanged = Edit-SunshinePairing $original ('0'*64)
+    Assert-Equal $unchanged.removed 0 'no match'
+    Assert-Equal $unchanged.content $original 'no-match bytes unchanged'
+    Assert-Throws {Edit-SunshinePairing $original 'invalid'} 'invalid hash rejected'
+}
+Test 'Sunshine unpair state transaction stops before reading shutdown state (mocked)' {
+    $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('Miffan-unpair-'+[Guid]::NewGuid().ToString('N'))
+    $null=New-Item -ItemType Directory -Path $testRoot
+    $script:UnpairConfig = Join-Path $testRoot 'sunshine.conf'
+    $script:UnpairState = Join-Path $testRoot 'custom-state.json'
+    $pem = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $hash = Get-CertificateFingerprint $pem
+    $original = ConvertTo-Json -Depth 100 -Compress -InputObject @{root=@{uniqueid='server';named_devices=@(@{cert=$pem;name='renamed'})};unknown_top='kept'}
+    $script:UnpairLifecycle=@(); $script:UnpairRunning=$true
+    function Get-SunshineContext {return @{known=$true;installed=$true;config=$script:UnpairConfig;values=@{file_state='custom-state.json'};service=@{State=$(if ($script:UnpairRunning) {'Running'} else {'Stopped'})}}}
+    function Stop-Service {
+        param($Name,$ErrorAction)
+        Assert-Equal $Name 'SunshineService' 'only Sunshine stopped'
+        $script:UnpairLifecycle += 'stop'; $script:UnpairRunning=$false
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:UnpairState))
+        $data | Add-Member -NotePropertyName shutdown_key -NotePropertyValue 'flushed'
+        [IO.File]::WriteAllText($script:UnpairState,(ConvertTo-Json -InputObject $data -Depth 100),$script:Utf8)
+    }
+    function Get-Service {
+        param($Name)
+        $controller=New-Object PSObject
+        $controller | Add-Member -MemberType ScriptMethod -Name WaitForStatus -Value {param($Status,$Timeout);$script:UnpairLifecycle+='wait'}
+        return $controller
+    }
+    function Get-CimInstance {param($ClassName,$Filter);return @()}
+    function Start-Service {param($Name,$ErrorAction);$script:UnpairLifecycle+='start';$script:UnpairRunning=$true}
+    try {
+        [IO.File]::WriteAllText($script:UnpairState,$original,$script:Utf8)
+        $acl=Get-Acl -LiteralPath $script:UnpairState
+        $result=Invoke-SunshineUnpair $hash
+        Assert-Equal $result.removed 1 'matching phone removed'
+        Assert-True $result.restarted 'running service restored'
+        Assert-Equal ($script:UnpairLifecycle -join '|') 'stop|wait|start' 'stop and wait precede restart'
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:UnpairState))
+        Assert-Equal $data.shutdown_key 'flushed' 'final shutdown state reread'
+        Assert-Equal $data.root.named_devices.Count 0 'phone absent'
+        Assert-Equal (Get-Acl -LiteralPath $script:UnpairState).Owner $acl.Owner 'owner retained'
+        Assert-Equal (Get-Acl -LiteralPath $script:UnpairState).Sddl $acl.Sddl 'ACL retained'
+        $script:UnpairLifecycle=@()
+        $before=[IO.File]::ReadAllText($script:UnpairState)
+        $result=Invoke-SunshineUnpair $hash
+        Assert-Equal $result.removed 0 'retry no match'
+        Assert-True (-not $result.restarted) 'no match no restart'
+        Assert-Equal $script:UnpairLifecycle.Count 0 'no match no service calls'
+        Assert-Equal ([IO.File]::ReadAllText($script:UnpairState)) $before 'no match exact bytes'
+        [IO.File]::WriteAllText($script:UnpairState,$original,$script:Utf8)
+        $script:UnpairRunning=$false
+        $result=Invoke-SunshineUnpair $hash
+        Assert-True (-not $result.restarted) 'stopped service stays stopped'
+        Assert-Equal $script:UnpairLifecycle.Count 0 'stopped service no calls'
+    } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
+}
 Test 'network validation and Windows dotted-mask canonicalization' {
     Assert-Equal (ConvertTo-Network '192.168.31.8/255.255.255.0') '192.168.31.0/24' 'mask normalized'
     Assert-Equal (ConvertTo-Network '100.64.0.8/10') '100.64.0.0/10' 'Tailscale normalized'

@@ -10,13 +10,13 @@
 #   miffan vnc start|stop|status
 #                           manage a VNC server only this user can reach (JSON on stdout)
 #   miffan rdp start        password on stdin; safe per-user RDP startup (JSON)
-#   miffan sunshine probe|start|enforce-encryption|wake|open-settings screen|accessibility
-#                           inspect Sunshine; explicit backed-up encryption enforcement
+#   miffan sunshine probe|start|enforce-encryption|unpair|wake|open-settings screen|accessibility
+#                           inspect Sunshine; encryption enforcement; unpair <client-cert-sha256>
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 #   miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows
 #                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 
-MIFFAN_HELPER_VERSION=17
+MIFFAN_HELPER_VERSION=18
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -636,7 +636,7 @@ rdp_start() (
 # --- Sunshine (read-only probe; explicit, backed-up encryption change) --------------------
 
 sunshine() {
-    case "$1" in probe|start|enforce-encryption|wake|open-settings) ;; *) echo 'usage: miffan sunshine probe|start|enforce-encryption|wake|open-settings screen|accessibility' >&2; return 2 ;; esac
+    case "$1" in probe|start|enforce-encryption|unpair|wake|open-settings) ;; *) echo 'usage: miffan sunshine probe|start|enforce-encryption|unpair|wake|open-settings screen|accessibility' >&2; return 2 ;; esac
     if ! command -v python3 >/dev/null 2>&1; then
         printf '{"success":false,"detail":"python3 is required for Sunshine inspection"}\n'
         return 1
@@ -841,11 +841,12 @@ def start():
 if mode == 'start':
     if mac and processes is None: finish(False, 'Cannot inspect the current user Sunshine processes')
     start()
-if mode == 'enforce-encryption' and not configuration_known:
+if mode in ('enforce-encryption', 'unpair') and not configuration_known:
     reply(False, 'Cannot verify the Sunshine configuration'); sys.exit(1)
 try:
     content = config.read_text() if config.exists() else ''
 except OSError:
+    if mode == 'unpair': finish(False, 'Cannot read Sunshine configuration')
     content = ''
 values = {}
 for line in content.splitlines():
@@ -854,6 +855,80 @@ for line in content.splitlines():
     if match: values[match[1]] = match[2]
 overrides = dict(arg.split('=', 1) for arg in args if '=' in arg)
 values.update(overrides)
+def unpair():
+    fingerprint = sys.argv[3].lower()
+    if not re.fullmatch(r'[0-9a-f]{64}', fingerprint):
+        finish(False, 'Expected a SHA-256 client certificate fingerprint (64 hex digits)')
+    state = pathlib.Path(values.get('file_state', 'sunshine_state.json'))
+    if not state.is_absolute(): state = appdata / state
+    def read_state():
+        if state.is_symlink() or not state.is_file():
+            raise ValueError('Sunshine state must be an existing regular file')
+        data = json.loads(state.read_text())
+        devices = data.get('root', {}).get('named_devices', [])
+        if not isinstance(devices, list): raise ValueError('Invalid Sunshine named_devices')
+        kept = []
+        for device in devices:
+            pem = device.get('cert') if isinstance(device, dict) else None
+            if not isinstance(pem, str):
+                kept.append(device); continue
+            # Decode the certificate itself, never the name or UUID.
+            import ssl
+            try: der = ssl.PEM_cert_to_DER_cert(pem)
+            except (ValueError, TypeError):
+                raise ValueError('Invalid Sunshine client certificate')
+            if hashlib.sha256(der).hexdigest() != fingerprint: kept.append(device)
+        return data, kept, len(devices) - len(kept)
+    stopped = False
+    failure = None
+    try:
+        _, _, count = read_state()
+        if not count:
+            print(json.dumps(dict(removed=0, restarted=False))); return
+        if running:
+            command = ['osascript', '-e', 'quit app id "dev.lizardbyte.app.Sunshine"'] if mac else ['systemctl', '--user', 'stop', unit]
+            result = run(command)
+            if not result or result.returncode != 0: raise ValueError('Could not stop Sunshine before unpairing')
+            stopped = True
+            deadline = time.monotonic() + 5
+            while True:
+                if mac: exited = mac_processes() == []
+                else:
+                    status = run(['systemctl', '--user', 'is-active', unit])
+                    exited = bool(status and status.returncode == 3 and status.stdout.strip() == 'inactive')
+                if exited: break
+                if time.monotonic() >= deadline: raise ValueError('Sunshine did not stop before unpairing')
+                time.sleep(0.1)
+        # Sunshine may flush a newer state during shutdown; edit that final version.
+        data, kept, count = read_state()
+        if count:
+            original = state.stat()
+            data['root']['named_devices'] = kept
+            fd, temporary = tempfile.mkstemp(prefix='.miffan-sunshine-state-', dir=state.parent)
+            try:
+                with os.fdopen(fd, 'w') as stream:
+                    os.fchown(stream.fileno(), original.st_uid, original.st_gid)
+                    os.fchmod(stream.fileno(), original.st_mode & 0o7777)
+                    json.dump(data, stream, ensure_ascii=False); stream.write('\n')
+                    stream.flush(); os.fsync(stream.fileno())
+                os.replace(temporary, state)
+            finally:
+                if os.path.exists(temporary): os.unlink(temporary)
+    except (OSError, ValueError, TypeError, AttributeError) as error:
+        failure = 'Could not unpair Sunshine: ' + str(error)
+    finally:
+        if stopped:
+            command = ['open', '-a', str(app)] if mac else ['systemctl', '--user', 'start', unit]
+            if mac and args: command += ['--args'] + args
+            result = run(command)
+            if not result or result.returncode != 0: failure = 'Sunshine unpair attempted; could not restart Sunshine'
+    if failure: finish(False, failure)
+    print(json.dumps(dict(removed=count, restarted=stopped)))
+
+if mode == 'unpair':
+    if not installed or (not app if mac else not unit): finish(False, 'Cannot verify Sunshine service for unpairing')
+    unpair(); sys.exit(0)
+
 def integer(name, default):
     try: return int(values.get(name, default))
     except ValueError: return None

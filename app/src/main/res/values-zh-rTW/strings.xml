@@ -2671,13 +2671,14 @@
   <string name="im_computer_password_step_help">這台電腦還不認識 Miffan，輸入一次密碼就好。</string>
   <string name="im_computer_change">更改</string>
   <string name="im_computer_delete_forget">同時讓電腦忘掉 Miffan</string>
-  <string name="im_computer_delete_forget_help">刪除電腦上的 Miffan 鑰匙和小工具後，這支手機就無法再登入它。電腦上的其他內容都不受影響。</string>
+  <string name="im_computer_delete_forget_help">刪除電腦上的 Miffan 鑰匙、高畫質模式配對和小工具後，這支手機就無法再連上它。電腦上的其他內容都不受影響。</string>
   <string name="im_computer_delete_shared">「%1$s」是同一台電腦、同一個帳號，還保留在 Miffan 裡，所以電腦上的鑰匙會保留。</string>
   <string name="im_computer_delete_offline_title">現在連不上電腦</string>
   <string name="im_computer_delete_offline">現在無法刪除電腦上的 Miffan 鑰匙。可以先只從手機上刪除，等電腦開著時，在它的終端機裡執行這一行：</string>
   <string name="im_computer_delete_offline_later">也可以先取消，等電腦開機後再來刪除。</string>
   <string name="im_computer_delete_phone_only">只從手機上刪除</string>
   <string name="im_computer_forgetting">正在讓電腦忘掉 Miffan…</string>
+  <string name="im_computer_delete_offline_sunshine">高畫質模式的配對也還在：開啟 Sunshine 的網頁管理介面，在「用戶端」裡刪除 Miffan。</string>
   <string name="im_computer_tailnet_notice">Tailscale 上還有 %1$d 台新電腦</string>
   <string name="im_computer_tailnet_notice_help">不在身邊的電腦也能連</string>
   <string name="im_computer_tailnet_open">去選擇</string>

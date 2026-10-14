@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 9
+$script:HelperVersion = 10
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -394,6 +394,71 @@ function Invoke-EnforceEncryption {
         Restart-Service -Name SunshineService
         return @{success=$true;detail='Encryption enforced; Sunshine restarted';changed=$true;backup=$backup}
     } finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
+}
+function Edit-SunshinePairing([string]$Content, [string]$Fingerprint) {
+    if ($Fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'Expected a SHA-256 client certificate fingerprint (64 hex digits)' }
+    $data = ConvertFrom-Json -InputObject $Content
+    if ($null -eq $data -or $data -is [Array] -or $data -isnot [pscustomobject]) { throw 'Invalid Sunshine state JSON' }
+    $devices = @()
+    if ($data.root -and $null -ne $data.root.named_devices) {
+        if ($data.root.named_devices -isnot [Array]) { throw 'Invalid Sunshine named_devices' }
+        $devices = @($data.root.named_devices)
+    }
+    $kept = @(); $removed = 0
+    foreach ($device in $devices) {
+        if ($device.cert -is [string] -and (Get-CertificateFingerprint $device.cert) -ieq $Fingerprint) { $removed++ }
+        else { $kept += $device }
+    }
+    if ($removed -eq 0) { return @{removed=0;content=$Content} }
+    $data.root.named_devices = @($kept)
+    # PS 5.1's default depth truncates unknown nested keys; retain the entire state tree.
+    return @{removed=$removed;content=(ConvertTo-Json -InputObject $data -Depth 100 -Compress)}
+}
+function Invoke-SunshineUnpair([string]$Fingerprint) {
+    if ($Fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'Expected a SHA-256 client certificate fingerprint (64 hex digits)' }
+    try { $context = Get-SunshineContext } catch { throw 'Cannot read Sunshine state or configuration; check administrator rights' }
+    if (-not $context.known -or -not $context.installed) { throw 'Cannot verify the Sunshine service model' }
+    $directory = Split-Path -Parent $context.config
+    $state = Join-Path $directory 'sunshine_state.json'
+    if ($context.values.ContainsKey('file_state')) {
+        $state = $context.values['file_state']
+        if (-not [IO.Path]::IsPathRooted($state)) { $state = Join-Path $directory $state }
+    }
+    try {
+        Assert-RegularPath $state
+        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint
+    } catch [UnauthorizedAccessException] { throw 'Cannot read Sunshine state or configuration; check administrator rights' }
+    if ($edited.removed -eq 0) { return @{removed=0;restarted=$false} }
+    $running = $context.service.State -eq 'Running'
+    $stopped = $false; $temporary = $state + '.miffan-' + [Guid]::NewGuid().ToString('N')
+    try {
+        if ($running) {
+            try { Stop-Service -Name SunshineService -ErrorAction Stop }
+            catch { throw 'Cannot stop Sunshine; check administrator rights' }
+            $stopped = $true
+            (Get-Service -Name SunshineService).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(10))
+            if (@(Get-CimInstance Win32_Process -Filter "Name='sunshine.exe'").Count -gt 0) { throw 'Sunshine did not stop before unpairing' }
+        }
+        # Re-read after shutdown, including any state Sunshine flushed while stopping.
+        Assert-RegularPath $state
+        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint
+        if ($edited.removed -gt 0) {
+            [IO.File]::WriteAllText($temporary, $edited.content, $script:Utf8)
+            Set-Acl -LiteralPath $temporary -AclObject (Get-Acl -LiteralPath $state)
+            [IO.File]::Replace($temporary, $state, [System.Management.Automation.Language.NullString]::Value)
+        }
+    } catch [UnauthorizedAccessException] { throw 'Cannot edit Sunshine state or control its service; check administrator rights' }
+    finally {
+        try {
+            if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
+        } finally {
+            if ($stopped) {
+                try { Start-Service -Name SunshineService -ErrorAction Stop }
+                catch { throw 'Sunshine unpair attempted; could not restart Sunshine' }
+            }
+        }
+    }
+    return @{removed=$edited.removed;restarted=[bool]$stopped}
 }
 function Test-RuleEnforced([bool]$Enabled, [string]$Status, $Enforcement) {
     # NetSecurity exposes these CIM enum values as strings in Windows PowerShell 5.1.
@@ -1169,11 +1234,12 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
             throw 'Usage: probe [display]'
         }
         'sunshine' {
-            if ($Subcommand -ne 'firewall' -and $Suboperation) {throw 'Unexpected Sunshine argument'}
+            if ($Subcommand -notin @('firewall', 'unpair') -and $Suboperation) {throw 'Unexpected Sunshine argument'}
             switch ($Subcommand) {
                 { $_ -in @('', 'probe') } { return Get-SunshineProbe }
                 'start' { return Invoke-SunshineStart }
                 'enforce-encryption' { return Invoke-EnforceEncryption }
+                'unpair' { return Invoke-SunshineUnpair $Suboperation }
                 'firewall' {
                     switch ($Suboperation) {
                         'check' { $c=Get-SunshineContext; if (-not $c.installed) {throw 'Sunshine is not installed'}; return Get-FirewallReview (Get-FirewallSnapshot $c.executable) $c.executable (Get-FirewallSources) }
@@ -1181,7 +1247,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
                         default { throw 'Usage: sunshine firewall check|apply' }
                     }
                 }
-                default { throw 'Usage: sunshine probe|start|enforce-encryption|firewall' }
+                default { throw 'Usage: sunshine probe|start|enforce-encryption|unpair|firewall' }
             }
         }
         'clip' { if ($Subcommand -or $Suboperation) {throw 'Clipboard text must come from stdin'}; return Invoke-CuaClipboard ([Console]::In.ReadToEnd()) }
@@ -1190,6 +1256,14 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
     }
 }
 $script:SafeFailures = @(
+    'Expected a SHA-256 client certificate fingerprint (64 hex digits)',
+    'Invalid Sunshine state JSON',
+    'Invalid Sunshine named_devices',
+    'Cannot read Sunshine state or configuration; check administrator rights',
+    'Cannot edit Sunshine state or control its service; check administrator rights',
+    'Sunshine did not stop before unpairing',
+    'Cannot stop Sunshine; check administrator rights',
+    'Sunshine unpair attempted; could not restart Sunshine',
     'Cua autostart uses elevated permissions; user review required',
     'Cua permissions are elevated or unknown; user review required',
     'Cua installer failed; existing autostart was not changed',
@@ -1261,7 +1335,7 @@ $script:SafeFailures = @(
     'Unsafe subnet prefix',
     'Usage: probe [display]',
     'Usage: sunshine firewall check|apply',
-    'Usage: sunshine probe|start|enforce-encryption|firewall',
+    'Usage: sunshine probe|start|enforce-encryption|unpair|firewall',
     'Usage: version',
     'Usage: version|probe [display]|sunshine|clip',
     'Wrong desktop session'

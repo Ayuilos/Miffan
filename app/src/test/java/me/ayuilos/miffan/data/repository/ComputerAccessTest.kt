@@ -15,19 +15,21 @@ import org.junit.Test
 import java.net.ConnectException
 
 class ComputerAccessTest {
-    private class Fixture {
+    private class Fixture(paired: Boolean = false) {
         val material = SshKeyCodec.generate()
         val authentication = RemoteAuthentication.PrivateKey(material.privateKeyPem)
         val host = RemoteHostEntity("host", "Computer", "main", 22, "user", "MANAGED_KEY",
             sshKeyId = "key", trustedHostKeySha256 = "SHA256:" + "A".repeat(43), createdAt = 1, updatedAt = 1,
+            streamCertificateSha256 = if (paired) "server-certificate" else null,
             alternateAddresses = encodeRemoteHostAddresses(listOf(RemoteHostAddress("alternate", 2222))))
         val hostDao = mockk<RemoteHostDAO>()
         val keyDao = mockk<SshKeyDAO>()
         val keyStore = mockk<SshKeyCredentialStore>()
         val transport = mockk<NativeSshWorkspaceTransport>()
         val session = mockk<RemoteWorkspaceSession>(relaxed = true)
+        val unpair = mockk<RemoteSunshineUnpair>()
         val repository = WorkspaceRepository(mockk(), mockk(), mockk(), mockk(), mockk(), hostDao,
-            mockk(), transport, keyDao, keyStore, mockk(relaxed = true))
+            mockk(), transport, keyDao, keyStore, mockk(relaxed = true), unpair)
 
         init {
             coEvery { hostDao.getById("host") } returns host
@@ -35,8 +37,8 @@ class ComputerAccessTest {
             coEvery { keyDao.getById("key") } returns SshKeyEntity("key", "Miffan", material.algorithm,
                 material.publicKey, material.fingerprint, 1, 1)
             every { keyStore.load("key") } returns authentication
-            every { session.withOperation(any<RemoteWorkspaceSession.OperationHandle>(), any<() -> WorkspaceCommandResult>()) } answers {
-                secondArg<() -> WorkspaceCommandResult>().invoke()
+            every { session.withOperation(any<RemoteWorkspaceSession.OperationHandle>(), any<() -> Any?>()) } answers {
+                secondArg<() -> Any?>().invoke()
             }
         }
     }
@@ -96,6 +98,39 @@ class ComputerAccessTest {
             f.repository.revokeComputerAccess("host", "revoke", expectedConnectionRevision = "previous")
         }.exceptionOrNull() is WorkspaceToolTargetChangedException)
         verify(exactly = 0) { f.transport.open(any(), any(), any()) }
+    }
+
+    @Test fun `paired host unpairs on the verified session before key revocation`() = runTest {
+        val f = Fixture(paired = true)
+        every { f.transport.open(any(), any(), any()) } returns f.session
+        every { f.unpair.unpair(f.session) } just Runs
+        every { f.session.execute("revoke", any(), any(), any(), any()) } returns WorkspaceCommandResult(0, "", "")
+        assertTrue(f.repository.revokeComputerAccess("host", "revoke", "legacy"))
+        verifyOrder {
+            f.transport.open(any(), any(), any())
+            f.unpair.unpair(f.session)
+            f.session.execute("revoke", any(), any(), any(), any())
+            f.session.close()
+        }
+        verify(exactly = 1) { f.transport.open(any(), any(), any()) }
+    }
+
+    @Test fun `unpair failure closes the connection without revoking the key`() = runTest {
+        val f = Fixture(paired = true)
+        every { f.transport.open(any(), any(), any()) } returns f.session
+        every { f.unpair.unpair(f.session) } throws IllegalStateException("Sunshine state requires administrator rights")
+        val error = runCatching { f.repository.revokeComputerAccess("host", "revoke") }.exceptionOrNull()
+        assertTrue(error?.message.orEmpty().contains("administrator rights"))
+        verify(exactly = 0) { f.session.execute("revoke", any(), any(), any(), any()) }
+        verify(exactly = 1) { f.session.close() }
+        coVerify(exactly = 0) { f.hostDao.deleteById(any()) }
+    }
+
+    @Test fun `paired host with a refused key retains already gone semantics without unpairing`() = runTest {
+        val f = Fixture(paired = true)
+        every { f.transport.open(any(), any(), any()) } throws RemoteConnectException("main", JSchException("Auth fail"))
+        assertFalse(f.repository.revokeComputerAccess("host", "revoke"))
+        verify(exactly = 0) { f.unpair.unpair(any()) }
     }
 
 }

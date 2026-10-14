@@ -86,6 +86,7 @@ class WorkspaceRepository(
     private val sshKeyDao: SshKeyDAO,
     private val sshKeyCredentialStore: SshKeyCredentialStore,
     private val workspaceStrings: Resources,
+    private val sunshineUnpair: RemoteSunshineUnpair? = null,
 ) {
     private val localWorkspaceCreator = LocalWorkspaceCreator(dao, manager)
     private val remoteRuntime = RemoteWorkspaceRuntimeTracker()
@@ -684,7 +685,10 @@ class WorkspaceRepository(
         }
     }
 
-    /** Fresh pinned saved-host connection; false means the server refused the key before dispatch. */
+    /**
+     * Fresh pinned saved-host connection: unpair this phone from Sunshine before removing the helper/key.
+     * False means the server refused the key before any dispatch; unpair failures leave local records intact.
+     */
     suspend fun revokeComputerAccess(hostId: String, command: String, expectedConnectionRevision: String? = null): Boolean {
         val host = requireNotNull(hostDao.getById(hostId)) { "Computer not found" }
         if (expectedConnectionRevision != null && host.connectionRevision != expectedConnectionRevision) {
@@ -703,6 +707,14 @@ class WorkspaceRepository(
         try {
             if (hostDao.getById(hostId)?.connectionRevision != host.connectionRevision) {
                 throw WorkspaceToolTargetChangedException()
+            }
+            if (host.streamCertificateSha256 != null) {
+                runRemoteOperation(session) {
+                    requireNotNull(sunshineUnpair) { "Sunshine unpairing is unavailable; the computer was kept" }.unpair(session)
+                }
+                if (hostDao.getById(hostId)?.connectionRevision != host.connectionRevision) {
+                    throw WorkspaceToolTargetChangedException()
+                }
             }
             val result = runRemoteOperation(session) { session.execute(command, timeoutMillis = 30_000) }
             check(!result.timedOut && result.exitCode == 0) {

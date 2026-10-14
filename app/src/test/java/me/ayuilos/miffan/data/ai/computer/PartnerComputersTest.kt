@@ -326,12 +326,29 @@ class PartnerComputersTest {
     @Test fun `shared computer account and key skip cleanup`() = runTest {
         val f = Fixture()
         f.prepareForget()
+        f.hosts.value = f.hosts.value.map { it.copy(streamCertificateSha256 = "Sunshine-server") }
         f.hosts.value += f.hosts.value.single().copy(id = "other", host = "alternate.address")
         assertTrue(f.computers.sharesComputerAccess("host"))
         assertEquals(ForgetOutcome.SHARED, f.computers.delete("host", true))
         coVerify(exactly = 0) { f.repository.getSshKeyById(any()) }
         coVerify(exactly = 0) { f.repository.revokeComputerAccess(any(), any(), any()) }
         coVerify(exactly = 1) { f.repository.deleteHost("host") }
+    }
+
+    @Test fun `Sunshine unpair failure keeps paired computer workspace and partner bindings`() = runTest {
+        val f = Fixture()
+        val command = f.prepareForget()
+        f.hosts.value = f.hosts.value.map { it.copy(streamCertificateSha256 = "Sunshine-server") }
+        val partner = assistant(workspace(1))
+        f.settings.value = Settings(assistants = listOf(partner))
+        coEvery { f.repository.revokeComputerAccess("host", command, "legacy") } throws
+            IllegalStateException("Could not remove this phone's Sunshine pairing; the computer was kept")
+        val error = runCatching { f.computers.delete("host", true) }.exceptionOrNull()
+        assertTrue(error?.message.orEmpty().contains("Sunshine pairing"))
+        coVerify(exactly = 0) { f.repository.delete(any()) }
+        coVerify(exactly = 0) { f.repository.deleteHost(any()) }
+        coVerify(exactly = 0) { f.store.update(any<(Settings) -> Settings>()) }
+        assertEquals(partner.workspaceId, f.settings.value.assistants.single().workspaceId)
     }
 
     @Test fun `sharing requires nonnull pin and same account and key`() = runTest {

@@ -181,14 +181,7 @@ class RemoteScreenRepository(
 ) {
     private val streamRoutes = RemoteStreamRoutes(context)
     private val streams = RemoteStreamEngine(RemoteStreamIdentityStore(context), streamRoutes, context.applicationContext)
-    private val helperScript: ByteArray = assets.open(HELPER_ASSET).use { it.readBytes() }
-    private val helperVersion: String = Regex("""MIFFAN_HELPER_VERSION=(\d+)""")
-        .find(helperScript.toString(Charsets.UTF_8))?.groupValues?.get(1)
-        ?: error("Helper script has no version")
-    private val windowsHelperScript = assets.open("remote/miffan.ps1").use { it.readBytes() }
-    private val windowsHelperVersion = Regex("""HelperVersion = (\d+)""")
-        .find(windowsHelperScript.toString(Charsets.UTF_8))?.groupValues?.get(1)
-        ?: error("Windows helper script has no version")
+    private val helper = RemoteMiffanHelper(assets)
     private val json = Json { ignoreUnknownKeys = true }
 
     private val lock = Any()
@@ -670,25 +663,7 @@ class RemoteScreenRepository(
     }
 
     /** Uploads the bundled helper when the remote copy is missing or a different version. */
-    private fun ensureHelper(ssh: RemoteWorkspaceSession) {
-        if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) {
-            val installed = ssh.execute(windowsHelperVersionCommand, timeoutMillis = 10_000)
-            if (installed.exitCode == 0 && !installed.timedOut && installed.stdout.trim() == windowsHelperVersion) return
-            val result = ssh.execute(windowsHelperInstallCommand, timeoutMillis = 30_000,
-                stdin = ByteArrayInputStream(windowsHelperScript))
-            check(result.exitCode == 0 && !result.timedOut) { "Could not install the Windows Miffan helper" }
-            return
-        }
-        val installed = ssh.execute("$HELPER version 2>/dev/null", timeoutMillis = 10_000).stdout.trim()
-        if (installed == helperVersion) return
-        val result = ssh.execute(
-            "mkdir -p \"\$HOME/.miffan/bin\" && cat > \"\$HOME/.miffan/bin/miffan.tmp\" && " +
-                "chmod 755 \"\$HOME/.miffan/bin/miffan.tmp\" && mv -f \"\$HOME/.miffan/bin/miffan.tmp\" $HELPER",
-            timeoutMillis = 20_000,
-            stdin = ByteArrayInputStream(helperScript),
-        )
-        check(result.exitCode == 0) { result.stderr.ifBlank { "Could not install the Miffan helper" } }
-    }
+    private fun ensureHelper(ssh: RemoteWorkspaceSession) = helper.ensureInstalled(ssh)
 
     /** Starts the helper's VNC server; returns where it listens and its password, if any. */
     private fun startHelperVnc(ssh: RemoteWorkspaceSession): Pair<RemoteScreenEndpoint, String?> {
@@ -752,7 +727,6 @@ class RemoteScreenRepository(
                 "systemctl --user restart cua-driver.service; exit \$status"
         }
 
-        private const val HELPER_ASSET = "remote/miffan.sh"
         private const val HELPER = "\"\$HOME/.miffan/bin/miffan\""
         private const val CUA_INSTALLER = "https://cua.ai/driver/install.sh"
 

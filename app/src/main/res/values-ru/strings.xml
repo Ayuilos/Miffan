@@ -2676,13 +2676,14 @@
   <string name="im_computer_password_step_help">Этот компьютер пока не знаком с Miffan. Введите пароль один раз.</string>
   <string name="im_computer_change">Изменить</string>
   <string name="im_computer_delete_forget">Пусть компьютер тоже забудет Miffan</string>
-  <string name="im_computer_delete_forget_help">Ключ и вспомогательная программа Miffan будут удалены с компьютера, и этот телефон больше не сможет войти на него. Всё остальное на компьютере останется без изменений.</string>
+  <string name="im_computer_delete_forget_help">Ключ, сопряжение в режиме HD и вспомогательная программа Miffan будут удалены с компьютера, и этот телефон больше не сможет подключиться к нему. Всё остальное на компьютере останется без изменений.</string>
   <string name="im_computer_delete_shared">«%1$s» использует тот же компьютер и ту же учётную запись и остаётся в Miffan, поэтому ключ на компьютере сохранится.</string>
   <string name="im_computer_delete_offline_title">Не удаётся подключиться к компьютеру</string>
   <string name="im_computer_delete_offline">Сейчас не удаётся удалить ключ Miffan с компьютера. Можно удалить компьютер только с телефона, а позже выполнить эту строку в терминале компьютера:</string>
   <string name="im_computer_delete_offline_later">Или отмените удаление и попробуйте снова, когда компьютер будет включён.</string>
   <string name="im_computer_delete_phone_only">Удалить только с телефона</string>
   <string name="im_computer_forgetting">Помогаем компьютеру забыть Miffan…</string>
+  <string name="im_computer_delete_offline_sunshine">Сопряжение в режиме HD тоже сохраняется: откройте веб-страницу Sunshine и удалите Miffan в разделе «Клиенты».</string>
   <string name="im_computer_tailnet_notice">Новые компьютеры в Tailscale: ещё %1$d</string>
   <string name="im_computer_tailnet_notice_help">Можно подключаться и к компьютерам далеко от вас</string>
   <string name="im_computer_tailnet_open">Выбрать</string>

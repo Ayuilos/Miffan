@@ -146,6 +146,7 @@ class PartnerComputers(
                 val key = requireNotNull(workspaces.getSshKeyById(host.sshKeyId)) { "Miffan SSH key not found" }
                 val command = revokeMiffanKeyCommand(key.publicKey, RemotePlatform.parse(host.platform))
                 try {
+                    // The repository unpairs Sunshine on this same verified connection before revoking.
                     if (workspaces.revokeComputerAccess(hostId, command, host.connectionRevision)) ForgetOutcome.FORGOTTEN
                     else ForgetOutcome.ALREADY_GONE
                 } catch (error: Exception) {
