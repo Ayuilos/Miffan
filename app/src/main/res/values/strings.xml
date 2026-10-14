@@ -2709,7 +2709,7 @@
   <string name="im_computer_tailnet_open" tools:ignore="MissingTranslation">Choose</string>
   <string name="im_computer_tailnet_title" tools:ignore="MissingTranslation">Pick a computer far away</string>
   <string name="im_computer_task_looking_up" tools:ignore="MissingTranslation">Looking for it…</string>
-  <string name="im_computer_tip_linux" tools:ignore="MissingTranslation">Make sure the SSH service (sshd) is running</string>
+  <string name="im_computer_tip_linux" tools:ignore="MissingTranslation">Make sure the SSH service (sshd) is running and the firewall lets it through</string>
   <string name="im_computer_tip_mac" tools:ignore="MissingTranslation">Turn on Remote Login in System Settings › General › Sharing</string>
   <string name="im_computer_tip_windows" tools:ignore="MissingTranslation">Add by address below, then run the setup script once</string>
   <string name="im_computer_try_saying" tools:ignore="MissingTranslation">Try saying</string>

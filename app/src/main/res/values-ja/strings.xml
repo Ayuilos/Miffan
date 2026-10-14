@@ -2655,7 +2655,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_tailnet_open">選ぶ</string>
   <string name="im_computer_tailnet_title">離れた場所のコンピューターを選ぶ</string>
   <string name="im_computer_task_looking_up">検索中…</string>
-  <string name="im_computer_tip_linux">SSH サービス（sshd）が動いているか確認してください</string>
+  <string name="im_computer_tip_linux">SSH サービス（sshd）が動いていて、ファイアウォールで許可されているか確認してください</string>
   <string name="im_computer_tip_mac">「システム設定 › 一般 › 共有」で「リモートログイン」をオンにしてください</string>
   <string name="im_computer_tip_windows">下の「アドレスを入力して追加」から進み、設定スクリプトを一度実行してください</string>
   <string name="im_computer_try_saying">こんなふうに話しかけてみてください</string>

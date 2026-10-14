@@ -2699,7 +2699,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_tailnet_open">去选择</string>
   <string name="im_computer_tailnet_title">选一台远处的电脑</string>
   <string name="im_computer_task_looking_up">正在查找…</string>
-  <string name="im_computer_tip_linux">确认电脑上的 SSH 服务（sshd）开着</string>
+  <string name="im_computer_tip_linux">确认电脑上的 SSH 服务（sshd）开着，并且防火墙放行了它</string>
   <string name="im_computer_tip_mac">在「系统设置 › 通用 › 共享」里打开「远程登录」</string>
   <string name="im_computer_tip_windows">用下面的「输入地址添加」，按提示运行一次准备脚本</string>
   <string name="im_computer_try_saying">试试这样跟它说</string>

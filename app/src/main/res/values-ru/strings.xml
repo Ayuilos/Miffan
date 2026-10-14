@@ -2658,7 +2658,7 @@
   <string name="im_computer_tailnet_open">Выбрать</string>
   <string name="im_computer_tailnet_title">Выбрать компьютер далеко от вас</string>
   <string name="im_computer_task_looking_up">Ищем компьютер…</string>
-  <string name="im_computer_tip_linux">Убедитесь, что служба SSH (sshd) работает</string>
+  <string name="im_computer_tip_linux">Убедитесь, что служба SSH (sshd) работает и брандмауэр её пропускает</string>
   <string name="im_computer_tip_mac">Включите «Удаленный вход» в разделе «Системные настройки › Основные › Общий доступ»</string>
   <string name="im_computer_tip_windows">Выберите ниже «Добавить по адресу», затем один раз выполните скрипт настройки</string>
   <string name="im_computer_try_saying">Попробуйте сказать</string>

@@ -2653,7 +2653,7 @@
   <string name="im_computer_tailnet_open">去選擇</string>
   <string name="im_computer_tailnet_title">選一台遠處的電腦</string>
   <string name="im_computer_task_looking_up">正在尋找…</string>
-  <string name="im_computer_tip_linux">確認電腦上的 SSH 服務（sshd）開著</string>
+  <string name="im_computer_tip_linux">確認電腦上的 SSH 服務（sshd）開著，並且防火牆放行了它</string>
   <string name="im_computer_tip_mac">在「系統設定 › 一般 › 共享」裡開啟「遠端登入」</string>
   <string name="im_computer_tip_windows">用下面的「輸入位址新增」，依提示執行一次準備指令碼</string>
   <string name="im_computer_try_saying">試試這樣跟它說</string>

@@ -2655,7 +2655,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_tailnet_open">선택</string>
   <string name="im_computer_tailnet_title">멀리 있는 컴퓨터 선택</string>
   <string name="im_computer_task_looking_up">찾는 중…</string>
-  <string name="im_computer_tip_linux">SSH 서비스(sshd)가 실행 중인지 확인하세요</string>
+  <string name="im_computer_tip_linux">SSH 서비스(sshd)가 실행 중이고 방화벽에서 허용되어 있는지 확인하세요</string>
   <string name="im_computer_tip_mac">‘시스템 설정 › 일반 › 공유’에서 ‘원격 로그인’을 켜세요</string>
   <string name="im_computer_tip_windows">아래 ‘주소로 추가’를 선택한 뒤 설정 스크립트를 한 번 실행하세요</string>
   <string name="im_computer_try_saying">이렇게 말해보세요</string>
