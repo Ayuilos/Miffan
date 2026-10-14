@@ -10,6 +10,7 @@ import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.*
 import me.rerere.ai.ui.*
+import me.rerere.ai.util.mergeCustomBody
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -319,6 +320,64 @@ class ImageGenerationToolTest {
             fail("Expected cancellation")
         } catch (e: CancellationException) {
             assertEquals("Stopped", e.message)
+        }
+    }
+
+    @Test fun optionsAreOptionalAndReservedKeysFailBeforeCallingProvider() = runTest {
+        val fake = FakeProvider()
+        val tool = tool(fake)
+        val schema = tool.parameters() as InputSchema.Obj
+        assertTrue("options" in schema.properties)
+        assertEquals(listOf("prompt"), schema.required)
+        for (key in listOf("model", "prompt", "messages", "input", "input_references", "image", "images", "n", "stream", "tools")) {
+            val output = tool.execute(JsonObject(args() + ("options" to buildJsonObject { put(key, "bad") })))
+            val error = Json.parseToJsonElement((output.single() as UIMessagePart.Text).text).jsonObject["error"]!!.jsonPrimitive.content
+            assertTrue(error.contains("Reserved options"))
+            assertTrue(error.contains(key))
+        }
+        val output = tool.execute(JsonObject(args() + ("options" to JsonPrimitive("bad"))))
+        assertTrue((output.single() as UIMessagePart.Text).text.contains("options must be a JSON object"))
+        assertNull(fake.params)
+        assertNull(fake.imageParams)
+    }
+
+    @Test fun optionsRouteToImagesChatAndResponsesAndUserChoicesWin() = runTest {
+        val choices = listOf(CustomBody("quality", JsonPrimitive("low")), CustomBody("size", JsonNull))
+        val options = buildJsonObject {
+            put("quality", "high")
+            put("size", "1024x1024")
+            put("resolution", "1K")
+            put("remove", JsonNull)
+            put("config", buildJsonObject { put("aspect_ratio", "16:9") })
+        }
+        val input = JsonObject(args() + ("options" to options))
+        for (kind in listOf("images", "chat", "responses")) {
+            val selected = when (kind) {
+                "images" -> model.copy(type = ModelType.IMAGE, customBodies = choices)
+                "responses" -> model.copy(tools = setOf(BuiltInTools.ImageGeneration), customBodies = choices)
+                else -> model.copy(customBodies = choices)
+            }
+            val fake = FakeProvider(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Image(dataUrl))))
+            fake.imageItems = listOf(ImageGenerationItem(Base64.getEncoder().encodeToString(png), "image/png"))
+            val output = tool(fake, current = { settings(selected) }).execute(input)
+            assertEquals(2, output.size)
+            val extras = if (kind == "images") fake.imageParams!!.customBody else
+                if (kind == "responses") fake.params!!.imageGenerationOptions else fake.params!!.customBody
+            val merged = buildJsonObject { put("remove", true) }.mergeCustomBody(extras)
+            assertEquals("1K", merged["resolution"]!!.jsonPrimitive.content)
+            assertFalse("remove" in merged)
+            assertFalse("size" in merged)
+            assertEquals("16:9", merged["config"]!!.jsonObject["aspect_ratio"]!!.jsonPrimitive.content)
+            if (kind == "responses") {
+                assertFalse("quality" in merged)
+                assertEquals(choices, fake.params!!.customBody)
+            } else assertEquals("low", merged["quality"]!!.jsonPrimitive.content)
+            if (kind == "images") {
+                val ref = UIMessagePart.Image(temporary.newFile("options-ref.png").apply { writeBytes(png) }.toURI().toString())
+                tool(fake, current = { settings(selected) }, messages = { listOf(UIMessage(role = MessageRole.USER, parts = listOf(ref))) })
+                    .execute(JsonObject(input + ("reference_images" to buildJsonArray { add(imageIdForUrl(ref.url)) })))
+                assertEquals(extras, fake.editParams!!.customBody)
+            }
         }
     }
 

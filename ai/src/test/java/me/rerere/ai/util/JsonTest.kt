@@ -1,5 +1,7 @@
 package me.rerere.ai.util
 
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -129,5 +131,34 @@ class JsonTest {
         assertEquals(2, result.size)
         assertEquals("value1", result["key1"]?.toString()?.trim('"'))
         assertEquals("value2", result["key2"]?.toString()?.trim('"'))
+    }
+    @Test fun `null removes top level and nested keys including new objects`() {
+        val base = buildJsonObject {
+            put("size", "auto")
+            put("config", buildJsonObject {
+                put("quality", "high")
+                put("keep", true)
+                put("nested", buildJsonObject { put("remove", 1) })
+            })
+        }
+        val result = base.mergeCustomBody(listOf(
+            CustomBody("size", JsonNull),
+            CustomBody("absent", JsonNull),
+            CustomBody("config", buildJsonObject {
+                put("quality", JsonNull)
+                put("nested", buildJsonObject { put("remove", JsonNull); put("add", 2) })
+                put("new", buildJsonObject { put("remove", JsonNull); put("add", 3) })
+            }),
+        ))
+        assertEquals(buildJsonObject {
+            put("config", buildJsonObject {
+                put("keep", true)
+                put("nested", buildJsonObject { put("add", 2) })
+                put("new", buildJsonObject { put("add", 3) })
+            })
+        }, result)
+        assertEquals(JsonObject(emptyMap()), JsonObject(emptyMap()).mergeCustomBody(listOf(CustomBody("absent", JsonNull))))
+        assertEquals(buildJsonObject { put("add", 1) }, JsonObject(emptyMap()).mergeCustomBody(
+            listOf(CustomBody("add", buildJsonObject { put("remove", JsonNull) }), CustomBody("add", kotlinx.serialization.json.JsonPrimitive(1)))))
     }
 }

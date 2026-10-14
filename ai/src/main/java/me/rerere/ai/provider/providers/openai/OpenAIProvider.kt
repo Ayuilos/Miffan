@@ -237,12 +237,12 @@ class OpenAIProvider(
             buildJsonObject {
                 put("model", params.model.modelId)
                 put("prompt", params.prompt)
-                put("n", params.numOfImages)
+                if (params.numOfImages > 1) put("n", params.numOfImages)
                 
                 val isGrok = providerSetting.baseUrl.contains("x.ai", ignoreCase = true) || 
                     params.model.modelId.contains("grok", ignoreCase = true)
                 
-                if (params.size.isNotBlank() && !isGrok) {
+                if (params.size.isNotBlank() && params.size != "auto" && !isGrok) {
                     put("size", params.size)
                 }
             }
@@ -299,11 +299,17 @@ class OpenAIProvider(
 
         val bodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("model", params.model.modelId)
-            .addFormDataPart("prompt", params.prompt)
-            .addFormDataPart("n", params.numOfImages.toString())
-        if (params.size.isNotBlank()) {
-            bodyBuilder.addFormDataPart("size", params.size)
+        val fields = buildJsonObject {
+            put("model", params.model.modelId)
+            put("prompt", params.prompt)
+            if (params.numOfImages > 1) put("n", params.numOfImages)
+            val isGrok = providerSetting.baseUrl.contains("x.ai", ignoreCase = true) ||
+                params.model.modelId.contains("grok", ignoreCase = true)
+            if (params.size.isNotBlank() && params.size != "auto" && !isGrok) put("size", params.size)
+        }.mergeCustomBody(params.customBody)
+        fields.forEach { (key, value) ->
+            // Scalars become form values; objects and arrays are JSON-encoded in a single field.
+            bodyBuilder.addFormDataPart(key, if (value is JsonPrimitive) value.content else value.toString())
         }
 
         val imageFieldName = if (params.images.size == 1) "image" else "image[]"
@@ -320,14 +326,6 @@ class OpenAIProvider(
                 imageFile.name,
                 imageFile.asRequestBody(imageFile.imageMediaType().toMediaType())
             )
-        }
-
-        params.customBody.forEach { customBody ->
-            val value = when (val element = customBody.value) {
-                is JsonPrimitive -> element.contentOrNull ?: element.toString()
-                else -> element.toString()
-            }
-            bodyBuilder.addFormDataPart(customBody.key, value)
         }
 
         val requestBuilder = Request.Builder()

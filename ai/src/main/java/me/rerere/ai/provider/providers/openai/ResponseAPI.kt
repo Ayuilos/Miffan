@@ -307,7 +307,7 @@ class ResponseAPI(
                                 add(buildJsonObject {
                                     put("type", "image_generation")
                                     put("model", "gpt-image-2")
-                                })
+                                }.mergeCustomBody(params.imageGenerationOptions))
                             }
                         }
                     }

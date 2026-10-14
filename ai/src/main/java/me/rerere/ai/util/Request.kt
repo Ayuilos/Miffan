@@ -3,6 +3,7 @@ package me.rerere.ai.util
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.CustomHeader
 import okhttp3.Headers
@@ -51,9 +52,11 @@ fun JsonObject.mergeCustomBody(bodies: List<CustomBody>): JsonObject {
             val existingValue = content[body.key]
             val newValue = body.value
 
-            if (existingValue is JsonObject && newValue is JsonObject) {
+            if (newValue == JsonNull) {
+                content.remove(body.key)
+            } else if (newValue is JsonObject) {
                 // 递归合并两个JsonObject
-                content[body.key] = mergeJsonObjects(existingValue, newValue)
+                content[body.key] = mergeJsonObjects(existingValue as? JsonObject ?: JsonObject(emptyMap()), newValue)
             } else {
                 // 直接替换或添加
                 content[body.key] = newValue
@@ -72,9 +75,13 @@ private fun mergeJsonObjects(base: JsonObject, overlay: JsonObject): JsonObject 
     for ((key, value) in overlay) {
         val baseValue = result[key]
 
-        result[key] = if (baseValue is JsonObject && value is JsonObject) {
+        if (value == JsonNull) {
+            result.remove(key)
+            continue
+        }
+        result[key] = if (value is JsonObject) {
             // 如果两者都是JsonObject，递归合并
-            mergeJsonObjects(baseValue, value)
+            mergeJsonObjects(baseValue as? JsonObject ?: JsonObject(emptyMap()), value)
         } else {
             // 否则使用新值替换旧值
             value

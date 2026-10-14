@@ -32,6 +32,9 @@ import kotlin.uuid.Uuid
 
 const val GENERATE_IMAGE_TOOL = "generate_image"
 const val IMAGE_SETUP_APPROVAL_REASON = "image_setup"
+private val RESERVED_IMAGE_OPTIONS = setOf(
+    "model", "prompt", "messages", "input", "input_references", "image", "images", "n", "stream", "tools",
+)
 
 fun Model.canOutputImage(): Boolean = Modality.IMAGE in outputModalities ||
     BuiltInTools.ImageGeneration in tools || type == ModelType.IMAGE
@@ -153,6 +156,14 @@ internal fun createImageGenerationTool(
                         put("items", buildJsonObject { put("type", "string") })
                         put("maxItems", 4)
                     })
+                    put("options", buildJsonObject {
+                        put("type", "object")
+                        put("description", "options: extra request fields for the image API, e.g. {\"aspect_ratio\":\"16:9\"} or " +
+                            "{\"resolution\":\"1K\"}. Leave it out unless the user asks for a size/shape/quality, or a previous call failed " +
+                            "with an error naming the allowed values — then retry once with the values it names. " +
+                            "For Responses models these fields go inside the image_generation tool object; otherwise they go in the request body. " +
+                            "User custom body fields take precedence.")
+                    })
                 },
                 required = listOf("prompt"),
             )
@@ -178,6 +189,14 @@ internal fun createImageGenerationTool(
                     val input = args.jsonObject
                     val prompt = (input["prompt"] as? JsonPrimitive)?.takeIf { it.isString }?.content
                         ?.takeIf { it.isNotBlank() } ?: error("prompt must be a non-empty string")
+                    val options = input["options"]?.let { it as? JsonObject ?: error("options must be a JSON object") }
+                        ?: JsonObject(emptyMap())
+                    val reserved = options.keys.intersect(RESERVED_IMAGE_OPTIONS)
+                    require(reserved.isEmpty()) { "Reserved options keys cannot be set: ${reserved.joinToString()}" }
+                    // User custom bodies are fixed choices, including null removals: agent options cannot override their keys.
+                    val userKeys = model.customBodies.map { it.key }.toSet()
+                    val agentOptions = options.filterKeys { it !in userKeys }.map { (key, value) -> CustomBody(key, value) }
+                    val requestCustomBody = agentOptions + model.customBodies
                     val ids = input["reference_images"]?.let { value ->
                         (value as? JsonArray ?: error("reference_images must be an array of image id strings")).map {
                             (it as? JsonPrimitive)?.takeIf { id -> id.isString }?.content
@@ -199,7 +218,7 @@ internal fun createImageGenerationTool(
                                 model = model,
                                 prompt = prompt,
                                 customHeaders = model.customHeaders,
-                                customBody = model.customBodies,
+                                customBody = requestCustomBody,
                             ))
                         } else {
                             val paths = references.map { reference ->
@@ -212,7 +231,7 @@ internal fun createImageGenerationTool(
                                 prompt = prompt,
                                 images = paths,
                                 customHeaders = model.customHeaders,
-                                customBody = model.customBodies,
+                                customBody = requestCustomBody,
                             ))
                         }
                         UIMessage(role = MessageRole.ASSISTANT, parts = flow.filter { !it.partial }.map {
@@ -229,7 +248,8 @@ internal fun createImageGenerationTool(
                             params = TextGenerationParams(
                                 model = model.copy(tools = if (builtInImageTool) setOf(BuiltInTools.ImageGeneration) else emptySet()),
                                 customHeaders = model.customHeaders,
-                                customBody = model.customBodies,
+                                customBody = if (builtInImageTool) model.customBodies else requestCustomBody,
+                                imageGenerationOptions = if (builtInImageTool) agentOptions else emptyList(),
                             ),
                         ).message
                     }

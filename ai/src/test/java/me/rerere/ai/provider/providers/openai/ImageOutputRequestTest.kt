@@ -2,6 +2,8 @@ package me.rerere.ai.provider.providers.openai
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
+import me.rerere.ai.provider.CustomBody
+import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.ProviderSetting
@@ -35,6 +37,41 @@ class ImageOutputRequestTest {
                 ProviderSetting.OpenAI(baseUrl = host), false) as JsonObject
             assertNull(textBody["modalities"])
         }
+    }
+
+    @Test fun responsesOptionsBelongToImageToolAndUserToolConfigurationWins() {
+        val api = ResponseAPI(OkHttpClient())
+        val params = TextGenerationParams(
+            model = Model(modelId = "driver", tools = setOf(BuiltInTools.ImageGeneration)),
+            imageGenerationOptions = listOf(CustomBody("size", JsonPrimitive("1536x1024")),
+                CustomBody("quality", JsonPrimitive("high")), CustomBody("output_format", JsonNull)),
+        )
+        val body = api.buildRequestBody(ProviderSetting.OpenAI(), listOf(UIMessage.user("Draw")), params, false)
+        assertFalse("size" in body)
+        assertFalse("quality" in body)
+        val imageTool = body["tools"]!!.jsonArray.single().jsonObject
+        assertEquals("image_generation", imageTool["type"]!!.jsonPrimitive.content)
+        assertEquals("1536x1024", imageTool["size"]!!.jsonPrimitive.content)
+        assertEquals("high", imageTool["quality"]!!.jsonPrimitive.content)
+        assertFalse("output_format" in imageTool)
+        val defaults = api.buildRequestBody(ProviderSetting.OpenAI(), emptyList(), params.copy(imageGenerationOptions = emptyList()), false)
+        assertEquals(setOf("type", "model"), defaults["tools"]!!.jsonArray.single().jsonObject.keys)
+        val userTools = buildJsonArray { add(buildJsonObject { put("type", "image_generation"); put("quality", "low") }) }
+        val overridden = api.buildRequestBody(ProviderSetting.OpenAI(), emptyList(), params.copy(customBody = listOf(CustomBody("tools", userTools))), false)
+        assertEquals(userTools, overridden["tools"])
+    }
+
+    @Test fun chatImageOptionsMergeIntoRequestRoot() {
+        val api = ChatCompletionsAPI(OkHttpClient(), me.rerere.ai.util.KeyRoulette.default())
+        val method = ChatCompletionsAPI::class.java.getDeclaredMethod(
+            "buildChatCompletionRequest", List::class.java, TextGenerationParams::class.java,
+            ProviderSetting.OpenAI::class.java, Boolean::class.javaPrimitiveType,
+        ).apply { isAccessible = true }
+        val params = TextGenerationParams(Model(modelId = "image", outputModalities = listOf(Modality.IMAGE)),
+            customBody = listOf(CustomBody("image_config", buildJsonObject { put("aspect_ratio", "16:9") }), CustomBody("modalities", JsonNull)))
+        val body = method.invoke(api, listOf(UIMessage.user("Draw")), params, ProviderSetting.OpenAI(), false) as JsonObject
+        assertEquals("16:9", body["image_config"]!!.jsonObject["aspect_ratio"]!!.jsonPrimitive.content)
+        assertFalse("modalities" in body)
     }
 
     @Test fun nonStreamingResponsesImageGenerationCallsProduceImagesWithCorrectMime() {

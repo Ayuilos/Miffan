@@ -39,8 +39,8 @@ internal fun openRouterImagesRequestBuilder(
     val body = buildJsonObject {
         put("model", model.modelId)
         put("prompt", prompt)
-        put("n", n)
-        if (size.isNotBlank()) put("size", size)
+        if (n > 1) put("n", n)
+        if (size.isNotBlank() && size != "auto") put("size", size)
         if (images.isNotEmpty()) putJsonArray("input_references") {
             images.forEach { source ->
                 add(buildJsonObject {

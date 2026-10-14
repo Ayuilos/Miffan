@@ -20,10 +20,10 @@ class OpenRouterImagesAPITest {
         assertEquals("POST", request.method)
         assertEquals("application/json", request.header("Content-Type"))
         val body = json.parseToJsonElement(Buffer().also { request.body!!.writeTo(it) }.readUtf8()).jsonObject
-        assertEquals(setOf("model", "prompt", "n", "size"), body.keys)
+        assertEquals(setOf("model", "prompt"), body.keys)
         assertEquals(flux.modelId, body["model"]!!.jsonPrimitive.content)
         assertEquals("Draw a bowl", body["prompt"]!!.jsonPrimitive.content)
-        assertEquals("auto", body["size"]!!.jsonPrimitive.content)
+        assertFalse("size" in body)
     }
 
     @Test fun editsEncodeLocalFileAndPreserveHttpsAndDataReferences() {
@@ -43,10 +43,25 @@ class OpenRouterImagesAPITest {
             it.jsonObject["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content
         })
         assertEquals(42, body["seed"]!!.jsonPrimitive.int)
+        assertEquals(2, body["n"]!!.jsonPrimitive.int)
+        assertEquals("1024x1024", body["size"]!!.jsonPrimitive.content)
         assertFalse("image" in body)
         assertFalse("images" in body)
         assertFalse("response_format" in body)
         assertFalse("partial_images" in body)
+    }
+
+    @Test fun optionsAndNullRemovalsApplyToOpenRouterRequests() {
+        val request = openRouterImagesRequestBuilder(provider, flux, "Draw", 2, "1024x1024",
+            customBody = listOf(CustomBody("size", JsonNull), CustomBody("n", JsonNull),
+                CustomBody("resolution", JsonPrimitive("1K")),
+                CustomBody("image_config", buildJsonObject { put("aspect_ratio", "16:9") })),
+        ).build()
+        val body = json.parseToJsonElement(Buffer().also { request.body!!.writeTo(it) }.readUtf8()).jsonObject
+        assertFalse("size" in body)
+        assertFalse("n" in body)
+        assertEquals("1K", body["resolution"]!!.jsonPrimitive.content)
+        assertEquals("16:9", body["image_config"]!!.jsonObject["aspect_ratio"]!!.jsonPrimitive.content)
     }
 
     @Test fun imageOnlyRoutingIsLimitedToOpenRouterAndKeepsGeminiOnChatCompletions() {
