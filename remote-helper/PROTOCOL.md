@@ -129,7 +129,7 @@ unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动
 | `sunshine firewall check` | 无 / firewall check JSON（见下） | 通用 0/1；只读检查 ActiveStore 及关联 filters、Profiles、网络来源，给出建议而不授予 apply 权限；需可读取防火墙策略 | `checkSunshineFirewall`/连接预检 → `firewallCheck` → `parseSunshineFirewallCheck` |
 | `sunshine firewall apply` | 唯一 JSON 对象 `{disable_rules,allowed_sources,add_rule}` / firewall result JSON | 通用 0/1；只执行调用者确认的精确计划；检查当前 ActiveStore、写前备份 PersistentStore、再检查快照，变更仅限本地 Sunshine 入站规则及固定 UDP rule。空计划拒绝，不自动部分修复策略规则 | `applySunshineFirewall` → `parseSunshineFirewallResult` |
 | `clip` | 全部原始 UTF-8 文本 / `{success,verified,detail,session_id[,transport]}` | 通用 0/1；拒绝 NUL。优先 authenticated pipe → cua clipboard_write 并读回；无可用 bridge 时一次性桌面任务 fallback，写后不重放。transport=cua-bridge 只在 bridge 路径出现 | `writeStreamClipboard` → `parseWindowsClipboard`，要求 success 与 verified |
-| `clip serve` | 每行 base64 UTF-8 文本 / 每条一行 `{"success":bool,"verified":bool}` | EOF 结束；建立一条持续 MCP clipboard session，逐次写并读回。启动异常输出额外 `transport:cua-bridge-session` 的 false/false 后退出 0；正常会话完成也退出 0 | `open` 打开进程 → `WindowsClipboardChannel.write`：读取一行，只以是否含精确子串 `"success":true` 判成功，否则关闭并 fallback |
+| `clip serve` | 每行 base64 UTF-8 文本 / 每条一行 `{"success":bool,"verified":bool}` | EOF 结束；建立一条持续 MCP clipboard session，逐次写并读回。启动异常输出额外 `transport:cua-bridge-session` 的 false/false 后退出 0；正常会话完成也退出 0 | `open` 打开进程 → `WindowsClipboardChannel.write`：读取一行 JSON，`success` 与 `verified` 都为 true 才算成功，否则关闭并 fallback |
 | `cua status` | 无 / 与机器 probe 的 cua 对象相同 | 通用 0/1；driver `--version` 上限 5 秒、daemon session/integrity、任务权限与 pipe 可用性探测 | 当前无直接 Kotlin 调用；嵌套 probe 消费 |
 | `cua install` | 无 / `{success,detail,version,autostart_run_level}` | 通用 0/1；官方安装器下载，隔离 per-user 安装 0.34.0，拒绝已有 elevated/其他用户任务；注册/启动当前用户 Limited/Interactive cua-driver-serve；安装失败不重写原 autostart | `installCuaDriver`/`installCuaDriverOnHost` → 仅退出码及 stdout+stderr 文本摘要 |
 | `cua warm` | 无 / `{success,ready,detail}` | 通用 0/1；driver 不可用时 success=true/ready=false；否则确认 console 权限后可创建/启动版本化 bridge task 与私有目录 | `prepareWindowsTyping` → 忽略返回（best effort） |
@@ -201,7 +201,7 @@ setup stdout 是 Write-Host 人类可读提示，App 不解析；管理员检查
 - Sunshine detail、Windows error_type 不是稳定枚举；未知字段扩展在多数 Kotlin parser 中可忽略，
   但 unpair 的严格 decoder 不接受未知字段。
 - MCP 内容遵循所安装 cua-driver 的协议；本 helper 只桥接，完整 tool schema 不由本目录定义。
-- Windows `clip serve` 消费者只查 success 子串，不验证 verified；启动失败可以是 0 退出码，
-  不能只靠退出码判断写成功。当前行为保持原样。
+- Windows `clip serve` 启动失败也以 0 退出；App 不看该退出码，只看每行回复的
+  `success` 与 `verified`（两者都为 true 才算写入成功）。
 
 共享正常/失败分支样例在 `fixtures/sh` 与 `fixtures/ps1`；环境归一化与测试方式见 README。
