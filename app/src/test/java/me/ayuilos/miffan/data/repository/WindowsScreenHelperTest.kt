@@ -16,7 +16,7 @@ class WindowsScreenHelperTest {
         assertEquals(screenHelperCommand(RemotePlatform.WINDOWS, "cua install"), RemoteScreenRepository.cuaDriverCommand("C:/old", RemotePlatform.WINDOWS))
         assertTrue(windowsHelperInstallCommand.contains("OpenStandardInput().CopyTo"))
         assertTrue(windowsHelperInstallCommand.contains("[IO.File]::Replace"))
-        val asset = File("src/main/assets/remote/miffan.ps1").readBytes()
+        val asset = File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readBytes()
         assertArrayEquals(byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()), asset.take(3).toByteArray())
         assertTrue(asset.toString(Charsets.UTF_8).contains("HelperVersion = 10"))
     }

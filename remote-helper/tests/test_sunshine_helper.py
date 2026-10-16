@@ -9,8 +9,9 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from golden import golden
 
-HELPER = Path(__file__).resolve().parents[2] / 'app/src/main/assets/remote/miffan.sh'
+HELPER = Path(__file__).resolve().parents[1] / 'src/miffan.sh'
 
 STUB = r'''#!/usr/bin/env python3
 import json, os, pathlib, sys
@@ -137,11 +138,23 @@ class SunshineFixture(unittest.TestCase):
         self.assertNotIn('\nsunshine ', '\n' + (self.root / 'commands.log').read_text())
         return result.returncode, json.loads(result.stdout)
 
+class SunshineContractTest(SunshineFixture):
+    def test_linux_contracts(self):
+        for name, settings in [('sunshine-stopped', {}), ('sunshine-running', dict(running=True)),
+                               ('sunshine-busy', dict(running=True, busy=True))]:
+            code, result = self.call(**settings)
+            self.assertEqual(0, code); golden(name, result)
+        for mode, name, settings in [('start', 'sunshine-start', {}),
+                ('enforce-encryption', 'sunshine-encryption', {}),
+                ('enforce-encryption', 'sunshine-refused', dict(busy=True))]:
+            _, result = self.call(mode, **settings); golden(name, result)
+
+
 class SunshineUnpairTest(SunshineFixture):
     def setUp(self):
         super().setUp()
-        self.pem = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.pem').read_text()
-        self.fingerprint = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.sha256').read_text().strip()
+        self.pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
+        self.fingerprint = (Path(__file__).resolve().parent / 'windows/certificate.sha256').read_text().strip()
         self.other = dict(name='Miffan', cert=self.pem, uuid='other')
         import base64
         self.other['cert'] = '-----BEGIN CERTIFICATE-----\n' + base64.b64encode(b'other DER').decode() + '\n-----END CERTIFICATE-----'
@@ -168,12 +181,14 @@ class SunshineUnpairTest(SunshineFixture):
     def test_no_match_changes_no_bytes_or_services(self):
         before = self.state.read_bytes()
         code, result = self.call('unpair', permission='0'*64, running=True)
+        golden('sunshine-unpair-none', result)
         self.assertEqual(0, code); self.assertEqual(dict(removed=0, restarted=False), result)
         self.assertEqual(before, self.state.read_bytes())
         commands = (self.root / 'commands.log').read_text()
         self.assertNotIn('--user stop', commands); self.assertNotIn('--user start', commands)
     def test_stopped_sunshine_is_not_started(self):
         code, result = self.call('unpair', permission=self.fingerprint)
+        golden('sunshine-unpair', result)
         self.assertEqual(0, code); self.assertEqual(dict(removed=1, restarted=False), result)
         self.assertNotIn('--user start', (self.root / 'commands.log').read_text())
     def test_shutdown_flush_is_reread_and_unknown_keys_are_kept(self):
@@ -279,14 +294,22 @@ class SunshineMacHelperTest(SunshineFixture):
         (self.root / 'bin/python3').symlink_to(sys.executable)
     def call(self, mode='probe', permission=None, **settings):
         return super().call(mode, permission=permission, platform='Darwin', **settings)
+    def test_mac_contracts(self):
+        for name, settings in [('sunshine-macos', dict(running=True, locked=False, display=False)),
+                ('sunshine-macos-locked', dict(running=True, locked=True, display=True))]:
+            _, result = self.call(**settings); golden(name, result)
+        _, result = self.call('wake', display=True); golden('sunshine-wake', result)
+        _, result = self.call('open-settings', permission='screen'); golden('sunshine-settings', result)
+
     def test_mac_unpair_stops_and_reopens_only_when_paired(self):
-        pem = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.pem').read_text()
-        fingerprint = (HELPER.parents[5] / 'tools/windows-helper-tests/certificate.sha256').read_text().strip()
+        pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
+        fingerprint = (Path(__file__).resolve().parent / 'windows/certificate.sha256').read_text().strip()
         state = self.config.parent / 'sunshine_state.json'
         data = dict(root=dict(uniqueid='server', named_devices=[dict(name='renamed', cert=pem)], unknown=dict(keep=True)))
         state.write_text(json.dumps(data, indent=2))
         before = state.read_bytes()
         code, result = self.call('unpair', permission='0'*64, running=True)
+        golden('sunshine-unpair-none', result)
         self.assertEqual(0, code); self.assertEqual(dict(removed=0, restarted=False), result)
         self.assertEqual(before, state.read_bytes())
         self.assertNotIn('osascript', (self.root / 'commands.log').read_text())
@@ -393,6 +416,7 @@ class SunshineMacHelperTest(SunshineFixture):
         shutil.rmtree(system)
         (self.root / 'bin/sunshine').unlink()
         _, probe = self.call()
+        golden('sunshine-missing', probe)
         self.assertFalse(probe['installed']); self.assertIsNone(probe['version'])
         code, result = self.call('start'); self.assertEqual(1, code); self.assertFalse(result['success'])
     def test_mac_symlink_configuration_is_not_replaced(self):

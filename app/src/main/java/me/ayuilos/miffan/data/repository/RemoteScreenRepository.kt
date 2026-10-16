@@ -91,7 +91,7 @@ open class RemoteScreenUnavailableException(
 class RemoteRdpCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
     RemoteScreenUnavailableException(RemoteScreenProblem.RDP_CERTIFICATE_CHANGED, "RDP certificate fingerprint changed")
 
-/** `miffan probe` output; see `assets/remote/miffan.sh`. */
+/** `miffan probe` output; see `remote-helper/src/miffan.sh`. */
 @Serializable
 data class RemoteMachineProbe(
     val helper: Int,

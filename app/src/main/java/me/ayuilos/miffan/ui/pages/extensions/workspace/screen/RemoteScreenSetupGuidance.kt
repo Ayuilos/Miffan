@@ -192,7 +192,7 @@ internal fun RemoteScreenLog(text: String, initiallyExpanded: Boolean = false) {
     }
 }
 
-/** GNOME and KDE sessions are shown over RDP (see `rdp_kind` in miffan.sh); other desktops use VNC. */
+/** GNOME and KDE sessions are shown over RDP (see `rdp_kind` in remote-helper/src/miffan.sh); other desktops use VNC. */
 internal val RemoteMachineProbe.usesRdp: Boolean
     get() = os == "linux" && session.desktop?.let { desktop ->
         RDP_DESKTOPS.any { desktop.contains(it, ignoreCase = true) }

@@ -24,6 +24,7 @@ val hasGoogleServicesConfig = file("google-services.json").isFile
 
 plugins {
     alias(libs.plugins.android.application)
+    id("miffan.remote-helper")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)

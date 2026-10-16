@@ -1,5 +1,8 @@
 ﻿# Pure/offline tests. Never calls live firewall/service/task/clipboard mutation cmdlets.
-param([string]$HelperPath = (Join-Path $PSScriptRoot '..\..\app\src\main\assets\remote\miffan.ps1'))
+param(
+    [string]$HelperPath = (Join-Path $PSScriptRoot '..\..\..\app\build\generated\remoteHelper\remote\miffan.ps1'),
+    [string]$FixturePath = (Join-Path $PSScriptRoot '..\..\fixtures\ps1')
+)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 . $HelperPath
@@ -8,6 +11,27 @@ function Assert-True($Condition, [string]$Message) { if (-not $Condition) { thro
 function Assert-Equal($Actual, $Expected, [string]$Message) { if ($Actual -cne $Expected) { throw "Assertion failed: $Message; expected [$Expected], actual [$Actual]" } }
 function Assert-Throws([scriptblock]$Body, [string]$Message) { $caught=$false; try { & $Body } catch { $caught=$true }; Assert-True $caught $Message }
 function Test([string]$Name, [scriptblock]$Body) { & $Body; $script:Passed++; [Console]::Out.WriteLine("PASS $Name") }
+# JSON property order is irrelevant; field names, array shapes and values are shared with Kotlin.
+function Assert-JsonValue($Actual, $Expected, [string]$Path) {
+    if ($null -eq $Expected) { Assert-True ($null -eq $Actual) "$Path null"; return }
+    if ($Expected -is [Management.Automation.PSCustomObject]) {
+        Assert-True ($Actual -is [Management.Automation.PSCustomObject]) "$Path object"
+        $keys=@($Expected.PSObject.Properties.Name | Sort-Object)
+        Assert-Equal (@($Actual.PSObject.Properties.Name | Sort-Object) -join '|') ($keys -join '|') "$Path keys"
+        foreach ($key in $keys) { Assert-JsonValue $Actual.$key $Expected.$key "$Path.$key" }
+    } elseif ($Expected -is [Array]) {
+        Assert-True ($Actual -is [Array]) "$Path array"
+        Assert-Equal $Actual.Count $Expected.Count "$Path length"
+        for ($i=0;$i -lt $Expected.Count;$i++) { Assert-JsonValue $Actual[$i] $Expected[$i] "$Path[$i]" }
+    } else { Assert-Equal $Actual $Expected $Path }
+}
+function Assert-Fixture([string]$Name, $Actual) {
+    $path=Join-Path $FixturePath ($Name+'.json')
+    $expected=ConvertFrom-Json ([IO.File]::ReadAllText($path))
+    $decoded=ConvertFrom-Json (ConvertTo-PlainJson $Actual)
+    Assert-JsonValue $decoded $expected $Name
+}
+
 $exe = 'C:\Program Files\Sunshine\sunshine.exe'
 function Rule([string]$Id='vendor', [string]$Protocol='UDP', $Ports=@('Any'), $Sources=@('Any'), [string]$Program=$exe, [bool]$Enabled=$true) {
     return @{id=$Id;program=$Program;direction='Inbound';enabled=$Enabled;effective=$Enabled;action='Allow';protocol=$Protocol;ports=$Ports;sources=$Sources;policy_source='Local';profile='Any'}
@@ -92,6 +116,7 @@ Test 'Sunshine unpair state transaction stops before reading shutdown state (moc
         $script:UnpairLifecycle=@()
         $before=[IO.File]::ReadAllText($script:UnpairState)
         $result=Invoke-SunshineUnpair $hash
+        Assert-Fixture 'sunshine-unpair-none' $result
         Assert-Equal $result.removed 0 'retry no match'
         Assert-True (-not $result.restarted) 'no match no restart'
         Assert-Equal $script:UnpairLifecycle.Count 0 'no match no service calls'
@@ -99,6 +124,7 @@ Test 'Sunshine unpair state transaction stops before reading shutdown state (moc
         [IO.File]::WriteAllText($script:UnpairState,$original,$script:Utf8)
         $script:UnpairRunning=$false
         $result=Invoke-SunshineUnpair $hash
+        Assert-Fixture 'sunshine-unpair' $result
         Assert-True (-not $result.restarted) 'stopped service stays stopped'
         Assert-Equal $script:UnpairLifecycle.Count 0 'stopped service no calls'
     } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
@@ -168,7 +194,7 @@ Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
     Assert-Equal $decoded.items.Count 0 'empty JSON array'
     Assert-Equal $decoded.one.Count 1 'single JSON array'
     Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
-    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '8' 'integer version contract'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) ([string]$script:HelperVersion) 'integer version contract'
 }
 Test 'firewall review includes exact LAN and detected Tailscale sources without granting writes' {
     function Get-NetIPConfiguration { return @(
@@ -527,6 +553,71 @@ Test 'daemon permission review rejects elevated, unknown or another-user runtime
     Assert-True (Test-CuaPermissionReview $task $context @(8192)) 'elevated autostart still reported'
     $task.Principal.RunLevel='Limited';$task.Principal.UserId='other-user'
     Assert-True (Test-CuaPermissionReview $task $context @(8192)) 'another user task requires review'
+}
+
+Test 'shared machine probe fixture with OS discovery mocked' {
+    $oldArch=$env:PROCESSOR_ARCHITECTURE; $oldName=$env:COMPUTERNAME
+    function Get-ConsoleSession { return @{present=$true;type='console';desktop='windows';id=1;user='fixture';domain='FIXTURE';sid='S-1-5-21-fixture';lock_state='unlocked'} }
+    function Get-CuaStatus { return @{path=$null;installed=$false;version=$null;min='0.34.0';ok=$false;autostart_run_level=$null;daemon_session_ids=@();daemon_integrity_rids=@();bridge_available=$false;permission_review_needed=$false} }
+    function Get-CimInstance { param($ClassName); if ($ClassName -eq 'Win32_OperatingSystem') {return @{Caption='Fixture Windows';Version='10.0';BuildNumber='fixture'}}; return @{Name='Fixture GPU'} }
+    try {
+        $env:PROCESSOR_ARCHITECTURE='AMD64';$env:COMPUTERNAME='Fixture Desktop'
+        Assert-Fixture 'probe' (Invoke-Helper 'probe' '' '')
+    } finally {$env:PROCESSOR_ARCHITECTURE=$oldArch;$env:COMPUTERNAME=$oldName}
+}
+Test 'shared Sunshine probe branches with read-only discovery mocked' {
+    function Get-ConsoleSession {return @{id=1;lock_state='unlocked'}}
+    function Get-StreamCandidates {return ,@('192.168.31.61')}
+    function Get-NetTCPConnection {param($State);return @()}
+    function Get-CertificateFingerprint {param($Pem);throw 'No certificate in this fixture'}
+    function Get-SunshineContext {return $script:ContractContext}
+    function Get-StreamActivity {param($Context);return @{active=$script:ContractBusy;known=$true}}
+    foreach ($name in @('sunshine-missing','sunshine-running','sunshine-busy')) {
+        $installed=$name -ne 'sunshine-missing';$script:ContractBusy=$name -eq 'sunshine-busy'
+        $script:ContractContext=@{known=$installed;installed=$installed;version=$(if($installed){'fixture'}else{$null});config='C:\fixture\sunshine.conf';values=@{lan_encryption_mode='2';wan_encryption_mode='2'};service=$(if($installed){@{State='Running'}}else{$null});processes=$(if($installed){@(@{ProcessId=42;SessionId=1})}else{@()})}
+        Assert-Fixture $name (Get-SunshineProbe)
+    }
+    Assert-Fixture 'sunshine-start' (Invoke-Helper 'sunshine' 'start' '')
+    $script:ContractBusy=$false;$script:ContractContext.content='lan_encryption_mode=2'
+    function Assert-RegularPath {param($Path)}
+    Assert-Fixture 'sunshine-encryption' (Invoke-Helper 'sunshine' 'enforce-encryption' '')
+}
+Test 'shared firewall check review and result fixtures with mutation boundary mocked' {
+    $sources=@('192.168.31.0/24')
+    $safe=Rule 'Miffan-Sunshine-UDP-LAN' 'UDP' @('47998-48000') $sources
+    $snapshot=@{rules=@($safe);profiles=@();profiles_safe=$true}
+    Assert-Fixture 'firewall-check' (Get-FirewallReview $snapshot $exe $sources)
+    Assert-Fixture 'firewall-review' (Get-FirewallReview @{rules=@();profiles=@();profiles_safe=$true} $exe $sources)
+    $script:ContractSnapshot=$snapshot;$script:ContractReads=0
+    function Get-SunshineContext {return @{installed=$true;known=$true;executable=$exe}}
+    function Get-FirewallSnapshot {param($Executable);$script:ContractReads++;if($script:ContractReads -le 2){return @{rules=@();profiles=@();profiles_safe=$true}};return $script:ContractSnapshot}
+    function Invoke-FirewallMutations {param($Plan);Assert-True $Plan.changed 'mocked mutation'}
+    function Save-FirewallBackup {param($Plan,$Snapshot);return 'C:\fixture\backup'}
+    $request=Read-FirewallRequest ([IO.File]::ReadAllText((Join-Path $FixturePath 'firewall-review.json')) | ConvertFrom-Json | Select-Object -ExpandProperty suggested_plan | ConvertTo-Json -Depth 10 -Compress)
+    Assert-Fixture 'firewall-result' (Invoke-FirewallApply $request)
+}
+Test 'shared clipboard fallback and locked-console failure contracts' {
+    function Get-CuaBridgeContext {return @{console=@{present=$true;sid='fixture';id=1;lock_state=$script:ContractLock};sid='fixture';pipe='fixture'}}
+    function Test-CuaBridgeAvailable {param($Name);return $false}
+    function Get-CuaStatus {return @{ok=$false}}
+    function Invoke-DesktopJob {param($Mode,$Text);return @{success=$true;verified=$true;detail='Clipboard written and read back';session_id=1}}
+    $script:ContractLock='unlocked'
+    Assert-Fixture 'clipboard' (Invoke-Helper 'clip' '' '')
+    $script:ContractLock='locked'
+    try { $null=Invoke-Helper 'clip' '' '';throw 'Expected locked refusal' }
+    catch {
+        Assert-True ($_.Exception.Message -cin $script:SafeFailures) 'failure is exportable'
+        Assert-Fixture 'clipboard-failed' @{success=$false;detail=$_.Exception.Message;error_type=$_.Exception.GetType().Name;backup=$null;cleanup_task=$null;cleanup_directory=$null}
+    }
+}
+Test 'shared clipboard stream replies match C# producer literals' {
+    $literals=[regex]::Matches($script:CuaBridgeSource,'"\{\\"success\\":(?:true|false),\\"verified\\":(?:true|false)\}"')
+    Assert-Equal $literals.Count 2 'two C# stream reply branches'
+    $names=@('clipboard-serve','clipboard-serve-failed')
+    for($i=0;$i -lt 2;$i++) {
+        $line=$literals[$i].Value.Trim('"').Replace('\"','"')
+        Assert-Fixture $names[$i] (ConvertFrom-Json $line)
+    }
 }
 
 [Console]::Out.WriteLine((ConvertTo-PlainJson @{success=$true;passed=$script:Passed;scope='offline; firewall/service/task mutations mocked'}))

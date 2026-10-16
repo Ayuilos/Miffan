@@ -8,8 +8,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from golden import golden, rdp_golden
 
-HELPER = Path(__file__).resolve().parents[2] / "app/src/main/assets/remote/miffan.sh"
+HELPER = Path(__file__).resolve().parents[1] / "src/miffan.sh"
 MOCK = r'''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
@@ -117,6 +118,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     assert result.returncode==0, status
     assert status['mode']=='headless' and 20000<=status['port']<60000
     assert status['error'] is None and status['username'].startswith('miffan-')
+    rdp_golden('rdp-gnome', status)
     cert=root/'.miffan/rdp/cert.pem'
     identity=cert.read_bytes()
     der=subprocess.check_output(['openssl','x509','-in',str(cert),'-outform','DER'])
@@ -134,6 +136,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     (root/'.miffan/rdp/gnome-headless.owner').unlink()
     before=(root/'state.json').read_bytes()
     result, status=start()
+    rdp_golden('rdp-already-configured', status)
     assert result.returncode!=0 and status['error']=='rdp_already_configured',status
     assert before==(root/'state.json').read_bytes()
     assert status['certificate_sha256'] is None, 'Do not attest unowned configurations'
@@ -153,6 +156,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
         before=(root/'state.json').read_bytes()
         argv_before=len((root/'argv.jsonl').read_text().splitlines())
         result, status=start()
+        if not state: rdp_golden('rdp-keyring-locked', status)
         assert result.returncode!=0 and status['error']=='keyring_locked',status
         assert before==(root/'state.json').read_bytes()
         calls=[json.loads(line) for line in (root/'argv.jsonl').read_text().splitlines()[argv_before:]]
@@ -176,6 +180,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
         user_config.unlink(missing_ok=True)
     (root/'state.json').write_text(json.dumps(unlocked))
     result, status=start()
+    rdp_golden('rdp-kde', status)
     assert result.returncode==0 and status['server']=='krdp',status
     assert status['certificate_sha256']==expected_pin
     assert json.loads((root/'state.json').read_text())['secret_written']==1
@@ -215,6 +220,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     cert.write_text('invalid certificate')
     result, failed=start()
     assert result.returncode!=0 and failed['error']=='rdp_start_failed',failed
+    rdp_golden('rdp-failed', failed)
     assert failed['certificate_sha256'] is None, 'Failed decoding must not attest an empty-input hash'
     assert (root/'.miffan/rdp/krdp-config/krdpserverrc').stat().st_mode & 0o777==0o600
     assert secret not in (root/'argv.jsonl').read_text()
@@ -234,6 +240,7 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
         (tools_dir/'python3').symlink_to(sys.executable)
         env['PATH']=str(tools_dir)
         result,status=start()
+        rdp_golden('rdp-credential-unavailable', status)
         assert result.returncode!=0 and status['error']=='credential_setup_unavailable',status
         assert status['certificate_sha256'] is None
     print('PASS: stdin-only exact QtKeychain credentials, default collection refusal, libsecret startup/migration, ownership, persistent DER identity, permissions and fail-closed attestation')
@@ -293,3 +300,61 @@ with tempfile.TemporaryDirectory(prefix="mac-shortcut-") as tmp:
         assert (root / "cua-args").read_text().strip() == 'hotkey {"scope":"desktop","keys":["ctrl","fn","%s"]}' % key
     assert shortcut("other").returncode == 2
     print("PASS: Mac shortcuts press Control+fn+arrow through cua-driver; missing driver exits 127")
+
+# Fixed probe/VNC environments: every OS capability lookup is stubbed, no host session is used.
+PROBE_MOCK = r'''#!/usr/bin/env python3
+import os,sys
+name=os.path.basename(sys.argv[0]); args=sys.argv[1:]
+if name=='uname': print(('Darwin' if os.environ.get('MOCK_MAC') else 'Linux') if args==['-s'] else ('arm64' if os.environ.get('MOCK_MAC') else 'aarch64'))
+elif name in ('hostnamectl','scutil','hostname'): print('Fixture Desktop')
+elif name=='cua-driver': print('cua-driver 0.34.0')
+elif name=='grdctl': print('gnome-remote-desktop 51')
+elif name=='pgrep': sys.exit(1)
+elif name=='nc': sys.exit(0)
+elif name=='systemctl': pass
+'''
+with tempfile.TemporaryDirectory(prefix='helper-probe-', dir='/tmp') as tmp:
+    root = Path(tmp); bindir = root/'bin'; bindir.mkdir()
+    mock = bindir/'mock'; mock.write_text(PROBE_MOCK); mock.chmod(0o755)
+    for name in ['uname','hostnamectl','scutil','hostname','cua-driver','grdctl','pgrep','nc','systemctl','wl-copy']:
+        (bindir/name).symlink_to(mock)
+    for name in ['sh','id','sed','head','sort','tr','mkdir','chmod','cat','dirname']:
+        (bindir/name).symlink_to(shutil.which(name))
+    (bindir/'python3').symlink_to(sys.executable)
+    env = dict(os.environ, HOME=str(root), PATH=str(bindir), WAYLAND_DISPLAY='fixture',
+               XDG_CURRENT_DESKTOP='GNOME', XDG_RUNTIME_DIR=str(root), DISPLAY='')
+    def probe_call(*args):
+        result = subprocess.run(['/bin/sh',str(HELPER),*args],env=env,capture_output=True,text=True,timeout=10)
+        return json.loads(result.stdout)
+    for name, desktop, display in [('probe-wayland','GNOME','fixture'),('probe-x11','GNOME','')]:
+        env.update(XDG_CURRENT_DESKTOP=desktop, WAYLAND_DISPLAY=display, DISPLAY='' if display else ':1')
+        value=probe_call('probe')
+        assert value['cua']['path']==str(bindir/'cua-driver')
+        value['cua']['path']='/fixture/bin/cua-driver'
+        assert value['vnc']['endpoint']==f'unix:{root}/miffan/vnc.sock'
+        value['vnc']['endpoint']='unix:/fixture/miffan/vnc.sock'
+        golden(name,value)
+    env.update(WAYLAND_DISPLAY='fixture', DISPLAY='')
+    golden('vnc-unavailable',probe_call('vnc','start'))
+    env.update(WAYLAND_DISPLAY='', DISPLAY='')
+    golden('vnc-no-session',probe_call('vnc','start'))
+    env.update(WAYLAND_DISPLAY='fixture', XDG_CURRENT_DESKTOP='fixture')
+    rdp_golden('rdp-no-server',probe_call('rdp','start'))
+    runtime=root/'miffan'; runtime.mkdir(exist_ok=True)
+    (runtime/'vnc.pid').write_text(str(os.getpid()))
+    (runtime/'vnc.port').write_text('45891'); (runtime/'vnc.secret').write_text('fixture8')
+    (bindir/'x11vnc').symlink_to(mock)
+    env.update(WAYLAND_DISPLAY='', DISPLAY=':1')
+    golden('vnc-x11',probe_call('vnc','start'))
+    import socket
+    with socket.socket(socket.AF_UNIX) as listener:
+        listener.bind(str(runtime/'vnc.sock'))
+        (bindir/'wayvnc').symlink_to(mock)
+        env.update(WAYLAND_DISPLAY='fixture', DISPLAY='')
+        value=probe_call('vnc','start')
+        assert value['endpoint']==f'unix:{runtime}/vnc.sock'
+        value['endpoint']='unix:/fixture/miffan/vnc.sock'; golden('vnc-wayland',value)
+    env['MOCK_MAC']='1'
+    golden('vnc-macos',probe_call('vnc','start'))
+    value=probe_call('probe'); value['cua']['path']='/fixture/bin/cua-driver'; golden('probe-macos',value)
+    print('PASS: probe and VNC JSON contracts from isolated capability stubs')
