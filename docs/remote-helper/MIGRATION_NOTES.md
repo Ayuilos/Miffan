@@ -48,7 +48,7 @@ CI 使用同一固定 URL 与摘要，在解包前 sha256sum --check --strict。
 | 334 | Declare and assign separately to avoid masking return values. |
 
 `-S error` 无诊断。少于 20 条，因此没有降为 error 门槛；为满足字节不变，CI 仍以
--S warning 运行，再精确核对这三条旧诊断的完整 baseline，任何新增/移动/变化均失败。
+-S warning 运行，按“诊断代码 + 级别”的数量核对基线（`{"SC2155 warning": 3}`），不看行号；出现新的诊断才失败，改动导致行号移动不影响。（Claude 复核时由逐位置比对改为按类型计数。）
 这是保留旧 warning 的明确处理，没有修改 helper，也没有全局禁用该规则。
 PowerShell 静态检查列在 README 的后续项中。
 
