@@ -11,7 +11,8 @@ def golden(name, actual):
     if os.environ.get('UPDATE_FIXTURES') == '1':
         path.write_text(json.dumps(actual, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n')
     expected = json.loads(path.read_text())
-    assert actual == expected, f'{path}: helper output changed; review protocol and use UPDATE_FIXTURES=1'
+    assert actual == expected, (f'{path}: helper output changed; review protocol and use UPDATE_FIXTURES=1\n'
+        f'actual:   {json.dumps(actual, ensure_ascii=False, sort_keys=True)}\nexpected: {json.dumps(expected, ensure_ascii=False, sort_keys=True)}')
 
 
 def rdp_golden(name, actual):
