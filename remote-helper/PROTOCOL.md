@@ -104,9 +104,12 @@ POSIX 只有实际 `EACCES/EPERM` 才返回 check administrator rights；systemc
 POSIX pair/unpair 共用停止函数；macOS 的 enforce-encryption 也复用该函数。macOS 只对
 mac_processes() 确认的当前用户 Sunshine 进程发送 SIGTERM，等待退出最多 10 秒；
 不调用 osascript/Apple Events，不依赖 Automation 授权，不发送 SIGKILL。
-进程在发信号前已退出（ESRCH）可继续检查；退出确认失败时不写配对状态、不 open 重开。
-确认退出后仍用 open -a（保留原配置参数）启动。enforce-encryption 在停止前已保存带备份的配置，
-停止失败时配置可能已变更，但同样不强杀、不启动。
+进程在发信号前已退出（ESRCH）可继续检查。pair/unpair 在发起停止前就标记需要恢复原运行状态；
+停止失败或退出确认超时不写配对状态，但 finally 仍尝试 open -a（macOS，保留原配置参数）或
+systemctl --user start（Linux），以免 SIGTERM 后延迟退出使 Sunshine 一直停着。
+enforce-encryption 在停止前已保存带备份的配置；macOS 停止失败或超时后仍执行 open -a，
+然后返回 `Encryption saved with backup; Sunshine graceful quit failed`（包括这次 open 失败的情况），
+不使用配对场景的 detail，也不发送 SIGKILL。
 `Sunshine pair attempted; could not restart Sunshine` 表示重启失败，文件可能已经写入；App 抛错。
 其他未知失败也抛错；不将未经确认的配对记录保存为信任。
 unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动>}`；无匹配或文件不存在为 0/false，不创建文件、不重启。
@@ -198,6 +201,9 @@ result 在 check 的基础上返回 `success`、`detail`、`changed`、`backup`�
 applied_changes，其他保留诊断不进入强类型模型。
 
 ## 版本与安装
+
+当前 POSIX helper 为 20，Windows 为 11。POSIX 从 19 升到 20，确保测试主机已有的旧 v19
+在下次 ensureInstalled 时自动收到新版脚本；Windows 版本和摘要保持不变。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

@@ -4,7 +4,7 @@
 
 ## 实现
 
-- POSIX helper 19、Windows helper 11 新增 `sunshine pair`。名称与客户端公共证书仅经 stdin JSON 传输；拒绝命令行参数、非法名称、坏 PEM、多证书、私钥、额外文本和 DER 尾随字节，并写入规范 PEM。
+- 当前 POSIX helper 20、Windows helper 11 支持 `sunshine pair`。名称与客户端公共证书仅经 stdin JSON 传输；拒绝命令行参数、非法名称、坏 PEM、多证书、私钥、额外文本和 DER 尾随字节，并写入规范 PEM。
 - pair/unpair 共用状态编辑事务：先验证已安装/可确认的服务模型和状态文件；运行中停服务并等退出后重读，保留停机刷出的新字段，再原子替换、恢复原运行状态。未运行时只写文件。保留其他客户端、未知 JSON 字段、属主、权限及 ACL；Windows 状态序列化使用 `ConvertTo-Json -Depth 100`。
 - pair 按下述全新安装修正规则初始化 `root.uniqueid`，检查 `named_devices` 和每项字符串 `name/cert/uuid`，按证书 DER 去重（包括两条旧重复记录），追加大写 UUID4、`enabled:true`，返回严格的 `added/replaced/restarted/client_sha256`。
 - App 提供指定签名的 `pairStreamDirectly`、`RemoteStreamDirectPairing` 和 `RemoteStreamManualPinReason`。沿用 revision、helper、probe 和证书检查；证书缺失或活跃串流时提前返回。helper 调用限时 45 秒，校验本地客户端证书摘要，按指定 detail 映射 PIN 兜底；其他错误抛出且保留 helper detail。
@@ -51,7 +51,7 @@
 
 - 根据实测反馈排除对 Apple Event 停止方式的依赖；Automation 授权是否确为该次 NO_PERMISSION 的原因，仍待用户确认，本次没有连接主机代为验证。
 - macOS pair、unpair、enforce-encryption 共用 `stop_sunshine()`，通过 `mac_processes()` 查找当前用户的 Sunshine，发送 SIGTERM 并确认退出，停止预算最长 10 秒；轮询命令也受剩余预算限制。进程已自行退出的 ESRCH 视为可继续检查。不调用 osascript，不发送 SIGKILL；启动保留 `open -a` 和原参数。
-- 停止命令失败或等待超时返回 `Could not stop Sunshine to change pairing`，Linux 的 systemctl stop 失败同样处理。只在确认退出后才标记已停止，pair/unpair 停止失败时不改状态文件、不尝试重开。enforce-encryption 的配置保存和备份顺序保持原状，停止失败时配置可能已经保存。
+- 停止命令失败或等待超时返回 `Could not stop Sunshine to change pairing`，Linux 的 systemctl stop 失败同样处理。该提交当时只在确认退出后才标记已停止，pair/unpair 停止失败时不尝试重开；此行为已由下节 v20 修正，状态文件仍不在停止失败时写入。enforce-encryption 的配置保存和备份顺序保持原状，停止失败时配置可能已经保存。
 - POSIX 的 check administrator rights 仅由真实 EACCES/EPERM 产生；信号的真实 EPERM 仍按权限错误报告。cp 退出失败等没有 errno 证据的情况不再伪造 PermissionError。
 - App 仅新增枚举 `SUNSHINE_DID_NOT_STOP`、对应 detail 映射及单元测试；UI 文案留给界面实现。
 - Python macOS fixture 注入模拟信号函数，断言只向模拟当前用户 PID 发 SIGTERM，覆盖正常退出、shutdown 刷盘、ESRCH、停止失败、真实 EPERM、10 秒超时，且三条流程均不得调用 osascript 或 SIGKILL；Linux 补停止失败/等待超时及 cp 非权限失败回归。
@@ -60,7 +60,7 @@
 集成说明：
 
 - 首次 Android 验收发现已集成的 UI `when` 未覆盖新枚举，未修改 UI，已按约定通过 herdr 反馈。UI 负责方随后提交 `ecb89607e`，补上分支和文案；最终验收以该提交加本次数据层/helper 改动为准。
-- 同版本开发验证需刷新旧 helper：`ensureInstalled` 只比较版本号。如果测试主机已装旧版 19，需由测试方更新为此次生成的 helper 后再验证 SIGTERM 路径；本次没有连接主机执行更新。
+- 当时同版本 19 不能触发自动上传；此问题已由下节 POSIX v20 升级解决。本次没有连接主机执行更新。
 
 本次 SIGTERM 修正验证结果：
 
@@ -69,3 +69,20 @@
 - ShellCheck 0.10.0、`/bin/sh -n remote-helper/src/miffan.sh`、`git diff --check`：通过，无新增 ShellCheck warning/error。
 - `./gradlew :app:compileDebugKotlin :app:assembleRemoteHelper :app:assembleDebug :app:testDebugUnitTest --tests '*RemoteSunshine*' --tests '*RemoteStream*' --tests '*RemoteHelper*'`：在 UI 提交 ecb89607e 上通过，32 项 JVM 测试通过；生成 helper 摘要与版本锁一致。
 - 未执行 Windows PowerShell 或真机验证；没有连接任何真实主机。UI 修改均由 UI 负责方提交，本次提交只包含数据层、helper、测试与协议/交付文档。
+
+## 停止失败恢复运行状态与 POSIX v20（2026-10-17）
+
+- `edit_pairing` 在调用 `stop_sunshine()` 前设置 `stopped=true`。pair/unpair 即使停止失败或 SIGTERM 等待超时，finally 仍尝试 `open -a` / `systemctl --user start`，防止 Sunshine 稍后退出后一直停着。停止失败时状态文件不写入，原失败 detail 保留；恢复启动失败仍沿用 restart failure detail。
+- macOS enforce-encryption 单独捕获停止失败，仍执行 `open -a`，然后返回旧 detail `Encryption saved with backup; Sunshine graceful quit failed`。启动尝试本身失败时也保留这句加密场景的停止失败说明。停止前已经保存的配置与备份继续保留，仍不发 SIGKILL。
+- POSIX helper 升至 20；versions.lock 追加 v20 摘要，保留 v19 和旧版本历史行。Windows 保持 11，源码、fixtures 与锁项不变。三个 POSIX probe fixtures 和 Kotlin 契约期望已同步到 20。
+- 新增 JVM 安装检查回归：远端 POSIX v19 上传完整的 v20 脚本，远端已有 POSIX v20 或 Windows v11 则不重复上传。Python 覆盖 Mac pair/unpair 发 SIGTERM 后超时仍尝试启动、Linux 停止失败/超时仍 start、加密停止失败/超时使用旧 detail 且仍 open。
+- 未改 UI 或 stream 源码，未连接或修改任何真实主机；Windows PowerShell/真机测试仍由测试方执行。
+
+- 回归测试同时修正信号模拟的作用范围：只替换 Sunshine 的 SIGTERM 调用，不再全局替换 os.kill，保留 Python subprocess 在 ps 检查超时时清理自己子进程的能力。夹具在执行前断言没有残留的真实 os.kill 调用；不向本机 Sunshine 或其他真实主机发送信号。
+
+本次 v20 验收：
+
+- `./gradlew :app:assembleRemoteHelper :app:assembleDebug :app:testDebugUnitTest --tests '*RemoteSunshine*' --tests '*RemoteStream*' --tests '*RemoteHelper*'`：通过，33 项 JVM 测试通过，包含 v19→v20 自动上传及 v20/v11 不重复上传。
+- `python3 -I remote-helper/tests/test_helper_safety.py`、ShellCheck 0.10.0、`/bin/sh -n remote-helper/src/miffan.sh`、`git diff --check`：通过。
+- 生成后的 POSIX v20 与 Windows v11 SHA-256 均匹配 versions.lock；旧 v19 锁项原样保留。
+- `python3 -I remote-helper/tests/test_sunshine_helper.py`：修正夹具后全量 53 项通过（161.173 秒），覆盖 SIGTERM 超时后的启动尝试、加密场景旧 detail 与 open 尝试。

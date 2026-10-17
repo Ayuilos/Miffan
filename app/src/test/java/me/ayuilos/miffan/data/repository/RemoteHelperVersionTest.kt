@@ -1,11 +1,47 @@
 package me.ayuilos.miffan.data.repository
 
+import android.content.res.AssetManager
+import io.mockk.every
+import io.mockk.mockk
 import java.io.File
+import java.io.InputStream
+import me.rerere.workspace.RemotePlatform
+import me.rerere.workspace.RemoteWorkspaceSession
+import me.rerere.workspace.WorkspaceCommandResult
 import java.security.MessageDigest
 import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteHelperVersionTest {
+    @Test fun `POSIX 19 refreshes to 20 while current POSIX and Windows helpers stay installed`() {
+        for ((platform, installedVersion, refresh) in listOf(
+            Triple(RemotePlatform.POSIX, "19", true),
+            Triple(RemotePlatform.POSIX, "20", false),
+            Triple(RemotePlatform.WINDOWS, "11", false),
+        )) {
+            val fileName = if (platform == RemotePlatform.WINDOWS) "miffan.ps1" else "miffan.sh"
+            val bytes = File(System.getProperty("remoteHelper.assets"), fileName).readBytes()
+            val assets = mockk<AssetManager>()
+            val ssh = mockk<RemoteWorkspaceSession>()
+            every { assets.open("remote/$fileName") } answers { bytes.inputStream() }
+            every { ssh.platform } returns platform
+            var uploaded: ByteArray? = null
+            var calls = 0
+            every { ssh.execute(any(), any(), any(), any(), any()) } answers {
+                calls++
+                val input = arg<InputStream?>(4)
+                if (input == null) WorkspaceCommandResult(0, installedVersion, "")
+                else {
+                    uploaded = input.readBytes()
+                    WorkspaceCommandResult(0, "", "")
+                }
+            }
+            RemoteMiffanHelper(assets).ensureInstalled(ssh)
+            assertEquals(if (refresh) 2 else 1, calls)
+            if (refresh) assertArrayEquals(bytes, uploaded) else assertNull(uploaded)
+        }
+    }
+
     @Test fun `generated helpers match their immutable version locks`() {
         val rows = File(requireNotNull(System.getProperty("remoteHelper.versions"))).readLines()
             .filter { it.isNotBlank() }.map { it.split(" ") }

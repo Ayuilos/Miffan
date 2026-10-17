@@ -136,7 +136,6 @@ MOCK_SIGNAL = r'''def fixture_signal(pid, signum):
     if settings.get('flush_state'):
         (fixture / '.config/sunshine/sunshine_state.json').write_text(json.dumps(settings['flush_state']))
     if settings.get('term_gone'): raise ProcessLookupError(errno.ESRCH, 'offline already exited')
-os.kill = fixture_signal
 '''
 
 class SunshineFixture(unittest.TestCase):
@@ -246,7 +245,7 @@ class SunshineUnpairTest(SunshinePairingFixture):
         code, result = self.call('unpair', permission=self.fingerprint, running=True, stop_error=True)
         self.assertEqual(1, code); self.assertFalse(result['success']); self.assertEqual(before, self.state.read_bytes())
         self.assertEqual('Could not stop Sunshine to change pairing', result['detail'])
-        self.assertNotIn('--user start', (self.root / 'commands.log').read_text())
+        self.assertIn('--user start', (self.root / 'commands.log').read_text())
     def test_custom_relative_and_absolute_state_paths(self):
         for custom in (self.config.parent / 'custom.json', self.root / 'absolute state.json'):
             self.state.rename(custom)
@@ -438,11 +437,12 @@ class SunshinePairTest(SunshinePairingFixture):
 
     def test_pair_stop_failure_and_wait_timeout_are_not_permission_failures(self):
         for failure in ('stop_error', 'stop_timeout'):
+            (self.root / 'commands.log').write_text('')
             before = self.state.read_bytes()
             code, result = self.pair(running=True, **{failure: True})
             self.assertEqual(1, code); self.assertEqual('Could not stop Sunshine to change pairing', result['detail'])
             self.assertEqual(before, self.state.read_bytes())
-            self.assertNotIn('--user start', (self.root / 'commands.log').read_text())
+            self.assertIn('--user start', (self.root / 'commands.log').read_text())
     def test_pair_copy_failure_is_not_assumed_to_be_permission_failure(self):
         before = self.state.read_bytes()
         code, result = self.pair(copy_error=True)
@@ -533,7 +533,12 @@ class SunshineMacHelperTest(SunshineFixture):
         (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleShortVersionString': '2026.914-fixture'}))
         # Redirect the fixed system bundle lookup as well: no fixture can see a real installation.
         self.helper = self.root / 'miffan.sh'
-        self.helper.write_text(HELPER.read_text().replace("pathlib.Path('/Applications/Sunshine.app')", repr_path(self.root / 'SystemApplications/Sunshine.app')).replace("def mac_processes(timeout=10):", MOCK_SIGNAL + "\ndef mac_processes(timeout=10):"))
+        source = HELPER.read_text()
+        # Mock only Sunshine's signal call; subprocess.run must retain its own child cleanup.
+        self.assertEqual(1, source.count('os.kill('))
+        source = source.replace('os.kill(int(pid), signal.SIGTERM)', 'fixture_signal(int(pid), signal.SIGTERM)')
+        self.assertNotIn('os.kill(', source)
+        self.helper.write_text(source.replace("pathlib.Path('/Applications/Sunshine.app')", repr_path(self.root / 'SystemApplications/Sunshine.app')).replace("def mac_processes(timeout=10):", MOCK_SIGNAL + "\ndef mac_processes(timeout=10):"))
         # All state-changing and OS-dependent commands are stubs, including Linux tools.
         self.env['PATH'] = str(self.root / 'bin')
         (self.root / 'bin/python3').symlink_to(sys.executable)
@@ -578,7 +583,7 @@ class SunshineMacHelperTest(SunshineFixture):
         commands = (self.root / 'commands.log').read_text()
         self.assertLess(commands.index('signal SIGTERM 42'),commands.index('open -a'))
 
-    def test_mac_pair_and_unpair_stop_failures_keep_state_and_never_reopen(self):
+    def test_mac_pair_and_unpair_stop_failures_keep_state_and_attempt_reopen(self):
         pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
         fingerprint = (Path(__file__).resolve().parent / 'windows/certificate.sha256').read_text().strip()
         state = self.config.parent / 'sunshine_state.json'
@@ -586,6 +591,7 @@ class SunshineMacHelperTest(SunshineFixture):
             for failure in ('term_error', 'term_timeout', 'term_permission'):
                 with self.subTest(mode=mode, failure=failure):
                     (self.root / 'quit').unlink(missing_ok=True)
+                    (self.root / 'commands.log').write_text('')
                     state.write_text(json.dumps(dict(root=dict(uniqueid='server', named_devices=[dict(name='phone', cert=pem, uuid='phone')]))))
                     before = state.read_bytes()
                     request = json.dumps(dict(name='phone', cert=pem)) if mode == 'pair' else None
@@ -597,7 +603,8 @@ class SunshineMacHelperTest(SunshineFixture):
                     self.assertEqual(before, state.read_bytes())
                     commands = (self.root / 'commands.log').read_text()
                     self.assertIn('signal SIGTERM 42', commands)
-                    self.assertNotIn('open -a', commands); self.assertNotIn('SIGKILL', commands)
+                    self.assertLess(commands.index('signal SIGTERM 42'), commands.index('open -a ' + str(self.app)))
+                    self.assertNotIn('SIGKILL', commands)
     def test_mac_sigterm_rereads_flushed_state_and_tolerates_already_exited_process(self):
         pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
         state = self.config.parent / 'sunshine_state.json'
@@ -654,15 +661,25 @@ class SunshineMacHelperTest(SunshineFixture):
             self.assertFalse(result['success']); self.assertEqual(1, code)
             self.assertEqual(before, self.config.read_bytes())
             self.assertNotIn('osascript', (self.root / 'commands.log').read_text())
-    def test_mac_post_save_race_and_stop_failures_never_reopen_or_force_kill(self):
-        for settings in (dict(restart_race=True), dict(term_error=True), dict(term_timeout=True)):
-            counter = self.root / 'ss-count'
-            if counter.exists(): counter.unlink()
-            code, result = self.call('enforce-encryption', running=True, **settings)
-            self.assertFalse(result['success']); self.assertEqual(1, code)
-            self.assertIn('lan_encryption_mode = 2', self.config.read_text())
-            self.assertNotIn('open -a', (self.root / 'commands.log').read_text())
-            self.assertNotIn('SIGKILL', (self.root / 'commands.log').read_text())
+    def test_mac_post_save_activity_race_does_not_restart(self):
+        code, result = self.call('enforce-encryption', running=True, restart_race=True)
+        self.assertEqual(1, code); self.assertFalse(result['success'])
+        self.assertIn('lan_encryption_mode = 2', self.config.read_text())
+        commands = (self.root / 'commands.log').read_text()
+        self.assertNotIn('open -a', commands); self.assertNotIn('signal SIGTERM', commands)
+    def test_mac_encryption_stop_failure_or_timeout_reopens_and_uses_encryption_detail(self):
+        for settings in (dict(term_error=True), dict(term_timeout=True), dict(term_permission=True),
+                         dict(term_error=True, open_error=True)):
+            with self.subTest(settings=settings):
+                (self.root / 'quit').unlink(missing_ok=True)
+                (self.root / 'commands.log').write_text('')
+                code, result = self.call('enforce-encryption', running=True, **settings)
+                self.assertEqual(1, code); self.assertFalse(result['success'])
+                self.assertEqual('Encryption saved with backup; Sunshine graceful quit failed', result['detail'])
+                self.assertIn('lan_encryption_mode = 2', self.config.read_text())
+                commands = (self.root / 'commands.log').read_text()
+                self.assertLess(commands.index('signal SIGTERM 42'), commands.index('open -a ' + str(self.app)))
+                self.assertNotIn('SIGKILL', commands)
     def test_mac_custom_configuration_and_port_are_used(self):
         custom = self.root / 'custom sunshine.conf'; custom.write_text('port = 50000\n')
         _, probe = self.call(running=True, config_arg='"' + str(custom) + '"', busy=True, port=50000)

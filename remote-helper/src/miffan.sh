@@ -16,7 +16,7 @@
 #   miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows
 #                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 
-MIFFAN_HELPER_VERSION=19
+MIFFAN_HELPER_VERSION=20
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -975,8 +975,9 @@ def edit_pairing():
         if not count and pair_request is None:
             print(json.dumps(dict(removed=0, restarted=False))); return
         if running:
-            stop_sunshine()
+            # A requested stop may finish after a timeout; always restore the prior running state.
             stopped = True
+            stop_sunshine()
         # Sunshine may flush a newer state during shutdown; edit that final version.
         data, kept, count, existed = read_state()
         if count or pair_request is not None:
@@ -1142,12 +1143,15 @@ try:
     if stream_activity(strict=True):
         reply(False, 'Encryption saved with backup; stream activity prevents restart'); sys.exit(1)
     if mac:
+        stop_failed = False
         if running:
-            stop_sunshine()
-        # Keep a verified explicit config/overrides when reopening the existing instance.
+            try: stop_sunshine()
+            except (OSError, ValueError): stop_failed = True
+        # Reopen even if the stop timed out: Sunshine may still finish shutting down.
         command = ['open', '-a', str(app)]
         if args: command += ['--args'] + args
         restarted = run(command)
+        if stop_failed: finish(False, 'Encryption saved with backup; Sunshine graceful quit failed')
     else:
         restarted = run(['systemctl', '--user', 'restart', unit])
     success = bool(restarted and restarted.returncode == 0)
