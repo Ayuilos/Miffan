@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
+import me.ayuilos.miffan.data.repository.RemoteStreamManualPinReason
 import me.ayuilos.miffan.data.repository.RemoteStreamStatus
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 
@@ -15,8 +16,12 @@ data class RemoteStreamSetupState(
     /** The saved high-performance switch for this host, read with [status]. */
     val enabled: Boolean? = null,
     val error: Throwable? = null,
-    /** The PIN to type into Sunshine while [phase] is PAIRING. */
+    /** The PIN to type into Sunshine while [phase] is PAIRING; only after direct pairing could not be done. */
     val pin: String? = null,
+    /** Why this pairing fell back to a PIN; null while the app pairs directly. */
+    val manualPinReason: RemoteStreamManualPinReason? = null,
+    /** Someone is streaming from this computer; pairing waits for the user to accept cutting them off. */
+    val confirmInterrupt: Boolean = false,
     val pairingError: Throwable? = null,
     /** Set once after a pairing that just succeeded, for a confirmation line. */
     val paired: Boolean = false,

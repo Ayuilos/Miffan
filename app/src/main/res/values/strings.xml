@@ -2327,6 +2327,14 @@
   <string name="workspace_screen_stream_pair_steps" tools:ignore="MissingTranslation">On this computer, open Sunshine\'s web page at https://localhost:47990, go to PIN, and enter the number below. Any device name will do, for example Miffan.</string>
   <string name="workspace_screen_stream_pair_starting" tools:ignore="MissingTranslation">Asking Sunshine to pair…</string>
   <string name="workspace_screen_stream_pair_waiting" tools:ignore="MissingTranslation">Waiting for the PIN on the computer…</string>
+  <string name="workspace_screen_stream_pair_direct" tools:ignore="MissingTranslation">Getting this computer to trust this phone. Sunshine restarts for a few seconds…</string>
+  <string name="workspace_screen_stream_pair_busy_title" tools:ignore="MissingTranslation">Interrupt the current stream?</string>
+  <string name="workspace_screen_stream_pair_busy" tools:ignore="MissingTranslation">Something is streaming from this computer right now. Pairing restarts Sunshine, which cuts that stream off for a few seconds.</string>
+  <string name="workspace_screen_stream_pair_busy_confirm" tools:ignore="MissingTranslation">Pair anyway</string>
+  <string name="workspace_screen_stream_pair_manual_certificate" tools:ignore="MissingTranslation">Miffan couldn\'t read Sunshine\'s certificate on this computer, so this time pairing needs a PIN.</string>
+  <string name="workspace_screen_stream_pair_manual_state" tools:ignore="MissingTranslation">This Sunshine version keeps its pairings in a way Miffan doesn\'t recognise, so this time pairing needs a PIN.</string>
+  <string name="workspace_screen_stream_pair_manual_permission" tools:ignore="MissingTranslation">This account can\'t change Sunshine\'s settings (on Windows that needs an administrator account), so this time pairing needs a PIN.</string>
+  <string name="workspace_screen_stream_pair_manual_unconfirmed" tools:ignore="MissingTranslation">Sunshine restarted but didn\'t confirm this phone, so this time pairing needs a PIN.</string>
   <string name="workspace_screen_stream_pair_failed" tools:ignore="MissingTranslation">Pairing did not finish. Check the PIN and try again.</string>
   <string name="workspace_screen_stream_pair_failed_detail" tools:ignore="MissingTranslation">Pairing did not finish: %1$s</string>
   <string name="workspace_screen_stream_pair_done" tools:ignore="MissingTranslation">Paired.</string>

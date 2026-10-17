@@ -2284,6 +2284,14 @@
   <string name="workspace_screen_stream_pair_steps">在這台電腦上開啟 Sunshine 網頁 https://localhost:47990，進入 PIN 頁面，輸入下方的數字。裝置名稱可隨意填寫，例如 Miffan。</string>
   <string name="workspace_screen_stream_pair_starting">正在向 Sunshine 發起配對…</string>
   <string name="workspace_screen_stream_pair_waiting">等待在電腦上輸入 PIN…</string>
+  <string name="workspace_screen_stream_pair_direct">正在讓這台電腦信任這支手機，Sunshine 會重新啟動幾秒…</string>
+  <string name="workspace_screen_stream_pair_busy_title">要中斷正在進行的串流嗎？</string>
+  <string name="workspace_screen_stream_pair_busy">現在有裝置正在從這台電腦串流。配對需要重新啟動 Sunshine，那次串流會中斷幾秒。</string>
+  <string name="workspace_screen_stream_pair_busy_confirm">仍然配對</string>
+  <string name="workspace_screen_stream_pair_manual_certificate">讀不到這台電腦上 Sunshine 的憑證，這次需要用 PIN 配對。</string>
+  <string name="workspace_screen_stream_pair_manual_state">這個版本的 Sunshine 儲存配對的方式 Miffan 無法辨識，這次需要用 PIN 配對。</string>
+  <string name="workspace_screen_stream_pair_manual_permission">這個帳號沒有權限修改 Sunshine 的設定（Windows 上需要管理員帳號），這次需要用 PIN 配對。</string>
+  <string name="workspace_screen_stream_pair_manual_unconfirmed">Sunshine 重新啟動後沒有確認這支手機，這次需要用 PIN 配對。</string>
   <string name="workspace_screen_stream_pair_failed">配對未完成。請核對 PIN 後重試。</string>
   <string name="workspace_screen_stream_pair_failed_detail">配對未完成：%1$s</string>
   <string name="workspace_screen_stream_pair_done">已配對。</string>

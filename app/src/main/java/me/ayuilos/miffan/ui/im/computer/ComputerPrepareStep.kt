@@ -148,7 +148,8 @@ internal fun ComputerReadyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     }
     if (enablingStream && stream != null) {
         RemoteStreamEnableFlow(stream, onStart = vm::startSunshine, onEnforce = vm::enforceStreamEncryption, onPair = vm::pairStream,
-            onCancelPairing = vm::cancelStreamPairing, onEnable = vm::enableStream, onFinished = { enablingStream = false })
+            onCancelPairing = vm::cancelStreamPairing, onDismissInterrupt = { vm.dismissStreamInterrupt() },
+            onEnable = vm::enableStream, onFinished = { enablingStream = false })
     }
     installCommand?.let { command ->
         AlertDialog(onDismissRequest = { installCommand = null },

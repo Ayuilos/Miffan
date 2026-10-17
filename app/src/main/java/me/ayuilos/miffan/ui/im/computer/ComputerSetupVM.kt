@@ -294,7 +294,9 @@ class ComputerSetupVM(
         action(state.hostId ?: return, state.hostRevision ?: return)
     }
     fun checkStream() = withProbedHost(streamSetup::check)
-    fun pairStream() = withProbedHost(streamSetup::pair)
+    fun pairStream(interruptActiveStream: Boolean = false) =
+        withProbedHost { hostId, revision -> streamSetup.pair(hostId, revision, interruptActiveStream) }
+    fun dismissStreamInterrupt() = _state.value.hostId?.let(streamSetup::dismissInterrupt)
     fun cancelStreamPairing() = streamSetup.cancelPairing()
     /** Called only from the confirmation that shows exactly what changes on the computer. */
     fun enforceStreamEncryption() = withProbedHost(streamSetup::enforceEncryption)

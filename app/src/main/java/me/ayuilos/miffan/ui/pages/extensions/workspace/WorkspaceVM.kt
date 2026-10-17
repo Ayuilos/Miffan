@@ -71,7 +71,9 @@ class WorkspaceVM(
     val streamSetups = streamSetup.states
 
     fun checkStream(host: RemoteHostEntity) = streamSetup.check(host.id, host.connectionRevision)
-    fun pairStream(host: RemoteHostEntity) = streamSetup.pair(host.id, host.connectionRevision)
+    fun pairStream(host: RemoteHostEntity, interruptActiveStream: Boolean = false) =
+        streamSetup.pair(host.id, host.connectionRevision, interruptActiveStream)
+    fun dismissStreamInterrupt(host: RemoteHostEntity) = streamSetup.dismissInterrupt(host.id)
     fun cancelStreamPairing() = streamSetup.cancelPairing()
     /** Called only from the confirmation that shows exactly what changes on the computer. */
     fun enforceStreamEncryption(host: RemoteHostEntity) = streamSetup.enforceEncryption(host.id, host.connectionRevision)

@@ -2286,6 +2286,14 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_stream_pair_steps">このパソコンで Sunshine のウェブページ https://localhost:47990 を開き、PIN の画面で下の数字を入力してください。デバイス名は何でもかまいません（例：Miffan）。</string>
   <string name="workspace_screen_stream_pair_starting">Sunshine にペアリングを要求しています…</string>
   <string name="workspace_screen_stream_pair_waiting">パソコンで PIN が入力されるのを待っています…</string>
+  <string name="workspace_screen_stream_pair_direct">このパソコンがこのスマートフォンを信頼するよう設定しています。Sunshine が数秒間再起動します…</string>
+  <string name="workspace_screen_stream_pair_busy_title">進行中のストリームを中断しますか？</string>
+  <string name="workspace_screen_stream_pair_busy">現在このパソコンからストリーミング中のデバイスがあります。ペアリングでは Sunshine を再起動するため、そのストリームが数秒間途切れます。</string>
+  <string name="workspace_screen_stream_pair_busy_confirm">このままペアリング</string>
+  <string name="workspace_screen_stream_pair_manual_certificate">このパソコンの Sunshine の証明書を読み取れなかったため、今回は PIN でペアリングします。</string>
+  <string name="workspace_screen_stream_pair_manual_state">この Sunshine のバージョンのペアリング情報の形式を Miffan が認識できないため、今回は PIN でペアリングします。</string>
+  <string name="workspace_screen_stream_pair_manual_permission">このアカウントには Sunshine の設定を変更する権限がありません（Windows では管理者アカウントが必要です）。今回は PIN でペアリングします。</string>
+  <string name="workspace_screen_stream_pair_manual_unconfirmed">Sunshine は再起動しましたが、このスマートフォンを確認できなかったため、今回は PIN でペアリングします。</string>
   <string name="workspace_screen_stream_pair_failed">ペアリングが完了しませんでした。PIN を確認してもう一度お試しください。</string>
   <string name="workspace_screen_stream_pair_failed_detail">ペアリングが完了しませんでした：%1$s</string>
   <string name="workspace_screen_stream_pair_done">ペアリングしました。</string>
