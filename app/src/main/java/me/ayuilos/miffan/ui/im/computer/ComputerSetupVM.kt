@@ -717,6 +717,8 @@ class ComputerSetupVM(
         check(_state.value.ready) { "The computer is not ready yet" }
         // Saved screen settings stay, so turning the screen back on only needs the check.
         if (!_state.value.usesScreen) screens.setScreenEnabled(currentHost().id, false)
+        // Windows becomes ready only once Sunshine is paired, after the probe already ran.
+        else afterProbe()
         go(ComputerSetupStep.SHARE)
     }
 
