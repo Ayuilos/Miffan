@@ -2291,6 +2291,7 @@
   <string name="workspace_screen_stream_pair_manual_certificate">讀不到這台電腦上 Sunshine 的憑證，這次需要用 PIN 配對。</string>
   <string name="workspace_screen_stream_pair_manual_state">這個版本的 Sunshine 儲存配對的方式 Miffan 無法辨識，這次需要用 PIN 配對。</string>
   <string name="workspace_screen_stream_pair_manual_permission">這個帳號沒有權限修改 Sunshine 的設定（Windows 上需要管理員帳號），這次需要用 PIN 配對。</string>
+  <string name="workspace_screen_stream_pair_manual_stop">Sunshine 沒有依要求結束，無法載入這支手機，這次需要用 PIN 配對。</string>
   <string name="workspace_screen_stream_pair_manual_unconfirmed">Sunshine 重新啟動後沒有確認這支手機，這次需要用 PIN 配對。</string>
   <string name="workspace_screen_stream_pair_failed">配對未完成。請核對 PIN 後重試。</string>
   <string name="workspace_screen_stream_pair_failed_detail">配對未完成：%1$s</string>

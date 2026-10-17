@@ -2293,6 +2293,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_stream_pair_manual_certificate">이 컴퓨터에서 Sunshine 인증서를 읽을 수 없어 이번에는 PIN으로 페어링합니다.</string>
   <string name="workspace_screen_stream_pair_manual_state">이 버전의 Sunshine이 페어링을 저장하는 방식을 Miffan이 인식하지 못해 이번에는 PIN으로 페어링합니다.</string>
   <string name="workspace_screen_stream_pair_manual_permission">이 계정에는 Sunshine 설정을 변경할 권한이 없어(Windows에서는 관리자 계정 필요) 이번에는 PIN으로 페어링합니다.</string>
+  <string name="workspace_screen_stream_pair_manual_stop">Sunshine이 요청대로 종료되지 않아 이 휴대폰을 불러오지 못했습니다. 이번에는 PIN으로 페어링합니다.</string>
   <string name="workspace_screen_stream_pair_manual_unconfirmed">Sunshine이 다시 시작되었지만 이 휴대폰을 확인하지 못해 이번에는 PIN으로 페어링합니다.</string>
   <string name="workspace_screen_stream_pair_failed">페어링이 끝나지 않았습니다. PIN을 확인하고 다시 시도하세요.</string>
   <string name="workspace_screen_stream_pair_failed_detail">페어링이 끝나지 않았습니다: %1$s</string>

@@ -2296,6 +2296,7 @@
   <string name="workspace_screen_stream_pair_manual_certificate">Не удалось прочитать сертификат Sunshine на этом компьютере, поэтому в этот раз для сопряжения нужен PIN-код.</string>
   <string name="workspace_screen_stream_pair_manual_state">Miffan не распознаёт, как эта версия Sunshine хранит сопряжения, поэтому в этот раз нужен PIN-код.</string>
   <string name="workspace_screen_stream_pair_manual_permission">У этой учётной записи нет прав менять настройки Sunshine (в Windows нужна учётная запись администратора), поэтому в этот раз нужен PIN-код.</string>
+  <string name="workspace_screen_stream_pair_manual_stop">Sunshine не завершился по запросу и не смог загрузить этот телефон, поэтому в этот раз нужен PIN-код.</string>
   <string name="workspace_screen_stream_pair_manual_unconfirmed">Sunshine перезапустился, но не подтвердил этот телефон, поэтому в этот раз нужен PIN-код.</string>
   <string name="workspace_screen_stream_pair_failed">Сопряжение не завершилось. Проверьте PIN и попробуйте снова.</string>
   <string name="workspace_screen_stream_pair_failed_detail">Сопряжение не завершилось: %1$s</string>

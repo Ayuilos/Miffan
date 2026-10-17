@@ -311,6 +311,7 @@ private fun streamManualPinReasonText(reason: RemoteStreamManualPinReason): Int 
     RemoteStreamManualPinReason.CERTIFICATE_UNAVAILABLE -> R.string.workspace_screen_stream_pair_manual_certificate
     RemoteStreamManualPinReason.STATE_UNRECOGNIZED -> R.string.workspace_screen_stream_pair_manual_state
     RemoteStreamManualPinReason.NO_PERMISSION -> R.string.workspace_screen_stream_pair_manual_permission
+    RemoteStreamManualPinReason.SUNSHINE_DID_NOT_STOP -> R.string.workspace_screen_stream_pair_manual_stop
     RemoteStreamManualPinReason.NOT_CONFIRMED -> R.string.workspace_screen_stream_pair_manual_unconfirmed
 }
 

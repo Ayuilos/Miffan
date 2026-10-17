@@ -2325,6 +2325,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_stream_pair_manual_certificate">读不到这台电脑上 Sunshine 的证书，这次需要用 PIN 配对。</string>
   <string name="workspace_screen_stream_pair_manual_state">这个版本的 Sunshine 保存配对的方式 Miffan 不认识，这次需要用 PIN 配对。</string>
   <string name="workspace_screen_stream_pair_manual_permission">这个账号没有权限修改 Sunshine 的设置（Windows 上需要管理员账号），这次需要用 PIN 配对。</string>
+  <string name="workspace_screen_stream_pair_manual_stop">Sunshine 没有按要求退出，没法载入这部手机，这次需要用 PIN 配对。</string>
   <string name="workspace_screen_stream_pair_manual_unconfirmed">Sunshine 重启后没有确认这部手机，这次需要用 PIN 配对。</string>
   <string name="workspace_screen_stream_pair_failed">配对没有完成。请核对 PIN 后重试。</string>
   <string name="workspace_screen_stream_pair_failed_detail">配对没有完成：%1$s</string>

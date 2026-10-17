@@ -2334,6 +2334,7 @@
   <string name="workspace_screen_stream_pair_manual_certificate" tools:ignore="MissingTranslation">Miffan couldn\'t read Sunshine\'s certificate on this computer, so this time pairing needs a PIN.</string>
   <string name="workspace_screen_stream_pair_manual_state" tools:ignore="MissingTranslation">This Sunshine version keeps its pairings in a way Miffan doesn\'t recognise, so this time pairing needs a PIN.</string>
   <string name="workspace_screen_stream_pair_manual_permission" tools:ignore="MissingTranslation">This account can\'t change Sunshine\'s settings (on Windows that needs an administrator account), so this time pairing needs a PIN.</string>
+  <string name="workspace_screen_stream_pair_manual_stop" tools:ignore="MissingTranslation">Sunshine didn\'t close when asked, so it couldn\'t load this phone. This time pairing needs a PIN.</string>
   <string name="workspace_screen_stream_pair_manual_unconfirmed" tools:ignore="MissingTranslation">Sunshine restarted but didn\'t confirm this phone, so this time pairing needs a PIN.</string>
   <string name="workspace_screen_stream_pair_failed" tools:ignore="MissingTranslation">Pairing did not finish. Check the PIN and try again.</string>
   <string name="workspace_screen_stream_pair_failed_detail" tools:ignore="MissingTranslation">Pairing did not finish: %1$s</string>
