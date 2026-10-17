@@ -31,7 +31,9 @@ class WindowsScreenRepositoryTest {
     private var approvedStdin: String? = null
     private var firewallExitCode = 0
     private var sunshineInstalled = true
-    private var installedVersion = "10"
+    private val bundledVersion = Regex("HelperVersion = (\\d+)").find(
+        File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readText())!!.groupValues[1]
+    private var installedVersion = bundledVersion
     private var installedBytes: ByteArray? = null
     private var probeExitCode = 0
     private var firewall = WindowsScreenHelperTest.reviewJson
@@ -50,7 +52,7 @@ class WindowsScreenRepositoryTest {
             val command = firstArg<String>(); commands += command
             val output = when {
                 command == windowsHelperVersionCommand -> installedVersion
-                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "10"; "" }
+                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = bundledVersion; "" }
                 command.endsWith("sunshine firewall check") -> firewall
                 command.endsWith("sunshine firewall apply") -> {
                     approvedStdin = arg<InputStream?>(4)!!.readBytes().toString(Charsets.UTF_8)
