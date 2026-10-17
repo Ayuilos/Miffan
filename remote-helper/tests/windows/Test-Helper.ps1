@@ -169,10 +169,97 @@ Test 'Sunshine direct pair adds or replaces every DER match and retains deep unk
     $empty=Edit-SunshinePairing '{"root":{"uniqueid":"server"}}' $request.fingerprint $request
     Assert-Equal $empty.removed 0 'new array created'
     Assert-Equal (ConvertFrom-Json $empty.content).root.named_devices.Count 1 'first phone added'
-    foreach ($bad in @('{}','[]','[{"root":{}}]','{bad','{"root":null}','{"root":[]}','{"root":{"named_devices":null}}','{"root":{"named_devices":{}}}',
+    foreach ($bad in @('[]','[{"root":{}}]','{bad','{"root":null}','{"root":[]}','{"root":{"named_devices":null}}','{"root":{"named_devices":{}}}',
         '{"root":{"named_devices":[1]}}','{"root":{"named_devices":[{"name":"x","cert":"x"}]}}','{"root":{"named_devices":[{"name":3,"cert":"x","uuid":"u"}]}}')) {
         Assert-Throws {Edit-SunshinePairing $bad $request.fingerprint $request} 'unrecognized state rejected'
     }
+}
+Test 'Sunshine direct pair initializes root and server UUID without changing top-level credentials' {
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $request=Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name='phone';cert=$pem})
+    foreach ($root in @($null, [pscustomobject]@{}, [pscustomobject]@{uniqueid=$null}, [pscustomobject]@{uniqueid=42}, [pscustomobject]@{uniqueid='original-server-id'})) {
+        $original=@{username='offline-admin';password='offline-password-hash';salt='offline-salt';unknown=@{keep=@(1,$null)}}
+        if ($null -ne $root) { $original.root=$root }
+        $edited=Edit-SunshinePairing (ConvertTo-Json -Depth 100 -InputObject $original) $request.fingerprint $request
+        $data=ConvertFrom-Json $edited.content
+        Assert-Equal $data.username 'offline-admin' 'web username retained'
+        Assert-Equal $data.password 'offline-password-hash' 'web password hash retained'
+        Assert-Equal $data.salt 'offline-salt' 'web salt retained'
+        Assert-Equal $data.unknown.keep.Count 2 'unknown fields retained'
+        Assert-Equal $data.root.named_devices.Count 1 'client registered'
+        if ($null -ne $root -and $root.uniqueid -is [string]) {
+            Assert-Equal $data.root.uniqueid $root.uniqueid 'existing server identity unchanged'
+        } else {
+            Assert-True ($data.root.uniqueid -cmatch '^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$') 'new uppercase server UUID4'
+        }
+    }
+}
+Test 'Sunshine direct pair creates absent state with inherited ACL after shutdown recheck (mocked)' {
+    $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-fresh-pair-'+[Guid]::NewGuid().ToString('N'))
+    $null=New-Item -ItemType Directory -Path $testRoot
+    $script:FreshConfig=Join-Path $testRoot 'sunshine.conf'
+    $script:FreshState=Join-Path $testRoot 'fresh-state.json'
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $json=ConvertTo-Json -Compress -InputObject @{name='phone';cert=$pem}
+    $hash=Get-CertificateFingerprint $pem
+    $script:FreshRunning=$false;$script:FreshLifecycle=@();$script:FreshFlush=$null
+    function Get-SunshineContext {return @{known=$true;installed=$true;config=$script:FreshConfig;values=@{file_state=$script:FreshState};service=@{State=$(if ($script:FreshRunning) {'Running'} else {'Stopped'})}}}
+    function Stop-Service {
+        param($Name,$ErrorAction)
+        $script:FreshLifecycle+='stop';$script:FreshRunning=$false
+        Assert-True (-not (Test-Path -LiteralPath $script:FreshState)) 'no state created before stop'
+        if ($null -ne $script:FreshFlush) { [IO.File]::WriteAllText($script:FreshState,$script:FreshFlush,$script:Utf8) }
+    }
+    function Get-Service {
+        param($Name)
+        $controller=New-Object PSObject
+        $controller | Add-Member -MemberType ScriptMethod -Name WaitForStatus -Value {param($Status,$Timeout);$script:FreshLifecycle+='wait'}
+        return $controller
+    }
+    function Get-CimInstance {param($ClassName,$Filter);return @()}
+    function Start-Service {param($Name,$ErrorAction);$script:FreshLifecycle+='start';$script:FreshRunning=$true}
+    try {
+        # A freshly created sibling is the reference for normal inherited directory ACLs.
+        $reference=Join-Path $testRoot 'acl-reference.json'
+        [IO.File]::WriteAllText($reference,'{}',$script:Utf8)
+        $referenceAcl=Get-Acl -LiteralPath $reference
+        foreach ($running in @($false,$true)) {
+            $script:FreshRunning=$running;$script:FreshLifecycle=@()
+            $result=Invoke-SunshinePair $json
+            Assert-True $result.added 'missing file registered'
+            Assert-Equal $result.replaced 0 'new phone'
+            Assert-Equal $result.restarted $running 'original service state retained'
+            $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:FreshState))
+            Assert-True ($data.root.uniqueid -cmatch '^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$') 'new uppercase server UUID4'
+            Assert-Equal $data.root.named_devices.Count 1 'first client'
+            Assert-Equal (Get-Acl -LiteralPath $script:FreshState).Owner $referenceAcl.Owner 'new owner uses current user'
+            Assert-Equal (Get-Acl -LiteralPath $script:FreshState).Sddl $referenceAcl.Sddl 'directory ACL inherited'
+            Assert-Equal ($script:FreshLifecycle -join '|') $(if ($running) {'stop|wait|start'} else {''}) 'only running service restarted'
+            Remove-Item -LiteralPath $script:FreshState
+        }
+        $script:FreshLifecycle=@();$script:FreshRunning=$true
+        $unpair=Invoke-SunshineUnpair $hash
+        Assert-Equal $unpair.removed 0 'missing state already unpaired'
+        Assert-True (-not $unpair.restarted) 'missing unpair no restart'
+        Assert-Equal $script:FreshLifecycle.Count 0 'missing unpair no service calls'
+        Assert-True (-not (Test-Path -LiteralPath $script:FreshState)) 'unpair does not create state'
+        $script:FreshFlush='{"username":"offline-admin","password":"offline-hash","salt":"offline-salt","root":{"uniqueid":"shutdown-server-id"}}'
+        $result=Invoke-SunshinePair $json
+        Assert-True $result.restarted 'first shutdown file reread'
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:FreshState))
+        Assert-Equal $data.root.uniqueid 'shutdown-server-id' 'shutdown server ID retained'
+        Assert-Equal $data.password 'offline-hash' 'shutdown credentials retained'
+        Assert-Equal $data.salt 'offline-salt' 'shutdown salt retained'
+        $script:FreshState=Join-Path (Join-Path $testRoot 'missing-parent') 'state.json'
+        Assert-Throws {Invoke-SunshinePair $json} 'missing parent rejected'
+        Assert-True (-not (Test-Path -LiteralPath (Split-Path -Parent $script:FreshState))) 'missing parent not created'
+        $notDirectory=Join-Path $testRoot 'parent-is-file'
+        [IO.File]::WriteAllText($notDirectory,'keep',$script:Utf8)
+        $script:FreshState=Join-Path $notDirectory 'state.json'
+        Assert-Throws {Invoke-SunshinePair $json} 'non-directory parent rejected'
+        Assert-Equal ([IO.File]::ReadAllText($notDirectory)) 'keep' 'parent file unchanged'
+
+    } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
 }
 Test 'Sunshine direct pair transaction preserves shutdown state and ACL, restarts only running service (mocked)' {
     $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-pair-'+[Guid]::NewGuid().ToString('N'))

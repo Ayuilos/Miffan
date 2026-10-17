@@ -903,13 +903,23 @@ def edit_pairing():
     state = pathlib.Path(values.get('file_state', 'sunshine_state.json'))
     if not state.is_absolute(): state = appdata / state
     def read_state():
-        if not stat.S_ISREG(state.lstat().st_mode):
-            raise ValueError('Sunshine state must be an existing regular file')
+        try: original = state.lstat()
+        except (FileNotFoundError, NotADirectoryError):
+            if pair_request is None: return {}, [], 0, False
+            try: parent = state.parent.lstat()
+            except (FileNotFoundError, NotADirectoryError): raise ValueError('Unrecognized Sunshine state format') from None
+            if not stat.S_ISDIR(parent.st_mode): raise ValueError('Unrecognized Sunshine state format')
+            original = None
+        if original is not None and not stat.S_ISREG(original.st_mode):
+            raise ValueError('Sunshine state must be a regular file')
         try:
-            data = json.loads(state.read_text())
+            data = json.loads(state.read_text()) if original is not None else {}
             if pair_request is not None:
-                root = data.get('root') if isinstance(data, dict) else None
+                if not isinstance(data, dict): raise ValueError()
+                if 'root' not in data: data['root'] = {}
+                root = data['root']
                 if not isinstance(root, dict): raise ValueError()
+                if not isinstance(root.get('uniqueid'), str): root['uniqueid'] = str(uuid.uuid4()).upper()
                 devices = root.get('named_devices', [])
                 if not isinstance(devices, list) or any(not isinstance(d, dict) or
                     any(not isinstance(d.get(k), str) for k in ('name', 'cert', 'uuid')) for d in devices):
@@ -928,12 +938,12 @@ def edit_pairing():
             except (ValueError, TypeError): raise ValueError('Unrecognized Sunshine state format') from None
             same = der == pair_der if pair_request is not None else hashlib.sha256(der).hexdigest() == fingerprint
             if not same: kept.append(device)
-        return data, kept, len(devices) - len(kept)
+        return data, kept, len(devices) - len(kept), original is not None
     stopped = False
     failure = None
     action = 'pair' if pair_request is not None else 'unpair'
     try:
-        _, _, count = read_state()
+        _, _, count, _ = read_state()
         if not count and pair_request is None:
             print(json.dumps(dict(removed=0, restarted=False))); return
         if running:
@@ -952,15 +962,17 @@ def edit_pairing():
                 if time.monotonic() >= deadline: raise ValueError('Sunshine did not stop before pairing change')
                 time.sleep(0.1)
         # Sunshine may flush a newer state during shutdown; edit that final version.
-        data, kept, count = read_state()
+        data, kept, count, existed = read_state()
         if count or pair_request is not None:
             data['root']['named_devices'] = kept + ([pair_request] if pair_request is not None else [])
             fd, temporary = tempfile.mkstemp(prefix='.miffan-sunshine-state-', dir=state.parent)
             try:
                 with os.fdopen(fd, 'w') as stream:
-                    # cp -p preserves POSIX owner/mode and platform ACLs, including macOS ACLs.
-                    copied = run(['cp', '-p', str(state), temporary])
-                    if not copied or copied.returncode != 0: raise PermissionError('Cannot preserve Sunshine state permissions')
+                    # New mkstemp files belong to this user and stay 0600. Existing files retain ACLs.
+                    if existed:
+                        copied = run(['cp', '-p', str(state), temporary])
+                        if not copied or copied.returncode != 0: raise PermissionError('Cannot preserve Sunshine state permissions')
+                    else: os.fchmod(stream.fileno(), 0o600)
                     stream.seek(0); stream.truncate()
                     json.dump(data, stream, ensure_ascii=False); stream.write('\n')
                     stream.flush(); os.fsync(stream.fileno())

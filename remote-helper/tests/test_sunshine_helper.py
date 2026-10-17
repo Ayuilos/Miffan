@@ -40,6 +40,7 @@ if name == 'systemctl':
         settings['running'] = False
         (root / 'settings.json').write_text(json.dumps(settings))
         state = root / 'config/sunshine/sunshine_state.json'
+        if settings.get('expect_missing_on_stop'): assert not state.exists()
         if settings.get('flush_state'): state.write_text(json.dumps(settings['flush_state']))
     elif 'restart' in sys.argv or 'start' in sys.argv:
         if settings.get('start_error'): sys.exit(1)
@@ -195,6 +196,25 @@ class SunshineUnpairTest(SunshinePairingFixture):
         self.assertEqual(before, self.state.read_bytes())
         commands = (self.root / 'commands.log').read_text()
         self.assertNotIn('--user stop', commands); self.assertNotIn('--user start', commands)
+    def test_missing_state_is_already_unpaired_without_service_changes(self):
+        self.state.unlink()
+        code, result = self.call('unpair', permission=self.fingerprint, running=True)
+        self.assertEqual(0, code); self.assertEqual(dict(removed=0, restarted=False), result)
+        self.assertFalse(self.state.exists())
+        self.assertNotIn('--user stop', (self.root / 'commands.log').read_text())
+
+    def test_unpair_does_not_initialize_root_or_server_identity(self):
+        credentials = '{"username":"offline-admin","password":"offline-hash","salt":"offline-salt"}'
+        self.state.write_text(credentials)
+        code, result = self.call('unpair', permission=self.fingerprint)
+        self.assertEqual(0, code); self.assertEqual(dict(removed=0, restarted=False), result)
+        self.assertEqual(credentials, self.state.read_text())
+        self.data['root'].pop('uniqueid')
+        self.state.write_text(json.dumps(self.data))
+        code, result = self.call('unpair', permission=self.fingerprint)
+        self.assertEqual(0, code); self.assertEqual(1, result['removed'])
+        self.assertNotIn('uniqueid', json.loads(self.state.read_text())['root'])
+
     def test_stopped_sunshine_is_not_started(self):
         code, result = self.call('unpair', permission=self.fingerprint)
         golden('sunshine-unpair', result)
@@ -267,7 +287,7 @@ class SunshinePairTest(SunshinePairingFixture):
         self.assertEqual(0, code); self.assert_added(result, 0, False)
         self.assertEqual('server', json.loads(self.state.read_text())['root']['uniqueid'])
     def test_pair_unrecognized_state_keeps_exact_bytes_and_service(self):
-        for invalid in ('{}', '[]', '{bad', '{"root":null}', '{"root":[]}', '{"root":{"named_devices":{}}}',
+        for invalid in ('[]', '{bad', '{"root":null}', '{"root":[]}', '{"root":{"named_devices":{}}}',
             '{"root":{"named_devices":null}}', '{"root":{"named_devices":[1]}}',
             '{"root":{"named_devices":[{"name":"x","cert":"x"}]}}',
             '{"root":{"named_devices":[{"name":5,"cert":"x","uuid":"x"}]}}'):
@@ -300,7 +320,7 @@ class SunshinePairTest(SunshinePairingFixture):
     def test_pair_read_permissions_and_copy_permissions_fail_safely(self):
         # Inject permission errors instead of relying on the UID running the test.
         source = self.helper.read_text()
-        for old, new in [("data = json.loads(state.read_text())", "raise PermissionError('PRIVATE_PATH')"),
+        for old, new in [("data = json.loads(state.read_text()) if original is not None else {}", "raise PermissionError('PRIVATE_PATH')"),
                          ("os.replace(temporary, state)", "(_ for _ in ()).throw(PermissionError('PRIVATE_PATH'))")]:
             self.helper.write_text(source.replace(old,new))
             before = self.state.read_bytes()
@@ -332,7 +352,72 @@ class SunshinePairTest(SunshinePairingFixture):
         before = custom.read_bytes()
         code, result = self.pair(); self.assertEqual(1,code); self.assertEqual(before,custom.read_bytes())
         self.state.unlink()
-        code, result = self.pair(); self.assertEqual(1,code); self.assertFalse(self.state.exists())
+        code, result = self.pair(); self.assertEqual(0,code); self.assertTrue(self.state.exists())
+        self.assert_added(result, 0, False)
+    def test_pair_creates_missing_file_after_stopping_with_private_permissions(self):
+        for running in (False, True):
+            with self.subTest(running=running):
+                self.state.unlink()
+                code, result = self.pair(running=running, expect_missing_on_stop=True)
+                self.assertEqual(0, code); self.assert_added(result, 0, running)
+                data = json.loads(self.state.read_text())
+                self.assertEqual({'root'}, set(data)); self.assertEqual({'uniqueid', 'named_devices'}, set(data['root']))
+                import uuid
+                identifier = data['root']['uniqueid']
+                self.assertEqual(4, uuid.UUID(identifier).version)
+                self.assertEqual(str(uuid.UUID(identifier)).upper(), identifier)
+                info = self.state.stat()
+                self.assertEqual(0o600, info.st_mode & 0o7777); self.assertEqual(os.getuid(), info.st_uid)
+    def test_pair_creates_missing_file_at_overridden_path(self):
+        self.state.unlink()
+        self.state = self.root / 'fresh custom state.json'
+        self.config.write_text('file_state = ' + str(self.state) + '\n')
+        code, result = self.pair()
+        self.assertEqual(0, code); self.assert_added(result, 0, False)
+        self.assertFalse((self.config.parent / 'sunshine_state.json').exists())
+    def test_pair_initializes_root_and_uniqueid_without_losing_credentials(self):
+        credentials = dict(username='offline-admin', password='offline-password-hash', salt='offline-salt', unknown=dict(keep=[1, None]))
+        for root in (None, {}, dict(uniqueid=None), dict(uniqueid=42), dict(uniqueid='unchanged-server-id')):
+            with self.subTest(root=root):
+                data = dict(credentials)
+                if root is not None: data['root'] = root
+                self.state.write_text(json.dumps(data))
+                before = self.state.stat()
+                code, result = self.pair()
+                self.assertEqual(0, code); self.assert_added(result, 0, False)
+                saved = json.loads(self.state.read_text())
+                self.assertEqual(credentials, {k: v for k, v in saved.items() if k != 'root'})
+                if root is not None and isinstance(root.get('uniqueid'), str):
+                    self.assertEqual(root['uniqueid'], saved['root']['uniqueid'])
+                else:
+                    import uuid
+                    identifier = saved['root']['uniqueid']
+                    self.assertEqual(4, uuid.UUID(identifier).version)
+                    self.assertEqual(str(uuid.UUID(identifier)).upper(), identifier)
+                after = self.state.stat()
+                self.assertEqual((before.st_mode, before.st_uid, before.st_gid), (after.st_mode, after.st_uid, after.st_gid))
+                self.assertNotIn('offline-password-hash', json.dumps(result) + self.last_stderr)
+    def test_pair_rereads_first_shutdown_file_and_preserves_server_uniqueid(self):
+        self.state.unlink()
+        flushed = dict(username='offline-admin', password='offline-hash', salt='offline-salt', root=dict(uniqueid='shutdown-server-id'))
+        code, result = self.pair(running=True, flush_state=flushed)
+        self.assertEqual(0, code); self.assert_added(result, 0, True)
+        saved = json.loads(self.state.read_text())
+        saved['root'].pop('named_devices')
+        self.assertEqual(flushed, saved)
+        self.assertEqual('shutdown-server-id', saved['root']['uniqueid'])
+    def test_pair_missing_file_refuses_missing_nondirectory_or_symlink_parent(self):
+        self.state.unlink()
+        regular = self.root / 'not-a-directory'; regular.write_text('keep')
+        link = self.root / 'directory-link'; link.symlink_to(self.config.parent, target_is_directory=True)
+        for parent in (self.root / 'missing-directory', regular, link):
+            self.config.write_text('file_state = ' + str(parent / 'new-state.json') + '\n')
+            code, result = self.pair(running=True)
+            self.assertEqual(1, code); self.assertEqual('Unrecognized Sunshine state format', result['detail'])
+            self.assertFalse((self.config.parent / 'new-state.json').exists())
+        self.assertEqual('keep', regular.read_text())
+        self.assertNotIn('--user stop', (self.root / 'commands.log').read_text())
+
     def test_pair_refuses_unknown_service_model(self):
         source = self.helper.read_text()
         self.helper.write_text(source.replace("if mode in ('enforce-encryption', 'unpair', 'pair') and not configuration_known:",

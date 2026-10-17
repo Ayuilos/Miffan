@@ -397,7 +397,13 @@ function Edit-SunshinePairing([string]$Content, [string]$Fingerprint, $PairReque
     catch { throw 'Unrecognized Sunshine state format' }
     if ($null -eq $data -or $data -isnot [pscustomobject]) { throw 'Unrecognized Sunshine state format' }
     $devices = @()
-    if ($null -ne $PairRequest -and $data.root -isnot [pscustomobject]) { throw 'Unrecognized Sunshine state format' }
+    if ($null -ne $PairRequest) {
+        if ($null -eq $data.PSObject.Properties['root']) { $data | Add-Member -NotePropertyName root -NotePropertyValue ([pscustomobject]@{}) }
+        if ($data.root -isnot [pscustomobject]) { throw 'Unrecognized Sunshine state format' }
+        if ($data.root.uniqueid -isnot [string]) {
+            $data.root | Add-Member -NotePropertyName uniqueid -NotePropertyValue ([Guid]::NewGuid().ToString('D').ToUpperInvariant()) -Force
+        }
+    }
     if ($data.root -and $null -ne $data.root.PSObject.Properties['named_devices']) {
         if ($data.root.named_devices -isnot [Array]) { throw 'Unrecognized Sunshine state format' }
         $devices = @($data.root.named_devices)
@@ -416,6 +422,27 @@ function Edit-SunshinePairing([string]$Content, [string]$Fingerprint, $PairReque
     # PS 5.1's default depth truncates unknown nested keys; retain the entire state tree.
     return @{removed=$removed;content=(ConvertTo-Json -InputObject $data -Depth 100 -Compress)}
 }
+function Read-SunshinePairingState([string]$Path, [string]$Fingerprint, $PairRequest) {
+    try { $null = Get-Item -LiteralPath $Path -Force -ErrorAction Stop }
+    catch [System.Management.Automation.ItemNotFoundException], [System.Management.Automation.DriveNotFoundException], [IO.FileNotFoundException], [IO.DirectoryNotFoundException] {
+        if ($null -eq $PairRequest) { return @{removed=0;content=$null;exists=$false} }
+        try { $parent = Get-Item -LiteralPath (Split-Path -Parent $Path) -Force -ErrorAction Stop }
+        catch [System.Management.Automation.ItemNotFoundException], [System.Management.Automation.DriveNotFoundException], [IO.FileNotFoundException], [IO.DirectoryNotFoundException] { throw 'Unrecognized Sunshine state format' }
+        if (-not $parent.PSIsContainer) { throw 'Unrecognized Sunshine state format' }
+        $ancestor = $parent
+        while ($ancestor) {
+            if ($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Unrecognized Sunshine state format' }
+            $ancestor = $ancestor.Parent
+        }
+        $edited = Edit-SunshinePairing '{}' $Fingerprint $PairRequest
+        $edited.exists = $false
+        return $edited
+    }
+    Assert-RegularPath $Path
+    $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($Path, $script:Utf8)) $Fingerprint $PairRequest
+    $edited.exists = $true
+    return $edited
+}
 function Invoke-SunshinePair([string]$Content) {
     $request = Read-SunshinePairRequest $Content
     return Invoke-SunshinePairing $request.fingerprint $request
@@ -432,8 +459,7 @@ function Invoke-SunshinePairing([string]$Fingerprint, $PairRequest=$null) {
         if (-not [IO.Path]::IsPathRooted($state)) { $state = Join-Path $directory $state }
     }
     try {
-        Assert-RegularPath $state
-        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint $PairRequest
+        $edited = Read-SunshinePairingState $state $Fingerprint $PairRequest
     } catch [UnauthorizedAccessException] { throw 'Cannot read Sunshine state or configuration; check administrator rights' }
     if ($edited.removed -eq 0 -and $null -eq $PairRequest) { return @{removed=0;restarted=$false} }
     $running = $context.service.State -eq 'Running'
@@ -447,12 +473,16 @@ function Invoke-SunshinePairing([string]$Fingerprint, $PairRequest=$null) {
             if (@(Get-CimInstance Win32_Process -Filter "Name='sunshine.exe'").Count -gt 0) { throw 'Sunshine did not stop before pairing change' }
         }
         # Re-read after shutdown, including any state Sunshine flushed while stopping.
-        Assert-RegularPath $state
-        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint $PairRequest
+        $edited = Read-SunshinePairingState $state $Fingerprint $PairRequest
         if ($edited.removed -gt 0 -or $null -ne $PairRequest) {
             [IO.File]::WriteAllText($temporary, $edited.content, $script:Utf8)
-            Set-Acl -LiteralPath $temporary -AclObject (Get-Acl -LiteralPath $state) -ErrorAction Stop
-            [IO.File]::Replace($temporary, $state, [System.Management.Automation.Language.NullString]::Value)
+            if ($edited.exists) {
+                Set-Acl -LiteralPath $temporary -AclObject (Get-Acl -LiteralPath $state) -ErrorAction Stop
+                [IO.File]::Replace($temporary, $state, [System.Management.Automation.Language.NullString]::Value)
+            } else {
+                # Same-directory creation inherits the directory ACL; Move publishes it atomically.
+                [IO.File]::Move($temporary, $state)
+            }
         }
     } catch [UnauthorizedAccessException] { throw 'Cannot edit Sunshine state or control its service; check administrator rights' }
     finally {
