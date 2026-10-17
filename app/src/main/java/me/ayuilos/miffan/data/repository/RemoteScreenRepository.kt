@@ -168,6 +168,9 @@ class RemoteScreenConnection internal constructor(
     }
 }
 
+/** How long Sunshine may take to answer after a restart; Windows needs about 30 s. */
+private const val SUNSHINE_RESTART_MILLIS = 60_000L
+
 /**
  * Host-level screen configuration and viewer sessions. The screen belongs to the machine, so
  * every workspace on a host shares its settings; connections still go through a workspace so
@@ -303,7 +306,8 @@ class RemoteScreenRepository(
             sunshinePairings.pair(ssh, clientName)?.let {
                 return@withStreamRemote RemoteStreamDirectPairing.ManualPinNeeded(it)
             }
-            val confirmed = withTimeoutOrNull(20_000) {
+            // Windows Sunshine probes its encoders for about half a minute before it answers again.
+            val confirmed = withTimeoutOrNull(SUNSHINE_RESTART_MILLIS) {
                 var paired: Boolean? = null
                 while (paired == null) {
                     try { paired = streams.host(ssh, certificate).serverInfo().paired }
@@ -344,7 +348,7 @@ class RemoteScreenRepository(
             // ambiguous at the last step; start from none. Best effort: newer Sunshine replaces it anyway.
             val cleared = runCatching { sunshinePairings.unpair(ssh) }.getOrNull()
             if (cleared?.restarted == true) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
-                withTimeoutOrNull(20_000) {
+                withTimeoutOrNull(SUNSHINE_RESTART_MILLIS) {
                     while (runCatching { streams.host(ssh, null).serverInfo() }.isFailure) delay(500)
                 }
             }

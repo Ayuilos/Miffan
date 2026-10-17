@@ -2286,7 +2286,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_stream_pair_steps">このパソコンで Sunshine のウェブページ https://localhost:47990 を開き、PIN の画面で下の数字を入力してください。デバイス名は何でもかまいません（例：Miffan）。</string>
   <string name="workspace_screen_stream_pair_starting">Sunshine にペアリングを要求しています…</string>
   <string name="workspace_screen_stream_pair_waiting">パソコンで PIN が入力されるのを待っています…</string>
-  <string name="workspace_screen_stream_pair_direct">このパソコンがこのスマートフォンを信頼するよう設定しています。Sunshine が数秒間再起動します…</string>
+  <string name="workspace_screen_stream_pair_direct">このパソコンがこのスマートフォンを信頼するよう設定しています。Sunshine が再起動するため、30 秒ほどかかることがあります…</string>
   <string name="workspace_screen_stream_pair_busy_title">進行中のストリームを中断しますか？</string>
   <string name="workspace_screen_stream_pair_busy">現在このパソコンからストリーミング中のデバイスがあります。ペアリングでは Sunshine を再起動するため、そのストリームが数秒間途切れます。</string>
   <string name="workspace_screen_stream_pair_busy_confirm">このままペアリング</string>

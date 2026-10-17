@@ -2284,7 +2284,7 @@
   <string name="workspace_screen_stream_pair_steps">在這台電腦上開啟 Sunshine 網頁 https://localhost:47990，進入 PIN 頁面，輸入下方的數字。裝置名稱可隨意填寫，例如 Miffan。</string>
   <string name="workspace_screen_stream_pair_starting">正在向 Sunshine 發起配對…</string>
   <string name="workspace_screen_stream_pair_waiting">等待在電腦上輸入 PIN…</string>
-  <string name="workspace_screen_stream_pair_direct">正在讓這台電腦信任這支手機，Sunshine 會重新啟動幾秒…</string>
+  <string name="workspace_screen_stream_pair_direct">正在讓這台電腦信任這支手機。Sunshine 會重新啟動，可能要等半分鐘左右…</string>
   <string name="workspace_screen_stream_pair_busy_title">要中斷正在進行的串流嗎？</string>
   <string name="workspace_screen_stream_pair_busy">現在有裝置正在從這台電腦串流。配對需要重新啟動 Sunshine，那次串流會中斷幾秒。</string>
   <string name="workspace_screen_stream_pair_busy_confirm">仍然配對</string>

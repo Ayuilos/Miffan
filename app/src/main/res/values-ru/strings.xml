@@ -2289,7 +2289,7 @@
   <string name="workspace_screen_stream_pair_steps">На этом компьютере откройте веб-страницу Sunshine https://localhost:47990, перейдите в раздел PIN и введите число ниже. Имя устройства может быть любым, например Miffan.</string>
   <string name="workspace_screen_stream_pair_starting">Запрашиваем сопряжение у Sunshine…</string>
   <string name="workspace_screen_stream_pair_waiting">Ждём ввода PIN на компьютере…</string>
-  <string name="workspace_screen_stream_pair_direct">Настраиваем компьютер, чтобы он доверял этому телефону. Sunshine перезапустится на несколько секунд…</string>
+  <string name="workspace_screen_stream_pair_direct">Настраиваем компьютер, чтобы он доверял этому телефону. Sunshine перезапустится — это может занять до полуминуты…</string>
   <string name="workspace_screen_stream_pair_busy_title">Прервать текущую трансляцию?</string>
   <string name="workspace_screen_stream_pair_busy">С этого компьютера сейчас идёт трансляция. Для сопряжения Sunshine перезапустится, и трансляция прервётся на несколько секунд.</string>
   <string name="workspace_screen_stream_pair_busy_confirm">Всё равно выполнить</string>

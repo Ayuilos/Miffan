@@ -2286,7 +2286,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_stream_pair_steps">이 컴퓨터에서 Sunshine 웹 페이지 https://localhost:47990을 열고 PIN 화면에서 아래 숫자를 입력하세요. 기기 이름은 아무거나 괜찮습니다(예: Miffan).</string>
   <string name="workspace_screen_stream_pair_starting">Sunshine에 페어링을 요청하는 중…</string>
   <string name="workspace_screen_stream_pair_waiting">컴퓨터에서 PIN을 입력하기를 기다리는 중…</string>
-  <string name="workspace_screen_stream_pair_direct">이 컴퓨터가 이 휴대폰을 신뢰하도록 설정하고 있습니다. Sunshine이 몇 초간 다시 시작됩니다…</string>
+  <string name="workspace_screen_stream_pair_direct">이 컴퓨터가 이 휴대폰을 신뢰하도록 설정하고 있습니다. Sunshine이 다시 시작되어 30초 정도 걸릴 수 있습니다…</string>
   <string name="workspace_screen_stream_pair_busy_title">진행 중인 스트리밍을 중단할까요?</string>
   <string name="workspace_screen_stream_pair_busy">지금 이 컴퓨터에서 스트리밍 중인 기기가 있습니다. 페어링하려면 Sunshine을 다시 시작해야 하므로 해당 스트리밍이 몇 초간 끊깁니다.</string>
   <string name="workspace_screen_stream_pair_busy_confirm">그래도 페어링</string>

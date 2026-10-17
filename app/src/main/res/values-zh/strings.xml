@@ -2318,7 +2318,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_stream_pair_steps">在这台电脑上打开 Sunshine 网页 https://localhost:47990，进入 PIN 页面，输入下面的数字。设备名称随意填写，例如 Miffan。</string>
   <string name="workspace_screen_stream_pair_starting">正在向 Sunshine 发起配对…</string>
   <string name="workspace_screen_stream_pair_waiting">等待在电脑上输入 PIN…</string>
-  <string name="workspace_screen_stream_pair_direct">正在让这台电脑信任这部手机，Sunshine 会重启几秒…</string>
+  <string name="workspace_screen_stream_pair_direct">正在让这台电脑信任这部手机。Sunshine 会重启，可能要等半分钟左右…</string>
   <string name="workspace_screen_stream_pair_busy_title">要打断正在进行的串流吗？</string>
   <string name="workspace_screen_stream_pair_busy">现在有设备正在从这台电脑串流。配对需要重启 Sunshine，那次串流会中断几秒。</string>
   <string name="workspace_screen_stream_pair_busy_confirm">仍然配对</string>
