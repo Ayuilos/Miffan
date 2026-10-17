@@ -33,7 +33,7 @@ sealed interface RemoteStreamDirectPairing {
     /** Offer the existing manual PIN pairing flow. */
     data class ManualPinNeeded(val reason: RemoteStreamManualPinReason) : RemoteStreamDirectPairing
 }
-enum class RemoteStreamManualPinReason { CERTIFICATE_UNAVAILABLE, STATE_UNRECOGNIZED, NO_PERMISSION, NOT_CONFIRMED }
+enum class RemoteStreamManualPinReason { CERTIFICATE_UNAVAILABLE, STATE_UNRECOGNIZED, NO_PERMISSION, SUNSHINE_DID_NOT_STOP, NOT_CONFIRMED }
 
 internal fun streamDirectPairingPreflight(probe: SunshineProbe, interruptActiveStream: Boolean): RemoteStreamDirectPairing? {
     check(probe.installed && probe.running) { "Sunshine is not running" }

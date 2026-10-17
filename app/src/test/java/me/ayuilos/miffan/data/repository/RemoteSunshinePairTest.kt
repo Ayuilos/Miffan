@@ -77,6 +77,7 @@ class RemoteSunshinePairTest {
     @Test fun `only recognized helper failures offer manual PIN`() {
         for ((detail, reason) in mapOf(
             "Unrecognized Sunshine state format" to RemoteStreamManualPinReason.STATE_UNRECOGNIZED,
+            "Could not stop Sunshine to change pairing" to RemoteStreamManualPinReason.SUNSHINE_DID_NOT_STOP,
             "Cannot read Sunshine state or configuration; check administrator rights" to RemoteStreamManualPinReason.NO_PERMISSION,
             "Cannot edit Sunshine state or control its service; check administrator rights" to RemoteStreamManualPinReason.NO_PERMISSION)) {
             // Windows includes diagnostic fields in its outer failure object.

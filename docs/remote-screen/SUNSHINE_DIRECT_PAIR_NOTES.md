@@ -46,3 +46,26 @@
 - ShellCheck 0.10.0、`/bin/sh -n`、`git diff --check`：通过，无新增 ShellCheck warning/error。
 - `./gradlew :app:assembleRemoteHelper :app:assembleDebug :app:testDebugUnitTest --tests '*RemoteSunshine*' --tests '*RemoteStream*' --tests '*RemoteHelper*'`：通过；32 项 JVM 测试通过，两个生成 helper 摘要与锁文件一致。
 - Windows PowerShell 离线用例仍未执行（本机无 PowerShell）；没有连接任何真实主机，也未修改 App/UI/stream 源码。
+
+## macOS SSH 停止 Sunshine 修正（2026-10-17）
+
+- 根据实测反馈排除对 Apple Event 停止方式的依赖；Automation 授权是否确为该次 NO_PERMISSION 的原因，仍待用户确认，本次没有连接主机代为验证。
+- macOS pair、unpair、enforce-encryption 共用 `stop_sunshine()`，通过 `mac_processes()` 查找当前用户的 Sunshine，发送 SIGTERM 并确认退出，停止预算最长 10 秒；轮询命令也受剩余预算限制。进程已自行退出的 ESRCH 视为可继续检查。不调用 osascript，不发送 SIGKILL；启动保留 `open -a` 和原参数。
+- 停止命令失败或等待超时返回 `Could not stop Sunshine to change pairing`，Linux 的 systemctl stop 失败同样处理。只在确认退出后才标记已停止，pair/unpair 停止失败时不改状态文件、不尝试重开。enforce-encryption 的配置保存和备份顺序保持原状，停止失败时配置可能已经保存。
+- POSIX 的 check administrator rights 仅由真实 EACCES/EPERM 产生；信号的真实 EPERM 仍按权限错误报告。cp 退出失败等没有 errno 证据的情况不再伪造 PermissionError。
+- App 仅新增枚举 `SUNSHINE_DID_NOT_STOP`、对应 detail 映射及单元测试；UI 文案留给界面实现。
+- Python macOS fixture 注入模拟信号函数，断言只向模拟当前用户 PID 发 SIGTERM，覆盖正常退出、shutdown 刷盘、ESRCH、停止失败、真实 EPERM、10 秒超时，且三条流程均不得调用 osascript 或 SIGKILL；Linux 补停止失败/等待超时及 cp 非权限失败回归。
+- 未发布 helper 版本仍为 POSIX 19 / Windows 11；本次仅更新 POSIX 19 的生成后 SHA-256，Windows 源码与摘要不变。
+
+集成说明：
+
+- 首次 Android 验收发现已集成的 UI `when` 未覆盖新枚举，未修改 UI，已按约定通过 herdr 反馈。UI 负责方随后提交 `ecb89607e`，补上分支和文案；最终验收以该提交加本次数据层/helper 改动为准。
+- 同版本开发验证需刷新旧 helper：`ensureInstalled` 只比较版本号。如果测试主机已装旧版 19，需由测试方更新为此次生成的 helper 后再验证 SIGTERM 路径；本次没有连接主机执行更新。
+
+本次 SIGTERM 修正验证结果：
+
+- `python3 -I remote-helper/tests/test_sunshine_helper.py`：全量 52 项通过（199.732 秒，信号完全模拟）。
+- `python3 -I remote-helper/tests/test_helper_safety.py`：通过。
+- ShellCheck 0.10.0、`/bin/sh -n remote-helper/src/miffan.sh`、`git diff --check`：通过，无新增 ShellCheck warning/error。
+- `./gradlew :app:compileDebugKotlin :app:assembleRemoteHelper :app:assembleDebug :app:testDebugUnitTest --tests '*RemoteSunshine*' --tests '*RemoteStream*' --tests '*RemoteHelper*'`：在 UI 提交 ecb89607e 上通过，32 项 JVM 测试通过；生成 helper 摘要与版本锁一致。
+- 未执行 Windows PowerShell 或真机验证；没有连接任何真实主机。UI 修改均由 UI 负责方提交，本次提交只包含数据层、helper、测试与协议/交付文档。

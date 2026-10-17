@@ -97,7 +97,16 @@ os.replace 发布；Windows 新文件继承目录 ACL，以 File.Move 发布。�
 安装和服务模型无法确认则失败。
 pair 失败走普通 success:false/detail 输出（Windows 仍带外层诊断字段）。可用于 PIN 兜底的 detail 为
 `Unrecognized Sunshine state format`、`Cannot read Sunshine state or configuration; check administrator rights`、
-`Cannot edit Sunshine state or control its service; check administrator rights`。
+`Cannot edit Sunshine state or control its service; check administrator rights`，以及
+`Could not stop Sunshine to change pairing`（App 映射为 `SUNSHINE_DID_NOT_STOP`）。
+POSIX 只有实际 `EACCES/EPERM` 才返回 check administrator rights；systemctl stop 非零、
+其他停止失败或退出等待超时使用 Could not stop Sunshine to change pairing，不据此推定权限不足。
+POSIX pair/unpair 共用停止函数；macOS 的 enforce-encryption 也复用该函数。macOS 只对
+mac_processes() 确认的当前用户 Sunshine 进程发送 SIGTERM，等待退出最多 10 秒；
+不调用 osascript/Apple Events，不依赖 Automation 授权，不发送 SIGKILL。
+进程在发信号前已退出（ESRCH）可继续检查；退出确认失败时不写配对状态、不 open 重开。
+确认退出后仍用 open -a（保留原配置参数）启动。enforce-encryption 在停止前已保存带备份的配置，
+停止失败时配置可能已变更，但同样不强杀、不启动。
 `Sunshine pair attempted; could not restart Sunshine` 表示重启失败，文件可能已经写入；App 抛错。
 其他未知失败也抛错；不将未经确认的配对记录保存为信任。
 unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动>}`；无匹配或文件不存在为 0/false，不创建文件、不重启。
@@ -121,7 +130,7 @@ unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动
 | `rdp start` | 一行至少 32 字符密码 / RDP JSON | 成功 0；拒绝/启动失败 1 | Linux GNOME/KDE 图形会话、Python3、OpenSSL 与对应服务/凭据工具。仅接受自有配置；GNOME 经 stdin 配置凭据；KRDP 用 Secret Service 默认且已解锁的非 session collection、QtKeychain/libsecret。写 ~/.miffan/rdp 中证书、私钥、owner、锁及配置，启/重启自有 user unit；不解锁 keyring | `startHelperRdp` → `parseRdpStart` |
 | `sunshine [probe]` | 无 / Sunshine probe JSON | 正常 0；缺 Python3 1 | Python3；Linux 通过包管理器/user unit、macOS 通过 bundle/plist/Homebrew 探测；不启动 Sunshine | `sunshineProbe` → `parseSunshineProbe` |
 | `sunshine start` | 无 / success/detail JSON | 成功 0；失败 1 | Linux 启已识别 user unit；macOS `open -a` 已有 bundle；已运行则幂等 | `startSunshine` → `sunshineCommand` → `parseSunshineCommand` |
-| `sunshine enforce-encryption` | 无 / success/detail JSON | 成功 0；拒绝/失败 1 | 需已有正规配置、无活跃或无法确认的 UDP stream、无命令行加密覆盖；备份配置、原子写 2/2；重启前再次查流；macOS 优雅退出后重开，不 kill | `enforceStreamEncryption` → `sunshineCommand` → `parseSunshineCommand` |
+| `sunshine enforce-encryption` | 无 / success/detail JSON | 成功 0；拒绝/失败 1 | 需已有正规配置、无活跃或无法确认的 UDP stream、无命令行加密覆盖；备份配置、原子写 2/2；重启前再次查流；macOS 复用 SIGTERM 停止函数，最多等 10 秒再 open -a 重开，不发 SIGKILL | `enforceStreamEncryption` → `sunshineCommand` → `parseSunshineCommand` |
 | `sunshine pair` | 一行 `{name,cert}` JSON / added/replaced/restarted/client_sha256；失败 success/detail | 成功 0；失败 1 | 仅 stdin；已确认安装和服务；规范证书、按 DER 去重；停服务重读后补建缺失状态/root/uniqueid，保留顶层凭据及已有身份/ACL；新文件当前用户 0600，原子发布并恢复原运行状态 | `pairStreamDirectly` → `RemoteSunshineUnpair.pair` → 严格 PairResult decoder |
 | `sunshine unpair <client-cert-sha256>` | 无 / removed/restarted，错误 success/detail | 成功 0；失败 1 | 64 位 hex；只按客户端证书 DER 摘要删除配对记录；保留未知字段/权限；必要时先停 Sunshine，重读 shutdown state，原子保存并恢复先前运行状态；卸载时直接 0/false | `RemoteSunshineUnpair.unpair` → 严格 Result decoder |
 | `sunshine wake` | 无 / success/detail/display_asleep | 成功 0；失败 1 | 仅 macOS，`caffeinate -u -t 5` 后重查显示状态；不解锁屏幕 | `open` 的 `prepareStreamProbe` → `parseSunshineCommand`；显式命令也走 `sunshineCommand` |

@@ -646,11 +646,11 @@ sunshine() {
         return 1
     fi
     python3 - "$1" "$(os)" "${2:-}" 3<&0 <<'SUNSHINE_PY'
-import base64, datetime, hashlib, ipaddress, json, os, pathlib, plistlib, re, shlex, shutil, ssl, stat, subprocess, sys, tempfile, time, unicodedata, uuid
+import base64, datetime, errno, hashlib, ipaddress, json, os, pathlib, plistlib, re, shlex, shutil, signal, ssl, stat, subprocess, sys, tempfile, time, unicodedata, uuid
 
-def run(args):
+def run(args, timeout=10):
     try:
-        return subprocess.run(args, capture_output=True, text=True, timeout=10, env=dict(os.environ, LC_ALL='C'))
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, LC_ALL='C'))
     except (OSError, subprocess.TimeoutExpired):
         return None
 
@@ -693,8 +693,8 @@ def screen_locked():
             return bool(user.get('CGSSessionScreenIsLocked'))
     return None
 
-def mac_processes():
-    result = run(['ps', '-ww', '-axo', 'uid=,pid=,comm='])
+def mac_processes(timeout=10):
+    result = run(['ps', '-ww', '-axo', 'uid=,pid=,comm='], timeout=timeout)
     if not result or result.returncode != 0: return None
     found = []
     for line in result.stdout.splitlines():
@@ -703,6 +703,32 @@ def mac_processes():
         if pathlib.Path(fields[2]).name.lower() == 'sunshine':
             found.append((fields[1], fields[2]))
     return found
+
+def stop_sunshine():
+    # SIGTERM lets Sunshine save state without Apple Event Automation authorization.
+    detail = 'Could not stop Sunshine to change pairing'
+    deadline = time.monotonic() + 10
+    if mac:
+        current = mac_processes()
+        if current is None: raise ValueError(detail)
+        for pid, _ in current:
+            try: os.kill(int(pid), signal.SIGTERM)
+            except ProcessLookupError: pass  # Already exited after discovery.
+            except OSError as error:
+                if error.errno in (errno.EACCES, errno.EPERM): raise
+                raise ValueError(detail) from None
+    else:
+        result = run(['systemctl', '--user', 'stop', unit])
+        if not result or result.returncode != 0: raise ValueError(detail)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0: raise ValueError(detail)
+        if mac: exited = mac_processes(timeout=remaining) == []
+        else:
+            status = run(['systemctl', '--user', 'is-active', unit], timeout=remaining)
+            exited = bool(status and status.returncode == 3 and status.stdout.strip() == 'inactive')
+        if exited: return
+        time.sleep(min(0.1, max(0, deadline - time.monotonic())))
 
 mode = sys.argv[1]
 mac = sys.argv[2] == 'macos'
@@ -850,8 +876,10 @@ if mode in ('enforce-encryption', 'unpair', 'pair') and not configuration_known:
     reply(False, 'Cannot verify the Sunshine configuration'); sys.exit(1)
 try:
     content = config.read_text() if config.exists() else ''
-except (OSError, UnicodeError):
-    if mode in ('unpair', 'pair'): finish(False, 'Cannot read Sunshine state or configuration; check administrator rights')
+except (OSError, UnicodeError) as error:
+    if mode in ('unpair', 'pair'):
+        detail = 'Cannot read Sunshine state or configuration; check administrator rights' if isinstance(error, OSError) and error.errno in (errno.EACCES, errno.EPERM) else 'Cannot read Sunshine state or configuration'
+        finish(False, detail)
     content = ''
 values = {}
 for line in content.splitlines():
@@ -947,20 +975,8 @@ def edit_pairing():
         if not count and pair_request is None:
             print(json.dumps(dict(removed=0, restarted=False))); return
         if running:
-            command = ['osascript', '-e', 'quit app id "dev.lizardbyte.app.Sunshine"'] if mac else ['systemctl', '--user', 'stop', unit]
-            result = run(command)
-            if not result or result.returncode != 0:
-                raise PermissionError('Cannot stop Sunshine')
+            stop_sunshine()
             stopped = True
-            deadline = time.monotonic() + 5
-            while True:
-                if mac: exited = mac_processes() == []
-                else:
-                    status = run(['systemctl', '--user', 'is-active', unit])
-                    exited = bool(status and status.returncode == 3 and status.stdout.strip() == 'inactive')
-                if exited: break
-                if time.monotonic() >= deadline: raise ValueError('Sunshine did not stop before pairing change')
-                time.sleep(0.1)
         # Sunshine may flush a newer state during shutdown; edit that final version.
         data, kept, count, existed = read_state()
         if count or pair_request is not None:
@@ -971,7 +987,7 @@ def edit_pairing():
                     # New mkstemp files belong to this user and stay 0600. Existing files retain ACLs.
                     if existed:
                         copied = run(['cp', '-p', str(state), temporary])
-                        if not copied or copied.returncode != 0: raise PermissionError('Cannot preserve Sunshine state permissions')
+                        if not copied or copied.returncode != 0: raise ValueError('Could not preserve Sunshine state permissions')
                     else: os.fchmod(stream.fileno(), 0o600)
                     stream.seek(0); stream.truncate()
                     json.dump(data, stream, ensure_ascii=False); stream.write('\n')
@@ -979,11 +995,12 @@ def edit_pairing():
                 os.replace(temporary, state)
             finally:
                 if os.path.exists(temporary): os.unlink(temporary)
-    except PermissionError:
-        failure = 'Cannot edit Sunshine state or control its service; check administrator rights'
     except (OSError, ValueError, TypeError, AttributeError) as error:
-        # Only fixed validation messages are exposed, never OS paths or input data.
-        failure = str(error) if isinstance(error, ValueError) else 'Could not edit Sunshine pairing state'
+        # Only real EACCES/EPERM failures may suggest administrator rights.
+        if isinstance(error, OSError) and error.errno in (errno.EACCES, errno.EPERM):
+            failure = 'Cannot edit Sunshine state or control its service; check administrator rights'
+        else:
+            failure = str(error) if isinstance(error, ValueError) else 'Could not edit Sunshine pairing state'
     finally:
         if stopped:
             command = ['open', '-a', str(app)] if mac else ['systemctl', '--user', 'start', unit]
@@ -1126,15 +1143,7 @@ try:
         reply(False, 'Encryption saved with backup; stream activity prevents restart'); sys.exit(1)
     if mac:
         if running:
-            stopped = run(['osascript', '-e', 'quit app id "dev.lizardbyte.app.Sunshine"'])
-            if not stopped or stopped.returncode != 0:
-                finish(False, 'Encryption saved with backup; Sunshine graceful quit failed')
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
-                current = mac_processes()
-                if current == []: break
-                time.sleep(0.1)
-            else: finish(False, 'Encryption saved with backup; Sunshine did not exit; no process was killed')
+            stop_sunshine()
         # Keep a verified explicit config/overrides when reopening the existing instance.
         command = ['open', '-a', str(app)]
         if args: command += ['--args'] + args
@@ -1143,8 +1152,11 @@ try:
         restarted = run(['systemctl', '--user', 'restart', unit])
     success = bool(restarted and restarted.returncode == 0)
     finish(success, 'Encryption enforced; Sunshine restarted' if success else 'Encryption saved with backup; Sunshine restart failed')
-except OSError:
-    reply(False, 'Could not back up or update Sunshine configuration'); sys.exit(1)
+except ValueError as error:
+    finish(False, str(error))
+except OSError as error:
+    detail = 'Cannot edit Sunshine state or control its service; check administrator rights' if error.errno in (errno.EACCES, errno.EPERM) else 'Could not back up or update Sunshine configuration'
+    finish(False, detail)
 SUNSHINE_PY
 }
 

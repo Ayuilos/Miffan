@@ -22,6 +22,7 @@ settings = json.loads((root / 'settings.json').read_text())
 with (root / 'commands.log').open('a') as log: log.write(name + ' ' + ' '.join(sys.argv[1:]) + '\n')
 if name == 'uname': print(settings.get('platform', 'Linux')); sys.exit(0)
 if name == 'cp':
+    if settings.get('copy_error'): sys.exit(1)
     import subprocess
     assert all(pathlib.Path(p).is_relative_to(root) for p in sys.argv[2:])
     sys.exit(subprocess.run(['/bin/cp']+sys.argv[1:]).returncode)
@@ -37,7 +38,7 @@ if name == 'systemctl':
         print(str(root))
     elif 'stop' in sys.argv:
         if settings.get('stop_error'): sys.exit(1)
-        settings['running'] = False
+        if not settings.get('stop_timeout'): settings['running'] = False
         (root / 'settings.json').write_text(json.dumps(settings))
         state = root / 'config/sunshine/sunshine_state.json'
         if settings.get('expect_missing_on_stop'): assert not state.exists()
@@ -56,7 +57,7 @@ elif name == 'ss':
 elif name == 'ps':
     if settings.get('ps_error'): sys.exit(1)
     app = root / 'Applications/Sunshine.app/Contents/MacOS/sunshine'
-    running = settings.get('running') and (not (root / 'quit').exists() or settings.get('quit_timeout'))
+    running = settings.get('running') and (not (root / 'quit').exists() or settings.get('term_timeout'))
     if '-p' in sys.argv:
         print(str(app) + (' ' + settings['config_arg'] if settings.get('config_arg') else '') + (' lan_encryption_mode=0' if settings.get('override') else ''))
     else:
@@ -101,8 +102,7 @@ elif name == 'caffeinate':
     settings['display'] = settings.get('still_asleep', False)
     (root / 'settings.json').write_text(json.dumps(settings))
 elif name == 'osascript':
-    if settings.get('quit_error'): sys.exit(1)
-    (root / 'quit').touch()
+    raise AssertionError('Sunshine must not use Apple Events')
 elif name == 'open':
     if settings.get('open_error'): sys.exit(1)
     if settings.get('settings_fallback') and 'com.apple.preference.security?' in sys.argv[-1]: sys.exit(1)
@@ -124,6 +124,21 @@ elif name in ('pacman', 'dpkg-query', 'rpm', 'flatpak'):
         'rpm': '2026.1008-rpm', 'flatpak': 'Sunshine\n  Version: 2026.1008-flatpak'}[name])
 '''
 
+# Injected only into the temporary macOS helper; no real process receives any signal.
+MOCK_SIGNAL = r'''def fixture_signal(pid, signum):
+    fixture = pathlib.Path(os.environ['P6C_FIXTURE'])
+    settings = json.loads((fixture / 'settings.json').read_text())
+    assert pid == 42 and signum == signal.SIGTERM, 'Only simulated current-user Sunshine may receive SIGTERM'
+    with (fixture / 'commands.log').open('a') as log: log.write('signal SIGTERM ' + str(pid) + '\n')
+    if settings.get('term_permission'): raise PermissionError(errno.EPERM, 'offline signal permission denied')
+    if settings.get('term_error'): raise OSError(errno.EIO, 'offline signal failure')
+    (fixture / 'quit').touch()
+    if settings.get('flush_state'):
+        (fixture / '.config/sunshine/sunshine_state.json').write_text(json.dumps(settings['flush_state']))
+    if settings.get('term_gone'): raise ProcessLookupError(errno.ESRCH, 'offline already exited')
+os.kill = fixture_signal
+'''
+
 class SunshineFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='miffan-p6c-')
@@ -140,8 +155,9 @@ class SunshineFixture(unittest.TestCase):
     def tearDown(self): self.temp.cleanup()
     def call(self, mode='probe', permission=None, stdin=None, **settings):
         (self.root / 'settings.json').write_text(json.dumps(settings))
-        result = subprocess.run(['/bin/sh', str(getattr(self, 'helper', HELPER)), 'sunshine', mode] + ([permission] if permission else []), env=self.env, input=stdin, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(['/bin/sh', str(getattr(self, 'helper', HELPER)), 'sunshine', mode] + ([permission] if permission else []), env=self.env, input=stdin, capture_output=True, text=True, timeout=25)
         self.assertNotIn('\nsunshine ', '\n' + (self.root / 'commands.log').read_text())
+        self.assertNotIn('osascript ', (self.root / 'commands.log').read_text())
         self.assertNotIn("Traceback", result.stderr)
         self.last_stderr = result.stderr
         return result.returncode, json.loads(result.stdout)
@@ -229,6 +245,8 @@ class SunshineUnpairTest(SunshinePairingFixture):
         before = self.state.read_bytes()
         code, result = self.call('unpair', permission=self.fingerprint, running=True, stop_error=True)
         self.assertEqual(1, code); self.assertFalse(result['success']); self.assertEqual(before, self.state.read_bytes())
+        self.assertEqual('Could not stop Sunshine to change pairing', result['detail'])
+        self.assertNotIn('--user start', (self.root / 'commands.log').read_text())
     def test_custom_relative_and_absolute_state_paths(self):
         for custom in (self.config.parent / 'custom.json', self.root / 'absolute state.json'):
             self.state.rename(custom)
@@ -320,8 +338,8 @@ class SunshinePairTest(SunshinePairingFixture):
     def test_pair_read_permissions_and_copy_permissions_fail_safely(self):
         # Inject permission errors instead of relying on the UID running the test.
         source = self.helper.read_text()
-        for old, new in [("data = json.loads(state.read_text()) if original is not None else {}", "raise PermissionError('PRIVATE_PATH')"),
-                         ("os.replace(temporary, state)", "(_ for _ in ()).throw(PermissionError('PRIVATE_PATH'))")]:
+        for old, new in [("data = json.loads(state.read_text()) if original is not None else {}", "raise PermissionError(errno.EACCES, 'PRIVATE_PATH')"),
+                         ("os.replace(temporary, state)", "(_ for _ in ()).throw(PermissionError(errno.EACCES, 'PRIVATE_PATH'))")]:
             self.helper.write_text(source.replace(old,new))
             before = self.state.read_bytes()
             code, result = self.pair(running=True)
@@ -418,6 +436,19 @@ class SunshinePairTest(SunshinePairingFixture):
         self.assertEqual('keep', regular.read_text())
         self.assertNotIn('--user stop', (self.root / 'commands.log').read_text())
 
+    def test_pair_stop_failure_and_wait_timeout_are_not_permission_failures(self):
+        for failure in ('stop_error', 'stop_timeout'):
+            before = self.state.read_bytes()
+            code, result = self.pair(running=True, **{failure: True})
+            self.assertEqual(1, code); self.assertEqual('Could not stop Sunshine to change pairing', result['detail'])
+            self.assertEqual(before, self.state.read_bytes())
+            self.assertNotIn('--user start', (self.root / 'commands.log').read_text())
+    def test_pair_copy_failure_is_not_assumed_to_be_permission_failure(self):
+        before = self.state.read_bytes()
+        code, result = self.pair(copy_error=True)
+        self.assertEqual(1, code); self.assertEqual('Could not preserve Sunshine state permissions', result['detail'])
+        self.assertEqual(before, self.state.read_bytes())
+
     def test_pair_refuses_unknown_service_model(self):
         source = self.helper.read_text()
         self.helper.write_text(source.replace("if mode in ('enforce-encryption', 'unpair', 'pair') and not configuration_known:",
@@ -502,7 +533,7 @@ class SunshineMacHelperTest(SunshineFixture):
         (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleShortVersionString': '2026.914-fixture'}))
         # Redirect the fixed system bundle lookup as well: no fixture can see a real installation.
         self.helper = self.root / 'miffan.sh'
-        self.helper.write_text(HELPER.read_text().replace("pathlib.Path('/Applications/Sunshine.app')", repr_path(self.root / 'SystemApplications/Sunshine.app')))
+        self.helper.write_text(HELPER.read_text().replace("pathlib.Path('/Applications/Sunshine.app')", repr_path(self.root / 'SystemApplications/Sunshine.app')).replace("def mac_processes(timeout=10):", MOCK_SIGNAL + "\ndef mac_processes(timeout=10):"))
         # All state-changing and OS-dependent commands are stubs, including Linux tools.
         self.env['PATH'] = str(self.root / 'bin')
         (self.root / 'bin/python3').symlink_to(sys.executable)
@@ -532,7 +563,7 @@ class SunshineMacHelperTest(SunshineFixture):
         data['root']['named_devices'] = []
         self.assertEqual(data, json.loads(state.read_text()))
         commands = (self.root / 'commands.log').read_text()
-        self.assertLess(commands.index('osascript -e quit app id'), commands.index('open -a'))
+        self.assertLess(commands.index('signal SIGTERM 42'), commands.index('open -a'))
 
     def test_mac_pair_stops_reopens_and_preserves_unknown_state(self):
         pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
@@ -545,7 +576,38 @@ class SunshineMacHelperTest(SunshineFixture):
         data = json.loads(state.read_text())
         self.assertEqual(dict(kept=True),data['unknown']);self.assertEqual('server',data['root']['uniqueid'])
         commands = (self.root / 'commands.log').read_text()
-        self.assertLess(commands.index('osascript -e quit app id'),commands.index('open -a'))
+        self.assertLess(commands.index('signal SIGTERM 42'),commands.index('open -a'))
+
+    def test_mac_pair_and_unpair_stop_failures_keep_state_and_never_reopen(self):
+        pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
+        fingerprint = (Path(__file__).resolve().parent / 'windows/certificate.sha256').read_text().strip()
+        state = self.config.parent / 'sunshine_state.json'
+        for mode in ('pair', 'unpair'):
+            for failure in ('term_error', 'term_timeout', 'term_permission'):
+                with self.subTest(mode=mode, failure=failure):
+                    (self.root / 'quit').unlink(missing_ok=True)
+                    state.write_text(json.dumps(dict(root=dict(uniqueid='server', named_devices=[dict(name='phone', cert=pem, uuid='phone')]))))
+                    before = state.read_bytes()
+                    request = json.dumps(dict(name='phone', cert=pem)) if mode == 'pair' else None
+                    code, result = self.call(mode, permission=fingerprint if mode == 'unpair' else None,
+                        stdin=request, running=True, **{failure: True})
+                    self.assertEqual(1, code)
+                    detail = 'Cannot edit Sunshine state or control its service; check administrator rights' if failure == 'term_permission' else 'Could not stop Sunshine to change pairing'
+                    self.assertEqual(detail, result['detail'])
+                    self.assertEqual(before, state.read_bytes())
+                    commands = (self.root / 'commands.log').read_text()
+                    self.assertIn('signal SIGTERM 42', commands)
+                    self.assertNotIn('open -a', commands); self.assertNotIn('SIGKILL', commands)
+    def test_mac_sigterm_rereads_flushed_state_and_tolerates_already_exited_process(self):
+        pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
+        state = self.config.parent / 'sunshine_state.json'
+        state.write_text('{"root":{"uniqueid":"server"}}')
+        flushed = dict(root=dict(uniqueid='shutdown-server'), shutdown=dict(kept=True))
+        code, result = self.call('pair', stdin=json.dumps(dict(name='phone', cert=pem)), running=True,
+            term_gone=True, flush_state=flushed)
+        self.assertEqual(0, code); self.assertTrue(result['restarted'])
+        saved = json.loads(state.read_text())
+        self.assertEqual(flushed['shutdown'], saved['shutdown']); self.assertEqual('shutdown-server', saved['root']['uniqueid'])
 
     def test_mac_probe_bundle_defaults_addresses_and_permissions_unknown(self):
         before = self.config.read_bytes()
@@ -581,8 +643,8 @@ class SunshineMacHelperTest(SunshineFixture):
         self.assertIn('encoder = videotoolbox', self.config.read_text())
         self.assertIn('lan_encryption_mode = 2', self.config.read_text())
         commands = (self.root / 'commands.log').read_text()
-        self.assertIn('osascript -e quit app id', commands); self.assertIn('open -a ' + str(self.app), commands)
-        self.assertNotIn('kill', commands)
+        self.assertIn('signal SIGTERM 42', commands); self.assertIn('open -a ' + str(self.app), commands)
+        self.assertNotIn('SIGKILL', commands)
     def test_mac_busy_unknown_races_and_overrides_reject_enforcement(self):
         before = self.config.read_bytes()
         for settings in (dict(busy=True), dict(ss_error=True), dict(race=True), dict(override=True), dict(ps_error=True)):
@@ -592,15 +654,15 @@ class SunshineMacHelperTest(SunshineFixture):
             self.assertFalse(result['success']); self.assertEqual(1, code)
             self.assertEqual(before, self.config.read_bytes())
             self.assertNotIn('osascript', (self.root / 'commands.log').read_text())
-    def test_mac_post_save_race_and_quit_failures_never_reopen_or_kill(self):
-        for settings in (dict(restart_race=True), dict(quit_error=True), dict(quit_timeout=True)):
+    def test_mac_post_save_race_and_stop_failures_never_reopen_or_force_kill(self):
+        for settings in (dict(restart_race=True), dict(term_error=True), dict(term_timeout=True)):
             counter = self.root / 'ss-count'
             if counter.exists(): counter.unlink()
             code, result = self.call('enforce-encryption', running=True, **settings)
             self.assertFalse(result['success']); self.assertEqual(1, code)
             self.assertIn('lan_encryption_mode = 2', self.config.read_text())
             self.assertNotIn('open -a', (self.root / 'commands.log').read_text())
-            self.assertNotIn('kill', (self.root / 'commands.log').read_text())
+            self.assertNotIn('SIGKILL', (self.root / 'commands.log').read_text())
     def test_mac_custom_configuration_and_port_are_used(self):
         custom = self.root / 'custom sunshine.conf'; custom.write_text('port = 50000\n')
         _, probe = self.call(running=True, config_arg='"' + str(custom) + '"', busy=True, port=50000)

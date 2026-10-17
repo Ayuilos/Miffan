@@ -46,6 +46,7 @@ class RemoteSunshineUnpair internal constructor(assets: AssetManager, private va
             check(failure != null && !failure.success) { "Could not verify Sunshine direct pairing failure" }
             return when (failure.detail) {
                 "Unrecognized Sunshine state format" -> RemoteStreamManualPinReason.STATE_UNRECOGNIZED
+                "Could not stop Sunshine to change pairing" -> RemoteStreamManualPinReason.SUNSHINE_DID_NOT_STOP
                 "Cannot read Sunshine state or configuration; check administrator rights",
                 "Cannot edit Sunshine state or control its service; check administrator rights" -> RemoteStreamManualPinReason.NO_PERMISSION
                 else -> error("Sunshine direct pairing failed: " + failure.detail)
