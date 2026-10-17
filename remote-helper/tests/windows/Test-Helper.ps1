@@ -129,6 +129,135 @@ Test 'Sunshine unpair state transaction stops before reading shutdown state (moc
         Assert-Equal $script:UnpairLifecycle.Count 0 'stopped service no calls'
     } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
 }
+Test 'Sunshine direct pair validates and canonicalizes public certificates from JSON only' {
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $json=ConvertTo-Json -Compress -InputObject @{name='Miffan 手机';cert=$pem.Replace("`n","`r`n")}
+    $request=Read-SunshinePairRequest $json
+    Assert-Equal $request.cert $pem 'canonical LF PEM'
+    Assert-Equal $request.fingerprint (Get-CertificateFingerprint $pem) 'DER fingerprint'
+    foreach ($bad in @('invalid', $pem+$pem, 'extra'+$pem, $pem+'extra', $pem+'-----BEGIN PRIVATE KEY-----AA==-----END PRIVATE KEY-----', '-----BEGIN CERTIFICATE-----AA==-----END CERTIFICATE-----')) {
+        Assert-Throws {Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name='phone';cert=$bad})} 'bad PEM rejected'
+    }
+    foreach ($badName in @('', '  ', ('x'*65), "phone`n", "phone`0", ("phone"+[char]0x85))) {
+        Assert-Throws {Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name=$badName;cert=$pem})} 'invalid name rejected'
+    }
+    foreach ($badJson in @('{}','[]','null','{bad', ('['+$json+']'), (ConvertTo-Json -Compress -InputObject @{name='x';cert=$pem;extra=1}))) {
+        Assert-Throws {Read-SunshinePairRequest $badJson} 'invalid schema rejected'
+    }
+    Assert-Throws {Invoke-Helper 'sunshine' 'pair' 'not-stdin'} 'CLI credentials rejected'
+}
+Test 'Sunshine direct pair adds or replaces every DER match and retains deep unknown fields' {
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $other=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate-other.pem'))
+    $request=Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name='Miffan 手机';cert=$pem})
+    $deep=@{leaf='保留'}; for ($i=0;$i -lt 20;$i++) {$deep=@{nested=$deep}}
+    $original=ConvertTo-Json -Depth 100 -Compress -InputObject @{root=@{uniqueid='server';named_devices=@(
+        @{name='renamed';cert=$pem;uuid='one'},@{name='Miffan 手机';cert=$other;uuid='other';unknown=$deep},
+        @{name='duplicate';cert=$pem.Replace("`n","`r`n");uuid='two'})};unknown=$deep}
+    $edit=Edit-SunshinePairing $original $request.fingerprint $request
+    Assert-Equal $edit.removed 2 'all duplicate DER matches replaced'
+    $data=ConvertFrom-Json $edit.content
+    Assert-Equal $data.root.uniqueid 'server' 'server ID kept'
+    Assert-Equal $data.root.named_devices.Count 2 'other plus one new phone'
+    Assert-Equal $data.root.named_devices[0].cert $other 'same name other cert retained'
+    $added=$data.root.named_devices[1]
+    Assert-Equal $added.name 'Miffan 手机' 'requested name'
+    Assert-Equal $added.cert $pem 'canonical PEM'
+    Assert-True $added.enabled 'enabled client'
+    Assert-True ($added.uuid -cmatch '^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$') 'uppercase UUID4'
+    Assert-Equal (ConvertTo-Json -Depth 100 -Compress -InputObject $data.unknown) (ConvertTo-Json -Depth 100 -Compress -InputObject $deep) 'deep unknown tree retained'
+    $empty=Edit-SunshinePairing '{"root":{"uniqueid":"server"}}' $request.fingerprint $request
+    Assert-Equal $empty.removed 0 'new array created'
+    Assert-Equal (ConvertFrom-Json $empty.content).root.named_devices.Count 1 'first phone added'
+    foreach ($bad in @('{}','[]','[{"root":{}}]','{bad','{"root":null}','{"root":[]}','{"root":{"named_devices":null}}','{"root":{"named_devices":{}}}',
+        '{"root":{"named_devices":[1]}}','{"root":{"named_devices":[{"name":"x","cert":"x"}]}}','{"root":{"named_devices":[{"name":3,"cert":"x","uuid":"u"}]}}')) {
+        Assert-Throws {Edit-SunshinePairing $bad $request.fingerprint $request} 'unrecognized state rejected'
+    }
+}
+Test 'Sunshine direct pair transaction preserves shutdown state and ACL, restarts only running service (mocked)' {
+    $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-pair-'+[Guid]::NewGuid().ToString('N'))
+    $null=New-Item -ItemType Directory -Path $testRoot
+    $script:PairConfig=Join-Path $testRoot 'sunshine.conf'
+    $script:PairState=Join-Path $testRoot 'custom-state.json'
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $json=ConvertTo-Json -Compress -InputObject @{name='Miffan 手机';cert=$pem}
+    $script:PairLifecycle=@();$script:PairRunning=$true;$script:PairStartError=$false;$script:PairStopError=$false
+    function Get-SunshineContext {return @{known=$true;installed=$true;config=$script:PairConfig;values=@{file_state='custom-state.json'};service=@{State=$(if ($script:PairRunning) {'Running'} else {'Stopped'})}}}
+    function Stop-Service {
+        param($Name,$ErrorAction)
+        if ($script:PairStopError) {throw [UnauthorizedAccessException]::new('offline denied')}
+        $script:PairLifecycle+='stop';$script:PairRunning=$false
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))
+        $data | Add-Member -NotePropertyName shutdown_key -NotePropertyValue 'flushed' -Force
+        [IO.File]::WriteAllText($script:PairState,(ConvertTo-Json -InputObject $data -Depth 100),$script:Utf8)
+    }
+    function Get-Service {
+        param($Name)
+        $controller=New-Object PSObject
+        $controller | Add-Member -MemberType ScriptMethod -Name WaitForStatus -Value {param($Status,$Timeout);$script:PairLifecycle+='wait'}
+        return $controller
+    }
+    function Get-CimInstance {param($ClassName,$Filter);return @()}
+    function Start-Service {param($Name,$ErrorAction);$script:PairLifecycle+='start';if ($script:PairStartError) {throw 'offline start error'};$script:PairRunning=$true}
+    try {
+        $original='{"root":{"uniqueid":"server"},"unknown":true}'
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $acl=Get-Acl -LiteralPath $script:PairState
+        $result=Invoke-SunshinePair $json
+        Assert-True $result.added 'new phone written'
+        Assert-Equal $result.replaced 0 'new phone count'
+        Assert-True $result.restarted 'running service restarted'
+        Assert-Equal ($script:PairLifecycle -join '|') 'stop|wait|start' 'shutdown and wait before restart'
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))
+        Assert-Equal $data.shutdown_key 'flushed' 'shutdown state reread'
+        Assert-True $data.unknown 'unknown preserved'
+        Assert-Equal (Get-Acl -LiteralPath $script:PairState).Owner $acl.Owner 'owner preserved'
+        Assert-Equal (Get-Acl -LiteralPath $script:PairState).Sddl $acl.Sddl 'ACL preserved'
+        $script:PairRunning=$false;$script:PairLifecycle=@()
+        $result=Invoke-SunshinePair $json
+        Assert-True (-not $result.restarted) 'stopped stays stopped'
+        Assert-Equal $result.replaced 1 'same phone replaced'
+        Assert-Equal $script:PairLifecycle.Count 0 'no service calls when stopped'
+        # Two duplicate client records are replaced with exactly one new UUID.
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))
+        $data.root.named_devices=@($data.root.named_devices[0],$data.root.named_devices[0])
+        [IO.File]::WriteAllText($script:PairState,(ConvertTo-Json -InputObject $data -Depth 100),$script:Utf8)
+        $script:PairRunning=$true
+        $result=Invoke-SunshinePair $json
+        Assert-Fixture 'sunshine-pair-replaced' $result
+        Assert-Equal (ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))).root.named_devices.Count 1 'duplicates removed'
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $script:PairRunning=$false
+        Assert-Fixture 'sunshine-pair' (Invoke-SunshinePair $json)
+        $script:PairRunning=$true;$script:PairLifecycle=@()
+        [IO.File]::WriteAllText($script:PairState,'{"root":{"named_devices":[1]}}',$script:Utf8)
+        $before=[IO.File]::ReadAllBytes($script:PairState)
+        Assert-Throws {Invoke-SunshinePair $json} 'bad state rejected'
+        Assert-Equal (Get-BytesSha256 ([IO.File]::ReadAllBytes($script:PairState))) (Get-BytesSha256 $before) 'bad state byte identical'
+        Assert-Equal $script:PairLifecycle.Count 0 'bad state no stop'
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $script:PairStopError=$true
+        Assert-Throws {Invoke-SunshinePair $json} 'stop denied'
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'denied stop no write'
+        $script:PairStopError=$false;$script:PairStartError=$true
+        try {Invoke-SunshinePair $json;throw 'expected restart failure'} catch {Assert-Equal $_.Exception.Message 'Sunshine pair attempted; could not restart Sunshine' 'fixed restart detail'}
+        Assert-Equal (ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))).root.named_devices.Count 1 'pairing retained after failed restart'
+        # Denied atomic replacement and denied reads expose only stable permission details.
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $script:PairRunning=$false;$script:PairStartError=$false
+        function Set-Acl {param($LiteralPath,$AclObject,$ErrorAction);throw [UnauthorizedAccessException]::new('offline private path')}
+        try {Invoke-SunshinePair $json;throw 'expected write denial'} catch {Assert-Equal $_.Exception.Message 'Cannot edit Sunshine state or control its service; check administrator rights' 'fixed write detail'}
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'denied write exact bytes'
+        Remove-Item Function:Set-Acl
+        function Get-SunshineContext {throw [UnauthorizedAccessException]::new('offline private path')}
+        try {Invoke-SunshinePair $json;throw 'expected read denial'} catch {Assert-Equal $_.Exception.Message 'Cannot read Sunshine state or configuration; check administrator rights' 'fixed read detail'}
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'denied read exact bytes'
+        function Get-SunshineContext {return @{known=$false;installed=$true}}
+        Assert-Throws {Invoke-SunshinePair $json} 'unknown service model rejected'
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'unknown service no write'
+
+    } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
+}
 Test 'network validation and Windows dotted-mask canonicalization' {
     Assert-Equal (ConvertTo-Network '192.168.31.8/255.255.255.0') '192.168.31.0/24' 'mask normalized'
     Assert-Equal (ConvertTo-Network '100.64.0.8/10') '100.64.0.0/10' 'Tailscale normalized'

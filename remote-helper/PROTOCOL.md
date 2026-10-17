@@ -76,11 +76,24 @@ rdp_already_configured、keyring_locked、credential_setup_unavailable 各对应
 console_session_id、daemon_session_ids、listeners（address/port/pid）、listeners_known、
 configuration_known；Kotlin 忽略这些诊断字段。
 
-### 普通 Sunshine 命令与 unpair
+### 普通 Sunshine 命令与 pair/unpair
 
 start/enforce-encryption/wake/open-settings 返回 `{success,detail}`，wake 可另带
 `display_asleep`；Windows start/enforce-encryption 另带 changed/backup，App 普通命令
 解析器忽略这两个字段。detail 是可展示诊断，不是枚举。
+pair 只从 stdin 接收唯一 JSON 对象 `{name,cert}`，名称非空、最多 64 字符且无控制字符，
+cert 恰为一个可解析的 X.509 PEM 块；拒绝额外内容/多证书/私钥，写入 DER 重新编码的规范 PEM。
+成功的整段 stdout 是一行 `{added:true,replaced:<非负数量>,restarted:<bool>,client_sha256:<小写64hex>}`，
+client_sha256 是写入的客户端证书 DER 摘要。App 严格检查完整输出和摘要。
+状态文件必须已存在且为普通文件，root 为对象；named_devices 缺失时新建数组，已有项必须
+具有字符串 name/cert/uuid。按证书 DER 删除所有旧项后追加 name/cert/大写 UUID4/enabled:true，
+保留其余字段。运行中先停服务、重读 shutdown state、保留属主/权限/ACL 原子替换后启动；
+未运行时只写状态、不启动。安装和服务模型无法确认则失败。
+pair 失败走普通 success:false/detail 输出（Windows 仍带外层诊断字段）。可用于 PIN 兜底的 detail 为
+`Unrecognized Sunshine state format`、`Cannot read Sunshine state or configuration; check administrator rights`、
+`Cannot edit Sunshine state or control its service; check administrator rights`。
+`Sunshine pair attempted; could not restart Sunshine` 表示重启失败，文件可能已经写入；App 抛错。
+其他未知失败也抛错；不将未经确认的配对记录保存为信任。
 unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动>}`；无匹配为 0/false。
 失败走各平台的普通错误输出，App 在解析前检查退出码/timeout。
 
@@ -103,6 +116,7 @@ unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动
 | `sunshine [probe]` | 无 / Sunshine probe JSON | 正常 0；缺 Python3 1 | Python3；Linux 通过包管理器/user unit、macOS 通过 bundle/plist/Homebrew 探测；不启动 Sunshine | `sunshineProbe` → `parseSunshineProbe` |
 | `sunshine start` | 无 / success/detail JSON | 成功 0；失败 1 | Linux 启已识别 user unit；macOS `open -a` 已有 bundle；已运行则幂等 | `startSunshine` → `sunshineCommand` → `parseSunshineCommand` |
 | `sunshine enforce-encryption` | 无 / success/detail JSON | 成功 0；拒绝/失败 1 | 需已有正规配置、无活跃或无法确认的 UDP stream、无命令行加密覆盖；备份配置、原子写 2/2；重启前再次查流；macOS 优雅退出后重开，不 kill | `enforceStreamEncryption` → `sunshineCommand` → `parseSunshineCommand` |
+| `sunshine pair` | 一行 `{name,cert}` JSON / added/replaced/restarted/client_sha256；失败 success/detail | 成功 0；失败 1 | 仅 stdin；已确认安装和服务；规范证书、按 DER 去重、保留未知字段和属主/权限/ACL；停服务后重读并原子写入，恢复原运行状态 | `pairStreamDirectly` → `RemoteSunshineUnpair.pair` → 严格 PairResult decoder |
 | `sunshine unpair <client-cert-sha256>` | 无 / removed/restarted，错误 success/detail | 成功 0；失败 1 | 64 位 hex；只按客户端证书 DER 摘要删除配对记录；保留未知字段/权限；必要时先停 Sunshine，重读 shutdown state，原子保存并恢复先前运行状态；卸载时直接 0/false | `RemoteSunshineUnpair.unpair` → 严格 Result decoder |
 | `sunshine wake` | 无 / success/detail/display_asleep | 成功 0；失败 1 | 仅 macOS，`caffeinate -u -t 5` 后重查显示状态；不解锁屏幕 | `open` 的 `prepareStreamProbe` → `parseSunshineCommand`；显式命令也走 `sunshineCommand` |
 | `sunshine open-settings screen\|accessibility` | 无 / success/detail | 成功 0；失败 1 | 仅 macOS，打开相应隐私设置，有新设置 URL fallback；不改 TCC | `openSunshinePermissionSettings` → `sunshineCommand` → `parseSunshineCommand` |
@@ -125,6 +139,7 @@ unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动
 | `sunshine [probe]` | 无 / Sunshine probe JSON | 通用 0/1；CIM 查询 SunshineService、sunshine.exe、配置、证书、UDP/TCP、会话；不改变安装 | `sunshineProbe` → `parseSunshineProbe` |
 | `sunshine start` | 无 / `{success,detail,changed,backup:null}` | 通用 0/1；只接受已确认服务模型；已运行不变，否则 Start-Service SunshineService | `startSunshine` → `sunshineCommand` → `parseSunshineCommand` |
 | `sunshine enforce-encryption` | 无 / `{success,detail,changed,backup}` | 通用 0/1；配置、父路径必须非 reparse；无活跃且可确认 stream；已有 2/2 不写，否则私有 backup、保留 BOM/换行/其他配置、同目录原子替换、重启服务；流状态变化时可已保存但不重启 | `enforceStreamEncryption` → `sunshineCommand` → `parseSunshineCommand` |
+| `sunshine pair` | 一行 `{name,cert}` JSON / `{added,replaced,restarted,client_sha256}` | 通用 0/1；仅 stdin；严格公共 X.509/名称校验，已确认安装/服务模型和正规文件，按 DER 去重，PS 5.1 depth 100 保留未知字段，停服务后重读，保留 ACL 原子替换并恢复先前运行状态 | `pairStreamDirectly` → `RemoteSunshineUnpair.pair` → 严格 PairResult decoder |
 | `sunshine unpair <client-cert-sha256>` | 无 / `{removed,restarted}` | 通用 0/1；64 hex、已知安装/服务模型、正规状态路径；按证书 DER pin 删本机配对，必要时停服务并等进程退出，重读、保留未知 JSON/ACL 原子替换，finally 重启先前运行的服务 | `RemoteSunshineUnpair.unpair` → 严格 Result decoder |
 | `sunshine firewall check` | 无 / firewall check JSON（见下） | 通用 0/1；只读检查 ActiveStore 及关联 filters、Profiles、网络来源，给出建议而不授予 apply 权限；需可读取防火墙策略 | `checkSunshineFirewall`/连接预检 → `firewallCheck` → `parseSunshineFirewallCheck` |
 | `sunshine firewall apply` | 唯一 JSON 对象 `{disable_rules,allowed_sources,add_rule}` / firewall result JSON | 通用 0/1；只执行调用者确认的精确计划；检查当前 ActiveStore、写前备份 PersistentStore、再检查快照，变更仅限本地 Sunshine 入站规则及固定 UDP rule。空计划拒绝，不自动部分修复策略规则 | `applySunshineFirewall` → `parseSunshineFirewallResult` |
@@ -199,7 +214,7 @@ setup stdout 是 Write-Host 人类可读提示，App 不解析；管理员检查
 - POSIX clip 底层工具的完整 stdout/stderr 格式与具体失败码未定义，App 只依赖成功退出。
 - setup 的机器可解析输出和成功/失败退出码未定义；只供用户阅读。
 - Sunshine detail、Windows error_type 不是稳定枚举；未知字段扩展在多数 Kotlin parser 中可忽略，
-  但 unpair 的严格 decoder 不接受未知字段。
+  但 pair/unpair 的严格 decoder 不接受未知字段。
 - MCP 内容遵循所安装 cua-driver 的协议；本 helper 只桥接，完整 tool schema 不由本目录定义。
 - Windows `clip serve` 启动失败也以 0 退出；App 不看该退出码，只看每行回复的
   `success` 与 `verified`（两者都为 true 才算写入成功）。

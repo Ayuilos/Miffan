@@ -287,6 +287,43 @@ class RemoteScreenRepository(
         }
     }
 
+    suspend fun pairStreamDirectly(hostId: String, expectedRevision: String,
+        clientName: String = "Miffan (${Build.MODEL})".take(64),
+        interruptActiveStream: Boolean = false): RemoteStreamDirectPairing {
+        val workspaceId = workspaceOnHost(hostId, expectedRevision)
+        val row = requireNotNull(hostDao.getById(hostId))
+        require(clientName.isNotBlank() && clientName.length <= 64 && clientName.none { it.isISOControl() })
+        return withStreamRemote(workspaceId) { ssh ->
+            ensureRevision(hostId, expectedRevision)
+            ensureHelper(ssh)
+            val probe = sunshineProbe(ssh)
+            streams.verifyCertificate(row.streamCertificateSha256, probe)
+            streamDirectPairingPreflight(probe, interruptActiveStream)?.let { return@withStreamRemote it }
+            val certificate = requireNotNull(probe.certificateSha256)
+            sunshinePairings.pair(ssh, clientName)?.let {
+                return@withStreamRemote RemoteStreamDirectPairing.ManualPinNeeded(it)
+            }
+            val confirmed = withTimeoutOrNull(20_000) {
+                var paired: Boolean? = null
+                while (paired == null) {
+                    try { paired = streams.host(ssh, certificate).serverInfo().paired }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: me.rerere.stream.StreamException) {
+                        if (error.reason == me.rerere.stream.StreamFailureReason.CERTIFICATE_MISMATCH)
+                            throw streamCertificateFailure(certificate, probe.certificateSha256)
+                    } catch (_: Exception) { /* Sunshine may still be restarting. */ }
+                    if (paired == null) delay(500)
+                }
+                paired
+            } == true
+            if (!confirmed) return@withStreamRemote RemoteStreamDirectPairing.ManualPinNeeded(RemoteStreamManualPinReason.NOT_CONFIRMED)
+            check(hostDao.pinPairedStreamCertificate(hostId, certificate, expectedRevision, row.streamCertificateSha256, System.currentTimeMillis()) == 1) {
+                "Host identity or certificate trust changed during pairing"
+            }
+            RemoteStreamDirectPairing.Paired(certificate)
+        }
+    }
+
     suspend fun startStreamPairing(hostId: String, expectedRevision: String,
         clientName: String = "Miffan (${Build.MODEL})".take(64)): RemoteStreamPairing {
         val workspaceId = workspaceOnHost(hostId, expectedRevision)

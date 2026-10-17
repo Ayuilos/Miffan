@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # Trusted local support, also under python -I.
 from golden import golden
 
 HELPER = Path(__file__).resolve().parents[1] / 'src/miffan.sh'
@@ -20,6 +21,10 @@ root = pathlib.Path(os.environ['P6C_FIXTURE'])
 settings = json.loads((root / 'settings.json').read_text())
 with (root / 'commands.log').open('a') as log: log.write(name + ' ' + ' '.join(sys.argv[1:]) + '\n')
 if name == 'uname': print(settings.get('platform', 'Linux')); sys.exit(0)
+if name == 'cp':
+    import subprocess
+    assert all(pathlib.Path(p).is_relative_to(root) for p in sys.argv[2:])
+    sys.exit(subprocess.run(['/bin/cp']+sys.argv[1:]).returncode)
 if name == 'sunshine': sys.exit(99)  # Must never be called, including --version.
 if name == 'systemctl':
     if 'list-units' in sys.argv or 'list-unit-files' in sys.argv:
@@ -126,16 +131,18 @@ class SunshineFixture(unittest.TestCase):
         self.config = self.root / 'config/sunshine/sunshine.conf'
         self.config.parent.mkdir(parents=True)
         self.config.write_text('# personal settings\nencoder = nvenc\nlan_encryption_mode = 0\nwan_encryption_mode = 1\nlan_encryption_mode = 1\n')
-        for command in ('uname', 'ps', 'lsof', 'ifconfig', 'ioreg', 'pmset', 'caffeinate', 'open', 'osascript', 'brew', 'systemctl', 'ss', 'ip', 'sunshine', 'pacman', 'dpkg-query', 'rpm', 'flatpak', 'openssl'):
+        for command in ('uname', 'ps', 'lsof', 'ifconfig', 'ioreg', 'pmset', 'caffeinate', 'open', 'osascript', 'brew', 'systemctl', 'ss', 'ip', 'sunshine', 'pacman', 'dpkg-query', 'rpm', 'flatpak', 'openssl', 'cp'):
             path = self.root / 'bin' / command
             path.write_text(STUB); path.chmod(0o755)
         self.env = dict(os.environ, P6C_FIXTURE=str(self.root), XDG_CONFIG_HOME=str(self.root / 'config'),
             HOME=str(self.root), PATH=str(self.root / 'bin') + ':' + os.environ['PATH'])
     def tearDown(self): self.temp.cleanup()
-    def call(self, mode='probe', permission=None, **settings):
+    def call(self, mode='probe', permission=None, stdin=None, **settings):
         (self.root / 'settings.json').write_text(json.dumps(settings))
-        result = subprocess.run(['/bin/sh', str(getattr(self, 'helper', HELPER)), 'sunshine', mode] + ([permission] if permission else []), env=self.env, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(['/bin/sh', str(getattr(self, 'helper', HELPER)), 'sunshine', mode] + ([permission] if permission else []), env=self.env, input=stdin, capture_output=True, text=True, timeout=15)
         self.assertNotIn('\nsunshine ', '\n' + (self.root / 'commands.log').read_text())
+        self.assertNotIn("Traceback", result.stderr)
+        self.last_stderr = result.stderr
         return result.returncode, json.loads(result.stdout)
 
 class SunshineContractTest(SunshineFixture):
@@ -150,7 +157,7 @@ class SunshineContractTest(SunshineFixture):
             _, result = self.call(mode, **settings); golden(name, result)
 
 
-class SunshineUnpairTest(SunshineFixture):
+class SunshinePairingFixture(SunshineFixture):
     def setUp(self):
         super().setUp()
         self.pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
@@ -166,6 +173,8 @@ class SunshineUnpairTest(SunshineFixture):
         self.helper = self.root / 'miffan.sh'
         source = HELPER.read_text().replace("pathlib.Path('/proc/' + pid + '/cmdline').read_bytes().decode().split('\\0')", "['/usr/bin/sunshine']").replace("pathlib.Path(os.readlink('/proc/' + pid + '/cwd'))", 'pathlib.Path.home()')
         self.helper.write_text(source)
+
+class SunshineUnpairTest(SunshinePairingFixture):
     def test_matching_fingerprint_removes_only_this_phone_and_preserves_state(self):
         self.data['root']['named_devices'].append(dict(name='duplicate', cert=self.pem, uuid='duplicate'))
         self.state.write_text(json.dumps(self.data))
@@ -212,6 +221,126 @@ class SunshineUnpairTest(SunshineFixture):
             self.state.write_text(content)
             code, result = self.call('unpair', permission=fingerprint)
             self.assertEqual(1, code); self.assertFalse(result['success']); self.assertEqual(content, self.state.read_text())
+
+class SunshinePairTest(SunshinePairingFixture):
+    # Reuse the hermetic transaction fixture.
+    def pair(self, name='Miffan 手机', pem=None, **settings):
+        return self.call('pair', stdin=json.dumps(dict(name=name, cert=self.pem if pem is None else pem)) + '\n', **settings)
+    def assert_added(self, result, replaced, restarted):
+        self.assertEqual(dict(added=True, replaced=replaced, restarted=restarted, client_sha256=self.fingerprint), result)
+        devices = json.loads(self.state.read_text())['root']['named_devices']
+        added = devices[-1]
+        self.assertEqual({'name', 'cert', 'uuid', 'enabled'}, set(added))
+        self.assertTrue(added['enabled'])
+        import ssl, uuid
+        self.assertEqual(self.pem, added['cert'])
+        self.assertEqual(4, uuid.UUID(added['uuid']).version)
+        self.assertEqual(str(uuid.UUID(added['uuid'])).upper(), added['uuid'])
+        self.assertEqual(self.fingerprint, hashlib.sha256(ssl.PEM_cert_to_DER_cert(added['cert'])).hexdigest())
+    def test_pair_new_preserves_unknown_fields_and_permissions(self):
+        self.data['root']['named_devices'] = [self.other]
+        self.state.write_text(json.dumps(self.data))
+        before = self.state.stat()
+        code, result = self.pair(pem=self.pem.replace('\n', '\r\n'))
+        self.assertEqual(0, code); self.assert_added(result, 0, False); golden('sunshine-pair', result)
+        data = json.loads(self.state.read_text())
+        self.assertEqual(self.data, dict(data, root=dict(data['root'], named_devices=[self.other])))
+        self.assertEqual('Miffan 手机', data['root']['named_devices'][-1]['name'])
+        after = self.state.stat()
+        self.assertEqual((before.st_mode, before.st_uid, before.st_gid), (after.st_mode, after.st_uid, after.st_gid))
+        self.assertNotIn('--user start', (self.root / 'commands.log').read_text())
+        self.assertNotIn('Miffan 手机', (self.root / 'commands.log').read_text())
+        self.assertNotIn('BEGIN CERTIFICATE', (self.root / 'commands.log').read_text())
+    def test_pair_replaces_all_duplicates_and_rereads_shutdown_state(self):
+        flushed = json.loads(json.dumps(self.data))
+        flushed['root']['named_devices'] += [dict(name='duplicate', cert=self.pem.replace('\n','\r\n'), uuid='duplicate')]
+        flushed['shutdown'] = dict(keep=['new', True])
+        code, result = self.pair(running=True, flush_state=flushed)
+        self.assertEqual(0, code); self.assert_added(result, 2, True); golden('sunshine-pair-replaced', result)
+        data = json.loads(self.state.read_text())
+        self.assertEqual(flushed['shutdown'], data['shutdown']); self.assertEqual(self.other, data['root']['named_devices'][0])
+        commands = (self.root / 'commands.log').read_text()
+        self.assertLess(commands.index('--user stop'), commands.index('--user start'))
+    def test_pair_creates_missing_devices_array(self):
+        self.state.write_text('{"root":{"uniqueid":"server"},"unknown":1}')
+        code, result = self.pair()
+        self.assertEqual(0, code); self.assert_added(result, 0, False)
+        self.assertEqual('server', json.loads(self.state.read_text())['root']['uniqueid'])
+    def test_pair_unrecognized_state_keeps_exact_bytes_and_service(self):
+        for invalid in ('{}', '[]', '{bad', '{"root":null}', '{"root":[]}', '{"root":{"named_devices":{}}}',
+            '{"root":{"named_devices":null}}', '{"root":{"named_devices":[1]}}',
+            '{"root":{"named_devices":[{"name":"x","cert":"x"}]}}',
+            '{"root":{"named_devices":[{"name":5,"cert":"x","uuid":"x"}]}}'):
+            self.state.write_text(invalid)
+            code, result = self.pair(running=True)
+            self.assertEqual(1, code); self.assertEqual('Unrecognized Sunshine state format', result['detail'])
+            golden('sunshine-pair-state-unrecognized', result)
+            self.assertEqual(invalid, self.state.read_text())
+            self.assertNotIn('--user stop', (self.root / 'commands.log').read_text())
+    def test_pair_rejects_invalid_input_without_data_in_diagnostics(self):
+        import base64
+        import ssl
+        trailing_der = ssl.DER_cert_to_PEM_cert(ssl.PEM_cert_to_DER_cert(self.pem) + b'extra')
+        bad_der = '-----BEGIN CERTIFICATE-----\n' + base64.b64encode(b'not X509').decode() + '\n-----END CERTIFICATE-----'
+        for name, pem in [('x', 'bad PEM'), ('x', bad_der), ('x', trailing_der), ('x', self.pem+self.pem),
+            ('x', self.pem+'-----BEGIN PRIVATE KEY-----secret-----END PRIVATE KEY-----'),
+            ('x', 'extra'+self.pem), ('x', self.pem+'extra'), ('', self.pem), (' '*3, self.pem),
+            ('x'*65,self.pem), ('x\n',self.pem), ('x\x00',self.pem), ('x\x85',self.pem)]:
+            before = self.state.read_bytes()
+            code, result = self.pair(name=name, pem=pem, running=True)
+            self.assertEqual(1, code); golden('sunshine-pair-invalid', result)
+            self.assertEqual(before, self.state.read_bytes())
+            self.assertNotIn('BEGIN CERTIFICATE', json.dumps(result)+self.last_stderr)
+            self.assertNotIn('--user stop', (self.root / 'commands.log').read_text())
+        for request in ('{}','null','[]','{bad',json.dumps(dict(name='x',cert=self.pem,extra=True))):
+            code, result = self.call('pair', stdin=request)
+            self.assertEqual(1, code); self.assertFalse(result['success'])
+        code, result = self.call('pair', permission='not-stdin', stdin=json.dumps(dict(name='x',cert=self.pem)))
+        self.assertEqual(1, code); self.assertFalse(result['success'])
+    def test_pair_read_permissions_and_copy_permissions_fail_safely(self):
+        # Inject permission errors instead of relying on the UID running the test.
+        source = self.helper.read_text()
+        for old, new in [("data = json.loads(state.read_text())", "raise PermissionError('PRIVATE_PATH')"),
+                         ("os.replace(temporary, state)", "(_ for _ in ()).throw(PermissionError('PRIVATE_PATH'))")]:
+            self.helper.write_text(source.replace(old,new))
+            before = self.state.read_bytes()
+            code, result = self.pair(running=True)
+            self.assertEqual(1, code)
+            self.assertEqual('Cannot edit Sunshine state or control its service; check administrator rights',result['detail'])
+            golden('sunshine-pair-no-permission',result)
+            self.assertEqual(before,self.state.read_bytes()); self.assertNotIn('PRIVATE_PATH',json.dumps(result))
+        self.helper.write_text(source)
+    @unittest.skipUnless(sys.platform == 'darwin', 'macOS ACL verification')
+    def test_pair_preserves_macos_acl(self):
+        subprocess.run(['/bin/chmod', '+a', 'everyone allow read', str(self.state)],check=True)
+        def acl(): return subprocess.check_output(['/bin/ls','-le',str(self.state)],text=True).splitlines()[1:]
+        before = acl()
+        code, result = self.pair()
+        self.assertEqual(0,code);self.assertEqual(before,acl())
+
+    def test_pair_restart_failure_reports_possible_write(self):
+        code, result = self.pair(running=True,start_error=True)
+        self.assertEqual(1,code); self.assertEqual('Sunshine pair attempted; could not restart Sunshine',result['detail'])
+        golden('sunshine-pair-restart-failed',result)
+        self.assertEqual('Miffan 手机',json.loads(self.state.read_text())['root']['named_devices'][-1]['name'])
+    def test_pair_custom_state_and_regular_file_requirement(self):
+        custom = self.root / 'custom state.json'
+        self.state.rename(custom); self.config.write_text('file_state = '+str(custom)+'\n')
+        code, result = self.pair(); self.assertEqual(0, code)
+        self.assertEqual(1,result['replaced'])
+        self.state.symlink_to(custom); self.config.write_text('')
+        before = custom.read_bytes()
+        code, result = self.pair(); self.assertEqual(1,code); self.assertEqual(before,custom.read_bytes())
+        self.state.unlink()
+        code, result = self.pair(); self.assertEqual(1,code); self.assertFalse(self.state.exists())
+    def test_pair_refuses_unknown_service_model(self):
+        source = self.helper.read_text()
+        self.helper.write_text(source.replace("if mode in ('enforce-encryption', 'unpair', 'pair') and not configuration_known:",
+            "configuration_known = False\nif mode in ('enforce-encryption', 'unpair', 'pair') and not configuration_known:"))
+        before = self.state.read_bytes()
+        code, result = self.pair(running=True)
+        self.assertEqual(1, code); self.assertEqual(before, self.state.read_bytes())
+        self.assertNotIn('--user stop', (self.root / 'commands.log').read_text())
 
 class SunshineHelperTest(SunshineFixture):
     def test_probe_is_read_only_and_reports_filtered_addresses(self):
@@ -292,8 +421,8 @@ class SunshineMacHelperTest(SunshineFixture):
         # All state-changing and OS-dependent commands are stubs, including Linux tools.
         self.env['PATH'] = str(self.root / 'bin')
         (self.root / 'bin/python3').symlink_to(sys.executable)
-    def call(self, mode='probe', permission=None, **settings):
-        return super().call(mode, permission=permission, platform='Darwin', **settings)
+    def call(self, mode='probe', permission=None, stdin=None, **settings):
+        return super().call(mode, permission=permission, stdin=stdin, platform='Darwin', **settings)
     def test_mac_contracts(self):
         for name, settings in [('sunshine-macos', dict(running=True, locked=False, display=False)),
                 ('sunshine-macos-locked', dict(running=True, locked=True, display=True))]:
@@ -319,6 +448,19 @@ class SunshineMacHelperTest(SunshineFixture):
         self.assertEqual(data, json.loads(state.read_text()))
         commands = (self.root / 'commands.log').read_text()
         self.assertLess(commands.index('osascript -e quit app id'), commands.index('open -a'))
+
+    def test_mac_pair_stops_reopens_and_preserves_unknown_state(self):
+        pem = (Path(__file__).resolve().parent / 'windows/certificate.pem').read_text()
+        fingerprint = (Path(__file__).resolve().parent / 'windows/certificate.sha256').read_text().strip()
+        state = self.config.parent / 'sunshine_state.json'
+        state.write_text('{"root":{"uniqueid":"server"},"unknown":{"kept":true}}')
+        code, result = self.call('pair', stdin=json.dumps(dict(name='phone', cert=pem)), running=True)
+        self.assertEqual(0, code)
+        self.assertEqual(dict(added=True,replaced=0,restarted=True,client_sha256=fingerprint),result)
+        data = json.loads(state.read_text())
+        self.assertEqual(dict(kept=True),data['unknown']);self.assertEqual('server',data['root']['uniqueid'])
+        commands = (self.root / 'commands.log').read_text()
+        self.assertLess(commands.index('osascript -e quit app id'),commands.index('open -a'))
 
     def test_mac_probe_bundle_defaults_addresses_and_permissions_unknown(self):
         before = self.config.read_bytes()

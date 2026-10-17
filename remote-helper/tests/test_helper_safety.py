@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # Trusted local support, also under python -I.
 from golden import golden, rdp_golden
 
 HELPER = Path(__file__).resolve().parents[1] / "src/miffan.sh"

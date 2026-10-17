@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 10
+$script:HelperVersion = 11
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -366,26 +366,62 @@ function Invoke-EnforceEncryption {
         return @{success=$true;detail='Encryption enforced; Sunshine restarted';changed=$true;backup=$backup}
     } finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
 }
-function Edit-SunshinePairing([string]$Content, [string]$Fingerprint) {
+function Read-SunshinePairRequest([string]$Content) {
+    if (-not $Content.TrimStart().StartsWith('{')) { throw 'Invalid Sunshine pair request' }
+    try { $request = ConvertFrom-Json -InputObject $Content -ErrorAction Stop }
+    catch { throw 'Invalid Sunshine pair request' }
+    if ($request -isnot [pscustomobject] -or -not (Test-SameSet @($request.PSObject.Properties.Name) @('name','cert'))) { throw 'Invalid Sunshine pair request' }
+    if ($request.name -isnot [string] -or [string]::IsNullOrWhiteSpace($request.name) -or $request.name.Length -gt 64 -or $request.name -match '[\p{Cc}]') { throw 'Invalid Sunshine client name' }
+    if ($request.cert -isnot [string]) { throw 'Invalid Sunshine client certificate' }
+    $match = [regex]::Match($request.cert, '\A\s*-----BEGIN CERTIFICATE-----\s*([A-Za-z0-9+/=\s]+?)\s*-----END CERTIFICATE-----\s*\z')
+    if (-not $match.Success) { throw 'Invalid Sunshine client certificate' }
+    try {
+        $der = [Convert]::FromBase64String(($match.Groups[1].Value -replace '\s', ''))
+        $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @(,$der)
+        try {
+            # Re-encode parsed DER, never the supplied text. No private keys enter this path.
+            $raw = $certificate.RawData
+            if ([Security.Cryptography.X509Certificates.X509Certificate2]::GetCertContentType($der) -ne [Security.Cryptography.X509Certificates.X509ContentType]::Cert -or
+                (Get-BytesSha256 $raw) -cne (Get-BytesSha256 $der)) { throw 'Invalid Sunshine client certificate' }
+            $body = [Convert]::ToBase64String($raw)
+            $lines = for ($i=0; $i -lt $body.Length; $i+=64) { $body.Substring($i, [Math]::Min(64, $body.Length-$i)) }
+            $pem = "-----BEGIN CERTIFICATE-----`n" + ($lines -join "`n") + "`n-----END CERTIFICATE-----`n"
+            return @{name=$request.name;cert=$pem;fingerprint=(Get-BytesSha256 $raw)}
+        } finally { $certificate.Reset() }
+    } catch { throw 'Invalid Sunshine client certificate' }
+}
+function Edit-SunshinePairing([string]$Content, [string]$Fingerprint, $PairRequest=$null) {
     if ($Fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'Expected a SHA-256 client certificate fingerprint (64 hex digits)' }
-    $data = ConvertFrom-Json -InputObject $Content
-    if ($null -eq $data -or $data -is [Array] -or $data -isnot [pscustomobject]) { throw 'Invalid Sunshine state JSON' }
+    if (-not $Content.TrimStart().StartsWith('{')) { throw 'Unrecognized Sunshine state format' }
+    try { $data = ConvertFrom-Json -InputObject $Content -ErrorAction Stop }
+    catch { throw 'Unrecognized Sunshine state format' }
+    if ($null -eq $data -or $data -isnot [pscustomobject]) { throw 'Unrecognized Sunshine state format' }
     $devices = @()
-    if ($data.root -and $null -ne $data.root.named_devices) {
-        if ($data.root.named_devices -isnot [Array]) { throw 'Invalid Sunshine named_devices' }
+    if ($null -ne $PairRequest -and $data.root -isnot [pscustomobject]) { throw 'Unrecognized Sunshine state format' }
+    if ($data.root -and $null -ne $data.root.PSObject.Properties['named_devices']) {
+        if ($data.root.named_devices -isnot [Array]) { throw 'Unrecognized Sunshine state format' }
         $devices = @($data.root.named_devices)
     }
     $kept = @(); $removed = 0
     foreach ($device in $devices) {
-        if ($device.cert -is [string] -and (Get-CertificateFingerprint $device.cert) -ieq $Fingerprint) { $removed++ }
-        else { $kept += $device }
+        if ($null -ne $PairRequest -and ($device -isnot [pscustomobject] -or $device.name -isnot [string] -or $device.cert -isnot [string] -or $device.uuid -isnot [string])) { throw 'Unrecognized Sunshine state format' }
+        try { $sameCertificate = $device.cert -is [string] -and (Get-CertificateFingerprint $device.cert) -ieq $Fingerprint }
+        catch { throw 'Unrecognized Sunshine state format' }
+        if ($sameCertificate) { $removed++ } else { $kept += $device }
     }
-    if ($removed -eq 0) { return @{removed=0;content=$Content} }
-    $data.root.named_devices = @($kept)
+    if ($null -ne $PairRequest) {
+        $kept += @{name=$PairRequest.name;cert=$PairRequest.cert;uuid=[Guid]::NewGuid().ToString('D').ToUpperInvariant();enabled=$true}
+    } elseif ($removed -eq 0) { return @{removed=0;content=$Content} }
+    $data.root | Add-Member -NotePropertyName named_devices -NotePropertyValue @($kept) -Force
     # PS 5.1's default depth truncates unknown nested keys; retain the entire state tree.
     return @{removed=$removed;content=(ConvertTo-Json -InputObject $data -Depth 100 -Compress)}
 }
-function Invoke-SunshineUnpair([string]$Fingerprint) {
+function Invoke-SunshinePair([string]$Content) {
+    $request = Read-SunshinePairRequest $Content
+    return Invoke-SunshinePairing $request.fingerprint $request
+}
+function Invoke-SunshineUnpair([string]$Fingerprint) { return Invoke-SunshinePairing $Fingerprint }
+function Invoke-SunshinePairing([string]$Fingerprint, $PairRequest=$null) {
     if ($Fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'Expected a SHA-256 client certificate fingerprint (64 hex digits)' }
     try { $context = Get-SunshineContext } catch { throw 'Cannot read Sunshine state or configuration; check administrator rights' }
     if (-not $context.known -or -not $context.installed) { throw 'Cannot verify the Sunshine service model' }
@@ -397,25 +433,25 @@ function Invoke-SunshineUnpair([string]$Fingerprint) {
     }
     try {
         Assert-RegularPath $state
-        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint
+        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint $PairRequest
     } catch [UnauthorizedAccessException] { throw 'Cannot read Sunshine state or configuration; check administrator rights' }
-    if ($edited.removed -eq 0) { return @{removed=0;restarted=$false} }
+    if ($edited.removed -eq 0 -and $null -eq $PairRequest) { return @{removed=0;restarted=$false} }
     $running = $context.service.State -eq 'Running'
     $stopped = $false; $temporary = $state + '.miffan-' + [Guid]::NewGuid().ToString('N')
     try {
         if ($running) {
             try { Stop-Service -Name SunshineService -ErrorAction Stop }
-            catch { throw 'Cannot stop Sunshine; check administrator rights' }
+            catch { throw 'Cannot edit Sunshine state or control its service; check administrator rights' }
             $stopped = $true
             (Get-Service -Name SunshineService).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(10))
-            if (@(Get-CimInstance Win32_Process -Filter "Name='sunshine.exe'").Count -gt 0) { throw 'Sunshine did not stop before unpairing' }
+            if (@(Get-CimInstance Win32_Process -Filter "Name='sunshine.exe'").Count -gt 0) { throw 'Sunshine did not stop before pairing change' }
         }
         # Re-read after shutdown, including any state Sunshine flushed while stopping.
         Assert-RegularPath $state
-        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint
-        if ($edited.removed -gt 0) {
+        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint $PairRequest
+        if ($edited.removed -gt 0 -or $null -ne $PairRequest) {
             [IO.File]::WriteAllText($temporary, $edited.content, $script:Utf8)
-            Set-Acl -LiteralPath $temporary -AclObject (Get-Acl -LiteralPath $state)
+            Set-Acl -LiteralPath $temporary -AclObject (Get-Acl -LiteralPath $state) -ErrorAction Stop
             [IO.File]::Replace($temporary, $state, [System.Management.Automation.Language.NullString]::Value)
         }
     } catch [UnauthorizedAccessException] { throw 'Cannot edit Sunshine state or control its service; check administrator rights' }
@@ -425,10 +461,14 @@ function Invoke-SunshineUnpair([string]$Fingerprint) {
         } finally {
             if ($stopped) {
                 try { Start-Service -Name SunshineService -ErrorAction Stop }
-                catch { throw 'Sunshine unpair attempted; could not restart Sunshine' }
+                catch {
+                    if ($null -ne $PairRequest) { throw 'Sunshine pair attempted; could not restart Sunshine' }
+                    throw 'Sunshine unpair attempted; could not restart Sunshine'
+                }
             }
         }
     }
+    if ($null -ne $PairRequest) { return @{added=$true;replaced=$edited.removed;restarted=[bool]$stopped;client_sha256=$Fingerprint.ToLowerInvariant()} }
     return @{removed=$edited.removed;restarted=[bool]$stopped}
 }
 function Test-RuleEnforced([bool]$Enabled, [string]$Status, $Enforcement) {
@@ -961,6 +1001,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
                 { $_ -in @('', 'probe') } { return Get-SunshineProbe }
                 'start' { return Invoke-SunshineStart }
                 'enforce-encryption' { return Invoke-EnforceEncryption }
+                'pair' { return Invoke-SunshinePair ([Console]::In.ReadToEnd()) }
                 'unpair' { return Invoke-SunshineUnpair $Suboperation }
                 'firewall' {
                     switch ($Suboperation) {
@@ -969,7 +1010,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
                         default { throw 'Usage: sunshine firewall check|apply' }
                     }
                 }
-                default { throw 'Usage: sunshine probe|start|enforce-encryption|unpair|firewall' }
+                default { throw 'Usage: sunshine probe|start|enforce-encryption|pair|unpair|firewall' }
             }
         }
         'clip' { if ($Subcommand -or $Suboperation) {throw 'Clipboard text must come from stdin'}; return Invoke-CuaClipboard ([Console]::In.ReadToEnd()) }
@@ -978,6 +1019,12 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
     }
 }
 $script:SafeFailures = @(
+    'Invalid Sunshine pair request',
+    'Invalid Sunshine client name',
+    'Invalid Sunshine client certificate',
+    'Unrecognized Sunshine state format',
+    'Sunshine did not stop before pairing change',
+    'Sunshine pair attempted; could not restart Sunshine',
     'Expected a SHA-256 client certificate fingerprint (64 hex digits)',
     'Invalid Sunshine state JSON',
     'Invalid Sunshine named_devices',
@@ -1057,7 +1104,7 @@ $script:SafeFailures = @(
     'Unsafe subnet prefix',
     'Usage: probe [display]',
     'Usage: sunshine firewall check|apply',
-    'Usage: sunshine probe|start|enforce-encryption|unpair|firewall',
+    'Usage: sunshine probe|start|enforce-encryption|pair|unpair|firewall',
     'Usage: version',
     'Usage: version|probe [display]|sunshine|clip',
     'Wrong desktop session'
@@ -1072,6 +1119,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     $OutputEncoding = $script:Utf8
     $script:LastBackup = $null; $script:LastDesktopTask=$null; $script:LastDesktopDirectory=$null
     try {
+        if ($Command -eq 'sunshine' -and $Action -eq 'pair' -and $args.Count -gt 0) { throw 'Unexpected Sunshine argument' }
         if ($Command -eq 'clip' -and $Action -eq 'serve' -and -not $Operation) {
             try { Invoke-CuaClipboardServe }
             catch {

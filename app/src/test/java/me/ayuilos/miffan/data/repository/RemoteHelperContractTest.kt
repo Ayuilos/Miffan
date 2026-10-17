@@ -22,9 +22,11 @@ class RemoteHelperContractTest {
                 "vnc-unavailable vnc-no-session vnc-x11 vnc-wayland vnc-macos " +
                 "sunshine-stopped sunshine-running sunshine-busy sunshine-missing sunshine-macos " +
                 "sunshine-macos-locked sunshine-start sunshine-encryption sunshine-refused sunshine-wake " +
-                "sunshine-settings sunshine-unpair sunshine-unpair-none",
+                "sunshine-settings sunshine-unpair sunshine-unpair-none " +
+                "sunshine-pair sunshine-pair-replaced sunshine-pair-invalid sunshine-pair-no-permission " +
+                "sunshine-pair-restart-failed sunshine-pair-state-unrecognized",
             "ps1" to "probe sunshine-running sunshine-busy sunshine-missing sunshine-start sunshine-encryption " +
-                "sunshine-unpair sunshine-unpair-none firewall-check firewall-review firewall-result " +
+                "sunshine-pair sunshine-pair-replaced sunshine-unpair sunshine-unpair-none firewall-check firewall-review firewall-result " +
                 "clipboard clipboard-failed clipboard-serve clipboard-serve-failed",
         ).flatMap { (platform, names) -> names.split(" ").map { "$platform/$it.json" } }.toSet()
         assertEquals("Shared fixture inventory changed", expected, files.map { it.relativeTo(root).invariantSeparatorsPath }.toSet())
@@ -34,7 +36,7 @@ class RemoteHelperContractTest {
             val output = file.readText()
             when {
                 name.startsWith("probe") -> parseHelperProbe(output).let {
-                    assertEquals(file.path, if (windows) 10 else 18, it.helper)
+                    assertEquals(file.path, if (windows) 11 else 19, it.helper)
                     assertEquals(if (windows) "windows" else if (name == "probe-macos") "macos" else "linux", it.os)
                     assertEquals("Fixture Desktop", it.hostname)
                     assertTrue(it.session.present)
@@ -72,6 +74,14 @@ class RemoteHelperContractTest {
                         assertEquals("unix:/fixture/miffan/vnc.sock", it.endpoint)
                     } else if (name == "vnc-no-session") assertEquals("no_graphical_session", it.error)
                     else { assertEquals("no_vnc_server", it.error); assertEquals("wayland", it.session) }
+                }
+                name == "sunshine-pair" || name == "sunshine-pair-replaced" -> Json.decodeFromString<RemoteSunshineUnpair.PairResult>(output).let {
+                    assertTrue(it.added); assertEquals(if (name.endsWith("replaced")) 2 else 0, it.replaced)
+                    assertEquals(name.endsWith("replaced"), it.restarted)
+                    assertEquals("fd53831c65e15ec620f371bc771dfe082703aa8c3444902fb8d25094f4d4cfd1", it.clientSha256)
+                }
+                name.startsWith("sunshine-pair-") -> parseSunshineCommand(output).let {
+                    assertFalse(it.success); assertTrue(it.detail.isNotBlank())
                 }
                 name.startsWith("sunshine-unpair") -> Json.decodeFromString<RemoteSunshineUnpair.Result>(output).let {
                     assertEquals(if (name.endsWith("none")) 0 else 1, it.removed); assertFalse(it.restarted)

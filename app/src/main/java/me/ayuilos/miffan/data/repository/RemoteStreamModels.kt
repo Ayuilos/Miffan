@@ -25,6 +25,24 @@ interface RemoteStreamPairing : Closeable {
     suspend fun await(): String
 }
 
+sealed interface RemoteStreamDirectPairing {
+    /** Sunshine now trusts this phone; [certificateSha256] is the pinned server certificate. */
+    data class Paired(val certificateSha256: String) : RemoteStreamDirectPairing
+    /** Pairing restarts Sunshine and would interrupt someone streaming from this computer. */
+    data object ActiveStream : RemoteStreamDirectPairing
+    /** Offer the existing manual PIN pairing flow. */
+    data class ManualPinNeeded(val reason: RemoteStreamManualPinReason) : RemoteStreamDirectPairing
+}
+enum class RemoteStreamManualPinReason { CERTIFICATE_UNAVAILABLE, STATE_UNRECOGNIZED, NO_PERMISSION, NOT_CONFIRMED }
+
+internal fun streamDirectPairingPreflight(probe: SunshineProbe, interruptActiveStream: Boolean): RemoteStreamDirectPairing? {
+    check(probe.installed && probe.running) { "Sunshine is not running" }
+    if (probe.certificateSha256 == null)
+        return RemoteStreamDirectPairing.ManualPinNeeded(RemoteStreamManualPinReason.CERTIFICATE_UNAVAILABLE)
+    if (probe.activeStream && !interruptActiveStream) return RemoteStreamDirectPairing.ActiveStream
+    return null
+}
+
 data class RemoteStreamFallback(val reason: RemoteStreamFallbackReason, val detail: String? = null)
 enum class RemoteStreamFallbackReason {
     SUNSHINE_MISSING, SUNSHINE_NOT_RUNNING, NOT_PAIRED, ENCRYPTION_NOT_ENFORCED,
