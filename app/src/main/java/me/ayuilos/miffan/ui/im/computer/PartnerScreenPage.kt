@@ -146,7 +146,8 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
                         onApproval = { id, approved ->
                             thread.answerToolApproval(item, id, approved, via = me.rerere.ai.ui.ToolDecisionVia.PARTNER_SCREEN)
                         },
-                        onAnswer = { id, answer -> thread.answerToolQuestion(item, id, answer) })
+                        onAnswer = { id, answer -> thread.answerToolQuestion(item, id, answer) },
+                        conversationId = item.segmentId.toString())
                 }
             }
             errors.lastOrNull()?.let { error ->

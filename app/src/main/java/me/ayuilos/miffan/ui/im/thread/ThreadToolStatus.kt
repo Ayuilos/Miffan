@@ -26,7 +26,9 @@ import me.ayuilos.miffan.ui.im.partnerName
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import androidx.compose.ui.text.font.FontWeight
 import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.ui.components.message.ChatMessageToolStep
+import me.ayuilos.miffan.ui.components.message.LocalTerminalConversationId
 import me.ayuilos.miffan.ui.components.message.ComputerToolUIRenderer
 import me.ayuilos.miffan.ui.components.message.approvalDecisionText
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
@@ -93,10 +95,14 @@ internal fun ThreadToolPrompt(
     onApproval: (String, Boolean) -> Unit,
     onAnswer: (String, String) -> Unit,
     assistant: Assistant? = null,
+    /** The segment the tool call belongs to; an interactive terminal only opens for its own chat. */
+    conversationId: String? = null,
 ) {
     when {
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER ->
             ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)), onAnswer)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == WORKSPACE_TERMINAL_TOOL_NAME ->
+            ThreadTerminalCard(tool, conversationId, onApproval, onAnswer)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == UPDATE_MY_PROFILE ->
             ThreadProfileCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == CREATE_PARTNER ->
@@ -178,6 +184,30 @@ private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, 
                 Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) { Text(stringResource(R.string.im_p5_allow)) }
                 OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
             }
+        }
+    }
+}
+
+/**
+ * A command the user runs in an interactive terminal (sudo and other prompts). It is settled by the terminal's
+ * own result, not by allow/decline: a plain "allow" can never run it, so the card offers open and cancel instead.
+ */
+@Composable
+private fun ThreadTerminalCard(
+    tool: UIMessagePart.Tool,
+    conversationId: String?,
+    onApproval: (String, Boolean) -> Unit,
+    onAnswer: (String, String) -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            CompositionLocalProvider(LocalTerminalConversationId provides conversationId) {
+                ChainOfThought(steps = listOf(ThinkingStep.ToolStep(tool)), collapsedVisibleCount = Int.MAX_VALUE) {
+                    ChatMessageToolStep(tool, onToolAnswer = onAnswer,
+                        onToolApproval = { id, approved, _ -> onApproval(id, approved) })
+                }
+            }
+            RelayApprovalNotice(tool)
         }
     }
 }
