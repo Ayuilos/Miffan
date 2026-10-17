@@ -2,6 +2,10 @@ package me.ayuilos.miffan.data.repository
 
 import java.io.BufferedReader
 import java.util.Base64
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.workspace.RemoteChannelStream
 
 /**
@@ -35,7 +39,7 @@ internal class WindowsClipboardChannel(private val open: () -> RemoteChannelStre
             stream.output.flush()
             // The first reply waits for the bridge and the MCP handshake; later ones take milliseconds.
             val reply = readLine(stream, REPLY_TIMEOUT_MILLIS)
-            (reply != null && reply.contains("\"success\":true")).also { if (!it) fail() }
+            (reply != null && isVerifiedWrite(reply)).also { if (!it) fail() }
         } catch (_: Exception) {
             fail()
             false
@@ -73,5 +77,11 @@ internal class WindowsClipboardChannel(private val open: () -> RemoteChannelStre
 
     private companion object {
         const val REPLY_TIMEOUT_MILLIS = 20_000L
+
+        /** The helper reports both flags together today; require both so a write that was not read back never counts. */
+        fun isVerifiedWrite(reply: String): Boolean = runCatching {
+            val result = Json.parseToJsonElement(reply).jsonObject
+            result["success"]?.jsonPrimitive?.booleanOrNull == true && result["verified"]?.jsonPrimitive?.booleanOrNull == true
+        }.getOrDefault(false)
     }
 }

@@ -25,7 +25,7 @@ class WindowsSetupScriptTest {
     }
 
     @Test fun realAssetHasOneQuotedPlaceholderAndRendersOnce() {
-        val asset = File("src/main/assets/remote/windows-setup.ps1").readText()
+        val asset = File(System.getProperty("remoteHelper.assets"), "windows-setup.ps1").readText()
         val rendered = WindowsSetupScript.render(asset, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMiffan test")
         assertFalse(rendered.contains("__MIFFAN_PUBLIC_KEY__"))
         assertEquals(1, Regex("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMiffan").findAll(rendered).count())

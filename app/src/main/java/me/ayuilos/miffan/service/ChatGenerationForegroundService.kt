@@ -153,10 +153,17 @@ class ChatGenerationForegroundService : Service() {
     }
 
     private fun acquire(intent: Intent) {
-        val generationId = intent.getStringExtra(EXTRA_GENERATION_ID) ?: return stopService()
-        val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID) ?: return stopService()
-        val ready = starting[Uuid.parse(generationId)]
-        if (ready == null) return stopService()
+        val generationId = intent.getStringExtra(EXTRA_GENERATION_ID)
+        val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID)
+        val ready = generationId?.let { runCatching { starting[Uuid.parse(it)] }.getOrNull() }
+        // Every startForegroundService() must reach startForeground() before the service stops, even
+        // when the generation that asked for it already ended; stopping first makes Android kill the app.
+        if (!isForeground) updateForegroundNotification(conversationId.orEmpty())
+        if (generationId == null || conversationId == null || ready == null) {
+            // A stale request must not take the foreground away from generations still running.
+            if (activeGenerations.isEmpty()) stopService()
+            return
+        }
         activeGenerations[generationId] = conversationId
         updateForegroundNotification(conversationId)
         if (isForeground) instance = this

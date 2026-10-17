@@ -31,7 +31,9 @@ class WindowsScreenRepositoryTest {
     private var approvedStdin: String? = null
     private var firewallExitCode = 0
     private var sunshineInstalled = true
-    private var installedVersion = "10"
+    private val bundledVersion = Regex("HelperVersion = (\\d+)").find(
+        File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readText())!!.groupValues[1]
+    private var installedVersion = bundledVersion
     private var installedBytes: ByteArray? = null
     private var probeExitCode = 0
     private var firewall = WindowsScreenHelperTest.reviewJson
@@ -41,7 +43,7 @@ class WindowsScreenRepositoryTest {
         every { context.getSystemService(android.net.ConnectivityManager::class.java) } returns mockk(relaxed = true)
         every { context.noBackupFilesDir } returns File("build/test-p7b2")
         val assets = mockk<AssetManager>()
-        every { assets.open(any()) } answers { File("src/main/assets/" + firstArg<String>()).inputStream() }
+        every { assets.open(any()) } answers { File(System.getProperty("remoteHelper.assets"), firstArg<String>().removePrefix("remote/")).inputStream() }
         coEvery { dao.getById("ws") } returns workspace
         coEvery { dao.getByRemoteHostId("host") } returns listOf(workspace)
         coEvery { hosts.getById("host") } returns host
@@ -50,7 +52,7 @@ class WindowsScreenRepositoryTest {
             val command = firstArg<String>(); commands += command
             val output = when {
                 command == windowsHelperVersionCommand -> installedVersion
-                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = "10"; "" }
+                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = bundledVersion; "" }
                 command.endsWith("sunshine firewall check") -> firewall
                 command.endsWith("sunshine firewall apply") -> {
                     approvedStdin = arg<InputStream?>(4)!!.readBytes().toString(Charsets.UTF_8)
@@ -112,7 +114,7 @@ class WindowsScreenRepositoryTest {
         val repository = repo()
         installedVersion = "1"
         repository.checkSunshineFirewall("host", "legacy")
-        assertArrayEquals(File("src/main/assets/remote/miffan.ps1").readBytes(), installedBytes)
+        assertArrayEquals(File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readBytes(), installedBytes)
         repository.checkSunshineFirewall("host", "legacy")
         assertEquals(1, commands.count { it == windowsHelperInstallCommand })
         val result = repository.openSunshinePermissionSettings("host", "legacy", RemoteSunshinePermission.SCREEN_RECORDING)

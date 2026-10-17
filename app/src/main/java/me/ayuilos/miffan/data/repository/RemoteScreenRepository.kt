@@ -91,7 +91,7 @@ open class RemoteScreenUnavailableException(
 class RemoteRdpCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
     RemoteScreenUnavailableException(RemoteScreenProblem.RDP_CERTIFICATE_CHANGED, "RDP certificate fingerprint changed")
 
-/** `miffan probe` output; see `assets/remote/miffan.sh`. */
+/** `miffan probe` output; see `remote-helper/src/miffan.sh`. */
 @Serializable
 data class RemoteMachineProbe(
     val helper: Int,
@@ -167,6 +167,9 @@ class RemoteScreenConnection internal constructor(
         }
     }
 }
+
+/** How long Sunshine may take to answer after a restart; Windows needs about 30 s. */
+private const val SUNSHINE_RESTART_MILLIS = 60_000L
 
 /**
  * Host-level screen configuration and viewer sessions. The screen belongs to the machine, so
@@ -287,6 +290,44 @@ class RemoteScreenRepository(
         }
     }
 
+    suspend fun pairStreamDirectly(hostId: String, expectedRevision: String,
+        clientName: String = "Miffan (${Build.MODEL})".take(64),
+        interruptActiveStream: Boolean = false): RemoteStreamDirectPairing {
+        val workspaceId = workspaceOnHost(hostId, expectedRevision)
+        val row = requireNotNull(hostDao.getById(hostId))
+        require(clientName.isNotBlank() && clientName.length <= 64 && clientName.none { it.isISOControl() })
+        return withStreamRemote(workspaceId) { ssh ->
+            ensureRevision(hostId, expectedRevision)
+            ensureHelper(ssh)
+            val probe = sunshineProbe(ssh)
+            streams.verifyCertificate(row.streamCertificateSha256, probe)
+            streamDirectPairingPreflight(probe, interruptActiveStream)?.let { return@withStreamRemote it }
+            val certificate = requireNotNull(probe.certificateSha256)
+            sunshinePairings.pair(ssh, clientName)?.let {
+                return@withStreamRemote RemoteStreamDirectPairing.ManualPinNeeded(it)
+            }
+            // Windows Sunshine probes its encoders for about half a minute before it answers again.
+            val confirmed = withTimeoutOrNull(SUNSHINE_RESTART_MILLIS) {
+                var paired: Boolean? = null
+                while (paired == null) {
+                    try { paired = streams.host(ssh, certificate).serverInfo().paired }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: me.rerere.stream.StreamException) {
+                        if (error.reason == me.rerere.stream.StreamFailureReason.CERTIFICATE_MISMATCH)
+                            throw streamCertificateFailure(certificate, probe.certificateSha256)
+                    } catch (_: Exception) { /* Sunshine may still be restarting. */ }
+                    if (paired == null) delay(500)
+                }
+                paired
+            } == true
+            if (!confirmed) return@withStreamRemote RemoteStreamDirectPairing.ManualPinNeeded(RemoteStreamManualPinReason.NOT_CONFIRMED)
+            check(hostDao.pinPairedStreamCertificate(hostId, certificate, expectedRevision, row.streamCertificateSha256, System.currentTimeMillis()) == 1) {
+                "Host identity or certificate trust changed during pairing"
+            }
+            RemoteStreamDirectPairing.Paired(certificate)
+        }
+    }
+
     suspend fun startStreamPairing(hostId: String, expectedRevision: String,
         clientName: String = "Miffan (${Build.MODEL})".take(64)): RemoteStreamPairing {
         val workspaceId = workspaceOnHost(hostId, expectedRevision)
@@ -307,7 +348,7 @@ class RemoteScreenRepository(
             // ambiguous at the last step; start from none. Best effort: newer Sunshine replaces it anyway.
             val cleared = runCatching { sunshinePairings.unpair(ssh) }.getOrNull()
             if (cleared?.restarted == true) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
-                withTimeoutOrNull(20_000) {
+                withTimeoutOrNull(SUNSHINE_RESTART_MILLIS) {
                     while (runCatching { streams.host(ssh, null).serverInfo() }.isFailure) delay(500)
                 }
             }

@@ -1,5 +1,8 @@
 ﻿# Pure/offline tests. Never calls live firewall/service/task/clipboard mutation cmdlets.
-param([string]$HelperPath = (Join-Path $PSScriptRoot '..\..\app\src\main\assets\remote\miffan.ps1'))
+param(
+    [string]$HelperPath = (Join-Path $PSScriptRoot '..\..\..\app\build\generated\remoteHelper\remote\miffan.ps1'),
+    [string]$FixturePath = (Join-Path $PSScriptRoot '..\..\fixtures\ps1')
+)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 . $HelperPath
@@ -8,6 +11,27 @@ function Assert-True($Condition, [string]$Message) { if (-not $Condition) { thro
 function Assert-Equal($Actual, $Expected, [string]$Message) { if ($Actual -cne $Expected) { throw "Assertion failed: $Message; expected [$Expected], actual [$Actual]" } }
 function Assert-Throws([scriptblock]$Body, [string]$Message) { $caught=$false; try { & $Body } catch { $caught=$true }; Assert-True $caught $Message }
 function Test([string]$Name, [scriptblock]$Body) { & $Body; $script:Passed++; [Console]::Out.WriteLine("PASS $Name") }
+# JSON property order is irrelevant; field names, array shapes and values are shared with Kotlin.
+function Assert-JsonValue($Actual, $Expected, [string]$Path) {
+    if ($null -eq $Expected) { Assert-True ($null -eq $Actual) "$Path null"; return }
+    if ($Expected -is [Management.Automation.PSCustomObject]) {
+        Assert-True ($Actual -is [Management.Automation.PSCustomObject]) "$Path object"
+        $keys=@($Expected.PSObject.Properties.Name | Sort-Object)
+        Assert-Equal (@($Actual.PSObject.Properties.Name | Sort-Object) -join '|') ($keys -join '|') "$Path keys"
+        foreach ($key in $keys) { Assert-JsonValue $Actual.$key $Expected.$key "$Path.$key" }
+    } elseif ($Expected -is [Array]) {
+        Assert-True ($Actual -is [Array]) "$Path array"
+        Assert-Equal $Actual.Count $Expected.Count "$Path length"
+        for ($i=0;$i -lt $Expected.Count;$i++) { Assert-JsonValue $Actual[$i] $Expected[$i] "$Path[$i]" }
+    } else { Assert-Equal $Actual $Expected $Path }
+}
+function Assert-Fixture([string]$Name, $Actual) {
+    $path=Join-Path $FixturePath ($Name+'.json')
+    $expected=ConvertFrom-Json ([IO.File]::ReadAllText($path))
+    $decoded=ConvertFrom-Json (ConvertTo-PlainJson $Actual)
+    Assert-JsonValue $decoded $expected $Name
+}
+
 $exe = 'C:\Program Files\Sunshine\sunshine.exe'
 function Rule([string]$Id='vendor', [string]$Protocol='UDP', $Ports=@('Any'), $Sources=@('Any'), [string]$Program=$exe, [bool]$Enabled=$true) {
     return @{id=$Id;program=$Program;direction='Inbound';enabled=$Enabled;effective=$Enabled;action='Allow';protocol=$Protocol;ports=$Ports;sources=$Sources;policy_source='Local';profile='Any'}
@@ -92,6 +116,7 @@ Test 'Sunshine unpair state transaction stops before reading shutdown state (moc
         $script:UnpairLifecycle=@()
         $before=[IO.File]::ReadAllText($script:UnpairState)
         $result=Invoke-SunshineUnpair $hash
+        Assert-Fixture 'sunshine-unpair-none' $result
         Assert-Equal $result.removed 0 'retry no match'
         Assert-True (-not $result.restarted) 'no match no restart'
         Assert-Equal $script:UnpairLifecycle.Count 0 'no match no service calls'
@@ -99,8 +124,225 @@ Test 'Sunshine unpair state transaction stops before reading shutdown state (moc
         [IO.File]::WriteAllText($script:UnpairState,$original,$script:Utf8)
         $script:UnpairRunning=$false
         $result=Invoke-SunshineUnpair $hash
+        Assert-Fixture 'sunshine-unpair' $result
         Assert-True (-not $result.restarted) 'stopped service stays stopped'
         Assert-Equal $script:UnpairLifecycle.Count 0 'stopped service no calls'
+    } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
+}
+Test 'Sunshine direct pair validates and canonicalizes public certificates from JSON only' {
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $json=ConvertTo-Json -Compress -InputObject @{name='Miffan 手机';cert=$pem.Replace("`n","`r`n")}
+    $request=Read-SunshinePairRequest $json
+    Assert-Equal $request.cert $pem 'canonical LF PEM'
+    Assert-Equal $request.fingerprint (Get-CertificateFingerprint $pem) 'DER fingerprint'
+    foreach ($bad in @('invalid', $pem+$pem, 'extra'+$pem, $pem+'extra', $pem+'-----BEGIN PRIVATE KEY-----AA==-----END PRIVATE KEY-----', '-----BEGIN CERTIFICATE-----AA==-----END CERTIFICATE-----')) {
+        Assert-Throws {Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name='phone';cert=$bad})} 'bad PEM rejected'
+    }
+    foreach ($badName in @('', '  ', ('x'*65), "phone`n", "phone`0", ("phone"+[char]0x85))) {
+        Assert-Throws {Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name=$badName;cert=$pem})} 'invalid name rejected'
+    }
+    foreach ($badJson in @('{}','[]','null','{bad', ('['+$json+']'), (ConvertTo-Json -Compress -InputObject @{name='x';cert=$pem;extra=1}))) {
+        Assert-Throws {Read-SunshinePairRequest $badJson} 'invalid schema rejected'
+    }
+    Assert-Throws {Invoke-Helper 'sunshine' 'pair' 'not-stdin'} 'CLI credentials rejected'
+}
+Test 'Sunshine direct pair adds or replaces every DER match and retains deep unknown fields' {
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $other=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate-other.pem'))
+    $request=Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name='Miffan 手机';cert=$pem})
+    $deep=@{leaf='保留'}; for ($i=0;$i -lt 20;$i++) {$deep=@{nested=$deep}}
+    $original=ConvertTo-Json -Depth 100 -Compress -InputObject @{root=@{uniqueid='server';named_devices=@(
+        @{name='renamed';cert=$pem;uuid='one'},@{name='Miffan 手机';cert=$other;uuid='other';unknown=$deep},
+        @{name='duplicate';cert=$pem.Replace("`n","`r`n");uuid='two'})};unknown=$deep}
+    $edit=Edit-SunshinePairing $original $request.fingerprint $request
+    Assert-Equal $edit.removed 2 'all duplicate DER matches replaced'
+    $data=ConvertFrom-Json $edit.content
+    Assert-Equal $data.root.uniqueid 'server' 'server ID kept'
+    Assert-Equal $data.root.named_devices.Count 2 'other plus one new phone'
+    Assert-Equal $data.root.named_devices[0].cert $other 'same name other cert retained'
+    $added=$data.root.named_devices[1]
+    Assert-Equal $added.name 'Miffan 手机' 'requested name'
+    Assert-Equal $added.cert $pem 'canonical PEM'
+    Assert-True $added.enabled 'enabled client'
+    Assert-True ($added.uuid -cmatch '^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$') 'uppercase UUID4'
+    Assert-Equal (ConvertTo-Json -Depth 100 -Compress -InputObject $data.unknown) (ConvertTo-Json -Depth 100 -Compress -InputObject $deep) 'deep unknown tree retained'
+    $empty=Edit-SunshinePairing '{"root":{"uniqueid":"server"}}' $request.fingerprint $request
+    Assert-Equal $empty.removed 0 'new array created'
+    Assert-Equal (ConvertFrom-Json $empty.content).root.named_devices.Count 1 'first phone added'
+    foreach ($bad in @('[]','[{"root":{}}]','{bad','{"root":null}','{"root":[]}','{"root":{"named_devices":null}}','{"root":{"named_devices":{}}}',
+        '{"root":{"named_devices":[1]}}','{"root":{"named_devices":[{"name":"x","cert":"x"}]}}','{"root":{"named_devices":[{"name":3,"cert":"x","uuid":"u"}]}}')) {
+        Assert-Throws {Edit-SunshinePairing $bad $request.fingerprint $request} 'unrecognized state rejected'
+    }
+}
+Test 'Sunshine direct pair initializes root and server UUID without changing top-level credentials' {
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $request=Read-SunshinePairRequest (ConvertTo-Json -Compress -InputObject @{name='phone';cert=$pem})
+    foreach ($root in @($null, [pscustomobject]@{}, [pscustomobject]@{uniqueid=$null}, [pscustomobject]@{uniqueid=42}, [pscustomobject]@{uniqueid='original-server-id'})) {
+        $original=@{username='offline-admin';password='offline-password-hash';salt='offline-salt';unknown=@{keep=@(1,$null)}}
+        if ($null -ne $root) { $original.root=$root }
+        $edited=Edit-SunshinePairing (ConvertTo-Json -Depth 100 -InputObject $original) $request.fingerprint $request
+        $data=ConvertFrom-Json $edited.content
+        Assert-Equal $data.username 'offline-admin' 'web username retained'
+        Assert-Equal $data.password 'offline-password-hash' 'web password hash retained'
+        Assert-Equal $data.salt 'offline-salt' 'web salt retained'
+        Assert-Equal $data.unknown.keep.Count 2 'unknown fields retained'
+        Assert-Equal $data.root.named_devices.Count 1 'client registered'
+        if ($null -ne $root -and $root.uniqueid -is [string]) {
+            Assert-Equal $data.root.uniqueid $root.uniqueid 'existing server identity unchanged'
+        } else {
+            Assert-True ($data.root.uniqueid -cmatch '^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$') 'new uppercase server UUID4'
+        }
+    }
+}
+Test 'Sunshine direct pair creates absent state with inherited ACL after shutdown recheck (mocked)' {
+    $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-fresh-pair-'+[Guid]::NewGuid().ToString('N'))
+    $null=New-Item -ItemType Directory -Path $testRoot
+    $script:FreshConfig=Join-Path $testRoot 'sunshine.conf'
+    $script:FreshState=Join-Path $testRoot 'fresh-state.json'
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $json=ConvertTo-Json -Compress -InputObject @{name='phone';cert=$pem}
+    $hash=Get-CertificateFingerprint $pem
+    $script:FreshRunning=$false;$script:FreshLifecycle=@();$script:FreshFlush=$null
+    function Get-SunshineContext {return @{known=$true;installed=$true;config=$script:FreshConfig;values=@{file_state=$script:FreshState};service=@{State=$(if ($script:FreshRunning) {'Running'} else {'Stopped'})}}}
+    function Stop-Service {
+        param($Name,$ErrorAction)
+        $script:FreshLifecycle+='stop';$script:FreshRunning=$false
+        Assert-True (-not (Test-Path -LiteralPath $script:FreshState)) 'no state created before stop'
+        if ($null -ne $script:FreshFlush) { [IO.File]::WriteAllText($script:FreshState,$script:FreshFlush,$script:Utf8) }
+    }
+    function Get-Service {
+        param($Name)
+        $controller=New-Object PSObject
+        $controller | Add-Member -MemberType ScriptMethod -Name WaitForStatus -Value {param($Status,$Timeout);$script:FreshLifecycle+='wait'}
+        return $controller
+    }
+    function Get-CimInstance {param($ClassName,$Filter);return @()}
+    function Start-Service {param($Name,$ErrorAction);$script:FreshLifecycle+='start';$script:FreshRunning=$true}
+    try {
+        # A freshly created sibling is the reference for normal inherited directory ACLs.
+        $reference=Join-Path $testRoot 'acl-reference.json'
+        [IO.File]::WriteAllText($reference,'{}',$script:Utf8)
+        $referenceAcl=Get-Acl -LiteralPath $reference
+        foreach ($running in @($false,$true)) {
+            $script:FreshRunning=$running;$script:FreshLifecycle=@()
+            $result=Invoke-SunshinePair $json
+            Assert-True $result.added 'missing file registered'
+            Assert-Equal $result.replaced 0 'new phone'
+            Assert-Equal $result.restarted $running 'original service state retained'
+            $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:FreshState))
+            Assert-True ($data.root.uniqueid -cmatch '^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$') 'new uppercase server UUID4'
+            Assert-Equal $data.root.named_devices.Count 1 'first client'
+            Assert-Equal (Get-Acl -LiteralPath $script:FreshState).Owner $referenceAcl.Owner 'new owner uses current user'
+            Assert-Equal (Get-Acl -LiteralPath $script:FreshState).Sddl $referenceAcl.Sddl 'directory ACL inherited'
+            Assert-Equal ($script:FreshLifecycle -join '|') $(if ($running) {'stop|wait|start'} else {''}) 'only running service restarted'
+            Remove-Item -LiteralPath $script:FreshState
+        }
+        $script:FreshLifecycle=@();$script:FreshRunning=$true
+        $unpair=Invoke-SunshineUnpair $hash
+        Assert-Equal $unpair.removed 0 'missing state already unpaired'
+        Assert-True (-not $unpair.restarted) 'missing unpair no restart'
+        Assert-Equal $script:FreshLifecycle.Count 0 'missing unpair no service calls'
+        Assert-True (-not (Test-Path -LiteralPath $script:FreshState)) 'unpair does not create state'
+        $script:FreshFlush='{"username":"offline-admin","password":"offline-hash","salt":"offline-salt","root":{"uniqueid":"shutdown-server-id"}}'
+        $result=Invoke-SunshinePair $json
+        Assert-True $result.restarted 'first shutdown file reread'
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:FreshState))
+        Assert-Equal $data.root.uniqueid 'shutdown-server-id' 'shutdown server ID retained'
+        Assert-Equal $data.password 'offline-hash' 'shutdown credentials retained'
+        Assert-Equal $data.salt 'offline-salt' 'shutdown salt retained'
+        $script:FreshState=Join-Path (Join-Path $testRoot 'missing-parent') 'state.json'
+        Assert-Throws {Invoke-SunshinePair $json} 'missing parent rejected'
+        Assert-True (-not (Test-Path -LiteralPath (Split-Path -Parent $script:FreshState))) 'missing parent not created'
+        $notDirectory=Join-Path $testRoot 'parent-is-file'
+        [IO.File]::WriteAllText($notDirectory,'keep',$script:Utf8)
+        $script:FreshState=Join-Path $notDirectory 'state.json'
+        Assert-Throws {Invoke-SunshinePair $json} 'non-directory parent rejected'
+        Assert-Equal ([IO.File]::ReadAllText($notDirectory)) 'keep' 'parent file unchanged'
+
+    } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
+}
+Test 'Sunshine direct pair transaction preserves shutdown state and ACL, restarts only running service (mocked)' {
+    $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('Miffan-pair-'+[Guid]::NewGuid().ToString('N'))
+    $null=New-Item -ItemType Directory -Path $testRoot
+    $script:PairConfig=Join-Path $testRoot 'sunshine.conf'
+    $script:PairState=Join-Path $testRoot 'custom-state.json'
+    $pem=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'certificate.pem'))
+    $json=ConvertTo-Json -Compress -InputObject @{name='Miffan 手机';cert=$pem}
+    $script:PairLifecycle=@();$script:PairRunning=$true;$script:PairStartError=$false;$script:PairStopError=$false
+    function Get-SunshineContext {return @{known=$true;installed=$true;config=$script:PairConfig;values=@{file_state='custom-state.json'};service=@{State=$(if ($script:PairRunning) {'Running'} else {'Stopped'})}}}
+    function Stop-Service {
+        param($Name,$ErrorAction)
+        if ($script:PairStopError) {throw [UnauthorizedAccessException]::new('offline denied')}
+        $script:PairLifecycle+='stop';$script:PairRunning=$false
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))
+        $data | Add-Member -NotePropertyName shutdown_key -NotePropertyValue 'flushed' -Force
+        [IO.File]::WriteAllText($script:PairState,(ConvertTo-Json -InputObject $data -Depth 100),$script:Utf8)
+    }
+    function Get-Service {
+        param($Name)
+        $controller=New-Object PSObject
+        $controller | Add-Member -MemberType ScriptMethod -Name WaitForStatus -Value {param($Status,$Timeout);$script:PairLifecycle+='wait'}
+        return $controller
+    }
+    function Get-CimInstance {param($ClassName,$Filter);return @()}
+    function Start-Service {param($Name,$ErrorAction);$script:PairLifecycle+='start';if ($script:PairStartError) {throw 'offline start error'};$script:PairRunning=$true}
+    try {
+        $original='{"root":{"uniqueid":"server"},"unknown":true}'
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $acl=Get-Acl -LiteralPath $script:PairState
+        $result=Invoke-SunshinePair $json
+        Assert-True $result.added 'new phone written'
+        Assert-Equal $result.replaced 0 'new phone count'
+        Assert-True $result.restarted 'running service restarted'
+        Assert-Equal ($script:PairLifecycle -join '|') 'stop|wait|start' 'shutdown and wait before restart'
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))
+        Assert-Equal $data.shutdown_key 'flushed' 'shutdown state reread'
+        Assert-True $data.unknown 'unknown preserved'
+        Assert-Equal (Get-Acl -LiteralPath $script:PairState).Owner $acl.Owner 'owner preserved'
+        Assert-Equal (Get-Acl -LiteralPath $script:PairState).Sddl $acl.Sddl 'ACL preserved'
+        $script:PairRunning=$false;$script:PairLifecycle=@()
+        $result=Invoke-SunshinePair $json
+        Assert-True (-not $result.restarted) 'stopped stays stopped'
+        Assert-Equal $result.replaced 1 'same phone replaced'
+        Assert-Equal $script:PairLifecycle.Count 0 'no service calls when stopped'
+        # Two duplicate client records are replaced with exactly one new UUID.
+        $data=ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))
+        $data.root.named_devices=@($data.root.named_devices[0],$data.root.named_devices[0])
+        [IO.File]::WriteAllText($script:PairState,(ConvertTo-Json -InputObject $data -Depth 100),$script:Utf8)
+        $script:PairRunning=$true
+        $result=Invoke-SunshinePair $json
+        Assert-Fixture 'sunshine-pair-replaced' $result
+        Assert-Equal (ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))).root.named_devices.Count 1 'duplicates removed'
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $script:PairRunning=$false
+        Assert-Fixture 'sunshine-pair' (Invoke-SunshinePair $json)
+        $script:PairRunning=$true;$script:PairLifecycle=@()
+        [IO.File]::WriteAllText($script:PairState,'{"root":{"named_devices":[1]}}',$script:Utf8)
+        $before=[IO.File]::ReadAllBytes($script:PairState)
+        Assert-Throws {Invoke-SunshinePair $json} 'bad state rejected'
+        Assert-Equal (Get-BytesSha256 ([IO.File]::ReadAllBytes($script:PairState))) (Get-BytesSha256 $before) 'bad state byte identical'
+        Assert-Equal $script:PairLifecycle.Count 0 'bad state no stop'
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $script:PairStopError=$true
+        Assert-Throws {Invoke-SunshinePair $json} 'stop denied'
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'denied stop no write'
+        $script:PairStopError=$false;$script:PairStartError=$true
+        try {Invoke-SunshinePair $json;throw 'expected restart failure'} catch {Assert-Equal $_.Exception.Message 'Sunshine pair attempted; could not restart Sunshine' 'fixed restart detail'}
+        Assert-Equal (ConvertFrom-Json ([IO.File]::ReadAllText($script:PairState))).root.named_devices.Count 1 'pairing retained after failed restart'
+        # Denied atomic replacement and denied reads expose only stable permission details.
+        [IO.File]::WriteAllText($script:PairState,$original,$script:Utf8)
+        $script:PairRunning=$false;$script:PairStartError=$false
+        function Set-Acl {param($LiteralPath,$AclObject,$ErrorAction);throw [UnauthorizedAccessException]::new('offline private path')}
+        try {Invoke-SunshinePair $json;throw 'expected write denial'} catch {Assert-Equal $_.Exception.Message 'Cannot edit Sunshine state or control its service; check administrator rights' 'fixed write detail'}
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'denied write exact bytes'
+        Remove-Item Function:Set-Acl
+        function Get-SunshineContext {throw [UnauthorizedAccessException]::new('offline private path')}
+        try {Invoke-SunshinePair $json;throw 'expected read denial'} catch {Assert-Equal $_.Exception.Message 'Cannot read Sunshine state or configuration; check administrator rights' 'fixed read detail'}
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'denied read exact bytes'
+        function Get-SunshineContext {return @{known=$false;installed=$true}}
+        Assert-Throws {Invoke-SunshinePair $json} 'unknown service model rejected'
+        Assert-Equal ([IO.File]::ReadAllText($script:PairState)) $original 'unknown service no write'
+
     } finally {Remove-Item -LiteralPath $testRoot -Recurse -Force}
 }
 Test 'network validation and Windows dotted-mask canonicalization' {
@@ -168,7 +410,7 @@ Test 'compact JSON retains primitives, Unicode, arrays, null and boolean' {
     Assert-Equal $decoded.items.Count 0 'empty JSON array'
     Assert-Equal $decoded.one.Count 1 'single JSON array'
     Assert-Equal $decoded.detail "中文`nquote\" 'Unicode/escape roundtrip'
-    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) '8' 'integer version contract'
+    Assert-Equal (ConvertTo-PlainJson (Invoke-Helper 'version' '' '')) ([string]$script:HelperVersion) 'integer version contract'
 }
 Test 'firewall review includes exact LAN and detected Tailscale sources without granting writes' {
     function Get-NetIPConfiguration { return @(
@@ -527,6 +769,71 @@ Test 'daemon permission review rejects elevated, unknown or another-user runtime
     Assert-True (Test-CuaPermissionReview $task $context @(8192)) 'elevated autostart still reported'
     $task.Principal.RunLevel='Limited';$task.Principal.UserId='other-user'
     Assert-True (Test-CuaPermissionReview $task $context @(8192)) 'another user task requires review'
+}
+
+Test 'shared machine probe fixture with OS discovery mocked' {
+    $oldArch=$env:PROCESSOR_ARCHITECTURE; $oldName=$env:COMPUTERNAME
+    function Get-ConsoleSession { return @{present=$true;type='console';desktop='windows';id=1;user='fixture';domain='FIXTURE';sid='S-1-5-21-fixture';lock_state='unlocked'} }
+    function Get-CuaStatus { return @{path=$null;installed=$false;version=$null;min='0.34.0';ok=$false;autostart_run_level=$null;daemon_session_ids=@();daemon_integrity_rids=@();bridge_available=$false;permission_review_needed=$false} }
+    function Get-CimInstance { param($ClassName); if ($ClassName -eq 'Win32_OperatingSystem') {return @{Caption='Fixture Windows';Version='10.0';BuildNumber='fixture'}}; return @{Name='Fixture GPU'} }
+    try {
+        $env:PROCESSOR_ARCHITECTURE='AMD64';$env:COMPUTERNAME='Fixture Desktop'
+        Assert-Fixture 'probe' (Invoke-Helper 'probe' '' '')
+    } finally {$env:PROCESSOR_ARCHITECTURE=$oldArch;$env:COMPUTERNAME=$oldName}
+}
+Test 'shared Sunshine probe branches with read-only discovery mocked' {
+    function Get-ConsoleSession {return @{id=1;lock_state='unlocked'}}
+    function Get-StreamCandidates {return ,@('192.168.31.61')}
+    function Get-NetTCPConnection {param($State);return @()}
+    function Get-CertificateFingerprint {param($Pem);throw 'No certificate in this fixture'}
+    function Get-SunshineContext {return $script:ContractContext}
+    function Get-StreamActivity {param($Context);return @{active=$script:ContractBusy;known=$true}}
+    foreach ($name in @('sunshine-missing','sunshine-running','sunshine-busy')) {
+        $installed=$name -ne 'sunshine-missing';$script:ContractBusy=$name -eq 'sunshine-busy'
+        $script:ContractContext=@{known=$installed;installed=$installed;version=$(if($installed){'fixture'}else{$null});config='C:\fixture\sunshine.conf';values=@{lan_encryption_mode='2';wan_encryption_mode='2'};service=$(if($installed){@{State='Running'}}else{$null});processes=$(if($installed){@(@{ProcessId=42;SessionId=1})}else{@()})}
+        Assert-Fixture $name (Get-SunshineProbe)
+    }
+    Assert-Fixture 'sunshine-start' (Invoke-Helper 'sunshine' 'start' '')
+    $script:ContractBusy=$false;$script:ContractContext.content='lan_encryption_mode=2'
+    function Assert-RegularPath {param($Path)}
+    Assert-Fixture 'sunshine-encryption' (Invoke-Helper 'sunshine' 'enforce-encryption' '')
+}
+Test 'shared firewall check review and result fixtures with mutation boundary mocked' {
+    $sources=@('192.168.31.0/24')
+    $safe=Rule 'Miffan-Sunshine-UDP-LAN' 'UDP' @('47998-48000') $sources
+    $snapshot=@{rules=@($safe);profiles=@();profiles_safe=$true}
+    Assert-Fixture 'firewall-check' (Get-FirewallReview $snapshot $exe $sources)
+    Assert-Fixture 'firewall-review' (Get-FirewallReview @{rules=@();profiles=@();profiles_safe=$true} $exe $sources)
+    $script:ContractSnapshot=$snapshot;$script:ContractReads=0
+    function Get-SunshineContext {return @{installed=$true;known=$true;executable=$exe}}
+    function Get-FirewallSnapshot {param($Executable);$script:ContractReads++;if($script:ContractReads -le 2){return @{rules=@();profiles=@();profiles_safe=$true}};return $script:ContractSnapshot}
+    function Invoke-FirewallMutations {param($Plan);Assert-True $Plan.changed 'mocked mutation'}
+    function Save-FirewallBackup {param($Plan,$Snapshot);return 'C:\fixture\backup'}
+    $request=Read-FirewallRequest ([IO.File]::ReadAllText((Join-Path $FixturePath 'firewall-review.json')) | ConvertFrom-Json | Select-Object -ExpandProperty suggested_plan | ConvertTo-Json -Depth 10 -Compress)
+    Assert-Fixture 'firewall-result' (Invoke-FirewallApply $request)
+}
+Test 'shared clipboard fallback and locked-console failure contracts' {
+    function Get-CuaBridgeContext {return @{console=@{present=$true;sid='fixture';id=1;lock_state=$script:ContractLock};sid='fixture';pipe='fixture'}}
+    function Test-CuaBridgeAvailable {param($Name);return $false}
+    function Get-CuaStatus {return @{ok=$false}}
+    function Invoke-DesktopJob {param($Mode,$Text);return @{success=$true;verified=$true;detail='Clipboard written and read back';session_id=1}}
+    $script:ContractLock='unlocked'
+    Assert-Fixture 'clipboard' (Invoke-Helper 'clip' '' '')
+    $script:ContractLock='locked'
+    try { $null=Invoke-Helper 'clip' '' '';throw 'Expected locked refusal' }
+    catch {
+        Assert-True ($_.Exception.Message -cin $script:SafeFailures) 'failure is exportable'
+        Assert-Fixture 'clipboard-failed' @{success=$false;detail=$_.Exception.Message;error_type=$_.Exception.GetType().Name;backup=$null;cleanup_task=$null;cleanup_directory=$null}
+    }
+}
+Test 'shared clipboard stream replies match C# producer literals' {
+    $literals=[regex]::Matches($script:CuaBridgeSource,'"\{\\"success\\":(?:true|false),\\"verified\\":(?:true|false)\}"')
+    Assert-Equal $literals.Count 2 'two C# stream reply branches'
+    $names=@('clipboard-serve','clipboard-serve-failed')
+    for($i=0;$i -lt 2;$i++) {
+        $line=$literals[$i].Value.Trim('"').Replace('\"','"')
+        Assert-Fixture $names[$i] (ConvertFrom-Json $line)
+    }
 }
 
 [Console]::Out.WriteLine((ConvertTo-PlainJson @{success=$true;passed=$script:Passed;scope='offline; firewall/service/task mutations mocked'}))

@@ -11,8 +11,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteSunshineUnpairTest {
-    private fun fixture(name: String): File = sequenceOf(File("tools/windows-helper-tests/$name"), File("../tools/windows-helper-tests/$name"))
-        .first { it.isFile }
+    private fun fixture(name: String): File = File(System.getProperty("remoteHelper.windowsTests"), name)
 
     @Test fun `fingerprint hashes the DER certificate independent of PEM line endings`() {
         val pem = fixture("certificate.pem").readText()
@@ -32,7 +31,7 @@ class RemoteSunshineUnpairTest {
             val assets = mockk<AssetManager>()
             val commands = mutableListOf<String>()
             every { ssh.platform } returns platform
-            every { assets.open(any()) } answers { File("src/main/assets/" + firstArg<String>()).inputStream() }
+            every { assets.open(any()) } answers { File(System.getProperty("remoteHelper.assets"), firstArg<String>().removePrefix("remote/")).inputStream() }
             val expected = fixture("certificate.sha256").readText().trim()
             every { ssh.execute(any(), any(), any(), any(), any()) } answers {
                 val command = firstArg<String>(); commands += command
@@ -41,7 +40,7 @@ class RemoteSunshineUnpairTest {
                 } else {
                     if (arg<java.io.InputStream?>(4) != null) {
                         val bytes = arg<java.io.InputStream?>(4)!!.readBytes()
-                        assertArrayEquals(File("src/main/assets/remote/" + if (platform == RemotePlatform.WINDOWS) "miffan.ps1" else "miffan.sh").readBytes(), bytes)
+                        assertArrayEquals(File(System.getProperty("remoteHelper.assets"), if (platform == RemotePlatform.WINDOWS) "miffan.ps1" else "miffan.sh").readBytes(), bytes)
                     }
                     WorkspaceCommandResult(0, "old-version", "")
                 }
@@ -59,7 +58,7 @@ class RemoteSunshineUnpairTest {
             val ssh = mockk<RemoteWorkspaceSession>()
             val assets = mockk<AssetManager>()
             every { ssh.platform } returns RemotePlatform.POSIX
-            every { assets.open(any()) } answers { File("src/main/assets/" + firstArg<String>()).inputStream() }
+            every { assets.open(any()) } answers { File(System.getProperty("remoteHelper.assets"), firstArg<String>().removePrefix("remote/")).inputStream() }
             every { ssh.execute(any(), any(), any(), any(), any()) } returns result
             assertThrows(IllegalStateException::class.java) {
                 RemoteSunshineUnpair(assets) { fixture("certificate.pem").readText() }.unpair(ssh)

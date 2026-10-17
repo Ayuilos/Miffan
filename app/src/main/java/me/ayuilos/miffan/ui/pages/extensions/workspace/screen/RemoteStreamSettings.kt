@@ -30,6 +30,7 @@ import me.ayuilos.miffan.R
 import me.rerere.workspace.RemotePlatform
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
+import me.ayuilos.miffan.data.repository.RemoteStreamManualPinReason
 import me.ayuilos.miffan.data.repository.RemoteStreamStatus
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
@@ -124,7 +125,7 @@ internal fun RemoteStreamSettings(
                 EnvironmentRow(stringResource(R.string.workspace_screen_stream_pairing),
                     if (status.paired) EnvironmentStatus.OK else EnvironmentStatus.ACTION_NEEDED,
                     stringResource(if (status.paired) R.string.workspace_screen_stream_paired else R.string.workspace_screen_stream_unpaired))
-                // Sunshine only accepts a PIN while it runs, so pairing waits for it.
+                // Pairing restarts a running Sunshine to load this phone, so it waits for Sunshine to run.
                 if (!status.paired && status.running) {
                     TextButton(enabled = !busy, onClick = { vm.pairStream(host) }) {
                         Text(stringResource(R.string.workspace_screen_stream_pair))
@@ -145,8 +146,11 @@ internal fun RemoteStreamSettings(
             onConfirm = { confirmEncryption = false; vm.enforceStreamEncryption(host) },
             onDismiss = { confirmEncryption = false })
     }
-    if (state.phase == RemoteStreamSetupPhase.PAIRING && state.connectionRevision == host.connectionRevision) {
-        RemoteStreamPairingDialog(pin = state.pin, onCancel = vm::cancelStreamPairing)
+    if (state.connectionRevision == host.connectionRevision) {
+        if (state.confirmInterrupt) RemoteStreamInterruptDialog(onConfirm = { vm.pairStream(host, interruptActiveStream = true) },
+            onDismiss = { vm.dismissStreamInterrupt(host) })
+        if (state.phase == RemoteStreamSetupPhase.PAIRING)
+            RemoteStreamPairingDialog(pin = state.pin, manualPinReason = state.manualPinReason, onCancel = vm::cancelStreamPairing)
     }
 }
 
@@ -217,8 +221,9 @@ internal fun RemoteStreamEnableFlow(
     state: RemoteStreamSetupState,
     onStart: () -> Unit,
     onEnforce: () -> Unit,
-    onPair: () -> Unit,
+    onPair: (interruptActiveStream: Boolean) -> Unit,
     onCancelPairing: () -> Unit,
+    onDismissInterrupt: () -> Unit,
     onEnable: () -> Unit,
     /** True when high-performance mode ended up switched on. */
     onFinished: (Boolean) -> Unit,
@@ -229,14 +234,14 @@ internal fun RemoteStreamEnableFlow(
     var paired by remember { mutableStateOf(false) }
     var switched by remember { mutableStateOf(false) }
     val status = state.status
-    LaunchedEffect(state.phase, status, state.enabled) {
-        if (state.busy || status == null || askEncryption) return@LaunchedEffect
+    LaunchedEffect(state.phase, status, state.enabled, state.confirmInterrupt) {
+        if (state.busy || status == null || askEncryption || state.confirmInterrupt) return@LaunchedEffect
         when {
             !status.installed -> onFinished(false)
             // Pressing "Turn on" includes starting Sunshine once if it is installed but closed.
             !status.running -> if (started) onFinished(false) else { started = true; onStart() }
             !status.encryptionEnforced -> if (enforced) onFinished(false) else askEncryption = true
-            !status.paired -> if (paired) onFinished(false) else { paired = true; onPair() }
+            !status.paired -> if (paired) onFinished(false) else { paired = true; onPair(false) }
             state.enabled != true -> if (switched) onFinished(false) else { switched = true; onEnable() }
             else -> onFinished(true)
         }
@@ -246,33 +251,68 @@ internal fun RemoteStreamEnableFlow(
             onConfirm = { askEncryption = false; enforced = true; onEnforce() },
             onDismiss = { askEncryption = false; onFinished(false) })
     }
-    if (state.phase == RemoteStreamSetupPhase.PAIRING) RemoteStreamPairingDialog(pin = state.pin, onCancel = onCancelPairing)
+    if (state.confirmInterrupt) RemoteStreamInterruptDialog(onConfirm = { onPair(true) }, onDismiss = onDismissInterrupt)
+    if (state.phase == RemoteStreamSetupPhase.PAIRING)
+        RemoteStreamPairingDialog(pin = state.pin, manualPinReason = state.manualPinReason, onCancel = onCancelPairing)
 }
 
-/** Shows the PIN to type into Sunshine's web page and waits; only cancelling closes it early. */
+/** Pairing restarts Sunshine, so a stream already running on the computer would be cut off. */
 @Composable
-internal fun RemoteStreamPairingDialog(pin: String?, onCancel: () -> Unit) {
+internal fun RemoteStreamInterruptDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.workspace_screen_stream_pair_busy_title)) },
+        text = { Text(stringResource(R.string.workspace_screen_stream_pair_busy)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.workspace_screen_stream_pair_busy_confirm)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
+/**
+ * Pairing in progress. The app pairs directly and the user only waits; it cannot be stopped there,
+ * since that would leave Sunshine half-restarted. Only when that falls back ([manualPinReason]) does
+ * the PIN to type into Sunshine's web page appear, with the reason and a way to cancel.
+ */
+@Composable
+internal fun RemoteStreamPairingDialog(pin: String?, manualPinReason: RemoteStreamManualPinReason?, onCancel: () -> Unit) {
     AlertDialog(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
         title = { Text(stringResource(R.string.workspace_screen_stream_pair_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(R.string.workspace_screen_stream_pair_steps))
+                if (manualPinReason != null) {
+                    Text(stringResource(streamManualPinReasonText(manualPinReason)), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.workspace_screen_stream_pair_steps))
+                }
                 if (pin != null) {
                     Text(pin.toList().joinToString(" "), Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
                         fontFamily = FontFamily.Monospace, fontSize = 40.sp, style = MaterialTheme.typography.displaySmall)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(stringResource(if (pin == null) R.string.workspace_screen_stream_pair_starting else R.string.workspace_screen_stream_pair_waiting),
-                        style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(when {
+                        manualPinReason == null -> R.string.workspace_screen_stream_pair_direct
+                        pin == null -> R.string.workspace_screen_stream_pair_starting
+                        else -> R.string.workspace_screen_stream_pair_waiting
+                    }), style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) } },
+        dismissButton = {
+            if (manualPinReason != null) TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
+        },
     )
+}
+
+private fun streamManualPinReasonText(reason: RemoteStreamManualPinReason): Int = when (reason) {
+    RemoteStreamManualPinReason.CERTIFICATE_UNAVAILABLE -> R.string.workspace_screen_stream_pair_manual_certificate
+    RemoteStreamManualPinReason.STATE_UNRECOGNIZED -> R.string.workspace_screen_stream_pair_manual_state
+    RemoteStreamManualPinReason.NO_PERMISSION -> R.string.workspace_screen_stream_pair_manual_permission
+    RemoteStreamManualPinReason.SUNSHINE_DID_NOT_STOP -> R.string.workspace_screen_stream_pair_manual_stop
+    RemoteStreamManualPinReason.NOT_CONFIRMED -> R.string.workspace_screen_stream_pair_manual_unconfirmed
 }
 
 /** Sunshine refusing the PIN keeps the plain advice; anything else says what went wrong. */

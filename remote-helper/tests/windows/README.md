@@ -6,10 +6,11 @@ helper 和 PowerShell 测试文件均为 **UTF-8 with BOM**。公开的 `certifi
 
 ## 离线测试（Windows）
 
-从仓库根目录运行：
+从仓库根目录先构建展开后的 helper，再运行（默认 HelperPath 指向生成目录，FixturePath 指向共享 ps1 fixtures）：
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools\windows-helper-tests\Test-Helper.ps1
+./gradlew :app:assembleRemoteHelper
+powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File remote-helper\tests\windows\Test-Helper.ps1
 ```
 
 也可显式传入 helper 路径：
@@ -35,10 +36,10 @@ JSON 脚本头，后面为原始 UTF-8 stdin；helper 保留已有 UTF-8 reader�
 
 ```sh
 # 上传四个脚本/公开夹具到 LOCALAPPDATA\Miffan\p7b-tests，再运行离线测试。
-python3 tools/windows-helper-tests/stage.py
+python3 remote-helper/tests/windows/stage.py
 
 # 只读命令 + start/enforce 的无变化路径；从不运行 firewall apply。
-python3 tools/windows-helper-tests/smoke.py --display --out /private/tmp/p7b-smoke.json
+python3 remote-helper/tests/windows/smoke.py --display --out /private/tmp/p7b-smoke.json
 ```
 
 `smoke.py` 不运行任何 `firewall apply`，包括空变更。运行 start/enforce 前会确认
@@ -49,7 +50,7 @@ python3 tools/windows-helper-tests/smoke.py --display --out /private/tmp/p7b-smo
 
 ```sh
 # 必须在 herdr pane 中运行；每次自动先通知 Claude，再发送 Enter，之后才写剪贴板。
-python3 tools/windows-helper-tests/clip-smoke.py
+python3 remote-helper/tests/windows/clip-smoke.py
 ```
 
 该命令只写一次中英文/emoji/换行/tab/引号文本，Session 1 中立即读回比对，
