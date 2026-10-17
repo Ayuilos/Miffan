@@ -110,6 +110,8 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
                PATH=str(bindir)+os.pathsep+os.environ["PATH"], XDG_CURRENT_DESKTOP="GNOME",
                WAYLAND_DISPLAY="fixture", XDG_RUNTIME_DIR=str(root),
                XDG_CONFIG_HOME=str(root/'.config'), DBUS_SESSION_BUS_ADDRESS='unix:path='+str(root/'bus'))
+    # A runner with a desktop would otherwise report its own xrandr geometry in the samples.
+    env.pop('DISPLAY', None)
     def start(password=secret):
         result = subprocess.run(["sh", str(HELPER), "rdp", "start"], input=password+"\n",
                                 text=True, capture_output=True, env=env, timeout=25)
