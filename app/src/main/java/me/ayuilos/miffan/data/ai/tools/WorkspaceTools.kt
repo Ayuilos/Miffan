@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.ai.tools
 
 import me.rerere.ai.ui.ToolDecisionVia
+import me.ayuilos.miffan.data.ai.standingApprovalKey
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -76,6 +77,7 @@ suspend fun createWorkspaceTools(
     shellApprovalVia: ToolDecisionVia? = null,
     /** How the partner may use this workspace when it is the partner's computer; null for any other workspace. */
     computerUse: ComputerUseMode? = null,
+    standingToolApprovals: Set<String> = emptySet(),
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
     if (computerUse == ComputerUseMode.OFF) return emptyList()
@@ -90,7 +92,7 @@ suspend fun createWorkspaceTools(
     fun needsApproval(name: String) = computerUse?.let { computerWorkspaceApproval(name, it) } ?: if (name == WORKSPACE_SHELL_TOOL_NAME) {
         shellApprovalRequired || shellApprovalTarget?.sameTarget(snapshot) != true
     } else {
-        resolveWorkspaceToolApproval(name, approvalOverrides)
+        standingApprovalKey(name) !in standingToolApprovals && resolveWorkspaceToolApproval(name, approvalOverrides)
     }
 
     val shellCwd = if (workspace.isRemote) cwd else cwd?.toWorkspaceRelativeCwd()
@@ -109,6 +111,12 @@ suspend fun createWorkspaceTools(
             }))
             if (workspace.isRemote && conversationId != null && !target.windows) add(createTerminalTool(snapshot, shellCwd))
         }
+    }.map { tool ->
+        if (computerUse == null && standingApprovalKey(tool.name) in standingToolApprovals) tool.copy(
+            autoApprovedBy = { input ->
+                if (tool.needsApproval(input)) null else ToolDecisionVia.STANDING_ALWAYS_ALLOW
+            },
+        ) else tool
     }
 }
 

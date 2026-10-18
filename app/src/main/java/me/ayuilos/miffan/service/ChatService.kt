@@ -39,6 +39,10 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import me.ayuilos.miffan.data.ai.standingApprovalKey
+import me.ayuilos.miffan.data.ai.withStandingApprovals
+import me.ayuilos.miffan.data.ai.tools.local.validCalendarCreateInput
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -190,6 +194,15 @@ internal fun shouldEnableMiffanHelp(
     model: Model,
     globalEnabled: Boolean,
 ): Boolean = ModelAbility.TOOL in model.abilities && assistant.isMiffanHelpEnabled(globalEnabled)
+
+/** Updates one assistant's exact standing key while preserving concurrent settings edits. */
+internal fun Settings.withStandingApproval(assistantId: Uuid, key: String, allowed: Boolean): Settings = copy(
+    assistants = assistants.map { assistant ->
+        if (assistant.id != assistantId) assistant else assistant.copy(
+            standingToolApprovals = if (allowed) assistant.standingToolApprovals + key else assistant.standingToolApprovals - key,
+        )
+    },
+)
 
 internal fun Conversation.approvePendingWorkspaceShellTools(
     currentTarget: WorkspaceToolTargetSnapshot?,
@@ -891,6 +904,8 @@ class ChatService(
         reason: String,
         answer: String?,
         via: ToolDecisionVia,
+        standingKey: String? = null,
+        editedInput: JsonObject? = null,
     ): Job? {
         val session = getOrCreateSession(conversationId)
         val receiptId = terminalResultReceiptId(answer)
@@ -909,9 +924,13 @@ class ChatService(
             if (approved && answer == null) return null
         }
 
+        val batchIds = if (standingKey != null) session.state.value.currentMessageNodes.lastOrNull()
+            ?.currentMessage?.getTools().orEmpty()
+            .filter { it.isPending && !it.isExecuted && standingApprovalKey(it.toolName) == standingKey }
+            .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId)
         val hasOtherPendingTools = session.state.value.currentMessageNodes.any { node ->
             node.currentMessage.parts.any { part ->
-                part is UIMessagePart.Tool && part.isPending && part.toolCallId != toolCallId
+                part is UIMessagePart.Tool && part.isPending && part.toolCallId !in batchIds
             }
         }
 
@@ -921,6 +940,17 @@ class ChatService(
         ) {
             try {
                 val conversation = session.state.value
+                val tip = conversation.currentMessageNodes.lastOrNull()?.currentMessage
+                val specialApproval = standingKey != null || editedInput != null
+                val pending = tip?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted }
+                if (specialApproval && (pending == null ||
+                        (standingKey != null && standingApprovalKey(pending.toolName) != standingKey) ||
+                        (editedInput != null && (pending.toolName != "calendar_create" || !validCalendarCreateInput(editedInput))))) {
+                    return@launchGenerationJob
+                }
+                val approvedIds = if (standingKey != null) tip?.getTools().orEmpty()
+                    .filter { it.isPending && !it.isExecuted && standingApprovalKey(it.toolName) == standingKey }
+                    .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId)
                 val newApprovalState = when {
                     answer != null -> ToolApprovalState.Answered(answer)
                     approved -> ToolApprovalState.Approved
@@ -932,13 +962,19 @@ class ChatService(
                     currentAssistant?.let { currentWorkspaceToolTargetFor(it)?.copy(conversationId = conversation.id.toString()) }
                 } else null
 
+                if (standingKey != null) {
+                    if (currentAssistant == null) return@launchGenerationJob
+                    settingsStore.update { settings -> settings.withStandingApproval(conversation.assistantId, standingKey, allowed = true) }
+                }
+
                 // Update the tool approval state
                 val updatedNodes = conversation.messageNodes.map { node ->
                     node.withMessage(
                         node.message.copy(
                             parts = node.message.parts.map { part ->
                                 when {
-                                    part is UIMessagePart.Tool && part.toolCallId == toolCallId &&
+                                    part is UIMessagePart.Tool && part.toolCallId in approvedIds &&
+                                        (!specialApproval || (node.message.id == tip?.id && part.isPending && !part.isExecuted)) &&
                                         (receiptId == null || part.terminalRequestId == receiptId) -> {
                                         // Terminal results describe an operation already dispatched
                                         // against its saved target; a later rebind must not erase it.
@@ -950,7 +986,7 @@ class ChatService(
                                                 "Workspace Shell was disabled after this call was created. Please request it again."
                                             } else workspaceToolTargetError(part, currentTarget)
                                         } else null
-                                        part.recordCardDecision(
+                                        (if (editedInput != null) part.copy(input = editedInput.toString()) else part).recordCardDecision(
                                             staleReason?.let { ToolApprovalState.Denied(it) } ?: newApprovalState,
                                             via, Clock.System.now().toEpochMilliseconds(),
                                         )
@@ -982,6 +1018,27 @@ class ChatService(
             }
         }
 
+    }
+
+    /** Persists an eligible pending call's standing grant and approves matching calls in this reply. */
+    fun alwaysAllowTool(conversationId: Uuid, toolCallId: String) {
+        val call = getOrCreateSession(conversationId).state.value.currentMessageNodes.lastOrNull()
+            ?.currentMessage?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted } ?: return
+        val key = standingApprovalKey(call.toolName) ?: return
+        applyToolApproval(conversationId, toolCallId, true, "", null, ToolDecisionVia.ALWAYS_ALLOW, standingKey = key)
+    }
+
+    /** Removes one assistant's standing grant without affecting other assistants. */
+    fun revokeStandingApproval(assistantId: Uuid, key: String) {
+        appScope.launch { settingsStore.update { it.withStandingApproval(assistantId, key, allowed = false) } }
+    }
+
+    /** Approves a pending calendar creation with the owner's validated replacement arguments. */
+    fun approveToolWithInput(conversationId: Uuid, toolCallId: String, input: JsonObject) {
+        val call = getOrCreateSession(conversationId).state.value.currentMessageNodes.lastOrNull()
+            ?.currentMessage?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted } ?: return
+        if (call.toolName != "calendar_create" || !validCalendarCreateInput(input)) return
+        applyToolApproval(conversationId, toolCallId, true, "", null, ToolDecisionVia.CARD, editedInput = input)
     }
 
     /** Approve this batch and persist the choice only for the current Assistant scope. */
@@ -1158,7 +1215,7 @@ class ChatService(
                     add(me.ayuilos.miffan.data.ai.transformers.PartnerMentionTransformer(turnConversation, settings))
                 },
                 outputTransformers = outputTransformers,
-                dynamicTools = { computerToolbox?.tools().orEmpty().withAgentRelayApproval(access, dynamic = true) },
+                dynamicTools = { computerToolbox?.tools().orEmpty().withStandingApprovals(assistant).withAgentRelayApproval(access, dynamic = true) },
                 tools = buildList {
                     if (imageToolEnabled) {
                         add(createImageGenerationTool(
@@ -1292,7 +1349,7 @@ class ChatService(
                                 turnConversation.ownerMentionedPartnerIds(settings).toSet() else emptySet(),
                         ))
                     }
-                }.withAgentRelayApproval(access),
+                }.withStandingApprovals(assistant).withAgentRelayApproval(access),
             ).onCompletion { cause ->
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
@@ -1446,6 +1503,7 @@ class ChatService(
             cwd = cwd,
             conversationId = conversationId,
             computerUse = computerUse,
+            standingToolApprovals = assistant.standingToolApprovals,
         )
     }
 
