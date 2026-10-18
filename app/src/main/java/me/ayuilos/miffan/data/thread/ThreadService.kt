@@ -78,6 +78,7 @@ class ThreadService(
         messageId: Uuid = Uuid.random(),
         createdAt: LocalDateTime? = null,
         freshStart: Boolean = false,
+        reviewedHistory: Boolean = false,
     ): Uuid {
         val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId)
             ?: error("Assistant not found: $assistantId")
@@ -116,7 +117,7 @@ class ThreadService(
                     closeSegmentIds = candidates.filter { it.threadClosedAt == 0L }.mapTo(HashSet()) { it.id },
                     start = if (ownerStart) TopicStart.OWNER else TopicStart.WELCOME,
                 )
-                else -> router.route(RouteRequest(assistant, content, candidates, now))
+                else -> router.route(RouteRequest(assistant, content, candidates, now, reviewedHistory = reviewedHistory))
             }
             Log.i(TAG, "route ${assistant.id}: $decision")
             val segmentId = when (decision) {

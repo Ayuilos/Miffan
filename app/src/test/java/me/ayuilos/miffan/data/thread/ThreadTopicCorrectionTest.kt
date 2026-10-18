@@ -73,8 +73,28 @@ class ThreadTopicCorrectionTest {
             coEvery { router.route(any()) } answers { RouteDecision.New("new") }
             service = ThreadService(chat, store, router, summarizer, repo)
         }
-        suspend fun send(fresh: Boolean = false, reply: MessageRef? = null, topic: Uuid? = null) =
-            service.send(assistant.id, content, emptyList(), replyTo = reply, topicSegmentId = topic, freshStart = fresh)
+        suspend fun send(fresh: Boolean = false, reply: MessageRef? = null, topic: Uuid? = null, reviewedHistory: Boolean = false) =
+            service.send(assistant.id, content, emptyList(), replyTo = reply, topicSegmentId = topic,
+                freshStart = fresh, reviewedHistory = reviewedHistory)
+    }
+
+    @Test fun reviewedHistoryIsForwardedToRouterWithoutChangingExplicitTopicPriority() = runTest {
+        val old = segment(0, message(MessageRole.USER, 0))
+        val f = Fixture(old)
+        coEvery { f.router.route(any()) } returns RouteDecision.Existing(old.id, "same")
+        assertEquals(old.id, f.send(reviewedHistory = true))
+        coVerify(exactly = 1) { f.router.route(match { it.reviewedHistory }) }
+        assertEquals(old.id, f.send())
+        coVerify(exactly = 1) { f.router.route(match { !it.reviewedHistory }) }
+
+        clearMocks(f.router, answers = false)
+        f.service.requestNewTopic(assistant.id)
+        assertEquals(old.id, f.send(topic = old.id, reviewedHistory = true))
+        assertTrue(assistant.id in f.service.pendingNewTopic.value)
+        val id = f.send(reviewedHistory = true)
+        assertEquals(TopicStart.OWNER, f.data.getValue(id).topicStart)
+        assertFalse(assistant.id in f.service.pendingNewTopic.value)
+        coVerify(exactly = 0) { f.router.route(any()) }
     }
 
     @Test fun newStartsAreWrittenWhenOpeningAndFirstSegmentHasNoReason() = runTest {

@@ -41,7 +41,7 @@ class SmartSegmentRouter(
         val newest = open.firstOrNull() ?: return RouteDecision.New("no open segment", start = TopicStart.AUTO.takeIf { request.segments.any { it.chatId == null } })
         val stale = open.filter { now - it.updateAt.toEpochMilli() > candidateIdleMillis }
             .mapTo(HashSet()) { it.id }
-        if (now - newest.updateAt.toEpochMilli() > hardIdleMillis) {
+        if (!request.reviewedHistory && now - newest.updateAt.toEpochMilli() > hardIdleMillis) {
             return RouteDecision.New("thread idle", closeSegmentIds = stale + newest.id, start = TopicStart.IDLE)
         }
 

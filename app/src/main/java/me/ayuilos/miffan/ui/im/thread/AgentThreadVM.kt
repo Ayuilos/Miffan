@@ -283,7 +283,7 @@ class AgentThreadVM(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Sends [parts] (text, images, files) to the thread; routing picks the segment. */
-    fun send(parts: List<UIMessagePart>, freshStart: Boolean = false) {
+    fun send(parts: List<UIMessagePart>, freshStart: Boolean = false, reviewedHistory: Boolean = false) {
         clearUndoMerge()
         val topicSegmentId = _topicFilter.value
         val replyTo = _replyTarget.value?.ref
@@ -299,6 +299,7 @@ class AgentThreadVM(
                     replyTo = replyTo,
                     topicSegmentId = topicSegmentId,
                     freshStart = freshStart,
+                    reviewedHistory = reviewedHistory,
                     messageId = message.id,
                     createdAt = message.createdAt,
                 )

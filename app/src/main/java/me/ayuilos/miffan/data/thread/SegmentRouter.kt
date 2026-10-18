@@ -13,6 +13,7 @@ data class RouteRequest(
     /** Loaded segments of the thread, newest first. */
     val segments: List<Conversation>,
     val now: Instant,
+    val reviewedHistory: Boolean = false,
 )
 
 sealed interface RouteDecision {

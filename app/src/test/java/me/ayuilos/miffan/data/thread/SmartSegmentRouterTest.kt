@@ -62,6 +62,63 @@ class SmartSegmentRouterTest {
     }
 
     @Test
+    fun reviewedHistoryOffersThirteenHourIdleNewestSegmentToClassifier() = runBlocking {
+        val newest = segment(13 * 60)
+        val older = segment(14 * 60)
+        val classifier = FakeClassifier(TopicClassification.Existing(0))
+        val decision = SmartSegmentRouter(classifier).route(
+            request("接着昨天说的", older, newest).copy(reviewedHistory = true)
+        )
+        assertEquals(RouteDecision.Existing(newest.id, "same topic"), decision)
+        assertEquals(1, classifier.calls)
+        assertEquals(listOf(newest.id), classifier.lastCandidates.map { it.segmentId })
+    }
+
+    @Test
+    fun reviewedHistoryStillClosesIdleSegmentsWhenClassifierConfirmsNewTopic() = runBlocking {
+        val newest = segment(13 * 60)
+        val older = segment(14 * 60)
+        val classifier = FakeClassifier(TopicClassification.New(0.9))
+        val decision = SmartSegmentRouter(classifier).route(
+            request("完全不同的话题", older, newest).copy(reviewedHistory = true)
+        ) as RouteDecision.New
+        assertEquals(TopicStart.AUTO, decision.start)
+        assertEquals(setOf(newest.id, older.id), decision.closeSegmentIds)
+        assertEquals(1, classifier.calls)
+        assertEquals(listOf(newest.id), classifier.lastCandidates.map { it.segmentId })
+    }
+
+    @Test
+    fun reviewedHistoryContinuesIdleNewestSegmentWhenClassifierFailsOrIsUncertain() = runBlocking {
+        val newest = segment(13 * 60)
+        val older = segment(14 * 60)
+        for (result in listOf(null, TopicClassification.New(0.75))) {
+            val classifier = FakeClassifier(result)
+            val decision = SmartSegmentRouter(classifier).route(
+                request("接着昨天说的", older, newest).copy(reviewedHistory = true)
+            )
+            assertEquals(newest.id, (decision as RouteDecision.Existing).segmentId)
+            assertEquals(1, classifier.calls)
+            assertEquals(listOf(newest.id), classifier.lastCandidates.map { it.segmentId })
+        }
+    }
+
+    @Test
+    fun reviewedHistoryKeepsFullShortAndNoOpenSegmentRules() = runBlocking {
+        val classifier = FakeClassifier(TopicClassification.Existing(0))
+        val router = SmartSegmentRouter(classifier, maxSegmentChars = 50)
+        val full = segment(13 * 60, text = "x".repeat(100))
+        val fullDecision = router.route(request("接着昨天说的", full).copy(reviewedHistory = true)) as RouteDecision.New
+        assertEquals(TopicStart.AUTO, fullDecision.start)
+        assertEquals(setOf(full.id), fullDecision.closeSegmentIds)
+        val idle = segment(13 * 60)
+        assertEquals(idle.id, (router.route(request("好的", idle).copy(reviewedHistory = true)) as RouteDecision.Existing).segmentId)
+        val closed = idle.copy(threadClosedAt = 1)
+        assertEquals(TopicStart.AUTO, (router.route(request("接着昨天说的", closed).copy(reviewedHistory = true)) as RouteDecision.New).start)
+        assertEquals(0, classifier.calls)
+    }
+
+    @Test
     fun threeHourIdleNewestSegmentStillReachesTheClassifier() = runBlocking {
         val newest = segment(3 * 60)
         val older = segment(4 * 60)
