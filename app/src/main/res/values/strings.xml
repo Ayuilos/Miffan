@@ -1972,7 +1972,6 @@
   <string name="im_p5_not_now">Not this time</string>
   <string name="im_p5_search_records">Chat history · %1$d</string>
   <string name="im_p5_search_empty">No matches found</string>
-  <string name="im_p5_search_hint">Search partners or messages</string>
   <string name="im_p5_connect">Connect an AI service</string>
   <string name="im_p5_connect_desc">Connect once, then keep chatting with your partners.</string>
   <string name="im_p5_one_click">One-click login</string>

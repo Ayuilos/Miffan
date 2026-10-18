@@ -1960,7 +1960,6 @@
   <string name="im_p5_not_now">這次不用</string>
   <string name="im_p5_search_records">聊天記錄 · %1$d 條</string>
   <string name="im_p5_search_empty">沒有找到符合的結果</string>
-  <string name="im_p5_search_hint">搜尋伙伴或訊息</string>
   <string name="im_p5_connect">連接 AI 服務</string>
   <string name="im_p5_connect_desc">只需連接一次，就能和伙伴一直聊下去。</string>
   <string name="im_p5_one_click">一鍵登入</string>

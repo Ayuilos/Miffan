@@ -1962,7 +1962,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_not_now">이번에는 안 함</string>
   <string name="im_p5_search_records">채팅 기록 · %1$d개</string>
   <string name="im_p5_search_empty">일치하는 결과가 없어요</string>
-  <string name="im_p5_search_hint">파트너나 메시지 검색</string>
   <string name="im_p5_connect">AI 서비스 연결</string>
   <string name="im_p5_connect_desc">한 번 연결하면 파트너와 계속 대화할 수 있어요.</string>
   <string name="im_p5_one_click">원클릭 로그인</string>

@@ -1965,7 +1965,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_p5_not_now">这次不用</string>
   <string name="im_p5_search_records">聊天记录 · %1$d 条</string>
   <string name="im_p5_search_empty">没有找到匹配结果</string>
-  <string name="im_p5_search_hint">搜索伙伴或消息</string>
   <string name="im_p5_connect">连接 AI 服务</string>
   <string name="im_p5_connect_desc">只需连接一次，就能和伙伴一直聊下去。</string>
   <string name="im_p5_one_click">一键登录</string>

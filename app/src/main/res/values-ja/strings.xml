@@ -1962,7 +1962,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_not_now">今回は使わない</string>
   <string name="im_p5_search_records">チャット履歴 · %1$d 件</string>
   <string name="im_p5_search_empty">一致する結果がありません</string>
-  <string name="im_p5_search_hint">パートナーやメッセージを検索</string>
   <string name="im_p5_connect">AI サービスに接続</string>
   <string name="im_p5_connect_desc">一度接続すれば、パートナーとずっと話せます。</string>
   <string name="im_p5_one_click">ワンクリックログイン</string>

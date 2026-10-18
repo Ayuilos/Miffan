@@ -1962,7 +1962,6 @@
   <string name="im_p5_not_now">Не сейчас</string>
   <string name="im_p5_search_records">История чатов · %1$d</string>
   <string name="im_p5_search_empty">Совпадений нет</string>
-  <string name="im_p5_search_hint">Поиск партнёров и сообщений</string>
   <string name="im_p5_connect">Подключите сервис ИИ</string>
   <string name="im_p5_connect_desc">Подключитесь один раз и общайтесь с партнёрами.</string>
   <string name="im_p5_one_click">Вход в один клик</string>
