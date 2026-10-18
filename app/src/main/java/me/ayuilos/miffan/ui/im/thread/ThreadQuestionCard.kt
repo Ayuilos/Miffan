@@ -32,7 +32,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,9 +74,10 @@ internal fun UIMessagePart.Tool.userQuestions(): List<UserQuestion> = runCatchin
 @Composable
 internal fun ThreadQuestionCard(tool: UIMessagePart.Tool, onAnswer: (String, String) -> Unit, replyHint: Boolean = true) {
     val questions = remember(tool.input) { tool.userQuestions() }
-    val answers = remember(tool.toolCallId) { mutableStateMapOf<String, String>() }
-    val picked = remember(tool.toolCallId) { mutableStateMapOf<String, Set<String>>() }
-    var index by rememberSaveable(tool.toolCallId) { mutableIntStateOf(0) }
+    val draft = remember(tool.toolCallId) { QuestionDrafts.getOrPut(tool.toolCallId) { QuestionDraft() } }
+    val answers = draft.answers
+    val picked = draft.picked
+    var index by draft.index
     var sent by remember(tool.toolCallId) { mutableStateOf(false) }
     fun UserQuestion.answered() = if (type == "multi") !picked[id].isNullOrEmpty() else !answers[id].isNullOrBlank()
     val current = questions.getOrNull(index.coerceIn(0, (questions.size - 1).coerceAtLeast(0)))
@@ -148,6 +148,7 @@ internal fun ThreadQuestionCard(tool: UIMessagePart.Tool, onAnswer: (String, Str
                                 return@Button
                             }
                             sent = true
+                            QuestionDrafts.remove(tool.toolCallId)
                             onAnswer(tool.toolCallId, buildJsonObject {
                                 put("answers", buildJsonObject {
                                     questions.forEach { q ->
@@ -166,6 +167,19 @@ internal fun ThreadQuestionCard(tool: UIMessagePart.Tool, onAnswer: (String, Str
         }
     }
 }
+
+/** Answers in progress for one call. */
+private class QuestionDraft {
+    val answers = mutableStateMapOf<String, String>()
+    val picked = mutableStateMapOf<String, Set<String>>()
+    val index = mutableIntStateOf(0)
+}
+
+/**
+ * Drafts live as long as the app, so leaving the chat and coming back keeps what was already chosen.
+ * A draft is dropped once its answers are sent.
+ */
+private val QuestionDrafts = mutableMapOf<String, QuestionDraft>()
 
 /** Options as full-width rows, easier to hit than chips; radio for one choice, checkboxes for several. */
 @Composable

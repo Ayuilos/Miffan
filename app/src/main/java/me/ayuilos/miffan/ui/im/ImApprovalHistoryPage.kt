@@ -1,6 +1,11 @@
 package me.ayuilos.miffan.ui.im
 
 import me.ayuilos.miffan.service.ChatService
+import me.ayuilos.miffan.service.approvalNotificationSummary
+import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
+import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
+import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.im.thread.mcpToolParts
 import android.text.format.DateUtils
@@ -13,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -156,6 +162,7 @@ private fun AuditDayHeader(day: LocalDate) {
 @Composable
 private fun AuditRow(event: AuditEvent, onOpen: (() -> Unit)?) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val (icon, title, outcome) = when (event.kind) {
         AuditKind.SCREEN_TAKEN_OVER, AuditKind.SCREEN_HANDED_BACK -> Triple(
             HugeIcons.ComputerVideo,
@@ -165,7 +172,7 @@ private fun AuditRow(event: AuditEvent, onOpen: (() -> Unit)?) {
         )
         else -> Triple(
             auditIcon(event.toolName),
-            event.summary,
+            remember(event, resources) { readableOldSummary(event) { id, args -> resources.getString(id, *args.toTypedArray()) } } ?: event.summary,
             event.decision?.let { approvalDecisionText(it, event.via, event.at) } ?: auditTime(context, event.at),
         )
     }
@@ -184,6 +191,17 @@ private fun AuditRow(event: AuditEvent, onOpen: (() -> Unit)?) {
         }
     }
     if (onOpen != null) Surface(onClick = onOpen, color = Color.Transparent) { content() } else content()
+}
+
+/**
+ * Rows recorded before every tool had a readable summary say "Use calendar_create". Name the action now;
+ * the arguments were not kept, so the summary is the one without them ("Add an event").
+ */
+private fun readableOldSummary(event: AuditEvent, text: (Int, List<Any>) -> String): String? {
+    val toolName = event.toolName ?: return null
+    if (!event.summary.contains(toolName) || toolName.startsWith(COMPUTER_TOOL_PREFIX) || toolName == WORKSPACE_SHELL_TOOL_NAME) return null
+    val pending = UIMessagePart.Tool(toolCallId = event.id, toolName = toolName, input = "{}", approvalState = ToolApprovalState.Pending)
+    return approvalNotificationSummary(listOf(pending), text)?.takeIf { it != text(R.string.notification_approval_generic, listOf(toolName)) }
 }
 
 private fun auditIcon(toolName: String?): ImageVector = when {
