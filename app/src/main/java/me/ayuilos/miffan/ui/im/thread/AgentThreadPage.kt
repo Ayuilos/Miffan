@@ -426,7 +426,9 @@ fun AgentThreadPage(
             }
             ThreadComposer(input = input, onInput = { input = it }, topicLabel = topicLabel,
                 loaded = loaded, generating = generating.isNotEmpty(),
-                onSend = { followLatest = true; vm.send(it, freshStart = freshStart()) }, onStop = vm::stop,
+                // Opening the history hints at picking it back up, so a long pause alone does not split.
+                onSend = { followLatest = true; vm.send(it, freshStart = freshStart(), reviewedHistory = welcomeAt() != null && historyShown) },
+                onStop = vm::stop,
                 onError = { message -> scope.launch { snackbar.showSnackbar(message) } },
                 onVoiceUnavailable = {
                     scope.launch {
