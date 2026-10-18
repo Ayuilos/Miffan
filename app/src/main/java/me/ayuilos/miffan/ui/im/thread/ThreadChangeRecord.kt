@@ -72,6 +72,7 @@ internal fun ToolRecordDetails(tool: UIMessagePart.Tool, assistant: Assistant?, 
             CREATE_GROUP_CHAT, INVITE_TO_GROUP_CHAT -> GroupChatContent(tool,
                 settings.assistants.firstOrNull { it.id == assistant?.id })
             ORGANIZE_CHAT_LIST -> OrganizeContent(tool)
+            EXTENSIONS_APPLY -> ExtensionChangeList(tool)
             UPDATE_MY_PREFERENCES -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 toolArg(tool, "summary")?.let { Text(it) }
                 toolArg(tool, "preferences")?.let { ChangeLongText(stringResource(R.string.im_p5_preferences), it) }
@@ -88,7 +89,7 @@ internal fun ToolRecordDetails(tool: UIMessagePart.Tool, assistant: Assistant?, 
     }
 }
 
-private fun UIMessagePart.Tool.outputJsonOrNull() = if (!isExecuted) null else runCatching {
+internal fun UIMessagePart.Tool.outputJsonOrNull() = if (!isExecuted) null else runCatching {
     kotlinx.serialization.json.Json.parseToJsonElement(output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text })
 }.getOrNull()
 

@@ -285,7 +285,8 @@ internal fun ThreadPermissionRecord(tool: UIMessagePart.Tool, assistant: Assista
 /** The one-line name of a settled request, shared by the record line and its sheet. */
 @Composable
 internal fun toolRecordTitle(tool: UIMessagePart.Tool): String {
-    val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), null, false) }
+    // Titles of settled calls depend on their result ("applied" or "failed"), so pass the output too.
+    val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), tool.outputJsonOrNull(), false) }
     return when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
         tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))

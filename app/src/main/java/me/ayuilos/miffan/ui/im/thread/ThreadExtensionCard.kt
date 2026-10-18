@@ -45,24 +45,30 @@ private data class ExtensionLine(@StringRes val tag: Int, val removes: Boolean, 
  */
 @Composable
 internal fun ThreadExtensionCard(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) {
-    val settings = LocalSettings.current
-    val siblings = LocalToolCardSiblings.current
     val who = assistant?.let { partnerName(it) } ?: stringResource(R.string.im_approval_partner)
-    val previewId = toolArg(tool, "previewId")
-    val preview = remember(previewId, siblings) { previewId?.let { findPreview(siblings, it) } }
-    val fallback = remember(previewId) { previewId?.let(::decodeExtensionPreviewSummaries).orEmpty() }
     ApprovalCardFrame(tool, stringResource(R.string.im_extension_title, who), onApproval, icon = HugeIcons.Puzzle,
         allowLabel = stringResource(R.string.im_extension_apply),
         footnote = stringResource(R.string.im_extension_footnote)) {
-        val lines = preview?.changes?.map { extensionLine(it, settings) }
-        Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                if (lines != null) lines.forEachIndexed { index, line ->
-                    if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
-                    ExtensionLineRow(line)
-                } else fallback.forEach { summary ->
-                    Text(summary, Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
-                }
+        ExtensionChangeList(tool)
+    }
+}
+
+/** The changes an extensions_apply_changes call carries, one tagged line each; shared by the card and its record. */
+@Composable
+internal fun ExtensionChangeList(tool: UIMessagePart.Tool) {
+    val settings = LocalSettings.current
+    val siblings = LocalToolCardSiblings.current
+    val previewId = toolArg(tool, "previewId")
+    val preview = remember(previewId, siblings) { previewId?.let { findPreview(siblings, it) } }
+    val fallback = remember(previewId) { previewId?.let(::decodeExtensionPreviewSummaries).orEmpty() }
+    val lines = preview?.changes?.map { extensionLine(it, settings) }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+            if (lines != null) lines.forEachIndexed { index, line ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
+                ExtensionLineRow(line)
+            } else fallback.forEach { summary ->
+                Text(summary, Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
