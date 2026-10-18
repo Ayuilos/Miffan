@@ -5,15 +5,17 @@ from pathlib import Path
 import subprocess
 from remote import DEFAULT_CONFIG, run
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 FILES = {
-    'miffan.ps1': ROOT / 'app/src/main/assets/remote/miffan.ps1',
+    **{'fixtures/' + path.name: path for path in (ROOT / 'remote-helper/fixtures/ps1').glob('*.json')},
+    'miffan.ps1': ROOT / 'app/build/generated/remoteHelper/remote/miffan.ps1',
     **{name: Path(__file__).with_name(name) for name in ('Test-Helper.ps1', 'certificate.pem', 'certificate.sha256')},
 }
 
 
 def main():
-    result = run("$dir=Join-Path $env:LOCALAPPDATA 'Miffan\\p7b-tests'; $null=New-Item -ItemType Directory -Path $dir -Force; [Console]::Out.WriteLine($dir)")
+    subprocess.run([str(ROOT / "gradlew"), ":app:assembleRemoteHelper", "-q"], cwd=ROOT, check=True)
+    result = run("$dir=Join-Path $env:LOCALAPPDATA 'Miffan\\p7b-tests'; $null=New-Item -ItemType Directory -Path $dir -Force; $null=New-Item -ItemType Directory -Path (Join-Path $dir 'fixtures') -Force; [Console]::Out.WriteLine($dir)")
     if result['exit_code']:
         raise SystemExit(json.dumps(result, ensure_ascii=False))
     remote_dir = '/' + result['stdout'].strip().replace('\\', '/').replace('//', '/')
@@ -25,7 +27,7 @@ $dir=Join-Path $env:LOCALAPPDATA 'Miffan\p7b-tests'
 $tokens=$null;$errors=$null
 $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $dir 'miffan.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){$errors | ForEach-Object {[Console]::Out.WriteLine($_.ToString())};exit 1}
-& (Join-Path $dir 'Test-Helper.ps1') -HelperPath (Join-Path $dir 'miffan.ps1')
+& (Join-Path $dir 'Test-Helper.ps1') -HelperPath (Join-Path $dir 'miffan.ps1') -FixturePath (Join-Path $dir 'fixtures')
 """
     result = run(script)
     print(json.dumps(result, ensure_ascii=False))

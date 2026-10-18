@@ -66,8 +66,8 @@ internal fun RemoteStreamSuggestion(vm: RemoteScreenVM, modifier: Modifier = Mod
         }
     }
     if (enabling && state != null) {
-        RemoteStreamEnableFlow(state, onStart = { vm.startSunshine() }, onEnforce = { vm.enforceStreamEncryption() }, onPair = { vm.pairStream() },
-            onCancelPairing = vm::cancelStreamPairing, onEnable = { vm.enableStream() },
+        RemoteStreamEnableFlow(state, onStart = { vm.startSunshine() }, onEnforce = { vm.enforceStreamEncryption() }, onPair = { vm.pairStream(it) },
+            onCancelPairing = vm::cancelStreamPairing, onDismissInterrupt = { vm.dismissStreamInterrupt() }, onEnable = { vm.enableStream() },
             onFinished = { enabled -> enabling = false; vm.finishStreamSuggestion(enabled) })
     }
 }
@@ -83,8 +83,8 @@ internal fun RemoteWindowsStreamSetup(vm: RemoteScreenVM) {
     val setups by vm.streamSetups.collectAsStateWithLifecycle()
     val state = suggestion?.let { current -> setups[current.hostId]?.takeIf { it.connectionRevision == current.revision } }
     if (active && state != null) {
-        RemoteStreamEnableFlow(state, onStart = { vm.startSunshine() }, onEnforce = { vm.enforceStreamEncryption() }, onPair = { vm.pairStream() },
-            onCancelPairing = vm::cancelStreamPairing, onEnable = { vm.enableStream() },
+        RemoteStreamEnableFlow(state, onStart = { vm.startSunshine() }, onEnforce = { vm.enforceStreamEncryption() }, onPair = { vm.pairStream(it) },
+            onCancelPairing = vm::cancelStreamPairing, onDismissInterrupt = { vm.dismissStreamInterrupt() }, onEnable = { vm.enableStream() },
             onFinished = vm::finishWindowsStreamSetup)
     }
 }

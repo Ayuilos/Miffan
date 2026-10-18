@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
+import me.ayuilos.miffan.data.repository.RemoteStreamDirectPairing
 import me.ayuilos.miffan.data.repository.RemoteStreamPairing
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 
@@ -54,30 +55,54 @@ class RemoteStreamSetupController(
         }
     }
 
-    /** Starts pairing; the PIN appears in [states] until the user types it into Sunshine. */
-    fun pair(hostId: String, revision: String) {
+    /**
+     * Pairs this phone: the computer is told to trust it directly, and only when that cannot be done
+     * here does a PIN appear in [states] for the user to type into Sunshine. When someone is streaming,
+     * [states] asks first; calling again with [interruptActiveStream] accepts cutting them off.
+     */
+    fun pair(hostId: String, revision: String, interruptActiveStream: Boolean = false) {
         val previous = _states.value[hostId] ?: return
         if (previous.busy || previous.connectionRevision != revision) return
-        update(hostId) { it.copy(phase = RemoteStreamSetupPhase.PAIRING, pin = null, pairingError = null, paired = false) }
+        update(hostId) { it.copy(phase = RemoteStreamSetupPhase.PAIRING, pin = null, manualPinReason = null,
+            confirmInterrupt = false, pairingError = null, paired = false) }
         pairingCancelled = false
         scope.launch {
             val result = try {
-                screens.startStreamPairing(hostId, revision).use { started ->
-                    pairing = started
-                    update(hostId) { it.copy(pin = started.pin) }
-                    Result.success(started.await())
+                when (val direct = screens.pairStreamDirectly(hostId, revision, interruptActiveStream = interruptActiveStream)) {
+                    is RemoteStreamDirectPairing.Paired -> Result.success(direct.certificateSha256)
+                    RemoteStreamDirectPairing.ActiveStream -> {
+                        update(hostId) { it.copy(phase = RemoteStreamSetupPhase.IDLE, confirmInterrupt = true) }
+                        return@launch
+                    }
+                    is RemoteStreamDirectPairing.ManualPinNeeded -> {
+                        update(hostId) { it.copy(manualPinReason = direct.reason) }
+                        pairWithPin(hostId, revision)
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
                 Result.failure(error)
-            } finally {
-                pairing = null
             }
             // Closing the PIN dialog is not a failure worth reporting.
-            update(hostId) { it.copy(phase = RemoteStreamSetupPhase.IDLE, pin = null,
+            update(hostId) { it.copy(phase = RemoteStreamSetupPhase.IDLE, pin = null, manualPinReason = null,
                 pairingError = result.exceptionOrNull()?.takeUnless { pairingCancelled }, paired = result.isSuccess) }
             if (result.isSuccess) check(hostId, revision)
+        }
+    }
+
+    /** The user would rather not cut off the stream on the computer. */
+    fun dismissInterrupt(hostId: String) = update(hostId) { it.copy(confirmInterrupt = false) }
+
+    private suspend fun pairWithPin(hostId: String, revision: String): Result<String> {
+        return try {
+            screens.startStreamPairing(hostId, revision).use { started ->
+                pairing = started
+                update(hostId) { it.copy(pin = started.pin) }
+                Result.success(started.await())
+            }
+        } finally {
+            pairing = null
         }
     }
 

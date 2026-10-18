@@ -385,7 +385,9 @@ class RemoteScreenVM(
         _streamSuggestion.value = null
     }
 
-    fun pairStream() = _streamSuggestion.value?.let { streamSetup.pair(it.hostId, it.revision) }
+    fun pairStream(interruptActiveStream: Boolean = false) =
+        _streamSuggestion.value?.let { streamSetup.pair(it.hostId, it.revision, interruptActiveStream) }
+    fun dismissStreamInterrupt() = _streamSuggestion.value?.let { streamSetup.dismissInterrupt(it.hostId) }
     fun cancelStreamPairing() = streamSetup.cancelPairing()
     /** Called only from the confirmation that shows exactly what changes on the computer. */
     fun enforceStreamEncryption() = _streamSuggestion.value?.let { streamSetup.enforceEncryption(it.hostId, it.revision) }

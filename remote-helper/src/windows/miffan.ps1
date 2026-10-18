@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 10
+$script:HelperVersion = 11
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -180,36 +180,7 @@ function New-BackupPath([string]$Name) {
 function Initialize-Native {
     if ('MiffanNative' -as [type]) { return }
     Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class MiffanNative {
-    [DllImport("kernel32.dll")] public static extern uint WTSGetActiveConsoleSessionId();
-    [DllImport("wtsapi32.dll", CharSet=CharSet.Unicode)] static extern bool WTSQuerySessionInformation(IntPtr server, uint session, int kind, out IntPtr data, out uint bytes);
-    [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr data);
-    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct WTSLevel {
-        public uint SessionId; public int SessionState; public int SessionFlags;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=33)] public string Station;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=21)] public string User;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=18)] public string Domain;
-        public long Logon, Connect, Disconnect, LastInput, Current;
-        public uint InBytes, OutBytes, InFrames, OutFrames, InCompressed, OutCompressed;
-    }
-    [StructLayout(LayoutKind.Sequential)] public struct WTSInfo { public uint Level; public WTSLevel Data; }
-    public static string QueryString(uint session, int kind) {
-        IntPtr data; uint bytes;
-        if (!WTSQuerySessionInformation(IntPtr.Zero, session, kind, out data, out bytes)) return null;
-        try { return Marshal.PtrToStringUni(data); } finally { WTSFreeMemory(data); }
-    }
-    public static int LockFlag(uint session) {
-        IntPtr data; uint bytes;
-        if (!WTSQuerySessionInformation(IntPtr.Zero, session, 25, out data, out bytes)) return -1;
-        try {
-            if (bytes < Marshal.SizeOf(typeof(WTSInfo))) return -1;
-            WTSInfo info = (WTSInfo)Marshal.PtrToStructure(data, typeof(WTSInfo));
-            return info.Level == 1 && info.Data.SessionId == session ? info.Data.SessionFlags : -1;
-        } finally { WTSFreeMemory(data); }
-    }
-}
+#include MiffanNative.cs
 '@
 }
 function Get-ConsoleSession {
@@ -395,26 +366,89 @@ function Invoke-EnforceEncryption {
         return @{success=$true;detail='Encryption enforced; Sunshine restarted';changed=$true;backup=$backup}
     } finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
 }
-function Edit-SunshinePairing([string]$Content, [string]$Fingerprint) {
+function Read-SunshinePairRequest([string]$Content) {
+    if (-not $Content.TrimStart().StartsWith('{')) { throw 'Invalid Sunshine pair request' }
+    try { $request = ConvertFrom-Json -InputObject $Content -ErrorAction Stop }
+    catch { throw 'Invalid Sunshine pair request' }
+    if ($request -isnot [pscustomobject] -or -not (Test-SameSet @($request.PSObject.Properties.Name) @('name','cert'))) { throw 'Invalid Sunshine pair request' }
+    if ($request.name -isnot [string] -or [string]::IsNullOrWhiteSpace($request.name) -or $request.name.Length -gt 64 -or $request.name -match '[\p{Cc}]') { throw 'Invalid Sunshine client name' }
+    if ($request.cert -isnot [string]) { throw 'Invalid Sunshine client certificate' }
+    $match = [regex]::Match($request.cert, '\A\s*-----BEGIN CERTIFICATE-----\s*([A-Za-z0-9+/=\s]+?)\s*-----END CERTIFICATE-----\s*\z')
+    if (-not $match.Success) { throw 'Invalid Sunshine client certificate' }
+    try {
+        $der = [Convert]::FromBase64String(($match.Groups[1].Value -replace '\s', ''))
+        $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @(,$der)
+        try {
+            # Re-encode parsed DER, never the supplied text. No private keys enter this path.
+            $raw = $certificate.RawData
+            if ([Security.Cryptography.X509Certificates.X509Certificate2]::GetCertContentType($der) -ne [Security.Cryptography.X509Certificates.X509ContentType]::Cert -or
+                (Get-BytesSha256 $raw) -cne (Get-BytesSha256 $der)) { throw 'Invalid Sunshine client certificate' }
+            $body = [Convert]::ToBase64String($raw)
+            $lines = for ($i=0; $i -lt $body.Length; $i+=64) { $body.Substring($i, [Math]::Min(64, $body.Length-$i)) }
+            $pem = "-----BEGIN CERTIFICATE-----`n" + ($lines -join "`n") + "`n-----END CERTIFICATE-----`n"
+            return @{name=$request.name;cert=$pem;fingerprint=(Get-BytesSha256 $raw)}
+        } finally { $certificate.Reset() }
+    } catch { throw 'Invalid Sunshine client certificate' }
+}
+function Edit-SunshinePairing([string]$Content, [string]$Fingerprint, $PairRequest=$null) {
     if ($Fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'Expected a SHA-256 client certificate fingerprint (64 hex digits)' }
-    $data = ConvertFrom-Json -InputObject $Content
-    if ($null -eq $data -or $data -is [Array] -or $data -isnot [pscustomobject]) { throw 'Invalid Sunshine state JSON' }
+    if (-not $Content.TrimStart().StartsWith('{')) { throw 'Unrecognized Sunshine state format' }
+    try { $data = ConvertFrom-Json -InputObject $Content -ErrorAction Stop }
+    catch { throw 'Unrecognized Sunshine state format' }
+    if ($null -eq $data -or $data -isnot [pscustomobject]) { throw 'Unrecognized Sunshine state format' }
     $devices = @()
-    if ($data.root -and $null -ne $data.root.named_devices) {
-        if ($data.root.named_devices -isnot [Array]) { throw 'Invalid Sunshine named_devices' }
+    if ($null -ne $PairRequest) {
+        if ($null -eq $data.PSObject.Properties['root']) { $data | Add-Member -NotePropertyName root -NotePropertyValue ([pscustomobject]@{}) }
+        if ($data.root -isnot [pscustomobject]) { throw 'Unrecognized Sunshine state format' }
+        if ($data.root.uniqueid -isnot [string]) {
+            $data.root | Add-Member -NotePropertyName uniqueid -NotePropertyValue ([Guid]::NewGuid().ToString('D').ToUpperInvariant()) -Force
+        }
+    }
+    if ($data.root -and $null -ne $data.root.PSObject.Properties['named_devices']) {
+        if ($data.root.named_devices -isnot [Array]) { throw 'Unrecognized Sunshine state format' }
         $devices = @($data.root.named_devices)
     }
     $kept = @(); $removed = 0
     foreach ($device in $devices) {
-        if ($device.cert -is [string] -and (Get-CertificateFingerprint $device.cert) -ieq $Fingerprint) { $removed++ }
-        else { $kept += $device }
+        if ($null -ne $PairRequest -and ($device -isnot [pscustomobject] -or $device.name -isnot [string] -or $device.cert -isnot [string] -or $device.uuid -isnot [string])) { throw 'Unrecognized Sunshine state format' }
+        try { $sameCertificate = $device.cert -is [string] -and (Get-CertificateFingerprint $device.cert) -ieq $Fingerprint }
+        catch { throw 'Unrecognized Sunshine state format' }
+        if ($sameCertificate) { $removed++ } else { $kept += $device }
     }
-    if ($removed -eq 0) { return @{removed=0;content=$Content} }
-    $data.root.named_devices = @($kept)
+    if ($null -ne $PairRequest) {
+        $kept += @{name=$PairRequest.name;cert=$PairRequest.cert;uuid=[Guid]::NewGuid().ToString('D').ToUpperInvariant();enabled=$true}
+    } elseif ($removed -eq 0) { return @{removed=0;content=$Content} }
+    $data.root | Add-Member -NotePropertyName named_devices -NotePropertyValue @($kept) -Force
     # PS 5.1's default depth truncates unknown nested keys; retain the entire state tree.
     return @{removed=$removed;content=(ConvertTo-Json -InputObject $data -Depth 100 -Compress)}
 }
-function Invoke-SunshineUnpair([string]$Fingerprint) {
+function Read-SunshinePairingState([string]$Path, [string]$Fingerprint, $PairRequest) {
+    try { $null = Get-Item -LiteralPath $Path -Force -ErrorAction Stop }
+    catch [System.Management.Automation.ItemNotFoundException], [System.Management.Automation.DriveNotFoundException], [IO.FileNotFoundException], [IO.DirectoryNotFoundException] {
+        if ($null -eq $PairRequest) { return @{removed=0;content=$null;exists=$false} }
+        try { $parent = Get-Item -LiteralPath (Split-Path -Parent $Path) -Force -ErrorAction Stop }
+        catch [System.Management.Automation.ItemNotFoundException], [System.Management.Automation.DriveNotFoundException], [IO.FileNotFoundException], [IO.DirectoryNotFoundException] { throw 'Unrecognized Sunshine state format' }
+        if (-not $parent.PSIsContainer) { throw 'Unrecognized Sunshine state format' }
+        $ancestor = $parent
+        while ($ancestor) {
+            if ($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Unrecognized Sunshine state format' }
+            $ancestor = $ancestor.Parent
+        }
+        $edited = Edit-SunshinePairing '{}' $Fingerprint $PairRequest
+        $edited.exists = $false
+        return $edited
+    }
+    Assert-RegularPath $Path
+    $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($Path, $script:Utf8)) $Fingerprint $PairRequest
+    $edited.exists = $true
+    return $edited
+}
+function Invoke-SunshinePair([string]$Content) {
+    $request = Read-SunshinePairRequest $Content
+    return Invoke-SunshinePairing $request.fingerprint $request
+}
+function Invoke-SunshineUnpair([string]$Fingerprint) { return Invoke-SunshinePairing $Fingerprint }
+function Invoke-SunshinePairing([string]$Fingerprint, $PairRequest=$null) {
     if ($Fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'Expected a SHA-256 client certificate fingerprint (64 hex digits)' }
     try { $context = Get-SunshineContext } catch { throw 'Cannot read Sunshine state or configuration; check administrator rights' }
     if (-not $context.known -or -not $context.installed) { throw 'Cannot verify the Sunshine service model' }
@@ -425,27 +459,30 @@ function Invoke-SunshineUnpair([string]$Fingerprint) {
         if (-not [IO.Path]::IsPathRooted($state)) { $state = Join-Path $directory $state }
     }
     try {
-        Assert-RegularPath $state
-        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint
+        $edited = Read-SunshinePairingState $state $Fingerprint $PairRequest
     } catch [UnauthorizedAccessException] { throw 'Cannot read Sunshine state or configuration; check administrator rights' }
-    if ($edited.removed -eq 0) { return @{removed=0;restarted=$false} }
+    if ($edited.removed -eq 0 -and $null -eq $PairRequest) { return @{removed=0;restarted=$false} }
     $running = $context.service.State -eq 'Running'
     $stopped = $false; $temporary = $state + '.miffan-' + [Guid]::NewGuid().ToString('N')
     try {
         if ($running) {
             try { Stop-Service -Name SunshineService -ErrorAction Stop }
-            catch { throw 'Cannot stop Sunshine; check administrator rights' }
+            catch { throw 'Cannot edit Sunshine state or control its service; check administrator rights' }
             $stopped = $true
             (Get-Service -Name SunshineService).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(10))
-            if (@(Get-CimInstance Win32_Process -Filter "Name='sunshine.exe'").Count -gt 0) { throw 'Sunshine did not stop before unpairing' }
+            if (@(Get-CimInstance Win32_Process -Filter "Name='sunshine.exe'").Count -gt 0) { throw 'Sunshine did not stop before pairing change' }
         }
         # Re-read after shutdown, including any state Sunshine flushed while stopping.
-        Assert-RegularPath $state
-        $edited = Edit-SunshinePairing ([IO.File]::ReadAllText($state, $script:Utf8)) $Fingerprint
-        if ($edited.removed -gt 0) {
+        $edited = Read-SunshinePairingState $state $Fingerprint $PairRequest
+        if ($edited.removed -gt 0 -or $null -ne $PairRequest) {
             [IO.File]::WriteAllText($temporary, $edited.content, $script:Utf8)
-            Set-Acl -LiteralPath $temporary -AclObject (Get-Acl -LiteralPath $state)
-            [IO.File]::Replace($temporary, $state, [System.Management.Automation.Language.NullString]::Value)
+            if ($edited.exists) {
+                Set-Acl -LiteralPath $temporary -AclObject (Get-Acl -LiteralPath $state) -ErrorAction Stop
+                [IO.File]::Replace($temporary, $state, [System.Management.Automation.Language.NullString]::Value)
+            } else {
+                # Same-directory creation inherits the directory ACL; Move publishes it atomically.
+                [IO.File]::Move($temporary, $state)
+            }
         }
     } catch [UnauthorizedAccessException] { throw 'Cannot edit Sunshine state or control its service; check administrator rights' }
     finally {
@@ -454,10 +491,14 @@ function Invoke-SunshineUnpair([string]$Fingerprint) {
         } finally {
             if ($stopped) {
                 try { Start-Service -Name SunshineService -ErrorAction Stop }
-                catch { throw 'Sunshine unpair attempted; could not restart Sunshine' }
+                catch {
+                    if ($null -ne $PairRequest) { throw 'Sunshine pair attempted; could not restart Sunshine' }
+                    throw 'Sunshine unpair attempted; could not restart Sunshine'
+                }
             }
         }
     }
+    if ($null -ne $PairRequest) { return @{added=$true;replaced=$edited.removed;restarted=[bool]$stopped;client_sha256=$Fingerprint.ToLowerInvariant()} }
     return @{removed=$edited.removed;restarted=[bool]$stopped}
 }
 function Test-RuleEnforced([bool]$Enabled, [string]$Status, $Enforcement) {
@@ -773,256 +814,7 @@ function Invoke-DesktopJob([string]$Mode, [string]$Text) {
     }
 }
 $script:CuaBridgeSource = @'
-using System;
-using System.IO;
-using System.IO.Pipes;
-using System.Text;
-using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Security.Principal;
-using System.Security.AccessControl;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
-using System.Collections.Generic;
-using System.Web.Script.Serialization;
-
-// No daemon ACL/permission changes. Every MCP child inherits this Limited interactive token.
-public static class MiffanCuaBridge {
-    public static readonly Encoding Utf8 = new UTF8Encoding(false, true);
-    [StructLayout(LayoutKind.Sequential)] struct SA { public int length; public IntPtr descriptor; public int inherit; }
-    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern SafePipeHandle CreateNamedPipe(string name, uint mode, uint pipeMode, uint instances, uint output, uint input, uint timeout, ref SA security);
-    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool WaitNamedPipe(string name, uint timeout);
-    [DllImport("kernel32.dll")] static extern uint WTSGetActiveConsoleSessionId();
-    [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetTokenInformation(IntPtr token, int kind, IntPtr buffer, int size, out int needed);
-    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
-    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthority(IntPtr sid, uint index);
-    [DllImport("user32.dll", SetLastError=true)] static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
-    [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
-    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool GetUserObjectInformation(IntPtr obj, int index, StringBuilder info, int length, out int needed);
-    [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int number);
-    static Stream Standard(int number, FileAccess access) {
-        // Windows OpenSSH inherits OVERLAPPED pipe handles. ConsoleStream's synchronous
-        // ReadFile can handle the first buffered batch then hang on the next pending read.
-        try { return new FileStream(new SafeFileHandle(GetStdHandle(number),false),access,65536,true); }
-        catch (ArgumentException) { return number==-10 ? Console.OpenStandardInput() : Console.OpenStandardOutput(); }
-    }
-    static long lastActivity;
-    static int active;
-    static readonly System.Collections.Concurrent.ConcurrentDictionary<NamedPipeServerStream,byte> clients = new System.Collections.Concurrent.ConcurrentDictionary<NamedPipeServerStream,byte>();
-    static readonly System.Collections.Concurrent.ConcurrentDictionary<int,Process> children = new System.Collections.Concurrent.ConcurrentDictionary<int,Process>();
-    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access,bool inherit,int pid);
-    [DllImport("advapi32.dll")] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
-    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
-    static int TokenIntegrity(IntPtr token) {
-        int size; GetTokenInformation(token,25,IntPtr.Zero,0,out size);
-        if(size<=0) throw new IOException("Cannot check integrity");
-        IntPtr memory=Marshal.AllocHGlobal(size);
-        try {
-            if(!GetTokenInformation(token,25,memory,size,out size)) throw new IOException("Cannot check integrity");
-            IntPtr sid=Marshal.ReadIntPtr(memory);
-            return Marshal.ReadInt32(GetSidSubAuthority(sid,(uint)(Marshal.ReadByte(GetSidSubAuthorityCount(sid))-1)));
-        } finally {Marshal.FreeHGlobal(memory);}
-    }
-    public static int Integrity() {using(var identity=WindowsIdentity.GetCurrent()) return TokenIntegrity(identity.Token);}
-    public static int ProcessIntegrity(int pid) {
-        IntPtr process=OpenProcess(0x1000,false,pid),token=IntPtr.Zero;
-        if(process==IntPtr.Zero) return -1;
-        try {if(!OpenProcessToken(process,8,out token)) return -1;return TokenIntegrity(token);}
-        catch {return -1;}
-        finally {if(token!=IntPtr.Zero) CloseHandle(token);CloseHandle(process);}
-    }
-    public static bool DesktopAvailable(int session) {
-        if (session == 0 || WTSGetActiveConsoleSessionId() != session) return false;
-        IntPtr desktop = OpenInputDesktop(0, false, 1);
-        if (desktop == IntPtr.Zero) return false;
-        try { var name = new StringBuilder(128); int needed; return GetUserObjectInformation(desktop, 2, name, 256, out needed) && name.ToString() == "Default"; }
-        finally { CloseDesktop(desktop); }
-    }
-    public static bool Available(string name) { return WaitNamedPipe(@"\\.\pipe\" + name, 1); }
-    static NamedPipeServerStream Create(string name, string sid, bool first) {
-        // Protected DACL: precisely this user, no Everyone/Administrators/System grant.
-        var security = new PipeSecurity(); security.SetSecurityDescriptorSddlForm("O:"+sid+"D:P(A;;GA;;;"+sid+")");
-        byte[] descriptor = security.GetSecurityDescriptorBinaryForm();
-        IntPtr memory = Marshal.AllocHGlobal(descriptor.Length);
-        try {
-            Marshal.Copy(descriptor, 0, memory, descriptor.Length);
-            var attributes = new SA { length=Marshal.SizeOf(typeof(SA)), descriptor=memory, inherit=0 };
-            // DUPLEX | OVERLAPPED | FIRST_PIPE_INSTANCE, byte mode | REJECT_REMOTE_CLIENTS.
-            var handle = CreateNamedPipe(@"\\.\pipe\"+name, 3u|0x40000000u|(first?0x00080000u:0u), 0x8u, 8, 65536, 65536, 1000, ref attributes);
-            if (handle.IsInvalid) { handle.Dispose(); throw new IOException("Bridge pipe unavailable"); }
-            return new NamedPipeServerStream(PipeDirection.InOut, true, false, handle);
-        } finally { Marshal.FreeHGlobal(memory); }
-    }
-    static void Touch() { Interlocked.Exchange(ref lastActivity, Environment.TickCount & 0xffffffffL); }
-    static long Age(long then) { return ((Environment.TickCount & 0xffffffffL)-then)&0xffffffffL; }
-    public static string ReadLine(Stream stream, int limit) {
-        using (var data = new MemoryStream()) {
-            for (int i=0; i<limit; i++) { int b=stream.ReadByte(); if(b<0) throw new EndOfStreamException(); if(b==10) return Utf8.GetString(data.ToArray()); data.WriteByte((byte)b); }
-            throw new IOException("Frame too long");
-        }
-    }
-    public static void WriteLine(Stream stream, string line) { byte[] data=Utf8.GetBytes(line+"\n"); stream.Write(data,0,data.Length); stream.Flush(); }
-    public static string Ticket(string root, string id) {
-        Guid value; if (!Guid.TryParseExact(id,"N",out value)) throw new IOException("Invalid ticket");
-        return Path.Combine(root,id+".ticket");
-    }
-    public static bool Consume(string root, string id, string token) {
-        string file=Ticket(root,id), consumed=file+".used-"+Guid.NewGuid().ToString("N");
-        try {
-            if ((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0 || (DateTime.UtcNow-File.GetLastWriteTimeUtc(file)).TotalSeconds>30) return false;
-            File.Move(file,consumed); // Atomic claim. Even failed authentication consumes the ticket.
-            string expected=File.ReadAllText(consumed,Utf8);
-            if (expected.Length!=64 || token.Length!=64) return false;
-            int difference=0; for(int i=0;i<64;i++) difference |= expected[i]^token[i];
-            return difference==0;
-        } catch { return false; }
-        finally { if (File.Exists(consumed)) File.Delete(consumed); }
-    }
-    static void Pump(Stream input, Stream output) {
-        byte[] data=new byte[65536]; int n;
-        while((n=input.ReadAsync(data,0,data.Length).GetAwaiter().GetResult())>0) { output.WriteAsync(data,0,n).GetAwaiter().GetResult(); output.FlushAsync().GetAwaiter().GetResult(); Touch(); }
-    }
-    static void Serve(NamedPipeServerStream pipe, string root, string exe, int session) {
-        Process child=null;
-        try {
-            var auth=Task.Run(()=>ReadLine(pipe,128));
-            if (!auth.Wait(5000)) return;
-            string[] parts=auth.Result.Split(' ');
-            if(parts.Length!=2 || !DesktopAvailable(session) || !Consume(root,parts[0],parts[1])) return;
-            var start=new ProcessStartInfo(exe,"mcp --socket \\\\.\\pipe\\cua-driver") {
-                UseShellExecute=false, CreateNoWindow=true, RedirectStandardInput=true, RedirectStandardOutput=true, RedirectStandardError=true,
-                StandardOutputEncoding=Utf8, StandardErrorEncoding=Utf8
-            };
-            child=Process.Start(start); children[child.Id]=child; child.StandardInput.NewLine="\n";
-            // BaseStreams bypass CP936; explicit UTF-8 on the text wrappers too.
-            WriteLine(pipe,"OK "+parts[1]); Touch();
-            var stderr=Task.Run(()=> { byte[] bytes=new byte[4096]; while(child.StandardError.BaseStream.Read(bytes,0,bytes.Length)>0) {} });
-            var incoming=Task.Run(()=>Pump(pipe,child.StandardInput.BaseStream));
-            var outgoing=Task.Run(()=>Pump(child.StandardOutput.BaseStream,pipe));
-            Task.WaitAny(incoming,outgoing);
-        } catch { /* Never log user JSON or exception text. EOF informs the client; no replay. */ }
-        finally {
-            pipe.Dispose(); byte removed; clients.TryRemove(pipe,out removed);
-            if(child!=null) { try { child.StandardInput.Close(); if(!child.WaitForExit(1000)) child.Kill(); } catch {} Process removedChild; children.TryRemove(child.Id,out removedChild); child.Dispose(); }
-            Interlocked.Decrement(ref active); Touch();
-        }
-    }
-    public static void Run(string name, string root, string exe, string sid, int session, int idleSeconds) {
-        if(WindowsIdentity.GetCurrent().User.Value!=sid || Process.GetCurrentProcess().SessionId!=session || Integrity()!=8192 || !DesktopAvailable(session)) throw new IOException("Bridge requires a Limited unlocked console session");
-        Touch(); NamedPipeServerStream listener=Create(name,sid,true);
-        try {
-            while(true) {
-                var waiting=listener.WaitForConnectionAsync();
-                while(!waiting.Wait(250)) {
-                    if(!DesktopAvailable(session) || (Age(Interlocked.Read(ref lastActivity))>idleSeconds*1000L)) return;
-                }
-                waiting.GetAwaiter().GetResult();
-                var connected=listener;
-                while (Volatile.Read(ref active)>=6) { Thread.Sleep(100); if(!DesktopAvailable(session) || Age(Interlocked.Read(ref lastActivity))>idleSeconds*1000L) { connected.Dispose(); return; } }
-                // Keep at least one instance alive throughout, preventing name takeover.
-                listener=Create(name,sid,false);
-                clients[connected]=0; Interlocked.Increment(ref active);
-                Task.Run(()=>Serve(connected,root,exe,session));
-            }
-        } finally {
-            listener.Dispose();
-            foreach(var client in clients.Keys) { try { client.Dispose(); } catch {} }
-            // Kill only the MCP children this bridge created, never the shared daemon.
-            foreach(var child in children.Values) { try { if(!child.HasExited) child.Kill(); } catch {} }
-        }
-    }
-    public static NamedPipeClientStream Connect(string name, string root) {
-        string id=Guid.NewGuid().ToString("N"); byte[] random=new byte[32];
-        using(var generator=System.Security.Cryptography.RandomNumberGenerator.Create()) generator.GetBytes(random);
-        string token=BitConverter.ToString(random).Replace("-","").ToLowerInvariant();
-        string ticket=Ticket(root,id);
-        using(var file=new FileStream(ticket,FileMode.CreateNew,FileAccess.Write,FileShare.None)) { byte[] data=Utf8.GetBytes(token); file.Write(data,0,data.Length); }
-        var pipe=new NamedPipeClientStream(".",name,PipeDirection.InOut,PipeOptions.Asynchronous,TokenImpersonationLevel.Identification);
-        try {
-            pipe.Connect(5000); WriteLine(pipe,id+" "+token);
-            var acknowledgement=Task.Run(()=>ReadLine(pipe,128));
-            if(!acknowledgement.Wait(5000) || acknowledgement.Result!="OK "+token) throw new IOException("Bridge authentication failed");
-            return pipe;
-        } catch { pipe.Dispose(); throw; }
-        finally { if(File.Exists(ticket)) File.Delete(ticket); }
-    }
-    public static void Stdio(string name,string root) {
-        Console.InputEncoding=Utf8; Console.OutputEncoding=Utf8;
-        using(var pipe=Connect(name,root)) {
-            var incoming=Task.Run(()=> { Pump(Standard(-10,FileAccess.Read),pipe); });
-            var outgoing=Task.Run(()=> { Pump(pipe,Standard(-11,FileAccess.Write)); });
-            Task.WaitAny(incoming,outgoing);
-        }
-    }
-    static Dictionary<string,object> Rpc(Stream pipe, int id, string method, object parameters) {
-        var json=new JavaScriptSerializer { MaxJsonLength=8*1024*1024 };
-        WriteLine(pipe,json.Serialize(new {jsonrpc="2.0",id=id,method=method,@params=parameters}));
-        for(int i=0;i<32;i++) {
-            var read=Task.Run(()=>ReadLine(pipe,8*1024*1024));
-            if(!read.Wait(10000)) throw new IOException("MCP timeout");
-            var response=json.Deserialize<Dictionary<string,object>>(read.Result);
-            if(!response.ContainsKey("id") || Convert.ToInt32(response["id"])!=id) continue;
-            if(response.ContainsKey("error")) throw new IOException("MCP error");
-            var result=(Dictionary<string,object>)response["result"];
-            if(result.ContainsKey("isError") && (bool)result["isError"]) throw new IOException("Clipboard tool refused");
-            return result;
-        }
-        throw new IOException("MCP response missing");
-    }
-    public static bool Clipboard(string name,string root,string text) {
-        using(var session=new ClipSession(name,root)) return session.Write(text);
-    }
-    /**
-     * Serves clipboard writes over this process's stdin/stdout until EOF: one base64 UTF-8 line in,
-     * one JSON line out. Reads go through [Standard] because OpenSSH hands over overlapped pipes.
-     */
-    public static void ClipServe(string name,string root) {
-        var input=Standard(-10,FileAccess.Read); var output=Standard(-11,FileAccess.Write);
-        using(var session=new ClipSession(name,root)) {
-            while(true) {
-                string line;
-                try { line=ReadLine(input,4*1024*1024); } catch (EndOfStreamException) { return; }
-                bool ok=false;
-                try {
-                    string text=Utf8.GetString(Convert.FromBase64String(line.Trim()));
-                    ok=text.IndexOf('\0')<0 && session.Write(text);
-                } catch {}
-                WriteLine(output,ok ? "{\"success\":true,\"verified\":true}" : "{\"success\":false,\"verified\":false}");
-                // A failed write may leave the MCP connection unusable; the client falls back.
-                if(!ok) return;
-            }
-        }
-    }
-    /** One bridge connection and MCP handshake reused for many clipboard writes (screen-page typing). */
-    public sealed class ClipSession : IDisposable {
-        readonly NamedPipeClientStream pipe; int next=1;
-        public ClipSession(string name,string root) {
-            pipe=Connect(name,root);
-            Rpc(pipe,next++,"initialize",new { protocolVersion="2025-06-18", capabilities=new {}, clientInfo=new {name="miffan-clip",version="1.0"} });
-            WriteLine(pipe,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
-        }
-        public bool Write(string text) {
-            Rpc(pipe,next++,"tools/call",new {name="clipboard_write",arguments=new {text=text}});
-            return Matches(Rpc(pipe,next++,"tools/call",new {name="clipboard_read",arguments=new {include_text=true}}),text);
-        }
-        public void Dispose() { pipe.Dispose(); }
-    }
-    static bool Matches(Dictionary<string,object> result,string text) {
-        // Verification stays local to the helper; no old clipboard read, text/hash output.
-        if(result.ContainsKey("structuredContent")) {
-            var structured=result["structuredContent"] as Dictionary<string,object>;
-            if(structured!=null && structured.ContainsKey("text")) return (string)structured["text"]==text;
-        }
-        foreach(var item in (System.Collections.ArrayList)result["content"]) {
-            var content=(Dictionary<string,object>)item;
-            if(content.ContainsKey("text")) {
-                try { var value=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>((string)content["text"]); if(value.ContainsKey("text")) return (string)value["text"]==text; } catch {}
-            }
-        }
-        return false;
-    }
-}
+#include CuaBridge.cs
 '@
 # P7c: ordinary interactive task + authenticated local pipe. No TCP/file MCP transport.
 $script:CuaVersion = '0.34.0'
@@ -1239,6 +1031,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
                 { $_ -in @('', 'probe') } { return Get-SunshineProbe }
                 'start' { return Invoke-SunshineStart }
                 'enforce-encryption' { return Invoke-EnforceEncryption }
+                'pair' { return Invoke-SunshinePair ([Console]::In.ReadToEnd()) }
                 'unpair' { return Invoke-SunshineUnpair $Suboperation }
                 'firewall' {
                     switch ($Suboperation) {
@@ -1247,7 +1040,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
                         default { throw 'Usage: sunshine firewall check|apply' }
                     }
                 }
-                default { throw 'Usage: sunshine probe|start|enforce-encryption|unpair|firewall' }
+                default { throw 'Usage: sunshine probe|start|enforce-encryption|pair|unpair|firewall' }
             }
         }
         'clip' { if ($Subcommand -or $Suboperation) {throw 'Clipboard text must come from stdin'}; return Invoke-CuaClipboard ([Console]::In.ReadToEnd()) }
@@ -1256,6 +1049,12 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
     }
 }
 $script:SafeFailures = @(
+    'Invalid Sunshine pair request',
+    'Invalid Sunshine client name',
+    'Invalid Sunshine client certificate',
+    'Unrecognized Sunshine state format',
+    'Sunshine did not stop before pairing change',
+    'Sunshine pair attempted; could not restart Sunshine',
     'Expected a SHA-256 client certificate fingerprint (64 hex digits)',
     'Invalid Sunshine state JSON',
     'Invalid Sunshine named_devices',
@@ -1335,7 +1134,7 @@ $script:SafeFailures = @(
     'Unsafe subnet prefix',
     'Usage: probe [display]',
     'Usage: sunshine firewall check|apply',
-    'Usage: sunshine probe|start|enforce-encryption|unpair|firewall',
+    'Usage: sunshine probe|start|enforce-encryption|pair|unpair|firewall',
     'Usage: version',
     'Usage: version|probe [display]|sunshine|clip',
     'Wrong desktop session'
@@ -1350,6 +1149,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     $OutputEncoding = $script:Utf8
     $script:LastBackup = $null; $script:LastDesktopTask=$null; $script:LastDesktopDirectory=$null
     try {
+        if ($Command -eq 'sunshine' -and $Action -eq 'pair' -and $args.Count -gt 0) { throw 'Unexpected Sunshine argument' }
         if ($Command -eq 'clip' -and $Action -eq 'serve' -and -not $Operation) {
             try { Invoke-CuaClipboardServe }
             catch {

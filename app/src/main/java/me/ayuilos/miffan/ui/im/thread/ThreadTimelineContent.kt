@@ -195,7 +195,7 @@ internal fun ThreadMessageBubble(
                                 else if (part.isComputerTool() && part.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending) ThreadComputerApprovalCard(part,
                                     computerTargetName(part, computer, stringResource(R.string.im_computer_computer)),
                                     canOpenComputer(part, computer), onComputerScreen, onToolApproval)
-                                else ThreadToolPrompt(part, onToolApproval, onToolAnswer, assistant)
+                                else ThreadToolPrompt(part, onToolApproval, onToolAnswer, assistant, item.segmentId.toString())
                             } else if (part.isImageGeneration()) ThreadGeneratedImages(part, item.streaming)
                             else -> Unit
                         }
