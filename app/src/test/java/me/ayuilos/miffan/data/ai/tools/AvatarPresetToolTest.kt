@@ -28,6 +28,7 @@ class AvatarPresetToolTest {
             queried += subject to subjectId
             list.filter { it.subject == subject && it.subjectId == subjectId }.reversed()
         }
+        override fun byToolCallId(toolCallId: String) = rows.map { list -> list.filter { it.toolCallId == toolCallId } }
         override fun byAuthor(author: RevisionAuthor, subjectIds: List<String>) = rows.map { list ->
             list.filter { it.author == author && it.subjectId in subjectIds }
         }

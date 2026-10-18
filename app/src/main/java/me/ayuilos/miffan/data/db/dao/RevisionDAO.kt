@@ -21,6 +21,10 @@ interface RevisionDAO {
     @Query("SELECT * FROM revision WHERE author = :author AND subject_id IN (:subjectIds) ORDER BY created_at ASC, rowid ASC")
     fun observeByAuthor(author: String, subjectIds: List<String>): Flow<List<RevisionEntity>>
 
+    /** All changes made by one tool call, including multiple changes of the same subject. */
+    @Query("SELECT * FROM revision WHERE trigger_tool_call_id = :toolCallId ORDER BY created_at ASC, rowid ASC")
+    fun byToolCallId(toolCallId: String): Flow<List<RevisionEntity>>
+
     @Insert
     suspend fun insert(revision: RevisionEntity)
 }

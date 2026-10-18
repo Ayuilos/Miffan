@@ -19,6 +19,8 @@ interface RevisionStore {
     suspend fun <T> transaction(block: suspend () -> T): T
     fun history(subject: RevisionSubject, subjectId: String): Flow<List<Revision>>
     fun byAuthor(author: RevisionAuthor, subjectIds: List<String>): Flow<List<Revision>>
+    /** Revisions attributed to one tool call, oldest first. */
+    fun byToolCallId(toolCallId: String): Flow<List<Revision>>
 }
 
 class RoomRevisionStore(private val database: AppDatabase, private val dao: RevisionDAO) : RevisionStore {
@@ -30,6 +32,8 @@ class RoomRevisionStore(private val database: AppDatabase, private val dao: Revi
         dao.observeHistory(subject.name, subjectId).map { list -> list.map { it.toRevision() } }
     override fun byAuthor(author: RevisionAuthor, subjectIds: List<String>) =
         dao.observeByAuthor(author.name, subjectIds).map { list -> list.map { it.toRevision() } }
+    override fun byToolCallId(toolCallId: String) =
+        dao.byToolCallId(toolCallId).map { list -> list.map { it.toRevision() } }
 }
 
 /**
@@ -44,7 +48,8 @@ class RevisionRepository(
 
     /**
      * Records [after] as the new head of the subject. When the subject has no history yet, [before]
-     * is stored first as its baseline. Returns null when nothing changed. The author and trigger
+     * is stored first as its baseline. Returns null when nothing changed, except for explicit
+     * restores, which also record undo/redo of a call whose net change was empty. The author and trigger
      * come from the [RevisionOrigin] in the caller's coroutine context (default: the user).
      */
     suspend fun record(
@@ -55,15 +60,17 @@ class RevisionRepository(
         defaultSummary: String = "",
     ): Revision? {
         val origin = currentCoroutineContext()[RevisionOrigin] ?: RevisionOrigin(RevisionAuthor.USER)
+        val toolCallId = origin.toolCallId ?: currentCoroutineContext()[CurrentToolCall]?.id
         return mutex.withLock {
             store.transaction {
                 var head = store.head(subject, subjectId)
-                if (head?.snapshot == after) return@transaction null
+                if (head?.snapshot == after && origin.author != RevisionAuthor.RESTORE) return@transaction null
                 if (head == null && before != null && before != after) {
                     head = newRevision(subject, subjectId, null, RevisionOrigin(RevisionAuthor.BASELINE), before, "")
                         .also { store.insert(it) }
                 }
                 newRevision(subject, subjectId, head?.id, origin, after, origin.summary ?: defaultSummary)
+                    .copy(toolCallId = toolCallId)
                     .also { store.insert(it) }
             }
         }
@@ -78,6 +85,9 @@ class RevisionRepository(
 
     /** Oldest first. */
     fun agentRevisions(subjectIds: List<String>): Flow<List<Revision>> = store.byAuthor(RevisionAuthor.AGENT, subjectIds)
+
+    /** Revisions attributed to one tool call, oldest first. */
+    fun byToolCallId(toolCallId: String): Flow<List<Revision>> = store.byToolCallId(toolCallId)
 
     private fun newRevision(
         subject: RevisionSubject,

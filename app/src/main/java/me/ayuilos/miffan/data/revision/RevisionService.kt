@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.model.Assistant
@@ -29,12 +31,114 @@ sealed interface RestoreResult {
     data object NotFound : RestoreResult
 }
 
+sealed interface ToolCallChangeState {
+    data object Undoable : ToolCallChangeState
+    data object Undone : ToolCallChangeState
+    data object Superseded : ToolCallChangeState
+}
+
+data class ToolCallChange(
+    val revisions: List<Revision>,
+    val state: ToolCallChangeState,
+    /** The assistant before this call, when the call changed an assistant. */
+    val assistantBefore: Assistant?,
+)
+
 /** Restores earlier versions of assistants and memory sets; every restore is a new revision. */
 class RevisionService(
     private val revisions: RevisionRepository,
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
 ) {
+    private val restoreMutex = Mutex()
+
+    /**
+     * Observes reversible changes and their current subject heads. Creations without a parent
+     * are excluded: undo cannot delete subjects. Multiple writes to a subject form one change.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeToolCallChange(toolCallId: String): Flow<ToolCallChange?> = revisions.byToolCallId(toolCallId)
+        .distinctUntilChanged()
+        .flatMapLatest { changes ->
+            val groups = changes.filter { it.author != RevisionAuthor.RESTORE }
+                .groupBy { it.subject to it.subjectId }.values.filter { it.first().parentId != null }
+            if (groups.isEmpty()) flowOf(null) else combine(groups.map { group ->
+                revisions.history(group.first().subject, group.first().subjectId)
+            }) { histories ->
+                val states = groups.zip(histories).map { (group, history) -> callState(group, history) }
+                val state = when {
+                    states.all { it == ToolCallChangeState.Undoable } -> ToolCallChangeState.Undoable
+                    states.all { it == ToolCallChangeState.Undone } -> ToolCallChangeState.Undone
+                    else -> ToolCallChangeState.Superseded
+                }
+                val before = groups.zip(histories).firstOrNull { (group, _) ->
+                    group.first().subject == RevisionSubject.ASSISTANT
+                }?.let { (group, history) ->
+                    history.find { it.id == group.first().parentId }?.let { parent ->
+                        runCatching { AssistantRevisionRecorder.restore(parent.snapshot) }.getOrNull()
+                    }
+                }
+                ToolCallChange(groups.flatten(), state, before)
+            }
+        }
+
+    /** Reverts every reversible subject changed by the call, after checking all subject heads. */
+    suspend fun undoToolCall(toolCallId: String): RestoreResult = restoreToolCall(toolCallId, redo = false)
+
+    /** Reapplies the call's final snapshots only while its undo revisions are still the heads. */
+    suspend fun redoToolCall(toolCallId: String): RestoreResult = restoreToolCall(toolCallId, redo = true)
+
+    private suspend fun restoreToolCall(toolCallId: String, redo: Boolean): RestoreResult = restoreMutex.withLock {
+        val change = observeToolCallChange(toolCallId).first() ?: return@withLock RestoreResult.NotFound
+        val expected = if (redo) ToolCallChangeState.Undone else ToolCallChangeState.Undoable
+        if (change.state != expected) return@withLock RestoreResult.Conflict
+        val groups = change.revisions.groupBy { it.subject to it.subjectId }.values
+        val targets = groups.map { group ->
+            val target = if (redo) group.last() else revisions.get(requireNotNull(group.first().parentId))
+            target ?: return@withLock RestoreResult.NotFound
+        }
+        val heads = targets.map { target ->
+            revisions.head(target.subject, target.subjectId) ?: return@withLock RestoreResult.NotFound
+        }
+        // Validate all subjects before changing any of them, including deleted assistants.
+        val settings = if (targets.any { it.subject == RevisionSubject.ASSISTANT }) settingsStore.settingsFlow.first() else null
+        targets.forEach { target ->
+            when (target.subject) {
+                RevisionSubject.ASSISTANT -> {
+                    if (settings?.assistants.orEmpty().none { it.id.toString() == target.subjectId }) return@withLock RestoreResult.NotFound
+                    AssistantRevisionRecorder.restore(target.snapshot)
+                }
+                RevisionSubject.MEMORY -> MemoryRepository.restore(target.snapshot)
+            }
+        }
+        if (observeToolCallChange(toolCallId).first()?.state != expected) return@withLock RestoreResult.Conflict
+        targets.zip(heads).forEach { (target, head) ->
+            val result = restoreUnlocked(target, head.id, recordNoOp = true)
+            if (result != RestoreResult.Restored) return@withLock result
+        }
+        RestoreResult.Restored
+    }
+
+    private fun callState(group: List<Revision>, history: List<Revision>): ToolCallChangeState {
+        if (group.zipWithNext().any { (previous, next) -> next.parentId != previous.id }) {
+            return ToolCallChangeState.Superseded
+        }
+        val byId = history.associateBy { it.id }
+        var head = history.firstOrNull() ?: return ToolCallChangeState.Superseded
+        val undone = head.author == RevisionAuthor.RESTORE && head.revertOf == group.first().parentId
+        var expectUndo = undone
+        // Follow alternating undo/redo restores back to this call, rather than accepting an
+        // unrelated later restore of the same snapshot. Parent links also handle equal timestamps.
+        while (head.id != group.last().id) {
+            val target = if (expectUndo) group.first().parentId else group.last().id
+            if (head.author != RevisionAuthor.RESTORE || head.revertOf != target) return ToolCallChangeState.Superseded
+            head = byId[head.parentId] ?: return ToolCallChangeState.Superseded
+            expectUndo = !expectUndo
+        }
+        if (expectUndo) return ToolCallChangeState.Superseded
+        return if (undone) ToolCallChangeState.Undone else ToolCallChangeState.Undoable
+    }
+
     /** Preview for approval UI: newest own historical avatar that differs from the current one. */
     suspend fun previousAvatar(assistantId: Uuid): Avatar? {
         val current = settingsStore.settingsFlow.first().getAssistantById(assistantId) ?: return null
@@ -51,19 +155,35 @@ class RevisionService(
         }
 
     /** Restores [target]'s snapshot if the subject's head is still [expectedHeadId]. */
-    suspend fun restore(target: Revision, expectedHeadId: String): RestoreResult {
+    suspend fun restore(target: Revision, expectedHeadId: String): RestoreResult = restoreMutex.withLock {
+        restoreUnlocked(target, expectedHeadId)
+    }
+
+    private suspend fun restoreUnlocked(target: Revision, expectedHeadId: String, recordNoOp: Boolean = false): RestoreResult {
         val head = revisions.head(target.subject, target.subjectId) ?: return RestoreResult.NotFound
         if (head.id != expectedHeadId) return RestoreResult.Conflict
-        if (head.snapshot == target.snapshot) return RestoreResult.Restored
+        if (head.snapshot == target.snapshot && !recordNoOp) return RestoreResult.Restored
         val origin = RevisionOrigin(RevisionAuthor.RESTORE, revertOf = target.id)
         return withContext(origin) {
-            when (target.subject) {
+            val result = when (target.subject) {
                 RevisionSubject.ASSISTANT -> restoreAssistant(target)
                 RevisionSubject.MEMORY -> {
                     memoryRepository.replaceAll(target.subjectId, MemoryRepository.restore(target.snapshot))
                     RestoreResult.Restored
                 }
             }
+            // Permission preservation can make an assistant restore a no-op. Retain an explicit
+            // restore revision so the call still has an observable undo/redo state.
+            if (recordNoOp && result == RestoreResult.Restored && revisions.head(target.subject, target.subjectId)?.id == head.id) {
+                val snapshot = when (target.subject) {
+                    RevisionSubject.ASSISTANT -> settingsStore.settingsFlow.first()
+                        .assistants.find { it.id.toString() == target.subjectId }
+                        ?.let { AssistantRevisionRecorder.snapshot(it) } ?: return@withContext RestoreResult.NotFound
+                    RevisionSubject.MEMORY -> target.snapshot
+                }
+                revisions.record(target.subject, target.subjectId, before = head.snapshot, after = snapshot)
+            }
+            result
         }
     }
 
@@ -101,6 +221,7 @@ internal fun Assistant.keepingPermissionsOf(current: Assistant): Assistant = cop
     workspacePermissionRevision = current.workspacePermissionRevision,
     workspaceShellApprovalTarget = current.workspaceShellApprovalTarget,
     workspaceShellApprovalVia = current.workspaceShellApprovalVia,
+    standingToolApprovals = current.standingToolApprovals,
 )
 
 /** Timeline notices for changes the assistant made itself (settings and memories). */

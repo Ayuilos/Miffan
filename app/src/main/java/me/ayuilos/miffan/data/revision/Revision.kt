@@ -10,6 +10,11 @@ import kotlin.uuid.Uuid
 
 enum class RevisionSubject { ASSISTANT, MEMORY }
 
+/** Identifies the executing tool independently of the revision origin installed by each tool. */
+class CurrentToolCall(val id: String) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<CurrentToolCall>
+}
+
 enum class RevisionAuthor {
     /** The user edited it in the interface (also the default when no origin is known). */
     USER,

@@ -44,6 +44,7 @@ class RevisionTest {
         override suspend fun <T> transaction(block: suspend () -> T): T = block()
         override fun history(subject: RevisionSubject, subjectId: String): Flow<List<Revision>> =
             revisions.map { list -> list.filter { it.subject == subject && it.subjectId == subjectId }.reversed() }
+        override fun byToolCallId(toolCallId: String) = revisions.map { list -> list.filter { it.toolCallId == toolCallId } }
         override fun byAuthor(author: RevisionAuthor, subjectIds: List<String>): Flow<List<Revision>> =
             revisions.map { list -> list.filter { it.author == author && it.subjectId in subjectIds } }
     }
@@ -74,6 +75,117 @@ class RevisionTest {
     }
 
     private val trigger = MessageRef(Uuid.random(), Uuid.random())
+
+    @Test fun toolContextAttributesNestedOriginsAndExplicitIdsTakePrecedence() = runBlocking {
+        val store = FakeStore()
+        val repository = RevisionRepository(store)
+        withContext(CurrentToolCall("executing")) {
+            withContext(RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger)) {
+                repository.record(RevisionSubject.MEMORY, "a", "[]", "[1]")
+            }
+            withContext(RevisionOrigin(RevisionAuthor.AGENT, toolCallId = "explicit")) {
+                repository.record(RevisionSubject.MEMORY, "b", "[]", "[1]")
+            }
+        }
+        assertEquals("executing", repository.byToolCallId("executing").first().single().toolCallId)
+        assertEquals("explicit", repository.byToolCallId("explicit").first().single().toolCallId)
+        assertTrue(store.revisions.value.filter { it.author == RevisionAuthor.BASELINE }.all { it.toolCallId == null })
+        assertEquals(trigger, repository.byToolCallId("executing").first().single().trigger)
+    }
+
+    @Test fun toolCallUndoAndRedoCoverMultipleWritesAndSubjectsAndObserveLaterChanges() = runBlocking {
+        val store = FakeStore()
+        val revisions = RevisionRepository(store) { Instant.EPOCH }
+        val dao = FakeMemoryDao()
+        val memories = MemoryRepository(dao, revisions)
+        val service = RevisionService(revisions, mockk(), memories)
+        withContext(CurrentToolCall("call") + RevisionOrigin(RevisionAuthor.AGENT)) {
+            memories.addMemory("a", "one")
+            memories.addMemory("a", "two")
+            memories.addMemory("b", "three")
+        }
+        val originalIds = dao.rows.value.map { it.id }.toSet()
+        assertEquals(3, service.observeToolCallChange("call").first()!!.revisions.size)
+        assertEquals(ToolCallChangeState.Undoable, service.observeToolCallChange("call").first()!!.state)
+        assertEquals(RestoreResult.Restored, service.undoToolCall("call"))
+        assertTrue(dao.rows.value.isEmpty())
+        assertEquals(ToolCallChangeState.Undone, service.observeToolCallChange("call").first()!!.state)
+        assertEquals(RestoreResult.Conflict, service.undoToolCall("call"))
+        assertEquals(RestoreResult.Restored, service.redoToolCall("call"))
+        assertEquals(originalIds, dao.rows.value.map { it.id }.toSet())
+        assertEquals(ToolCallChangeState.Undoable, service.observeToolCallChange("call").first()!!.state)
+        assertEquals(RestoreResult.Conflict, service.redoToolCall("call"))
+        assertEquals(RestoreResult.Restored, service.undoToolCall("call"))
+        memories.addMemory("b", "newer")
+        assertEquals(ToolCallChangeState.Superseded, service.observeToolCallChange("call").first()!!.state)
+        assertEquals(RestoreResult.Conflict, service.redoToolCall("call"))
+        assertEquals(listOf("newer"), dao.rows.value.map { it.content })
+        assertNull(service.observeToolCallChange("missing").first())
+        assertEquals(RestoreResult.NotFound, service.undoToolCall("missing"))
+    }
+
+    @Test fun supersededBatchDoesNotUndoAnySubjectAndInterleavedChangesAreNotUndoable() = runBlocking {
+        val revisions = RevisionRepository(FakeStore())
+        val memories = MemoryRepository(FakeMemoryDao(), revisions)
+        val service = RevisionService(revisions, mockk(), memories)
+        withContext(CurrentToolCall("batch")) {
+            memories.addMemory("a", "original a")
+            memories.addMemory("b", "original b")
+        }
+        memories.addMemory("b", "user edit")
+        val unchangedA = revisions.head(RevisionSubject.MEMORY, "a")
+        assertEquals(RestoreResult.Conflict, service.undoToolCall("batch"))
+        assertEquals(unchangedA, revisions.head(RevisionSubject.MEMORY, "a"))
+        withContext(CurrentToolCall("batch")) { memories.addMemory("b", "later call write") }
+        assertEquals(ToolCallChangeState.Superseded, service.observeToolCallChange("batch").first()!!.state)
+    }
+
+    @Test fun undoAndRedoRecordStateEvenWhenMultipleWritesHaveNoNetChange() = runBlocking {
+        val revisions = RevisionRepository(FakeStore())
+        val memories = MemoryRepository(FakeMemoryDao(), revisions)
+        val service = RevisionService(revisions, mockk(), memories)
+        withContext(CurrentToolCall("no-net-change")) {
+            val added = memories.addMemory("a", "temporary")
+            memories.deleteMemory(added.id)
+        }
+        assertEquals(RestoreResult.Restored, service.undoToolCall("no-net-change"))
+        assertEquals(ToolCallChangeState.Undone, service.observeToolCallChange("no-net-change").first()!!.state)
+        assertEquals(RestoreResult.Restored, service.redoToolCall("no-net-change"))
+        assertEquals(ToolCallChangeState.Undoable, service.observeToolCallChange("no-net-change").first()!!.state)
+    }
+
+    @Test fun toolCallCreationsAreExcludedAndAssistantRestoreKeepsCurrentStandingGrants() = runBlocking {
+        val store = FakeStore()
+        val revisions = RevisionRepository(store)
+        val recorder = AssistantRevisionRecorder(revisions)
+        val before = Assistant(name = "before", standingToolApprovals = setOf("calendar_create"))
+        val after = before.copy(name = "after", standingToolApprovals = setOf("mcp__server__write"))
+        val state = MutableStateFlow(Settings(assistants = listOf(after)))
+        val settings = mockk<SettingsStore>()
+        io.mockk.every { settings.settingsFlow } returns state
+        coEvery { settings.update(any<(Settings) -> Settings>()) } coAnswers {
+            val old = state.value
+            val next = firstArg<(Settings) -> Settings>()(old)
+            state.value = next
+            recorder.onAssistantsChanged(old.assistants, next.assistants)
+        }
+        val service = RevisionService(revisions, settings, MemoryRepository(FakeMemoryDao(), revisions))
+        withContext(CurrentToolCall("profile") + RevisionOrigin(RevisionAuthor.AGENT)) {
+            recorder.onAssistantsChanged(listOf(before), listOf(after))
+        }
+        assertEquals(before, service.observeToolCallChange("profile").first()!!.assistantBefore)
+        assertEquals(RestoreResult.Restored, service.undoToolCall("profile"))
+        assertEquals("before", state.value.assistants.single().name)
+        assertEquals(after.standingToolApprovals, state.value.assistants.single().standingToolApprovals)
+        assertEquals(ToolCallChangeState.Undone, service.observeToolCallChange("profile").first()!!.state)
+        assertEquals(RestoreResult.Restored, service.redoToolCall("profile"))
+        assertEquals(after, state.value.assistants.single())
+        withContext(CurrentToolCall("create")) {
+            recorder.onAssistantsChanged(emptyList(), listOf(Assistant(name = "new")))
+        }
+        assertNull(service.observeToolCallChange("create").first())
+        assertEquals(RestoreResult.NotFound, service.undoToolCall("create"))
+    }
 
     @Test
     fun firstChangeStoresBaselineAndUnchangedSnapshotsAreSkipped() = runBlocking {
