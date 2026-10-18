@@ -104,13 +104,118 @@ class RevisionTest {
             settings.update { it.copy(assistants = it.assistants.map(transform)) }
         }
 
-        suspend fun rename() = withContext(CurrentToolCall("rename") + RevisionOrigin(RevisionAuthor.AGENT)) {
+        suspend fun rename(trigger: MessageRef? = null) = withContext(CurrentToolCall("rename") + RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger)) {
             update { it.copy(name = "after", avatar = Avatar.Emoji("🐳")) }
         }
 
         suspend fun assertState(expected: ToolCallChangeState, call: String = "rename") {
             assertEquals(expected, service.observeToolCallChange(call).first()!!.state)
         }
+    }
+
+    @Test fun noticeUndoPreservesUnrelatedPermissionsAndSettings() = runBlocking {
+        for (permissionsOnly in listOf(true, false)) {
+            val f = MergeFixture(Assistant(name = "before", standingToolApprovals = setOf("calendar_create")))
+            val notices = RevisionNoticeSource(f.revisions, f.settings).observe(f.before.id)
+            f.rename(trigger)
+            val revision = f.revisions.byToolCallId("rename").first().single()
+            assertTrue(notices.first().single().undoable)
+            f.update {
+                if (permissionsOnly) it.copy(standingToolApprovals = emptySet()) else it.copy(systemPrompt = "later prompt")
+            }
+            val later = f.assistant
+            assertTrue(notices.first().single().undoable)
+            assertEquals(RestoreResult.Restored, f.service.undo(revision.id))
+            assertEquals(later.copy(name = f.before.name, avatar = f.before.avatar), f.assistant)
+            assertEquals(RevisionAuthor.RESTORE, f.store.revisions.value.last().author)
+            assertEquals(revision.parentId, f.store.revisions.value.last().revertOf)
+            assertFalse(notices.first().single().undoable)
+            val history = f.store.revisions.value
+            assertEquals(RestoreResult.Conflict, f.service.undo(revision.id))
+            assertEquals(history, f.store.revisions.value)
+        }
+    }
+
+    @Test fun laterRenameDisablesNoticeUndoAndConflictsWithoutChanges() = runBlocking {
+        val f = MergeFixture()
+        f.rename(trigger)
+        val revision = f.revisions.byToolCallId("rename").first().single()
+        f.update { it.copy(name = "user rename") }
+        val later = f.assistant
+        val history = f.store.revisions.value
+        assertFalse(RevisionNoticeSource(f.revisions, f.settings).observe(f.before.id).first().single().undoable)
+        assertEquals(RestoreResult.Conflict, f.service.undo(revision.id))
+        assertEquals(later, f.assistant)
+        assertEquals(history, f.store.revisions.value)
+    }
+
+    @Test fun memoryNoticeUndoRemovesOnlyTheAddedItem() = runBlocking {
+        val f = MergeFixture()
+        val notices = RevisionNoticeSource(f.revisions, f.settings).observe(f.before.id)
+        val x = withContext(RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger)) {
+            f.memories.addMemory(f.before.id.toString(), "X")
+        }
+        val revision = f.store.revisions.value.last()
+        val y = f.memories.addMemory(f.before.id.toString(), "Y")
+        val kept = f.dao.rows.value.single { it.id == y.id }
+        assertTrue(notices.first().single().undoable)
+        assertEquals(RestoreResult.Restored, f.service.undo(revision.id))
+        assertEquals(listOf(kept), f.dao.rows.value)
+        assertFalse(f.dao.rows.value.any { it.id == x.id })
+        assertEquals(RevisionAuthor.RESTORE, f.store.revisions.value.last().author)
+        assertEquals(revision.parentId, f.store.revisions.value.last().revertOf)
+        assertFalse(notices.first().single().undoable)
+    }
+
+    @Test fun permissionOnlyRevisionCannotBeUndoneFromNotice() = runBlocking {
+        val f = MergeFixture()
+        withContext(RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger)) {
+            f.update { it.copy(standingToolApprovals = setOf("calendar_create"), workspaceShellEnabled = false) }
+        }
+        val revision = f.store.revisions.value.last()
+        val later = f.assistant
+        val history = f.store.revisions.value
+        assertFalse(RevisionNoticeSource(f.revisions, f.settings).observe(f.before.id).first().single().undoable)
+        assertEquals(RestoreResult.Conflict, f.service.undo(revision.id))
+        assertEquals(later, f.assistant)
+        assertEquals(history, f.store.revisions.value)
+    }
+
+    @Test fun noticeUndoWithoutAParentOrRevisionReturnsNotFound() = runBlocking {
+        val f = MergeFixture()
+        val revision = withContext(RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger)) {
+            f.revisions.record(RevisionSubject.ASSISTANT, f.before.id.toString(), null, AssistantRevisionRecorder.snapshot(f.before))!!
+        }
+        assertFalse(RevisionNoticeSource(f.revisions, f.settings).observe(f.before.id).first().single().undoable)
+        assertEquals(RestoreResult.NotFound, f.service.undo(revision.id))
+        assertEquals(RestoreResult.NotFound, f.service.undo("missing"))
+    }
+
+    @Test fun noticeUndoRevertsOnlyItsRevisionWithinAToolCall() = runBlocking {
+        val f = MergeFixture()
+        withContext(CurrentToolCall("profile") + RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger)) {
+            f.update { it.copy(name = "after") }
+            f.update { it.copy(systemPrompt = "new prompt") }
+        }
+        val revision = f.revisions.byToolCallId("profile").first().first()
+        assertTrue(RevisionNoticeSource(f.revisions, f.settings).observe(f.before.id).first().all { it.undoable })
+        assertEquals(RestoreResult.Restored, f.service.undo(revision.id))
+        assertEquals(f.before.copy(systemPrompt = "new prompt"), f.assistant)
+    }
+
+    @Test fun historyRestoreStillRequiresTheExpectedHeadAndRestoresTheWholeSnapshot() = runBlocking {
+        val f = MergeFixture()
+        f.rename()
+        val revision = f.revisions.byToolCallId("rename").first().single()
+        val parent = f.revisions.get(revision.parentId!!)!!
+        f.update { it.copy(systemPrompt = "later prompt") }
+        val later = f.assistant
+        val history = f.store.revisions.value
+        assertEquals(RestoreResult.Conflict, f.service.restore(parent, revision.id))
+        assertEquals(later, f.assistant)
+        assertEquals(history, f.store.revisions.value)
+        assertEquals(RestoreResult.Restored, f.service.restore(parent, history.last().id))
+        assertEquals(f.before, f.assistant)
     }
 
     @Test fun renameUndoAndRedoPreserveLaterSettingsAndRestoreOrigins() = runBlocking {
@@ -454,7 +559,7 @@ class RevisionTest {
         assertEquals(RestoreResult.Restored, service.undo(agentRevision.id))
         assertEquals(listOf(kept.id), dao.rows.value.map { it.id })
         assertEquals(RevisionAuthor.RESTORE, store.revisions.value.last().author)
-        // The undone revision is no longer the head, so undoing it again is a conflict.
+        // The touched item is already absent, so undoing its addition again is a conflict.
         assertEquals(RestoreResult.Conflict, service.undo(agentRevision.id))
     }
 

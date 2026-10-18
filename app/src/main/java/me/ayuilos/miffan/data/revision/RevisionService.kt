@@ -132,54 +132,6 @@ class RevisionService(
         RestoreResult.Restored
     }
 
-    private fun toolCallGroup(group: List<Revision>, before: Revision): ToolCallGroup<*, *> = when (before.subject) {
-        RevisionSubject.ASSISTANT -> ToolCallGroup(
-            group, before,
-            read = { JsonInstant.parseToJsonElement(it).jsonObject },
-            write = { JsonObject(it).toString() },
-            ignored = { it == "id" || it.startsWith("workspace") || it == "standingToolApprovals" },
-        )
-        RevisionSubject.MEMORY -> ToolCallGroup(
-            group, before,
-            read = { MemoryRepository.restore(it).associateBy { item -> item.id } },
-            write = { JsonInstant.encodeToString(it.values.sortedBy { item -> item.id }) },
-        )
-    }
-
-    /** Null map lookups represent absence, distinct from any present value (including JSON null). */
-    private class ToolCallGroup<K, V : Any>(
-        val revisions: List<Revision>,
-        val before: Revision,
-        private val read: (String) -> Map<K, V>,
-        private val write: (Map<K, V>) -> String,
-        ignored: (K) -> Boolean = { false },
-    ) {
-        private val beforeValues = read(before.snapshot)
-        private val afterValues = read(revisions.last().snapshot)
-        val touched = (beforeValues.keys + afterValues.keys).filterTo(mutableSetOf()) {
-            !ignored(it) && beforeValues[it] != afterValues[it]
-        }
-
-        fun state(snapshot: String?): ToolCallChangeState {
-            val current = snapshot?.let(read) ?: return ToolCallChangeState.Superseded
-            return when {
-                touched.all { current[it] == afterValues[it] } -> ToolCallChangeState.Undoable
-                touched.all { current[it] == beforeValues[it] } -> ToolCallChangeState.Undone
-                else -> ToolCallChangeState.Superseded
-            }
-        }
-
-        fun merge(snapshot: String, redo: Boolean): String {
-            val values = if (redo) afterValues else beforeValues
-            val merged = read(snapshot).toMutableMap()
-            touched.forEach { key ->
-                val value = values[key]
-                if (value == null) merged.remove(key) else merged[key] = value
-            }
-            return write(merged)
-        }
-    }
-
     /** Preview for approval UI: newest own historical avatar that differs from the current one. */
     suspend fun previousAvatar(assistantId: Uuid): Avatar? {
         val current = settingsStore.settingsFlow.first().getAssistantById(assistantId) ?: return null
@@ -232,11 +184,14 @@ class RevisionService(
         }
     }
 
-    /** Reverts [revisionId] when it is still the newest change of its subject. */
-    suspend fun undo(revisionId: String): RestoreResult {
-        val revision = revisions.get(revisionId) ?: return RestoreResult.NotFound
-        val parent = revision.parentId?.let { revisions.get(it) } ?: return RestoreResult.NotFound
-        return restore(parent, expectedHeadId = revision.id)
+    /** Reverts [revisionId]'s touched fields while they still match the revision's values. */
+    suspend fun undo(revisionId: String): RestoreResult = restoreMutex.withLock {
+        val revision = revisions.get(revisionId) ?: return@withLock RestoreResult.NotFound
+        val parent = revision.parentId?.let { revisions.get(it) } ?: return@withLock RestoreResult.NotFound
+        val group = toolCallGroup(listOf(revision), parent)
+        val head = revisions.head(revision.subject, revision.subjectId) ?: return@withLock RestoreResult.NotFound
+        if (group.state(head.snapshot) != ToolCallChangeState.Undoable) return@withLock RestoreResult.Conflict
+        restoreSnapshot(parent.copy(snapshot = group.merge(head.snapshot, redo = false)), head, recordNoOp = true)
     }
 
     private suspend fun restoreAssistant(target: Revision): RestoreResult {
@@ -250,6 +205,55 @@ class RevisionService(
             })
         }
         return if (found) RestoreResult.Restored else RestoreResult.NotFound
+    }
+}
+
+private fun toolCallGroup(group: List<Revision>, before: Revision): ToolCallGroup<*, *> = when (before.subject) {
+    RevisionSubject.ASSISTANT -> ToolCallGroup(
+        group, before,
+        read = { JsonInstant.parseToJsonElement(it).jsonObject },
+        write = { JsonObject(it).toString() },
+        ignored = { it == "id" || it.startsWith("workspace") || it == "standingToolApprovals" },
+    )
+    RevisionSubject.MEMORY -> ToolCallGroup(
+        group, before,
+        read = { MemoryRepository.restore(it).associateBy { item -> item.id } },
+        write = { JsonInstant.encodeToString(it.values.sortedBy { item -> item.id }) },
+    )
+}
+
+/** Null map lookups represent absence, distinct from any present value (including JSON null). */
+private class ToolCallGroup<K, V : Any>(
+    val revisions: List<Revision>,
+    val before: Revision,
+    private val read: (String) -> Map<K, V>,
+    private val write: (Map<K, V>) -> String,
+    ignored: (K) -> Boolean = { false },
+) {
+    private val beforeValues = read(before.snapshot)
+    private val afterValues = read(revisions.last().snapshot)
+    val touched = (beforeValues.keys + afterValues.keys).filterTo(mutableSetOf()) {
+        !ignored(it) && beforeValues[it] != afterValues[it]
+    }
+
+    fun state(snapshot: String?): ToolCallChangeState {
+        if (touched.isEmpty()) return ToolCallChangeState.Superseded
+        val current = snapshot?.let(read) ?: return ToolCallChangeState.Superseded
+        return when {
+            touched.all { current[it] == afterValues[it] } -> ToolCallChangeState.Undoable
+            touched.all { current[it] == beforeValues[it] } -> ToolCallChangeState.Undone
+            else -> ToolCallChangeState.Superseded
+        }
+    }
+
+    fun merge(snapshot: String, redo: Boolean): String {
+        val values = if (redo) afterValues else beforeValues
+        val merged = read(snapshot).toMutableMap()
+        touched.forEach { key ->
+            val value = values[key]
+            if (value == null) merged.remove(key) else merged[key] = value
+        }
+        return write(merged)
     }
 }
 
@@ -287,9 +291,12 @@ class RevisionNoticeSource(
         .flatMapLatest { subjectIds -> revisions.agentRevisions(subjectIds) }
         .mapLatest { list ->
             val heads = list.map { it.subject to it.subjectId }.distinct()
-                .associateWith { (subject, id) -> revisions.head(subject, id)?.id }
+                .associateWith { (subject, id) -> revisions.head(subject, id) }
             list.mapNotNull { revision ->
                 val trigger = revision.trigger ?: return@mapNotNull null
+                val parent = revision.parentId?.let { revisions.get(it) }
+                val undoable = parent != null && toolCallGroup(listOf(revision), parent)
+                    .state(heads[revision.subject to revision.subjectId]?.snapshot) == ToolCallChangeState.Undoable
                 ThreadNotice(
                     id = revision.id,
                     at = revision.createdAt,
@@ -304,7 +311,7 @@ class RevisionNoticeSource(
                     summary = revision.summary,
                     trigger = trigger,
                     revisionId = revision.id,
-                    undoable = revision.parentId != null && heads[revision.subject to revision.subjectId] == revision.id,
+                    undoable = undoable,
                 )
             }
         }
