@@ -99,8 +99,7 @@ internal fun ThreadToolPrompt(
     conversationId: String? = null,
 ) {
     when {
-        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER ->
-            ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)), onAnswer)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER -> ThreadQuestionCard(tool, onAnswer)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == WORKSPACE_TERMINAL_TOOL_NAME ->
             ThreadTerminalCard(tool, conversationId, onApproval, onAnswer)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == UPDATE_MY_PROFILE ->
@@ -132,13 +131,6 @@ internal fun ThreadToolPrompt(
 internal fun ThreadLiveStatus(@StringRes label: Int) {
     Text(stringResource(label), Modifier.shimmer(isLoading = true), style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable
-private fun ThreadToolDetails(steps: List<ThinkingStep>, onAnswer: ((String, String) -> Unit)? = null) {
-    ChainOfThought(steps = steps, collapsedVisibleCount = Int.MAX_VALUE) { step ->
-        if (step is ThinkingStep.ToolStep) ChatMessageToolStep(step.tool, loading = false, onToolAnswer = onAnswer)
-    }
 }
 
 /** The question and the user's choice, kept as part of the conversation rather than as process. */

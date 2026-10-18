@@ -3071,9 +3071,17 @@
   <string name="im_record_undo" tools:ignore="MissingTranslation">Undo this change</string>
   <string name="im_record_undone" tools:ignore="MissingTranslation">Undone. Everything is back to how it was.</string>
   <string name="im_record_redo" tools:ignore="MissingTranslation">Apply this change again</string>
-  <string name="im_record_superseded" tools:ignore="MissingTranslation">It was changed again later, so it can\'t be undone here. Use the change history instead.</string>
+  <string name="im_record_superseded" tools:ignore="MissingTranslation">The same things were changed again later, so it can\'t be undone here. Use the change history instead.</string>
   <string name="im_record_conflict" tools:ignore="MissingTranslation">Something changed in the meantime; nothing was undone.</string>
   <string name="im_record_history" tools:ignore="MissingTranslation">See all changes</string>
+  <string name="im_question_one" tools:ignore="MissingTranslation">A question for you</string>
+  <string name="im_question_progress" tools:ignore="MissingTranslation">Question %1$d of %2$d</string>
+  <string name="im_question_answer_hint" tools:ignore="MissingTranslation">Type your answer</string>
+  <string name="im_question_next" tools:ignore="MissingTranslation">Next</string>
+  <string name="im_question_back" tools:ignore="MissingTranslation">Back</string>
+  <string name="im_question_send" tools:ignore="MissingTranslation">Send</string>
+  <string name="im_question_sent" tools:ignore="MissingTranslation">Sent, carrying on…</string>
+  <string name="im_question_reply_hint" tools:ignore="MissingTranslation">Or just reply in the chat below.</string>
   <string name="im_standing_title" tools:ignore="MissingTranslation">Done without asking</string>
   <string name="im_standing_help" tools:ignore="MissingTranslation">Your partner does these directly. Take one back and it asks first again.</string>
   <string name="im_standing_revoke" tools:ignore="MissingTranslation">Take back</string>
