@@ -270,6 +270,7 @@ fun AgentThreadPage(
     fun TimelineRow(item: TimelineItem) {
         when (item) {
             is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
+            is TimelineItem.TopicBoundary -> Unit
             is TimelineItem.Message -> CompositionLocalProvider(
                 LocalToolCardActions provides remember(item.segmentId) { vm.toolCardActions(item) },
             ) { ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),

@@ -5,6 +5,7 @@ import me.rerere.ai.core.ReasoningLevel
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import me.ayuilos.miffan.data.model.TopicStart
 import me.ayuilos.miffan.data.model.Conversation
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessagePart
@@ -37,11 +38,11 @@ class SmartSegmentRouter(
     override suspend fun route(request: RouteRequest): RouteDecision {
         val now = request.now.toEpochMilli()
         val open = request.segments.filter { it.chatId == null && it.threadClosedAt == 0L }.sortedByDescending { it.updateAt }
-        val newest = open.firstOrNull() ?: return RouteDecision.New("no open segment")
+        val newest = open.firstOrNull() ?: return RouteDecision.New("no open segment", start = TopicStart.AUTO.takeIf { request.segments.any { it.chatId == null } })
         val stale = open.filter { now - it.updateAt.toEpochMilli() > candidateIdleMillis }
             .mapTo(HashSet()) { it.id }
         if (now - newest.updateAt.toEpochMilli() > hardIdleMillis) {
-            return RouteDecision.New("thread idle", closeSegmentIds = stale + newest.id)
+            return RouteDecision.New("thread idle", closeSegmentIds = stale + newest.id, start = TopicStart.IDLE)
         }
 
         val text = request.content.filterIsInstance<UIMessagePart.Text>().joinToString(" ") { it.text }.trim()

@@ -54,7 +54,7 @@ class ConversationDAOTest : ImDatabaseTestSupport() {
             withTimeout(5_000) {
                 val initial = emissions.receive()
                 assertEquals(
-                    listOf(ThreadSegmentStamp(segment.id, segment.title, "Summary", 30, "first", 2, 5)),
+                    listOf(ThreadSegmentStamp(segment.id, segment.title, "Summary", 30, "first", 2, 5, updateAt = 20)),
                     initial,
                 )
 

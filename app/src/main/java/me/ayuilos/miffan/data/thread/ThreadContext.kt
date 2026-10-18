@@ -42,7 +42,11 @@ class SegmentSummarizer(
             "locale" to Locale.getDefault().displayName,
         )
         val summary = models.compress(prompt, SUMMARY_TIMEOUT_MILLIS, segment.assistantId) ?: return
-        chatService.updateThreadSegment(segmentId) { it.copy(threadSummary = summary) }
+        chatService.updateThreadSegment(segmentId) {
+            if (it.threadClosedAt == segment.threadClosedAt && it.threadClosedAt != 0L && it.messageNodes == segment.messageNodes) {
+                it.copy(threadSummary = summary)
+            } else it
+        }
     }
 
     companion object {

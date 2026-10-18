@@ -10,6 +10,10 @@ import kotlin.uuid.Uuid
 
 /** Loads the segments (conversations) that make up an assistant's IM thread. */
 class ThreadRepository(private val conversationRepository: ConversationRepository) {
+    fun observeCatalog(assistantId: Uuid) = conversationRepository.observeThreadCatalog(assistantId)
+
+    suspend fun getSegment(id: Uuid): Conversation? = conversationRepository.getConversationById(id)
+
     /**
      * Full segments of [assistantId], newest first. Unchanged segments are reused between
      * emissions so a save in one segment does not reload every message of the others.

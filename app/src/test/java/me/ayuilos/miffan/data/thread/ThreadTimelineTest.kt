@@ -51,7 +51,8 @@ class ThreadTimelineTest {
         val cat = segment(1, catQ, catA)
         val tomato = segment(2, tomatoQ, tomatoA)
 
-        val items = ThreadTimeline.build(listOf(tomato, cat, rain), zone = utc)
+        val items = ThreadTimeline.build(listOf(tomato, cat, rain), zone = utc,
+            topicIndices = mapOf(rain.id to 0, cat.id to 1, tomato.id to 2))
 
         assertTrue(items.first() is TimelineItem.DateSeparator)
         assertEquals(1, items.count { it is TimelineItem.DateSeparator })

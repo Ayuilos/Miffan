@@ -122,6 +122,7 @@ import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.datastore.getCurrentAssistant
 import me.ayuilos.miffan.data.datastore.getCurrentChatModel
 import me.ayuilos.miffan.data.files.FilesManager
+import me.ayuilos.miffan.data.thread.attachMergeContinuation
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.data.model.isImMode
@@ -598,9 +599,9 @@ class ChatService(
      * Loads or creates an IM thread segment for [assistantId] without changing the selected
      * assistant. Preset messages keep their ids, so the timeline shows them only once.
      */
-    suspend fun openThreadSegment(conversationId: Uuid, assistantId: Uuid) {
+    suspend fun openThreadSegment(conversationId: Uuid, assistantId: Uuid, topicStart: me.ayuilos.miffan.data.model.TopicStart? = null) {
         // A loaded session is the source of truth; reloading could drop an in-flight generation.
-        if (getOrCreateSession(conversationId).state.value.messageNodes.isNotEmpty()) return
+        if (getOrCreateSession(conversationId).state.value.let { it.messageNodes.isNotEmpty() || it.newConversation }) return
         val conversation = conversationRepo.getConversationById(conversationId)
         if (conversation != null) {
             updateConversation(conversationId, conversation)
@@ -609,7 +610,7 @@ class ChatService(
             updateConversation(
                 conversationId,
                 Conversation.ofId(id = conversationId, assistantId = assistant.id, newConversation = true)
-                    .updateCurrentMessages(assistant.presetMessages),
+                    .copy(topicStart = topicStart).updateCurrentMessages(assistant.presetMessages),
             )
         }
     }
@@ -619,13 +620,40 @@ class ChatService(
      * and saved so a later save from the session cannot overwrite the change.
      */
     suspend fun updateThreadSegment(conversationId: Uuid, transform: (Conversation) -> Conversation) {
-        val loaded = sessions[conversationId]?.state?.value?.takeIf { it.messageNodes.isNotEmpty() }
+        val loaded = sessions[conversationId]?.state?.value?.takeIf { it.messageNodes.isNotEmpty() || it.newConversation }
         if (loaded != null) {
-            saveConversation(conversationId, transform(loaded))
+            val updated = transform(loaded)
+            updateConversation(conversationId, updated)
+            saveConversation(conversationId, updated)
         } else {
             val stored = conversationRepo.getConversationById(conversationId) ?: return
             conversationRepo.updateConversation(transform(stored))
         }
+    }
+
+    /** Current thread state, including unsaved metadata, without creating an empty session. */
+    suspend fun readThreadSegment(conversationId: Uuid): Conversation? =
+        sessions[conversationId]?.state?.value?.takeIf { it.newConversation || it.messageNodes.isNotEmpty() }
+            ?: conversationRepo.getConversationById(conversationId)
+
+    fun isThreadSegmentBusy(conversationId: Uuid): Boolean = sessions[conversationId]?.let {
+        it.isGenerating || it.messageQueue.value.messages.isNotEmpty()
+    } ?: false
+
+    fun hasQueuedOwnerMessage(conversationId: Uuid): Boolean = sessions[conversationId]
+        ?.messageQueue?.value?.messages?.any { it.origin == null } == true
+
+    /** Persist both sides atomically, then replace cached state without deleting shared files. */
+    suspend fun applyThreadMerge(source: Conversation, target: Conversation) {
+        conversationRepo.mergeThreadSegments(source, target)
+        discardSession(source.id)
+        sessions[target.id]?.state?.value = target
+    }
+
+    suspend fun restoreThreadMerge(source: Conversation, target: Conversation) {
+        conversationRepo.restoreThreadSegments(source, target)
+        sessions[target.id]?.state?.value = target
+        sessions[source.id]?.state?.value = source
     }
 
     /** Generate a private-perspective turn using the same tools, streaming and approval resumptions. */
@@ -805,7 +833,8 @@ class ChatService(
     fun regenerateAtMessage(
         conversationId: Uuid,
         message: UIMessage,
-        regenerateAssistantMsg: Boolean = true
+        regenerateAssistantMsg: Boolean = true,
+        continuationNodeIds: List<Uuid> = emptyList(),
     ) {
         val session = getOrCreateSession(conversationId)
 
@@ -822,8 +851,18 @@ class ChatService(
                     val newConversation = conversation.selectNode(node.id)
                     val indexAt = newConversation.currentMessageNodes.indexOfFirst { it.id == node.id }
                     if (indexAt < 0) throw NotFoundException("Message branch not found")
+                    val retainedReplies = if (continuationNodeIds.isEmpty()) emptyList() else
+                        newConversation.currentMessageNodes.drop(indexAt + 1).filterNot { it.id in continuationNodeIds }.map { it.id }
                     saveConversation(conversationId, newConversation)
-                    handleMessageComplete(conversationId, messageRange = 0..indexAt)
+                    try {
+                        handleMessageComplete(conversationId, messageRange = 0..indexAt)
+                    } finally {
+                        if (continuationNodeIds.isNotEmpty()) {
+                            withContext(kotlinx.coroutines.NonCancellable) {
+                                saveConversation(conversationId, session.state.value.attachMergeContinuation(continuationNodeIds, node.id, retainedReplies))
+                            }
+                        }
+                    }
                 } else {
                     if (regenerateAssistantMsg) {
                         val node = conversation.getMessageNodeByMessage(message)

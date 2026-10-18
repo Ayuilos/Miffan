@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.thread
 
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
+import me.ayuilos.miffan.data.model.TopicStart
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageOrigin
 import me.ayuilos.miffan.data.model.MessageNode
@@ -21,6 +22,15 @@ sealed interface TimelineItem {
     /** Time label shown before a message after a long pause or a change of day. */
     data class DateSeparator(val at: Instant) : TimelineItem {
         override val key: String get() = "date-${at.toEpochMilli()}"
+    }
+
+    data class TopicBoundary(
+        val segmentId: Uuid,
+        val start: TopicStart,
+        val at: Instant,
+        val mergeable: Boolean,
+    ) : TimelineItem {
+        override val key: String get() = "boundary-$segmentId"
     }
 
     data class Message(
@@ -113,8 +123,12 @@ object ThreadTimeline {
         filterSegmentId: Uuid? = null,
         zone: ZoneId = ZoneId.systemDefault(),
         now: Instant = Instant.now(),
+        topicIndices: Map<Uuid, Int> = emptyMap(),
+        earlierSegmentIds: Map<Uuid, Set<Uuid>> = emptyMap(),
     ): List<TimelineItem> {
-        val topicIndex = segments.sortedBy { it.createAt }.withIndex().associate { (index, segment) -> segment.id to index }
+        val topicIndex = segments.associate { segment ->
+            segment.id to (topicIndices[segment.id] ?: (segment.id.hashCode() and Int.MAX_VALUE))
+        }
         val kotlinZone = TimeZone.of(zone.id)
 
         data class Entry(val segment: Conversation, val node: MessageNode, val at: Instant, val order: Int)
@@ -208,6 +222,7 @@ object ThreadTimeline {
             }
         }
 
+        val started = HashSet<Uuid>()
         for ((index, entry) in entries.withIndex()) {
             addLooseNoticesBefore(entry.at)
             val last = previous
@@ -215,6 +230,16 @@ object ThreadTimeline {
                 entry.at.toEpochMilli() - last.at.toEpochMilli() > SEPARATOR_GAP_MILLIS ||
                 entry.at.atZone(zone).toLocalDate() != last.at.atZone(zone).toLocalDate()
             if (separated) items += TimelineItem.DateSeparator(entry.at)
+
+            if (started.add(entry.segment.id) && filterSegmentId == null) {
+                entry.segment.topicStart?.takeIf { it != TopicStart.WELCOME }?.let { start ->
+                    val targets = earlierSegmentIds[entry.segment.id]
+                        ?: segments.filter { it.id != entry.segment.id && it.createAt < entry.segment.createAt }.mapTo(HashSet()) { it.id }
+                    items += TimelineItem.TopicBoundary(entry.segment.id, start, entry.at,
+                        entry.segment.id !in generatingSegmentIds && targets.any { it !in generatingSegmentIds })
+                    previousWasNotice = true
+                }
+            }
 
             val event = entry.node.origin as? MessageOrigin.Event
             if (entry.node.role == MessageRole.USER && event != null) {

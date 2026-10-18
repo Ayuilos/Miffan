@@ -28,6 +28,11 @@ import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.revision.RevisionService
+import me.ayuilos.miffan.data.thread.MergeResult
+import me.ayuilos.miffan.data.thread.UndoableMerge
+import me.ayuilos.miffan.data.thread.listPreviewText
+import me.ayuilos.miffan.data.model.MessageOrigin
+import me.ayuilos.miffan.data.db.dao.ThreadCatalogEntry
 import me.ayuilos.miffan.data.thread.LiveSegmentHandoff
 import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.ThreadListState
@@ -45,7 +50,20 @@ import java.time.Instant
 import kotlin.uuid.Uuid
 
 /** A topic (segment) the user can filter the timeline to. */
-data class ThreadTopic(val segmentId: Uuid, val title: String, val topicIndex: Int)
+data class ThreadTopic(
+    val segmentId: Uuid,
+    val title: String?,
+    val topicIndex: Int,
+    val preview: String = "",
+    val speaker: MessageRole? = null,
+    val updateAt: Instant = Instant.EPOCH,
+)
+
+private data class IndexedThreadSegments(
+    val segments: List<Conversation>?,
+    val indices: Map<Uuid, Int>,
+    val earlier: Map<Uuid, Set<Uuid>>,
+)
 
 /**
  * Timeline items and whether the first page is already in them. They travel together so an empty
@@ -61,7 +79,7 @@ data class ThreadTimelineState(val items: List<TimelineItem>, val loaded: Boolea
 class AgentThreadVM(
     val assistantId: Uuid,
     settingsStore: SettingsStore,
-    threadRepository: ThreadRepository,
+    private val threadRepository: ThreadRepository,
     noticeSource: ThreadNoticeSource,
     private val chatService: ChatService,
     private val threadService: ThreadService,
@@ -102,7 +120,7 @@ class AgentThreadVM(
                 flowOf(emptyList())
             } else {
                 combine(ids.map { chatService.getConversationFlow(it) }) { conversations ->
-                    conversations.filter { it.assistantId == assistantId }
+                    conversations.filter { it.assistantId == assistantId && it.chatId == null }
                 }
             }
         }
@@ -121,14 +139,39 @@ class AgentThreadVM(
         .map { live -> live.mapTo(HashSet()) { it.id } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    private val catalog: StateFlow<List<ThreadCatalogEntry>?> = threadRepository.observeCatalog(assistantId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val indexedSegments = combine(loadedSegments, catalog) { loaded, stored ->
+        val dates = stored.orEmpty().associate { Uuid.parse(it.id) to Instant.ofEpochMilli(it.createAt) } +
+            loaded.orEmpty().associate { it.id to it.createAt }
+        val sorted = dates.entries.sortedWith(compareBy<Map.Entry<Uuid, Instant>> { it.value }.thenBy { it.key.toString() })
+        IndexedThreadSegments(
+            loaded.takeIf { stored != null },
+            sorted.withIndex().associate { (index, entry) -> entry.key to index },
+            loaded.orEmpty().associate { source ->
+                source.id to dates.filter { (id, at) -> id != source.id && at < source.createAt }.keys
+            },
+        )
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, IndexedThreadSegments(null, emptyMap(), emptyMap()))
+
+    val newTopicPending: StateFlow<Boolean> = threadService.pendingNewTopic.map { assistantId in it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, assistantId in threadService.pendingNewTopic.value)
+
+    private var undoWindowVersion = 0L
+    private val _undoableMerge = MutableStateFlow<UndoableMerge?>(null)
+    val undoableMerge: StateFlow<UndoableMerge?> = _undoableMerge.asStateFlow()
+
     val timelineState: StateFlow<ThreadTimelineState> = combine(
-        loadedSegments,
+        indexedSegments,
         noticeSource.observe(assistantId),
         generatingSegmentIds,
         _topicFilter,
         pending,
-    ) { segments, notices, generating, filter, pending ->
-        val items = ThreadTimeline.build(segments.orEmpty(), notices, generating, filter)
+    ) { indexed, notices, generating, filter, pending ->
+        val segments = indexed.segments
+        val items = ThreadTimeline.build(segments.orEmpty(), notices, generating, filter,
+            topicIndices = indexed.indices, earlierSegmentIds = indexed.earlier)
         val shown = items.mapNotNullTo(HashSet()) { (it as? TimelineItem.Message)?.message?.id }
         val outgoing = pending.filter { it.id !in shown }
         ThreadTimelineState(if (outgoing.isEmpty()) items else items.withPending(outgoing), loaded = segments != null)
@@ -139,13 +182,74 @@ class AgentThreadVM(
     val timeline: StateFlow<List<TimelineItem>> = timelineState.map { it.items }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val topics: StateFlow<Map<Uuid, ThreadTopic>> = segments
-        .map { list ->
-            list.sortedBy { it.createAt }.withIndex().associate { (index, segment) ->
-                segment.id to ThreadTopic(segment.id, segment.title, index)
-            }
-        }
+    val topics: StateFlow<Map<Uuid, ThreadTopic>> = indexedSegments
+        .map { indexed -> indexed.segments.orEmpty().associate { segment ->
+            segment.id to segment.asTopic(indexed.indices[segment.id] ?: 0)
+        } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /** Up to three earlier topics, including those above the loaded timeline page. */
+    suspend fun mergeTargets(segmentId: Uuid): List<ThreadTopic> {
+        val source = chatService.readThreadSegment(segmentId) ?: return emptyList()
+        val stored = catalog.first { it != null }.orEmpty()
+        val live = segments.value.associateBy { it.id }
+        val dates = stored.associate { Uuid.parse(it.id) to Instant.ofEpochMilli(it.createAt) } + live.mapValues { it.value.createAt }
+        val indices = dates.entries.sortedWith(compareBy<Map.Entry<Uuid, Instant>> { it.value }.thenBy { it.key.toString() })
+            .withIndex().associate { (index, entry) -> entry.key to index }
+        val updates = stored.associate { Uuid.parse(it.id) to Instant.ofEpochMilli(it.updateAt) } + live.mapValues { it.value.updateAt }
+        return dates.filter { (id, at) -> id != segmentId && at < source.createAt }.keys
+            .sortedByDescending { updates[it] }.take(3).mapNotNull { id ->
+                (chatService.readThreadSegment(id) ?: threadRepository.getSegment(id))?.asTopic(indices.getValue(id))
+            }
+    }
+
+    fun requestNewTopic() {
+        _topicFilter.value = null
+        _replyTarget.value = null
+        threadService.requestNewTopic(assistantId)
+    }
+    fun cancelNewTopic() = threadService.cancelNewTopic(assistantId)
+
+    /** Failures are surfaced with the thread's existing error cards. */
+    fun merge(sourceId: Uuid, targetId: Uuid) {
+        val version = undoWindowVersion
+        viewModelScope.launch {
+            try {
+                when (val result = threadService.mergeSegment(assistantId, sourceId, targetId)) {
+                    is MergeResult.Success -> {
+                        _topicFilter.value = null
+                        _replyTarget.value = null
+                        if (version == undoWindowVersion) _undoableMerge.value = result.merge
+                        else threadService.forgetMerge(assistantId)
+                    }
+                    is MergeResult.Failure -> chatService.addError(IllegalStateException(result.reason), targetId)
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { chatService.addError(e, targetId) }
+        }
+    }
+
+    fun undoMerge() {
+        val merge = _undoableMerge.value ?: return
+        viewModelScope.launch {
+            try {
+                when (val result = threadService.undoMerge(assistantId)) {
+                    is MergeResult.Success -> _undoableMerge.value = null
+                    is MergeResult.Failure -> {
+                        _undoableMerge.value = null
+                        chatService.addError(IllegalStateException(result.reason), merge.targetId)
+                    }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { chatService.addError(e, merge.targetId) }
+        }
+    }
+
+    private fun clearUndoMerge() {
+        undoWindowVersion++
+        _undoableMerge.value = null
+        threadService.forgetMerge(assistantId)
+    }
 
     init {
         // Everything shown while the thread is on screen counts as read.
@@ -179,7 +283,9 @@ class AgentThreadVM(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Sends [parts] (text, images, files) to the thread; routing picks the segment. */
-    fun send(parts: List<UIMessagePart>) {
+    fun send(parts: List<UIMessagePart>, freshStart: Boolean = false) {
+        clearUndoMerge()
+        val topicSegmentId = _topicFilter.value
         val replyTo = _replyTarget.value?.ref
         _replyTarget.value = null
         val message = UIMessage(role = MessageRole.USER, parts = parts)
@@ -191,7 +297,8 @@ class AgentThreadVM(
                     content = parts,
                     segments = storedSegments.first { it != null }.orEmpty(),
                     replyTo = replyTo,
-                    topicSegmentId = _topicFilter.value,
+                    topicSegmentId = topicSegmentId,
+                    freshStart = freshStart,
                     messageId = message.id,
                     createdAt = message.createdAt,
                 )
@@ -261,6 +368,7 @@ class AgentThreadVM(
     /** Called by the page when it starts or stops being visible. */
     fun setVisible(shown: Boolean) {
         visible.value = shown
+        if (!shown) clearUndoMerge()
     }
 
     fun loadMore() {
@@ -273,6 +381,11 @@ class AgentThreadVM(
     fun undoNotice(notice: ThreadNotice, onResult: (RestoreResult) -> Unit = {}) {
         val revisionId = notice.revisionId ?: return
         viewModelScope.launch { onResult(revisionService.undo(revisionId)) }
+    }
+
+    override fun onCleared() {
+        clearUndoMerge()
+        super.onCleared()
     }
 
     companion object {
@@ -302,3 +415,12 @@ private fun List<TimelineItem>.withPending(outgoing: List<UIMessage>): List<Time
 
 /** Segment id of messages that are still being routed. */
 val PENDING_SEGMENT: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000000")
+
+private fun Conversation.asTopic(index: Int): ThreadTopic {
+    val last = currentMessageNodes.lastOrNull {
+        it.origin !is MessageOrigin.Partner && it.origin !is MessageOrigin.Event &&
+            (it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT)
+    }
+    return ThreadTopic(id, title.takeIf { it.isNotBlank() }, index,
+        last?.message?.listPreviewText().orEmpty(), last?.role, updateAt)
+}

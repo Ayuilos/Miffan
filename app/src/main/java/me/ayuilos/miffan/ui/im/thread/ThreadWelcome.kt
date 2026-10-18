@@ -62,6 +62,7 @@ internal object ThreadWelcome {
 
     private fun TimelineItem.time(): Instant? = when (this) {
         is TimelineItem.DateSeparator -> at
+        is TimelineItem.TopicBoundary -> at
         is TimelineItem.Message -> at
         is TimelineItem.Notice -> notice.at
         is TimelineItem.Event -> at

@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.thread
 
 import kotlinx.coroutines.runBlocking
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentDigest
+import me.ayuilos.miffan.data.model.TopicStart
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.rerere.ai.core.MessageRole
@@ -45,8 +46,8 @@ class SmartSegmentRouterTest {
     fun emptyOrClosedThreadsStartANewSegmentWithoutAskingTheModel() = runBlocking {
         val classifier = FakeClassifier(TopicClassification.Existing(0))
         val router = SmartSegmentRouter(classifier)
-        assertTrue(router.route(request("明天杭州会下雨吗")) is RouteDecision.New)
-        assertTrue(router.route(request("明天杭州会下雨吗", segment(1, closed = true))) is RouteDecision.New)
+        assertNull((router.route(request("明天杭州会下雨吗")) as RouteDecision.New).start)
+        assertEquals(TopicStart.AUTO, (router.route(request("明天杭州会下雨吗", segment(1, closed = true))) as RouteDecision.New).start)
         assertEquals(0, classifier.calls)
     }
 
@@ -56,7 +57,7 @@ class SmartSegmentRouterTest {
         val older = segment(14 * 60)
         val classifier = FakeClassifier(TopicClassification.Existing(0))
         val decision = SmartSegmentRouter(classifier).route(request("接着昨天说的", older, stale))
-        assertEquals(RouteDecision.New("thread idle", closeSegmentIds = setOf(stale.id, older.id)), decision)
+        assertEquals(RouteDecision.New("thread idle", closeSegmentIds = setOf(stale.id, older.id), start = TopicStart.IDLE), decision)
         assertEquals(0, classifier.calls)
     }
 
@@ -152,6 +153,7 @@ class SmartSegmentRouterTest {
         val full = segment(1, text = "x".repeat(100))
         val decision = SmartSegmentRouter(FakeClassifier(null), maxSegmentChars = 50).route(request("继续说说吧", full))
         assertEquals(setOf(full.id), (decision as RouteDecision.New).closeSegmentIds)
+        assertEquals(TopicStart.AUTO, decision.start)
     }
 
     @Test

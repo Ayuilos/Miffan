@@ -2,6 +2,11 @@ package me.ayuilos.miffan.data.thread
 
 import android.util.Log
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import me.ayuilos.miffan.data.model.TopicStart
 import me.ayuilos.miffan.data.repository.ConversationRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -48,6 +53,18 @@ class ThreadService(
     /** Assistants whose user explicitly changed the topic; open threads drop their topic focus. */
     val topicChanges: SharedFlow<Uuid> = _topicChanges.asSharedFlow()
 
+    private val _pendingNewTopic = MutableStateFlow<Set<Uuid>>(emptySet())
+    val pendingNewTopic: StateFlow<Set<Uuid>> = _pendingNewTopic.asStateFlow()
+
+    fun requestNewTopic(assistantId: Uuid) {
+        _pendingNewTopic.update { it + assistantId }
+        _topicChanges.tryEmit(assistantId)
+    }
+
+    fun cancelNewTopic(assistantId: Uuid) {
+        _pendingNewTopic.update { it - assistantId }
+    }
+
     /**
      * Sends [content] and returns the segment that received it. An explicit reply or an active
      * topic filter decides the segment without routing.
@@ -60,49 +77,71 @@ class ThreadService(
         topicSegmentId: Uuid? = null,
         messageId: Uuid = Uuid.random(),
         createdAt: LocalDateTime? = null,
+        freshStart: Boolean = false,
     ): Uuid {
         val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId)
             ?: error("Assistant not found: $assistantId")
-        // A message sent while a topic waits for an approval answers it, so it goes to that topic.
-        val forced = topicSegmentId ?: replyTo?.conversationId
-            ?: segments.filter { it.hasPendingToolApprovals() }.maxByOrNull { it.updateAt }?.id
         return routeMutex.withLock {
+            // Include off-page segments and refresh live sessions before deciding or closing.
+            val stored = conversationRepository.getConversationsOfAssistant(assistantId).first()
+            val storedIds = stored.mapTo(HashSet()) { it.id }
+            val loaded = segments.associateBy { it.id }
+            val all = (stored + segments).distinctBy { it.id }.filter { it.chatId == null }
+                .mapNotNull { segment ->
+                    if (segment.threadClosedAt == 0L || segment.id !in storedIds) {
+                        chatService.readThreadSegment(segment.id) ?: segment.takeIf { it.id in storedIds }
+                    } else loaded[segment.id] ?: segment
+                }
             val now = Instant.now()
-            val known = segments.mapTo(HashSet()) { it.id }
+            val known = all.mapTo(HashSet()) { it.id }
             recentTopics.entries.removeAll { (id, topic) -> id in known || now.toEpochMilli() - topic.at.toEpochMilli() > RECENT_TOPIC_MILLIS }
-            // A topic opened moments ago may not be saved yet; offer it as a candidate by its first message.
             val unsaved = recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
-                Conversation(id = id, assistantId = assistantId, title = topic.label, messageNodes = emptyList(), createAt = topic.at, updateAt = topic.at)
+                chatService.readThreadSegment(id) ?: Conversation(id = id, assistantId = assistantId,
+                    title = topic.label, messageNodes = emptyList(), createAt = topic.at, updateAt = topic.at)
             }
-            val candidates = (segments.filter { it.chatId == null } + unsaved).sortedByDescending { it.updateAt }
-            val segmentId = if (forced != null) {
-                forced
-            } else {
-                val decision = router.route(RouteRequest(assistant, content, candidates, now))
-                Log.i(TAG, "route ${assistant.id}: $decision")
-                when (decision) {
-                    is RouteDecision.Existing -> decision.segmentId
-                    is RouteDecision.New -> {
-                        closeSegments(segments, decision.closeSegmentIds)
-                        decision.closeSegmentIds.forEach { recentTopics.remove(it) }
-                        Uuid.random()
-                    }
+            val candidates = (all + unsaved).sortedByDescending { it.updateAt }
+            val forced = topicSegmentId ?: replyTo?.conversationId
+                ?: candidates.filter { it.hasPendingToolApprovals() }.maxByOrNull { it.updateAt }?.id
+            if (forced != null) {
+                val target = candidates.firstOrNull { it.id == forced } ?: chatService.readThreadSegment(forced)
+                require(target != null && target.assistantId == assistantId && target.chatId == null) {
+                    "Forced topic does not belong to this thread"
                 }
             }
+            val ownerStart = assistantId in _pendingNewTopic.value
+            val decision = when {
+                forced != null -> RouteDecision.Existing(forced, "forced target")
+                ownerStart || freshStart -> RouteDecision.New(
+                    "explicit fresh topic",
+                    closeSegmentIds = candidates.filter { it.threadClosedAt == 0L }.mapTo(HashSet()) { it.id },
+                    start = if (ownerStart) TopicStart.OWNER else TopicStart.WELCOME,
+                )
+                else -> router.route(RouteRequest(assistant, content, candidates, now))
+            }
+            Log.i(TAG, "route ${assistant.id}: $decision")
+            val segmentId = when (decision) {
+                is RouteDecision.Existing -> decision.segmentId
+                is RouteDecision.New -> {
+                    closeSegments(candidates, decision.closeSegmentIds)
+                    decision.closeSegmentIds.forEach { recentTopics.remove(it) }
+                    Uuid.random()
+                }
+            }
+            val start = (decision as? RouteDecision.New)?.start?.takeIf { candidates.isNotEmpty() }
             if (segmentId !in known) {
                 val label = recentTopics[segmentId]?.label
                     ?: content.filterIsInstance<UIMessagePart.Text>().joinToString(" ") { it.text }.take(120)
                 recentTopics[segmentId] = RecentTopic(assistantId, label, now)
             }
-            deliver(assistantId, segmentId, content, replyTo, messageId, createdAt)
+            deliver(assistantId, segmentId, content, replyTo, messageId, createdAt, start)
+            if (decision is RouteDecision.New && ownerStart) cancelNewTopic(assistantId)
+            undoMerges.remove(assistantId)
             segmentId
         }
     }
 
-    private suspend fun deliver(assistantId: Uuid, segmentId: Uuid, content: List<UIMessagePart>, replyTo: MessageRef?, messageId: Uuid, createdAt: LocalDateTime?) {
-        chatService.openThreadSegment(segmentId, assistantId)
-        // Like a messenger, a message to a topic that is still replying waits its turn instead of
-        // cancelling that reply. Sending again also resumes a queue paused by an earlier failure.
+    private suspend fun deliver(assistantId: Uuid, segmentId: Uuid, content: List<UIMessagePart>, replyTo: MessageRef?, messageId: Uuid, createdAt: LocalDateTime?, start: TopicStart?) {
+        chatService.openThreadSegment(segmentId, assistantId, start)
         chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId, createdAt = createdAt)
         chatService.resumeMessageQueue(segmentId)
     }
@@ -140,7 +179,8 @@ class ThreadService(
             recentTopics[selected] = RecentTopic(assistantId, content.filterIsInstance<UIMessagePart.Text>()
                 .joinToString(" ") { it.text }.take(120), Instant.now())
         }
-        chatService.openThreadSegment(selected, assistantId)
+        val start = TopicStart.AUTO.takeIf { candidates.isNotEmpty() && candidates.none { it.id == selected } }
+        chatService.openThreadSegment(selected, assistantId, start)
         chatService.sendMessage(selected, content, immediately = false, origin = origin)
         chatService.resumeMessageQueue(selected)
         selected
@@ -157,13 +197,69 @@ class ThreadService(
                 Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
             }
         val selected = candidates.maxByOrNull { it.updateAt }?.id ?: Uuid.random()
+        if (candidates.isEmpty() && stored.any { it.chatId == null }) {
+            chatService.openThreadSegment(selected, assistantId, TopicStart.AUTO)
+        }
         chatService.appendPartnerNote(selected, assistantId, origin, text)
     }
 
-    /** Forces the next message into a new segment ("换个话题"). */
+    /** Closes the supplied open segments and schedules their summaries. */
     suspend fun closeAll(assistantId: Uuid, segments: List<Conversation>) {
         closeSegments(segments, segments.filter { it.threadClosedAt == 0L }.mapTo(HashSet()) { it.id })
         _topicChanges.emit(assistantId)
+    }
+
+    private data class MergeSnapshot(val source: Conversation, val target: Conversation, val owners: Set<Uuid>, val handle: UndoableMerge)
+    private val undoMerges = ConcurrentHashMap<Uuid, MergeSnapshot>()
+
+    fun forgetMerge(assistantId: Uuid) { undoMerges.remove(assistantId) }
+
+    suspend fun mergeSegment(assistantId: Uuid, sourceId: Uuid, targetId: Uuid): MergeResult = routeMutex.withLock {
+        if (sourceId == targetId) return@withLock MergeResult.Failure("Choose a different topic")
+        if (chatService.isThreadSegmentBusy(sourceId) || chatService.isThreadSegmentBusy(targetId)) {
+            return@withLock MergeResult.Failure("A topic is still generating or has queued messages")
+        }
+        val source = chatService.readThreadSegment(sourceId)
+            ?: return@withLock MergeResult.Failure("Source topic no longer exists")
+        val target = chatService.readThreadSegment(targetId)
+            ?: return@withLock MergeResult.Failure("Target topic no longer exists")
+        if (listOf(source, target).any { it.assistantId != assistantId || it.chatId != null } || target.createAt >= source.createAt) {
+            return@withLock MergeResult.Failure("Choose an earlier topic of this partner")
+        }
+        val plan = planSegmentMerge(source, target)
+        val handle = UndoableMerge(assistantId, sourceId, targetId, target.title.takeIf { it.isNotBlank() },
+            source.currentMessageNodes.firstOrNull()?.let { MessageRef(targetId, it.message.id) })
+        chatService.applyThreadMerge(source, plan.merged)
+        recentTopics.remove(sourceId)
+        undoMerges[assistantId] = MergeSnapshot(source, target, plan.merged.ownerMessageIds(), handle)
+        if (plan.regenerate != null) {
+            chatService.openThreadSegment(targetId, assistantId)
+            chatService.regenerateAtMessage(targetId, plan.regenerate.message, continuationNodeIds = plan.continuationIds)
+        }
+        MergeResult.Success(handle)
+    }
+
+    suspend fun undoMerge(assistantId: Uuid): MergeResult = routeMutex.withLock {
+        val snapshot = undoMerges[assistantId] ?: return@withLock MergeResult.Failure("No merge to undo")
+        fun Conversation.hasNewOwner() = (ownerMessageIds() - snapshot.owners).isNotEmpty()
+        if (chatService.readThreadSegment(snapshot.source.id) != null) {
+            return@withLock MergeResult.Failure("Source topic has already been restored")
+        }
+        val target = chatService.readThreadSegment(snapshot.target.id)
+            ?: return@withLock MergeResult.Failure("Target topic no longer exists")
+        if (target.hasNewOwner() || chatService.hasQueuedOwnerMessage(target.id)) {
+            undoMerges.remove(assistantId)
+            return@withLock MergeResult.Failure("A new owner message prevents undo")
+        }
+        chatService.stopGeneration(target.id)
+        val stopped = chatService.readThreadSegment(target.id)
+        if (stopped == null || stopped.hasNewOwner() || chatService.hasQueuedOwnerMessage(target.id)) {
+            undoMerges.remove(assistantId)
+            return@withLock MergeResult.Failure("The topic changed before undo")
+        }
+        chatService.restoreThreadMerge(snapshot.source, snapshot.target)
+        undoMerges.remove(assistantId)
+        MergeResult.Success(snapshot.handle)
     }
 
     /**

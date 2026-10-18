@@ -43,12 +43,16 @@ interface ConversationDAO {
      */
     @Query(
         "SELECT c.id AS id, c.title AS title, c.thread_summary AS threadSummary, c.thread_closed_at AS threadClosedAt, " +
-            "c.selected_root_id AS selectedRootId, " +
+            "c.selected_root_id AS selectedRootId, c.topic_start AS topicStart, c.update_at AS updateAt, " +
             "(SELECT COUNT(*) FROM message_node n WHERE n.conversation_id = c.id) AS nodeCount, " +
             "(SELECT COALESCE(SUM(n.revision), 0) FROM message_node n WHERE n.conversation_id = c.id) AS revisionSum " +
             "FROM conversationentity c WHERE c.chat_id IS NULL AND c.assistant_id = :assistantId ORDER BY c.update_at DESC LIMIT :limit"
     )
     fun observeThreadSegmentStamps(assistantId: String, limit: Int): Flow<List<ThreadSegmentStamp>>
+
+    /** Lightweight catalog of every segment, independent of timeline pagination. */
+    @Query("SELECT id, create_at AS createAt, update_at AS updateAt FROM conversationentity WHERE assistant_id = :assistantId AND chat_id IS NULL ORDER BY create_at, id")
+    fun observeThreadCatalog(assistantId: String): Flow<List<ThreadCatalogEntry>>
 
     @Query("SELECT assistant_id FROM conversationentity WHERE id = :id")
     suspend fun getAssistantIdOf(id: String): String?
@@ -157,6 +161,8 @@ data class ThreadSegmentStamp(
     val selectedRootId: String,
     val nodeCount: Int,
     val revisionSum: Long,
+    val topicStart: String? = null,
+    val updateAt: Long = 0,
 )
 
 data class ThreadSegmentDigest(
@@ -165,3 +171,6 @@ data class ThreadSegmentDigest(
     val threadSummary: String,
     val updateAt: Long,
 )
+
+/** Ordered metadata for stable topic colors and off-page merge candidates. */
+data class ThreadCatalogEntry(val id: String, val createAt: Long, val updateAt: Long)
