@@ -445,7 +445,7 @@ private fun getDefaultCalendarId(context: Context): Long? {
     return null
 }
 
-private fun parseCalendarTime(raw: String, zone: ZoneId): ZonedDateTime {
+internal fun parseCalendarTime(raw: String, zone: ZoneId): ZonedDateTime {
     val text = raw.trim()
     text.toLongOrNull()?.let { return Instant.ofEpochMilli(it).atZone(zone) }
     runCatching { return OffsetDateTime.parse(text).atZoneSameInstant(zone) }

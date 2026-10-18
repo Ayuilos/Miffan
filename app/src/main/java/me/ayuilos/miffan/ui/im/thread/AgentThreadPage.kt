@@ -270,13 +270,15 @@ fun AgentThreadPage(
     fun TimelineRow(item: TimelineItem) {
         when (item) {
             is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
-            is TimelineItem.Message -> ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
+            is TimelineItem.Message -> CompositionLocalProvider(
+                LocalToolCardActions provides remember(item.segmentId) { vm.toolCardActions(item) },
+            ) { ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
                 onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
                 onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
-                assistant = assistant)
+                assistant = assistant) }
             is TimelineItem.Typing -> ThreadTyping(assistant)
             is TimelineItem.Event -> ThreadEventLine(item.origin.summary)
             is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,

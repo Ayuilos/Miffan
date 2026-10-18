@@ -58,12 +58,13 @@ internal data class ThreadStep(
 )
 
 /**
- * The steps behind a reply. Computer actions have their own card, and prompts the user answers
+ * The steps behind a reply. Computer actions and added calendar events have their own card, and prompts the user answers
  * (questions, permission requests, refused calls) and partner messages already show in the chat.
  */
 internal fun threadSteps(parts: List<UIMessagePart>): List<ThreadStep> = parts.mapNotNull { part ->
     (part as? UIMessagePart.Tool)?.takeUnless {
-        it.isComputerTool() || it.isPartnerMessage() || it.isImageGeneration() || it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
+        it.isComputerTool() || it.isPartnerMessage() || it.isImageGeneration() || it.addedCalendarEvent() != null ||
+            it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
             it.isPending || it.approvalState is ToolApprovalState.Denied
     }?.let(::threadStep)
 }

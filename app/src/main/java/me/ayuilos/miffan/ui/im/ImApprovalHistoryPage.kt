@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.im
 
+import me.ayuilos.miffan.service.ChatService
+import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.ui.im.thread.mcpToolParts
 import android.text.format.DateUtils
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,6 +55,8 @@ fun ImApprovalHistoryPage(assistantId: Uuid) {
     val events by remember(audit, assistantId, hostIds) { audit.observe(assistantId, hostIds, HISTORY_LIMIT) }
         .collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
+    val chatService: ChatService = koinInject()
+    val standing = LocalSettings.current.assistants.firstOrNull { it.id == assistantId }?.standingToolApprovals.orEmpty().sorted()
     var confirmClear by remember { mutableStateOf(false) }
     val zone = remember { ZoneId.systemDefault() }
     val days = remember(events) {
@@ -69,6 +74,9 @@ fun ImApprovalHistoryPage(assistantId: Uuid) {
             item("intro") {
                 Text(stringResource(R.string.im_audit_intro), Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (standing.isNotEmpty()) item("standing") {
+                StandingApprovals(standing) { key -> chatService.revokeStandingApproval(assistantId, key) }
             }
             if (events?.isEmpty() == true) item("empty") { ImEmpty(stringResource(R.string.im_audit_empty)) }
             days.forEach { (day, dayEvents) ->
@@ -95,6 +103,38 @@ fun ImApprovalHistoryPage(assistantId: Uuid) {
             }
         },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.common_cancel)) } })
+}
+
+/** Steps the owner allowed for good, each with a way to make it ask again. */
+@Composable
+private fun StandingApprovals(keys: List<String>, onRevoke: (String) -> Unit) {
+    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.im_standing_title), Modifier.padding(start = 4.dp), style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
+            Column {
+                keys.forEachIndexed { index, key ->
+                    if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(standingLabel(key), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                        TextButton(onClick = { onRevoke(key) }) { Text(stringResource(R.string.im_standing_revoke)) }
+                    }
+                }
+            }
+        }
+        Text(stringResource(R.string.im_standing_help), Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun standingLabel(key: String): String = when {
+    key == "calendar_create" -> stringResource(R.string.im_standing_calendar)
+    key == "workspace_write_file" -> stringResource(R.string.im_standing_write_file)
+    key == "workspace_edit_file" -> stringResource(R.string.im_standing_edit_file)
+    key.startsWith("mcp__") -> mcpToolParts(key).let { (service, step) -> stringResource(R.string.im_record_mcp, service, step) }
+    else -> key
 }
 
 /** The message a decision belongs to; screen events and deleted partners have none. */

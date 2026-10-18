@@ -45,6 +45,7 @@ import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -723,7 +724,7 @@ private fun ChatPageContent(
             },
             containerColor = Color.Transparent,
         ) { innerPadding ->
-            ChatList(
+            CompositionLocalProvider(me.ayuilos.miffan.ui.im.thread.LocalToolCardActions provides vm.toolCardActions) { ChatList(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 recentConversations = recentConversations,
@@ -812,7 +813,7 @@ private fun ChatPageContent(
                     vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
                     vm.saveConversationAsync()
                 },
-            )
+            ) }
             Box(Modifier.fillMaxSize()) {
                 EdgeBlurScrim(hazeState, EdgeScrimPosition.Top, innerPadding.calculateTopPadding() + 16.dp, Modifier.align(Alignment.TopCenter))
                 EdgeBlurScrim(hazeState, EdgeScrimPosition.Bottom, innerPadding.calculateBottomPadding() + 24.dp, Modifier.align(Alignment.BottomCenter))

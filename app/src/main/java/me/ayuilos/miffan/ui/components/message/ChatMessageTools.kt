@@ -3,6 +3,16 @@ package me.ayuilos.miffan.ui.components.message
 import androidx.compose.ui.platform.LocalResources
 import android.content.res.Resources
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import me.ayuilos.miffan.data.datastore.getCurrentAssistant
+import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.ui.im.thread.LocalToolCardAllowEnabled
+import me.ayuilos.miffan.ui.im.thread.LocalToolCardDecline
+import me.ayuilos.miffan.ui.im.thread.LocalToolCardProfessional
+import me.ayuilos.miffan.ui.im.thread.ThreadComputerApprovalCard
+import me.ayuilos.miffan.ui.im.thread.ThreadToolPrompt
+import me.ayuilos.miffan.ui.im.thread.computerTargetName
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -197,7 +207,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val isPreparingWorkspaceTarget = loading && tool.approvalState is ToolApprovalState.Auto &&
         tool.toolName !in WORKSPACE_TOOL_NAMES
     val record = tool.approvalRecord?.takeIf { it.decision != null && it.decidedAt != null }
-    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || record != null || images.isNotEmpty()
+    val approvalCard = isPending && onToolApproval != null
+    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || record != null || images.isNotEmpty() || approvalCard
 
     ControlledChainOfThoughtStep(
         expanded = expanded,
@@ -234,54 +245,22 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                 overflow = TextOverflow.Ellipsis,
             )
         },
-        extra = if (isPending && onToolApproval != null) {
-            {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilledTonalIconButton(
-                        onClick = { showDenyDialog = true },
-                        modifier = Modifier.size(28.dp),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Cancel01,
-                            contentDescription = stringResource(R.string.chat_message_tool_deny),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    FilledTonalIconButton(
-                        onClick = { onToolApproval(tool.toolCallId, true, "") },
-                        modifier = Modifier.size(28.dp),
-                        enabled = !isWorkspaceTool ||
-                            (!loading && tool.toolName in WORKSPACE_TOOL_NAMES && tool.workspaceTarget != null),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Tick01,
-                            contentDescription = stringResource(R.string.chat_message_tool_approve),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-            }
-        } else {
-            null
-        },
+        // A pending call shows its approval card below instead of bare allow/deny icons.
+        extra = null,
         onClick = { showResult = true },
         content = if (hasExtraContent) {
             {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (isWorkspaceTool) WorkspaceToolTargetText(tool, isPreparingWorkspaceTarget)
-                    if (isPending && tool.toolName == "workspace_shell") {
-                        Text(stringResource(R.string.workspace_full_command_label), style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            text = context.arguments.getStringContent("command").orEmpty(),
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        )
-                        context.arguments.getStringContent("cwd")?.let { cwd ->
-                            Text(stringResource(R.string.workspace_command_directory, cwd), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
                     renderer.Summary(context)
+                    if (approvalCard) ProfessionalApprovalCard(
+                        tool = tool,
+                        // The target is resolved while the step prepares; allowing earlier would only fail the call.
+                        allowEnabled = !isWorkspaceTool ||
+                            (!loading && tool.toolName in WORKSPACE_TOOL_NAMES && tool.workspaceTarget != null),
+                        onApproval = { id, approved -> onToolApproval!!(id, approved, "") },
+                        onDecline = { showDenyDialog = true },
+                    )
                     if (isComputerTool && images.isNotEmpty()) {
                         ZoomableAsyncImage(
                             model = images.last().url,
@@ -636,4 +615,28 @@ private fun ToolDenyReasonDialog(
             }
         }
     )
+}
+
+/** The same approval card easy mode shows, with professional details and a reason asked on decline. */
+@Composable
+private fun ProfessionalApprovalCard(
+    tool: UIMessagePart.Tool,
+    allowEnabled: Boolean,
+    onApproval: (String, Boolean) -> Unit,
+    onDecline: () -> Unit,
+) {
+    val settings = LocalSettings.current
+    val assistant = remember(settings) { settings.getCurrentAssistant() }
+    Box(Modifier.padding(top = 8.dp)) {
+        CompositionLocalProvider(
+            LocalToolCardDecline provides { onDecline() },
+            LocalToolCardProfessional provides true,
+            LocalToolCardAllowEnabled provides allowEnabled,
+        ) {
+            if (tool.toolName.startsWith(COMPUTER_TOOL_PREFIX)) ThreadComputerApprovalCard(tool,
+                computerTargetName(tool, null, stringResource(R.string.im_computer_computer)), canOpen = false,
+                onScreen = {}, onApproval = onApproval)
+            else ThreadToolPrompt(tool, onApproval, onAnswer = { _, _ -> }, assistant = assistant)
+        }
+    }
 }

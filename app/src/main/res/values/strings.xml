@@ -3010,4 +3010,70 @@
   <string name="im_bug_report_skip">Don\'t submit</string>
   <string name="im_bug_report_reopen">Open on GitHub again</string>
   <string name="workspace_screen_ssh_tailnet_unreachable" tools:ignore="MissingTranslation">Couldn\'t reach the computer over Tailscale. Check that Tailscale is on for both this phone and the computer, and that your tailnet\'s access rules let this phone reach the computer\'s SSH port.</string>
+  <string name="im_approval_details" tools:ignore="MissingTranslation">Details</string>
+  <string name="im_approval_allowed_continuing" tools:ignore="MissingTranslation">Allowed, carrying on…</string>
+  <string name="im_approval_reply_hint" tools:ignore="MissingTranslation">Not quite right? Just reply and tell it what to do instead.</string>
+  <string name="im_approval_always" tools:ignore="MissingTranslation">Do this without asking from now on</string>
+  <string name="im_approval_always_help" tools:ignore="MissingTranslation">You can take this back any time in Permission history</string>
+  <string name="im_approval_partner" tools:ignore="MissingTranslation">Your partner</string>
+  <string name="im_approval_web_search" tools:ignore="MissingTranslation">%1$s wants to turn on web search</string>
+  <string name="im_approval_fetch" tools:ignore="MissingTranslation">%1$s wants to download a file</string>
+  <string name="im_approval_fetch_note" tools:ignore="MissingTranslation">Downloads from the internet always ask first.</string>
+  <string name="im_approval_field_source" tools:ignore="MissingTranslation">From</string>
+  <string name="im_approval_field_save_to" tools:ignore="MissingTranslation">Save to</string>
+  <string name="im_approval_write_file" tools:ignore="MissingTranslation">%1$s wants to write a file</string>
+  <string name="im_approval_edit_file" tools:ignore="MissingTranslation">%1$s wants to change a file</string>
+  <string name="im_approval_read_file" tools:ignore="MissingTranslation">%1$s wants to read a file</string>
+  <string name="im_approval_field_file" tools:ignore="MissingTranslation">File</string>
+  <string name="im_approval_field_content" tools:ignore="MissingTranslation">Content</string>
+  <string name="im_approval_command" tools:ignore="MissingTranslation">%1$s wants to run a command</string>
+  <string name="im_approval_field_command" tools:ignore="MissingTranslation">Command</string>
+  <string name="im_approval_field_folder" tools:ignore="MissingTranslation">Folder</string>
+  <string name="im_approval_mcp" tools:ignore="MissingTranslation">%1$s wants to use “%3$s” from %2$s</string>
+  <string name="im_approval_tool" tools:ignore="MissingTranslation">%1$s wants to: %2$s</string>
+  <string name="im_approval_allow_all" tools:ignore="MissingTranslation">Allow all</string>
+  <string name="im_calendar_all_day" tools:ignore="MissingTranslation">All day</string>
+  <string name="im_calendar_title" tools:ignore="MissingTranslation">%1$s wants to add an event</string>
+  <string name="im_calendar_add" tools:ignore="MissingTranslation">Add it</string>
+  <string name="im_calendar_change_time" tools:ignore="MissingTranslation">Change time</string>
+  <string name="im_calendar_location" tools:ignore="MissingTranslation">Place</string>
+  <string name="im_calendar_notes" tools:ignore="MissingTranslation">Notes</string>
+  <string name="im_calendar_edited" tools:ignore="MissingTranslation">You changed the time; it will be added at the new time.</string>
+  <string name="im_calendar_next" tools:ignore="MissingTranslation">Next</string>
+  <string name="im_calendar_added" tools:ignore="MissingTranslation">%1$s · added to your calendar</string>
+  <string name="im_calendar_open" tools:ignore="MissingTranslation">Open</string>
+  <string name="im_extension_title" tools:ignore="MissingTranslation">%1$s wants to change its extensions</string>
+  <string name="im_extension_apply" tools:ignore="MissingTranslation">Apply</string>
+  <string name="im_extension_footnote" tools:ignore="MissingTranslation">You can change these back later in its settings.</string>
+  <string name="im_extension_for" tools:ignore="MissingTranslation">For %1$s</string>
+  <string name="im_extension_tag_create" tools:ignore="MissingTranslation">New</string>
+  <string name="im_extension_tag_update" tools:ignore="MissingTranslation">Edit</string>
+  <string name="im_extension_tag_on" tools:ignore="MissingTranslation">On</string>
+  <string name="im_extension_tag_off" tools:ignore="MissingTranslation">Off</string>
+  <string name="im_extension_tag_switch" tools:ignore="MissingTranslation">Switch</string>
+  <string name="im_extension_quick_message" tools:ignore="MissingTranslation">Quick message “%1$s”</string>
+  <string name="im_extension_mode" tools:ignore="MissingTranslation">Mode prompt “%1$s”</string>
+  <string name="im_extension_lorebook" tools:ignore="MissingTranslation">Lorebook “%1$s”</string>
+  <string name="im_extension_mcp" tools:ignore="MissingTranslation">Tool service “%1$s”</string>
+  <string name="im_extension_no_workspace" tools:ignore="MissingTranslation">Stop using a workspace</string>
+  <string name="im_extension_workspace" tools:ignore="MissingTranslation">Use another workspace</string>
+  <string name="im_record_undone_tag" tools:ignore="MissingTranslation">undone</string>
+  <string name="im_record_mcp" tools:ignore="MissingTranslation">Use “%2$s” from %1$s</string>
+  <string name="im_record_reason" tools:ignore="MissingTranslation">Its reason: %1$s</string>
+  <string name="im_record_undo" tools:ignore="MissingTranslation">Undo this change</string>
+  <string name="im_record_undone" tools:ignore="MissingTranslation">Undone. Everything is back to how it was.</string>
+  <string name="im_record_redo" tools:ignore="MissingTranslation">Apply this change again</string>
+  <string name="im_record_superseded" tools:ignore="MissingTranslation">It was changed again later, so it can\'t be undone here. Use the change history instead.</string>
+  <string name="im_record_conflict" tools:ignore="MissingTranslation">Something changed in the meantime; nothing was undone.</string>
+  <string name="im_record_history" tools:ignore="MissingTranslation">See all changes</string>
+  <string name="im_standing_title" tools:ignore="MissingTranslation">Done without asking</string>
+  <string name="im_standing_help" tools:ignore="MissingTranslation">Your partner does these directly. Take one back and it asks first again.</string>
+  <string name="im_standing_revoke" tools:ignore="MissingTranslation">Take back</string>
+  <string name="im_standing_calendar" tools:ignore="MissingTranslation">Add calendar events</string>
+  <string name="im_standing_write_file" tools:ignore="MissingTranslation">Write files</string>
+  <string name="im_standing_edit_file" tools:ignore="MissingTranslation">Change files</string>
+  <plurals name="im_approval_batch" tools:ignore="MissingTranslation">
+    <item quantity="one">%1$d thing is waiting for you</item>
+    <item quantity="other">%1$d things are waiting for you</item>
+  </plurals>
 </resources>

@@ -238,6 +238,13 @@ class AgentThreadVM(
         viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved, via = via) }
     }
 
+    /** The extra answers a card in [item] can give: always allow, and allow with corrected arguments. */
+    internal fun toolCardActions(item: TimelineItem.Message) = ToolCardActions(
+        alwaysAllow = { id -> viewModelScope.launch { threadService.alwaysAllowTool(assistantId, item.segmentId, id) } },
+        grantStanding = { key -> threadService.grantStandingApproval(assistantId, key) },
+        approveWithInput = { id, input -> viewModelScope.launch { threadService.approveToolWithInput(assistantId, item.segmentId, id, input) } },
+    )
+
     /** Answers a tool call that asks the user a question. */
     fun answerToolQuestion(item: TimelineItem.Message, toolCallId: String, answer: String) {
         viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved = true, answer = answer) }

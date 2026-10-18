@@ -18,6 +18,7 @@ import me.ayuilos.miffan.ui.im.RunningLight
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -150,7 +151,7 @@ internal fun ThreadMessageBubble(
         when (part) {
             is UIMessagePart.Text -> part.text.isNotBlank()
             is UIMessagePart.Image, is UIMessagePart.Document -> true
-            is UIMessagePart.Tool -> part.isThreadPrompt() || part.showsInThread(item.streaming)
+            is UIMessagePart.Tool -> part.isThreadPrompt() || part.showsInThread(item.streaming) || part.addedCalendarEvent() != null
             else -> false
         }
     }
@@ -176,7 +177,11 @@ internal fun ThreadMessageBubble(
                         }
                     }
                     if (recordSteps) ThreadStepRecord(steps, live = item.streaming, liveStatus = liveStatus)
-                    parts.forEach { part ->
+                    val batch = remember(parts) { parts.batchApprovals() }
+                    CompositionLocalProvider(LocalToolCardSiblings provides parts) { parts.forEach { part ->
+                        // Several plain requests waiting together: one "allow all" right above the first of them.
+                        if (batch.size > 1 && part === batch.first())
+                            ThreadBatchApprovalHeader(batch.size) { batch.forEach { onToolApproval(it.toolCallId, true) } }
                         when (part) {
                             is UIMessagePart.Text -> if (part.text.isBlank()) Unit
                             // The owner's own words with @partners in them read as typed, the mentions colored as in the input.
@@ -197,9 +202,11 @@ internal fun ThreadMessageBubble(
                                     canOpenComputer(part, computer), onComputerScreen, onToolApproval)
                                 else ThreadToolPrompt(part, onToolApproval, onToolAnswer, assistant, item.segmentId.toString())
                             } else if (part.isImageGeneration()) ThreadGeneratedImages(part, item.streaming)
+                            // Added without asking (the owner allowed it for good): the event still shows.
+                            else part.addedCalendarEvent()?.let { ThreadCalendarEvent(it) }
                             else -> Unit
                         }
-                    }
+                    } }
                     if (published && !item.streaming) EditedFilesList(parts, assistant = null, imageContext = imageContext)
                     if (evidence != null && computerName != null) {
                         if (liveComputer) ThreadComputerLiveCard(evidence, computerName, computerAvailable, onComputerScreen)
@@ -267,6 +274,28 @@ internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () 
                 if (retry) ImPressMenuItem(HugeIcons.Refresh01, stringResource(R.string.im_thread_retry)) { menu.close(); onRetry() }
                 ImPressMenuItem(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss)) { menu.close(); onDismiss() }
             }
+        }
+    }
+}
+
+/**
+ * Plain allow-or-decline requests waiting together in one reply. Requests that need more than a yes
+ * (questions, terminals, drawing setup, bug reports, computer steps, messages to partners) stay one by one.
+ */
+private fun List<UIMessagePart>.batchApprovals(): List<UIMessagePart.Tool> = filterIsInstance<UIMessagePart.Tool>().filter {
+    it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending && it.toolName != ASK_USER &&
+        it.toolName != me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME && !it.isImageGeneration() &&
+        it.toolName != DRAFT_BUG_REPORT && !it.isComputerTool() && !it.isPartnerMessage()
+}
+
+@Composable
+private fun ThreadBatchApprovalHeader(count: Int, onAllowAll: () -> Unit) {
+    var done by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(pluralStringResource(R.plurals.im_approval_batch, count, count), Modifier.weight(1f),
+            style = MaterialTheme.typography.titleSmall)
+        FilledTonalButton(onClick = { done = true; onAllowAll() }, enabled = !done) {
+            Text(stringResource(R.string.im_approval_allow_all))
         }
     }
 }

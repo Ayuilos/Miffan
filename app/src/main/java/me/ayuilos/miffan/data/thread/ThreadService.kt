@@ -181,6 +181,20 @@ class ThreadService(
         chatService.handleToolApproval(segmentId, toolCallId, approved, answer = answer, via = via)
     }
 
+    /** Allows this call and remembers its kind for the partner, so the same step no longer asks. */
+    suspend fun alwaysAllowTool(assistantId: Uuid, segmentId: Uuid, toolCallId: String) {
+        chatService.openThreadSegment(segmentId, assistantId)
+        chatService.alwaysAllowTool(segmentId, toolCallId)
+    }
+
+    /** Allows a calendar call with the time the owner corrected on its card. */
+    suspend fun approveToolWithInput(assistantId: Uuid, segmentId: Uuid, toolCallId: String, input: kotlinx.serialization.json.JsonObject) {
+        chatService.openThreadSegment(segmentId, assistantId)
+        chatService.approveToolWithInput(segmentId, toolCallId, input)
+    }
+
+    fun grantStandingApproval(assistantId: Uuid, key: String) = chatService.grantStandingApproval(assistantId, key)
+
     suspend fun stop(segmentId: Uuid) = chatService.stopGeneration(segmentId)
 
     private suspend fun closeSegments(segments: List<Conversation>, ids: Set<Uuid>) {
