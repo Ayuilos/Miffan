@@ -2795,6 +2795,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="notification_approval_computer">在 %1$s 上：%2$s</string>
   <string name="notification_approval_generic">使用 %1$s</string>
   <string name="notification_approval_more">%1$s，另外还有 %2$d 项</string>
+  <string name="notification_approval_calendar">添加日程：%1$s</string>
+  <string name="notification_approval_web_search">打开联网搜索</string>
+  <string name="notification_approval_fetch">从 %1$s 下载文件</string>
+  <string name="notification_approval_fetch_any">下载一个文件</string>
+  <string name="notification_approval_image">画一张图</string>
+  <string name="notification_approval_question">有个问题问你：%1$s</string>
+  <string name="notification_approval_question_any">有个问题想问你</string>
+  <string name="notification_approval_partner_message">给另一个伙伴发消息</string>
   <string name="im_revision_workspace_bound">连接了电脑或工作区</string>
   <string name="im_revision_workspace_removed">断开了电脑</string>
   <string name="im_revision_computer_use">操作电脑：%1$s</string>

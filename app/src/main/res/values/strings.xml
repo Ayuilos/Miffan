@@ -2805,6 +2805,14 @@
   <string name="notification_approval_computer" tools:ignore="MissingTranslation">On %1$s: %2$s</string>
   <string name="notification_approval_generic" tools:ignore="MissingTranslation">Use %1$s</string>
   <string name="notification_approval_more" tools:ignore="MissingTranslation">%1$s, and %2$d more</string>
+  <string name="notification_approval_calendar" tools:ignore="MissingTranslation">Add event: %1$s</string>
+  <string name="notification_approval_web_search" tools:ignore="MissingTranslation">Turn on web search</string>
+  <string name="notification_approval_fetch" tools:ignore="MissingTranslation">Download a file from %1$s</string>
+  <string name="notification_approval_fetch_any" tools:ignore="MissingTranslation">Download a file</string>
+  <string name="notification_approval_image" tools:ignore="MissingTranslation">Draw a picture</string>
+  <string name="notification_approval_question" tools:ignore="MissingTranslation">Has a question: %1$s</string>
+  <string name="notification_approval_question_any" tools:ignore="MissingTranslation">Has a question for you</string>
+  <string name="notification_approval_partner_message" tools:ignore="MissingTranslation">Send a message to another partner</string>
   <string name="im_revision_workspace_bound" tools:ignore="MissingTranslation">Connected a computer or workspace</string>
   <string name="im_revision_workspace_removed" tools:ignore="MissingTranslation">Disconnected the computer</string>
   <string name="im_revision_computer_use" tools:ignore="MissingTranslation">Computer control: %1$s</string>
