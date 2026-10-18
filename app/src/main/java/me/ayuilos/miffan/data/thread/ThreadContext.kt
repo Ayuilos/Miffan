@@ -46,7 +46,7 @@ class SegmentSummarizer(
     }
 
     companion object {
-        const val SUMMARY_TOKENS = 200
+        const val SUMMARY_TOKENS = 600
         const val SUMMARY_TIMEOUT_MILLIS = 60_000L
     }
 }
