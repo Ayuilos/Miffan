@@ -269,7 +269,6 @@
   <string name="chat_message_tool_search_prefix">搜索: %1$s</string>
   <string name="chat_message_tool_search_results_count">共 %1$d 条结果</string>
   <string name="chat_message_tool_search_web">搜索网页: %1$s</string>
-  <string name="chat_message_tool_submit">提交</string>
   <string name="chat_page_cancel">取消</string>
   <string name="chat_page_check_title_model_settings">检查标题模型设置</string>
   <string name="chat_page_clear_all_errors">清除全部</string>

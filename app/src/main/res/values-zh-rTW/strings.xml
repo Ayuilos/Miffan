@@ -254,7 +254,6 @@
   <string name="chat_message_tool_search_prefix">搜尋: %1$s</string>
   <string name="chat_message_tool_search_results_count">共 %1$d 條結果</string>
   <string name="chat_message_tool_search_web">搜尋網頁: %1$s</string>
-  <string name="chat_message_tool_submit">提交</string>
   <string name="chat_page_cancel">取消</string>
   <string name="chat_page_check_title_model_settings">檢查標題模型設定</string>
   <string name="chat_page_clear_all_errors">清除全部</string>
@@ -3059,4 +3058,15 @@
   <plurals name="im_approval_batch">
     <item quantity="other">%1$d 件事等你確認</item>
   </plurals>
+  <string name="im_computer_bind_disclosure_no_screen">夥伴會以這台電腦帳號的權限執行操作。每次操作前都會先詢問你，你可以在夥伴的個人資料頁調整這項設定。</string>
+  <string name="im_computer_first_message_no_screen">幫我看看電腦目前運作得怎麼樣</string>
+  <string name="im_computer_prepare_help_no_screen">不使用螢幕時，只要能透過 SSH 連上這台電腦就可以了。</string>
+  <string name="im_computer_use_screen">使用螢幕</string>
+  <string name="im_computer_use_screen_on">你和夥伴都能看到螢幕，夥伴也能操作桌面</string>
+  <string name="im_computer_use_screen_off">夥伴只透過指令操作這台電腦，適合沒有螢幕的伺服器或 NAS</string>
+  <string name="im_computer_done_help_no_screen">%1$s 現在可以在 %2$s 上執行指令了。</string>
+  <string name="computer_use_mode_ask_help_no_screen">執行指令或修改檔案前，夥伴都會先在聊天中詢問你；讀取檔案則不需要詢問。</string>
+  <string name="computer_use_mode_auto_help_no_screen">夥伴會直接執行指令和修改檔案，不再逐次詢問。</string>
+  <string name="computer_use_mode_off_help_no_screen">夥伴完全不會操作這台電腦：不執行指令、不讀寫檔案，也不會主動提起。</string>
+  <string name="computer_use_auto_disclosure_no_screen">夥伴會直接執行指令和修改檔案，不再逐次詢問。所有操作都會以這台電腦帳號的權限執行。</string>
 </resources>
