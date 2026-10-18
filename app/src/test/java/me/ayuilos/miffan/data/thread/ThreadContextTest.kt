@@ -41,10 +41,19 @@ class ThreadContextTest {
     private fun String.messageLines() = lineSequence().filter { it.startsWith("- (") }.toList()
 
     @Test
-    fun mergesSegmentsAndKeepsOnlyTheNewestSixMessagesInChronologicalOrder() {
-        val a = segment(message("one", 1), message("four", 4, MessageRole.ASSISTANT), message("seven", 7))
-        val b = segment(message("two", 2), message("five", 5, MessageRole.ASSISTANT), message("eight", 8))
-        val c = segment(message("three", 3), message("six", 6, MessageRole.ASSISTANT))
+    fun mergesSegmentsAndKeepsOnlyTheNewestTwelveMessagesInChronologicalOrder() {
+        val a = segment(
+            message("one", 1), message("four", 4, MessageRole.ASSISTANT), message("seven", 7),
+            message("ten", 10, MessageRole.ASSISTANT), message("thirteen", 13),
+        )
+        val b = segment(
+            message("two", 2), message("five", 5, MessageRole.ASSISTANT), message("eight", 8),
+            message("eleven", 11, MessageRole.ASSISTANT), message("fourteen", 14),
+        )
+        val c = segment(
+            message("three", 3), message("six", 6, MessageRole.ASSISTANT), message("nine", 9),
+            message("twelve", 12, MessageRole.ASSISTANT),
+        )
 
         val text = format(b, a, c)!!
 
@@ -57,6 +66,12 @@ class ThreadContextTest {
             "- (2026-10-05 21:06) You: six",
             "- (2026-10-05 21:07) User: seven",
             "- (2026-10-05 21:08) User: eight",
+            "- (2026-10-05 21:09) User: nine",
+            "- (2026-10-05 21:10) You: ten",
+            "- (2026-10-05 21:11) You: eleven",
+            "- (2026-10-05 21:12) You: twelve",
+            "- (2026-10-05 21:13) User: thirteen",
+            "- (2026-10-05 21:14) User: fourteen",
         ), text.messageLines())
     }
 
@@ -123,14 +138,14 @@ class ThreadContextTest {
 
     @Test
     fun keepsOnlyTextPartsAndTruncatesEachMessage() {
-        val long = message("x".repeat(900), 20).copy(parts = listOf(
-            UIMessagePart.Text("x".repeat(450)),
-            UIMessagePart.Text("y".repeat(450)),
+        val long = message("x".repeat(2200), 20).copy(parts = listOf(
+            UIMessagePart.Text("x".repeat(1100)),
+            UIMessagePart.Text("y".repeat(1100)),
             UIMessagePart.Image(url = "hidden-image"),
         ))
         val text = format(segment(long))!!
         val body = text.substringAfter("User: ").substringBefore("\n</recent_messages>")
-        assertEquals(("x".repeat(450) + "\n" + "y".repeat(450)).take(800) + "…", body)
+        assertEquals(("x".repeat(1100) + "\n" + "y".repeat(1100)).take(2000) + "…", body)
         assertFalse(text.contains("hidden-image"))
     }
 
@@ -144,23 +159,24 @@ class ThreadContextTest {
     @Test
     fun buildLoadsBoundedOtherSegmentsEvenWhenNoSummariesExist() = runBlocking {
         val repository = mockk<ConversationRepository>()
-        coEvery { repository.getThreadDigests(assistantId, currentId, 3) } returns emptyList()
-        coEvery { repository.getRecentThreadSegments(assistantId, currentId, 3) } returns
+        coEvery { repository.getThreadDigests(assistantId, currentId, 5) } returns emptyList()
+        coEvery { repository.getRecentThreadSegments(assistantId, currentId, 5) } returns
             listOf(segment(UIMessage.user("just discussed")))
 
         val text = ThreadContext.build(repository, assistantId, currentId)!!
 
         assertTrue(text.startsWith("<recent_messages>"))
         assertTrue(text.contains("just discussed"))
-        coVerify(exactly = 1) { repository.getRecentThreadSegments(assistantId, currentId, 3) }
+        coVerify(exactly = 1) { repository.getThreadDigests(assistantId, currentId, 5) }
+        coVerify(exactly = 1) { repository.getRecentThreadSegments(assistantId, currentId, 5) }
         val digest = ThreadSegmentDigest("a", "topic", "earlier summary", now.toEpochMilli())
-        coEvery { repository.getThreadDigests(assistantId, currentId, 3) } returns listOf(digest)
+        coEvery { repository.getThreadDigests(assistantId, currentId, 5) } returns listOf(digest)
         val combined = ThreadContext.build(repository, assistantId, currentId)!!
         assertTrue(combined.contains("<earlier_conversations>"))
         assertTrue(combined.contains("<recent_messages>"))
-        coEvery { repository.getRecentThreadSegments(assistantId, currentId, 3) } returns emptyList()
+        coEvery { repository.getRecentThreadSegments(assistantId, currentId, 5) } returns emptyList()
         assertFalse(ThreadContext.build(repository, assistantId, currentId)!!.contains("<recent_messages>"))
-        coEvery { repository.getThreadDigests(assistantId, currentId, 3) } returns emptyList()
+        coEvery { repository.getThreadDigests(assistantId, currentId, 5) } returns emptyList()
         assertNull(ThreadContext.build(repository, assistantId, currentId))
     }
 }

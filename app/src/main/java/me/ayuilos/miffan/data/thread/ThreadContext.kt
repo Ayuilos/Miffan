@@ -53,10 +53,10 @@ class SegmentSummarizer(
 
 /** System-prompt sections carrying earlier summaries and recent exchanges across segments. */
 object ThreadContext {
-    const val MAX_DIGESTS = 3
-    const val MAX_RECENT_SEGMENTS = 3
-    const val MAX_RECENT_MESSAGES = 6
-    const val MAX_RECENT_MESSAGE_CHARS = 800
+    const val MAX_DIGESTS = 5
+    const val MAX_RECENT_SEGMENTS = 5
+    const val MAX_RECENT_MESSAGES = 12
+    const val MAX_RECENT_MESSAGE_CHARS = 2000
     const val RECENT_MESSAGE_MILLIS = 24 * 60 * 60 * 1000L
 
     suspend fun build(conversationRepository: ConversationRepository, assistantId: Uuid, segmentId: Uuid): String? {
