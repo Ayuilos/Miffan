@@ -1924,7 +1924,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_p5_added">追加済み</string>
   <string name="im_p5_recommended">おすすめのパートナー</string>
   <string name="im_p5_saved">保存しました</string>
-  <string name="im_p5_topic_changed">新しい話題を始めましょう</string>
   <string name="im_p5_chats_deleted">履歴を削除しました</string>
   <string name="im_p5_failed">完了できませんでした。再試行してください。</string>
   <string name="im_p5_missing_partner">このパートナーは利用できません</string>

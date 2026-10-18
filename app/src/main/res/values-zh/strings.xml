@@ -1940,7 +1940,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_p5_added">已添加</string>
   <string name="im_p5_recommended">推荐伙伴</string>
   <string name="im_p5_saved">已保存</string>
-  <string name="im_p5_topic_changed">可以开始聊新话题了</string>
   <string name="im_p5_chats_deleted">聊天记录已删除</string>
   <string name="im_p5_failed">没能完成，请再试一次</string>
   <string name="im_p5_missing_partner">这个伙伴已不存在</string>

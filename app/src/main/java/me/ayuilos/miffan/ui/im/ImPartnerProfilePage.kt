@@ -58,7 +58,6 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     var personality by rememberSaveable { mutableStateOf("") }
     val failure = stringResource(R.string.im_p5_failed)
     val saved = stringResource(R.string.im_p5_saved)
-    val changedTopic = stringResource(R.string.im_p5_topic_changed)
     val deleted = stringResource(R.string.im_p5_chats_deleted)
     fun perform(message: String? = null, block: suspend () -> Unit) {
         if (busy) return
@@ -129,7 +128,6 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             item("approvals") { ImSettingRow(stringResource(R.string.im_audit_title), { nav.navigate(Screen.ApprovalHistory(assistantId)) }) }
             item("background") { ImSettingRow(stringResource(R.string.im_p5_background), { nav.navigate(Screen.ImChatBackground(assistantId)) }) }
             item("separator") { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-            item("topic") { ImSettingRow(stringResource(R.string.im_thread_new_topic), { perform(changedTopic) { vm.changeTopic() } }) }
             item("delete") { ImSettingRow(stringResource(R.string.im_p5_delete_chats), { deleteConfirm = true }, destructive = true) }
             if (vm.canDeletePartner) item("delete_partner") {
                 ImSettingRow(stringResource(R.string.im_partner_delete), { deletePartnerConfirm = true }, destructive = true)

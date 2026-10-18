@@ -1924,7 +1924,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_added">추가됨</string>
   <string name="im_p5_recommended">추천 파트너</string>
   <string name="im_p5_saved">저장했어요</string>
-  <string name="im_p5_topic_changed">새 이야기를 시작해요</string>
   <string name="im_p5_chats_deleted">채팅 기록을 삭제했어요</string>
   <string name="im_p5_failed">완료하지 못했어요. 다시 시도해 주세요.</string>
   <string name="im_p5_missing_partner">이 파트너를 찾을 수 없어요</string>
