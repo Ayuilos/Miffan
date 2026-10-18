@@ -92,6 +92,12 @@ class ConversationRepository(
     suspend fun getThreadDigests(assistantId: Uuid, excludeId: Uuid, limit: Int): List<ThreadSegmentDigest> =
         conversationDAO.getThreadDigests(assistantId.toString(), excludeId.toString(), limit)
 
+    /** Loads at most [limit] other IM segments, newest first, regardless of summary status. */
+    suspend fun getRecentThreadSegments(assistantId: Uuid, excludeId: Uuid, limit: Int): List<Conversation> =
+        conversationDAO.getRecentThreadSegments(assistantId.toString(), excludeId.toString(), limit).map { entity ->
+            conversationEntityToConversation(entity, loadMessageNodes(entity.id))
+        }
+
     fun observeLatestConversationOfEachAssistant(): Flow<List<Conversation>> {
         return conversationDAO
             .observeLatestConversationOfEachAssistant()

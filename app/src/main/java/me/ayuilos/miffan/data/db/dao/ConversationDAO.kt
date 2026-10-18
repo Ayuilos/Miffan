@@ -57,6 +57,10 @@ interface ConversationDAO {
     @Query("SELECT id, title, thread_summary AS threadSummary, update_at AS updateAt FROM conversationentity WHERE assistant_id = :assistantId AND id != :excludeId AND chat_id IS NULL AND thread_summary != '' ORDER BY update_at DESC LIMIT :limit")
     suspend fun getThreadDigests(assistantId: String, excludeId: String, limit: Int): List<ThreadSegmentDigest>
 
+    /** Recent other segments, including open segments and those still awaiting a summary. */
+    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND id != :excludeId AND chat_id IS NULL ORDER BY update_at DESC LIMIT :limit")
+    suspend fun getRecentThreadSegments(assistantId: String, excludeId: String, limit: Int): List<ConversationEntity>
+
     // SQLite returns the bare columns of the row holding MAX(update_at) within each group.
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, MAX(update_at) as updateAt, folder_id as folderId, chat_id as chatId FROM conversationentity WHERE chat_id IS NULL GROUP BY assistant_id ORDER BY updateAt DESC")
     fun observeLatestConversationOfEachAssistant(): Flow<List<LightConversationEntity>>
