@@ -84,9 +84,12 @@ internal fun ThreadWelcomeHero(
     partnerGone: Boolean,
     onShowHistory: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Puts the topic the first message after the welcome started back with an earlier one. */
+    onContinue: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        ThreadLastChatDivider(lastChatAt)
+        ThreadDividerLine(stringResource(R.string.im_thread_last_chat, threadLastChatTime(lastChatAt)),
+            listOfNotNull(onContinue?.let { stringResource(R.string.im_thread_continue_last) to it }))
         Column(
             (if (fill) Modifier.weight(1f) else Modifier).fillMaxWidth().padding(vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -131,18 +134,7 @@ internal fun ThreadWelcomeMascot(assistant: Assistant?, phase: AssistantGenerati
 }
 
 @Composable
-private fun ThreadLastChatDivider(at: Instant) {
-    val color = MaterialTheme.colorScheme.outlineVariant
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        HorizontalDivider(Modifier.weight(1f), color = color)
-        Text(stringResource(R.string.im_thread_last_chat, threadLastChatTime(at)), Modifier.padding(horizontal = 12.dp),
-            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HorizontalDivider(Modifier.weight(1f), color = color)
-    }
-}
-
-@Composable
-private fun threadLastChatTime(at: Instant): String {
+internal fun threadLastChatTime(at: Instant): String {
     val now = Instant.now()
     if (ThreadWelcome.isRelative(at, now)) {
         return android.text.format.DateUtils.getRelativeTimeSpanString(at.toEpochMilli(), now.toEpochMilli(),
