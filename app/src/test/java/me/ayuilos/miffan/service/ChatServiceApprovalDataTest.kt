@@ -86,6 +86,57 @@ class ChatServiceApprovalDataTest {
         } finally { f.close() }
     }
 
+    @Test fun grantingEligibleKeysPersistsOnlyForTheAssistantWithoutSettlingCalls() = runTest {
+        val f = Fixture(this, listOf(call("event", "calendar_create")))
+        try {
+            val keys = setOf("calendar_create", "workspace_write_file", "workspace_edit_file", "mcp__server__write")
+            keys.forEach { f.service.grantStandingApproval(f.assistant.id, it) }
+            f.service.grantStandingApproval(f.assistant.id, "calendar_create")
+            runCurrent()
+            assertEquals(keys, f.state.value.assistants.first().standingToolApprovals)
+            assertTrue(f.state.value.assistants.last().standingToolApprovals.isEmpty())
+            assertEquals(f.original, f.service.getConversationFlow(f.original.id).value)
+            assertTrue(f.tools().all { it.isPending && it.approvalRecord == null })
+            coVerify(exactly = 0) { f.repo.updateConversation(any()) }
+            verify(exactly = 0) { f.audit.recordDecisions(any(), any()) }
+        } finally { f.close() }
+    }
+
+    @Test fun grantingIneligibleKeysOrAMissingAssistantDoesNotChangeSettings() = runTest {
+        val f = Fixture(this, listOf(call("event", "calendar_create")))
+        try {
+            val before = f.state.value
+            for (key in listOf("workspace_shell", "workspace_terminal", "workspace_fetch_url", "computer_click",
+                    "send_message", "ask_user", "calendar_query", "CALENDAR_CREATE", " calendar_create", "")) {
+                f.service.grantStandingApproval(f.assistant.id, key)
+            }
+            runCurrent()
+            assertEquals(before, f.state.value)
+            coVerify(exactly = 0) { f.settings.update(any<(Settings) -> Settings>()) }
+            f.service.grantStandingApproval(kotlin.uuid.Uuid.random(), "calendar_create")
+            runCurrent()
+            assertEquals(before, f.state.value)
+            assertEquals(f.original, f.service.getConversationFlow(f.original.id).value)
+        } finally { f.close() }
+    }
+
+    @Test fun calendarGrantCanBeCombinedWithEditedApprovalWithoutApprovingOtherCalls() = runTest {
+        val f = Fixture(this, listOf(call("event", "calendar_create"), call("other", "calendar_create")))
+        try {
+            val input = buildJsonObject { put("title", "Edited event"); put("start", "2026-10-20T10:00:00+08:00") }
+            f.service.grantStandingApproval(f.assistant.id, "calendar_create")
+            f.service.approveToolWithInput(f.original.id, "event", input)
+            runCurrent()
+            assertTrue(f.service.errors.value.isEmpty())
+            assertEquals(setOf("calendar_create"), f.state.value.assistants.first().standingToolApprovals)
+            val event = f.tools().first()
+            assertEquals(input, event.inputAsJson())
+            assertEquals(ToolApprovalState.Approved, event.approvalState)
+            assertEquals(ToolDecisionVia.CARD, event.approvalRecord?.via)
+            assertTrue(f.tools().drop(1).all { it.isPending })
+        } finally { f.close() }
+    }
+
     @Test fun standingGrantIgnoresIneligibleMissingResolvedAndOldTipCalls() = runTest {
         for (name in listOf("workspace_shell", "send_message", "calendar_create")) {
             val f = Fixture(this, listOf(call("one", name)))

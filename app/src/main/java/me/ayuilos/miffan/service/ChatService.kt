@@ -1028,6 +1028,12 @@ class ChatService(
         applyToolApproval(conversationId, toolCallId, true, "", null, ToolDecisionVia.ALWAYS_ALLOW, standingKey = key)
     }
 
+    /** Grants one eligible tool for an assistant without settling any pending call. */
+    fun grantStandingApproval(assistantId: Uuid, key: String) {
+        if (key != standingApprovalKey(key)) return
+        appScope.launch { settingsStore.update { it.withStandingApproval(assistantId, key, allowed = true) } }
+    }
+
     /** Removes one assistant's standing grant without affecting other assistants. */
     fun revokeStandingApproval(assistantId: Uuid, key: String) {
         appScope.launch { settingsStore.update { it.withStandingApproval(assistantId, key, allowed = false) } }
