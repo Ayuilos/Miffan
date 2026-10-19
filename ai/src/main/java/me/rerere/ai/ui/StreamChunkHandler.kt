@@ -173,6 +173,11 @@ class StreamChunkHandler(private val model: Model? = null) {
                 } else part
             })
 
+            is StreamChunk.ToolCallOutput -> copy(parts = parts.map { part ->
+                if (part is UIMessagePart.Tool && part.toolCallId == chunk.id) {
+                    part.copy(output = listOf(UIMessagePart.Text(chunk.output)))
+                } else part
+            })
             is StreamChunk.ToolCallEnd -> this
             is StreamChunk.ServerToolStart -> {
                 val index = parts.indexOfFirst {
