@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
@@ -21,6 +22,8 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnviro
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenEnvironmentState
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
+import me.ayuilos.miffan.ui.im.computer.normalizeAddressInput
+import me.ayuilos.miffan.ui.im.computer.parseSshTarget
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RootfsInstallProgress
@@ -172,6 +175,17 @@ class WorkspaceVM(
         onResult: (Result<Boolean>) -> Unit,
     ) {
         runOperation({ repository.updateHost(id, name, host, port, username, authentication, sshKeyId) }, onResult)
+    }
+
+    /** Adds a typed `host`, `host:port` or `user@host:port`; the port defaults to the main address's. */
+    fun addHostAddress(host: RemoteHostEntity, input: String, onResult: (Result<Boolean>) -> Unit) {
+        val text = normalizeAddressInput(input).trim()
+        val parsed = parseSshTarget(text)
+        runOperation({ repository.addHostAddress(host.id, parsed?.host ?: text, parsed?.port ?: host.port) }, onResult)
+    }
+
+    fun removeHostAddress(hostId: String, address: RemoteHostAddress, onResult: (Result<Boolean>) -> Unit) {
+        runOperation({ repository.removeHostAddress(hostId, address.host, address.port) }, onResult)
     }
 
     fun getHost(id: String, onResult: (Result<RemoteHostEntity?>) -> Unit) {

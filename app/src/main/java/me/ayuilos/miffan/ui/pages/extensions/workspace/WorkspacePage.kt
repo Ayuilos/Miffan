@@ -466,8 +466,10 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
         )
     }
     if (showHostEditor && hostDraft != null) {
+        // Addresses change while the editor is open, so it follows the saved host rather than its snapshot.
+        val editedHost = hostEditor?.let { editing -> hosts.find { it.id == editing.id } ?: editing }
         RemoteHostEditorDialog(
-            host = hostEditor,
+            host = editedHost,
             sshKeys = sshKeys,
             keyMaterialStatus = keyMaterialStatus,
             draft = requireNotNull(hostDraft),
@@ -499,7 +501,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                 }
             },
             onUpdate = { id, name, hostname, port, username, auth, sshKeyId, callback ->
-                val previous = hostEditor
+                val previous = editedHost
                 vm.updateHost(id, name, hostname, port, username, auth, sshKeyId) { result ->
                     if (result.getOrNull() == true && previous != null &&
                         (previous.host != hostname || previous.port != port || previous.username != username || auth != null ||
@@ -521,6 +523,8 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                     }
                 }
             },
+            onAddAddress = vm::addHostAddress,
+            onRemoveAddress = { host, address, callback -> vm.removeHostAddress(host.id, address, callback) },
         )
     }
     hostToVerify?.let { host ->
