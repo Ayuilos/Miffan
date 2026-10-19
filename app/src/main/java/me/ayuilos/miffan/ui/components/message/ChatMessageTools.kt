@@ -3,6 +3,17 @@ package me.ayuilos.miffan.ui.components.message
 import androidx.compose.ui.platform.LocalResources
 import android.content.res.Resources
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import me.ayuilos.miffan.data.datastore.getCurrentAssistant
+import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.ui.im.thread.LocalToolCardAllowEnabled
+import me.ayuilos.miffan.ui.im.thread.LocalToolCardDecline
+import me.ayuilos.miffan.ui.im.thread.LocalToolCardProfessional
+import me.ayuilos.miffan.ui.im.thread.ThreadComputerApprovalCard
+import me.ayuilos.miffan.ui.im.thread.ThreadQuestionCard
+import me.ayuilos.miffan.ui.im.thread.ThreadToolPrompt
+import me.ayuilos.miffan.ui.im.thread.computerTargetName
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -197,7 +208,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val isPreparingWorkspaceTarget = loading && tool.approvalState is ToolApprovalState.Auto &&
         tool.toolName !in WORKSPACE_TOOL_NAMES
     val record = tool.approvalRecord?.takeIf { it.decision != null && it.decidedAt != null }
-    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || record != null || images.isNotEmpty()
+    val approvalCard = isPending && onToolApproval != null
+    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || record != null || images.isNotEmpty() || approvalCard
 
     ControlledChainOfThoughtStep(
         expanded = expanded,
@@ -234,54 +246,22 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                 overflow = TextOverflow.Ellipsis,
             )
         },
-        extra = if (isPending && onToolApproval != null) {
-            {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilledTonalIconButton(
-                        onClick = { showDenyDialog = true },
-                        modifier = Modifier.size(28.dp),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Cancel01,
-                            contentDescription = stringResource(R.string.chat_message_tool_deny),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    FilledTonalIconButton(
-                        onClick = { onToolApproval(tool.toolCallId, true, "") },
-                        modifier = Modifier.size(28.dp),
-                        enabled = !isWorkspaceTool ||
-                            (!loading && tool.toolName in WORKSPACE_TOOL_NAMES && tool.workspaceTarget != null),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Tick01,
-                            contentDescription = stringResource(R.string.chat_message_tool_approve),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-            }
-        } else {
-            null
-        },
+        // A pending call shows its approval card below instead of bare allow/deny icons.
+        extra = null,
         onClick = { showResult = true },
         content = if (hasExtraContent) {
             {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (isWorkspaceTool) WorkspaceToolTargetText(tool, isPreparingWorkspaceTarget)
-                    if (isPending && tool.toolName == "workspace_shell") {
-                        Text(stringResource(R.string.workspace_full_command_label), style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            text = context.arguments.getStringContent("command").orEmpty(),
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        )
-                        context.arguments.getStringContent("cwd")?.let { cwd ->
-                            Text(stringResource(R.string.workspace_command_directory, cwd), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
                     renderer.Summary(context)
+                    if (approvalCard) ProfessionalApprovalCard(
+                        tool = tool,
+                        // The target is resolved while the step prepares; allowing earlier would only fail the call.
+                        allowEnabled = !isWorkspaceTool ||
+                            (!loading && tool.toolName in WORKSPACE_TOOL_NAMES && tool.workspaceTarget != null),
+                        onApproval = { id, approved -> onToolApproval!!(id, approved, "") },
+                        onDecline = { showDenyDialog = true },
+                    )
                     if (isComputerTool && images.isNotEmpty()) {
                         ZoomableAsyncImage(
                             model = images.last().url,
@@ -401,11 +381,6 @@ private fun ChainOfThoughtScope.AskUserToolStep(
         }.getOrElse { emptyList() }
     }
 
-    // Track answers for text/single questions
-    val answers = remember { mutableStateMapOf<String, String>() }
-    // Track selected options for multi questions
-    val multiAnswers = remember { mutableStateMapOf<String, Set<String>>() }
-
     val firstQuestion = questions.firstOrNull()?.question ?: "..."
 
     var expanded by remember { mutableStateOf(true) }
@@ -439,10 +414,9 @@ private fun ChainOfThoughtScope.AskUserToolStep(
             )
         },
         content = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            // Waiting for an answer: the same question card as easy mode.
+            if (isPending && onToolAnswer != null) ThreadQuestionCard(tool, onToolAnswer)
+            else Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 questions.forEach { q ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
@@ -450,94 +424,7 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
-
-                        if (isPending && onToolAnswer != null) {
-                            when (q.selectionType) {
-                                "single" -> {
-                                    // Single select: chips only, no text input
-                                    if (q.options.isNotEmpty()) {
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                                        ) {
-                                            q.options.forEach { option ->
-                                                FilterChip(
-                                                    selected = answers[q.id] == option,
-                                                    onClick = { answers[q.id] = option },
-                                                    label = {
-                                                        Text(
-                                                            text = option,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                        )
-                                                    },
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                "multi" -> {
-                                    // Multi select: chips only, multiple can be selected
-                                    if (q.options.isNotEmpty()) {
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                                        ) {
-                                            q.options.forEach { option ->
-                                                val selectedSet = multiAnswers[q.id] ?: emptySet()
-                                                FilterChip(
-                                                    selected = selectedSet.contains(option),
-                                                    onClick = {
-                                                        val current = selectedSet.toMutableSet()
-                                                        if (current.contains(option)) current.remove(option)
-                                                        else current.add(option)
-                                                        multiAnswers[q.id] = current
-                                                    },
-                                                    label = {
-                                                        Text(
-                                                            text = option,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                        )
-                                                    },
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                else -> {
-                                    // Text (default): optional option chips + free text input
-                                    if (q.options.isNotEmpty()) {
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                                        ) {
-                                            q.options.forEach { option ->
-                                                FilterChip(
-                                                    selected = answers[q.id] == option,
-                                                    onClick = { answers[q.id] = option },
-                                                    label = {
-                                                        Text(
-                                                            text = option,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                        )
-                                                    },
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Free text input
-                                    OutlinedTextField(
-                                        value = answers[q.id] ?: "",
-                                        onValueChange = { answers[q.id] = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textStyle = MaterialTheme.typography.bodySmall,
-                                        singleLine = false,
-                                        minLines = 1,
-                                        maxLines = 3,
-                                    )
-                                }
-                            }
-                        } else if (isAnswered) {
+                        if (isAnswered) {
                             // Show the user's answer
                             val answeredState = tool.approvalState as ToolApprovalState.Answered
                             val answerJson = runCatching {
@@ -552,42 +439,6 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         }
-                    }
-                }
-
-                // Submit button
-                if (isPending && onToolAnswer != null) {
-                    FilledTonalButton(
-                        onClick = {
-                            val answerPayload = buildJsonObject {
-                                put("answers", buildJsonObject {
-                                    questions.forEach { q ->
-                                        when (q.selectionType) {
-                                            "multi" -> put(q.id, JsonPrimitive(multiAnswers[q.id]?.joinToString(", ") ?: ""))
-                                            else -> put(q.id, JsonPrimitive(answers[q.id] ?: ""))
-                                        }
-                                    }
-                                })
-                            }
-                            onToolAnswer(tool.toolCallId, answerPayload.toString())
-                        },
-                        enabled = questions.all { q ->
-                            when (q.selectionType) {
-                                "multi" -> !multiAnswers[q.id].isNullOrEmpty()
-                                else -> !answers[q.id].isNullOrBlank()
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.End),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Tick01,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.chat_message_tool_submit),
-                            modifier = Modifier.padding(start = 4.dp),
-                        )
                     }
                 }
             }
@@ -636,4 +487,28 @@ private fun ToolDenyReasonDialog(
             }
         }
     )
+}
+
+/** The same approval card easy mode shows, with professional details and a reason asked on decline. */
+@Composable
+private fun ProfessionalApprovalCard(
+    tool: UIMessagePart.Tool,
+    allowEnabled: Boolean,
+    onApproval: (String, Boolean) -> Unit,
+    onDecline: () -> Unit,
+) {
+    val settings = LocalSettings.current
+    val assistant = remember(settings) { settings.getCurrentAssistant() }
+    Box(Modifier.padding(top = 8.dp)) {
+        CompositionLocalProvider(
+            LocalToolCardDecline provides { onDecline() },
+            LocalToolCardProfessional provides true,
+            LocalToolCardAllowEnabled provides allowEnabled,
+        ) {
+            if (tool.toolName.startsWith(COMPUTER_TOOL_PREFIX)) ThreadComputerApprovalCard(tool,
+                computerTargetName(tool, null, stringResource(R.string.im_computer_computer)), canOpen = false,
+                onScreen = {}, onApproval = onApproval)
+            else ThreadToolPrompt(tool, onApproval, onAnswer = { _, _ -> }, assistant = assistant)
+        }
+    }
 }

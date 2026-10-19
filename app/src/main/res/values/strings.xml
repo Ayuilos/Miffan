@@ -269,7 +269,6 @@
   <string name="chat_message_tool_search_prefix">Search: %1$s</string>
   <string name="chat_message_tool_search_results_count">%1$d results</string>
   <string name="chat_message_tool_search_web">Search web: %1$s</string>
-  <string name="chat_message_tool_submit">Submit</string>
   <string name="chat_page_cancel">Cancel</string>
   <string name="chat_page_check_title_model_settings">Check title model settings</string>
   <string name="chat_page_clear_all_errors">Clear all</string>
@@ -1857,6 +1856,19 @@
   <string name="im_thread_notice_settings">%1$s adjusted its settings: %2$s</string>
   <string name="im_thread_view">View</string>
   <string name="im_thread_undo">Undo</string>
+  <string name="im_thread_topic_started">New topic</string>
+  <string name="im_thread_topic_continue">Continue the last topic</string>
+  <string name="im_thread_topic_changed">You changed the topic</string>
+  <string name="im_thread_topic_merged">Moved back to “%1$s”</string>
+  <string name="im_thread_topic_merged_untitled">Moved back to the last topic</string>
+  <string name="im_thread_continue_last">Continue last chat</string>
+  <string name="im_thread_merge_title">Which topic does this belong to?</string>
+  <string name="im_thread_merge_subtitle">The messages move into the topic you pick, so %1$s sees that whole conversation.</string>
+  <string name="im_thread_merge_keep">Keep as a new topic</string>
+  <string name="im_thread_merge_you">You</string>
+  <string name="im_thread_merge_speaker">%1$s: %2$s</string>
+  <string name="im_thread_new_topic_hint">Start the next message fresh</string>
+  <string name="im_thread_message_fresh">Say something new…</string>
   <string name="im_thread_loading">Loading messages…</string>
   <string name="im_thread_missing_message">This message is not available in the loaded history</string>
   <string name="im_thread_undo_failed">It has changed since then, so this can no longer be undone</string>
@@ -1935,7 +1947,6 @@
   <string name="im_p5_added">Added</string>
   <string name="im_p5_recommended">Recommended partners</string>
   <string name="im_p5_saved">Saved</string>
-  <string name="im_p5_topic_changed">Ready for a new topic</string>
   <string name="im_p5_chats_deleted">Chat history deleted</string>
   <string name="im_p5_failed">Could not complete this. Please try again.</string>
   <string name="im_p5_missing_partner">This partner is no longer available</string>
@@ -1973,7 +1984,6 @@
   <string name="im_p5_not_now">Not this time</string>
   <string name="im_p5_search_records">Chat history · %1$d</string>
   <string name="im_p5_search_empty">No matches found</string>
-  <string name="im_p5_search_hint">Search partners or messages</string>
   <string name="im_p5_connect">Connect an AI service</string>
   <string name="im_p5_connect_desc">Connect once, then keep chatting with your partners.</string>
   <string name="im_p5_one_click">One-click login</string>
@@ -2483,7 +2493,7 @@
   <string name="im_computer_app_key" tools:ignore="MissingTranslation">Miffan key</string>
   <string name="im_computer_authorize_key" tools:ignore="MissingTranslation">Authorize this key</string>
   <string name="im_computer_bind_disclosure" tools:ignore="MissingTranslation">Screenshots will be sent to the current model’s provider. Your partner’s actions run with the permissions of this computer account. Each action will ask you first; you can change this in the partner’s profile.</string>
-  <string name="im_computer_bind_disclosure_no_screen" tools:ignore="MissingTranslation">The partner acts with the permissions of this computer account. It asks you before each action; you can change this on the partner profile.</string>
+  <string name="im_computer_bind_disclosure_no_screen">The partner acts with the permissions of this computer account. It asks you before each action; you can change this on the partner profile.</string>
   <string name="im_computer_chat_help" tools:ignore="MissingTranslation">Talk to your partner while watching the screen</string>
   <string name="im_computer_waiting_for_you" tools:ignore="MissingTranslation">Your partner is waiting for you to confirm</string>
   <string name="im_computer_choose" tools:ignore="MissingTranslation">Choose a computer</string>
@@ -2515,7 +2525,7 @@
   <string name="im_computer_dismiss" tools:ignore="MissingTranslation">Dismiss</string>
   <string name="im_computer_fingerprint_command" tools:ignore="MissingTranslation">See the fingerprint on the computer</string>
   <string name="im_computer_first_message" tools:ignore="MissingTranslation">Tell me what is on my computer screen</string>
-  <string name="im_computer_first_message_no_screen" tools:ignore="MissingTranslation">Tell me how my computer is doing</string>
+  <string name="im_computer_first_message_no_screen">Tell me how my computer is doing</string>
   <string name="im_computer_foreground_warning" tools:ignore="MissingTranslation">This will switch to the foreground and interrupt the window you are using.</string>
   <string name="im_computer_generate_key" tools:ignore="MissingTranslation">Generate key</string>
   <string name="im_computer_give_title" tools:ignore="MissingTranslation">Give this computer to %1$s</string>
@@ -2568,7 +2578,7 @@
   <string name="im_computer_setup_needed" tools:ignore="MissingTranslation">Connect and prepare this computer to open its screen.</string>
   <string name="im_computer_windows_unsupported" tools:ignore="MissingTranslation">Partners can\'t operate Windows computers yet.</string>
   <string name="im_computer_step_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
-  <plurals name="im_computer_steps" tools:ignore="MissingTranslation">
+  <plurals name="im_computer_steps">
     <item quantity="one">Performed %2$d step on %1$s</item>
     <item quantity="other">Performed %2$d steps on %1$s</item>
   </plurals>
@@ -2591,10 +2601,10 @@
   <string name="im_computer_sign_in" tools:ignore="MissingTranslation">Sign in with</string>
   <string name="im_computer_other_key" tools:ignore="MissingTranslation">Key: %1$s · Change</string>
   <string name="im_computer_prepare_help" tools:ignore="MissingTranslation">The partner needs a logged-in desktop, a screen service and cua-driver.</string>
-  <string name="im_computer_prepare_help_no_screen" tools:ignore="MissingTranslation">Without the screen, an SSH connection to this computer is all it needs.</string>
-  <string name="im_computer_use_screen" tools:ignore="MissingTranslation">Use the screen</string>
-  <string name="im_computer_use_screen_on" tools:ignore="MissingTranslation">You and partners can see the screen, and partners can use the desktop</string>
-  <string name="im_computer_use_screen_off" tools:ignore="MissingTranslation">Partners use this computer through commands only, fine for a server or NAS without a display</string>
+  <string name="im_computer_prepare_help_no_screen">Without the screen, an SSH connection to this computer is all it needs.</string>
+  <string name="im_computer_use_screen">Use the screen</string>
+  <string name="im_computer_use_screen_on">You and partners can see the screen, and partners can use the desktop</string>
+  <string name="im_computer_use_screen_off">Partners use this computer through commands only, fine for a server or NAS without a display</string>
   <string name="im_computer_show_commands" tools:ignore="MissingTranslation">Show install commands</string>
   <string name="im_computer_mac_screen_sharing" tools:ignore="MissingTranslation">macOS Screen Sharing</string>
   <string name="im_computer_test_help" tools:ignore="MissingTranslation">This is the computer\'s screen right now. You can use it directly.</string>
@@ -2607,7 +2617,7 @@
   <string name="im_computer_bind_approval" tools:ignore="MissingTranslation">It asks you before every action. You can change that in the partner\'s profile.</string>
   <string name="im_computer_done_title" tools:ignore="MissingTranslation">All set</string>
   <string name="im_computer_done_help" tools:ignore="MissingTranslation">%1$s can now see and operate %2$s.</string>
-  <string name="im_computer_done_help_no_screen" tools:ignore="MissingTranslation">%1$s can now run commands on %2$s.</string>
+  <string name="im_computer_done_help_no_screen">%1$s can now run commands on %2$s.</string>
   <string name="im_computer_task_creating_key" tools:ignore="MissingTranslation">Generating a key…</string>
   <string name="im_computer_task_connecting" tools:ignore="MissingTranslation">Connecting…</string>
   <string name="im_computer_task_fingerprint" tools:ignore="MissingTranslation">Reading the fingerprint…</string>
@@ -2786,12 +2796,12 @@
   <string name="computer_use_mode_ask_help" tools:ignore="MissingTranslation">Your partner starts on its own when a request needs the computer, and asks in chat before each click, keystroke, command or file change. Looking at the screen and reading files need no approval.</string>
   <string name="computer_use_mode_auto_help" tools:ignore="MissingTranslation">Your partner clicks, types, runs commands and changes files without asking each time. Bringing a window to the front or downloading from the web still asks.</string>
   <string name="computer_use_mode_off_help" tools:ignore="MissingTranslation">Your partner won’t touch this computer at all: it can’t see the screen, operate the desktop, run commands or read and write files, and won’t offer to. You can still open the screen page yourself.</string>
-  <string name="computer_use_mode_ask_help_no_screen" tools:ignore="MissingTranslation">Before running commands or changing files the partner asks you in the chat; reading files needs no asking.</string>
-  <string name="computer_use_mode_auto_help_no_screen" tools:ignore="MissingTranslation">The partner runs commands and changes files directly, without asking each time.</string>
-  <string name="computer_use_mode_off_help_no_screen" tools:ignore="MissingTranslation">The partner leaves this computer alone: no commands, no reading or writing files, and it will not bring it up.</string>
+  <string name="computer_use_mode_ask_help_no_screen">Before running commands or changing files the partner asks you in the chat; reading files needs no asking.</string>
+  <string name="computer_use_mode_auto_help_no_screen">The partner runs commands and changes files directly, without asking each time.</string>
+  <string name="computer_use_mode_off_help_no_screen">The partner leaves this computer alone: no commands, no reading or writing files, and it will not bring it up.</string>
   <string name="computer_use_confirm_auto" tools:ignore="MissingTranslation">Let your partner act directly?</string>
   <string name="computer_use_auto_disclosure" tools:ignore="MissingTranslation">Your partner will click, type, open apps, run commands and change files without asking each time. Screenshots are sent to the current model’s provider, and everything runs with this computer account’s permissions. You can take over at any time on the screen page.</string>
-  <string name="computer_use_auto_disclosure_no_screen" tools:ignore="MissingTranslation">The partner will run commands and change files directly, without asking each time. Everything runs with the permissions of this computer account.</string>
+  <string name="computer_use_auto_disclosure_no_screen">The partner will run commands and change files directly, without asking each time. Everything runs with the permissions of this computer account.</string>
   <string name="computer_use_start" tools:ignore="MissingTranslation">Connect to computer</string>
   <string name="im_computer_disconnect" tools:ignore="MissingTranslation">Disconnect this computer</string>
   <string name="im_computer_disconnect_title" tools:ignore="MissingTranslation">Disconnect %1$s?</string>
@@ -2805,6 +2815,14 @@
   <string name="notification_approval_computer" tools:ignore="MissingTranslation">On %1$s: %2$s</string>
   <string name="notification_approval_generic" tools:ignore="MissingTranslation">Use %1$s</string>
   <string name="notification_approval_more" tools:ignore="MissingTranslation">%1$s, and %2$d more</string>
+  <string name="notification_approval_calendar">Add event: %1$s</string>
+  <string name="notification_approval_web_search">Turn on web search</string>
+  <string name="notification_approval_fetch">Download a file from %1$s</string>
+  <string name="notification_approval_fetch_any">Download a file</string>
+  <string name="notification_approval_image">Draw a picture</string>
+  <string name="notification_approval_question">Has a question: %1$s</string>
+  <string name="notification_approval_question_any">Has a question for you</string>
+  <string name="notification_approval_partner_message">Send a message to another partner</string>
   <string name="im_revision_workspace_bound" tools:ignore="MissingTranslation">Connected a computer or workspace</string>
   <string name="im_revision_workspace_removed" tools:ignore="MissingTranslation">Disconnected the computer</string>
   <string name="im_revision_computer_use" tools:ignore="MissingTranslation">Computer control: %1$s</string>
@@ -3010,4 +3028,78 @@
   <string name="im_bug_report_skip">Don\'t submit</string>
   <string name="im_bug_report_reopen">Open on GitHub again</string>
   <string name="workspace_screen_ssh_tailnet_unreachable" tools:ignore="MissingTranslation">Couldn\'t reach the computer over Tailscale. Check that Tailscale is on for both this phone and the computer, and that your tailnet\'s access rules let this phone reach the computer\'s SSH port.</string>
+  <string name="im_approval_details">Details</string>
+  <string name="im_approval_allowed_continuing">Allowed, carrying on…</string>
+  <string name="im_approval_reply_hint">Not quite right? Just reply and tell it what to do instead.</string>
+  <string name="im_approval_always">Do this without asking from now on</string>
+  <string name="im_approval_always_help">You can take this back any time in Permission history</string>
+  <string name="im_approval_partner">Your partner</string>
+  <string name="im_approval_web_search">%1$s wants to turn on web search</string>
+  <string name="im_approval_fetch">%1$s wants to download a file</string>
+  <string name="im_approval_fetch_note">Downloads from the internet always ask first.</string>
+  <string name="im_approval_field_source">From</string>
+  <string name="im_approval_field_save_to">Save to</string>
+  <string name="im_approval_write_file">%1$s wants to write a file</string>
+  <string name="im_approval_edit_file">%1$s wants to change a file</string>
+  <string name="im_approval_read_file">%1$s wants to read a file</string>
+  <string name="im_approval_field_file">File</string>
+  <string name="im_approval_field_content">Content</string>
+  <string name="im_approval_command">%1$s wants to run a command</string>
+  <string name="im_approval_field_command">Command</string>
+  <string name="im_approval_field_folder">Folder</string>
+  <string name="im_approval_mcp">%1$s wants to use “%3$s” from %2$s</string>
+  <string name="im_approval_tool">%1$s wants to: %2$s</string>
+  <string name="im_approval_allow_all">Allow all</string>
+  <string name="im_calendar_all_day">All day</string>
+  <string name="im_calendar_title">%1$s wants to add an event</string>
+  <string name="im_calendar_add">Add it</string>
+  <string name="im_calendar_change_time">Change time</string>
+  <string name="im_calendar_location">Place</string>
+  <string name="im_calendar_notes">Notes</string>
+  <string name="im_calendar_edited">You changed the time; it will be added at the new time.</string>
+  <string name="im_calendar_next">Next</string>
+  <string name="im_calendar_added">%1$s · added to your calendar</string>
+  <string name="im_calendar_open">Open</string>
+  <string name="im_extension_title">%1$s wants to change its extensions</string>
+  <string name="im_extension_apply">Apply</string>
+  <string name="im_extension_footnote">You can change these back later in its settings.</string>
+  <string name="im_extension_for">For %1$s</string>
+  <string name="im_extension_tag_create">New</string>
+  <string name="im_extension_tag_update">Edit</string>
+  <string name="im_extension_tag_on">On</string>
+  <string name="im_extension_tag_off">Off</string>
+  <string name="im_extension_tag_switch">Switch</string>
+  <string name="im_extension_quick_message">Quick message “%1$s”</string>
+  <string name="im_extension_mode">Mode prompt “%1$s”</string>
+  <string name="im_extension_lorebook">Lorebook “%1$s”</string>
+  <string name="im_extension_mcp">Tool service “%1$s”</string>
+  <string name="im_extension_no_workspace">Stop using a workspace</string>
+  <string name="im_extension_workspace">Use another workspace</string>
+  <string name="im_record_undone_tag">undone</string>
+  <string name="im_record_mcp">Use “%2$s” from %1$s</string>
+  <string name="im_record_reason">Its reason: %1$s</string>
+  <string name="im_record_undo">Undo this change</string>
+  <string name="im_record_undone">Undone. Everything is back to how it was.</string>
+  <string name="im_record_redo">Apply this change again</string>
+  <string name="im_record_superseded">The same things were changed again later, so it can\'t be undone here. Use the change history instead.</string>
+  <string name="im_record_conflict">Something changed in the meantime; nothing was undone.</string>
+  <string name="im_record_history">See all changes</string>
+  <string name="im_question_one">A question for you</string>
+  <string name="im_question_progress">Question %1$d of %2$d</string>
+  <string name="im_question_answer_hint">Type your answer</string>
+  <string name="im_question_next">Next</string>
+  <string name="im_question_back">Back</string>
+  <string name="im_question_send">Send</string>
+  <string name="im_question_sent">Sent, carrying on…</string>
+  <string name="im_question_reply_hint">Or just reply in the chat below.</string>
+  <string name="im_standing_title">Done without asking</string>
+  <string name="im_standing_help">Your partner does these directly. Take one back and it asks first again.</string>
+  <string name="im_standing_revoke">Take back</string>
+  <string name="im_standing_calendar">Add calendar events</string>
+  <string name="im_standing_write_file">Write files</string>
+  <string name="im_standing_edit_file">Change files</string>
+  <plurals name="im_approval_batch">
+    <item quantity="one">%1$d thing is waiting for you</item>
+    <item quantity="other">%1$d things are waiting for you</item>
+  </plurals>
 </resources>

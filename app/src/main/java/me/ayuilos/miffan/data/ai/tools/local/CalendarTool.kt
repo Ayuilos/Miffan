@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -24,6 +26,10 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
+
+private const val MIFFAN_CALENDAR_ACCOUNT_NAME = "Miffan"
+
+private object MiffanCalendarLock
 
 internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
     name = "calendar_query",
@@ -220,6 +226,22 @@ internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
     }
 )
 
+/** Checks edited calendar arguments using the same required fields and time parser as execution. */
+internal fun validCalendarCreateInput(input: JsonObject): Boolean = runCatching {
+    val title = input["title"] as? JsonPrimitive
+    val start = input["start"] as? JsonPrimitive
+    require(title?.isString == true && !title.contentOrNull.isNullOrBlank())
+    require(!start?.contentOrNull.isNullOrBlank())
+    val zone = ZoneId.systemDefault()
+    val startTime = parseCalendarTime(requireNotNull(start.contentOrNull), zone)
+    val allDay = input["all_day"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+    val endTime = input["end"]?.jsonPrimitive?.contentOrNull?.let { parseCalendarTime(it, zone) }
+        ?: if (allDay) startTime.toLocalDate().plusDays(1).atStartOfDay(zone) else startTime.plusHours(1)
+    require(startTime.isBefore(endTime))
+    require(!allDay || startTime.toLocalDate().isBefore(endTime.toLocalDate()))
+    true
+}.getOrDefault(false)
+
 internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
     name = "calendar_create",
     description = """
@@ -353,7 +375,11 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
         if (calendarId == null) {
             val payload = buildJsonObject {
                 put("error", "NO_CALENDAR")
-                put("message", "No calendar account found on this device. Please add a calendar account first.")
+                put(
+                    "message",
+                    "No calendar account found on this device, and creating a local calendar also failed. " +
+                        "Please add a calendar account first."
+                )
             }
             return@Tool listOf(UIMessagePart.Text(payload.toString()))
         }
@@ -424,10 +450,46 @@ private fun getDefaultCalendarId(context: Context): Long? {
     )?.use { cursor ->
         if (cursor.moveToFirst()) return cursor.getLong(0)
     }
-    return null
+    return getOrCreateMiffanCalendarId(context)
 }
 
-private fun parseCalendarTime(raw: String, zone: ZoneId): ZonedDateTime {
+private fun getOrCreateMiffanCalendarId(context: Context): Long? = synchronized(MiffanCalendarLock) {
+    try {
+        context.contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            arrayOf(CalendarContract.Calendars._ID),
+            "${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.ACCOUNT_NAME} = ?",
+            arrayOf(CalendarContract.ACCOUNT_TYPE_LOCAL, MIFFAN_CALENDAR_ACCOUNT_NAME),
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) return@synchronized cursor.getLong(0)
+        }
+
+        val uri = CalendarContract.Calendars.CONTENT_URI.buildUpon()
+            .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+            .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, MIFFAN_CALENDAR_ACCOUNT_NAME)
+            .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL)
+            .build()
+        val values = ContentValues().apply {
+            put(CalendarContract.Calendars.ACCOUNT_NAME, MIFFAN_CALENDAR_ACCOUNT_NAME)
+            put(CalendarContract.Calendars.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL)
+            put(CalendarContract.Calendars.NAME, "miffan")
+            put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, "Miffan")
+            put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF6750A4.toInt())
+            put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER)
+            put(CalendarContract.Calendars.OWNER_ACCOUNT, MIFFAN_CALENDAR_ACCOUNT_NAME)
+            put(CalendarContract.Calendars.VISIBLE, 1)
+            put(CalendarContract.Calendars.SYNC_EVENTS, 1)
+            put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, ZoneId.systemDefault().id)
+        }
+        val calendarUri = context.contentResolver.insert(uri, values) ?: return@synchronized null
+        ContentUris.parseId(calendarUri)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+internal fun parseCalendarTime(raw: String, zone: ZoneId): ZonedDateTime {
     val text = raw.trim()
     text.toLongOrNull()?.let { return Instant.ofEpochMilli(it).atZone(zone) }
     runCatching { return OffsetDateTime.parse(text).atZoneSameInstant(zone) }

@@ -1,9 +1,11 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +30,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -88,6 +92,15 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
     val availableUpdate = if (isPlayStore) null else vm.availableUpdate.collectAsStateWithLifecycle().value
     val updateNotice = availableUpdate?.let { stringResource(R.string.update_card_new_version_found, it.version) }
 
+    val searchVM: ImSearchVM = koinViewModel()
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var searchFieldTop by remember { mutableFloatStateOf(0f) }
+    val searchTransition = updateTransition(searching, label = "imSearch")
+    val searchShown = searchTransition.currentState || searchTransition.targetState
+    BackHandler(enabled = searching) { searching = false }
+    // Start the next search empty once the closing animation has finished.
+    LaunchedEffect(searchShown) { if (!searchShown) searchVM.query.value = "" }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { innerPadding ->
         // Tab content scrolls underneath the floating bar, so reserve its height at the end of lists.
         val contentPadding = PaddingValues(
@@ -105,7 +118,13 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     .hazeSource(hazeState)
             ) {
                 when (tab) {
-                    ImTab.CHATS -> ImChatsTab(vm, contentPadding, onFindPartner = { tab = ImTab.PARTNERS })
+                    ImTab.CHATS -> ImChatsTab(
+                        vm, contentPadding,
+                        onFindPartner = { tab = ImTab.PARTNERS },
+                        searchOpen = searchShown,
+                        onSearch = { searching = true },
+                        onSearchFieldMoved = { searchFieldTop = it },
+                    )
                     ImTab.PARTNERS -> ImPartnersTab(vm, contentPadding)
                     ImTab.DISCOVER -> ImDiscoverTab(contentPadding)
                     ImTab.ME -> ImMeTab(vm, contentPadding, availableUpdate)
@@ -123,6 +142,9 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     .align(Alignment.BottomCenter)
                     .padding(bottom = innerPadding.calculateBottomPadding() + TabBarBottomMargin),
             )
+            if (searchShown && tab == ImTab.CHATS) {
+                ImSearchOverlay(searchTransition, searchFieldTop, onClose = { searching = false }, vm = searchVM)
+            }
         }
     }
 }

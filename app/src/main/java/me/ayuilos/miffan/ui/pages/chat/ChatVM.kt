@@ -302,6 +302,13 @@ class ChatVM(
         chatService.alwaysAllowWorkspaceShell(_conversationId)
     }
 
+    /** Lets approval cards allow a step for good, or allow a calendar event with a corrected time. */
+    internal val toolCardActions = me.ayuilos.miffan.ui.im.thread.ToolCardActions(
+        alwaysAllow = { id -> chatService.alwaysAllowTool(_conversationId, id) },
+        grantStanding = { key -> chatService.grantStandingApproval(conversation.value.assistantId, key) },
+        approveWithInput = { id, input -> chatService.approveToolWithInput(_conversationId, id, input) },
+    )
+
     fun stopGeneration() {
         viewModelScope.launch {
             chatService.stopGeneration(_conversationId)

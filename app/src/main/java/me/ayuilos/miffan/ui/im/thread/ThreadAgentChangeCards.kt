@@ -110,24 +110,9 @@ internal fun AgentChangeCard(
     footer: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    var answered by remember(tool.toolCallId) { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(agentChangeTitle(tool.toolName)), style = MaterialTheme.typography.titleMedium)
-            toolArg(tool, "reason")?.let { Text(it) }
-            content()
-            footer?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) {
-                    Text(stringResource(R.string.im_p5_allow))
-                }
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) {
-                    Text(stringResource(R.string.im_p5_not_now))
-                }
-            }
-        }
+    ApprovalCardFrame(tool, stringResource(agentChangeTitle(tool.toolName)), onApproval, footnote = footer) {
+        toolArg(tool, "reason")?.let { Text(it) }
+        content()
     }
 }
 
@@ -174,13 +159,19 @@ private fun PartnerFaces(partners: List<Assistant?>) {
 
 @Composable
 internal fun ThreadCreatePartnerCard(tool: UIMessagePart.Tool, creator: Assistant?, onApproval: (String, Boolean) -> Unit) {
-    val name = toolArg(tool, "name")?.trim().orEmpty()
-    val avatar = requestedAvatar(tool, null) ?: Assistant().avatar
     val footer = buildString {
         creator?.let { append(stringResource(R.string.im_change_create_partner_contact, partnerName(it))).append(' ') }
         append(stringResource(R.string.im_change_create_partner_defaults))
     }
-    AgentChangeCard(tool, onApproval, footer) {
+    AgentChangeCard(tool, onApproval, footer) { CreatePartnerContent(tool) }
+}
+
+/** The partner a create_partner call describes: face, name and the personality it starts with. */
+@Composable
+internal fun CreatePartnerContent(tool: UIMessagePart.Tool) {
+    val name = toolArg(tool, "name")?.trim().orEmpty()
+    val avatar = requestedAvatar(tool, null) ?: Assistant().avatar
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AssistantAvatar(name, avatar, Modifier.size(48.dp))
             Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 2,
@@ -192,22 +183,26 @@ internal fun ThreadCreatePartnerCard(tool: UIMessagePart.Tool, creator: Assistan
 
 @Composable
 internal fun ThreadGroupChatCard(tool: UIMessagePart.Tool, caller: Assistant?, onApproval: (String, Boolean) -> Unit) {
+    AgentChangeCard(tool, onApproval) { GroupChatContent(tool, caller) }
+}
+
+/** The group a create_group_chat or invite_to_group_chat call names, with everyone's faces. */
+@Composable
+internal fun GroupChatContent(tool: UIMessagePart.Tool, caller: Assistant?) {
     val settings = LocalSettings.current
     val invited = toolIds(tool, "member_ids").distinct().map { id -> settings.assistants.firstOrNull { it.id == id } }
-    if (tool.toolName == CREATE_GROUP_CHAT) {
-        AgentChangeCard(tool, onApproval) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (tool.toolName == CREATE_GROUP_CHAT) {
             ChangeField(stringResource(R.string.im_change_group_title)) {
                 Text(toolArg(tool, "title").orEmpty(), fontWeight = FontWeight.Medium)
             }
             Text(stringResource(R.string.im_change_group_members), style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             PartnerFaces(listOfNotNull(caller) + invited.filter { it?.id != caller?.id })
-        }
-    } else {
-        val chats: PartnerChatService = koinInject()
-        val chatId = toolArg(tool, "chat_id")?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-        val chat by remember(chatId) { chatId?.let { chats.observeChat(it) } ?: kotlinx.coroutines.flow.flowOf(null) }.collectAsState(null)
-        AgentChangeCard(tool, onApproval) {
+        } else {
+            val chats: PartnerChatService = koinInject()
+            val chatId = toolArg(tool, "chat_id")?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+            val chat by remember(chatId) { chatId?.let { chats.observeChat(it) } ?: kotlinx.coroutines.flow.flowOf(null) }.collectAsState(null)
             chat?.let { ChangeField(stringResource(R.string.im_change_group_title)) { Text(partnerChatTitle(it, settings), fontWeight = FontWeight.Medium) } }
             Text(stringResource(R.string.im_change_invitees), style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -219,6 +214,11 @@ internal fun ThreadGroupChatCard(tool: UIMessagePart.Tool, caller: Assistant?, o
 /** Each requested step of tidying the Chats list, in the order it will run, with chats and folders by name. */
 @Composable
 internal fun ThreadOrganizeCard(tool: UIMessagePart.Tool, onApproval: (String, Boolean) -> Unit) {
+    AgentChangeCard(tool, onApproval) { OrganizeContent(tool) }
+}
+
+@Composable
+internal fun OrganizeContent(tool: UIMessagePart.Tool) {
     val settings = LocalSettings.current
     val chats: PartnerChatService = koinInject()
     val summaries by chats.observeSummaries().collectAsState(emptyList())
@@ -248,14 +248,12 @@ internal fun ThreadOrganizeCard(tool: UIMessagePart.Tool, onApproval: (String, B
             else -> op.str("type").orEmpty()
         }
     }
-    AgentChangeCard(tool, onApproval) {
-        Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium) {
-            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                lines.forEachIndexed { index, line ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("${index + 1}.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(line, style = MaterialTheme.typography.bodyMedium)
-                    }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            lines.forEachIndexed { index, line ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${index + 1}.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(line, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }

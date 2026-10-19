@@ -43,6 +43,8 @@ data class Assistant(
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBodies: List<CustomBody> = emptyList(),
     val mcpServers: Set<Uuid> = emptySet(),
+    /** Exact tool names the owner has allowed to run without asking again. */
+    val standingToolApprovals: Set<String> = emptySet(),
     val localTools: List<LocalToolOption> = listOf(LocalToolOption.TimeInfo),
     val miffanHelpOverride: MiffanHelpOverride = MiffanHelpOverride.INHERIT,
     val enableWebSearch: Boolean = false, // 网络搜索开关(每个助手独立)

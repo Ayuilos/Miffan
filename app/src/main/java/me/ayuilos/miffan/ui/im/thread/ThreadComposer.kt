@@ -81,6 +81,7 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp02
+import me.rerere.hugeicons.stroke.BubbleChatAdd
 import me.rerere.hugeicons.stroke.Camera01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Files02
@@ -108,6 +109,10 @@ internal fun ThreadComposer(
     mentionables: List<Assistant> = emptyList(),
     /** Content uris to attach once when the thread opens (shared or shortcut photos). */
     initialFiles: List<String> = emptyList(),
+    /** Starts the next message as a new topic; null hides the entry. */
+    onNewTopic: (() -> Unit)? = null,
+    /** The next message starts a new topic. */
+    freshTopic: Boolean = false,
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -240,6 +245,11 @@ internal fun ThreadComposer(
                 GlassIconButton(hazeState, if (menu) HugeIcons.Cancel01 else HugeIcons.Add01, stringResource(R.string.im_thread_attachments),
                     onClick = { focus.clearFocus(); keyboard?.hide(); menu = !menu }, enabled = loaded && !importing && !asrState.isRecording)
                 ThreadAttachmentMenu(expanded = menu, onDismiss = { menu = false }, hazeState = hazeState) {
+                    if (onNewTopic != null) {
+                        ThreadAttachmentMenuItem(HugeIcons.BubbleChatAdd, stringResource(R.string.im_thread_new_topic),
+                            stringResource(R.string.im_thread_new_topic_hint)) { menu = false; onNewTopic() }
+                        HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    }
                     ThreadAttachmentMenuItem(HugeIcons.Image02, stringResource(R.string.im_thread_photo)) { menu = false; photos.launch("image/*") }
                     ThreadAttachmentMenuItem(HugeIcons.Camera01, stringResource(R.string.im_thread_camera)) {
                         menu = false
@@ -271,7 +281,11 @@ internal fun ThreadComposer(
                         keyboardActions = KeyboardActions(onSend = { sendDraft() }),
                         decorationBox = { innerField ->
                             Box {
-                                if (input.isEmpty()) Text(if (topicLabel != null) stringResource(R.string.im_thread_in_topic, topicLabel) else stringResource(R.string.im_thread_message),
+                                if (input.isEmpty()) Text(when {
+                                    topicLabel != null -> stringResource(R.string.im_thread_in_topic, topicLabel)
+                                    freshTopic -> stringResource(R.string.im_thread_message_fresh)
+                                    else -> stringResource(R.string.im_thread_message)
+                                },
                                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 MentionChipLayer(field.text, mentionables, textLayout, chipColor)
                                 innerField()
@@ -337,11 +351,14 @@ private val MENU_SHADOW_ROOM = 48.dp
 private val CHIP_AVATAR_SLOT = 0.8.em
 
 @Composable
-private fun ThreadAttachmentMenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun ThreadAttachmentMenuItem(icon: ImageVector, label: String, supporting: String? = null, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+        Column {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            if (supporting != null) Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

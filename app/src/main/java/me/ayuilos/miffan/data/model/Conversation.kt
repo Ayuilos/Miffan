@@ -45,6 +45,7 @@ data class Conversation(
     val threadSummary: String = "",
     /** Epoch millis when the IM thread closed this segment to new topics; 0 while open. */
     val threadClosedAt: Long = 0,
+    val topicStart: TopicStart? = null,
     /**
      * Set on a partner's private perspective segment of a multi-partner chat
      * ([PartnerChat]); such segments never appear in the partner's IM thread.

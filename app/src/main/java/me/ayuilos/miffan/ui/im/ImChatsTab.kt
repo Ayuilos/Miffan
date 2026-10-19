@@ -41,8 +41,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -70,7 +73,6 @@ import me.rerere.hugeicons.stroke.Edit01
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Pin
 import me.rerere.hugeicons.stroke.PinOff
-import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.ViewOff
 import java.time.Instant
 import java.time.LocalDate
@@ -83,6 +85,9 @@ internal fun ImChatsTab(
     vm: ImHomeVM,
     innerPadding: PaddingValues,
     onFindPartner: () -> Unit,
+    searchOpen: Boolean,
+    onSearch: () -> Unit,
+    onSearchFieldMoved: (Float) -> Unit,
 ) {
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
@@ -127,7 +132,21 @@ internal fun ImChatsTab(
             }
         }
         item("search") {
-            ImSearchField(onClick = { navController.navigate(Screen.ImSearch) })
+            // While search is open its overlay carries this pill, so the original stays invisible.
+            ImSearchPill(
+                onClick = onSearch,
+                modifier = Modifier
+                    .onGloballyPositioned { onSearchFieldMoved(it.positionInRoot().y) }
+                    .alpha(if (searchOpen) 0f else 1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.im_chats_search),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (current != null && current.pinned.isEmpty() && current.ungrouped.isEmpty() && current.groups.isEmpty()) {
             item("empty") { ImChatsEmpty(onFindPartner) }
@@ -194,31 +213,6 @@ private class ImChatActions(
     val move: (ImChatItem) -> Unit,
     val hide: (ImChatItem) -> Unit,
 )
-
-@Composable
-private fun ImSearchField(onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(HugeIcons.Search01, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                text = stringResource(R.string.im_chats_search),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
 
 /** Pinned chats as large avatars: one centered, two or three spread out, more in a scrolling row. */
 @Composable

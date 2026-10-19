@@ -50,7 +50,7 @@ val viewModelModule = module {
     viewModel<ImMemoryVM> { params -> ImMemoryVM(params.get(), get(), get(), get(), get()) }
     viewModel<ImRevisionVM> { params -> ImRevisionVM(params.get(), params.get(), get(), get(), get()) }
     viewModel<ComputerSetupVM> { params -> ComputerSetupVM(params.get(), get(), get(), get(), get(), get()) }
-    viewModel<ImPartnerVM> { params -> ImPartnerVM(params.get(), get(), get(), get(), get(), get(), get()) }
+    viewModel<ImPartnerVM> { params -> ImPartnerVM(params.get(), get(), get(), get(), get()) }
     viewModel<me.ayuilos.miffan.ui.im.PartnerChatVM> { params ->
         me.ayuilos.miffan.ui.im.PartnerChatVM(chatId = params.get(), settingsStore = get(), service = get(), listState = get())
     }

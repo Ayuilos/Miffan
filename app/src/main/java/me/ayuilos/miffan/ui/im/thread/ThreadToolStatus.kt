@@ -21,6 +21,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.revision.RevisionService
+import me.ayuilos.miffan.data.revision.ToolCallChangeState
 import org.koin.compose.koinInject
 import me.ayuilos.miffan.ui.im.partnerName
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
@@ -29,7 +30,6 @@ import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.ui.components.message.ChatMessageToolStep
 import me.ayuilos.miffan.ui.components.message.LocalTerminalConversationId
-import me.ayuilos.miffan.ui.components.message.ComputerToolUIRenderer
 import me.ayuilos.miffan.ui.components.message.approvalDecisionText
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIRegistry
@@ -99,8 +99,7 @@ internal fun ThreadToolPrompt(
     conversationId: String? = null,
 ) {
     when {
-        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER ->
-            ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)), onAnswer)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER -> ThreadQuestionCard(tool, onAnswer)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == WORKSPACE_TERMINAL_TOOL_NAME ->
             ThreadTerminalCard(tool, conversationId, onApproval, onAnswer)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == UPDATE_MY_PROFILE ->
@@ -115,10 +114,16 @@ internal fun ThreadToolPrompt(
             ThreadBugReportCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.isImageGeneration() ->
             ThreadDrawingSetupCard(tool, onApproval)
-        tool.approvalState is ToolApprovalState.Pending -> ThreadPermissionCard(tool, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == CALENDAR_CREATE ->
+            ThreadCalendarCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == EXTENSIONS_APPLY ->
+            ThreadExtensionCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending -> ThreadGenericApprovalCard(tool, assistant, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
         tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)
-        tool.isSettledPermission() -> ThreadPermissionRecord(tool)
+        // The event itself says it was added; the decision stays one tap away in the record sheet.
+        tool.addedCalendarEvent() != null -> ThreadCalendarEvent(tool.addedCalendarEvent()!!)
+        tool.isSettledPermission() -> ThreadPermissionRecord(tool, assistant)
     }
 }
 
@@ -126,13 +131,6 @@ internal fun ThreadToolPrompt(
 internal fun ThreadLiveStatus(@StringRes label: Int) {
     Text(stringResource(label), Modifier.shimmer(isLoading = true), style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable
-private fun ThreadToolDetails(steps: List<ThinkingStep>, onAnswer: ((String, String) -> Unit)? = null) {
-    ChainOfThought(steps = steps, collapsedVisibleCount = Int.MAX_VALUE) { step ->
-        if (step is ThinkingStep.ToolStep) ChatMessageToolStep(step.tool, loading = false, onToolAnswer = onAnswer)
-    }
 }
 
 /** The question and the user's choice, kept as part of the conversation rather than as process. */
@@ -160,29 +158,6 @@ private fun ThreadAnsweredQuestions(tool: UIMessagePart.Tool) {
                         Icon(HugeIcons.Tick01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThreadPermissionCard(tool: UIMessagePart.Tool, onApproval: (String, Boolean) -> Unit) {
-    var answered by remember(tool.toolCallId) { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.im_p5_permission), style = MaterialTheme.typography.titleMedium)
-            if (tool.toolName == REQUEST_WEB_SEARCH) {
-                Text(webSearchReason(tool) ?: stringResource(R.string.im_p5_web))
-                Text(stringResource(R.string.im_p5_web_permission), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text(stringResource(R.string.im_p5_permission_info), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                ThreadToolDetails(listOf(ThinkingStep.ToolStep(tool)))
-            }
-            RelayApprovalNotice(tool)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) { Text(stringResource(R.string.im_p5_allow)) }
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) { Text(stringResource(R.string.im_p5_not_now)) }
             }
         }
     }
@@ -231,16 +206,22 @@ internal fun RelayApprovalNotice(tool: UIMessagePart.Tool) {
 /** The partner asks to change its own profile: each changed field, as it is now and as it would become. */
 @Composable
 private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) {
+    AgentChangeCard(tool, onApproval, footer = stringResource(R.string.im_profile_undo)) { ProfileChangeContent(tool, assistant) }
+}
+
+/** Each field a profile change touches, from [before] to what the call asks for. */
+@Composable
+internal fun ProfileChangeContent(tool: UIMessagePart.Tool, before: Assistant?) {
     val newName = toolArg(tool, "name")?.trim()
     val preset = toolArg(tool, "avatar_preset")
     val revisions: RevisionService = koinInject()
-    val previous by produceState<Avatar?>(null, assistant?.id, preset) {
-        value = if (preset == "previous" && assistant != null) runCatching { revisions.previousAvatar(assistant.id) }.getOrNull() else null
+    val previous by produceState<Avatar?>(null, before?.id, preset) {
+        value = if (preset == "previous" && before != null) runCatching { revisions.previousAvatar(before.id) }.getOrNull() else null
     }
     val avatarChange = preset != null || toolArg(tool, "avatar_emoji") != null
-    val newAvatar = requestedAvatar(tool, assistant?.avatar, previous)
-    val currentName = assistant?.let { partnerName(it) }
-    AgentChangeCard(tool, onApproval, footer = stringResource(R.string.im_profile_undo)) {
+    val newAvatar = requestedAvatar(tool, before?.avatar, previous)
+    val currentName = before?.let { partnerName(it) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (newName != null) ChangeField(stringResource(R.string.im_profile_name)) {
             currentName?.let {
                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -251,7 +232,7 @@ private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, o
                 modifier = Modifier.weight(1f, fill = false))
         }
         if (avatarChange) ChangeField(stringResource(R.string.im_profile_avatar)) {
-            assistant?.let {
+            before?.let {
                 AssistantAvatar(currentName.orEmpty(), it.avatar, Modifier.size(40.dp))
                 ChangeArrow()
             }
@@ -264,27 +245,20 @@ private fun ThreadProfileCard(tool: UIMessagePart.Tool, assistant: Assistant?, o
 
 /**
  * What a settled permission card leaves behind: what was asked and how it was answered,
- * in the same wording as the approval history. Tapping it shows the exact request.
+ * in the same wording as the approval history. Tapping it shows the request in readable form and,
+ * for changes the app keeps versions of, a way to undo them.
  */
 @Composable
-internal fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
+internal fun ThreadPermissionRecord(tool: UIMessagePart.Tool, assistant: Assistant? = null) {
     val record = tool.approvalRecord ?: return
     val decision = record.decision ?: return
     val at = record.decidedAt ?: return
-    val computer = tool.isComputerTool()
-    val renderer = remember(tool.toolName) { if (computer) ComputerToolUIRenderer else ToolUIRegistry.resolve(tool.toolName) }
-    val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), null, false) }
+    val change by rememberToolCallChange(tool)
     var details by remember(tool.toolCallId) { mutableStateOf(false) }
     val allowed = decision == ToolDecision.ALLOWED
     val declined = decision == ToolDecision.DECLINED
     val reason = (tool.approvalState as? ToolApprovalState.Denied)?.reason?.takeIf { declined && it.isNotBlank() }
-    val title = when {
-        tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
-        tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
-        tool.toolName == DRAFT_BUG_REPORT -> toolArg(tool, "title")?.let { "bug: $it" } ?: stringResource(R.string.im_bug_report_title)
-        computer -> computerActionText(tool)
-        else -> renderer.title(context)
-    }
+    val undone = change?.state == ToolCallChangeState.Undone
     Surface(onClick = { details = true }, color = Color.Transparent, shape = MaterialTheme.shapes.small) {
         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(if (allowed) HugeIcons.Tick01 else HugeIcons.Cancel01, null, Modifier.padding(top = 2.dp).size(16.dp),
@@ -294,15 +268,33 @@ internal fun ThreadPermissionRecord(tool: UIMessagePart.Tool) {
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 })
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(approvalDecisionText(decision, record.via, at) + reason?.let { ": $it" }.orEmpty(),
+                Text(toolRecordTitle(tool), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(approvalDecisionText(decision, record.via, at) + reason?.let { ": $it" }.orEmpty() +
+                    if (undone) " · " + stringResource(R.string.im_record_undone_tag) else "",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (declined) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Icon(HugeIcons.ArrowRight01, null, Modifier.padding(top = 2.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     if (details) ModalBottomSheet(onDismissRequest = { details = false }) {
-        renderer.Preview(context) { details = false }
+        ToolRecordDetails(tool, assistant, change) { details = false }
+    }
+}
+
+/** The one-line name of a settled request, shared by the record line and its sheet. */
+@Composable
+internal fun toolRecordTitle(tool: UIMessagePart.Tool): String {
+    // Titles of settled calls depend on their result ("applied" or "failed"), so pass the output too.
+    val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), tool.outputJsonOrNull(), false) }
+    return when {
+        tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
+        tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
+        tool.toolName == DRAFT_BUG_REPORT -> toolArg(tool, "title")?.let { "bug: $it" } ?: stringResource(R.string.im_bug_report_title)
+        tool.isComputerTool() -> computerActionText(tool)
+        tool.toolName.startsWith("mcp__") -> mcpToolParts(tool.toolName).let { (service, step) ->
+            stringResource(R.string.im_record_mcp, service, step) }
+        else -> ToolUIRegistry.resolve(tool.toolName).title(context)
     }
 }
 

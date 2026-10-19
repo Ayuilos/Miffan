@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.thread
 
+import me.ayuilos.miffan.data.model.TopicStart
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.rerere.ai.ui.UIMessagePart
@@ -12,6 +13,7 @@ data class RouteRequest(
     /** Loaded segments of the thread, newest first. */
     val segments: List<Conversation>,
     val now: Instant,
+    val reviewedHistory: Boolean = false,
 )
 
 sealed interface RouteDecision {
@@ -20,7 +22,7 @@ sealed interface RouteDecision {
     data class Existing(val segmentId: Uuid, override val reason: String) : RouteDecision
 
     /** Start a new segment; [closeSegmentIds] stop receiving new topics and get summarized. */
-    data class New(override val reason: String, val closeSegmentIds: Set<Uuid> = emptySet()) : RouteDecision
+    data class New(override val reason: String, val closeSegmentIds: Set<Uuid> = emptySet(), val start: TopicStart? = TopicStart.AUTO) : RouteDecision
 }
 
 /** Chooses which segment of an IM thread receives a new user message. */
@@ -36,10 +38,10 @@ fun interface SegmentRouter {
 class RuleSegmentRouter(private val idleMillis: Long = DEFAULT_IDLE_MILLIS) : SegmentRouter {
     override suspend fun route(request: RouteRequest): RouteDecision {
         val newest = request.segments.firstOrNull { it.chatId == null && it.threadClosedAt == 0L }
-            ?: return RouteDecision.New("no open segment")
+            ?: return RouteDecision.New("no open segment", start = TopicStart.AUTO.takeIf { request.segments.any { it.chatId == null } })
         val idle = request.now.toEpochMilli() - newest.updateAt.toEpochMilli()
         return if (idle > idleMillis) {
-            RouteDecision.New("idle ${idle / 60_000} min", closeSegmentIds = setOf(newest.id))
+            RouteDecision.New("idle ${idle / 60_000} min", closeSegmentIds = setOf(newest.id), start = TopicStart.IDLE)
         } else {
             RouteDecision.Existing(newest.id, "continue newest segment")
         }

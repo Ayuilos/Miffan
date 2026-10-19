@@ -92,7 +92,6 @@ import me.ayuilos.miffan.ui.hooks.rememberCurrentColorMode
 import me.ayuilos.miffan.ui.hooks.rememberCustomAsrState
 import me.ayuilos.miffan.ui.hooks.rememberCustomTtsState
 import me.ayuilos.miffan.ui.im.ImOnboardingPage
-import me.ayuilos.miffan.ui.im.ImSearchPage
 import me.ayuilos.miffan.ui.im.ImMemoryPage
 import me.ayuilos.miffan.ui.im.ImAiServicePage
 import me.ayuilos.miffan.ui.im.ImApprovalHistoryPage
@@ -463,7 +462,6 @@ class RouteActivity : ComponentActivity() {
                                 ImHomePage()
                             }
 
-                            entry<Screen.ImSearch> { ImSearchPage() }
                             entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId) }
                             entry<Screen.RevisionHistory> { key -> ImRevisionHistoryPage(key.subject, key.subjectId) }
                             entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
@@ -787,9 +785,6 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class ImMemory(val ownerId: String) : Screen
-
-    @Serializable
-    data object ImSearch : Screen
 
     /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
     @Serializable

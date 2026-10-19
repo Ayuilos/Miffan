@@ -171,7 +171,7 @@ internal fun ThreadDrawingSetupCard(tool: UIMessagePart.Tool, onApproval: (Strin
                     enabled = !answered,
                     onClick = { answered = true; onApproval(tool.toolCallId, false) },
                     modifier = Modifier.heightAtLeast(min = 44.dp),
-                ) { Text("先不用") }
+                ) { Text("这次不用") }
             }
         }
     }

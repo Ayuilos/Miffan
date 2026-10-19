@@ -91,6 +91,10 @@ fun AgentThreadPage(
     val filter by vm.topicFilter.collectAsStateWithLifecycle()
     val topics by vm.topics.collectAsStateWithLifecycle()
     val reply by vm.replyTarget.collectAsStateWithLifecycle()
+    val merged by vm.undoableMerge.collectAsStateWithLifecycle()
+    val newTopicPending by vm.newTopicPending.collectAsStateWithLifecycle()
+    // A wrongly split topic and the earlier topics it can go back to.
+    var mergeChoice by remember { mutableStateOf<Pair<Uuid, List<ThreadTopic>>?>(null) }
     val assistantName = threadAssistantName(assistant)
     val assistants = LocalSettings.current.assistants
     val mentionables = remember(assistants, assistantId) { assistants.filter { it.id != assistantId } }
@@ -131,9 +135,31 @@ fun AgentThreadPage(
         val history = historySize(items)
         return if (index < history) index else index - (if (historyShown) 0 else history) + 1
     }
+    fun firstOwnerMessageSinceWelcome(): TimelineItem.Message? = timeline.drop(historySize(timeline))
+        .firstOrNull { it is TimelineItem.Message && it.message.role == MessageRole.USER } as TimelineItem.Message?
+    // Back after a while without opening the history: the first message starts a topic of its own.
+    fun freshStart(): Boolean = welcomeAt() != null && !historyShown && firstOwnerMessageSinceWelcome() == null
+    // That topic, once started, until it is put back with an earlier one.
+    fun welcomeTopic(): Uuid? {
+        val segmentId = firstOwnerMessageSinceWelcome()?.segmentId ?: return null
+        val history = timeline.take(historySize(timeline))
+        return segmentId.takeIf {
+            it != PENDING_SEGMENT && it !in generating && history.none { item -> item is TimelineItem.Message && item.segmentId == it }
+        }
+    }
+    fun startMerge(segmentId: Uuid) {
+        scope.launch {
+            val targets = vm.mergeTargets(segmentId)
+            when (targets.size) {
+                0 -> Unit
+                1 -> vm.merge(segmentId, targets.single().segmentId)
+                else -> mergeChoice = segmentId to targets
+            }
+        }
+    }
 
     suspend fun scrollToLatest(animate: Boolean = false) {
-        val lastIndex = rowOf(timeline.size, timeline) + visibleErrors.size - 1
+        val lastIndex = rowOf(timeline.size, timeline) + (if (newTopicPending) 1 else 0) + visibleErrors.size - 1
         if (lastIndex < 0) return
         if (animate) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
         withFrameNanos { }
@@ -172,7 +198,7 @@ fun AgentThreadPage(
                 (welcomeCutoff == null || historyShown)) listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key else null
         }.distinctUntilChanged().collect { if (it != null && !jumping) vm.loadMore() }
     }
-    LaunchedEffect(timeline, visibleErrors, loaded) {
+    LaunchedEffect(timeline, visibleErrors, loaded, newTopicPending) {
         val count = timeline.size + visibleErrors.size
         if (loaded && followLatest && !jumping && count > 0) {
             withFrameNanos { }
@@ -270,13 +296,18 @@ fun AgentThreadPage(
     fun TimelineRow(item: TimelineItem) {
         when (item) {
             is TimelineItem.DateSeparator -> ThreadDateLabel(item.at)
-            is TimelineItem.Message -> ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
+            is TimelineItem.TopicBoundary -> ThreadTopicBoundaryLine(item) { startMerge(item.segmentId) }
+            is TimelineItem.Message -> CompositionLocalProvider(
+                LocalToolCardActions provides remember(item.segmentId) { vm.toolCardActions(item) },
+            ) {
+                merged?.takeIf { it.anchor?.messageId == item.message.id }?.let { ThreadMergedLine(it, vm::undoMerge) }
+                ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
                 onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
                 onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
-                assistant = assistant)
+                assistant = assistant) }
             is TimelineItem.Typing -> ThreadTyping(assistant)
             is TimelineItem.Event -> ThreadEventLine(item.origin.summary)
             is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
@@ -311,10 +342,14 @@ fun AgentThreadPage(
                         ThreadWelcomeHero(assistant, welcome, headerPhase, historyHidden = !historyShown, fill = fill,
                             partnerGone = welcomeSettled,
                             onShowHistory = ::showHistory,
-                            modifier = if (fill) Modifier.fillParentMaxHeight() else Modifier)
+                            modifier = if (fill) Modifier.fillParentMaxHeight() else Modifier,
+                            onContinue = welcomeTopic()?.let { topic -> { startMerge(topic) } })
                     }
                     items(items.subList(history, items.size), key = { it.key }) { TimelineRow(it) }
                 }
+            }
+            if (newTopicPending) item(key = "new-topic") {
+                ThreadDividerLine(stringResource(R.string.im_thread_topic_changed), listOf(stringResource(R.string.im_thread_undo) to vm::cancelNewTopic))
             }
             items(visibleErrors, key = { "error-${it.id}" }) { error ->
                 val segmentId = error.conversationId
@@ -391,7 +426,9 @@ fun AgentThreadPage(
             }
             ThreadComposer(input = input, onInput = { input = it }, topicLabel = topicLabel,
                 loaded = loaded, generating = generating.isNotEmpty(),
-                onSend = { followLatest = true; vm.send(it) }, onStop = vm::stop,
+                // Opening the history hints at picking it back up, so a long pause alone does not split.
+                onSend = { followLatest = true; vm.send(it, freshStart = freshStart(), reviewedHistory = welcomeAt() != null && historyShown) },
+                onStop = vm::stop,
                 onError = { message -> scope.launch { snackbar.showSnackbar(message) } },
                 onVoiceUnavailable = {
                     scope.launch {
@@ -399,7 +436,15 @@ fun AgentThreadPage(
                         if (result == SnackbarResult.ActionPerformed) nav.navigate(Screen.SettingSpeech(recognition = true))
                     }
                 },
-                hazeState = hazeState, mentionables = mentionables, initialFiles = initialFiles)
+                hazeState = hazeState, mentionables = mentionables, initialFiles = initialFiles,
+                // Right after the welcome the next message starts fresh anyway.
+                onNewTopic = if (newTopicPending || freshStart()) null else { { followLatest = true; vm.requestNewTopic() } },
+                freshTopic = newTopicPending)
+        }
+        mergeChoice?.let { (segmentId, targets) ->
+            ThreadMergeSheet(targets, assistantName,
+                onPick = { target -> mergeChoice = null; vm.merge(segmentId, target.segmentId) },
+                onDismiss = { mergeChoice = null })
         }
         // Outside the measured composer so showing it never shifts the list's padding.
         if (!atBottom || highlighted != null) GlassIconButton(hazeState, HugeIcons.ArrowDown01, stringResource(R.string.im_thread_latest),

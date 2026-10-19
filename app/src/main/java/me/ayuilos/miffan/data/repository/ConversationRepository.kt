@@ -65,6 +65,8 @@ class ConversationRepository(
     fun observeThreadSegmentStamps(assistantId: Uuid, limit: Int): Flow<List<ThreadSegmentStamp>> =
         conversationDAO.observeThreadSegmentStamps(assistantId.toString(), limit)
 
+    fun observeThreadCatalog(assistantId: Uuid) = conversationDAO.observeThreadCatalog(assistantId.toString())
+
     /** The newest [limit] stored messages of a conversation, newest first; unreadable rows are skipped. */
     suspend fun getRecentMessages(conversationId: Uuid, limit: Int): List<UIMessage> =
         messageNodeDAO.getRecentMessages(conversationId.toString(), limit).mapNotNull {
@@ -91,6 +93,12 @@ class ConversationRepository(
 
     suspend fun getThreadDigests(assistantId: Uuid, excludeId: Uuid, limit: Int): List<ThreadSegmentDigest> =
         conversationDAO.getThreadDigests(assistantId.toString(), excludeId.toString(), limit)
+
+    /** Loads at most [limit] other IM segments, newest first, regardless of summary status. */
+    suspend fun getRecentThreadSegments(assistantId: Uuid, excludeId: Uuid, limit: Int): List<Conversation> =
+        conversationDAO.getRecentThreadSegments(assistantId.toString(), excludeId.toString(), limit).map { entity ->
+            conversationEntityToConversation(entity, loadMessageNodes(entity.id))
+        }
 
     fun observeLatestConversationOfEachAssistant(): Flow<List<Conversation>> {
         return conversationDAO
@@ -359,6 +367,28 @@ class ConversationRepository(
         messageFtsManager.indexConversation(conversation)
     }
 
+    /** Move selected source nodes before deleting its shell, preserving attachments in the target. */
+    suspend fun mergeThreadSegments(source: Conversation, target: Conversation) {
+        database.withTransaction {
+            conversationDAO.update(conversationToConversationEntity(target))
+            saveMessageNodes(target.id.toString(), target.messageNodes)
+            conversationDAO.deleteById(source.id.toString())
+        }
+        messageFtsManager.deleteConversation(source.id.toString())
+        messageFtsManager.indexConversation(target)
+    }
+
+    suspend fun restoreThreadSegments(source: Conversation, target: Conversation) {
+        database.withTransaction {
+            conversationDAO.update(conversationToConversationEntity(target))
+            saveMessageNodes(target.id.toString(), target.messageNodes)
+            conversationDAO.insert(conversationToConversationEntity(source))
+            saveMessageNodes(source.id.toString(), source.messageNodes)
+        }
+        messageFtsManager.indexConversation(target)
+        messageFtsManager.indexConversation(source)
+    }
+
     suspend fun deleteConversation(conversation: Conversation) {
         // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
         val fullConversation = if (conversation.messageNodes.isEmpty()) {
@@ -420,6 +450,7 @@ class ConversationRepository(
             selectedRootId = conversation.selectedRootId?.toString() ?: "",
             threadSummary = conversation.threadSummary,
             threadClosedAt = conversation.threadClosedAt,
+            topicStart = conversation.topicStart?.name,
             chatId = conversation.chatId?.toString(),
         )
     }
@@ -445,6 +476,7 @@ class ConversationRepository(
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
             threadSummary = conversationEntity.threadSummary,
             threadClosedAt = conversationEntity.threadClosedAt,
+            topicStart = conversationEntity.topicStart?.let(me.ayuilos.miffan.data.model.TopicStart::valueOf),
             chatId = conversationEntity.chatId?.let(Uuid::parse),
         )
     }
