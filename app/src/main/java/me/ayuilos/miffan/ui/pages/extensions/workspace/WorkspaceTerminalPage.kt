@@ -1,7 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace
 
 import androidx.compose.ui.platform.LocalResources
-import android.graphics.Typeface
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -36,14 +35,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
@@ -177,11 +173,9 @@ private fun WorkspaceTerminalContent(
 ) {
     val context = LocalContext.current
     val workspaceStrings = LocalResources.current
-    val terminalTextSizePx = with(LocalDensity.current) { 12.sp.roundToPx() }
+    val terminalTextSizePx = with(LocalDensity.current) { TerminalStyle.textSize.roundToPx() }
     val scope = rememberCoroutineScope()
-    val terminalTypeface = remember(context) {
-        ResourcesCompat.getFont(context, R.font.jetbrains_mono) ?: Typeface.MONOSPACE
-    }
+    val terminalTypeface = remember(context) { TerminalStyle.typeface(context) }
     var finished by remember(root, scopeId) { mutableStateOf(false) }
     var resourceError by remember(root, scopeId) { mutableStateOf<String?>(null) }
     var activeLease by remember(root, scopeId) { mutableStateOf<WorkspaceSessionLease?>(null) }
@@ -382,7 +376,7 @@ private fun WorkspaceTerminalContent(
             .fillMaxSize()
             .padding(contentPadding)
             .imePadding(),
-        color = Color.Black,
+        color = TerminalStyle.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -391,7 +385,10 @@ private fun WorkspaceTerminalContent(
                     .fillMaxWidth(),
             ) {
                 AndroidView(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = TerminalStyle.contentPadding)
+                        .padding(top = TerminalStyle.contentPadding / 2),
                     factory = { viewContext ->
                         TerminalView(viewContext, null).apply {
                             isFocusable = true

@@ -81,6 +81,7 @@ internal fun createWorkspaceTerminalSession(
         .map { (name, value) -> "$name=$value" }
         .toTypedArray()
 
+    TerminalStyle.installColorScheme()
     return TerminalSession(
         proot.absolutePath,
         filesDir.absolutePath,

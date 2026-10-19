@@ -35,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -135,13 +134,15 @@ fun RemoteWorkspaceTerminalPage(
         ) { padding ->
             Surface(
                 modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
-                color = Color.Black,
+                color = TerminalStyle.background,
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         AndroidView(
                             factory = { terminalView },
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize()
+                                .padding(horizontal = TerminalStyle.contentPadding)
+                                .padding(top = TerminalStyle.contentPadding / 2),
                         )
                         when (val current = state) {
                             RemoteTerminalUiState.Connecting -> {

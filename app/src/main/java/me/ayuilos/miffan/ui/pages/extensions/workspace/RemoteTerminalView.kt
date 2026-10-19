@@ -6,7 +6,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Typeface
 import android.util.Log
 import android.view.GestureDetector
 import android.view.KeyCharacterMap
@@ -71,6 +70,8 @@ internal class RemoteTerminalScreen {
             Log.e(tag, message, e).let { Unit }
         override fun logStackTrace(tag: String, e: Exception) = Log.e(tag, "Terminal error", e).let { Unit }
     }
+    init { TerminalStyle.installColorScheme() }
+
     var emulator = TerminalEmulator(output, 80, 24, 2_000, sessionClient)
         private set
 
@@ -87,10 +88,11 @@ internal class RemoteTerminalScreen {
 
 /** A view can reattach to the same emulator after navigation or configuration changes. */
 internal class RemoteTerminalView(context: Context) : View(context) {
-    private val textSizePx = (13f * resources.displayMetrics.scaledDensity).roundToInt().coerceAtLeast(12)
-    private val renderer = TerminalRenderer(textSizePx, Typeface.MONOSPACE)
+    private val textSizePx = (TerminalStyle.textSize.value * resources.displayMetrics.scaledDensity)
+        .roundToInt().coerceAtLeast(12)
+    private val renderer = TerminalRenderer(textSizePx, TerminalStyle.typeface(context))
     private val composingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.MONOSPACE
+        typeface = TerminalStyle.typeface(context)
         textSize = textSizePx.toFloat()
     }
 
@@ -150,7 +152,7 @@ internal class RemoteTerminalView(context: Context) : View(context) {
         screen.attach(this)
         isFocusable = true
         isFocusableInTouchMode = true
-        setBackgroundColor(Color.BLACK)
+        setBackgroundColor(TerminalStyle.BACKGROUND)
     }
 
     fun appendOutput(bytes: ByteArray, count: Int = bytes.size) {
@@ -210,7 +212,7 @@ internal class RemoteTerminalView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas.drawColor(Color.BLACK)
+        canvas.drawColor(TerminalStyle.BACKGROUND)
         renderer.render(emulator, canvas, topRow, -1, -1, -1, -1)
         composingText?.takeIf { it.isNotEmpty() }?.let { drawComposingText(canvas, it) }
     }
@@ -221,9 +223,9 @@ internal class RemoteTerminalView(context: Context) : View(context) {
         val left = (emulator.cursorCol * renderer.fontWidth).coerceAtMost((width - textWidth).coerceAtLeast(0f))
         val top = (emulator.cursorRow - topRow) * lineHeight
         if (top < 0 || top >= height) return
-        composingPaint.color = Color.rgb(48, 48, 48)
+        composingPaint.color = Color.rgb(46, 50, 58)
         canvas.drawRect(left, top, left + textWidth, top + lineHeight, composingPaint)
-        composingPaint.color = Color.WHITE
+        composingPaint.color = TerminalStyle.FOREGROUND
         canvas.drawText(text, left, top + lineHeight - composingPaint.descent(), composingPaint)
         canvas.drawRect(left, top + lineHeight - 2f, left + textWidth, top + lineHeight, composingPaint)
     }
