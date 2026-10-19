@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.Placeholder
@@ -131,7 +132,7 @@ private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
 
 // 预处理markdown内容
 private fun preProcess(rawContent: String): String {
-    val content = normalizeMarkdownLineEndings(rawContent)
+    val content = linkifyBareUrls(normalizeMarkdownLineEndings(rawContent))
     // 先找出所有代码块的位置
     val codeBlocks = mutableListOf<IntRange>()
     CODE_BLOCK_REGEX.findAll(content).forEach { match ->
@@ -254,14 +255,14 @@ fun MarkdownBlock(
             .collect { setData(it) }
     }
 
-    if (data.hasHtml) {
+    if (data.hasHtml) CompositionLocalProvider(LocalUriHandler provides rememberMarkdownUriHandler()) {
         MarkdownNew(
             content = content,
             modifier = modifier,
             style = style,
             onClickCitation = onClickCitation,
         )
-    } else {
+    } else CompositionLocalProvider(LocalUriHandler provides rememberMarkdownUriHandler()) {
         ProvideTextStyle(style) {
             Column(
                 modifier = modifier.padding(horizontal = 4.dp)

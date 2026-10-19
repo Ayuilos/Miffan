@@ -102,6 +102,16 @@ internal fun ThreadComputerResultStatus(status: ComputerToolStatus?) {
         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** One run of computer actions where it happened in the reply: live while it is the step being taken, a summary after. */
+@Composable
+internal fun ThreadComputerBlock(tools: List<UIMessagePart.Tool>, live: Boolean, computer: PartnerComputer?, onScreen: () -> Unit) {
+    val evidence = remember(tools) { threadComputerEvidence(tools) } ?: return
+    val name = computerTargetName(evidence.latest, computer, stringResource(R.string.im_computer_computer))
+    val canOpen = canOpenComputer(evidence.latest, computer)
+    if (live) ThreadComputerLiveCard(evidence, name, canOpen, onScreen)
+    else ThreadComputerSummary(evidence, name, canOpen, onScreen)
+}
+
 @Composable
 internal fun ThreadComputerLiveCard(evidence: ThreadComputerEvidence, name: String, canOpen: Boolean, onScreen: () -> Unit) {
     Card(onClick = onScreen, enabled = canOpen,

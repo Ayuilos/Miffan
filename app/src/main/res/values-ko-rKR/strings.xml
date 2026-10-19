@@ -2147,6 +2147,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="image_preview_saving">저장 중</string>
   <string name="image_preview_saved">이미지를 저장했습니다</string>
   <string name="markdown_table_label">표</string>
+  <string name="markdown_link_cannot_open">이 링크를 열 수 없습니다: %1$s</string>
   <string name="translator_page_error">오류</string>
   <string name="translator_page_paste_text">텍스트 붙여넣기</string>
   <string name="translator_page_copy_result">번역 결과 복사</string>

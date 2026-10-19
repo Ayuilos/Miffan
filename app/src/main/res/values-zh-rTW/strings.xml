@@ -2145,6 +2145,7 @@
   <string name="image_preview_saving">正在儲存</string>
   <string name="image_preview_saved">已儲存圖片</string>
   <string name="markdown_table_label">表格</string>
+  <string name="markdown_link_cannot_open">無法開啟這個連結：%1$s</string>
   <string name="translator_page_error">錯誤</string>
   <string name="translator_page_paste_text">貼上文字</string>
   <string name="translator_page_copy_result">複製翻譯結果</string>

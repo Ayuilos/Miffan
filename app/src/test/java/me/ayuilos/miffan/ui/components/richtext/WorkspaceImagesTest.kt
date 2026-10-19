@@ -29,7 +29,7 @@ class WorkspaceImagesTest {
     @Test
     fun workspacePathsBecomeWorkspaceUris() {
         val text = "Here it is:\n\n![Screen](/workspace/.miffan/shot now.png)\n![Real](/home/me/a.png \"title\")"
-        val rewritten = text.withWorkspaceImages(context)
+        val rewritten = text.withWorkspaceFiles(context)
         assertTrue(rewritten.contains("![Real](miffan-workspace://file?w=ws-1&p=%2Fhome%2Fme%2Fa.png&m=msg-1 \"title\")"))
         // A path with a space is not a valid bare Markdown destination and stays as written.
         assertTrue(rewritten.contains("![Screen](/workspace/.miffan/shot now.png)"))
@@ -37,9 +37,32 @@ class WorkspaceImagesTest {
 
     @Test
     fun otherImagesAreUntouched() {
-        val text = "![web](https://example.com/a.png) ![phone](file:///data/a.png) ![elsewhere](/etc/passwd) [link](/workspace/a.txt)"
-        assertEquals(text, text.withWorkspaceImages(context))
-        assertEquals("![x](/workspace/a.png)", "![x](/workspace/a.png)".withWorkspaceImages(null))
+        val text = "![web](https://example.com/a.png) ![phone](file:///data/a.png) ![elsewhere](/etc/passwd)"
+        assertEquals(text, text.withWorkspaceFiles(context))
+        assertEquals("![x](/workspace/a.png)", "![x](/workspace/a.png)".withWorkspaceFiles(null))
+    }
+
+    @Test
+    fun workspaceFileLinksOpenTheFile() {
+        fun link(path: String) = "miffan-workspace://file?w=ws-1&p=" + java.net.URLEncoder.encode(path, "UTF-8") + "&m=msg-1"
+        assertEquals("[报告](${link("/workspace/report.html")})", "[报告](/workspace/report.html)".withWorkspaceFiles(context))
+        assertEquals("[报告](${link("/workspace/out/report.html")})", "[报告](out/report.html)".withWorkspaceFiles(context))
+        assertEquals("[报告](${link("/workspace/report.html")})", "[报告](./report.html)".withWorkspaceFiles(context))
+        assertEquals("[笔记](${link("/workspace/my notes.md")})", "[笔记](<my notes.md>)".withWorkspaceFiles(context))
+        assertEquals("[笔记](${link("/workspace/my notes.md")})", "[笔记](my%20notes.md)".withWorkspaceFiles(context))
+        assertEquals("[a](${link("/workspace/a.txt")} \"t\")", "[a](file:///workspace/a.txt \"t\")".withWorkspaceFiles(context))
+        assertEquals("[a](${link("/workspace/a.txt")})", "[a](sandbox:/workspace/a.txt)".withWorkspaceFiles(context))
+        assertEquals("[real](${link("/home/me/a.txt")})", "[real](/home/me/a.txt)".withWorkspaceFiles(context))
+    }
+
+    @Test
+    fun otherLinksAreUntouched() {
+        for (text in listOf(
+            "[web](https://example.com/a.html)", "[site](example.com/docs)", "[site](www.example.com)",
+            "[mail](mailto:a@b.com)", "[top](#top)", "[up](../secret.txt)", "[etc](/etc/passwd)",
+            "`[code](report.html)`", "```\n[code](report.html)\n```",
+        )) assertEquals(text, text.withWorkspaceFiles(context))
+        assertEquals("[报告](report.html)", "[报告](report.html)".withWorkspaceFiles(null))
     }
 
     @Test

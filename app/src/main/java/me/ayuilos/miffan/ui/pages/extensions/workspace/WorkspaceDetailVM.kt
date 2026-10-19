@@ -116,7 +116,7 @@ class WorkspaceDetailVM(
     fun refresh() {
         val generation = ++filesLoadGeneration
         val area = state.value.area
-        val path = state.value.path
+        var path = state.value.path
         filesLoadJob?.cancel()
         _state.update { it.copy(loading = true, error = null) }
         filesLoadJob = viewModelScope.launch {
@@ -125,10 +125,12 @@ class WorkspaceDetailVM(
                 currentCoroutineContext().ensureActive()
                 if (generation != filesLoadGeneration) return@launch
                 val effectiveArea = resolveDetailArea(area, metadata.workspace?.isRemote == true)
+                val effectivePath = resolveDetailPath(area, path, metadata.workspace?.isRemote == true, metadata.workspace?.remotePath)
                 _state.update { current ->
                     if (generation != filesLoadGeneration || current.area != area || current.path != path) current
-                    else current.withMetadata(metadata).copy(area = effectiveArea)
+                    else current.withMetadata(metadata).copy(area = effectiveArea, path = effectivePath)
                 }
+                path = effectivePath
                 if (generation != filesLoadGeneration) return@launch
                 val entries = repository.listFiles(
                     id = id,
@@ -423,6 +425,21 @@ private fun WorkspaceDetailState.withMetadata(metadata: WorkspaceDetailMetadata)
 
 internal fun resolveDetailArea(requested: WorkspaceStorageArea, isRemote: Boolean): WorkspaceStorageArea =
     if (isRemote) WorkspaceStorageArea.FILES else requested
+
+/**
+ * A remote workspace lists files relative to its folder. A location given as a full path on that computer
+ * (a file preview of `/home/me/proj/out/a.txt` opens LINUX `home/me/proj/out`) is made relative to it,
+ * instead of being appended to the folder a second time.
+ */
+internal fun resolveDetailPath(requested: WorkspaceStorageArea, path: String, isRemote: Boolean, remoteRoot: String?): String {
+    if (!isRemote || requested != WorkspaceStorageArea.LINUX) return path
+    val root = remoteRoot?.trim('/')?.takeIf { it.isNotEmpty() } ?: return path
+    return when {
+        path == root -> ""
+        path.startsWith("$root/") -> path.removePrefix("$root/")
+        else -> path
+    }
+}
 
 data class WorkspaceDetailState(
     val workspace: WorkspaceEntity? = null,

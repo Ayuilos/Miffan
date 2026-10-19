@@ -2147,6 +2147,7 @@
   <string name="image_preview_saving">Сохранение</string>
   <string name="image_preview_saved">Изображение сохранено</string>
   <string name="markdown_table_label">Таблица</string>
+  <string name="markdown_link_cannot_open">Не удаётся открыть ссылку: %1$s</string>
   <string name="translator_page_error">Ошибка</string>
   <string name="translator_page_paste_text">Вставить текст</string>
   <string name="translator_page_copy_result">Скопировать перевод</string>

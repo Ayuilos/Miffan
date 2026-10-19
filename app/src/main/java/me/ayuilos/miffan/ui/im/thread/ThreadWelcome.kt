@@ -34,6 +34,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.uuid.Uuid
 
 /**
  * Coming back to a partner after a pause opens on the partner itself: the earlier messages wait
@@ -54,17 +55,20 @@ internal object ThreadWelcome {
 
     /** Number of leading timeline items that happened by [cutoff]; everything after is this visit's. */
     fun historySize(timeline: List<TimelineItem>, cutoff: Instant): Int {
-        val first = timeline.indexOfFirst { item -> item.time()?.isAfter(cutoff) ?: true }
+        // A notice sits right after the message that caused it but can be stamped later than the
+        // reply (memories are extracted after the reply finished), so it goes with that message.
+        val messageTimes = timeline.filterIsInstance<TimelineItem.Message>().associate { it.node.message.id to it.at }
+        val first = timeline.indexOfFirst { item -> item.time(messageTimes)?.isAfter(cutoff) ?: true }
         return if (first < 0) timeline.size else first
     }
 
     fun isRelative(at: Instant, now: Instant): Boolean = Duration.between(at, now) < RELATIVE_LIMIT
 
-    private fun TimelineItem.time(): Instant? = when (this) {
+    private fun TimelineItem.time(messageTimes: Map<Uuid, Instant>): Instant? = when (this) {
         is TimelineItem.DateSeparator -> at
         is TimelineItem.TopicBoundary -> at
         is TimelineItem.Message -> at
-        is TimelineItem.Notice -> notice.at
+        is TimelineItem.Notice -> notice.trigger?.let { messageTimes[it.messageId] } ?: notice.at
         is TimelineItem.Event -> at
         is TimelineItem.Typing -> null
     }
