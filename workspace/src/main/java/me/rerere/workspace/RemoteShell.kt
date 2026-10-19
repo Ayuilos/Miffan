@@ -48,8 +48,18 @@ internal data class RemoteShellRequest(val command: String, val stdin: InputStre
 internal object RemoteShell {
     fun posixExecute(directory: String, command: String): String = "cd ${quote(directory)} || exit 1\n$command"
     fun posixTerminal(directory: String, persistent: Boolean): String = if (persistent) {
-        "cd ${quote(directory)} || exit 1\nstty -echo 2>/dev/null || :\nexec env ENV= PS1= PS2= /bin/sh +i"
-    } else "cd ${quote(directory)} || exit 1\nexec \"\${SHELL:-/bin/sh}\" -i"
+        "cd ${quote(directory)} || exit 1\n$utf8Locale\nstty -echo 2>/dev/null || :\nexec env ENV= PS1= PS2= /bin/sh +i"
+    } else "cd ${quote(directory)} || exit 1\n$utf8Locale\nexec \"\${SHELL:-/bin/sh}\" -i"
+
+    /**
+     * SSH exec channels skip login profiles, so LANG is often unset and the shell falls back to
+     * the ASCII "C" locale, which prints non-ASCII text as escapes. Only LC_CTYPE is switched to
+     * an installed UTF-8 locale; the message language stays whatever the host chose.
+     */
+    val utf8Locale: String = "if [ \"\$(locale charmap 2>/dev/null)\" != UTF-8 ]; then " +
+        "for miffan_l in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do " +
+        "if [ \"\$(LC_ALL=\$miffan_l locale charmap 2>/dev/null)\" = UTF-8 ]; then " +
+        "unset LC_ALL; LC_CTYPE=\$miffan_l; export LC_CTYPE; break; fi; done; unset miffan_l; fi"
 
     fun request(platform: RemotePlatform, directory: String, script: String, stdin: InputStream?): RemoteShellRequest =
         if (platform == RemotePlatform.POSIX) RemoteShellRequest(posixExecute(directory, script), stdin)

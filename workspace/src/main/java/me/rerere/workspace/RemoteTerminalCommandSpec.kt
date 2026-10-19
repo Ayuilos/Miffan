@@ -13,7 +13,7 @@ data class RemoteTerminalCommandSpec(val command: String, val cwd: String) {
         if (!platform.supportsInteractiveTerminal) throw RemoteTerminalUnsupportedException()
         val directory = workingDirectory(root, cwd)
         fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
-        return "cd ${quote(directory)} || exit 1\nexec /bin/sh -c ${quote(command)}"
+        return "cd ${quote(directory)} || exit 1\n${RemoteShell.utf8Locale}\nexec /bin/sh -c ${quote(command)}"
     }
 
     companion object {

@@ -281,7 +281,9 @@ internal class WorkspaceTerminalViewClient(
 
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
 
-    override fun shouldEnforceCharBasedInput(): Boolean = true
+    // true makes TerminalView request a password-variation keyboard, which many IMEs (ColorOS
+    // included) answer with an ASCII-only secure keyboard, so CJK input becomes impossible.
+    override fun shouldEnforceCharBasedInput(): Boolean = false
 
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
 
