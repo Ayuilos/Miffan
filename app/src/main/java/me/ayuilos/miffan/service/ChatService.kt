@@ -1916,6 +1916,10 @@ class ChatService(
             updateConversationState(conversationId) { it.copy(folderId = folderId) }
         }
         conversationRepo.updateConversationFolderId(conversationId, folderId)
+        // The conversation may have been loaded with its old folder during the database write.
+        if (conversationId in sessions) {
+            updateConversationState(conversationId) { it.copy(folderId = folderId) }
+        }
     }
 
     /**
