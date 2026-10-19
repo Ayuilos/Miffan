@@ -1105,7 +1105,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                         }
                                         .fillMaxSize()
                                         .clip(CircleShape)
-                                        .background(colorScheme.tertiaryContainer.copy(0.2f)),
+                                        .background(colorScheme.tertiaryContainer),
                                     contentAlignment = Alignment.Center) {
                                     Text(
                                         text = domain,
@@ -1115,7 +1115,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                             lineHeight = 10.sp,
                                             fontFamily = JetbrainsMono,
                                             color = colorScheme.onTertiaryContainer,
-                                            fontWeight = FontWeight.Thin
+                                            fontWeight = FontWeight.Medium
                                         ),
                                     )
                                 }
