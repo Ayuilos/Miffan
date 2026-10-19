@@ -1,6 +1,8 @@
 package me.ayuilos.miffan.ui.im.thread
 
 import me.ayuilos.miffan.data.model.MessageNode
+import me.ayuilos.miffan.data.thread.ThreadNotice
+import me.ayuilos.miffan.data.thread.ThreadNoticeKind
 import me.ayuilos.miffan.data.thread.TimelineItem
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
@@ -56,6 +58,21 @@ class ThreadWelcomeTest {
         )
         assertEquals(3, ThreadWelcome.historySize(timeline, old))
         assertEquals(3, ThreadWelcome.historySize(timeline.take(3), old))
+    }
+
+    @Test
+    fun aMemoryNoticeStampedAfterTheReplyStaysInTheHistory() {
+        val asked = now - Duration.ofHours(3)
+        val replied = asked + Duration.ofSeconds(20)
+        val question = message(asked)
+        // Memories are extracted after the reply finished, but the notice sits after the question.
+        val notice = TimelineItem.Notice(ThreadNotice(
+            id = "r1", at = replied + Duration.ofSeconds(5), kind = ThreadNoticeKind.MEMORY, summary = "",
+            trigger = question.ref, revisionId = "r1", undoable = true,
+        ))
+        val timeline = listOf(TimelineItem.DateSeparator(asked), question, notice, message(replied, MessageRole.ASSISTANT))
+        val cutoff = ThreadWelcome.cutoff(timeline, now)!!
+        assertEquals(timeline.size, ThreadWelcome.historySize(timeline, cutoff))
     }
 
     @Test
