@@ -2147,6 +2147,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="image_preview_saving">保存中</string>
   <string name="image_preview_saved">画像を保存しました</string>
   <string name="markdown_table_label">表</string>
+  <string name="markdown_link_cannot_open">このリンクを開けません：%1$s</string>
   <string name="translator_page_error">エラー</string>
   <string name="translator_page_paste_text">テキストを貼り付け</string>
   <string name="translator_page_copy_result">翻訳結果をコピー</string>

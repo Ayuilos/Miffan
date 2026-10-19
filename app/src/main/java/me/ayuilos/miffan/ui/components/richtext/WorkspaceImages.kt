@@ -12,6 +12,7 @@ import java.io.File
 import java.io.FilterOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
@@ -63,14 +64,49 @@ fun WorkspaceImageContext.ownsPath(path: String): Boolean =
 
 private val MARKDOWN_IMAGE = Regex("""(!\[[^\]]*]\()(<?)(/[^)\s>]+)(>?)((?:\s+"[^"]*")?\))""")
 
-/** Points Markdown images at workspace files through [workspaceImageUri]; other images are untouched. */
-fun String.withWorkspaceImages(context: WorkspaceImageContext?): String {
+private val MARKDOWN_LINK = Regex("""(?<!!)(\[[^\]\n]*]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"]*")?\))""")
+private val CODE_SPANS = Regex("```[\\s\\S]*?```|`[^`\n]*`")
+private val LINK_SCHEME = Regex("""^[a-zA-Z][a-zA-Z0-9+.-]*:""")
+// A scheme-less link whose first segment ends like a web domain ("example.com/docs") is a website, not a file.
+private val WEB_DOMAIN_ENDINGS = setOf(
+    "com", "net", "org", "cn", "io", "ai", "dev", "app", "me", "co", "info", "edu", "gov", "xyz", "top", "jp", "uk", "de", "tw", "hk",
+)
+
+/**
+ * Points Markdown images and links at workspace files through [workspaceImageUri]: images load through
+ * [WorkspaceImageFetcher], links open the file preview. Web links and paths elsewhere are untouched.
+ */
+fun String.withWorkspaceFiles(context: WorkspaceImageContext?): String {
     if (context == null || !contains("](")) return this
-    return MARKDOWN_IMAGE.replace(this) { match ->
+    val images = MARKDOWN_IMAGE.replace(this) { match ->
         val path = match.groupValues[3]
         if (!context.ownsPath(path)) match.value
         else match.groupValues[1] + workspaceImageUri(context, path) + match.groupValues[5]
     }
+    val code = CODE_SPANS.findAll(images).map { it.range }.toList()
+    return MARKDOWN_LINK.replace(images) { match ->
+        val path = context.linkedWorkspacePath(match.groupValues[2])
+        if (path == null || code.any { match.range.first in it }) match.value
+        else match.groupValues[1] + workspaceImageUri(context, path) + match.groupValues[3]
+    }
+}
+
+/**
+ * The workspace file a link destination names. Relative paths are relative to `/workspace`, as for the
+ * workspace tools; `file://` and `sandbox:` prefixes some models add are dropped.
+ */
+internal fun WorkspaceImageContext.linkedWorkspacePath(destination: String): String? {
+    val raw = destination.removeSurrounding("<", ">").trim().removePrefix("file://").removePrefix("sandbox:")
+        .substringBefore('#').substringBefore('?')
+    if (raw.isEmpty() || raw.startsWith("//") || LINK_SCHEME.containsMatchIn(raw)) return null
+    var path = runCatching { URLDecoder.decode(raw.replace("+", "%2B"), Charsets.UTF_8.name()) }.getOrDefault(raw)
+    if (!path.startsWith('/')) {
+        val first = path.substringBefore('/')
+        if (first.startsWith("www.", ignoreCase = true) || first.substringAfterLast('.', "").lowercase() in WEB_DOMAIN_ENDINGS) return null
+        path = "/workspace/" + path.removePrefix("./")
+    }
+    if (path.split('/').any { it == "." || it == ".." }) return null
+    return path.takeIf(::ownsPath)
 }
 
 /** Workspace paths embedded as images in [text], so published files are not shown twice. */

@@ -2,7 +2,7 @@ package me.ayuilos.miffan.ui.im.thread
 
 import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
 import me.ayuilos.miffan.ui.components.richtext.workspaceImageContext
-import me.ayuilos.miffan.ui.components.richtext.withWorkspaceImages
+import me.ayuilos.miffan.ui.components.richtext.withWorkspaceFiles
 import me.ayuilos.miffan.data.ai.tools.workspaceArtifacts
 import me.ayuilos.miffan.ui.components.message.EditedFilesList
 import android.content.ClipData
@@ -195,7 +195,7 @@ internal fun ThreadMessageBubble(
                             else if (user && hasPartnerMention(part.text, partners)) Text(
                                 mentionText(part.text, partners, SpanStyle(fontWeight = FontWeight.SemiBold)),
                                 style = MaterialTheme.typography.bodyLarge, inlineContent = mentionAvatars(partners))
-                            else MarkdownBlock(part.text.withWorkspaceImages(imageContext),
+                            else MarkdownBlock(part.text.withWorkspaceFiles(imageContext),
                                 style = MaterialTheme.typography.bodyLarge)
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
                             is UIMessagePart.Document -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

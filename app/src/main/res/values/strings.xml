@@ -2157,6 +2157,7 @@
   <string name="image_preview_saving">Saving</string>
   <string name="image_preview_saved">Image saved</string>
   <string name="markdown_table_label">Table</string>
+  <string name="markdown_link_cannot_open">Can\'t open this link: %1$s</string>
   <string name="translator_page_error">Error</string>
   <string name="translator_page_paste_text">Paste text</string>
   <string name="translator_page_copy_result">Copy translation</string>

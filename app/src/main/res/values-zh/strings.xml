@@ -2150,6 +2150,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="image_preview_saving">正在保存</string>
   <string name="image_preview_saved">已保存图片</string>
   <string name="markdown_table_label">表格</string>
+  <string name="markdown_link_cannot_open">无法打开这个链接：%1$s</string>
   <string name="translator_page_error">错误</string>
   <string name="translator_page_paste_text">粘贴文本</string>
   <string name="translator_page_copy_result">复制翻译结果</string>

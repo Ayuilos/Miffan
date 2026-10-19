@@ -83,7 +83,7 @@ import me.ayuilos.miffan.data.model.MessageNode
 import me.ayuilos.miffan.data.model.replaceRegexes
 import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
 import me.ayuilos.miffan.ui.components.richtext.WorkspaceImageContext
-import me.ayuilos.miffan.ui.components.richtext.withWorkspaceImages
+import me.ayuilos.miffan.ui.components.richtext.withWorkspaceFiles
 import me.ayuilos.miffan.ui.components.richtext.workspaceImageContext
 import me.ayuilos.miffan.ui.components.richtext.ZoomableAsyncImage
 import me.ayuilos.miffan.ui.components.richtext.buildMarkdownPreviewHtml
@@ -427,7 +427,7 @@ private fun MessagePartsBlock(
                                                     assistant = assistant,
                                                     scope = AssistantAffectScope.ASSISTANT,
                                                     visual = true,
-                                                ).withWorkspaceImages(imageContext),
+                                                ).withWorkspaceFiles(imageContext),
                                                 onClickCitation = handleClickCitation,
                                             )
                                         }
@@ -438,7 +438,7 @@ private fun MessagePartsBlock(
                                             assistant = assistant,
                                             scope = AssistantAffectScope.ASSISTANT,
                                             visual = true,
-                                        ).withWorkspaceImages(imageContext),
+                                        ).withWorkspaceFiles(imageContext),
                                         onClickCitation = handleClickCitation,
                                         modifier = Modifier
                                             .animateContentSize()
