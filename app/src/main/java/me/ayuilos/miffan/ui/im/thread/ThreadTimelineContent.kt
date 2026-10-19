@@ -129,18 +129,14 @@ internal fun ThreadMessageBubble(
     val user = item.message.role == MessageRole.USER
     val partners = LocalSettings.current.assistants
     val parts = item.message.parts
-    val evidence = remember(parts) { threadComputerEvidence(parts) }
     val liveComputer = item.streaming && latestComputerAction(parts)?.approvalState !is me.rerere.ai.ui.ToolApprovalState.Pending &&
         latestComputerAction(parts) != null
-    // A reply paused on an approval is not finished; its summary comes after the user answers.
-    val computerSummary = !liveComputer && evidence != null && evidence.tools.none { it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending }
     val steps = remember(parts) { if (user) emptyList() else threadSteps(parts) }
     val recordSteps = steps.worthRecording()
+    val blocks = remember(parts, recordSteps) { threadReplyBlocks(parts, recordSteps) }
     val liveStatus = threadLiveStatus(parts, item.streaming)
     // The record and the live computer card already say what is happening.
     val status = if (liveComputer || recordSteps && item.streaming) null else liveStatus
-    val computerName = evidence?.let { computerTargetName(it.latest, computer, stringResource(R.string.im_computer_computer)) }
-    val computerAvailable = evidence?.let { canOpenComputer(it.latest, computer) } == true
     // Files the partner published (screenshots, reports) are part of its answer, not process.
     val imageContext = remember(item.message.id, parts, computer?.workspaceId) {
         item.message.takeIf { !user }?.workspaceImageContext(null, computer?.workspaceId)
@@ -157,7 +153,7 @@ internal fun ThreadMessageBubble(
     }
     // A reply made only of light process (thinking, a lookup or two) has nothing to show in easy mode;
     // its progress gets its own line below. Steps that changed something, or many steps, keep a record.
-    val showBubble = visible || liveComputer || computerSummary || recordSteps || item.quote != null
+    val showBubble = visible || blocks.any { it !is ThreadReplyBlock.Content } || item.quote != null
     if (!showBubble && status == null) return
     if (showBubble) Row(Modifier.fillMaxWidth().padding(top = if (item.groupedWithPrevious) 4.dp else 16.dp),
         horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
@@ -176,9 +172,20 @@ internal fun ThreadMessageBubble(
                             }
                         }
                     }
-                    if (recordSteps) ThreadStepRecord(steps, live = item.streaming, liveStatus = liveStatus)
                     val batch = remember(parts) { parts.batchApprovals() }
-                    CompositionLocalProvider(LocalToolCardSiblings provides parts) { parts.forEach { part ->
+                    CompositionLocalProvider(LocalToolCardSiblings provides parts) { blocks.forEachIndexed { index, block ->
+                        // Only the step being taken right now is live; text after a run of steps means it is done.
+                        val current = item.streaming && index == blocks.lastIndex
+                        when (block) {
+                            is ThreadReplyBlock.Steps -> key(block.tools.first().toolCallId) {
+                                ThreadStepRecord(block.steps, live = current, liveStatus = liveStatus)
+                            }
+                            is ThreadReplyBlock.Computer -> key(block.tools.first().toolCallId) {
+                                ThreadComputerBlock(block.tools, live = current && liveComputer, computer, onComputerScreen)
+                            }
+                            is ThreadReplyBlock.Content -> Unit
+                        }
+                        val part = (block as? ThreadReplyBlock.Content)?.part
                         // Several plain requests waiting together: one "allow all" right above the first of them.
                         if (batch.size > 1 && part === batch.first())
                             ThreadBatchApprovalHeader(batch.size) { batch.forEach { onToolApproval(it.toolCallId, true) } }
@@ -208,11 +215,6 @@ internal fun ThreadMessageBubble(
                         }
                     } }
                     if (published && !item.streaming) EditedFilesList(parts, assistant = null, imageContext = imageContext)
-                    if (evidence != null && computerName != null) {
-                        if (liveComputer) ThreadComputerLiveCard(evidence, computerName, computerAvailable, onComputerScreen)
-                        // Still streaming but on other steps: what was done on the computer so far.
-                        else if (computerSummary) ThreadComputerSummary(evidence, computerName, computerAvailable, onComputerScreen)
-                    }
                 }
             }
             val text = item.message.previewText()
