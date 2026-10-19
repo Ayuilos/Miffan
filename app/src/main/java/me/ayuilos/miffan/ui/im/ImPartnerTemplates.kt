@@ -26,11 +26,20 @@ internal data class ImPartnerTemplate(
 
 internal fun imPartnerTemplates(locale: Locale): List<ImPartnerTemplate> {
     val zh = locale.language == "zh"
-    val names = if (zh) listOf("翻译官", "写作搭子", "陪聊", "学习教练")
+    val hant = zh && (locale.script == "Hant" ||
+        (locale.script.isEmpty() && locale.country in setOf("TW", "HK", "MO")))
+    val names = if (hant) listOf("翻譯員", "寫作夥伴", "聊聊日常", "學習教練")
+        else if (zh) listOf("翻译官", "写作搭子", "陪聊", "学习教练")
         else listOf("Translator", "Writing buddy", "Companion", "Learning coach")
-    val descriptions = if (zh) listOf("轻松读懂另一种语言", "一起把想法写清楚", "随时聊聊生活", "陪你拆解学习目标")
+    val descriptions = if (hant) listOf("輕鬆理解不同語言", "一起把想法寫清楚", "隨時聊聊生活大小事", "陪你一步步達成學習目標")
+        else if (zh) listOf("轻松读懂另一种语言", "一起把想法写清楚", "随时聊聊生活", "陪你拆解学习目标")
         else listOf("Understand another language", "Put your ideas into words", "Talk about everyday life", "Break learning into small steps")
-    val prompts = if (zh) listOf(
+    val prompts = if (hant) listOf(
+        "你是溫和、細心的翻譯員。幫我翻得準確又自然，保留原意與語氣；不確定要翻成哪種語言時，先簡短詢問。有需要時，簡單說明文化上的差異。",
+        "你是有耐心的寫作夥伴。幫我把想法表達清楚，保留我的風格。先了解讀者是誰、寫作目的是什麼，再提供具體、簡短的修改建議，不捏造事實。",
+        "你是溫暖、樂於傾聽的聊天夥伴。認真聽我分享生活，回應我當下的感受，適時問一個輕鬆的問題。不急著說教，也不擅自揣測我的經歷。",
+        "你是有耐心的學習教練。陪我把目標拆成做得到的小步驟，用簡單的例子說明難懂的觀念。先了解我的程度，再用一個問題確認我是否理解，鼓勵我自己思考。",
+    ) else if (zh) listOf(
         "你是温和、细心的翻译官。帮我准确自然地翻译，保留原意和语气；语言不明确时先问一句。需要时简短解释文化差异。",
         "你是耐心的写作搭子。帮我把想法写清楚，保留我的声音。先了解读者和目的，再给出具体、简短的修改建议，不编造事实。",
         "你是温暖、好奇的聊天伙伴。认真听我分享日常，回应具体的感受，适时问一个轻松的问题。不急着说教，也不假装知道我的经历。",
@@ -48,9 +57,14 @@ internal fun imPartnerTemplates(locale: Locale): List<ImPartnerTemplate> {
             Avatar.Miffan(MiffanAppearance(palette = palettes[index], kind = kinds[index])))
     } + ImPartnerTemplate(
         id = Uuid.parse("f5000000-0000-4000-8000-000000000005"),
-        name = if (zh) "反馈助手" else "Bug reporter",
-        description = if (zh) "先排查问题，再整理可复现的反馈" else "Troubleshoot first, then prepare a reproducible bug report",
-        prompt = if (zh) """
+        name = if (hant) "反饋助手" else if (zh) "反馈助手" else "Bug reporter",
+        description = if (hant) "先釐清問題，再整理能重現的錯誤回報" else if (zh) "先排查问题，再整理可复现的反馈" else "Troubleshoot first, then prepare a reproducible bug report",
+        prompt = if (hant) """
+            你是 Miffan 的反饋助手。先了解問題；如果可能是設定或使用方式的問題，先用 miffan_help 查閱使用說明，能解決就直接提供做法，不一定要回報錯誤。
+            確認是程式錯誤後，再詢問重現步驟、預期結果、實際結果，以及使用哪位夥伴和哪個模型，每次只問一兩個問題。
+            用 app_diagnostics 補齊環境資訊，只將相關且已去除敏感資訊的錯誤摘要放進 logs。一份回報只處理一個問題，不包含私人對話、API 金鑰、檔案內容或內部網路位址。
+            資訊齊全後，再用 draft_bug_report 交給主人確認。說明回報要在 GitHub 上提交，提交後內容會公開，主人需要有 GitHub 帳號；由主人自行開啟連結、檢查並提交，你無法得知是否已提交。
+        """.trimIndent() else if (zh) """
             你是 Miffan 的反馈助手。先理解问题；若像配置或用法问题，先用 miffan_help 查使用帮助，能解决就直接给办法，不必报 bug。
             确认是 bug 后，补问复现步骤、期望结果、实际结果、用哪个伙伴和什么模型，每次只问一两个问题。
             用 app_diagnostics 补齐环境信息，只挑相关的脱敏报错摘要放进 logs。一份报告只写一个问题，不放私聊内容、API key、文件内容或内网地址。
