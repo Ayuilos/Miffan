@@ -1,6 +1,6 @@
 # Miffan Feature Compatibility Matrix
 
-Last reviewed: August 24, 2026
+Last reviewed: October 19, 2026
 
 This matrix describes capabilities implemented by the Miffan client. A check mark means the client
 has an integration; the selected provider, endpoint, account, and model must also support the feature.
@@ -15,6 +15,7 @@ Legend: **✓** built in · **Conditional** depends on provider/model · **—**
 | OpenAI Chat Completions-compatible | API key or custom headers | ✓ | Conditional | Conditional | Conditional | Conditional |
 | OpenAI Responses-compatible | API key or custom headers | ✓ | Conditional | Conditional | Conditional | Conditional |
 | OpenAI Codex | Eligible ChatGPT subscription sign-in | ✓ | Conditional | Conditional | Conditional | Account-provided models |
+| OpenRouter (OpenAI-compatible) | API key or OAuth PKCE sign-in | ✓ | Conditional | Conditional | Conditional | ✓ |
 | Google Gemini API | API key | ✓ | Conditional | Conditional | Conditional | ✓ |
 | Google Vertex AI | Service-account configuration | ✓ | Conditional | Conditional | Conditional | Configured models |
 | Anthropic Claude-compatible | API key or custom headers | ✓ | Conditional | Conditional | Conditional | Conditional |
@@ -27,12 +28,14 @@ balance queries where an endpoint provides them.
 
 | Capability | Support | Notes |
 | --- | --- | --- |
-| Text chat and streaming | ✓ | Editing, regeneration, branches, folders, favorites, and full-text search |
+| Text chat and streaming | ✓ | Editing, regeneration, persistent branches, folders, favorites, full-text search, and per-conversation message queues |
+| Easy chat and professional mode | ✓ | Shared data; Easy chat keeps a continuous partner thread with topics, replies, and earlier-chat recall |
+| Partner private chats and groups | ✓ | Partner-to-partner messages, @mentions, host-led groups, and concurrent replies from mentioned partners; first contact requires approval unless authorized by the owner's @mention |
 | Reasoning display and tool results | Conditional | Requires a compatible model/endpoint |
 | Images, audio, video, and file inputs | Conditional | Depends on model modality and provider protocol |
 | Document text extraction | ✓ | PDF, DOCX, PPTX, and EPUB are parsed locally when used as prompts |
 | Rich response rendering | ✓ | Markdown, HTML, code highlighting, LaTeX, tables, Mermaid, images, and diffs |
-| Image generation | Conditional | Requires a configured model/endpoint with image output |
+| Image generation and editing | Conditional | `generate_image` uses the chosen drawing model: ChatGPT subscription, OpenRouter, or other image-capable endpoints; edit the last image or use web image references when the model supports image input |
 | Conversation export | ✓ | Markdown and image export |
 | Android share and selected-text translation | ✓ | Share content into an assistant or translate selected text in a floating window |
 
@@ -42,7 +45,7 @@ balance queries where an endpoint provides them.
 | --- | --- |
 | Search providers | Bing, Zhipu, Doubao, Tavily, Exa, SearXNG, LinkUp, Brave, Metaso, Ollama, Perplexity, Firecrawl, Jina, Bocha, Grok, Tinyfish, Serper |
 | Custom search | JavaScript adapter |
-| Model-native search | Conditional; currently exposed for compatible Gemini models |
+| Model-native search | Conditional; compatible Gemini, OpenAI Responses, and Claude models/endpoints |
 | Page retrieval | Provider-specific scraping where available, plus configurable content services |
 
 Search results and queries are sent to the selected search endpoint. Keys, quotas, geographic
@@ -61,11 +64,18 @@ availability, and scraping behavior differ by service.
 | Capability | Support | Notes |
 | --- | --- | --- |
 | Isolated assistant configuration | ✓ | Model, prompt, memory, parameters, history, tools, visual identity, and injections |
+| Partner memory and settings | ✓ | Background memory curation, inspect/delete remembered facts, approved profile changes, and settings history with undo/redo; chat recall is limited to conversations the partner took part in |
 | MCP | ✓ | SSE and Streamable HTTP, custom request headers, OAuth, and per-assistant server selection |
 | Skills | ✓ | Workspace-owned Skills under `/workspace/.miffan/skills` are discovered automatically; legacy global bindings migrate one-way on use |
-| Built-in local tools | ✓ | Time, clipboard, JavaScript, TTS, user questions, screen time, calendar, and extension management |
-| Local Linux workspace | ✓ | Per-workspace files, editor, terminal, and AI file/shell tools; PRoot is not a security container |
-| Remote SSH workspaces | ✓ | Multiple hosts/project roots, SFTP files, persistent interactive terminals, assistant file/shell tools, and target-specific execution approvals; requires an existing network connection |
+| Built-in local tools | ✓ | Time, clipboard, JavaScript, TTS, user questions, screen time, calendar, bug reports, and extension management |
+| App help and bug reports | ✓ | `miffan_help`, `app_diagnostics`, and `draft_bug_report`; sanitized report draft requires approval, then the owner reviews and submits publicly on GitHub |
+| Approval cards and history | ✓ | Readable requests with raw details on demand; “Allow all” for eligible pending requests in one reply; decisions recorded in permission history |
+| Standing approvals | ✓ | Per-assistant “always allow” for MCP tools, calendar creation, and workspace file writes/edits; revocable in permission history; partner-initiated turns still require approval |
+| Question cards | ✓ | Options, multiple selections, or a written answer; unfinished answers survive leaving the chat |
+| Calendar events | ✓ | Query/create device events, adjust time before approval, and view event cards; creates a local Miffan calendar if no writable calendar exists |
+| Local Linux workspace | ✓ | Per-workspace files, editor, terminal, and AI file/shell tools; new assistant bindings have isolated file scopes, while rootfs/system paths remain shared; PRoot is not a security container |
+| Workspace file previews | ✓ | Code/text, Markdown, HTML, JSON, CSV/TSV, images, PDF, DOCX, PPTX, and EPUB; locate, edit, export, share, or open externally |
+| Remote SSH workspaces | ✓ | Multiple hosts/project roots, SFTP files, assistant file/shell tools, and target-specific execution approvals; persistent interactive terminals on macOS/Linux, single PowerShell commands on Windows |
 | SSH key management | ✓ | Generate/import keys, copy public keys, view/export private keys, and optional passphrase-encrypted backups |
 | Web access to conversations | ✓ | Optional embedded server, localhost/LAN modes, password authentication, and mDNS |
 
@@ -76,11 +86,34 @@ The Android header field sends the entered value literally and does not expand `
 An explicit `Authorization` header is used as entered, so Miffan does not add a second OAuth bearer
 token. For services that use OAuth instead, follow their OAuth sign-in flow.
 
-Enable the server and bind it to an assistant as described in the [extension help](https://miffan.ayuilos.me/skills/miffan-help/1.1.2/zh-CN/extensions-workspaces.md).
+Enable the server and bind it to an assistant as described in the [extension help](https://miffan.ayuilos.me/docs/en).
 Check which tools were discovered, whether each tool is enabled, and any approval prompt before a
 call. Tool discovery and client approval do not establish server-side permission or waive service
 charges. Settings and backups may contain credentials; see [PRIVACY.md](../PRIVACY.md) and do not
 share real keys, private conversations, or unsanitized logs when asking for help.
+
+## Remote computers
+
+| Capability | Support | Notes |
+| --- | --- | --- |
+| SSH connections | ✓ | LAN, reachable addresses, and already connected Tailscale networks; saved computers retain multiple addresses and try alternatives |
+| Discovery and setup | ✓ | Nearby LAN and Tailscale discovery, manual address or pasted SSH command; guided host verification and helper setup |
+| Computer sign-in | ✓ | Account/password sign-in authorizes Miffan's own SSH key and removes the saved password after successful key sign-in; key-only hosts get a setup command |
+| macOS desktop | Conditional | Normal connection via Screen Sharing/VNC; optional Sunshine high-performance mode; requires desktop access and OS permissions |
+| Linux desktop | Conditional | GNOME/KDE through their Remote Desktop (RDP) services; wlroots Wayland through wayvnc; X11 through x11vnc; optional Sunshine high-performance mode |
+| Windows desktop | Conditional | SSH setup and commands; screen viewing/control through Sunshine; no normal VNC/RDP screen fallback or interactive terminal |
+| Servers and NAS without a screen | ✓ | Disable “Use the screen” to skip desktop setup and let partners use files and commands |
+| Normal screen connection | ✓ | VNC or RDP tunneled through SSH on supported macOS/Linux desktops |
+| High-performance screen connection | Conditional | Sunshine GPU-encoded, encrypted direct stream; pairing/management over SSH; computer audio; falls back to the normal connection on macOS/Linux when available |
+| Partner computer use | Conditional | Ask first / Automatic / Off for a partner's assigned computer, including commands without a screen; desktop actions need the computer-use helper; touching the screen takes over and pauses the partner |
+| Phone screen controls | ✓ | Direct touch or trackpad, keyboard/clipboard, picture quality levels, landscape full screen, connection/data-use details, and data saver on metered networks |
+
+## App updates
+
+| Capability | Support | Notes |
+| --- | --- | --- |
+| In-app APK updates | ✓ | Progress, cancellation, retry, configured app proxy, and alternate download sources |
+| APK verification and installation | ✓ | Package-name check plus advertised size/SHA-256 checks; failed verification tries the next source; Android installer and “Install unknown apps” permission |
 
 ## Storage and portability
 
@@ -90,7 +123,7 @@ share real keys, private conversations, or unsanitized logs when asking for help
 | Selective local backup and restore | ✓ |
 | WebDAV backup | ✓ |
 | S3-compatible backup | ✓ |
-| Chatbox import | Providers and conversations |
+| Chatbox import | Providers and conversations; legacy JSON and Backup v2 ZIP |
 | Cherry Studio import | Providers |
 | RikkaHub migration | Compatible backup import; the two apps remain isolated and can coexist |
 

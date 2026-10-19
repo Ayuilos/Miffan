@@ -7,12 +7,23 @@ import org.junit.Test
 import java.util.Locale
 
 class ImPartnerTemplatesTest {
-    @Test fun reporterTemplateHasStableIdentityAndDefaultAbilitiesInBothLanguages() {
+    @Test fun templatesKeepStableIdentityAndDefaultAbilitiesAcrossLanguages() {
         val chinese = imPartnerTemplates(Locale.SIMPLIFIED_CHINESE)
         val english = imPartnerTemplates(Locale.ENGLISH)
-        assertEquals(5, chinese.size); assertEquals(chinese.map { it.id }, english.map { it.id })
+        assertEquals(5, chinese.size)
+        val variants = listOf(chinese, english, imPartnerTemplates(Locale.TRADITIONAL_CHINESE),
+            imPartnerTemplates(Locale.forLanguageTag("zh-Hant-HK")),
+            imPartnerTemplates(Locale.forLanguageTag("zh-Hans")), imPartnerTemplates(Locale.forLanguageTag("ja")))
+        variants.forEach { templates ->
+            assertEquals(chinese.map { it.id }, templates.map { it.id })
+            assertEquals(chinese.map { it.avatar }, templates.map { it.avatar })
+            templates.dropLast(1).forEach {
+                assertEquals(listOf(LocalToolOption.TimeInfo), it.assistant().localTools)
+                assertEquals(MiffanHelpOverride.INHERIT, it.assistant().miffanHelpOverride)
+            }
+        }
         assertEquals("反馈助手", chinese.last().name); assertEquals("Bug reporter", english.last().name)
-        for (template in listOf(chinese.last(), english.last())) {
+        for (template in variants.map { it.last() }) {
             val assistant = template.assistant()
             assertEquals(setOf(LocalToolOption.TimeInfo, LocalToolOption.BugReport), assistant.localTools.toSet())
             assertEquals(MiffanHelpOverride.ENABLED, assistant.miffanHelpOverride)
@@ -22,9 +33,22 @@ class ImPartnerTemplatesTest {
                 assertTrue(template.prompt.contains(instruction))
             }
         }
-        chinese.dropLast(1).forEach {
-            assertEquals(listOf(LocalToolOption.TimeInfo), it.assistant().localTools)
-            assertEquals(MiffanHelpOverride.INHERIT, it.assistant().miffanHelpOverride)
+    }
+    @Test fun traditionalChineseUsesLocalizedTextForEveryTemplate() {
+        val traditional = imPartnerTemplates(Locale.TRADITIONAL_CHINESE)
+        val simplified = imPartnerTemplates(Locale.SIMPLIFIED_CHINESE)
+        assertEquals(listOf("翻譯員", "寫作夥伴", "聊聊日常", "學習教練", "反饋助手"), traditional.map { it.name })
+        traditional.zip(simplified).forEach { (hant, hans) ->
+            assertTrue(hant.description.isNotBlank()); assertNotEquals(hans.description, hant.description)
+            assertTrue(hant.prompt.isNotBlank()); assertNotEquals(hans.prompt, hant.prompt)
         }
+        for (tag in listOf("zh-Hant-HK", "zh-Hant-CN", "zh-HK", "zh-MO")) {
+            assertEquals(traditional, imPartnerTemplates(Locale.forLanguageTag(tag)))
+        }
+        for (tag in listOf("zh-Hans", "zh-Hans-TW", "zh-CN", "zh")) {
+            assertEquals(simplified, imPartnerTemplates(Locale.forLanguageTag(tag)))
+        }
+        assertEquals(imPartnerTemplates(Locale.ENGLISH), imPartnerTemplates(Locale.forLanguageTag("ja")))
+        assertEquals(imPartnerTemplates(Locale.ENGLISH), imPartnerTemplates(Locale.forLanguageTag("en-Hant-TW")))
     }
 }

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/branding/miffan-icon.svg" alt="Miffan 应用图标" width="120" />
   <h1>Miffan</h1>
-  <p>像和朋友聊天一样用 AI，还能让它替你操作电脑的 Android 应用。</p>
+  <p>像和朋友聊天一样用 AI 的 Android 应用：伙伴之间能分工协作，还能替你操作电脑。</p>
 
   <p>
     <a href="https://github.com/Ayuilos/Miffan/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ayuilos/Miffan?display_name=tag&sort=semver" /></a>
@@ -20,24 +20,35 @@
   </tr>
 </table>
 
-用你已经在用的 AI 服务就行：OpenAI 兼容、Gemini 或 Claude 服务的 API Key，或者通过 Codex 登录 ChatGPT 订阅。Miffan 不内置模型，聊天记录和设置都保存在你的手机上。
+用你已经在用的 AI 服务就行：OpenAI 兼容、Gemini 或 Claude 服务的 API Key，通过 Codex 登录的 ChatGPT 订阅，或者 OpenRouter 账号。Miffan 不内置模型，聊天记录和设置都保存在你的手机上。
 
 ## 像发消息一样聊天
 
 每个 AI 伙伴就是一个持续的聊天。不用新建对话，不用选模型，也不用调参数。
 
-- **一个伙伴，一段对话。** 和伙伴的聊天记录跨越多天也是一条时间线。Miffan 会在背后把不同话题分开，长聊天依然又快又切题。
+- **一个伙伴，一段对话。** 和伙伴的聊天记录跨越多天也是一条时间线。Miffan 会在背后把不同话题分开，长聊天依然又快又切题。新话题从哪里开始会有分隔线标出，点一下就能改回接着上个话题聊。
 - **同时问好几件事。** 不相关的问题会并行回答，每条回复都引用它回答的那条消息。
-- **说一句话就能调整伙伴。** 比如“回答短一点”，伙伴就会调整自己的偏好。伙伴设定和记忆的每次改动都关联到引起它的那条消息，保留在历史里，随时可以撤销。
+- **说一句话就能调整伙伴。** 比如“回答短一点”，伙伴就会调整自己的偏好。经你同意，伙伴还能改自己的名字、头像和设定。每次改动都关联到引起它的那条消息，保留在历史里，随时可以撤销。
 - **看看 AI 记住了你什么。** 每条记忆都能看到来源，随时可以删除。
+- **想要图就说。** 选好一个画图模型，所有伙伴都能帮你画图；说一句“把它改成……”，就在上一张图上接着改。
 
-## 让伙伴操作你的电脑 · 4.0 新功能
+## 伙伴之间协作
 
-通过 SSH（包括 Tailscale）连接一台 Mac 或 Linux 桌面电脑，伙伴就能在上面打开应用、输入文字、点击按钮，你在手机上看着它操作。
+伙伴可以互相发消息，你也能把几个伙伴拉进同一个聊天。
 
-- **同一块屏幕。** 在手机上查看并操作电脑桌面，一碰屏幕就能立刻接管。
-- **由你做主。** 默认情况下，伙伴每做一步都会先问你。每次批准都记在权限记录里，删掉聊天也会保留。
-- **一步步引导。** 轻松模式会带你连接电脑、检查是否就绪，再把电脑交给伙伴。
+- **群聊。** 主持的伙伴负责分工，被 @ 的伙伴同时回复，只有 @ 到你时才通知你。
+- **随时 @ 伙伴。** 在聊天里输入 @，就能叫上其他伙伴。
+- **按你的习惯整理。** 置顶伙伴、分组整理，头像上的状态灯一眼就能看出谁在工作（绿灯）、谁在等你批准（黄灯闪烁）。
+- **彼此隔离。** 伙伴只能回顾自己参与过的聊天，两个伙伴第一次联系也要先经你同意。
+
+## 让伙伴操作你的电脑
+
+通过 SSH（包括 Tailscale）连接一台 Mac、Windows 或 Linux 电脑，伙伴就能在上面打开应用、输入文字、点击按钮，你在手机上看着它操作。没有屏幕的服务器或 NAS 也可以连，伙伴会通过命令来操作。
+
+- **同一块屏幕。** 在手机上查看并操作电脑桌面，竖屏或全屏横屏都行，一碰屏幕就能立刻接管。
+- **高性能模式。** 电脑上装有 Sunshine 时，画面由显卡编码，延迟更低、更流畅，还能听到电脑的声音。设置和配对都由 Miffan 替你完成。
+- **由你做主。** 每台电脑都可以选择让伙伴先问你、自动操作，或者完全不碰。每次批准都记在权限记录里，删掉聊天也会保留。
+- **连接很简单。** 轻松模式会自动找到同一 Wi-Fi 和 Tailscale 上的电脑。用账号密码登录一次，Miffan 就会改用自己的密钥；Windows 电脑提供一键配置脚本。
 
 <table>
   <tr>
@@ -52,7 +63,16 @@
   </tr>
 </table>
 
-支持的桌面：macOS、基于 wlroots 的 Linux Wayland（如 niri、Sway、Hyprland）以及 X11。暂不支持 GNOME 和 KDE。
+支持的桌面：macOS、Windows，以及 Linux 上的 GNOME、KDE（通过系统自带的远程桌面）、基于 wlroots 的 Wayland（如 niri、Sway、Hyprland）和 X11。
+
+## 点一下就能批准
+
+伙伴要做重要的事，比如执行命令、添加日程或调用 MCP 工具时，会先发一张看得懂的卡片：一句话说明它想做什么，列出关键信息，原始调用点一下才展开。
+
+- 几个普通请求可以一次全部允许；某类操作也可以设为始终允许，之后随时在权限记录里收回。
+- 添加日程前可以先调整时间。
+- 伙伴向你提问时，点选一个选项或者自己写回答都行。
+- 打开任意一条已完成的改动，能看到它具体改了什么，并单独撤销或重做这一项。
 
 ## 需要时切换到专业模式
 
@@ -75,9 +95,11 @@
 
 ## 开始使用
 
-1. 从 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 下载最新 APK。正式版适用于 Android 8.0 及以上的 `arm64-v8a` 设备。
+1. 从 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 下载最新 APK。正式版适用于 Android 8.0 及以上的 `arm64-v8a` 设备。之后的更新在应用内就能下载安装。
 2. 首次打开时，用 API Key 或支持的账号连接一个 AI 服务。
 3. 开始聊天。
+
+[使用指南](https://miffan.ayuilos.me/docs)介绍了每项功能。遇到问题时，可以添加「反馈助手」伙伴：它会帮你排查，并把问题整理成反馈，由你提交。
 
 数据可以备份到 WebDAV 或 S3 兼容存储，也可以从 RikkaHub、Chatbox 和 Cherry Studio 导入。提示词、附件和工具数据只会发给你配置的服务，详见 [PRIVACY.md](PRIVACY.md) 和 [SECURITY.md](SECURITY.md)。
 
@@ -93,17 +115,25 @@ Miffan 最初是开源 Android LLM 客户端 [RikkaHub](https://github.com/rikka
 | 2026 年 9 月 | 3.1 – 3.3 | 首次设置引导、凭据加密、持久保存的回复分支，以及蓝色大肥鱼。 |
 | 2026 年 9 月 | 3.4 | 远程 SSH 工作空间。 |
 | 2026 年 10 月 | 4.0 | 轻松模式，以及让伙伴操作你的电脑。 |
+| 2026 年 10 月 | 4.1 | 远程屏幕的高性能模式，并支持 GNOME 和 KDE 桌面。 |
+| 2026 年 10 月 | 4.2 | 伙伴私聊和群聊，支持 Windows 电脑和没有屏幕的服务器。 |
+| 2026 年 10 月 | 4.3 | 画图、重新设计的电脑连接流程，以及看得懂的审批卡片。 |
 
 Miffan 仍会选择性吸收 RikkaHub 的改进，每一项都经过审查，并在发布说明中单独列出（见[上游同步策略](docs/upstream-sync.md)）。项目依照许可证保留上游的版权与署名信息。Miffan 不是 RikkaHub 的官方版本。
 
 ## 构建与参与贡献
 
+需要 JDK 17、带 NDK 28.2.13676358 和 CMake 3.22.1 的 Android SDK、Node.js 与 pnpm，以及 Python 3。
+
 ```bash
-git clone https://github.com/Ayuilos/Miffan.git
+git clone --recurse-submodules https://github.com/Ayuilos/Miffan.git
 cd Miffan
+(cd web-ui && pnpm install)
+rdp/scripts/fetch-sources.sh && rdp/scripts/build-native.sh   # FreeRDP 和 OpenSSL，只需一次
+stream/scripts/fetch-sources.sh                                # Moonlight 源码，只需一次
 ./gradlew assembleDebug
 ```
 
-项目使用 Kotlin、Jetpack Compose 和 Java 17。提交 PR 前请先阅读[贡献指南](CONTRIBUTING.md)和[Issue 指南](docs/ISSUE_GUIDELINES.md)。发布与签名流程见 [docs/releasing.md](docs/releasing.md)。
+应用使用 Kotlin 和 Jetpack Compose 编写。提交 PR 前请先阅读[贡献指南](CONTRIBUTING.md)和[Issue 指南](docs/ISSUE_GUIDELINES.md)。发布与签名流程见 [docs/releasing.md](docs/releasing.md)。
 
 Miffan 以 [GNU Affero General Public License v3.0](LICENSE) 授权发布。
