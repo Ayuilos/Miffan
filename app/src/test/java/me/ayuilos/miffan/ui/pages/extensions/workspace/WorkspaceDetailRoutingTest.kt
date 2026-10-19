@@ -24,4 +24,16 @@ class WorkspaceDetailRoutingTest {
             workspaceDetailInitialLocation("FILES", "/reports/"),
         )
     }
+
+    @Test
+    fun `remote detail opens a full path on the computer relative to the workspace folder`() {
+        val linux = WorkspaceStorageArea.LINUX
+        assertEquals("out", resolveDetailPath(linux, "home/me/proj/out", true, "/home/me/proj"))
+        assertEquals("", resolveDetailPath(linux, "home/me/proj", true, "/home/me/proj/"))
+        // Not under the folder, local workspaces, and paths already relative stay as given.
+        assertEquals("home/me/other", resolveDetailPath(linux, "home/me/other", true, "/home/me/proj"))
+        assertEquals("home/me/proj/out", resolveDetailPath(linux, "home/me/proj/out", false, null))
+        assertEquals("home/me/proj/out", resolveDetailPath(WorkspaceStorageArea.FILES, "home/me/proj/out", true, "/home/me/proj"))
+        assertEquals("etc", resolveDetailPath(linux, "etc", true, "/"))
+    }
 }
