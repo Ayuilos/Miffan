@@ -2345,6 +2345,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_quality_saver">データ節約</string>
   <string name="workspace_screen_quality_balanced">バランス</string>
   <string name="workspace_screen_quality_best">最高画質</string>
+  <string name="workspace_screen_quality_custom">カスタム</string>
+  <string name="workspace_screen_quality_custom_title">カスタム画質</string>
+  <string name="workspace_screen_quality_custom_resolution">解像度</string>
+  <string name="workspace_screen_quality_custom_fps">フレームレート（fps）</string>
+  <string name="workspace_screen_quality_custom_hint">高パフォーマンスモードでのみ有効です。1 時間あたり最大約 %1$s GB。パソコンの画面より大きい解像度は画面サイズまで下げられます。</string>
   <string name="workspace_screen_quality_fps">最大 %1$d fps</string>
   <string name="workspace_screen_quality_server">画面はパソコン側で決まります（RDP）</string>
   <string name="workspace_screen_audio">サウンド</string>

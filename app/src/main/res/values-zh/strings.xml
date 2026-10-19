@@ -2377,6 +2377,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_quality_saver">省流量</string>
   <string name="workspace_screen_quality_balanced">均衡</string>
   <string name="workspace_screen_quality_best">最清晰</string>
+  <string name="workspace_screen_quality_custom">自定义</string>
+  <string name="workspace_screen_quality_custom_title">自定义画面</string>
+  <string name="workspace_screen_quality_custom_resolution">分辨率</string>
+  <string name="workspace_screen_quality_custom_fps">帧率（帧/秒）</string>
+  <string name="workspace_screen_quality_custom_hint">仅高性能模式生效。最多约每小时 %1$s GB；超过电脑屏幕的分辨率会自动降到屏幕大小。</string>
   <string name="workspace_screen_quality_fps">最多 %1$d 帧/秒</string>
   <string name="workspace_screen_quality_server">画面由电脑决定（RDP）</string>
   <string name="workspace_screen_audio">声音</string>

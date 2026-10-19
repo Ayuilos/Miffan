@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.data.repository
 
 import java.io.Closeable
+import kotlin.math.roundToInt
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -127,12 +128,24 @@ internal fun verifyStreamCertificate(stored: String?, actual: String?) {
 internal fun streamCertificateFailure(expected: String?, attested: String?): RemoteStreamCertificateChangedException =
     RemoteStreamCertificateChangedException(expected.orEmpty(), attested?.takeIf { it != expected })
 
-/** User-selected picture quality; RDP remains server-paced. */
-enum class RemoteScreenQuality { SAVER, BALANCED, BEST }
+/** User-selected picture quality; RDP remains server-paced. [CUSTOM] streams at [RemoteStreamCustom]. */
+enum class RemoteScreenQuality { SAVER, BALANCED, BEST, CUSTOM }
+
+/** A user-picked 16:9 stream size and frame rate; the bitrate follows from them. */
+data class RemoteStreamCustom(val height: Int = 1080, val fps: Int = 30) {
+    init { require(height in HEIGHTS && fps in FRAME_RATES) }
+    companion object {
+        val HEIGHTS = listOf(720, 1080, 1440, 2160)
+        val FRAME_RATES = listOf(30, 60, 90, 120)
+        /** Falls back to the default for values from an older or corrupted preference. */
+        fun of(height: Int, fps: Int) = if (height in HEIGHTS && fps in FRAME_RATES) RemoteStreamCustom(height, fps) else RemoteStreamCustom()
+    }
+}
 
 data class RemoteStreamRequest(
     val quality: RemoteScreenQuality = RemoteScreenQuality.BALANCED,
     val skip: Boolean = false,
+    val custom: RemoteStreamCustom = RemoteStreamCustom(),
 )
 
 internal fun RemoteStreamRequest.requested(hostEnabled: Boolean): Boolean = hostEnabled && !skip
@@ -141,16 +154,38 @@ internal fun RemoteStreamRequest.requested(hostEnabled: Boolean): Boolean = host
 internal suspend fun attemptRemoteStream(requested: Boolean, attempt: suspend () -> StreamOpenResult): StreamOpenResult =
     if (requested) attempt() else StreamOpenResult()
 
-internal fun RemoteScreenQuality.streamConfig(hostWidth: Int? = null, hostHeight: Int? = null): StreamConfig {
+internal fun RemoteScreenQuality.streamConfig(hostWidth: Int? = null, hostHeight: Int? = null,
+    custom: RemoteStreamCustom = RemoteStreamCustom()): StreamConfig {
     val nominal = when (this) {
         RemoteScreenQuality.SAVER -> StreamConfig(1280, 720, 30, 4_000)
         RemoteScreenQuality.BALANCED -> StreamConfig(1920, 1080, 60, 10_000)
         RemoteScreenQuality.BEST -> StreamConfig(2560, 1440, 60, 20_000)
+        RemoteScreenQuality.CUSTOM -> StreamConfig(custom.height * 16 / 9, custom.height, custom.fps, customBitrate(custom.height, custom.fps))
     }
-    if (this != RemoteScreenQuality.BEST || hostWidth == null || hostHeight == null ||
+    if (this == RemoteScreenQuality.SAVER || this == RemoteScreenQuality.BALANCED || hostWidth == null || hostHeight == null ||
         hostWidth !in 16..8192 || hostHeight !in 9..8192) return nominal
     val scale = minOf(1.0, hostWidth.toDouble() / nominal.width, hostHeight.toDouble() / nominal.height)
     // Preserve 16:9 exactly, including displays smaller than the usual 720p tier.
-    val units = (160 * scale).toInt().coerceAtLeast(1)
-    return nominal.copy(width = units * 16, height = units * 9)
+    val units = (nominal.height / 9 * scale).toInt().coerceAtLeast(1)
+    val capped = nominal.copy(width = units * 16, height = units * 9)
+    // A custom size larger than the computer's screen would only spend bandwidth on upscaling.
+    return if (this == RemoteScreenQuality.CUSTOM) capped.copy(bitrateKbps = customBitrate(capped.height, custom.fps)) else capped
+}
+
+/** Matches the presets at 720p30, 1080p60 and 1440p60; sizes between tiers use the next tier up. */
+private fun customBitrate(height: Int, fps: Int): Int {
+    val at60 = when {
+        height <= 720 -> 6_000
+        height <= 1080 -> 10_000
+        height <= 1440 -> 20_000
+        else -> 40_000
+    }
+    // Higher frame rates need fewer extra bits per frame, as each frame differs less from the last.
+    val factor = when {
+        fps <= 30 -> 2.0 / 3
+        fps <= 60 -> 1.0
+        fps <= 90 -> 1.4
+        else -> 1.75
+    }
+    return (at60 * factor / 500).roundToInt() * 500
 }

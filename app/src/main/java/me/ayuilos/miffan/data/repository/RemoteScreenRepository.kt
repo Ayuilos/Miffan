@@ -543,7 +543,7 @@ class RemoteScreenRepository(
                         }
                         val remaining = (deadline - System.nanoTime()) / 1_000_000
                         val opened = streams.open(ssh, host, probe, { text -> if (clipboard?.write(text) != true) writeStreamClipboard(ssh, text) }, remaining,
-                            stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height), platform)
+                            stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height, stream.custom), platform)
                         if (platform == RemoteScreenPlatform.MACOS && opened.fallback != null) {
                             // A capture denial can appear only after attempting to build a stream.
                             val diagnostic = try { sunshineProbe(ssh) }

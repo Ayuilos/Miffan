@@ -2343,6 +2343,11 @@
   <string name="workspace_screen_quality_saver">省流量</string>
   <string name="workspace_screen_quality_balanced">均衡</string>
   <string name="workspace_screen_quality_best">最清晰</string>
+  <string name="workspace_screen_quality_custom">自訂</string>
+  <string name="workspace_screen_quality_custom_title">自訂畫面</string>
+  <string name="workspace_screen_quality_custom_resolution">解析度</string>
+  <string name="workspace_screen_quality_custom_fps">影格率（幀/秒）</string>
+  <string name="workspace_screen_quality_custom_hint">僅在高效能模式下生效。最多約每小時 %1$s GB；超過電腦螢幕的解析度會自動降到螢幕大小。</string>
   <string name="workspace_screen_quality_fps">最多 %1$d 幀/秒</string>
   <string name="workspace_screen_quality_server">畫面由電腦決定（RDP）</string>
   <string name="workspace_screen_audio">聲音</string>

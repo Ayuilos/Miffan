@@ -2348,6 +2348,11 @@
   <string name="workspace_screen_quality_saver">Экономия трафика</string>
   <string name="workspace_screen_quality_balanced">Баланс</string>
   <string name="workspace_screen_quality_best">Максимальная чёткость</string>
+  <string name="workspace_screen_quality_custom">Свой</string>
+  <string name="workspace_screen_quality_custom_title">Своё качество</string>
+  <string name="workspace_screen_quality_custom_resolution">Разрешение</string>
+  <string name="workspace_screen_quality_custom_fps">Частота кадров (fps)</string>
+  <string name="workspace_screen_quality_custom_hint">Только в режиме высокой производительности. До %1$s ГБ в час; разрешение больше экрана компьютера будет уменьшено до его размера.</string>
   <string name="workspace_screen_quality_fps">До %1$d кадров/с</string>
   <string name="workspace_screen_quality_server">Изображение задаёт компьютер (RDP)</string>
   <string name="workspace_screen_audio">Звук</string>
