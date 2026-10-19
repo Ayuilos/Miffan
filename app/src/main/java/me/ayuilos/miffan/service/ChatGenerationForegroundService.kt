@@ -122,7 +122,7 @@ class ChatGenerationForegroundService : Service() {
         when (intent?.action) {
             ACTION_ACQUIRE -> acquire(intent)
             ACTION_RELEASE -> release(intent)
-            else -> stopService()
+            else -> stopWhenIdle()
         }
         return START_NOT_STICKY
     }
@@ -161,7 +161,7 @@ class ChatGenerationForegroundService : Service() {
         if (!isForeground) updateForegroundNotification(conversationId.orEmpty())
         if (generationId == null || conversationId == null || ready == null) {
             // A stale request must not take the foreground away from generations still running.
-            if (activeGenerations.isEmpty()) stopService()
+            if (activeGenerations.isEmpty()) stopWhenIdle()
             return
         }
         activeGenerations[generationId] = conversationId
@@ -177,7 +177,7 @@ class ChatGenerationForegroundService : Service() {
     private fun releaseId(id: String) {
         activeGenerations.remove(id)
         if (activeGenerations.isEmpty()) {
-            stopService()
+            stopWhenIdle()
         } else {
             updateForegroundNotification(activeGenerations.values.last())
         }
@@ -204,11 +204,14 @@ class ChatGenerationForegroundService : Service() {
         }
     }
 
-    /**
-     * Rapid sends cancel and restart generations, so an acquire can be queued behind the release
-     * that empties [activeGenerations]. Stopping only for the latest start request keeps the
-     * service alive for that pending acquire, which must still call startForeground in time.
-     */
+    /** Keep foreground state until destruction if a newer ACQUIRE is queued. */
+    private fun stopWhenIdle() {
+        if (stopSelfResult(latestStartId) && instance === this) {
+            // Do not attach new in-process leases to an instance already scheduled to stop.
+            instance = null
+        }
+    }
+
     private fun stopService() {
         if (isForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
