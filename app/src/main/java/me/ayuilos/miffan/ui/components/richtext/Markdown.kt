@@ -130,7 +130,8 @@ private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
 private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
 
 // 预处理markdown内容
-private fun preProcess(content: String): String {
+private fun preProcess(rawContent: String): String {
+    val content = normalizeMarkdownLineEndings(rawContent)
     // 先找出所有代码块的位置
     val codeBlocks = mutableListOf<IntRange>()
     CODE_BLOCK_REGEX.findAll(content).forEach { match ->
@@ -1105,7 +1106,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                         }
                                         .fillMaxSize()
                                         .clip(CircleShape)
-                                        .background(colorScheme.tertiaryContainer.copy(0.2f)),
+                                        .background(colorScheme.tertiaryContainer),
                                     contentAlignment = Alignment.Center) {
                                     Text(
                                         text = domain,
@@ -1115,7 +1116,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                             lineHeight = 10.sp,
                                             fontFamily = JetbrainsMono,
                                             color = colorScheme.onTertiaryContainer,
-                                            fontWeight = FontWeight.Thin
+                                            fontWeight = FontWeight.Medium
                                         ),
                                     )
                                 }

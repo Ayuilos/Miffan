@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -635,6 +637,16 @@ class ResponseAPI(
                     )
                 }
 
+                // 部分兼容网关会在服务端执行函数工具，并把结果作为 function_call_output 一起返回
+                "function_call_output" -> {
+                    val callId = output["call_id"]?.jsonPrimitive?.content ?: error("call_id not found")
+                    val index = parts.indexOfLast { it is UIMessagePart.Tool && it.toolCallId == callId }
+                    if (index >= 0) {
+                        val tool = parts[index] as UIMessagePart.Tool
+                        parts[index] = tool.copy(output = listOf(UIMessagePart.Text(output.functionCallOutputText())))
+                    }
+                }
+
                 "message" -> {
                     val content = output["content"]?.jsonArray ?: error("content not found")
                     content.map { it.jsonObject }.forEach { part ->
@@ -721,6 +733,17 @@ internal suspend fun collectStreamingTextGeneration(
         finishReason = finish?.finishReason,
         usage = message.usage,
     )
+}
+
+// function_call_output.output 可以是字符串，也可以是 input_text 等内容数组
+internal fun JsonObject.functionCallOutputText(): String = when (val output = get("output")) {
+    null, is JsonNull -> ""
+    is JsonPrimitive -> output.content
+    is JsonArray -> output.mapNotNull { item ->
+        item.jsonObjectOrNull?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "input_text" }
+            ?.get("text")?.jsonPrimitive?.contentOrNull
+    }.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: output.toString()
+    else -> output.toString()
 }
 
 internal fun isOpenAIServerToolCall(type: String): Boolean =

@@ -76,11 +76,11 @@ class RemoteShellTest {
         val request = RemoteShell.request(RemotePlatform.POSIX, root, command, stdin)
         assertArrayEquals("cd $quoted || exit 1\n$command".toByteArray(), request.command.toByteArray())
         assertSame(stdin, request.stdin)
-        assertArrayEquals("cd $quoted || exit 1\nstty -echo 2>/dev/null || :\nexec env ENV= PS1= PS2= /bin/sh +i".toByteArray(),
+        assertArrayEquals("cd $quoted || exit 1\n${RemoteShell.utf8Locale}\nstty -echo 2>/dev/null || :\nexec env ENV= PS1= PS2= /bin/sh +i".toByteArray(),
             RemoteShell.posixTerminal(root, true).toByteArray())
-        assertArrayEquals("cd $quoted || exit 1\nexec \"\${SHELL:-/bin/sh}\" -i".toByteArray(),
+        assertArrayEquals("cd $quoted || exit 1\n${RemoteShell.utf8Locale}\nexec \"\${SHELL:-/bin/sh}\" -i".toByteArray(),
             RemoteShell.posixTerminal(root, false).toByteArray())
-        assertArrayEquals("cd $quoted || exit 1\nexec /bin/sh -c 'printf '\\''%s'\\'' \"\$HOME\"\nexit 7'".toByteArray(),
+        assertArrayEquals("cd $quoted || exit 1\n${RemoteShell.utf8Locale}\nexec /bin/sh -c 'printf '\\''%s'\\'' \"\$HOME\"\nexit 7'".toByteArray(),
             RemoteTerminalCommandSpec(command, "").shellScript(root).toByteArray())
         assertThrows(RemoteTerminalUnsupportedException::class.java) {
             RemoteTerminalCommandSpec("Get-ChildItem", "").shellScript("/C:/Users/Ekk", RemotePlatform.WINDOWS)

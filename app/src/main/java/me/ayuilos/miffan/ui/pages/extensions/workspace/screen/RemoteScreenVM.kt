@@ -29,6 +29,7 @@ import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.RemoteDesktopProtocol
 import me.ayuilos.miffan.data.repository.RemoteScreenQuality
+import me.ayuilos.miffan.data.repository.RemoteStreamCustom
 import me.ayuilos.miffan.data.repository.RemoteStreamRequest
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.RemoteStreamCertificateChangedException
@@ -79,7 +80,7 @@ sealed interface RemoteScreenNotice {
     /** High-performance mode was on but this connection uses VNC or RDP instead. */
     data class StreamFallback(val fallback: RemoteStreamFallback) : RemoteScreenNotice
     /** The first stream on mobile data: what the chosen picture level may cost per hour. */
-    data class StreamOnMeteredNetwork(val quality: RemoteScreenQuality) : RemoteScreenNotice
+    data class StreamOnMeteredNetwork(val quality: RemoteScreenQuality, val custom: RemoteStreamCustom) : RemoteScreenNotice
     /** The approved Windows firewall change was refused or did not verify; nothing reconnects. */
     data class FirewallFailed(val detail: String?) : RemoteScreenNotice
 }
@@ -160,6 +161,10 @@ class RemoteScreenVM(
     )
     /** The picture level; VNC maps it to a frame cap, a stream to resolution and bitrate, RDP ignores it. */
     val quality: StateFlow<RemoteScreenQuality> = _quality.asStateFlow()
+
+    private val _custom = MutableStateFlow(RemoteStreamCustom.of(hints.getInt(CUSTOM_HEIGHT_KEY, 1080), hints.getInt(CUSTOM_FPS_KEY, 30)))
+    /** The size and frame rate a stream uses at [RemoteScreenQuality.CUSTOM]; shared by all networks. */
+    val custom: StateFlow<RemoteStreamCustom> = _custom.asStateFlow()
 
     private val _connectionInfo = MutableStateFlow<RemoteConnectionInfo?>(null)
     val connectionInfo: StateFlow<RemoteConnectionInfo?> = _connectionInfo.asStateFlow()
@@ -475,6 +480,15 @@ class RemoteScreenVM(
         }
     }
 
+    /** Selects [RemoteScreenQuality.CUSTOM] at [custom]; a stream reconnects only when its picture changes. */
+    fun setCustom(custom: RemoteStreamCustom) {
+        val changed = custom != _custom.value
+        _custom.value = custom
+        hints.edit().putInt(CUSTOM_HEIGHT_KEY, custom.height).putInt(CUSTOM_FPS_KEY, custom.fps).apply()
+        if (_quality.value != RemoteScreenQuality.CUSTOM) setQuality(RemoteScreenQuality.CUSTOM)
+        else if (changed && connection?.session?.protocol == RemoteDesktopProtocol.STREAM) reconnect()
+    }
+
     /** Reconnects with or without high-performance mode for this visit only; the computer's setting stays. */
     fun reconnectWithStream(stream: Boolean) {
         skipStream = !stream
@@ -614,7 +628,7 @@ class RemoteScreenVM(
                         maxFps = vncFps(quality),
                         lowColor = quality == RemoteScreenQuality.SAVER,
                     ),
-                    RemoteStreamRequest(quality, skip = skipStream),
+                    RemoteStreamRequest(quality, skip = skipStream, custom = _custom.value),
                 )
                 connection = opened
                 _hostId.value = opened.hostId
@@ -641,7 +655,7 @@ class RemoteScreenVM(
                     }
                     if (metered && !hints.getBoolean(METERED_STREAM_KEY, false)) {
                         hints.edit().putBoolean(METERED_STREAM_KEY, true).apply()
-                        _notices.tryEmit(RemoteScreenNotice.StreamOnMeteredNetwork(_quality.value))
+                        _notices.tryEmit(RemoteScreenNotice.StreamOnMeteredNetwork(_quality.value, _custom.value))
                     }
                 }
                 opened.session.setPaused(!visible)
@@ -754,8 +768,12 @@ private fun vncFps(quality: RemoteScreenQuality) = when (quality) {
     RemoteScreenQuality.SAVER -> 5
     RemoteScreenQuality.BALANCED -> 10
     RemoteScreenQuality.BEST -> 20
+    // A custom size and frame rate only shape the stream.
+    RemoteScreenQuality.CUSTOM -> 10
 }
 
+private const val CUSTOM_HEIGHT_KEY = "stream_custom_height"
+private const val CUSTOM_FPS_KEY = "stream_custom_fps"
 private const val AUDIO_KEY = "stream_audio"
 private const val METERED_STREAM_KEY = "stream_metered_warned"
 

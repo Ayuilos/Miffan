@@ -25,6 +25,18 @@ class RemoteStreamRequestTest {
             assertEquals(StreamConfig(2560, 1440, 60, 20_000), RemoteScreenQuality.BEST.streamConfig(size.first, size.second))
         assertEquals(StreamConfig(1920, 1080, 60, 10_000), RemoteScreenQuality.BALANCED.streamConfig(800, 600))
     }
+    @Test fun customUsesPickedSizeAndFrameRateWithMatchingBitrate() {
+        val custom = RemoteScreenQuality.CUSTOM
+        assertEquals(StreamConfig(1920, 1080, 30, 6_500), custom.streamConfig(custom = RemoteStreamCustom(1080, 30)))
+        assertEquals(StreamConfig(1280, 720, 30, 4_000), custom.streamConfig(custom = RemoteStreamCustom(720, 30)))
+        assertEquals(StreamConfig(2560, 1440, 60, 20_000), custom.streamConfig(custom = RemoteStreamCustom(1440, 60)))
+        assertEquals(StreamConfig(3840, 2160, 120, 70_000), custom.streamConfig(custom = RemoteStreamCustom(2160, 120)))
+        // Larger than the computer's screen: capped to it, and the bitrate follows the capped size.
+        assertEquals(StreamConfig(1920, 1080, 60, 10_000), custom.streamConfig(1920, 1080, RemoteStreamCustom(2160, 60)))
+        assertEquals(StreamConfig(3840, 2160, 60, 40_000), custom.streamConfig(null, null, RemoteStreamCustom(2160, 60)))
+        assertEquals(RemoteStreamCustom(), RemoteStreamCustom.of(1000, 30))
+        assertEquals(RemoteStreamCustom(1440, 90), RemoteStreamCustom.of(1440, 90))
+    }
     @Test fun skipAndDisabledHostNeverProbeSunshineOrProduceFallback(): Unit = runBlocking {
         var calls = 0
         for ((enabled, request) in listOf(true to RemoteStreamRequest(skip = true), false to RemoteStreamRequest(),

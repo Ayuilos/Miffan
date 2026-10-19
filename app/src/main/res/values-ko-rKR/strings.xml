@@ -2345,6 +2345,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_quality_saver">데이터 절약</string>
   <string name="workspace_screen_quality_balanced">균형</string>
   <string name="workspace_screen_quality_best">가장 선명하게</string>
+  <string name="workspace_screen_quality_custom">사용자 지정</string>
+  <string name="workspace_screen_quality_custom_title">사용자 지정 화질</string>
+  <string name="workspace_screen_quality_custom_resolution">해상도</string>
+  <string name="workspace_screen_quality_custom_fps">프레임 레이트(fps)</string>
+  <string name="workspace_screen_quality_custom_hint">고성능 모드에서만 적용됩니다. 시간당 최대 약 %1$s GB이며, 컴퓨터 화면보다 큰 해상도는 화면 크기에 맞게 낮춰집니다.</string>
   <string name="workspace_screen_quality_fps">최대 %1$d fps</string>
   <string name="workspace_screen_quality_server">화면은 컴퓨터가 결정합니다(RDP)</string>
   <string name="workspace_screen_audio">소리</string>

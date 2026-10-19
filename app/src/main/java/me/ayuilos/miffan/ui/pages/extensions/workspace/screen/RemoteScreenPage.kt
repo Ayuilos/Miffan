@@ -115,6 +115,7 @@ internal fun RemoteScreenScaffold(
     val partnerWaiting by vm.partnerWaiting.collectAsStateWithLifecycle()
     val bytes by vm.bytesReceived.collectAsStateWithLifecycle()
     val quality by vm.quality.collectAsStateWithLifecycle()
+    val custom by vm.custom.collectAsStateWithLifecycle()
     val info by vm.connectionInfo.collectAsStateWithLifecycle()
     val audio by vm.audio.collectAsStateWithLifecycle()
     val platform by vm.platform.collectAsStateWithLifecycle()
@@ -124,6 +125,7 @@ internal fun RemoteScreenScaffold(
     var keyboard by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
+    var customDialog by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable { mutableStateOf(false) }
@@ -176,7 +178,7 @@ internal fun RemoteScreenScaffold(
                         withDismissAction = true, duration = SnackbarDuration.Long)
                     is RemoteScreenNotice.StreamOnMeteredNetwork -> snackbar.showSnackbar(
                         resources.getString(R.string.workspace_screen_stream_metered,
-                            remoteScreenQualityLabel(resources, notice.quality), remoteStreamGigabytesPerHour(notice.quality)),
+                            remoteScreenQualityLabel(resources, notice.quality), remoteStreamGigabytesPerHour(notice.quality, notice.custom)),
                         withDismissAction = true, duration = SnackbarDuration.Long)
                     is RemoteScreenNotice.StreamFallback -> {
                         val reason = notice.fallback.reason
@@ -264,12 +266,15 @@ internal fun RemoteScreenScaffold(
                                     text = {
                                         Column {
                                             Text(remoteScreenQualityLabel(resources, level))
-                                            Text(remoteScreenQualityDetail(resources, level, protocol), style = MaterialTheme.typography.bodySmall,
+                                            Text(remoteScreenQualityDetail(resources, level, protocol, custom), style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     },
                                     trailingIcon = { if (quality == level) Text("✓") },
-                                    onClick = { vm.setQuality(level); menu = false })
+                                    onClick = {
+                                        menu = false
+                                        if (level == RemoteScreenQuality.CUSTOM) customDialog = true else vm.setQuality(level)
+                                    })
                             }
                             HorizontalDivider()
                             audio?.let { on ->
@@ -338,6 +343,8 @@ internal fun RemoteScreenScaffold(
     }
     info?.takeIf { details }?.let { RemoteConnectionDetailsDialog(it, bytes, onDismiss = { details = false }) }
     if (help) RemoteScreenGestureHelp(trackpad = trackpad, macOS = macOS, onDismiss = { help = false })
+    if (customDialog) RemoteStreamCustomDialog(custom, onConfirm = { customDialog = false; vm.setCustom(it) },
+        onDismiss = { customDialog = false })
 }
 
 /** Fallbacks the user can fix from the computer's screen settings (pairing, encryption, Sunshine itself). */

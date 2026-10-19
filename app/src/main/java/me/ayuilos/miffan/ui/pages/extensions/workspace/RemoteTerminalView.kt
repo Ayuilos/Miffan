@@ -5,7 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Typeface
+import android.graphics.Paint
 import android.util.Log
 import android.view.GestureDetector
 import android.view.KeyCharacterMap
@@ -70,6 +70,8 @@ internal class RemoteTerminalScreen {
             Log.e(tag, message, e).let { Unit }
         override fun logStackTrace(tag: String, e: Exception) = Log.e(tag, "Terminal error", e).let { Unit }
     }
+    init { TerminalStyle.installColorScheme() }
+
     var emulator = TerminalEmulator(output, 80, 24, 2_000, sessionClient)
         private set
 
@@ -86,10 +88,22 @@ internal class RemoteTerminalScreen {
 
 /** A view can reattach to the same emulator after navigation or configuration changes. */
 internal class RemoteTerminalView(context: Context) : View(context) {
-    private val renderer = TerminalRenderer(
-        (13f * resources.displayMetrics.scaledDensity).roundToInt().coerceAtLeast(12),
-        Typeface.MONOSPACE,
-    )
+    private val textSizePx = (TerminalStyle.textSize.value * resources.displayMetrics.scaledDensity)
+        .roundToInt().coerceAtLeast(12)
+    private val renderer = TerminalRenderer(textSizePx, TerminalStyle.typeface(context))
+    private val composingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = TerminalStyle.typeface(context)
+        textSize = textSizePx.toFloat()
+    }
+
+    /** IME text not yet committed (e.g. pinyin), drawn at the cursor because the shell never sees it. */
+    private var composingText: String? = null
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
     var screen = RemoteTerminalScreen()
         set(value) {
             field.detach(this)
@@ -138,7 +152,7 @@ internal class RemoteTerminalView(context: Context) : View(context) {
         screen.attach(this)
         isFocusable = true
         isFocusableInTouchMode = true
-        setBackgroundColor(Color.BLACK)
+        setBackgroundColor(TerminalStyle.BACKGROUND)
     }
 
     fun appendOutput(bytes: ByteArray, count: Int = bytes.size) {
@@ -198,8 +212,22 @@ internal class RemoteTerminalView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas.drawColor(Color.BLACK)
+        canvas.drawColor(TerminalStyle.BACKGROUND)
         renderer.render(emulator, canvas, topRow, -1, -1, -1, -1)
+        composingText?.takeIf { it.isNotEmpty() }?.let { drawComposingText(canvas, it) }
+    }
+
+    private fun drawComposingText(canvas: Canvas, text: String) {
+        val lineHeight = renderer.fontLineSpacing.toFloat()
+        val textWidth = composingPaint.measureText(text)
+        val left = (emulator.cursorCol * renderer.fontWidth).coerceAtMost((width - textWidth).coerceAtLeast(0f))
+        val top = (emulator.cursorRow - topRow) * lineHeight
+        if (top < 0 || top >= height) return
+        composingPaint.color = Color.rgb(46, 50, 58)
+        canvas.drawRect(left, top, left + textWidth, top + lineHeight, composingPaint)
+        composingPaint.color = TerminalStyle.FOREGROUND
+        canvas.drawText(text, left, top + lineHeight - composingPaint.descent(), composingPaint)
+        canvas.drawRect(left, top + lineHeight - 2f, left + textWidth, top + lineHeight, composingPaint)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -222,11 +250,14 @@ internal class RemoteTerminalView(context: Context) : View(context) {
     override fun onCheckIsTextEditor(): Boolean = true
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NONE
+        // A password variation makes many IMEs (ColorOS included) switch to an ASCII-only secure
+        // keyboard, so CJK input would be impossible. Plain text without suggestions keeps the
+        // user's own keyboard; composing text is tracked below and committed to the shell.
+        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN or
+            EditorInfo.IME_ACTION_NONE
+        composingText = null
         return object : BaseInputConnection(this, false) {
-            private var composingText: String? = null
             private var composingCursor = 0
 
             override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {

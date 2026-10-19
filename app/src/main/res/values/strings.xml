@@ -2386,6 +2386,11 @@
   <string name="workspace_screen_quality_saver" tools:ignore="MissingTranslation">Data saver</string>
   <string name="workspace_screen_quality_balanced" tools:ignore="MissingTranslation">Balanced</string>
   <string name="workspace_screen_quality_best" tools:ignore="MissingTranslation">Sharpest</string>
+  <string name="workspace_screen_quality_custom" tools:ignore="MissingTranslation">Custom</string>
+  <string name="workspace_screen_quality_custom_title" tools:ignore="MissingTranslation">Custom picture</string>
+  <string name="workspace_screen_quality_custom_resolution" tools:ignore="MissingTranslation">Resolution</string>
+  <string name="workspace_screen_quality_custom_fps" tools:ignore="MissingTranslation">Frame rate (fps)</string>
+  <string name="workspace_screen_quality_custom_hint" tools:ignore="MissingTranslation">High-performance mode only. Up to about %1$s GB per hour; a size larger than the computer\'s screen is lowered to fit it.</string>
   <string name="workspace_screen_quality_fps" tools:ignore="MissingTranslation">Up to %1$d fps</string>
   <string name="workspace_screen_quality_server" tools:ignore="MissingTranslation">Picture set by the computer (RDP)</string>
   <string name="workspace_screen_audio" tools:ignore="MissingTranslation">Sound</string>

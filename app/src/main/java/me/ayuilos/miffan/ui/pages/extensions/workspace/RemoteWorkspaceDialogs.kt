@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,10 +45,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import me.ayuilos.miffan.data.db.entity.RemoteAddressNetwork
+import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.remoteAddressNetwork
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.repository.RemoteHostRuntimeState
@@ -55,7 +60,12 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteHostScreenSe
 import org.koin.androidx.compose.koinViewModel
 import me.ayuilos.miffan.ui.components.ai.workspaceKindIcon
 import me.rerere.hugeicons.HugeIcons
+import me.ayuilos.miffan.ui.im.computer.TailscaleLogo
+import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Delete02
+import me.rerere.hugeicons.stroke.Globe02
 import me.rerere.hugeicons.stroke.MoreVertical
+import me.rerere.hugeicons.stroke.Wifi01
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
 
@@ -105,7 +115,7 @@ internal fun RemoteHostCard(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(host.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                "${host.username}@${host.host}:${host.port}",
+                host.connectionSummary(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -144,6 +154,8 @@ internal fun RemoteHostEditorDialog(
     onManageKeys: () -> Unit,
     onCreate: (String, String, Int, String, RemoteAuthentication?, String?, (Result<RemoteHostEntity>) -> Unit) -> Unit,
     onUpdate: (String, String, String, Int, String, RemoteAuthentication?, String?, (Result<Boolean>) -> Unit) -> Unit,
+    onAddAddress: (RemoteHostEntity, String, (Result<Boolean>) -> Unit) -> Unit,
+    onRemoveAddress: (RemoteHostEntity, RemoteHostAddress, (Result<Boolean>) -> Unit) -> Unit,
 ) {
     val workspaceStrings = LocalResources.current
     val name = draft.name
@@ -166,7 +178,8 @@ internal fun RemoteHostEditorDialog(
         HostAuthMode.SAVED_KEY -> selectedKeyId != null && sshKeys.any { it.id == selectedKeyId } && keyMaterialStatus[selectedKeyId] == true
         HostAuthMode.PASSWORD, HostAuthMode.PASTED_KEY -> credential.isNotBlank() || (host != null && !changedAuthentication)
     }
-    val valid = name.isNotBlank() && hostname.isNotBlank() && username.isNotBlank() && validPort != null &&
+    // A saved host's addresses are edited in place below, so only a new host needs one typed here.
+    val valid = name.isNotBlank() && (host != null || hostname.isNotBlank() && validPort != null) && username.isNotBlank() &&
         authValid
 
     AlertDialog(
@@ -177,10 +190,19 @@ internal fun RemoteHostEditorDialog(
                 modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(stringResource(R.string.workspace_host_address_help), style = MaterialTheme.typography.bodySmall)
+                if (host == null) Text(stringResource(R.string.workspace_host_address_help), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(name, { onDraftChange(draft.copy(name = it)); error = null }, label = { Text(stringResource(R.string.workspace_display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(hostname, { onDraftChange(draft.copy(hostname = it)); error = null }, label = { Text(stringResource(R.string.workspace_host_address)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(port, { onDraftChange(draft.copy(port = it)); error = null }, label = { Text(stringResource(R.string.workspace_ssh_port)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), isError = port.isNotBlank() && validPort == null)
+                if (host == null) {
+                    OutlinedTextField(hostname, { onDraftChange(draft.copy(hostname = it)); error = null }, label = { Text(stringResource(R.string.workspace_host_address)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(port, { onDraftChange(draft.copy(port = it)); error = null }, label = { Text(stringResource(R.string.workspace_ssh_port)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), isError = port.isNotBlank() && validPort == null)
+                } else {
+                    RemoteHostAddressList(
+                        host = host,
+                        enabled = !submitting,
+                        onAdd = { input, callback -> onAddAddress(host, input, callback) },
+                        onRemove = { address, callback -> onRemoveAddress(host, address, callback) },
+                    )
+                }
                 OutlinedTextField(username, { onDraftChange(draft.copy(username = it)); error = null }, label = { Text(stringResource(R.string.search_detail_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 RemoteHostAuthSelector(mode = authMode, onModeChange = {
                     if (it != authMode) {
@@ -221,7 +243,7 @@ internal fun RemoteHostEditorDialog(
         },
         confirmButton = {
             TextButton(enabled = valid && !submitting, onClick = {
-                val parsedPort = validPort ?: return@TextButton
+                val parsedPort = if (host != null) host.port else validPort ?: return@TextButton
                 submitting = true
                 val authentication = credential.takeIf { it.isNotBlank() }?.let {
                     if (authMode == HostAuthMode.PASSWORD) RemoteAuthentication.Password(it)
@@ -235,7 +257,7 @@ internal fun RemoteHostEditorDialog(
                         result.fold(onSuccess = { onDismiss() }, onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_save_failed) })
                     }
                 } else {
-                    onUpdate(host.id, name.trim(), hostname.trim(), parsedPort, username.trim(), authentication, sshKeyId) { result ->
+                    onUpdate(host.id, name.trim(), host.host, parsedPort, username.trim(), authentication, sshKeyId) { result ->
                         if (!active) return@onUpdate
                         submitting = false
                         result.fold(
@@ -248,6 +270,114 @@ internal fun RemoteHostEditorDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) } },
     )
+}
+
+/** Every address a saved host answers at; Miffan tries the last one that worked first. Changes apply at once. */
+@Composable
+private fun RemoteHostAddressList(
+    host: RemoteHostEntity,
+    enabled: Boolean,
+    onAdd: (String, (Result<Boolean>) -> Unit) -> Unit,
+    onRemove: (RemoteHostAddress, (Result<Boolean>) -> Unit) -> Unit,
+) {
+    val workspaceStrings = LocalResources.current
+    var adding by remember(host.id) { mutableStateOf(false) }
+    var input by remember(host.id) { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember(host.id) { mutableStateOf<String?>(null) }
+    val editable = enabled && !busy
+    fun finish(result: Result<Boolean>, onSuccess: () -> Unit = {}) {
+        busy = false
+        result.fold(
+            onSuccess = { if (it) onSuccess() else error = workspaceStrings.getString(R.string.workspace_update_host_failed) },
+            onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_save_failed) },
+        )
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(stringResource(R.string.im_computer_connection_ways), style = MaterialTheme.typography.titleSmall)
+        val addresses = host.addresses
+        addresses.forEach { address ->
+            RemoteHostAddressRow(
+                address = address,
+                lastUsed = addresses.size > 1 && address == host.lastAddress,
+                removable = addresses.size > 1,
+                enabled = editable,
+                onRemove = {
+                    busy = true; error = null
+                    onRemove(address) { finish(it) }
+                },
+            )
+        }
+        if (adding) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedTextField(
+                    input,
+                    { input = it; error = null },
+                    label = { Text(stringResource(R.string.im_computer_address)) },
+                    placeholder = { Text(stringResource(R.string.im_computer_address_placeholder), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    enabled = editable,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(enabled = editable && input.isNotBlank(), onClick = {
+                    busy = true; error = null
+                    onAdd(input) { result -> finish(result) { input = ""; adding = false } }
+                }) { Text(stringResource(R.string.im_computer_add_address)) }
+            }
+        } else {
+            TextButton(onClick = { adding = true }, enabled = editable) {
+                Icon(HugeIcons.Add01, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(stringResource(R.string.im_computer_add_address), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        Text(
+            stringResource(R.string.im_computer_addresses_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun RemoteHostAddressRow(
+    address: RemoteHostAddress,
+    lastUsed: Boolean,
+    removable: Boolean,
+    enabled: Boolean,
+    onRemove: () -> Unit,
+) {
+    val (icon, network) = when (remoteAddressNetwork(address.host)) {
+        RemoteAddressNetwork.LOCAL -> HugeIcons.Wifi01 to stringResource(R.string.im_computer_address_local)
+        RemoteAddressNetwork.TAILSCALE -> TailscaleLogo to "Tailscale"
+        RemoteAddressNetwork.OTHER -> HugeIcons.Globe02 to stringResource(R.string.im_computer_address_other)
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(modifier = Modifier.weight(1f)) {
+            Text("${address.host}:${address.port}", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (lastUsed) "$network · ${stringResource(R.string.im_computer_address_last_used)}" else network,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (lastUsed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (removable) IconButton(onClick = onRemove, enabled = enabled) {
+            Icon(HugeIcons.Delete02, contentDescription = stringResource(R.string.im_computer_remove_address), modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/** The address Miffan tries first (the last one that worked), plus how many more it can fall back to. */
+internal fun RemoteHostEntity.connectionSummary(): String {
+    val first = lastAddress ?: addresses.first()
+    val more = addresses.size - 1
+    return "$username@${first.host}:${first.port}" + if (more > 0) " +$more" else ""
 }
 
 internal enum class HostAuthMode(@androidx.annotation.StringRes val labelRes: Int) {
@@ -346,7 +476,7 @@ internal fun RemoteHostVerificationDialog(
         title = { Text(stringResource(R.string.workspace_confirm_host_identity)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("${host.username}@${host.host}:${host.port}")
+                Text(host.connectionSummary())
                 Text(stringResource(R.string.workspace_verify_host_fingerprint_help), style = MaterialTheme.typography.bodySmall)
                 key?.let {
                     Text(it.algorithm, style = MaterialTheme.typography.labelSmall)
@@ -476,7 +606,7 @@ internal fun RemoteWorkspaceDialog(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(host.name, style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    "${host.username}@${host.host}:${host.port}",
+                                    host.connectionSummary(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
