@@ -2698,6 +2698,9 @@
   <string name="im_computer_change">更改</string>
   <string name="im_computer_delete_forget">同時讓電腦忘掉 Miffan</string>
   <string name="im_computer_delete_forget_help">刪除電腦上的 Miffan 鑰匙、高畫質模式配對和小工具後，這支手機就無法再連上它。電腦上的其他內容都不受影響。</string>
+  <string name="im_computer_delete_work_files">同時刪除夥伴留在電腦上的檔案</string>
+  <string name="im_computer_delete_work_files_help">對話裡產生的檔案和裝在電腦上的技能，在 %1$s 裡。不刪的話會一直留在電腦上。</string>
+  <string name="im_computer_delete_work_files_help_size">對話裡產生的檔案和裝在電腦上的技能，共 %1$s，在 %2$s 裡。不刪的話會一直留在電腦上。</string>
   <string name="im_computer_delete_shared">「%1$s」是同一台電腦、同一個帳號，還保留在 Miffan 裡，所以電腦上的鑰匙會保留。</string>
   <string name="im_computer_delete_offline_title">現在連不上電腦</string>
   <string name="im_computer_delete_offline">現在無法刪除電腦上的 Miffan 鑰匙。可以先只從手機上刪除，等電腦開著時，在它的終端機裡執行這一行：</string>
@@ -3126,6 +3129,7 @@
   <string name="remote_task_test_run_option_help">能馬上看出它能不能用。不勾的話，等到設定的時間才第一次執行。</string>
   <string name="remote_task_note_sync">之後的結果會在你打開 Miffan 時同步過來，不會即時提醒。</string>
   <string name="remote_task_note_billing">費用記在這台電腦上登入 %1$s 的帳號。</string>
+  <string name="remote_task_note_billing_custom">費用記在 %1$s 在這台電腦上使用的帳號上。</string>
   <string name="remote_task_note_run_now">會馬上在電腦上執行一次。</string>
   <string name="agent_tool_card_add">%1$s 想添加一個 Agent 工具</string>
   <string name="agent_tool_card_change">%1$s 想修改 Agent 工具「%2$s」</string>
@@ -3183,6 +3187,7 @@
   <string name="remote_task_timer_missing">沒在執行</string>
   <string name="remote_task_delete_removed">電腦上的 %1$d 個排程任務也會一起刪除。</string>
   <string name="remote_task_delete_kept">電腦上的 %1$d 個排程任務會繼續執行，重新新增這台電腦後還能看到。</string>
+  <string name="remote_task_delete_others_kept">其他手機安排的 %1$d 個排程任務會繼續執行。</string>
   <string name="remote_task_action_failed">沒能在電腦上完成這個操作</string>
   <string name="remote_task_enabled">按時執行</string>
   <string name="remote_task_timer_missing_help">電腦上這個任務的計時器不見了，所以不會執行。關掉再打開可以恢復。</string>

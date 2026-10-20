@@ -2703,6 +2703,9 @@
   <string name="im_computer_change">Изменить</string>
   <string name="im_computer_delete_forget">Пусть компьютер тоже забудет Miffan</string>
   <string name="im_computer_delete_forget_help">Ключ, сопряжение в режиме HD и вспомогательная программа Miffan будут удалены с компьютера, и этот телефон больше не сможет подключиться к нему. Всё остальное на компьютере останется без изменений.</string>
+  <string name="im_computer_delete_work_files">Также удалить файлы, которые партнёры оставили на компьютере</string>
+  <string name="im_computer_delete_work_files_help">Файлы из чатов и установленные навыки в %1$s. Если их не удалить, они останутся на компьютере.</string>
+  <string name="im_computer_delete_work_files_help_size">Файлы из чатов и установленные навыки, %1$s, в %2$s. Если их не удалить, они останутся на компьютере.</string>
   <string name="im_computer_delete_shared">«%1$s» использует тот же компьютер и ту же учётную запись и остаётся в Miffan, поэтому ключ на компьютере сохранится.</string>
   <string name="im_computer_delete_offline_title">Не удаётся подключиться к компьютеру</string>
   <string name="im_computer_delete_offline">Сейчас не удаётся удалить ключ Miffan с компьютера. Можно удалить компьютер только с телефона, а позже выполнить эту строку в терминале компьютера:</string>
@@ -3146,6 +3149,7 @@
   <string name="remote_task_test_run_option_help">Так сразу видно, работает ли задача. Если выключить, первый запуск будет по расписанию.</string>
   <string name="remote_task_note_sync">Результаты появятся при открытии Miffan, а не в момент завершения.</string>
   <string name="remote_task_note_billing">Оплата списывается с аккаунта, под которым %1$s вошёл на этом компьютере.</string>
+  <string name="remote_task_note_billing_custom">Оплата списывается с аккаунта, который %1$s использует на этом компьютере.</string>
   <string name="remote_task_note_run_now">Сразу запустится на компьютере.</string>
   <string name="agent_tool_card_add">%1$s хочет добавить инструмент агентов</string>
   <string name="agent_tool_card_change">%1$s хочет изменить инструмент агентов «%2$s»</string>
@@ -3203,6 +3207,7 @@
   <string name="remote_task_timer_missing">Не запланировано</string>
   <string name="remote_task_delete_removed">Запланированные задачи на компьютере (%1$d) тоже будут удалены.</string>
   <string name="remote_task_delete_kept">Запланированные задачи на компьютере (%1$d) продолжат работать. Чтобы увидеть их, добавьте этот компьютер снова.</string>
+  <string name="remote_task_delete_others_kept">Задачи, настроенные с других телефонов (%1$d), продолжат работать.</string>
   <string name="remote_task_action_failed">Не удалось выполнить это на компьютере</string>
   <string name="remote_task_enabled">Запускать по расписанию</string>
   <string name="remote_task_timer_missing_help">Таймер этой задачи на компьютере отсутствует, поэтому она не запустится. Выключите и снова включите её, чтобы восстановить.</string>

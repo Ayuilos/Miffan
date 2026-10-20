@@ -1,22 +1,34 @@
 package me.ayuilos.miffan.data.ai.computer
 
 import me.rerere.workspace.RemotePlatform
+import me.rerere.workspace.WindowsRemotePath
+import me.ayuilos.miffan.data.remotetask.sshKeyFingerprint
 
-/** The same single-line command is used over SSH and for offline manual cleanup. */
-fun revokeMiffanKeyCommand(publicKey: String, platform: RemotePlatform): String {
+/**
+ * The same single-line command is used over SSH and for offline manual cleanup. Partners' files
+ * (`.miffan/conversations` and `.miffan/skills` in the workspace folder) are the user's data: they
+ * are kept unless [workFilesRoot], that folder in the workspace's SFTP form, says to delete them.
+ */
+fun revokeMiffanKeyCommand(publicKey: String, platform: RemotePlatform, workFilesRoot: String? = null): String {
     require(publicKey.none { it == '\n' || it == '\r' || it == '\u0000' }) { "Expected one public key" }
     val fields = publicKey.trim().split(Regex("\\s+"), limit = 3)
     require(fields.size >= 2 && fields[0].matches(Regex("(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521))")) &&
         fields[1].matches(Regex("[A-Za-z0-9+/]+={0,2}"))) { "Invalid SSH public key" }
+    require(workFilesRoot == null || workFilesRoot.startsWith('/') && workFilesRoot.none { it == '\n' || it == '\r' || it == '\u0000' }) {
+        "Expected an absolute workspace folder"
+    }
     return when (platform) {
-        RemotePlatform.POSIX -> posixRevoke(fields[0], fields[1])
-        RemotePlatform.WINDOWS -> windowsRevoke(fields[0], fields[1])
+        RemotePlatform.POSIX -> posixRevoke(fields[0], fields[1], sshKeyFingerprint(publicKey), workFilesRoot)
+        RemotePlatform.WINDOWS -> windowsRevoke(fields[0], fields[1], workFilesRoot?.let(WindowsRemotePath::toLocal))
     }
 }
 
+/** Partners' files inside a workspace's `.miffan`; everything else there belongs to the helper. */
+internal val WORK_FILE_FOLDERS = listOf("conversations", "skills")
+
 private fun shellQuote(text: String) = "'" + text.replace("'", "'\\''") + "'"
 
-private fun posixRevoke(type: String, key: String): String {
+private fun posixRevoke(type: String, key: String, fingerprint: String, workFilesRoot: String?): String {
     // Tokenize an optional authorized_keys options field, including quoted spaces/escapes.
     val filter = """
         function matches(s, a) { split(s, a, /[ \t\r]+/); return a[1] == kt && a[2] == kb }
@@ -35,15 +47,43 @@ private fun posixRevoke(type: String, key: String): String {
         }
         END { if (kept) { printf "%s", previous; if (lastKept < NR || finalNewline) printf "\n" } }
     """.trimIndent().replace('\n', ' ')
+    val removeWorkFiles = workFilesRoot?.let { root ->
+        val folder = shellQuote("$root/.miffan")
+        WORK_FILE_FOLDERS.joinToString(" ", prefix = "rm -rf ", postfix = "; ") { "$folder/$it" } + "rmdir $folder 2>/dev/null || :;"
+    }.orEmpty()
+    // ~/.miffan is the helper's, but in a workspace rooted at home it also holds partners' files.
     val script = """
         set -eu;
         if [ -f "${'$'}HOME/.miffan/bin/miffan" ]; then sh "${'$'}HOME/.miffan/bin/miffan" vnc stop >/dev/null; fi;
-        if [ -f "${'$'}HOME/.miffan/bin/miffan-task-runner" ]; then sh "${'$'}HOME/.miffan/bin/miffan-task-runner" task remove --all >/dev/null 2>&1 || :; fi;
+        r="${'$'}HOME/.miffan/bin/miffan-task-runner";
+        if [ -f "${'$'}r" ]; then
+            for m in "${'$'}HOME/.miffan/tasks"/*/meta.json; do
+                [ -f "${'$'}m" ] || continue;
+                if grep -q '"sshKey":"' "${'$'}m" && ! grep -qF ${shellQuote("\"sshKey\":\"$fingerprint\"")} "${'$'}m"; then continue; fi;
+                id=${'$'}{m%/meta.json}; sh "${'$'}r" task remove "${'$'}{id##*/}" >/dev/null 2>&1 || :;
+            done;
+        fi;
+        others=0; for t in "${'$'}HOME/.miffan/tasks"/*/; do if [ -d "${'$'}t" ]; then others=1; break; fi; done;
         if [ -f "${'$'}HOME/.miffan/rdp/krdp.owner" ] && command -v systemctl >/dev/null 2>&1; then
             state=${'$'}(systemctl --user show miffan-rdp-kde.service -p LoadState --value);
             if [ "${'$'}state" = loaded ]; then systemctl --user stop miffan-rdp-kde.service; fi;
         fi;
-        rm -rf "${'$'}HOME/.miffan";
+        $removeWorkFiles
+        d="${'$'}HOME/.miffan";
+        if [ -L "${'$'}d" ]; then rm -f "${'$'}d";
+        elif [ -d "${'$'}d" ]; then
+            for e in "${'$'}d"/* "${'$'}d"/.[!.]* "${'$'}d"/..?*; do
+                case "${'$'}{e##*/}" in ${WORK_FILE_FOLDERS.joinToString("|")}) continue ;; esac;
+                if [ "${'$'}others" = 1 ]; then
+                    case "${'$'}{e##*/}" in
+                        tasks) continue ;;
+                        bin) find "${'$'}e" -mindepth 1 -maxdepth 1 ! -name miffan-task-runner -exec rm -rf {} +; continue ;;
+                    esac;
+                fi;
+                if [ -e "${'$'}e" ] || [ -L "${'$'}e" ]; then rm -rf "${'$'}e"; fi;
+            done;
+            rmdir "${'$'}d" 2>/dev/null || :;
+        fi;
         f="${'$'}HOME/.ssh/authorized_keys";
         if [ -L "${'$'}HOME/.ssh" ] || [ -L "${'$'}f" ]; then echo 'Linked authorized_keys needs manual cleanup' >&2; exit 1; fi;
         if [ -f "${'$'}f" ]; then
@@ -60,7 +100,7 @@ private fun posixRevoke(type: String, key: String): String {
     return "sh -c ${shellQuote(script)}"
 }
 
-private fun windowsRevoke(type: String, key: String): String {
+private fun windowsRevoke(type: String, key: String, workFilesRoot: String?): String {
     val pattern = windowsMiffanKeyPattern(type, key)
     val script = """
         & {
@@ -109,6 +149,7 @@ private fun windowsRevoke(type: String, key: String): String {
                     if (${'$'}owned) { Stop-ScheduledTask -InputObject ${'$'}task; Unregister-ScheduledTask -InputObject ${'$'}task -Confirm:${'$'}false }
                 };
                 if (Test-Path -LiteralPath ${'$'}root) { Remove-Item -LiteralPath ${'$'}root -Recurse -Force };
+                ${workFilesRoot?.let { windowsWorkFilesRemoval(it) }.orEmpty()}
                 foreach (${'$'}file in ${'$'}files) {
                     ${'$'}file.stream.Position = 0; ${'$'}file.stream.Write(${'$'}file.bytes, 0, ${'$'}file.bytes.Length); ${'$'}file.stream.SetLength(${'$'}file.bytes.Length); ${'$'}file.stream.Flush()
                 }
@@ -116,6 +157,18 @@ private fun windowsRevoke(type: String, key: String): String {
         }
     """.trimIndent().replace('\n', ' ')
     return script
+}
+
+private fun windowsWorkFilesRemoval(root: String): String {
+    val folders = WORK_FILE_FOLDERS.joinToString(", ") { "'$it'" }
+    return """
+        ${'$'}work = Join-Path '${root.replace("'", "''")}' '.miffan';
+        if (Test-Path -LiteralPath ${'$'}work) {
+            if ((Get-Item -Force -LiteralPath ${'$'}work).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked work folder needs manual cleanup' };
+            foreach (${'$'}name in @($folders)) { ${'$'}p = Join-Path ${'$'}work ${'$'}name; if (Test-Path -LiteralPath ${'$'}p) { Remove-Item -LiteralPath ${'$'}p -Recurse -Force } };
+            if (-not (Get-ChildItem -Force -LiteralPath ${'$'}work)) { Remove-Item -LiteralPath ${'$'}work -Force }
+        };
+    """.trimIndent().replace('\n', ' ')
 }
 
 /** .NET and JVM compatible regex; only a full key token matches, never a comment. */

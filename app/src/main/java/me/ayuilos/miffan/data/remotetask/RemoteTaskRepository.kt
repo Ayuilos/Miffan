@@ -92,6 +92,14 @@ class RemoteTaskRepository(
     suspend fun isSupported(hostId: String): Boolean =
         hostDao.getById(hostId)?.let { RemotePlatform.parse(it.platform) != RemotePlatform.WINDOWS } == true
 
+    /** This phone's Miffan key for the computer, as tasks record it; null when it signs in another way. */
+    suspend fun keyFingerprint(hostId: String): String? =
+        hostDao.getById(hostId)?.sshKeyId?.let { workspaces.getSshKeyById(it) }?.publicKey?.let(::sshKeyFingerprint)
+
+    /** Whether forgetting Miffan with the key [fingerprint] removes [task] (see [RemoteTaskMeta.sshKey]). */
+    fun removedWithKey(task: RemoteTaskEntity, fingerprint: String): Boolean =
+        decodeMeta(task)?.sshKey.let { it == null || it == fingerprint }
+
     fun decodeMeta(task: RemoteTaskEntity): RemoteTaskMeta? =
         task.metaJson?.let { runCatching { json.decodeFromString(RemoteTaskMeta.serializer(), it) }.getOrNull() }
 
@@ -155,13 +163,16 @@ class RemoteTaskRepository(
         val tool = draft.agentToolId?.let { id ->
             requireNotNull(settingsStore.settingsFlow.value.allAgentTools().find { it.id == id }) { "Unknown agent tool" }
         }
-        val created = draft.taskId?.let { dao.task(hostId, it) }?.let(::decodeMeta)?.createdAt ?: System.currentTimeMillis()
+        val stored = draft.taskId?.let { dao.task(hostId, it) }?.let(::decodeMeta)
+        val created = stored?.createdAt ?: System.currentTimeMillis()
+        // A task stays with the phone that made it, even when another phone edits it.
+        val sshKey = stored?.sshKey ?: keyFingerprint(hostId)
         val list = withClient(hostId) { client ->
             val (meta, rendered) = when (draft.kind) {
                 TaskKind.COMMAND -> {
                     val command = requireNotNull(draft.command) { "Command is empty" }
                     val meta = RemoteTaskMeta(name = draft.name, kind = draft.kind, command = command, cwd = cwd,
-                        notify = draft.notify, owner = draft.owner, createdAt = created)
+                        notify = draft.notify, owner = draft.owner, sshKey = sshKey, createdAt = created)
                     meta to RemoteTaskScript.renderCommand(command, cwd, fallbackPath = null, env = meta.env)
                 }
                 TaskKind.AGENT -> {
@@ -172,7 +183,7 @@ class RemoteTaskRepository(
                     val meta = RemoteTaskMeta(name = draft.name, kind = draft.kind, cwd = cwd, prompt = prompt,
                         agent = RemoteTaskMeta.AgentRef(tool.id, tool.name, draft.permission, tool.extraction),
                         env = (DEFAULT_TASK_ENV + tool.extraEnv).distinct(),
-                        notify = draft.notify, owner = draft.owner, createdAt = created)
+                        notify = draft.notify, owner = draft.owner, sshKey = sshKey, createdAt = created)
                     meta to RemoteTaskScript.renderAgent(tool, draft.permission, prompt, cwd, path, executable.pathEnv)
                 }
             }

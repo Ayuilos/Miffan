@@ -2744,6 +2744,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_change">更改</string>
   <string name="im_computer_delete_forget">同时让电脑忘掉 Miffan</string>
   <string name="im_computer_delete_forget_help">删掉电脑上的 Miffan 钥匙、高清模式配对和小工具，这部手机就再也连不上它。电脑上的其他文件不受影响。</string>
+  <string name="im_computer_delete_work_files">同时删除伙伴留在电脑上的文件</string>
+  <string name="im_computer_delete_work_files_help">对话里生成的文件和装在电脑上的技能，在 %1$s 里。不删的话会一直留在电脑上。</string>
+  <string name="im_computer_delete_work_files_help_size">对话里生成的文件和装在电脑上的技能，共 %1$s，在 %2$s 里。不删的话会一直留在电脑上。</string>
   <string name="im_computer_delete_shared">「%1$s」是同一台电脑、同一个账户，还留在 Miffan 里，所以电脑上的钥匙会保留。</string>
   <string name="im_computer_delete_offline_title">电脑现在连不上</string>
   <string name="im_computer_delete_offline">没法删掉它上面的 Miffan 钥匙。可以先只从手机上删除，等电脑开着时，在它的终端里运行这一行：</string>
@@ -3136,6 +3139,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="remote_task_test_run_option_help">能马上看出它能不能用。不勾的话，等到设定的时间才第一次运行。</string>
   <string name="remote_task_note_sync">之后的结果在你打开 Miffan 时同步过来，不会实时提醒。</string>
   <string name="remote_task_note_billing">费用记在这台电脑上登录 %1$s 的账号。</string>
+  <string name="remote_task_note_billing_custom">费用记在 %1$s 在这台电脑上使用的账号上。</string>
   <string name="remote_task_note_run_now">会马上在电脑上运行一次。</string>
   <string name="agent_tool_card_add">%1$s 想添加一个 Agent 工具</string>
   <string name="agent_tool_card_change">%1$s 想修改 Agent 工具「%2$s」</string>
@@ -3193,6 +3197,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="remote_task_timer_missing">没在运行</string>
   <string name="remote_task_delete_removed">电脑上的 %1$d 个定时任务也会一起删除。</string>
   <string name="remote_task_delete_kept">电脑上的 %1$d 个定时任务会继续运行，重新添加这台电脑后还能看到。</string>
+  <string name="remote_task_delete_others_kept">其他手机安排的 %1$d 个定时任务会继续运行。</string>
   <string name="remote_task_action_failed">没能在电脑上完成这个操作</string>
   <string name="remote_task_enabled">按时运行</string>
   <string name="remote_task_timer_missing_help">电脑上这个任务的定时器不见了，所以不会运行。关掉再打开可以恢复。</string>

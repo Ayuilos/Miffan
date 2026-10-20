@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.ai.computer
 
 import com.jcraft.jsch.JSchChangedHostKeyException
 import java.net.ConnectException
+import me.rerere.workspace.WorkspaceCommandResult
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.rerere.workspace.RemotePlatform
 import io.mockk.coEvery
@@ -287,6 +288,34 @@ class PartnerComputersTest {
             f.repository.delete(workspace(1).id)
             f.repository.deleteHost("host")
         }
+    }
+
+    @Test fun `work files are deleted only when chosen and only with forgetting`() = runTest {
+        val f = Fixture()
+        f.prepareForget()
+        val withFiles = revokeMiffanKeyCommand("ssh-ed25519 AAAA miffan", RemotePlatform.POSIX, "/home/user")
+        coEvery { f.repository.revokeComputerAccess("host", withFiles, "legacy") } returns true
+        assertEquals(ForgetOutcome.FORGOTTEN, f.computers.delete("host", forgetOnComputer = true, deleteWorkFiles = true))
+        coVerify(exactly = 1) { f.repository.revokeComputerAccess("host", withFiles, "legacy") }
+
+        val g = Fixture()
+        g.prepareForget()
+        assertEquals(ForgetOutcome.NOT_NEEDED, g.computers.delete("host", forgetOnComputer = false, deleteWorkFiles = true))
+        coVerify(exactly = 0) { g.repository.revokeComputerAccess(any(), any(), any()) }
+    }
+
+    @Test fun `work files report their size and disappear when there are none`() = runTest {
+        val f = Fixture()
+        f.prepareForget()
+        val du = "du -sk .miffan/conversations .miffan/skills 2>/dev/null"
+        coEvery { f.repository.executeCommand(workspace(1).id, du, any(), any(), any(), any(), any()) } returns
+            WorkspaceCommandResult(exitCode = 1, stdout = "120\t.miffan/conversations\n", stderr = "")
+        assertEquals(ComputerWorkFiles("/home/user/.miffan", 120L * 1024), f.computers.workFiles("host"))
+        coEvery { f.repository.executeCommand(workspace(1).id, du, any(), any(), any(), any(), any()) } returns
+            WorkspaceCommandResult(exitCode = 1, stdout = "", stderr = "")
+        assertNull(f.computers.workFiles("host"))
+        coEvery { f.repository.executeCommand(workspace(1).id, du, any(), any(), any(), any(), any()) } throws ConnectException("refused")
+        assertEquals(ComputerWorkFiles("/home/user/.miffan", null), f.computers.workFiles("host"))
     }
 
     @Test fun `refused key is already gone and allows local deletion`() = runTest {

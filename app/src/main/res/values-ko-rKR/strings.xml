@@ -2700,6 +2700,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_change">변경</string>
   <string name="im_computer_delete_forget">컴퓨터도 Miffan을 잊게 하기</string>
   <string name="im_computer_delete_forget_help">컴퓨터에서 Miffan의 키, HD 모드 페어링, 도우미를 삭제하면 이 휴대폰으로는 더 이상 연결할 수 없어요. 컴퓨터의 다른 파일이나 설정은 그대로예요.</string>
+  <string name="im_computer_delete_work_files">파트너가 컴퓨터에 남긴 파일도 삭제</string>
+  <string name="im_computer_delete_work_files_help">대화에서 만든 파일과 컴퓨터에 설치한 스킬이에요(%1$s). 남겨 두면 컴퓨터에 계속 남아 있어요.</string>
+  <string name="im_computer_delete_work_files_help_size">대화에서 만든 파일과 컴퓨터에 설치한 스킬이에요(%1$s, %2$s). 남겨 두면 컴퓨터에 계속 남아 있어요.</string>
   <string name="im_computer_delete_shared">‘%1$s’도 같은 컴퓨터와 계정을 사용하며 Miffan에 남아 있어요. 그래서 컴퓨터의 키는 유지돼요.</string>
   <string name="im_computer_delete_offline_title">지금은 컴퓨터에 연결할 수 없어요</string>
   <string name="im_computer_delete_offline">지금은 컴퓨터에서 Miffan의 키를 삭제할 수 없어요. 먼저 휴대폰에서만 삭제하고, 나중에 컴퓨터의 터미널에서 이 줄을 실행할 수 있어요:</string>
@@ -3131,6 +3134,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="remote_task_test_run_option_help">제대로 되는지 바로 확인할 수 있어요. 끄면 정해진 시간에 처음 실행돼요.</string>
   <string name="remote_task_note_sync">이후 결과는 Miffan을 열 때 동기화됩니다. 완료되는 순간 알려 주지는 않습니다.</string>
   <string name="remote_task_note_billing">사용 요금은 그 컴퓨터에서 %1$s에 로그인한 계정에 청구됩니다.</string>
+  <string name="remote_task_note_billing_custom">사용 요금은 그 컴퓨터에서 %1$s이(가) 사용하는 계정에 청구됩니다.</string>
   <string name="remote_task_note_run_now">바로 컴퓨터에서 한 번 실행됩니다.</string>
   <string name="agent_tool_card_add">%1$s이(가) 에이전트 도구를 추가하려고 합니다</string>
   <string name="agent_tool_card_change">%1$s이(가) 에이전트 도구 %2$s을(를) 변경하려고 합니다</string>
@@ -3188,6 +3192,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="remote_task_timer_missing">실행되지 않음</string>
   <string name="remote_task_delete_removed">컴퓨터에 있는 예약 작업 %1$d개도 함께 삭제됩니다.</string>
   <string name="remote_task_delete_kept">컴퓨터에 있는 예약 작업 %1$d개는 계속 실행됩니다. 이 컴퓨터를 다시 추가하면 볼 수 있습니다.</string>
+  <string name="remote_task_delete_others_kept">다른 휴대폰에서 설정한 예약 작업 %1$d개는 계속 실행됩니다.</string>
   <string name="remote_task_action_failed">컴퓨터에서 이 작업을 완료하지 못했습니다</string>
   <string name="remote_task_enabled">예약대로 실행</string>
   <string name="remote_task_timer_missing_help">컴퓨터에서 이 작업의 타이머가 없어서 실행되지 않습니다. 껐다가 다시 켜면 복구됩니다.</string>

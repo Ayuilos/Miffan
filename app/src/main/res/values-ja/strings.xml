@@ -2700,6 +2700,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_change">変更</string>
   <string name="im_computer_delete_forget">コンピューターにも Miffan を忘れてもらう</string>
   <string name="im_computer_delete_forget_help">コンピューターから Miffan のキー、HD モードのペアリング、ヘルパーを削除すると、このスマホからは接続できなくなります。それ以外は変更しません。</string>
+  <string name="im_computer_delete_work_files">パートナーがコンピューターに残したファイルも削除</string>
+  <string name="im_computer_delete_work_files_help">チャットで作られたファイルと、コンピューターに入れたスキルです（%1$s）。残すと、コンピューターに置かれたままになります。</string>
+  <string name="im_computer_delete_work_files_help_size">チャットで作られたファイルと、コンピューターに入れたスキルです（%1$s、%2$s）。残すと、コンピューターに置かれたままになります。</string>
   <string name="im_computer_delete_shared">「%1$s」は同じコンピューターの同じアカウントで、Miffan に残るため、コンピューターのキーは削除しません。</string>
   <string name="im_computer_delete_offline_title">今はコンピューターに接続できません</string>
   <string name="im_computer_delete_offline">今はコンピューターから Miffan のキーを削除できません。先にこのスマホからだけ削除して、あとでコンピューターのターミナルでこの行を実行できます：</string>
@@ -3131,6 +3134,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="remote_task_test_run_option_help">動くかどうかがすぐわかります。オフにすると、設定した時刻に初めて実行されます。</string>
   <string name="remote_task_note_sync">その後の結果は、Miffanを開いたときに同期されます。完了した瞬間には通知されません。</string>
   <string name="remote_task_note_billing">利用料金は、そのコンピューターで%1$sにサインインしているアカウントに請求されます。</string>
+  <string name="remote_task_note_billing_custom">利用料金は、そのコンピューターで%1$sが使っているアカウントに請求されます。</string>
   <string name="remote_task_note_run_now">すぐにコンピューター上で1回実行されます。</string>
   <string name="agent_tool_card_add">%1$sがエージェントツールを追加しようとしています</string>
   <string name="agent_tool_card_change">%1$sがエージェントツール「%2$s」を変更しようとしています</string>
@@ -3188,6 +3192,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="remote_task_timer_missing">実行されていません</string>
   <string name="remote_task_delete_removed">コンピューター上のこの%1$d件の定期タスクも一緒に削除されます。</string>
   <string name="remote_task_delete_kept">コンピューター上のこの%1$d件の定期タスクは実行され続けます。このコンピューターを再度追加すると表示されます。</string>
+  <string name="remote_task_delete_others_kept">ほかのスマホで設定した%1$d件の定期タスクは実行され続けます。</string>
   <string name="remote_task_action_failed">コンピューターでこの操作を完了できませんでした</string>
   <string name="remote_task_enabled">時刻どおりに実行</string>
   <string name="remote_task_timer_missing_help">コンピューター上でこのタスクのタイマーが見つからないため、実行されません。オフにしてから再びオンにすると復元されます。</string>

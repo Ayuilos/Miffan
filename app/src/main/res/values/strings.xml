@@ -2754,6 +2754,9 @@
   <string name="im_computer_change" tools:ignore="MissingTranslation">Change</string>
   <string name="im_computer_delete_forget" tools:ignore="MissingTranslation">Also make the computer forget Miffan</string>
   <string name="im_computer_delete_forget_help" tools:ignore="MissingTranslation">Removes Miffan\'s key, high-quality mode pairing and helper from the computer, so this phone can\'t connect to it anymore. Nothing else on the computer is touched.</string>
+  <string name="im_computer_delete_work_files">Also delete the files partners left on the computer</string>
+  <string name="im_computer_delete_work_files_help">Files made in chats and skills installed there, in %1$s. If kept, they stay on the computer.</string>
+  <string name="im_computer_delete_work_files_help_size">Files made in chats and skills installed there, %1$s in %2$s. If kept, they stay on the computer.</string>
   <string name="im_computer_delete_shared" tools:ignore="MissingTranslation">“%1$s” is the same computer and account and stays in Miffan, so the key stays on the computer.</string>
   <string name="im_computer_delete_offline_title" tools:ignore="MissingTranslation">Can\'t reach the computer</string>
   <string name="im_computer_delete_offline" tools:ignore="MissingTranslation">Miffan\'s key can\'t be removed from it right now. You can delete it from the phone only, and later run this line in the computer\'s terminal:</string>
@@ -3149,6 +3152,7 @@
   <string name="remote_task_test_run_option_help">Shows at once whether it works. If unchecked, it first runs at its scheduled time.</string>
   <string name="remote_task_note_sync">Later results arrive when you open Miffan, not the moment they finish.</string>
   <string name="remote_task_note_billing">Usage is billed to the account %1$s is signed in with on that computer.</string>
+  <string name="remote_task_note_billing_custom">Usage is billed to whichever account %1$s uses on that computer.</string>
   <string name="remote_task_note_run_now">It runs on the computer right away.</string>
   <string name="agent_tool_card_add">%1$s wants to add an agent tool</string>
   <string name="agent_tool_card_change">%1$s wants to change the agent tool %2$s</string>
@@ -3206,6 +3210,7 @@
   <string name="remote_task_timer_missing">Not scheduled</string>
   <string name="remote_task_delete_removed">Its %1$d scheduled tasks are deleted from the computer too.</string>
   <string name="remote_task_delete_kept">Its %1$d scheduled tasks keep running on the computer; add it again to see them.</string>
+  <string name="remote_task_delete_others_kept">%1$d scheduled tasks set up from other phones keep running.</string>
   <string name="remote_task_action_failed">Could not do that on the computer</string>
   <string name="remote_task_enabled">Run on schedule</string>
   <string name="remote_task_timer_missing_help">The computer\'s timer for this task is missing, so it will not run. Turn it off and on again to restore it.</string>

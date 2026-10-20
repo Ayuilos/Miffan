@@ -121,6 +121,12 @@ data class RemoteTaskMeta(
     val env: List<String> = DEFAULT_TASK_ENV,
     val notify: TaskNotify,
     val owner: Owner? = null,
+    /**
+     * Fingerprint of the Miffan key of the phone that made the task ([sshKeyFingerprint]). Forgetting
+     * Miffan with that key removes it; other phones' tasks on the same computer stay. Null on tasks
+     * from builds before this field, which are treated as the forgetting phone's.
+     */
+    val sshKey: String? = null,
     val createdAt: Long,
 ) {
     @Serializable
@@ -136,6 +142,13 @@ data class RemoteTaskMeta(
     /** Where results go. Null for tasks the user made without a partner. */
     @Serializable
     data class Owner(val assistantId: Uuid, val conversationId: Uuid? = null)
+}
+
+/** OpenSSH's SHA256 fingerprint of a public key line ("type base64 [comment]"), as `ssh-keygen -l` shows it. */
+fun sshKeyFingerprint(publicKey: String): String {
+    val blob = java.util.Base64.getDecoder().decode(publicKey.trim().split(Regex("\\s+"))[1])
+    return "SHA256:" + java.util.Base64.getEncoder().withoutPadding()
+        .encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(blob))
 }
 
 /** PATH plus the proxy variables people set in shell startup files and timers never see. */

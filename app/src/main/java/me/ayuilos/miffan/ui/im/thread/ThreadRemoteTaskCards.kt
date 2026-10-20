@@ -177,7 +177,11 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
             NoteLines(listOfNotNull(
                 if (testRun && actions == null) HugeIcons.PlayCircle to stringResource(R.string.remote_task_note_test_run) else null,
                 HugeIcons.Refresh to stringResource(R.string.remote_task_note_sync),
-                agent?.let { HugeIcons.InformationCircle to stringResource(R.string.remote_task_note_billing, it.name) },
+                agent?.let {
+                    // A user-defined tool is a name, not a product someone signs in to.
+                    HugeIcons.InformationCircle to stringResource(
+                        if (it.isPreset) R.string.remote_task_note_billing else R.string.remote_task_note_billing_custom, it.name)
+                },
             ))
         }
         return
