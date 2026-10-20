@@ -3258,4 +3258,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="agent_tool_step_change">エージェントツール「%1$s」を変更</string>
   <string name="agent_tool_step_delete">エージェントツールを削除</string>
   <string name="agent_tool_step_list">エージェントツールを確認</string>
+  <string name="remote_task_line">%1$s · %2$s · %3$s 実行 · %4$s 同期</string>
+  <string name="remote_task_line_ok_times">%1$d 回成功</string>
+  <string name="remote_task_line_failed_times">%2$d 回中 %1$d 回失敗</string>
+  <string name="remote_task_banner">留守中にコンピューターがタスクを %1$d 回実行しました</string>
+  <string name="remote_task_banner_failed">留守中にタスクを %1$d 回実行し、%2$d 回失敗しました</string>
 </resources>

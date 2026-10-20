@@ -3273,4 +3273,9 @@
   <string name="agent_tool_step_change">Изменить инструмент агента «%1$s»</string>
   <string name="agent_tool_step_delete">Удалить инструмент агента</string>
   <string name="agent_tool_step_list">Посмотреть инструменты агентов</string>
+  <string name="remote_task_line">%1$s · %2$s · запуск %3$s · синхр. %4$s</string>
+  <string name="remote_task_line_ok_times">успешно %1$d раз</string>
+  <string name="remote_task_line_failed_times">%1$d из %2$d с ошибкой</string>
+  <string name="remote_task_banner">Пока вас не было, компьютер выполнил задачи %1$d раз</string>
+  <string name="remote_task_banner_failed">Пока вас не было: %1$d запусков, %2$d с ошибкой</string>
 </resources>

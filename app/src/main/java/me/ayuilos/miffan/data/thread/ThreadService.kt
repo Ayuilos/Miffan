@@ -204,6 +204,23 @@ class ThreadService(
         chatService.appendPartnerNote(selected, assistantId, origin, text)
     }
 
+    /** An event line in the owner-facing thread with no model turn, in the newest open segment. */
+    internal suspend fun deliverRecord(assistantId: Uuid, origin: MessageOrigin.Event, text: String) = routeMutex.withLock {
+        requireNotNull(settingsStore.settingsFlow.first { !it.init }.getAssistantById(assistantId))
+        val stored = conversationRepository.getConversationsOfAssistant(assistantId).first()
+        val known = stored.mapTo(HashSet()) { it.id }
+        recentTopics.entries.removeAll { it.key in known }
+        val candidates = stored.filter { it.chatId == null && it.threadClosedAt == 0L } +
+            recentTopics.filter { it.value.assistantId == assistantId }.map { (id, topic) ->
+                Conversation(id = id, assistantId = assistantId, messageNodes = emptyList(), updateAt = topic.at)
+            }
+        val selected = candidates.maxByOrNull { it.updateAt }?.id ?: Uuid.random()
+        if (candidates.isEmpty() && stored.any { it.chatId == null }) {
+            chatService.openThreadSegment(selected, assistantId, TopicStart.AUTO)
+        }
+        chatService.appendEventRecord(selected, assistantId, origin, text)
+    }
+
     /** Closes the supplied open segments and schedules their summaries. */
     suspend fun closeAll(assistantId: Uuid, segments: List<Conversation>) {
         closeSegments(segments, segments.filter { it.threadClosedAt == 0L }.mapTo(HashSet()) { it.id })

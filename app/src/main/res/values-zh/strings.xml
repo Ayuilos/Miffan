@@ -3263,4 +3263,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="agent_tool_step_change">修改 Agent 工具“%1$s”</string>
   <string name="agent_tool_step_delete">删除 Agent 工具</string>
   <string name="agent_tool_step_list">查看 Agent 工具</string>
+  <string name="remote_task_line">%1$s · %2$s · %3$s 运行 · %4$s 同步</string>
+  <string name="remote_task_line_ok_times">成功 %1$d 次</string>
+  <string name="remote_task_line_failed_times">%2$d 次里失败 %1$d 次</string>
+  <string name="remote_task_banner">你不在时，电脑跑了 %1$d 次任务</string>
+  <string name="remote_task_banner_failed">你不在时，电脑跑了 %1$d 次任务，%2$d 次失败</string>
 </resources>

@@ -3253,4 +3253,9 @@
   <string name="agent_tool_step_change">修改 Agent 工具「%1$s」</string>
   <string name="agent_tool_step_delete">刪除 Agent 工具</string>
   <string name="agent_tool_step_list">查看 Agent 工具</string>
+  <string name="remote_task_line">%1$s · %2$s · %3$s 執行 · %4$s 同步</string>
+  <string name="remote_task_line_ok_times">成功 %1$d 次</string>
+  <string name="remote_task_line_failed_times">%2$d 次中失敗 %1$d 次</string>
+  <string name="remote_task_banner">你不在時，電腦跑了 %1$d 次任務</string>
+  <string name="remote_task_banner_failed">你不在時，電腦跑了 %1$d 次任務，%2$d 次失敗</string>
 </resources>

@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.CheckmarkCircle02
+import me.rerere.hugeicons.stroke.Alert02
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -57,4 +60,26 @@ internal fun ThreadEventLine(summary: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
+}
+
+/**
+ * A scheduled task's results arriving in the chat: one line per task with its outcome, opening the
+ * task. Times say when it ran and when it reached the phone, so late results never look new.
+ */
+@Composable
+internal fun ThreadTaskRunLine(summary: String, failed: Boolean, onOpen: (() -> Unit)?) {
+    androidx.compose.material3.Surface(onClick = { onOpen?.invoke() }, enabled = onOpen != null,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
+        androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+            androidx.compose.material3.Icon(
+                if (failed) me.rerere.hugeicons.HugeIcons.Alert02 else me.rerere.hugeicons.HugeIcons.CheckmarkCircle02, null,
+                Modifier.size(18.dp), tint = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            if (onOpen != null) androidx.compose.material3.Icon(me.rerere.hugeicons.HugeIcons.ArrowRight01, null, Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }

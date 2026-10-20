@@ -3258,4 +3258,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="agent_tool_step_change">에이전트 도구 “%1$s” 수정</string>
   <string name="agent_tool_step_delete">에이전트 도구 삭제</string>
   <string name="agent_tool_step_list">에이전트 도구 확인</string>
+  <string name="remote_task_line">%1$s · %2$s · %3$s 실행 · %4$s 동기화</string>
+  <string name="remote_task_line_ok_times">%1$d회 성공</string>
+  <string name="remote_task_line_failed_times">%2$d회 중 %1$d회 실패</string>
+  <string name="remote_task_banner">자리를 비운 동안 컴퓨터가 작업을 %1$d회 실행했어요</string>
+  <string name="remote_task_banner_failed">자리를 비운 동안 작업 %1$d회 실행, %2$d회 실패</string>
 </resources>

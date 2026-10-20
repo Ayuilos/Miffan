@@ -3276,4 +3276,9 @@
   <string name="agent_tool_step_change">Change agent tool “%1$s”</string>
   <string name="agent_tool_step_delete">Delete an agent tool</string>
   <string name="agent_tool_step_list">Check agent tools</string>
+  <string name="remote_task_line">%1$s · %2$s · ran %3$s · synced %4$s</string>
+  <string name="remote_task_line_ok_times">succeeded %1$d times</string>
+  <string name="remote_task_line_failed_times">%1$d of %2$d failed</string>
+  <string name="remote_task_banner">While you were away, your computer ran %1$d tasks</string>
+  <string name="remote_task_banner_failed">While you were away, your computer ran %1$d tasks, %2$d failed</string>
 </resources>

@@ -717,6 +717,21 @@ class ChatService(
         } finally { session.release() }
     }
 
+    /** Appends an event line the partner can read later, without a model turn (e.g. a logged task run). */
+    internal suspend fun appendEventRecord(conversationId: Uuid, assistantId: Uuid,
+        origin: me.ayuilos.miffan.data.model.MessageOrigin.Event, text: String) {
+        openThreadSegment(conversationId, assistantId)
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        try {
+            session.getJob()?.join()
+            val updated = session.state.value.appendMessage(
+                UIMessage(role = me.rerere.ai.core.MessageRole.USER, parts = listOf(UIMessagePart.Text(text))), origin = origin,
+            ).copy(updateAt = java.time.Instant.now())
+            saveConversation(conversationId, updated)
+        } finally { session.release() }
+    }
+
     // ---- 发送消息 ----
 
     fun sendMessage(

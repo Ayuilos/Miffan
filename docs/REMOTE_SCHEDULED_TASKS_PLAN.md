@@ -168,6 +168,14 @@ helper 不解析任务 JSON，也不认识 agent；App 把任务渲染成几份�
 
 验收：App 关闭期间任务运行多次，打开后一次同步到位、按策略合并回应；事件卡时间正确；断网时提示得当。
 
+### 进度（2026-10-20）
+
+P1、P2、P3 已在 `feature/remote-tasks` 完成，并在模拟器连 CachyOS 实测：
+
+- 伙伴安排命令任务 → 审批 → systemd timer 注册 → 试跑结果回到工具结果；AI 任务在电脑上找不到程序时，审批卡在批准前提示，执行时返回可读错误。
+- 伙伴添加 / 修改 Agent 工具：审批卡真实检测电脑上的程序；完全放开时红色警告与红色按钮。
+- P3：App 回到前台时 `RemoteTaskDelivery.syncAndDeliver()`（每台电脑 5 分钟内不重复同步）；每个任务一行可点击的事件（`MessageOrigin.Event.kind` 为 `scheduled_run` / `scheduled_run_failed`，`link` 指向任务详情）；需要时伙伴只回复一次（最后一行携带全部结果）；“只记录”的任务不调用模型；聊天顶部一次性汇总提示。
+
 ### 以后
 
 Windows（`Register-ScheduledTask`，处理未登录运行的权限）；推送通道；AI 任务的“完全放开”权限级别。

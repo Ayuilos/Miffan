@@ -34,6 +34,9 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Clock01
+import me.ayuilos.miffan.data.remotetask.SCHEDULED_RUN_FAILED
+import me.ayuilos.miffan.data.remotetask.SCHEDULED_RUN
 import me.rerere.hugeicons.stroke.Cancel01
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -99,6 +102,9 @@ fun AgentThreadPage(
     val assistants = LocalSettings.current.assistants
     val mentionables = remember(assistants, assistantId) { assistants.filter { it.id != assistantId } }
     val nav = LocalNavController.current
+    val delivery: me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery = org.koin.compose.koinInject()
+    val deliveries by delivery.summaries.collectAsStateWithLifecycle()
+    val taskDelivery = deliveries[assistantId]
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -309,7 +315,11 @@ fun AgentThreadPage(
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
                 assistant = assistant) }
             is TimelineItem.Typing -> ThreadTyping(assistant)
-            is TimelineItem.Event -> ThreadEventLine(item.origin.summary)
+            is TimelineItem.Event -> if (item.origin.kind == SCHEDULED_RUN || item.origin.kind == SCHEDULED_RUN_FAILED) {
+                val target = item.origin.link?.removePrefix("remote-task:")?.split('/')?.takeIf { it.size == 2 }
+                ThreadTaskRunLine(item.origin.summary, failed = item.origin.kind == SCHEDULED_RUN_FAILED,
+                    onOpen = target?.let { (host, task) -> { nav.navigate(Screen.RemoteTaskDetail(host, task)) } })
+            } else ThreadEventLine(item.origin.summary)
             is TimelineItem.Notice -> ThreadNoticeLine(item.notice, assistantName,
                 onView = { viewingNotice = item.notice },
                 onUndo = {
@@ -397,6 +407,22 @@ fun AgentThreadPage(
                     else stringResource(R.string.im_p5_profile),
                     onClick = { nav.navigate(if (computer?.showsEntry == true) Screen.PartnerScreen(assistantId.toString())
                         else Screen.PartnerProfile(assistantId.toString())) }, modifier = Modifier.align(Alignment.CenterEnd))
+            }
+            taskDelivery?.let { delivered ->
+                // Shown once after results arrive; the lines themselves stay in the timeline.
+                GlassSurface(hazeState, RoundedCornerShape(18.dp), Modifier.fillMaxWidth(),
+                    onClick = { delivery.dismiss(assistantId); nav.navigate(Screen.ComputerDetail(delivered.hostId)) }) {
+                    Row(Modifier.padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(HugeIcons.Clock01, null, Modifier.size(18.dp),
+                            tint = if (delivered.failures > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                        Text(if (delivered.failures > 0) stringResource(R.string.remote_task_banner_failed, delivered.runs, delivered.failures)
+                            else stringResource(R.string.remote_task_banner, delivered.runs),
+                            Modifier.weight(1f).padding(start = 10.dp), style = MaterialTheme.typography.bodyMedium)
+                        IconButton(onClick = { delivery.dismiss(assistantId) }) {
+                            Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp))
+                        }
+                    }
+                }
             }
             if (filter != null && topicLabel != null) {
                 val color = threadTopicColor(topics[filter]?.topicIndex ?: 0)
