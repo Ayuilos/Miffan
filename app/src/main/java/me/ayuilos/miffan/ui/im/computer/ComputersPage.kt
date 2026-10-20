@@ -2,6 +2,7 @@ package me.ayuilos.miffan.ui.im.computer
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -28,6 +29,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.computer.ComputerHasWorkspacesException
 import me.ayuilos.miffan.data.ai.computer.ComputerUnreachableException
+import me.ayuilos.miffan.data.ai.computer.ComputerWorkFiles
 import me.ayuilos.miffan.data.ai.computer.KnownComputer
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.model.Assistant
@@ -98,6 +100,13 @@ fun ComputersPage() {
                             Icon(HugeIcons.Add01, null, tint = MaterialTheme.colorScheme.primary)
                         }
                         Text(stringResource(R.string.im_computers_connect_new), color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            item("agent_tools") {
+                SetupCard(padding = 0.dp, spacing = 0.dp) {
+                    DetailRow(stringResource(R.string.agent_tools_title), stringResource(R.string.agent_tools_entry_desc), enabled = true) {
+                        nav.navigate(Screen.AgentTools)
                     }
                 }
             }
@@ -211,6 +220,12 @@ fun ComputerDetailPage(hostId: String) {
     // Whether that computer also still trusts this phone for high-quality mode.
     var offlinePaired by rememberSaveable { mutableStateOf(false) }
     val hostList by remember(workspaces) { workspaces.listHostsFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val remoteTasks: me.ayuilos.miffan.data.remotetask.RemoteTaskRepository = koinInject()
+    val hostTasks by remember(hostId) { remoteTasks.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val taskCount = hostTasks.size
+    // Forgetting Miffan removes only the tasks this phone's key made; other phones' tasks keep running.
+    val keyFingerprint by produceState<String?>(null, hostId) { value = remoteTasks.keyFingerprint(hostId) }
+    val ownTaskCount = keyFingerprint?.let { fp -> hostTasks.count { remoteTasks.removedWithKey(it, fp) } } ?: taskCount
     var loaded by remember { mutableStateOf(false) }
     LaunchedEffect(computer) {
         if (computer != null) loaded = true
@@ -267,6 +282,10 @@ fun ComputerDetailPage(hostId: String) {
                             enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId)) }
                     }
                 }
+            }
+            item("tasks") {
+                ComputerTasksSection(hostId, windows = current.platform == RemoteScreenPlatform.WINDOWS,
+                    username = hostList.find { it.id == hostId }?.username.orEmpty())
             }
             item("users_title") {
                 Text(stringResource(R.string.im_computer_detail_users), Modifier.padding(start = 4.dp, top = 8.dp),
@@ -348,6 +367,10 @@ fun ComputerDetailPage(hostId: String) {
                 }
                 val canForget = host?.sshKeyId != null && sibling == null
                 var forget by rememberSaveable { mutableStateOf(true) }
+                // The user's data: kept unless they choose otherwise, but shown with its size so it is not forgotten there.
+                var deleteWorkFiles by rememberSaveable { mutableStateOf(false) }
+                var workFiles by remember { mutableStateOf<ComputerWorkFiles?>(null) }
+                if (canForget) LaunchedEffect(hostId) { workFiles = computers.workFiles(hostId) }
                 AlertDialog(onDismissRequest = { deleting = false },
                     title = { Text(stringResource(R.string.im_computer_delete_title, current.name)) },
                     text = {
@@ -355,20 +378,27 @@ fun ComputerDetailPage(hostId: String) {
                             val names = partners.map { threadAssistantName(it) }.joinToString(stringResource(R.string.im_computers_name_separator))
                             if (partners.isNotEmpty()) Text(stringResource(R.string.im_computer_delete_partners, names))
                             when {
-                                canForget -> Surface(onClick = { forget = !forget }, shape = MaterialTheme.shapes.large,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest) {
-                                    Row(Modifier.padding(start = 4.dp, end = 14.dp, top = 6.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Checkbox(checked = forget, onCheckedChange = { forget = it })
-                                        Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                            Text(stringResource(R.string.im_computer_delete_forget), style = MaterialTheme.typography.titleSmall)
-                                            Text(stringResource(R.string.im_computer_delete_forget_help), style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
+                                canForget -> {
+                                    DeleteOption(forget, { forget = it }, stringResource(R.string.im_computer_delete_forget),
+                                        stringResource(R.string.im_computer_delete_forget_help))
+                                    val files = workFiles
+                                    if (forget && files != null) DeleteOption(deleteWorkFiles, { deleteWorkFiles = it },
+                                        stringResource(R.string.im_computer_delete_work_files),
+                                        files.bytes?.let { stringResource(R.string.im_computer_delete_work_files_help_size,
+                                            Formatter.formatShortFileSize(LocalContext.current, it), files.path) }
+                                            ?: stringResource(R.string.im_computer_delete_work_files_help, files.path))
                                 }
                                 sibling != null -> Text(stringResource(R.string.im_computer_delete_shared, sibling.name))
                                 else -> Text(stringResource(R.string.im_computer_delete_help))
                             }
+                            // Tasks go with Miffan's access; kept, they keep running and come back when the computer is added again.
+                            if (canForget && forget) {
+                                if (ownTaskCount > 0) Text(stringResource(R.string.remote_task_delete_removed, ownTaskCount),
+                                    style = MaterialTheme.typography.bodyMedium)
+                                if (taskCount > ownTaskCount) Text(stringResource(R.string.remote_task_delete_others_kept, taskCount - ownTaskCount),
+                                    style = MaterialTheme.typography.bodyMedium)
+                            } else if (taskCount > 0) Text(stringResource(R.string.remote_task_delete_kept, taskCount),
+                                style = MaterialTheme.typography.bodyMedium)
                         }
                     },
                     confirmButton = {
@@ -377,7 +407,7 @@ fun ComputerDetailPage(hostId: String) {
                             val revoke = canForget && forget
                             forgetting = revoke
                             perform {
-                                try { computers.delete(hostId, forgetOnComputer = revoke) }
+                                try { computers.delete(hostId, forgetOnComputer = revoke, deleteWorkFiles = revoke && deleteWorkFiles) }
                                 catch (error: ComputerHasWorkspacesException) {
                                     deleting = true // Shows the blocked explanation with the fresh count.
                                 } catch (error: ComputerUnreachableException) {
@@ -423,6 +453,20 @@ fun ComputerDetailPage(hostId: String) {
                     }) { Text(stringResource(R.string.im_computer_delete_phone_only), color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = { TextButton(onClick = { offlineCommand = null }) { Text(stringResource(R.string.common_cancel)) } })
+        }
+    }
+}
+
+@Composable
+private fun DeleteOption(checked: Boolean, onCheckedChange: (Boolean) -> Unit, title: String, help: String) {
+    Surface(onClick = { onCheckedChange(!checked) }, shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+        Row(Modifier.padding(start = 4.dp, end = 14.dp, top = 6.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+            Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(help, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

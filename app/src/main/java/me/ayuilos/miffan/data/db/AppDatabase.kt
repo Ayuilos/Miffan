@@ -50,9 +50,13 @@ import me.ayuilos.miffan.utils.JsonInstant
         FolderEntity::class,
         RevisionEntity::class,
         me.ayuilos.miffan.data.db.entity.AuditEventEntity::class,
+        me.ayuilos.miffan.data.db.entity.RemoteTaskEntity::class,
+        me.ayuilos.miffan.data.db.entity.RemoteTaskHostEntity::class,
+        me.ayuilos.miffan.data.db.entity.RemoteTaskRunEntity::class,
     ],
-    version = 39,
+    version = 40,
     autoMigrations = [
+        AutoMigration(from = 39, to = 40),
         AutoMigration(from = 32, to = 33),
         AutoMigration(from = 31, to = 32),
         AutoMigration(from = 1, to = 2),
@@ -102,6 +106,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun auditDao(): me.ayuilos.miffan.data.db.dao.AuditDAO
 
     abstract fun revisionDao(): RevisionDAO
+
+    abstract fun remoteTaskDao(): me.ayuilos.miffan.data.db.dao.RemoteTaskDAO
 }
 
 object TokenUsageConverter {

@@ -7,6 +7,7 @@ import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.ToolDecisionVia
 import me.rerere.ai.ui.recordDecision
 import me.ayuilos.miffan.data.ai.tools.buildSelfConfigTools
+import me.ayuilos.miffan.data.ai.tools.isCardSwitchEdit
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -116,6 +117,7 @@ import me.ayuilos.miffan.data.event.AppEvent
 import me.ayuilos.miffan.data.event.AppEventBus
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.remotetask.allAgentTools
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.datastore.getAssistantById
@@ -716,6 +718,21 @@ class ChatService(
         } finally { session.release() }
     }
 
+    /** Appends an event line the partner can read later, without a model turn (e.g. a logged task run). */
+    internal suspend fun appendEventRecord(conversationId: Uuid, assistantId: Uuid,
+        origin: me.ayuilos.miffan.data.model.MessageOrigin.Event, text: String) {
+        openThreadSegment(conversationId, assistantId)
+        val session = getOrCreateSession(conversationId)
+        session.acquire()
+        try {
+            session.getJob()?.join()
+            val updated = session.state.value.appendMessage(
+                UIMessage(role = me.rerere.ai.core.MessageRole.USER, parts = listOf(UIMessagePart.Text(text))), origin = origin,
+            ).copy(updateAt = java.time.Instant.now())
+            saveConversation(conversationId, updated)
+        } finally { session.release() }
+    }
+
     // ---- 发送消息 ----
 
     fun sendMessage(
@@ -984,7 +1001,7 @@ class ChatService(
                 val pending = tip?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted }
                 if (specialApproval && (pending == null ||
                         (standingKey != null && standingApprovalKey(pending.toolName) != standingKey) ||
-                        (editedInput != null && (pending.toolName != "calendar_create" || !validCalendarCreateInput(editedInput))))) {
+                        (editedInput != null && !validEditedInput(pending, editedInput)))) {
                     return@launchGenerationJob
                 }
                 val approvedIds = if (standingKey != null) tip?.getTools().orEmpty()
@@ -1079,10 +1096,15 @@ class ChatService(
     }
 
     /** Approves a pending calendar creation with the owner's validated replacement arguments. */
+    /** Arguments a card may change before allowing: the calendar's times, or a card's own switch. */
+    private fun validEditedInput(call: UIMessagePart.Tool, input: JsonObject): Boolean =
+        if (call.toolName == "calendar_create") validCalendarCreateInput(input)
+        else isCardSwitchEdit(call.toolName, call.inputAsJson(), input)
+
     fun approveToolWithInput(conversationId: Uuid, toolCallId: String, input: JsonObject) {
         val call = getOrCreateSession(conversationId).state.value.currentMessageNodes.lastOrNull()
             ?.currentMessage?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted } ?: return
-        if (call.toolName != "calendar_create" || !validCalendarCreateInput(input)) return
+        if (!validEditedInput(call, input)) return
         applyToolApproval(conversationId, toolCallId, true, "", null, ToolDecisionVia.CARD, editedInput = input)
     }
 
@@ -1331,6 +1353,10 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
+                    createScheduleTaskToolIfReady(assistant, conversation.id)?.let { scheduleTool ->
+                        add(scheduleTool)
+                        createAgentToolsToolIfReady(assistant)?.let { add(it) }
+                    }
                     val builtInSkills = buildList {
                         if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
                         if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
@@ -1510,6 +1536,50 @@ class ChatService(
         }
         if (messages.usesComputer()) toolbox.preload()
         return toolbox
+    }
+
+    /** Scheduled tasks on the partner's computer, under the same permission as its commands and files. */
+    private suspend fun createScheduleTaskToolIfReady(
+        assistant: Assistant,
+        conversationId: Uuid,
+    ): Tool? {
+        val workspaceId = assistant.workspaceId?.toString() ?: return null
+        val workspace = workspaceRepository.getById(workspaceId) ?: return null
+        if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        if (host.trustedHostKeySha256 == null || partnerComputerUse(assistant, workspace) == ComputerUseMode.OFF) return null
+        val repository = getKoin().get<me.ayuilos.miffan.data.remotetask.RemoteTaskRepository>()
+        return me.ayuilos.miffan.data.ai.tools.createScheduleTaskTool(
+            hostId = host.id,
+            computerName = host.name,
+            windows = me.rerere.workspace.RemotePlatform.parse(host.platform) == me.rerere.workspace.RemotePlatform.WINDOWS,
+            assistantId = assistant.id,
+            conversationId = conversationId,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspaceId, assistant.workspaceScopeId?.toString(),
+            )?.copy(conversationId = conversationId.toString()),
+            agentTools = { settingsStore.settingsFlow.value.allAgentTools() },
+            timezone = repository.timezone(host.id),
+            repository = repository,
+        )
+    }
+
+    /** Only alongside [createScheduleTaskToolIfReady], and never for Windows computers (no tasks there yet). */
+    private suspend fun createAgentToolsToolIfReady(assistant: Assistant): Tool? {
+        val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        if (me.rerere.workspace.RemotePlatform.parse(host.platform) == me.rerere.workspace.RemotePlatform.WINDOWS) return null
+        return me.ayuilos.miffan.data.ai.tools.createAgentToolsTool(
+            hostId = host.id,
+            computerName = host.name,
+            assistantId = assistant.id,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspace.id, assistant.workspaceScopeId?.toString(),
+            ),
+            tools = { settingsStore.settingsFlow.value.allAgentTools() },
+            store = { custom -> settingsStore.update { it.copy(agentTools = custom) } },
+            repository = getKoin().get(),
+        )
     }
 
     private suspend fun createWorkspaceToolsIfReady(

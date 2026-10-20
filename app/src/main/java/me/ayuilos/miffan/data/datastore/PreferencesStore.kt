@@ -185,6 +185,9 @@ class SettingsStore(
         // MCP
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
 
+        // Agent tools for scheduled tasks on computers (user-defined; presets are code)
+        val AGENT_TOOLS = stringPreferencesKey("agent_tools")
+
         // WebDAV
         val WEBDAV_CONFIG = stringPreferencesKey("webdav_config")
 
@@ -304,6 +307,9 @@ class SettingsStore(
                 searchServiceSelected = searchServiceSelected,
                 mcpServers = preferences[MCP_SERVERS]?.let {
                     JsonInstant.decodeFromString(it)
+                } ?: emptyList(),
+                agentTools = preferences[AGENT_TOOLS]?.let {
+                    runCatching { JsonInstant.decodeFromString<List<me.ayuilos.miffan.data.remotetask.AgentToolDefinition>>(it) }.getOrNull()
                 } ?: emptyList(),
                 webDavConfig = preferences[WEBDAV_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
@@ -524,6 +530,7 @@ class SettingsStore(
             preferences[SEARCH_SELECTED] = settings.searchServiceSelected.coerceIn(0, settings.searchServices.size - 1)
 
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+            preferences[AGENT_TOOLS] = JsonInstant.encodeToString(settings.agentTools)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
             preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
@@ -717,6 +724,8 @@ data class Settings(
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
     val searchServiceSelected: Int = 0,
     val mcpServers: List<McpServerConfig> = emptyList(),
+    /** The user's own agent tools for scheduled tasks; built-in presets are not stored. */
+    val agentTools: List<me.ayuilos.miffan.data.remotetask.AgentToolDefinition> = emptyList(),
     val webDavConfig: WebDavConfig = WebDavConfig(),
     val s3Config: S3Config = S3Config(),
     val ttsProviders: List<TTSProviderSetting> = DEFAULT_TTS_PROVIDERS,

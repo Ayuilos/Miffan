@@ -1,7 +1,9 @@
 package me.ayuilos.miffan.data.ai.computer
 
 import me.rerere.workspace.RemotePlatform
+import me.rerere.workspace.WindowsRemotePath
 import me.rerere.workspace.shouldTryNextRemoteAddress
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -58,6 +60,12 @@ data class KnownComputer(
 class ComputerHasWorkspacesException(val count: Int) : IllegalStateException("The computer still has $count other workspaces")
 
 enum class ForgetOutcome { FORGOTTEN, NOT_NEEDED, SHARED, ALREADY_GONE }
+
+/**
+ * Partners' files on a computer: what chats produced and the skills installed there, in the
+ * workspace's `.miffan` folder ([path], as the computer writes it). [bytes] is null when unknown.
+ */
+data class ComputerWorkFiles(val path: String, val bytes: Long?)
 
 class ComputerUnreachableException(val manualCommand: String, cause: Throwable? = null) :
     IllegalStateException("The computer cannot be reached. Miffan has kept its saved record.", cause)
@@ -133,7 +141,34 @@ class PartnerComputers(
                 it.username == host.username && it.sshKeyId == host.sshKeyId
         }
 
-    suspend fun delete(hostId: String, forgetOnComputer: Boolean): ForgetOutcome {
+    /**
+     * The files deleting the computer could also remove; null when there are none. Measured over
+     * SSH on Linux and macOS; on Windows, or when the computer does not answer, the size is unknown.
+     */
+    suspend fun workFiles(hostId: String): ComputerWorkFiles? {
+        val workspace = computerWorkspace(hostId, workspaces.listFlow().first(), settingsStore.settingsFlow.value.assistants)
+            ?: return null
+        val root = workspace.remotePath?.takeIf { it.startsWith('/') } ?: return null
+        if (RemotePlatform.detect(root) == RemotePlatform.WINDOWS) {
+            return ComputerWorkFiles(WindowsRemotePath.toLocal(root).trimEnd('\\') + "\\.miffan", bytes = null)
+        }
+        val path = root.trimEnd('/') + "/.miffan"
+        val result = try {
+            // du exits 1 when one of the folders is missing; the other's line still counts.
+            workspaces.executeCommand(workspace.id, WORK_FILE_FOLDERS.joinToString(" ", "du -sk ", " 2>/dev/null") { ".miffan/$it" },
+                timeoutMillis = 20_000)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        if (result == null || result.timedOut) return ComputerWorkFiles(path, bytes = null)
+        val kilobytes = result.stdout.lines().mapNotNull { it.substringBefore('\t').trim().toLongOrNull() }
+        return if (kilobytes.isEmpty()) null else ComputerWorkFiles(path, kilobytes.sum() * 1024)
+    }
+
+    /** [deleteWorkFiles] also removes [workFiles]; it only applies when Miffan is forgotten on the computer. */
+    suspend fun delete(hostId: String, forgetOnComputer: Boolean, deleteWorkFiles: Boolean = false): ForgetOutcome {
         val workspaceList = workspaces.listFlow().first()
         val workspace = computerWorkspace(hostId, workspaceList, settingsStore.settingsFlow.value.assistants)
         val otherCount = workspaceList.count { it.isRemote && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
@@ -144,7 +179,8 @@ class PartnerComputers(
             sharesComputerAccess(host, workspaces.listHostsFlow().first()) -> ForgetOutcome.SHARED
             else -> {
                 val key = requireNotNull(workspaces.getSshKeyById(host.sshKeyId)) { "Miffan SSH key not found" }
-                val command = revokeMiffanKeyCommand(key.publicKey, RemotePlatform.parse(host.platform))
+                val workFilesRoot = workspace?.remotePath?.takeIf { deleteWorkFiles && it.startsWith('/') }
+                val command = revokeMiffanKeyCommand(key.publicKey, RemotePlatform.parse(host.platform), workFilesRoot)
                 try {
                     // The repository unpairs Sunshine on this same verified connection before revoking.
                     if (workspaces.revokeComputerAccess(hostId, command, host.connectionRevision)) ForgetOutcome.FORGOTTEN

@@ -15,8 +15,10 @@
 #   miffan clip             set the session clipboard from stdin (UTF-8)
 #   miffan mac-shortcut desktop-left|desktop-right|mission-control|app-windows
 #                           macOS: press a Mission Control shortcut that streamed keys cannot reach
+#   miffan task probe|which|stage|commit|list|remove|enable|disable|run|sync|log|exec
+#                           scheduled tasks run by the system timer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=20
+MIFFAN_HELPER_VERSION=21
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1164,6 +1166,630 @@ except OSError as error:
 SUNSHINE_PY
 }
 
+# --- Scheduled tasks ---------------------------------------------------------------------
+# The app renders each task into files (meta.json, run, prompt) and the helper only installs
+# the system timer and runs `run`; it never parses task JSON or knows which agent a task uses.
+# Nothing here may need python3: the unattended runner must not trigger macOS's CLT prompt.
+
+TASKS_DIR="$HOME/.miffan/tasks"
+TASK_LOG_LIMIT=1048576
+TASK_EXCERPT_BYTES=16384
+TASK_KEEP_RUNS=30
+TASK_PART_LIMIT=262144
+# Timers run this copy, not ~/.miffan/bin/miffan: an older app connecting later reinstalls its
+# own helper version, which must not silently break tasks a newer app created.
+TASK_RUNNER="$HOME/.miffan/bin/miffan-task-runner"
+
+task_fail() {
+    printf '{"success":false,"detail":%s}\n' "$(json_str "$1")"
+    exit 1
+}
+
+task_id_ok() {
+    case "$1" in ''|*[!A-Za-z0-9-]*) return 1 ;; esac
+    [ "${#1}" -le 64 ]
+}
+
+task_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# Kills a process and all of its descendants, children first.
+task_kill_tree() {
+    for child in $(pgrep -P "$1" 2>/dev/null); do task_kill_tree "$child" "$2"; done
+    kill "-$2" "$1" 2>/dev/null
+}
+
+# Runs a command with stdout kept, killing it after $1 seconds. Used where a user's shell
+# startup files or a foreign CLI could hang an SSH call.
+task_limited() {
+    limit=$1
+    shift
+    "$@" &
+    limited_pid=$!
+    (sleep "$limit"; task_kill_tree "$limited_pid" KILL) >/dev/null 2>&1 </dev/null &
+    limited_watcher=$!
+    wait "$limited_pid"
+    limited_status=$?
+    task_kill_tree "$limited_watcher" KILL
+    return "$limited_status"
+}
+
+task_user_bus() {
+    [ -n "${XDG_RUNTIME_DIR:-}" ] || XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+    export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+}
+
+task_scheduler() {
+    case "$(os)" in
+        macos) echo launchd; return ;;
+        linux)
+            task_user_bus
+            if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+                echo systemd
+                return
+            fi
+            ;;
+    esac
+    if command -v crontab >/dev/null 2>&1; then echo cron; else echo none; fi
+}
+
+task_timezone() {
+    zone=""
+    command -v timedatectl >/dev/null 2>&1 && zone=$(timedatectl show -p Timezone --value 2>/dev/null)
+    if [ -z "$zone" ]; then
+        link=$(readlink /etc/localtime 2>/dev/null) || link=""
+        case "$link" in *zoneinfo/*) zone=${link##*zoneinfo/} ;; esac
+    fi
+    printf '%s' "$zone"
+}
+
+task_probe() {
+    scheduler=$(task_scheduler)
+    linger=null
+    login_required=false
+    case "$scheduler" in
+        launchd) login_required=true ;;
+        systemd)
+            value=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null) || value=""
+            case "$value" in yes) linger=true ;; no) linger=false; login_required=true ;; esac
+            ;;
+    esac
+    printf '{"scheduler":"%s","linger":%s,"login_required":%s,"timezone":%s,"utc_offset":"%s"}\n' \
+        "$scheduler" "$linger" "$login_required" "$(json_or_null "$(task_timezone)")" "$(date +%z)"
+}
+
+# Non-POSIX shells cannot run the -c snippets below; their users can still give absolute paths.
+task_login_shell() {
+    user_shell=${SHELL:-/bin/sh}
+    case "${user_shell##*/}" in fish|nu|xonsh|elvish) user_shell=/bin/sh ;; esac
+    printf '%s' "$user_shell"
+}
+
+# Exports the variables named in $1 (one per line) with their current values from the user's
+# interactive login shell. Timers start without the user's proxy or tool settings, and reading
+# them at run time keeps their values on this machine and follows later changes.
+task_apply_env() {
+    names=$(tr '\n' ' ' <"$1")
+    [ -n "${names% }" ] || return 0
+    sep=$(printf '\036')
+    # shellcheck disable=SC2016,SC2086
+    out=$(task_limited 15 "$(task_login_shell)" -lic 'for n in "$@"; do eval "[ -n \"\${$n+x}\" ]" || continue; eval "v=\${$n}"; printf "\036%s=%s" "$n" "$v"; done; printf "\036\n"' miffan $names </dev/null 2>/dev/null) || :
+    case "$out" in *"$sep"*) ;; *) return 0 ;; esac
+    # Lets the app's run script keep its fallback PATH only when the login shell gave nothing.
+    export MIFFAN_LOGIN_ENV=ok
+    rest=${out#*"$sep"}
+    while [ -n "$rest" ]; do
+        pair=${rest%%"$sep"*}
+        case "$rest" in *"$sep"*) rest=${rest#*"$sep"} ;; *) rest="" ;; esac
+        case "$pair" in *=*) ;; *) continue ;; esac
+        name=${pair%%=*}
+        case " $names " in *" $name "*) export "$name=${pair#*=}" ;; esac
+    done
+}
+
+# Resolves an executable the way the user's interactive login shell would, because timers start
+# with a bare PATH and tools installed through npm/nvm often live only in shell startup files.
+task_which() {
+    name=${1:-}
+    case "$name" in ''|*'
+'*) task_fail "invalid executable" ;; esac
+    case "${2:-}" in ''|-[A-Za-z-]*) ;; *) task_fail "invalid version argument" ;; esac
+    case "${2:-}" in *[!A-Za-z-]*) task_fail "invalid version argument" ;; esac
+    sep=$(printf '\036')
+    user_shell=$(task_login_shell)
+    # shellcheck disable=SC2016
+    out=$(task_limited 15 "$user_shell" -lic 'p=$(command -v -- "$1" 2>/dev/null) || p=""; printf "\036%s\036%s\036\n" "$p" "$PATH"' miffan "$name" </dev/null 2>/dev/null) || :
+    case "$out" in *"$sep"*"$sep"*"$sep"*) ;; *) out="$sep$sep$PATH$sep" ;; esac
+    rest=${out#*"$sep"}
+    path=${rest%%"$sep"*}
+    rest=${rest#*"$sep"}
+    path_env=${rest%%"$sep"*}
+    case "$name" in /*) path=$name ;; esac
+    # An alias or shell function is not something a timer can run.
+    case "$path" in /*) [ -x "$path" ] && [ ! -d "$path" ] || path="" ;; *) path="" ;; esac
+    version=""
+    if [ -n "$path" ] && [ -n "${2:-}" ]; then
+        version=$(task_limited 15 "$path" "$2" </dev/null 2>&1 | sed -n '/[^[:space:]]/{p;q;}' | cut -c1-200)
+    fi
+    printf '{"path":%s,"path_env":%s,"version":%s}\n' "$(json_or_null "$path")" "$(json_or_null "$path_env")" "$(json_or_null "$version")"
+}
+
+task_time_ok() {
+    case "$1" in [01][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) return 0 ;; *) return 1 ;; esac
+}
+
+task_days_ok() {
+    case "$1" in ''|*[!0-6,]*|,*|*,|*,,*) return 1 ;; esac
+    case ",$1," in *[0-6][0-6]*) return 1 ;; esac
+    [ -z "$(printf '%s\n' "$1" | tr ',' '\n' | sort | uniq -d)" ]
+}
+
+task_schedule_ok() {
+    case "${1:-}" in
+        daily) [ "$#" -eq 2 ] && task_time_ok "$2" ;;
+        weekly) [ "$#" -eq 3 ] && task_days_ok "$2" && task_time_ok "$3" ;;
+        interval) [ "$#" -eq 2 ] && case "$2" in 15|30|60|120|180|240|360|480|720) true ;; *) false ;; esac ;;
+        *) return 1 ;;
+    esac
+}
+
+task_install_runner() {
+    mkdir -p "${TASK_RUNNER%/*}" && cp "$0" "$TASK_RUNNER.tmp" && chmod 700 "$TASK_RUNNER.tmp" && mv -f "$TASK_RUNNER.tmp" "$TASK_RUNNER"
+}
+
+task_hour() { h=${1%:*}; echo $((${h#0} + 0)); }
+task_minute() { m=${1#*:}; echo $((${m#0} + 0)); }
+
+task_unit() { echo "miffan-task-$1"; }
+task_label() { echo "me.ayuilos.miffan.task.$1"; }
+task_plist() { echo "$HOME/Library/LaunchAgents/$(task_label "$1").plist"; }
+
+# bootout returns before the job is gone, so an immediate bootstrap can fail with EIO.
+task_launchd_load() {
+    launchctl bootout "gui/$(id -u)/$1" >/dev/null 2>&1
+    for _ in 1 2 3 4 5; do
+        launchctl bootstrap "gui/$(id -u)" "$2" >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    return 1
+}
+
+task_xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+task_systemd_write() {
+    id=$1
+    shift
+    unit_dir="$HOME/.config/systemd/user"
+    unit=$(task_unit "$id")
+    mkdir -p "$unit_dir" || return 1
+    {
+        printf '[Unit]\nDescription=Miffan task %s\n\n[Service]\nType=oneshot\nTimeoutStartSec=infinity\n' "$id"
+        printf 'ExecStart=/bin/sh "%%h/.miffan/bin/miffan-task-runner" task exec %s\n' "$id"
+    } >"$unit_dir/$unit.service.tmp" && mv -f "$unit_dir/$unit.service.tmp" "$unit_dir/$unit.service" || return 1
+    {
+        # The default AccuracySec=1min would start a task up to a minute after the time the user set.
+        printf '[Unit]\nDescription=Miffan task %s timer\n\n[Timer]\nAccuracySec=1s\n' "$id"
+        case "$1" in
+            daily) printf 'OnCalendar=*-*-* %s:00\nPersistent=true\n' "$2" ;;
+            weekly)
+                names=$(printf '%s\n' "$2" | tr ',' '\n' | sed 's/0/Sun/;s/1/Mon/;s/2/Tue/;s/3/Wed/;s/4/Thu/;s/5/Fri/;s/6/Sat/' | paste -sd, -)
+                printf 'OnCalendar=%s *-*-* %s:00\nPersistent=true\n' "$names" "$3"
+                ;;
+            interval) printf 'OnActiveSec=%smin\nOnUnitActiveSec=%smin\n' "$2" "$2" ;;
+        esac
+        printf '\n[Install]\nWantedBy=timers.target\n'
+    } >"$unit_dir/$unit.timer.tmp" && mv -f "$unit_dir/$unit.timer.tmp" "$unit_dir/$unit.timer"
+}
+
+task_launchd_write() {
+    id=$1
+    shift
+    mkdir -p "$HOME/Library/LaunchAgents" || return 1
+    plist=$(task_plist "$id")
+    {
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+        printf '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        printf '<plist version="1.0">\n<dict>\n<key>Label</key><string>%s</string>\n' "$(task_label "$id")"
+        printf '<key>ProgramArguments</key><array><string>/bin/sh</string><string>%s</string><string>task</string><string>exec</string><string>%s</string></array>\n' \
+            "$(task_xml "$TASK_RUNNER")" "$id"
+        case "$1" in
+            daily) printf '<key>StartCalendarInterval</key><dict><key>Hour</key><integer>%s</integer><key>Minute</key><integer>%s</integer></dict>\n' "$(task_hour "$2")" "$(task_minute "$2")" ;;
+            weekly)
+                printf '<key>StartCalendarInterval</key><array>'
+                for day in $(printf '%s\n' "$2" | tr ',' ' '); do
+                    printf '<dict><key>Weekday</key><integer>%s</integer><key>Hour</key><integer>%s</integer><key>Minute</key><integer>%s</integer></dict>' "$day" "$(task_hour "$3")" "$(task_minute "$3")"
+                done
+                printf '</array>\n'
+                ;;
+            interval) printf '<key>StartInterval</key><integer>%s</integer>\n' "$(($2 * 60))" ;;
+        esac
+        printf '<key>ProcessType</key><string>Standard</string>\n'
+        printf '<key>StandardOutPath</key><string>/dev/null</string>\n<key>StandardErrorPath</key><string>/dev/null</string>\n'
+        printf '</dict>\n</plist>\n'
+    } >"$plist.tmp" && mv -f "$plist.tmp" "$plist"
+}
+
+task_cron_spec() {
+    case "$1" in
+        daily) printf '%s %s * * *' "$(task_minute "$2")" "$(task_hour "$2")" ;;
+        weekly) printf '%s %s * * %s' "$(task_minute "$3")" "$(task_hour "$3")" "$2" ;;
+        interval)
+            if [ "$2" -lt 60 ]; then printf '*/%s * * * *' "$2"; else printf '0 */%s * * *' "$(($2 / 60))"; fi
+            ;;
+    esac
+}
+
+task_crontab_without() {
+    crontab -l 2>/dev/null | grep -v "# miffan-task:$1\$"
+}
+
+# Installs (or refreshes) the timer for an enabled task. $1 id; the schedule follows.
+task_timer_install() {
+    id=$1
+    task_install_runner || return 1
+    backend=$(cat "$TASKS_DIR/$id/backend")
+    case "$backend" in
+        systemd)
+            task_user_bus
+            task_systemd_write "$@" || return 1
+            systemctl --user daemon-reload && systemctl --user enable "$(task_unit "$id").timer" >/dev/null 2>&1 &&
+                systemctl --user restart "$(task_unit "$id").timer"
+            ;;
+        launchd)
+            task_launchd_write "$@" || return 1
+            task_launchd_load "$(task_label "$id")" "$(task_plist "$id")"
+            ;;
+        cron)
+            case "$HOME" in *%*|*'"'*) return 1 ;; esac
+            shift
+            line="$(task_cron_spec "$@") /bin/sh \"$TASK_RUNNER\" task exec $id # miffan-task:$id"
+            { task_crontab_without "$id"; printf '%s\n' "$line"; } | crontab -
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# Stops the timer but keeps what `task run` needs. Also used before removing a task.
+task_timer_uninstall() {
+    id=$1
+    backend=$(cat "$TASKS_DIR/$id/backend" 2>/dev/null) || backend=""
+    case "$backend" in
+        systemd)
+            task_user_bus
+            systemctl --user disable --now "$(task_unit "$id").timer" >/dev/null 2>&1
+            ;;
+        launchd)
+            launchctl bootout "gui/$(id -u)/$(task_label "$id")" >/dev/null 2>&1
+            rm -f "$(task_plist "$id")"
+            ;;
+        cron)
+            current=$(crontab -l 2>/dev/null) || current=""
+            case "$current" in *"# miffan-task:$id"*) task_crontab_without "$id" | crontab - ;; esac
+            ;;
+    esac
+    return 0
+}
+
+task_timer_ok() {
+    id=$1
+    case "$(cat "$TASKS_DIR/$id/backend" 2>/dev/null)" in
+        systemd) task_user_bus; systemctl --user is-active --quiet "$(task_unit "$id").timer" ;;
+        launchd) launchctl print "gui/$(id -u)/$(task_label "$id")" >/dev/null 2>&1 ;;
+        cron) crontab -l 2>/dev/null | grep -q "# miffan-task:$id\$" ;;
+        *) return 1 ;;
+    esac
+}
+
+task_stage() {
+    id=${1:-}
+    part=${2:-}
+    task_id_ok "$id" || task_fail "invalid task id"
+    case "$part" in meta) file=meta.json ;; run|prompt|env) file=$part ;; *) task_fail "invalid part" ;; esac
+    staging="$TASKS_DIR/.staging/$id"
+    mkdir -p "$staging" || task_fail "cannot create task directory"
+    head -c $((TASK_PART_LIMIT + 1)) >"$staging/$file.tmp" || task_fail "cannot write task file"
+    size=$(wc -c <"$staging/$file.tmp" | tr -d ' ')
+    if [ "$size" -gt "$TASK_PART_LIMIT" ]; then
+        rm -f "$staging/$file.tmp"
+        task_fail "task file too large"
+    fi
+    if [ "$part" = env ]; then
+        count=0
+        while IFS= read -r name || [ -n "$name" ]; do
+            count=$((count + 1))
+            case "$name" in [A-Za-z_]*) ;; *) rm -f "$staging/$file.tmp"; task_fail "invalid variable name" ;; esac
+            case "$name" in *[!A-Za-z0-9_]*) rm -f "$staging/$file.tmp"; task_fail "invalid variable name" ;; esac
+        done <"$staging/$file.tmp"
+        [ "$count" -le 64 ] || { rm -f "$staging/$file.tmp"; task_fail "too many variables"; }
+    fi
+    mv -f "$staging/$file.tmp" "$staging/$file" || task_fail "cannot write task file"
+    printf '{"success":true}\n'
+}
+
+task_commit_fail() {
+    rm -rf "$staging"
+    task_fail "$1"
+}
+
+# task commit <id> <timeout-seconds> <schedule...>
+task_commit() {
+    id=${1:-}
+    timeout=${2:-}
+    task_id_ok "$id" || task_fail "invalid task id"
+    # Staged files are consumed by every commit, failed or not, so stale parts never leak in.
+    staging="$TASKS_DIR/.staging/$id"
+    [ "$#" -ge 3 ] || task_commit_fail "missing schedule"
+    shift 2
+    case "$timeout" in ''|*[!0-9]*) task_commit_fail "invalid timeout" ;; esac
+    if [ "$timeout" -lt 60 ] || [ "$timeout" -gt 86400 ]; then task_commit_fail "invalid timeout"; fi
+    task_schedule_ok "$@" || task_commit_fail "invalid schedule"
+    for file in meta.json run prompt env; do
+        [ -f "$staging/$file" ] || task_commit_fail "missing staged $file"
+    done
+    backend=$(task_scheduler)
+    [ "$backend" != none ] || task_commit_fail "no scheduler available"
+    dir="$TASKS_DIR/$id"
+    created=false
+    if [ ! -d "$dir" ]; then
+        created=true
+        mkdir -p "$dir/runs" || task_fail "cannot create task directory"
+        : >"$dir/enabled"
+    fi
+    mkdir -p "$dir/runs"
+    [ "$created" = true ] || task_timer_uninstall "$id"
+    printf '%s\n' "$*" >"$staging/schedule"
+    printf '%s\n' "$timeout" >"$staging/timeout"
+    printf '%s\n' "$backend" >"$staging/backend"
+    for file in meta.json run prompt env schedule timeout backend; do
+        mv -f "$staging/$file" "$dir/$file" || task_fail "cannot write task file"
+    done
+    rm -rf "$staging"
+    if [ -f "$dir/enabled" ] && ! task_timer_install "$id" "$@"; then
+        task_timer_uninstall "$id"
+        if [ "$created" = true ]; then
+            rm -rf "${TASKS_DIR:?}/$id"
+        else
+            rm -f "$TASKS_DIR/$id/enabled"
+        fi
+        if [ "$backend" = launchd ]; then task_fail "login_required"; fi
+        task_fail "cannot install $backend timer"
+    fi
+    printf '{"success":true,"backend":"%s","enabled":%s}\n' "$backend" "$([ -f "$dir/enabled" ] && echo true || echo false)"
+}
+
+task_dir_or_fail() {
+    task_id_ok "${1:-}" || task_fail "invalid task id"
+    [ -f "$TASKS_DIR/$1/run" ] || task_fail "no such task"
+}
+
+task_set_enabled() {
+    task_dir_or_fail "$2"
+    if [ "$1" = true ]; then
+        : >"$TASKS_DIR/$2/enabled"
+        # shellcheck disable=SC2046
+        if ! task_timer_install "$2" $(cat "$TASKS_DIR/$2/schedule"); then
+            task_timer_uninstall "$2"
+            rm -f "$TASKS_DIR/$2/enabled"
+            task_fail "cannot install $(cat "$TASKS_DIR/$2/backend") timer"
+        fi
+    else
+        rm -f "$TASKS_DIR/$2/enabled"
+        task_timer_uninstall "$2"
+    fi
+    printf '{"success":true}\n'
+}
+
+task_remove_one() {
+    task_timer_uninstall "$1"
+    case "$(cat "$TASKS_DIR/$1/backend" 2>/dev/null)" in
+        systemd)
+            rm -f "$HOME/.config/systemd/user/$(task_unit "$1").service" "$HOME/.config/systemd/user/$(task_unit "$1").timer"
+            systemctl --user daemon-reload >/dev/null 2>&1
+            ;;
+        launchd) launchctl bootout "gui/$(id -u)/$(task_label "$1").now" >/dev/null 2>&1 ;;
+    esac
+    rm -rf "${TASKS_DIR:?}/$1"
+}
+
+task_remove() {
+    if [ "${1:-}" = --all ]; then
+        for dir in "$TASKS_DIR"/*/; do
+            [ -d "$dir" ] || continue
+            id=${dir%/}
+            id=${id##*/}
+            task_id_ok "$id" && task_remove_one "$id"
+        done
+        rm -rf "$TASKS_DIR/.staging"
+    else
+        task_id_ok "${1:-}" || task_fail "invalid task id"
+        [ -d "$TASKS_DIR/$1" ] || task_fail "no such task"
+        task_remove_one "$1"
+    fi
+    for dir in "$TASKS_DIR"/*/; do
+        [ -d "$dir" ] && { printf '{"success":true}\n'; return; }
+    done
+    rm -f "$TASK_RUNNER"
+    printf '{"success":true}\n'
+}
+
+# Starts one run now, through the same scheduler as timed runs so it sees the same environment.
+task_run_now() {
+    task_dir_or_fail "${1:-}"
+    id=$1
+    task_install_runner || task_fail "cannot install task runner"
+    case "$(cat "$TASKS_DIR/$id/backend")" in
+        systemd)
+            task_user_bus
+            systemctl --user start --no-block "$(task_unit "$id").service" >/dev/null 2>&1 || task_fail "cannot start task"
+            ;;
+        launchd)
+            # A one-off job kept outside LaunchAgents, so it never loads again at login.
+            label="$(task_label "$id").now"
+            plist="$TASKS_DIR/$id/now.plist"
+            {
+                printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+                printf '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+                printf '<plist version="1.0">\n<dict>\n<key>Label</key><string>%s</string>\n' "$label"
+                printf '<key>ProgramArguments</key><array><string>/bin/sh</string><string>%s</string><string>task</string><string>exec</string><string>%s</string></array>\n' \
+                    "$(task_xml "$TASK_RUNNER")" "$id"
+                printf '<key>RunAtLoad</key><true/>\n<key>ProcessType</key><string>Standard</string>\n'
+                printf '<key>StandardOutPath</key><string>/dev/null</string>\n<key>StandardErrorPath</key><string>/dev/null</string>\n'
+                printf '</dict>\n</plist>\n'
+            } >"$plist"
+            task_launchd_load "$label" "$plist" || task_fail "login_required"
+            ;;
+        cron)
+            nohup /bin/sh "$TASK_RUNNER" task exec "$id" </dev/null >/dev/null 2>&1 &
+            ;;
+        *) task_fail "no scheduler available" ;;
+    esac
+    printf '{"success":true}\n'
+}
+
+task_record() {
+    # $1 dir, $2 id, $3 started, $4 status, $5 exit code or null, $6 log bytes, $7 truncated, $8 log file
+    run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    [ -z "$8" ] || mv -f "$8" "$1/runs/$run_id.log"
+    printf '{"run_id":"%s","task_id":"%s","started_at":"%s","ended_at":"%s","exit_code":%s,"status":"%s","log_bytes":%s,"truncated":%s}\n' \
+        "$run_id" "$2" "$3" "$(task_now)" "$5" "$4" "$6" "$7" >"$1/runs/.$run_id.json" &&
+        mv -f "$1/runs/.$run_id.json" "$1/runs/$run_id.json"
+    count=$(find "$1/runs" -name '*.json' ! -name '.*' | wc -l | tr -d ' ')
+    if [ "$count" -gt "$TASK_KEEP_RUNS" ]; then
+        find "$1/runs" -name '*.json' ! -name '.*' | sort | head -n $((count - TASK_KEEP_RUNS)) | while IFS= read -r old; do
+            rm -f "$old" "${old%.json}.log"
+        done
+    fi
+}
+
+task_exec() {
+    task_id_ok "${1:-}" || exit 2
+    id=$1
+    dir="$TASKS_DIR/$id"
+    [ -f "$dir/run" ] || exit 2
+    cd "$HOME" || exit 2
+    mkdir -p "$dir/runs"
+    started=$(task_now)
+    lock="$dir/lock"
+    if ! mkdir "$lock" 2>/dev/null; then
+        holder=$(cat "$lock/pid" 2>/dev/null) || holder=""
+        stale=false
+        if [ -n "$holder" ]; then
+            kill -0 "$holder" 2>/dev/null || stale=true
+        elif [ -n "$(find "$lock" -maxdepth 0 -mmin +1440 2>/dev/null)" ]; then
+            stale=true
+        fi
+        if [ "$stale" = true ]; then rm -rf "$lock"; fi
+        if [ "$stale" != true ] || ! mkdir "$lock" 2>/dev/null; then
+            task_record "$dir" "$id" "$started" skipped_overlap null 0 false ""
+            exit 0
+        fi
+    fi
+    echo "$$" >"$lock/pid"
+    trap 'rm -rf "$lock"' EXIT
+    timeout=$(cat "$dir/timeout" 2>/dev/null) || timeout=600
+    input=/dev/null
+    [ -s "$dir/prompt" ] && input="$dir/prompt"
+    [ ! -f "$dir/env" ] || task_apply_env "$dir/env"
+    log="$dir/runs/.current.log"
+    /bin/sh "$dir/run" <"$input" >"$log" 2>&1 &
+    child=$!
+    (sleep "$timeout"; : >"$lock/timed-out"; task_kill_tree "$child" TERM; sleep 10; task_kill_tree "$child" KILL) >/dev/null 2>&1 </dev/null &
+    watcher=$!
+    wait "$child"
+    code=$?
+    task_kill_tree "$watcher" KILL
+    status=ok
+    if [ -f "$lock/timed-out" ]; then
+        status=timeout
+    elif [ "$code" -ne 0 ]; then
+        status=failed
+    fi
+    bytes=$(wc -c <"$log" | tr -d ' ')
+    truncated=false
+    if [ "$bytes" -gt "$TASK_LOG_LIMIT" ]; then
+        tail -c "$TASK_LOG_LIMIT" "$log" >"$log.tail" && mv -f "$log.tail" "$log"
+        truncated=true
+    fi
+    task_record "$dir" "$id" "$started" "$status" "$code" "$bytes" "$truncated" "$log"
+}
+
+task_last_run() {
+    last=$(find "$1/runs" -name '*.json' ! -name '.*' 2>/dev/null | sort | tail -n 1)
+    if [ -n "$last" ]; then tr -d '\n' <"$last"; else printf null; fi
+}
+
+task_list() {
+    printf '{"scheduler":"%s","tasks":[' "$(task_scheduler)"
+    first=true
+    for dir in "$TASKS_DIR"/*/; do
+        [ -f "${dir}run" ] || continue
+        id=${dir%/}
+        id=${id##*/}
+        task_id_ok "$id" || continue
+        [ "$first" = true ] || printf ','
+        first=false
+        enabled=false
+        [ -f "${dir}enabled" ] && enabled=true
+        timer_ok=false
+        task_timer_ok "$id" && timer_ok=true
+        printf '{"id":"%s","enabled":%s,"timer_ok":%s,"backend":%s,"schedule":%s,"timeout":%s,"meta_b64":"%s","last_run":%s}' \
+            "$id" "$enabled" "$timer_ok" "$(json_or_null "$(cat "${dir}backend" 2>/dev/null)")" \
+            "$(json_or_null "$(cat "${dir}schedule" 2>/dev/null)")" "$(cat "${dir}timeout" 2>/dev/null || echo null)" \
+            "$(base64 <"${dir}meta.json" | tr -d '\n')" "$(task_last_run "$dir")"
+    done
+    printf ']}\n'
+}
+
+task_sync() {
+    cursor=${1:-}
+    case "$cursor" in *[!0-9TZ-]*) task_fail "invalid cursor" ;; esac
+    latest=$cursor
+    printf '{"runs":['
+    first=true
+    for record in "$TASKS_DIR"/*/runs/*.json; do
+        [ -f "$record" ] || continue
+        run_id=${record##*/}
+        run_id=${run_id%.json}
+        if [ -n "$cursor" ] && ! expr "x$run_id" \> "x$cursor" >/dev/null; then continue; fi
+        if [ -z "$latest" ] || expr "x$run_id" \> "x$latest" >/dev/null; then latest=$run_id; fi
+        [ "$first" = true ] || printf ','
+        first=false
+        excerpt=""
+        [ -f "${record%.json}.log" ] && excerpt=$(tail -c "$TASK_EXCERPT_BYTES" "${record%.json}.log" | base64 | tr -d '\n')
+        body=$(tr -d '\n' <"$record")
+        printf '%s,"excerpt_b64":"%s"}' "${body%\}}" "$excerpt"
+    done
+    printf '],"cursor":%s}\n' "$(json_or_null "$latest")"
+}
+
+task_log() {
+    task_id_ok "${1:-}" || task_fail "invalid task id"
+    case "${2:-}" in ''|*[!0-9TZ-]*) task_fail "invalid run id" ;; esac
+    [ -f "$TASKS_DIR/$1/runs/$2.log" ] || task_fail "no such run"
+    cat "$TASKS_DIR/$1/runs/$2.log"
+}
+
+task() {
+    umask 077
+    action=${1:-}
+    [ "$#" -eq 0 ] || shift
+    case "$action" in
+        probe) task_probe ;;
+        which) task_which "$@" ;;
+        stage) task_stage "$@" ;;
+        commit) task_commit "$@" ;;
+        list) task_list ;;
+        remove) task_remove "$@" ;;
+        enable) task_set_enabled true "${1:-}" ;;
+        disable) task_set_enabled false "${1:-}" ;;
+        run) task_run_now "$@" ;;
+        sync) task_sync "$@" ;;
+        log) task_log "$@" ;;
+        exec) task_exec "$@" ;;
+        *) echo "usage: miffan task probe|which|stage|commit|list|remove|enable|disable|run|sync|log|exec" >&2; exit 2 ;;
+    esac
+}
+
 # --- probe -------------------------------------------------------------------------------
 
 computer_name() {
@@ -1239,5 +1865,6 @@ case "${1:-}" in
     sunshine) shift; if [ "$#" -eq 0 ]; then sunshine probe; else sunshine "$@"; fi ;;
     clip) clip ;;
     mac-shortcut) mac_shortcut "${2:-}" ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut" >&2; exit 2 ;;
+    task) shift; task "$@" ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|task" >&2; exit 2 ;;
 esac

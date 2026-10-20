@@ -1,6 +1,9 @@
 package me.ayuilos.miffan
 
 import android.app.Application
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -103,7 +106,23 @@ class MiffanApp : Application() {
 
         startModelCatalog()
 
+        deliverRemoteTaskResults()
+
         // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
+    }
+
+    /**
+     * Scheduled tasks on the user's computers report back only while Miffan is open: each time the app
+     * comes to the foreground, pull finished runs and bring them into their partners' chats.
+     */
+    private fun deliverRemoteTaskResults() {
+        get<AppScope>().launch {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_START) get<AppScope>().launch(Dispatchers.IO) {
+                    get<me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery>().syncAndDeliver()
+                }
+            })
+        }
     }
 
     private fun startModelCatalog() {

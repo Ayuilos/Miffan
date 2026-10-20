@@ -79,6 +79,7 @@ jobs:
         run: |
           python3 remote-helper/tests/test_helper_safety.py
           python3 remote-helper/tests/test_sunshine_helper.py
+          python3 remote-helper/tests/test_task_helper.py
 
       - name: Check remote helper shell diagnostics
         run: |

@@ -34,5 +34,7 @@ sealed interface MessageOrigin {
         val sourceAssistantId: Uuid? = null,
         /** The multi-partner chat the event came from, if any. */
         val chatId: Uuid? = null,
+        /** What the timeline line opens, e.g. `remote-task:<hostId>/<taskId>`; null for a plain line. */
+        val link: String? = null,
     ) : MessageOrigin
 }

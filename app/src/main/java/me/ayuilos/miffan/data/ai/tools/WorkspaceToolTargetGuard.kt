@@ -7,9 +7,12 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 
+/** Scheduled tasks and agent tools act on the partner's computer, like its workspace and desktop tools. */
+private val COMPUTER_BOUND_TOOLS = setOf(SCHEDULE_TASK_TOOL, AGENT_TOOLS_TOOL)
+
 /** A model supplies only tool name/input. The app attaches this target after receiving the call. */
 internal fun captureWorkspaceToolTarget(call: UIMessagePart.Tool, definition: Tool?): UIMessagePart.Tool =
-    if (call.toolName in WORKSPACE_TOOL_NAMES || call.toolName.startsWith(COMPUTER_TOOL_PREFIX)) {
+    if (call.toolName in WORKSPACE_TOOL_NAMES || call.toolName.startsWith(COMPUTER_TOOL_PREFIX) || call.toolName in COMPUTER_BOUND_TOOLS) {
         call.copy(workspaceTarget = definition?.workspaceTarget)
     } else call
 
@@ -38,7 +41,8 @@ internal class WorkspaceToolTargetBinder(
         newToolCount = last.parts.drop(firstNewPartIndex).count { it is UIMessagePart.Tool }
         var changed = false
         val parts = last.parts.mapIndexed { index, part ->
-            if (index < firstNewPartIndex || part !is UIMessagePart.Tool || (!part.toolName.startsWith("workspace_") && !part.toolName.startsWith(COMPUTER_TOOL_PREFIX))) {
+            if (index < firstNewPartIndex || part !is UIMessagePart.Tool || (!part.toolName.startsWith("workspace_") &&
+                    !part.toolName.startsWith(COMPUTER_TOOL_PREFIX) && part.toolName !in COMPUTER_BOUND_TOOLS)) {
                 part
             } else {
                 if (index !in capturedTargets && part.toolName in definitionsByName) {

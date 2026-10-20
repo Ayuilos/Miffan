@@ -24,6 +24,7 @@ Android variant assets API 自动引入生成目录，APK 的资源路径保持�
 ```sh
 python3 remote-helper/tests/test_helper_safety.py
 python3 remote-helper/tests/test_sunshine_helper.py
+python3 remote-helper/tests/test_task_helper.py  # HELPER_SH=/bin/dash 可模拟 CI
 python3 remote-helper/tests/check_shellcheck.py /path/to/shellcheck-v0.10.0/shellcheck
 ./gradlew test
 ./gradlew lint
