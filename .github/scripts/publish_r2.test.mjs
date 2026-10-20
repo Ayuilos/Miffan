@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import {
   ORIGIN, validTag, parseManifest, releaseFromGitHub, compareVersions,
-  shouldPromote, verifyFile, verifyChecksum, ensureImmutable, publishRelease,
+  shouldPromote, verifyFile, verifyChecksum, ensureImmutable, publishRelease, isPreconditionFailed,
 } from './publish_r2.mjs';
 
 const bytes = Buffer.from('signed APK fixture');
@@ -181,6 +181,49 @@ test('conditional-write races fail without retrying an unconditional overwrite',
   await assert.rejects(publishRelease(release, files, io), /PreconditionFailed/);
   assert.equal(attempts, 1);
   assert.equal(events.some(event => event[0] === 'verify-manifest'), false);
+});
+
+const refused = () => new Error('aws failed: aws: [ERROR]: An error occurred (PreconditionFailed) when calling the PutObject operation');
+
+test('only S3 precondition refusals count as precondition failures', () => {
+  assert.equal(isPreconditionFailed(refused()), true);
+  for (const error of [new Error('AccessDenied'), new Error('PreconditionFailedX'), null, undefined]) {
+    assert.equal(isPreconditionFailed(error), false);
+  }
+});
+
+test('a retried immutable write that already landed is accepted after verifying its bytes', async t => {
+  const { dir, files } = fixture(t);
+  const remote = join(dir, 'remote.apk');
+  let reads = 0;
+  const io = {
+    async read() { reads++; return reads === 1 ? null : { file: remote }; },
+    async write() { writeFileSync(remote, bytes); throw refused(); },
+  };
+  await ensureImmutable('release.apk', files.apk, {}, io);
+  assert.equal(reads, 2);
+});
+
+test('a refused immutable write fails when the object is missing or different', async t => {
+  const { dir, files } = fixture(t);
+  const remote = join(dir, 'remote.apk');
+  writeFileSync(remote, Buffer.alloc(bytes.length));
+  let reads = 0;
+  const io = { async read() { reads++; return reads === 1 ? null : { file: remote }; }, async write() { throw refused(); } };
+  await assert.rejects(ensureImmutable('release.apk', files.apk, {}, io), /SHA-256 mismatch/);
+  io.read = async () => null;
+  await assert.rejects(ensureImmutable('release.apk', files.apk, {}, io), /PreconditionFailed/);
+  io.write = async () => { throw new Error('AccessDenied'); };
+  await assert.rejects(ensureImmutable('release.apk', files.apk, {}, io), /AccessDenied/);
+});
+
+test('a refused latest write is accepted only when latest already points at this release', async t => {
+  const { files, events, io } = fixture(t);
+  let current = await io.readLatest();
+  io.readLatest = async () => current;
+  io.writeLatest = async () => { current = { value: release, etag: '"landed"' }; throw refused(); };
+  assert.equal((await publishRelease(release, files, io)).promoted, true);
+  assert.equal(events.at(-1)[0], 'verify-manifest');
 });
 
 test('first publication uses create-only latest semantics', async t => {

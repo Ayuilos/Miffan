@@ -48,6 +48,7 @@ The current production workflow only creates a draft; its protected production E
 - Semantic-version and publication-date checks prevent older releases replacing newer ones.
 - Only GitHub's current latest stable release may become the website latest.
 - Reruns are idempotent; failed uploads can be retried without changing the APK.
+- A conditional write refused because the CLI retried a request that had already landed is accepted only after reading the object back: versioned objects must have identical bytes and `latest.json` must already describe this release. Any other refusal still fails.
 - The credentialed job checks out trusted `master`, never arbitrary tag code. PR tests have no R2 credentials. Official checkout/setup actions are pinned to commit SHAs.
 - No cache purge is needed: APK URLs are versioned and immutable; the latest manifest uses `no-cache`.
 
