@@ -3171,6 +3171,10 @@
   <string name="remote_task_hint_sync">任務會在電腦上準時執行，手機關機也不影響。結果會在你打開 Miffan 時同步過來。</string>
   <string name="remote_task_hint_mac">Mac 睡眠時不會執行，醒來後補跑一次。需要你已登入這台 Mac（鎖屏沒關係）。</string>
   <string name="remote_task_hint_ask_partner">想加新任務，在聊天裡跟夥伴說就行，比如「每天早上 9 點幫我整理下載資料夾」。</string>
+  <string name="im_p5_computer_section">電腦</string>
+  <string name="remote_task_partner_section">它安排的排程任務</string>
+  <string name="remote_task_partner_see_all">查看全部 %1$d 個</string>
+  <string name="remote_task_partner_hint">在這台電腦上按時執行，打開 Miffan 時同步結果。想改任務，直接跟%1$s說。</string>
   <string name="remote_task_kind_command">命令</string>
   <string name="remote_task_paused">已暫停</string>
   <string name="remote_task_timer_missing">沒在執行</string>

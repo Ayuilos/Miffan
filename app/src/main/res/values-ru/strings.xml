@@ -3191,6 +3191,10 @@
   <string name="remote_task_hint_sync">Задачи выполняются на компьютере вовремя, даже если телефон выключен. Результаты синхронизируются при открытии Miffan.</string>
   <string name="remote_task_hint_mac">Спящий Mac пропускает запуск и выполняет его один раз после пробуждения. Нужно войти в Mac (заблокированный экран не мешает).</string>
   <string name="remote_task_hint_ask_partner">Чтобы добавить задачу, просто напишите партнёру в чате, например: «Каждое утро в 9 разбирай папку Загрузки».</string>
+  <string name="im_p5_computer_section">Компьютер</string>
+  <string name="remote_task_partner_section">Задачи, которые он запланировал</string>
+  <string name="remote_task_partner_see_all">Показать все (%1$d)</string>
+  <string name="remote_task_partner_hint">Выполняются на этом компьютере по расписанию; результаты приходят, когда вы открываете Miffan. Чтобы изменить задачу, просто скажите об этом: %1$s.</string>
   <string name="remote_task_kind_command">Команда</string>
   <string name="remote_task_paused">Приостановлено</string>
   <string name="remote_task_timer_missing">Не запланировано</string>

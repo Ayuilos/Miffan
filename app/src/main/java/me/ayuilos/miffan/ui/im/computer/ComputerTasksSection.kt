@@ -14,6 +14,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
@@ -39,6 +41,7 @@ import me.rerere.hugeicons.stroke.WifiDisconnected01
 import org.koin.compose.koinInject
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.uuid.Uuid
 
 /**
  * A computer's scheduled tasks on its detail page. Opening the page syncs once: the app never pulls
@@ -49,7 +52,9 @@ internal fun ComputerTasksSection(hostId: String, windows: Boolean, username: St
     val nav = LocalNavController.current
     val repository: RemoteTaskRepository = koinInject()
     val scope = rememberCoroutineScope()
-    val tasks by remember(hostId) { repository.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val tasks by remember(hostId) {
+        repository.tasksFlow(hostId).map { list -> list.sortedBy { repository.decodeMeta(it)?.createdAt } }
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     val host by remember(hostId) { repository.hostFlow(hostId) }.collectAsStateWithLifecycle(initialValue = null)
     val latest by remember(hostId) { repository.latestRunsFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     var syncing by remember { mutableStateOf(false) }
@@ -121,6 +126,68 @@ internal fun ComputerTasksSection(hostId: String, windows: Boolean, username: St
         }
     }
 }
+
+/** Tasks on [hostId] that this partner set up, as last synced; the computer's page lists everyone's. */
+@Composable
+internal fun rememberPartnerTasks(assistantId: Uuid, hostId: String?): State<List<RemoteTaskEntity>> {
+    val repository: RemoteTaskRepository = koinInject()
+    return remember(repository, assistantId, hostId) {
+        hostId?.let { repository.tasksFlow(it) }?.map { tasks ->
+            tasks.map { it to repository.decodeMeta(it) }.filter { (_, meta) -> meta?.owner?.assistantId == assistantId }
+                .sortedBy { (_, meta) -> meta?.createdAt }.map { it.first }
+        }
+            ?: flowOf(emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+}
+
+/**
+ * The partner profile's view of [rememberPartnerTasks]: the first few, then a way to the computer's
+ * page. It does not sync; results come over when the app opens. Callers leave it out when empty.
+ */
+@Composable
+internal fun PartnerTasksSection(hostId: String, tasks: List<RemoteTaskEntity>, partnerName: String) {
+    val nav = LocalNavController.current
+    val repository: RemoteTaskRepository = koinInject()
+    val host by remember(hostId) { repository.hostFlow(hostId) }.collectAsStateWithLifecycle(initialValue = null)
+    val latest by remember(hostId) { repository.latestRunsFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.Bottom) {
+            Text(stringResource(R.string.remote_task_partner_section), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            host?.lastSyncedAt?.let {
+                Text(stringResource(R.string.remote_task_synced_at, timeOf(it)), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        SetupCard(padding = 0.dp, spacing = 0.dp) {
+            // Problems first, so the folded list never hides a failing task behind "see all".
+            val ordered = tasks.sortedByDescending { task ->
+                task.enabled && (!task.timerOk || latest.find { it.taskId == task.taskId }?.let { isRunFailure(it.status) } == true)
+            }
+            ordered.take(PARTNER_TASKS_SHOWN).forEachIndexed { index, task ->
+                if (index > 0) HorizontalDivider(Modifier.padding(start = 70.dp))
+                TaskRow(task, latest.find { it.taskId == task.taskId }, repository) {
+                    nav.navigate(Screen.RemoteTaskDetail(hostId, task.taskId))
+                }
+            }
+            if (tasks.size > PARTNER_TASKS_SHOWN) {
+                HorizontalDivider(Modifier.padding(start = 16.dp))
+                Surface(onClick = { nav.navigate(Screen.ComputerDetail(hostId)) }, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.remote_task_partner_see_all, tasks.size), Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.primary)
+                        Icon(HugeIcons.ArrowRight01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        Text(stringResource(R.string.remote_task_partner_hint, partnerName), Modifier.padding(horizontal = 6.dp),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private const val PARTNER_TASKS_SHOWN = 3
 
 @Composable
 private fun TaskRow(task: RemoteTaskEntity, last: RemoteTaskRunEntity?, repository: RemoteTaskRepository, onClick: () -> Unit) {

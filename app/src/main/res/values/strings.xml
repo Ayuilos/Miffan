@@ -3194,6 +3194,10 @@
   <string name="remote_task_hint_sync">Tasks run on the computer on time, even with your phone off. Results come over when you open Miffan.</string>
   <string name="remote_task_hint_mac">A sleeping Mac skips the run and catches up once when it wakes. You need to be signed in to the Mac (a locked screen is fine).</string>
   <string name="remote_task_hint_ask_partner">To add one, just ask a partner in chat, e.g. “Tidy my Downloads folder every morning at 9.”</string>
+  <string name="im_p5_computer_section">Computer</string>
+  <string name="remote_task_partner_section">Scheduled tasks it set up</string>
+  <string name="remote_task_partner_see_all">See all %1$d</string>
+  <string name="remote_task_partner_hint">They run on this computer on schedule; results come over when you open Miffan. To change one, just tell %1$s.</string>
   <string name="remote_task_kind_command">Command</string>
   <string name="remote_task_paused">Paused</string>
   <string name="remote_task_timer_missing">Not scheduled</string>

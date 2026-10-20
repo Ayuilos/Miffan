@@ -18,6 +18,8 @@ import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
 import me.ayuilos.miffan.ui.im.computer.rememberPartnerUsesPhone
 import me.ayuilos.miffan.data.model.withWorkspaceBinding
 import me.ayuilos.miffan.ui.im.computer.PartnerComputerPermissionRow
+import me.ayuilos.miffan.ui.im.computer.PartnerTasksSection
+import me.ayuilos.miffan.ui.im.computer.rememberPartnerTasks
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.im.thread.threadAssistantName
 import me.ayuilos.miffan.Screen
@@ -45,6 +47,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val computer by rememberPartnerComputer(vm.assistantId)
     val usesPhone by rememberPartnerUsesPhone(vm.assistantId)
+    val computerTasks by rememberPartnerTasks(vm.assistantId, computer?.hostId)
     val memories by vm.memories.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val partnerChats: me.ayuilos.miffan.data.partner.PartnerChatService = org.koin.compose.koinInject()
@@ -93,6 +96,10 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             item("memory") { ImSettingRow(stringResource(R.string.im_p5_memory_count, memories.size), { nav.navigate(Screen.ImMemory(partner.memoryOwnerId())) }) }
             item("capabilities") { Text(stringResource(R.string.im_p5_capabilities), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item("web") { ImCapabilityRow(stringResource(R.string.im_p5_web), partner.enableWebSearch, !busy) { enabled -> perform { vm.update { it.copy(enableWebSearch = enabled) } } } }
+            item("remember") { ImCapabilityRow(stringResource(R.string.im_p5_remember), partner.enableMemory, !busy) { enabled -> perform { vm.update { it.copy(enableMemory = enabled) } } } }
+            item("computer_section") {
+                Text(stringResource(R.string.im_p5_computer_section), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            }
             item("computer") {
                 PartnerComputerPermissionRow(computer, usesPhone, partner.computerUse, busy,
                     onMode = { mode -> perform { vm.update { it.copy(computerUse = mode) } } },
@@ -101,7 +108,10 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                     onDisconnect = { perform { vm.update { it.withWorkspaceBinding(null) } } },
                     onOpenComputer = { computer?.hostId?.let { nav.navigate(Screen.ComputerDetail(it)) } })
             }
-            item("remember") { ImCapabilityRow(stringResource(R.string.im_p5_remember), partner.enableMemory, !busy) { enabled -> perform { vm.update { it.copy(enableMemory = enabled) } } } }
+            val bound = computer
+            if (bound != null && computerTasks.isNotEmpty()) item("computer_tasks") {
+                PartnerTasksSection(bound.hostId, computerTasks, threadAssistantName(partner))
+            }
             val contacts = currentSettings.let { settings ->
                 settings.partnerContactGrants.mapNotNull { pair ->
                     val other = when (partner.id) { pair.first -> pair.second; pair.second -> pair.first; else -> null }

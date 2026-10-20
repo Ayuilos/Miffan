@@ -3176,6 +3176,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="remote_task_hint_sync">작업은 휴대폰이 꺼져 있어도 컴퓨터에서 제시간에 실행됩니다. 결과는 Miffan을 열 때 동기화됩니다.</string>
   <string name="remote_task_hint_mac">Mac이 절전 상태이면 실행되지 않고, 깨어날 때 한 번 보충 실행됩니다. Mac에 로그인되어 있어야 합니다(화면 잠금은 괜찮습니다).</string>
   <string name="remote_task_hint_ask_partner">새 작업을 추가하려면 채팅에서 파트너에게 말하면 됩니다. 예: “매일 아침 9시에 다운로드 폴더 정리해 줘.”</string>
+  <string name="im_p5_computer_section">컴퓨터</string>
+  <string name="remote_task_partner_section">이 파트너가 만든 예약 작업</string>
+  <string name="remote_task_partner_see_all">모두 보기 (%1$d개)</string>
+  <string name="remote_task_partner_hint">이 컴퓨터에서 예정대로 실행되고, Miffan을 열 때 결과가 동기화돼요. 바꾸고 싶으면 %1$s에게 말하세요.</string>
   <string name="remote_task_kind_command">명령</string>
   <string name="remote_task_paused">일시 중지됨</string>
   <string name="remote_task_timer_missing">실행되지 않음</string>

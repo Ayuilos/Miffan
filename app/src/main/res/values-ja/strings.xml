@@ -3176,6 +3176,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="remote_task_hint_sync">タスクはコンピューター上で時刻どおりに実行されます。スマホの電源が切れていても問題ありません。結果は Miffan を開いたときに同期されます。</string>
   <string name="remote_task_hint_mac">Mac がスリープ中は実行されず、目覚めたときに1回だけ補完実行されます。この Mac にサインインしている必要があります（画面がロックされていても問題ありません）。</string>
   <string name="remote_task_hint_ask_partner">新しいタスクを追加するには、チャットでパートナーに頼むだけです。例：「毎朝9時にダウンロードフォルダを整理して」</string>
+  <string name="im_p5_computer_section">パソコン</string>
+  <string name="remote_task_partner_section">このパートナーが設定した定期タスク</string>
+  <string name="remote_task_partner_see_all">すべて表示（%1$d 件）</string>
+  <string name="remote_task_partner_hint">このパソコンで予定どおりに実行され、Miffan を開いたときに結果が同期されます。変更したいときは%1$sに伝えてください。</string>
   <string name="remote_task_kind_command">コマンド</string>
   <string name="remote_task_paused">一時停止中</string>
   <string name="remote_task_timer_missing">実行されていません</string>
