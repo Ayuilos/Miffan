@@ -17,6 +17,7 @@ import me.ayuilos.miffan.data.remotetask.ResultExtraction
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 import kotlin.uuid.Uuid
 
 const val AGENT_TOOLS_TOOL = "agent_tools"
@@ -30,6 +31,7 @@ fun createAgentToolsTool(
     hostId: String,
     computerName: String,
     assistantId: Uuid,
+    snapshot: WorkspaceToolTargetSnapshot?,
     tools: () -> List<AgentToolDefinition>,
     store: suspend (List<AgentToolDefinition>) -> Unit,
     repository: RemoteTaskRepository,
@@ -40,6 +42,8 @@ fun createAgentToolsTool(
         "presets cannot be changed; save a copy under a new name instead. Every save and delete asks the user.",
     parameters = { agentToolsSchema() },
     needsApproval = { args -> (args as? JsonObject)?.text("action") in setOf("save", "delete") },
+    // Names the computer, so the approval card can check the executable there.
+    workspaceTarget = snapshot,
     systemPrompt = { _, _ ->
         buildString {
             appendLine("## Agent tools")

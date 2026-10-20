@@ -118,6 +118,10 @@ internal fun ThreadToolPrompt(
             ThreadCalendarCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == EXTENSIONS_APPLY ->
             ThreadExtensionCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == SCHEDULE_TASK ->
+            ThreadScheduleTaskCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == AGENT_TOOLS ->
+            ThreadAgentToolCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadGenericApprovalCard(tool, assistant, onApproval)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
         tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)

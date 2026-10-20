@@ -101,6 +101,13 @@ fun ComputersPage() {
                     }
                 }
             }
+            item("agent_tools") {
+                SetupCard(padding = 0.dp, spacing = 0.dp) {
+                    DetailRow(stringResource(R.string.agent_tools_title), stringResource(R.string.agent_tools_entry_desc), enabled = true) {
+                        nav.navigate(Screen.AgentTools)
+                    }
+                }
+            }
         }
     }
 }
@@ -211,6 +218,9 @@ fun ComputerDetailPage(hostId: String) {
     // Whether that computer also still trusts this phone for high-quality mode.
     var offlinePaired by rememberSaveable { mutableStateOf(false) }
     val hostList by remember(workspaces) { workspaces.listHostsFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val remoteTasks: me.ayuilos.miffan.data.remotetask.RemoteTaskRepository = koinInject()
+    val taskCount by remember(hostId) { remoteTasks.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+        .let { state -> derivedStateOf { state.value.size } }
     var loaded by remember { mutableStateOf(false) }
     LaunchedEffect(computer) {
         if (computer != null) loaded = true
@@ -267,6 +277,10 @@ fun ComputerDetailPage(hostId: String) {
                             enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId)) }
                     }
                 }
+            }
+            item("tasks") {
+                ComputerTasksSection(hostId, windows = current.platform == RemoteScreenPlatform.WINDOWS,
+                    username = hostList.find { it.id == hostId }?.username.orEmpty())
             }
             item("users_title") {
                 Text(stringResource(R.string.im_computer_detail_users), Modifier.padding(start = 4.dp, top = 8.dp),
@@ -369,6 +383,11 @@ fun ComputerDetailPage(hostId: String) {
                                 sibling != null -> Text(stringResource(R.string.im_computer_delete_shared, sibling.name))
                                 else -> Text(stringResource(R.string.im_computer_delete_help))
                             }
+                            // Tasks go with Miffan's access; kept, they keep running and come back when the computer is added again.
+                            if (taskCount > 0) Text(
+                                if (canForget && forget) stringResource(R.string.remote_task_delete_removed, taskCount)
+                                else stringResource(R.string.remote_task_delete_kept, taskCount),
+                                style = MaterialTheme.typography.bodyMedium)
                         }
                     },
                     confirmButton = {

@@ -69,6 +69,11 @@ interface RemoteTaskDAO {
     @Query("SELECT * FROM remote_task_run WHERE host_id = :hostId AND task_id = :taskId ORDER BY run_id DESC LIMIT :limit")
     fun runsFlow(hostId: String, taskId: String, limit: Int = 30): Flow<List<RemoteTaskRunEntity>>
 
+    /** The newest pulled run of each task on [hostId]. */
+    @Query("SELECT * FROM remote_task_run WHERE host_id = :hostId AND run_id IN " +
+        "(SELECT MAX(run_id) FROM remote_task_run WHERE host_id = :hostId GROUP BY task_id)")
+    fun latestRunsFlow(hostId: String): Flow<List<RemoteTaskRunEntity>>
+
     @Query("SELECT * FROM remote_task_run WHERE delivered_at IS NULL ORDER BY run_id")
     suspend fun undeliveredRuns(): List<RemoteTaskRunEntity>
 

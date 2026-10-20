@@ -1552,6 +1552,9 @@ class ChatService(
             hostId = host.id,
             computerName = host.name,
             assistantId = assistant.id,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspace.id, assistant.workspaceScopeId?.toString(),
+            ),
             tools = { settingsStore.settingsFlow.value.allAgentTools() },
             store = { custom -> settingsStore.update { it.copy(agentTools = custom) } },
             repository = getKoin().get(),

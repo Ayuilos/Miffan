@@ -69,7 +69,16 @@ class RemoteTaskRepository(
     fun allTasksFlow(): Flow<List<RemoteTaskEntity>> = dao.allTasksFlow()
     fun hostFlow(hostId: String): Flow<RemoteTaskHostEntity?> = dao.hostFlow(hostId)
     fun runsFlow(hostId: String, taskId: String): Flow<List<RemoteTaskRunEntity>> = dao.runsFlow(hostId, taskId)
+    fun latestRunsFlow(hostId: String): Flow<List<RemoteTaskRunEntity>> = dao.latestRunsFlow(hostId)
+
     suspend fun cachedTasks(hostId: String): List<RemoteTaskEntity> = dao.tasks(hostId)
+
+    /** True when timers now keep running after logout; false means an administrator must do it. */
+    suspend fun enableLinger(hostId: String): Boolean {
+        val done = withClient(hostId) { it.enableLinger() }
+        if (done) runCatching { refresh(hostId) }
+        return done
+    }
 
     /** The computer's IANA zone from the last probe, if any. */
     suspend fun timezone(hostId: String): String? = dao.host(hostId)?.timezone

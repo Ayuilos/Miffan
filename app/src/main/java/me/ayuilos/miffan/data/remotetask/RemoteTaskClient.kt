@@ -47,6 +47,13 @@ internal class RemoteTaskClient(private val ssh: RemoteWorkspaceSession) {
         return json.decodeFromString<JsonObject>(output)["backend"]?.jsonPrimitive?.contentOrNull.orEmpty()
     }
 
+    /**
+     * Lets this account's systemd user services (and so its timers) run while logged out. Many
+     * systems require an administrator for it, which a non-interactive SSH call cannot give.
+     */
+    fun enableLinger(): Boolean =
+        ssh.execute("loginctl enable-linger \"\$(id -un)\"", timeoutMillis = 20_000).let { it.exitCode == 0 && !it.timedOut }
+
     fun list(): RemoteTaskList = json.decodeFromString(run("list", timeoutMillis = 30_000))
 
     fun setEnabled(taskId: String, enabled: Boolean) { run(if (enabled) "enable" else "disable", taskId) }

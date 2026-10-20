@@ -472,6 +472,13 @@ class RouteActivity : ComponentActivity() {
                             }
                             entry<Screen.Computers> { ComputersPage() }
                             entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
+                            entry<Screen.RemoteTaskDetail> { key ->
+                                me.ayuilos.miffan.ui.im.computer.RemoteTaskDetailPage(key.hostId, key.taskId)
+                            }
+                            entry<Screen.AgentTools> { me.ayuilos.miffan.ui.im.computer.AgentToolsPage() }
+                            entry<Screen.AgentToolEdit> { key ->
+                                me.ayuilos.miffan.ui.im.computer.AgentToolEditPage(key.toolId, key.copyFrom)
+                            }
                             entry<Screen.ComputerScreen> { key -> ComputerScreenPage(key.hostId) }
                             entry<Screen.ApprovalHistory> { key -> ImApprovalHistoryPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ImChatBackground> { key -> ImChatBackgroundPage(key.assistantId) }
@@ -820,6 +827,18 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class ComputerDetail(val hostId: String) : Screen
+
+    /** One scheduled task on a computer. */
+    @Serializable
+    data class RemoteTaskDetail(val hostId: String, val taskId: String) : Screen
+
+    /** The agent tools scheduled tasks can run. */
+    @Serializable
+    data object AgentTools : Screen
+
+    /** [toolId] opens a tool (presets read-only); [copyFrom] starts a new one from another; neither adds one. */
+    @Serializable
+    data class AgentToolEdit(val toolId: String? = null, val copyFrom: String? = null) : Screen
 
     /** A computer's screen without a partner conversation. */
     @Serializable
