@@ -143,6 +143,46 @@ unpair 成功专用响应 `{removed:<非负数量>,restarted:<是否重新启动
 
 未识别顶级/VNC/RDP/Sunshine 参数退出 2 并在 stderr 提示 usage。
 
+## 定时任务（POSIX `task`，helper 21 起）
+
+App 把任务渲染成文件交给 helper；helper 只安装系统定时器并运行 `run`，不解析任务 JSON，
+也不认识 agent。所有 task 命令以 umask 077 运行，只依赖 POSIX sh 与系统自带工具，不需要
+python3。任务 id 为 1–64 位 `[A-Za-z0-9-]`；失败统一输出 `{"success":false,"detail":...}`
+并退出 1，下表只列成功输出。
+
+| 调用 | stdin / stdout | 副作用、前置条件 |
+|---|---|---|
+| `task probe` | 无 / `{scheduler,linger,login_required,timezone,utc_offset}` | 只读。scheduler：macOS 为 launchd；Linux 用户 systemd 可用时为 systemd，否则有 crontab 为 cron，再否则 none。linger 仅 systemd 有值；launchd 或 linger=false 时 login_required=true。timezone 为 IANA 名称或 null，utc_offset 形如 `+0800` |
+| `task which <name-or-path> [version-arg]` | 无 / `{path,path_env,version}` | 在 `$SHELL -lic` 中解析（fish/nu/xonsh/elvish 改用 /bin/sh），15 秒上限，startup 输出以 `\036` 分隔丢弃。别名、函数、目录或不可执行时 path=null。version 是 `<path> <version-arg>` 输出的首个非空行（≤200 字符），version-arg 只允许 `-` 开头的字母和连字符 |
+| `task stage <id> meta\|run\|prompt\|env` | 文件内容（≤256 KiB） / `{success}` | 写 `~/.miffan/tasks/.staging/<id>/`（meta 存为 meta.json）。四者都必须暂存：prompt 为空表示 run 的 stdin 为 /dev/null；env 为每行一个变量名（`[A-Za-z_][A-Za-z0-9_]*`，最多 64 个，可为空），不含值 |
+| `task commit <id> <timeout> <schedule...>` | 无 / `{success,backend,enabled}` | timeout 为 60–86400 秒。schedule：`daily HH:MM`、`weekly D[,D...] HH:MM`（0=周日，不重复）、`interval N`（N∈15,30,60,120,180,240,360,480,720 分钟）。无论成败都清空该 id 的暂存目录。逐个原子替换任务文件；同 id 为更新，保留运行记录与启用状态；新任务默认启用。启用时复制 helper 为 `~/.miffan/bin/miffan-task-runner` 并安装定时器；安装失败时新任务整体回滚，旧任务改为停用。launchd 无登录会话时 detail 为 `login_required` |
+| `task list` | 无 / `{scheduler,tasks:[{id,enabled,timer_ok,backend,schedule,timeout,meta_b64,last_run}]}` | 只读。timer_ok 为定时器当前确实在系统中注册；meta_b64 为 meta.json 原文 base64；last_run 为最新运行记录或 null |
+| `task enable\|disable <id>` | 无 / `{success}` | 启用时按 schedule 重新安装定时器；停用时移除定时器（launchd 删除 LaunchAgents 中的 plist），保留任务文件 |
+| `task run <id>` | 无 / `{success}` | 不等结束。systemd 为 `systemctl --user start --no-block` 对应 service；launchd 在任务目录写 `now.plist`（RunAtLoad，不放入 LaunchAgents）后 bootstrap，无登录会话为 `login_required`；cron 为 nohup 后台执行。停用的任务也可运行 |
+| `task sync [cursor]` | 无 / `{runs:[record+excerpt_b64],cursor}` | 只读。返回 run_id 字典序大于 cursor 的运行记录；excerpt_b64 为日志末尾 16 KiB 的 base64（可能截断 UTF-8 字符）。cursor 为已返回的最大 run_id，没有任何记录时为 null。调用方应回退游标并按 run_id 去重 |
+| `task log <id> <run-id>` | 无 / 原始日志字节 | 只读 |
+| `task remove <id>\|--all` | 无 / `{success}` | 移除定时器、unit/plist/crontab 行与任务目录；最后一个任务删除后同时删除 runner |
+| `task exec <id>` | 无 / 无 | 仅供定时器调用，见下 |
+
+运行记录 `runs/<run_id>.json` 为单行 JSON：`{run_id,task_id,started_at,ended_at,exit_code,status,log_bytes,truncated}`。
+run_id 为结束时刻 `YYYYMMDDTHHMMSSZ-<pid>`（UTC），时间字段为 ISO-8601 UTC。status：ok、failed、
+timeout、skipped_overlap（exit_code 为 null、log_bytes 为 0、无日志）。log_bytes 是截断前的输出字节数。
+
+`task exec`：以 `mkdir` 锁防重叠（持锁 pid 已不存在，或无 pid 且锁超过 1 天，视为陈旧锁）；env 非空时在
+`$SHELL -lic`（同 which 的 shell 选择，15 秒上限）中读取这些变量的当前值并导出，只导出已设置且在清单内的变量，
+值不写入任何任务文件；读到时另外导出 `MIFFAN_LOGIN_ENV=ok`，登录 shell 无输出时保持定时器原环境。然后在 `$HOME`
+中以 `/bin/sh run` 运行，stdin 为非空的 prompt 或 /dev/null，stdout+stderr 写日志；超时后对进程树先 TERM、
+10 秒后 KILL；日志超过 1 MiB 时只保留末尾 1 MiB；每个任务保留最近 30 条记录。
+
+定时器：systemd 为 `~/.config/systemd/user/miffan-task-<id>.{service,timer}`（oneshot，
+`TimeoutStartSec=infinity`，timer `AccuracySec=1s`；每天/每周 `OnCalendar` + `Persistent=true`，间隔 `OnActiveSec` +
+`OnUnitActiveSec`）；launchd 为 `~/Library/LaunchAgents/me.ayuilos.miffan.task.<id>.plist`
+（`StartCalendarInterval`，每周为数组；间隔为 `StartInterval`），装入 `gui/<uid>`；cron 为带
+`# miffan-task:<id>` 尾注的一行，修改时整体重写 crontab 并保留其他行。三者都执行
+`/bin/sh ~/.miffan/bin/miffan-task-runner task exec <id>`：旧版 App 之后重装旧 helper 时，已有任务不受影响。
+
+Windows helper 不实现 task 命令。
+
 ## Windows 子命令（Windows PowerShell 5.1）
 
 以当前 SSH 用户运行；交互桌面要求 SSH 用户 SID 与 console 用户一致，session 非 0，
@@ -202,8 +242,7 @@ applied_changes，其他保留诊断不进入强类型模型。
 
 ## 版本与安装
 
-当前 POSIX helper 为 20，Windows 为 11。POSIX 从 19 升到 20，确保测试主机已有的旧 v19
-在下次 ensureInstalled 时自动收到新版脚本；Windows 版本和摘要保持不变。
+当前 POSIX helper 为 21，Windows 为 11。POSIX 21 新增 `task` 命令；Windows 版本和摘要保持不变。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

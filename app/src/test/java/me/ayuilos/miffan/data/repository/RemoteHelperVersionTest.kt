@@ -13,10 +13,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteHelperVersionTest {
-    @Test fun `POSIX 19 refreshes to 20 while current POSIX and Windows helpers stay installed`() {
+    @Test fun `POSIX 20 refreshes to 21 while current POSIX and Windows helpers stay installed`() {
         for ((platform, installedVersion, refresh) in listOf(
-            Triple(RemotePlatform.POSIX, "19", true),
-            Triple(RemotePlatform.POSIX, "20", false),
+            Triple(RemotePlatform.POSIX, "20", true),
+            Triple(RemotePlatform.POSIX, "21", false),
             Triple(RemotePlatform.WINDOWS, "11", false),
         )) {
             val fileName = if (platform == RemotePlatform.WINDOWS) "miffan.ps1" else "miffan.sh"
