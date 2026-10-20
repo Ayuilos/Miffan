@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.tools.parseAgentToolDefinition
+import me.ayuilos.miffan.data.ai.tools.defaultTestRun
 import me.ayuilos.miffan.data.ai.tools.mergeTaskUpdate
 import me.ayuilos.miffan.data.ai.tools.parseScheduleTaskDraft
 import me.ayuilos.miffan.data.model.Assistant
@@ -101,10 +102,17 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
             }.getOrNull()
         }
         val argv = resolved?.argv ?: agent?.let { RemoteTaskScript.agentArgv(it, draft.permission, it.executable, draft.prompt.orEmpty()) }
-        val testRun = (input["test_run"] as? JsonPrimitive)?.booleanOrNull ?: (draft.kind == TaskKind.AGENT)
+        // The partner's suggestion; the owner decides on the card whether it runs once right away.
+        val actions = LocalToolCardActions.current
+        var testRun by remember(tool.toolCallId) {
+            mutableStateOf((input["test_run"] as? JsonPrimitive)?.booleanOrNull ?: defaultTestRun(action, draft.kind))
+        }
         var showCommand by remember(tool.toolCallId) { mutableStateOf(false) }
         ApprovalCardFrame(tool, stringResource(if (action == "create") R.string.remote_task_card_create else R.string.remote_task_card_update, who),
-            onApproval, icon = HugeIcons.Clock01, allowDanger = argv?.let(RemoteTaskScript::grantsFullAccess) == true) {
+            onApproval, icon = HugeIcons.Clock01, allowDanger = argv?.let(RemoteTaskScript::grantsFullAccess) == true,
+            onAllow = actions?.let { cardActions -> { _ ->
+                cardActions.approveWithInput(tool.toolCallId, JsonObject(input + ("test_run" to JsonPrimitive(testRun))))
+            } }) {
             ApprovalFields(listOfNotNull(
                 stringResource(R.string.remote_task_field_name) to @Composable { FieldText(draft.name, detail = was(before?.name, draft.name)) },
                 computer?.let { stringResource(R.string.remote_task_field_computer) to @Composable { FieldText(it) } },
@@ -154,8 +162,20 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
                 if (showCommand) CommandLine(argv.joinToString(" ") { RemoteTaskScript.quote(it) })
                 if (RemoteTaskScript.grantsFullAccess(argv)) DangerNote(stringResource(R.string.remote_task_danger_full_access, agent?.name.orEmpty()))
             }
+            if (actions != null) Surface(onClick = { testRun = !testRun }, color = androidx.compose.ui.graphics.Color.Transparent,
+                shape = MaterialTheme.shapes.medium) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Checkbox(checked = testRun, onCheckedChange = null)
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.remote_task_test_run_option), style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.remote_task_test_run_option_help), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             NoteLines(listOfNotNull(
-                if (testRun) HugeIcons.PlayCircle to stringResource(R.string.remote_task_note_test_run) else null,
+                if (testRun && actions == null) HugeIcons.PlayCircle to stringResource(R.string.remote_task_note_test_run) else null,
                 HugeIcons.Refresh to stringResource(R.string.remote_task_note_sync),
                 agent?.let { HugeIcons.InformationCircle to stringResource(R.string.remote_task_note_billing, it.name) },
             ))

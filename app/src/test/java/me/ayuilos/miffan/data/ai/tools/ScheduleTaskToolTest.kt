@@ -97,4 +97,24 @@ class ScheduleTaskToolTest {
         val draft = update("""{"action":"update","task_id":"t1","schedule":{"type":"daily","time":"06:00"}}""", meta, "interval 360")
         assertEquals(TaskSchedule.Daily(6, 0), draft.schedule)
     }
+
+    @Test fun `only a new agent task runs once by default`() {
+        assertTrue(defaultTestRun("create", TaskKind.AGENT))
+        assertFalse(defaultTestRun("create", TaskKind.COMMAND))
+        assertFalse(defaultTestRun("update", TaskKind.AGENT))
+    }
+
+    @Test fun `an approval card may only flip its own switch`() {
+        val call = Json.parseToJsonElement("""{"action":"create","name":"x","kind":"command","command":"true","test_run":true}""")
+        fun edit(json: String) = isCardSwitchEdit(SCHEDULE_TASK_TOOL, call, Json.parseToJsonElement(json) as JsonObject)
+        assertTrue(edit("""{"action":"create","name":"x","kind":"command","command":"true","test_run":false}"""))
+        assertFalse(edit("""{"action":"create","name":"x","kind":"command","command":"rm -rf ~","test_run":false}"""))
+        assertFalse(edit("""{"action":"create","name":"x","kind":"command","command":"true","test_run":"no"}"""))
+        assertFalse(isCardSwitchEdit("workspace_shell", call, call as JsonObject))
+        val save = Json.parseToJsonElement("""{"action":"save","tool_id":"mine","name":"Aider","executable":"aider"}""")
+        assertTrue(isCardSwitchEdit(AGENT_TOOLS_TOOL, save,
+            Json.parseToJsonElement("""{"action":"save","tool_id":"mine","name":"Aider","executable":"aider","update_tasks":false}""") as JsonObject))
+        assertFalse(isCardSwitchEdit(AGENT_TOOLS_TOOL, save,
+            Json.parseToJsonElement("""{"action":"save","tool_id":"mine","name":"Aider","executable":"aider","test_run":false}""") as JsonObject))
+    }
 }

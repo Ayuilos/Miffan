@@ -3127,6 +3127,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="remote_task_full_command">コマンド全体</string>
   <string name="remote_task_danger_full_access">完全アクセス：%1$sは確認なしで実行され、このコンピューターであなたのアカウントが触れるものをすべて変更・削除できます。</string>
   <string name="remote_task_note_test_run">承認するとすぐに1回試し実行され、動作を確認します。</string>
+  <string name="remote_task_test_run_option">許可したらすぐに1回試す</string>
+  <string name="remote_task_test_run_option_help">動くかどうかがすぐわかります。オフにすると、設定した時刻に初めて実行されます。</string>
   <string name="remote_task_note_sync">その後の結果は、Miffanを開いたときに同期されます。完了した瞬間には通知されません。</string>
   <string name="remote_task_note_billing">利用料金は、そのコンピューターで%1$sにサインインしているアカウントに請求されます。</string>
   <string name="remote_task_note_run_now">すぐにコンピューター上で1回実行されます。</string>

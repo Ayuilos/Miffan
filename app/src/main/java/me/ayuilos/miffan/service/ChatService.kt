@@ -7,6 +7,7 @@ import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.ToolDecisionVia
 import me.rerere.ai.ui.recordDecision
 import me.ayuilos.miffan.data.ai.tools.buildSelfConfigTools
+import me.ayuilos.miffan.data.ai.tools.isCardSwitchEdit
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -1000,7 +1001,7 @@ class ChatService(
                 val pending = tip?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted }
                 if (specialApproval && (pending == null ||
                         (standingKey != null && standingApprovalKey(pending.toolName) != standingKey) ||
-                        (editedInput != null && (pending.toolName != "calendar_create" || !validCalendarCreateInput(editedInput))))) {
+                        (editedInput != null && !validEditedInput(pending, editedInput)))) {
                     return@launchGenerationJob
                 }
                 val approvedIds = if (standingKey != null) tip?.getTools().orEmpty()
@@ -1095,10 +1096,15 @@ class ChatService(
     }
 
     /** Approves a pending calendar creation with the owner's validated replacement arguments. */
+    /** Arguments a card may change before allowing: the calendar's times, or a card's own switch. */
+    private fun validEditedInput(call: UIMessagePart.Tool, input: JsonObject): Boolean =
+        if (call.toolName == "calendar_create") validCalendarCreateInput(input)
+        else isCardSwitchEdit(call.toolName, call.inputAsJson(), input)
+
     fun approveToolWithInput(conversationId: Uuid, toolCallId: String, input: JsonObject) {
         val call = getOrCreateSession(conversationId).state.value.currentMessageNodes.lastOrNull()
             ?.currentMessage?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted } ?: return
-        if (call.toolName != "calendar_create" || !validCalendarCreateInput(input)) return
+        if (!validEditedInput(call, input)) return
         applyToolApproval(conversationId, toolCallId, true, "", null, ToolDecisionVia.CARD, editedInput = input)
     }
 

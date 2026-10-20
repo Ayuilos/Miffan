@@ -3142,6 +3142,8 @@
   <string name="remote_task_full_command">Полная команда</string>
   <string name="remote_task_danger_full_access">Полный доступ: %1$s ничего не спрашивает и может изменить или удалить всё, до чего дотягивается ваша учётная запись на компьютере.</string>
   <string name="remote_task_note_test_run">После одобрения сразу выполнится один тестовый запуск, чтобы проверить, что всё работает.</string>
+  <string name="remote_task_test_run_option">Сразу запустить один раз</string>
+  <string name="remote_task_test_run_option_help">Так сразу видно, работает ли задача. Если выключить, первый запуск будет по расписанию.</string>
   <string name="remote_task_note_sync">Результаты появятся при открытии Miffan, а не в момент завершения.</string>
   <string name="remote_task_note_billing">Оплата списывается с аккаунта, под которым %1$s вошёл на этом компьютере.</string>
   <string name="remote_task_note_run_now">Сразу запустится на компьютере.</string>

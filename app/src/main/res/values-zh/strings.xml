@@ -3132,6 +3132,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="remote_task_full_command">完整命令</string>
   <string name="remote_task_danger_full_access">完全放开：%1$s 运行时不会再问任何确认，可以改动或删除电脑上你这个账户能碰到的一切。</string>
   <string name="remote_task_note_test_run">批准后会马上试跑一次，确认它能用。</string>
+  <string name="remote_task_test_run_option">批准后马上试跑一次</string>
+  <string name="remote_task_test_run_option_help">能马上看出它能不能用。不勾的话，等到设定的时间才第一次运行。</string>
   <string name="remote_task_note_sync">之后的结果在你打开 Miffan 时同步过来，不会实时提醒。</string>
   <string name="remote_task_note_billing">费用记在这台电脑上登录 %1$s 的账号。</string>
   <string name="remote_task_note_run_now">会马上在电脑上运行一次。</string>

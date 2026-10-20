@@ -105,7 +105,7 @@ fun createScheduleTaskTool(
                         val draft = parseScheduleTaskDraft(fields, agentTools(), RemoteTaskMeta.Owner(assistantId, conversationId),
                             update = action == "update")
                         val taskId = repository.save(hostId, draft)
-                        val testRun = input.bool("test_run") ?: (draft.kind == TaskKind.AGENT)
+                        val testRun = input.bool("test_run") ?: defaultTestRun(action, draft.kind)
                         val trial = if (testRun) trialRun(repository, hostId, taskId) else null
                         listOf(text(buildJsonObject {
                             put("status", "ok")
@@ -174,6 +174,12 @@ private fun TaskSchedule.toInput(): JsonObject = buildJsonObject {
         is TaskSchedule.Interval -> { put("type", "interval"); put("minutes", minutes) }
     }
 }
+
+/**
+ * Whether a saved task runs once right away when nobody said: only a new agent task, where a missing
+ * login or install would otherwise surface at its first scheduled time. The owner can change it on the card.
+ */
+internal fun defaultTestRun(action: String?, kind: TaskKind): Boolean = action == "create" && kind == TaskKind.AGENT
 
 /** Turns tool arguments into a draft. Pure, so the rules are testable without a computer. */
 internal fun parseScheduleTaskDraft(
@@ -338,7 +344,7 @@ private fun scheduleTaskSchema() = InputSchema.Obj(
             putJsonArray("enum") { add("record"); add("failure"); add("always") }
         }
         putJsonObject("timeout_minutes") { put("type", "integer"); put("description", "Default 10 for commands, 30 for agents.") }
-        putJsonObject("test_run") { put("type", "boolean"); put("description", "Run once right after saving (default true for agents, false for commands).") }
+        putJsonObject("test_run") { put("type", "boolean"); put("description", "Suggest running once right after saving (default true for a new agent task, otherwise false). The user decides on the approval card.") }
     },
     required = listOf("action"),
 )

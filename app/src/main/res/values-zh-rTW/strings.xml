@@ -3122,6 +3122,8 @@
   <string name="remote_task_full_command">完整命令</string>
   <string name="remote_task_danger_full_access">完全開放：%1$s 執行時不會再詢問任何確認，可以改動或刪除電腦上你這個帳戶能碰到的一切。</string>
   <string name="remote_task_note_test_run">批准後會馬上試跑一次，確認它能用。</string>
+  <string name="remote_task_test_run_option">允許後馬上試跑一次</string>
+  <string name="remote_task_test_run_option_help">能馬上看出它能不能用。不勾的話，等到設定的時間才第一次執行。</string>
   <string name="remote_task_note_sync">之後的結果會在你打開 Miffan 時同步過來，不會即時提醒。</string>
   <string name="remote_task_note_billing">費用記在這台電腦上登入 %1$s 的帳號。</string>
   <string name="remote_task_note_run_now">會馬上在電腦上執行一次。</string>

@@ -3145,6 +3145,8 @@
   <string name="remote_task_full_command">Full command</string>
   <string name="remote_task_danger_full_access">Full access: %1$s will not ask before anything and can change or delete everything your account on the computer can reach.</string>
   <string name="remote_task_note_test_run">It runs once right after you allow it, to check it works.</string>
+  <string name="remote_task_test_run_option">Run once right after allowing</string>
+  <string name="remote_task_test_run_option_help">Shows at once whether it works. If unchecked, it first runs at its scheduled time.</string>
   <string name="remote_task_note_sync">Later results arrive when you open Miffan, not the moment they finish.</string>
   <string name="remote_task_note_billing">Usage is billed to the account %1$s is signed in with on that computer.</string>
   <string name="remote_task_note_run_now">It runs on the computer right away.</string>
