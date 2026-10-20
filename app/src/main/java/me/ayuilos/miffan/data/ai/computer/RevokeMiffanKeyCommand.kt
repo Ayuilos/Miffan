@@ -38,6 +38,7 @@ private fun posixRevoke(type: String, key: String): String {
     val script = """
         set -eu;
         if [ -f "${'$'}HOME/.miffan/bin/miffan" ]; then sh "${'$'}HOME/.miffan/bin/miffan" vnc stop >/dev/null; fi;
+        if [ -f "${'$'}HOME/.miffan/bin/miffan-task-runner" ]; then sh "${'$'}HOME/.miffan/bin/miffan-task-runner" task remove --all >/dev/null 2>&1 || :; fi;
         if [ -f "${'$'}HOME/.miffan/rdp/krdp.owner" ] && command -v systemctl >/dev/null 2>&1; then
             state=${'$'}(systemctl --user show miffan-rdp-kde.service -p LoadState --value);
             if [ "${'$'}state" = loaded ]; then systemctl --user stop miffan-rdp-kde.service; fi;

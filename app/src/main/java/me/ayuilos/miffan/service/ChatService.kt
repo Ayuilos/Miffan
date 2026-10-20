@@ -116,6 +116,7 @@ import me.ayuilos.miffan.data.event.AppEvent
 import me.ayuilos.miffan.data.event.AppEventBus
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.remotetask.allAgentTools
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.datastore.getAssistantById
@@ -1331,6 +1332,7 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
+                    createScheduleTaskToolIfReady(assistant, conversation.id)?.let { add(it) }
                     val builtInSkills = buildList {
                         if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
                         if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
@@ -1510,6 +1512,32 @@ class ChatService(
         }
         if (messages.usesComputer()) toolbox.preload()
         return toolbox
+    }
+
+    /** Scheduled tasks on the partner's computer, under the same permission as its commands and files. */
+    private suspend fun createScheduleTaskToolIfReady(
+        assistant: Assistant,
+        conversationId: Uuid,
+    ): Tool? {
+        val workspaceId = assistant.workspaceId?.toString() ?: return null
+        val workspace = workspaceRepository.getById(workspaceId) ?: return null
+        if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        if (host.trustedHostKeySha256 == null || partnerComputerUse(assistant, workspace) == ComputerUseMode.OFF) return null
+        val repository = getKoin().get<me.ayuilos.miffan.data.remotetask.RemoteTaskRepository>()
+        return me.ayuilos.miffan.data.ai.tools.createScheduleTaskTool(
+            hostId = host.id,
+            computerName = host.name,
+            windows = me.rerere.workspace.RemotePlatform.parse(host.platform) == me.rerere.workspace.RemotePlatform.WINDOWS,
+            assistantId = assistant.id,
+            conversationId = conversationId,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspaceId, assistant.workspaceScopeId?.toString(),
+            )?.copy(conversationId = conversationId.toString()),
+            agentTools = { settingsStore.settingsFlow.value.allAgentTools() },
+            timezone = repository.timezone(host.id),
+            repository = repository,
+        )
     }
 
     private suspend fun createWorkspaceToolsIfReady(

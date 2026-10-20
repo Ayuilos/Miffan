@@ -139,6 +139,7 @@ val repositoryModule = module {
     }
 
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets, get()) }
+    single { me.ayuilos.miffan.data.remotetask.RemoteTaskRepository(get(), get(), get(), get(), get(), get<android.content.Context>().assets) }
 
     single {
         val audit: me.ayuilos.miffan.data.audit.AuditRepository = get()

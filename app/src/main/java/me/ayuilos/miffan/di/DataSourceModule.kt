@@ -174,6 +174,10 @@ val dataSourceModule = module {
     }
 
     single {
+        get<AppDatabase>().remoteTaskDao()
+    }
+
+    single {
         get<AppDatabase>().sshKeyDao()
     }
 

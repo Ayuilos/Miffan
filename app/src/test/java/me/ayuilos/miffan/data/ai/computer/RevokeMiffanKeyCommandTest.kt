@@ -66,6 +66,23 @@ class RevokeMiffanKeyCommandTest {
         } finally { home.toFile().deleteRecursively() }
     }
 
+    @Test fun `posix removes scheduled tasks first and a failing runner does not block revocation`() {
+        val home = Files.createTempDirectory("revoke-tasks")
+        try {
+            val file = Files.createDirectories(home.resolve(".ssh")).resolve("authorized_keys")
+            Files.writeString(file, "$key\n")
+            val bin = Files.createDirectories(home.resolve(".miffan/bin"))
+            Files.writeString(bin.resolve("miffan"), "exit 0\n")
+            // The runner records its arguments outside ~/.miffan, which revocation deletes afterwards.
+            Files.writeString(bin.resolve("miffan-task-runner"), "echo \"\$*\" > \"\$HOME/runner-args\"; exit 3\n")
+            val command = revokeMiffanKeyCommand(key, RemotePlatform.POSIX)
+            assertEquals(0 to "", run(home, command))
+            assertEquals("task remove --all\n", Files.readString(home.resolve("runner-args")))
+            assertFalse(Files.exists(home.resolve(".miffan")))
+            assertEquals("", Files.readString(file))
+        } finally { home.toFile().deleteRecursively() }
+    }
+
     @Test fun `windows pattern removes exact lines with comments options and CRLF`() {
         val pattern = Regex(windowsMiffanKeyPattern("ssh-ed25519", "AAAA+bbb/ccc=="))
         val kept = "# $key\r\n  # $key\r\nssh-rsa AAAA+bbb/ccc==\r\n" +
