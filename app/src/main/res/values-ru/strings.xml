@@ -3138,6 +3138,7 @@
   <string name="remote_task_field_agent">Используется</string>
   <string name="remote_task_field_command">Команда</string>
   <string name="remote_task_field_result">Результат</string>
+  <string name="remote_task_field_was">Было: %1$s</string>
   <string name="remote_task_full_command">Полная команда</string>
   <string name="remote_task_danger_full_access">Полный доступ: %1$s ничего не спрашивает и может изменить или удалить всё, до чего дотягивается ваша учётная запись на компьютере.</string>
   <string name="remote_task_note_test_run">После одобрения сразу выполнится один тестовый запуск, чтобы проверить, что всё работает.</string>
@@ -3268,6 +3269,7 @@
   <string name="remote_task_agent_missing">%1$s не найден на %2$s. Пока его не установят или не укажут полный путь в инструментах агентов, разрешение не сработает.</string>
   <string name="remote_task_step_create">Запланировать задачу «%1$s»</string>
   <string name="remote_task_step_update">Изменить задачу «%1$s»</string>
+  <string name="remote_task_step_update_unnamed">Изменить задачу</string>
   <string name="remote_task_step_delete">Удалить запланированную задачу</string>
   <string name="remote_task_step_run_now">Запустить задачу сейчас</string>
   <string name="remote_task_step_enable">Возобновить задачу</string>

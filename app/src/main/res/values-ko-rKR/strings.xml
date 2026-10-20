@@ -3123,6 +3123,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="remote_task_field_agent">사용</string>
   <string name="remote_task_field_command">명령</string>
   <string name="remote_task_field_result">결과</string>
+  <string name="remote_task_field_was">이전: %1$s</string>
   <string name="remote_task_full_command">전체 명령</string>
   <string name="remote_task_danger_full_access">전체 접근: %1$s 실행 시 아무것도 묻지 않으며, 컴퓨터에서 내 계정이 닿는 모든 것을 변경하거나 삭제할 수 있습니다.</string>
   <string name="remote_task_note_test_run">승인하면 바로 한 번 시험 실행해서 제대로 동작하는지 확인합니다.</string>
@@ -3253,6 +3254,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="remote_task_agent_missing">%2$s에서 %1$s을(를) 찾지 못했습니다. 설치하거나 에이전트 도구에서 전체 경로를 지정하기 전에는 허용해도 실패합니다.</string>
   <string name="remote_task_step_create">예약 작업 “%1$s” 추가</string>
   <string name="remote_task_step_update">예약 작업 “%1$s” 수정</string>
+  <string name="remote_task_step_update_unnamed">예약 작업 수정</string>
   <string name="remote_task_step_delete">예약 작업 삭제</string>
   <string name="remote_task_step_run_now">작업 지금 실행</string>
   <string name="remote_task_step_enable">예약 작업 재개</string>

@@ -3123,6 +3123,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="remote_task_field_agent">使用</string>
   <string name="remote_task_field_command">コマンド</string>
   <string name="remote_task_field_result">結果</string>
+  <string name="remote_task_field_was">変更前：%1$s</string>
   <string name="remote_task_full_command">コマンド全体</string>
   <string name="remote_task_danger_full_access">完全アクセス：%1$sは確認なしで実行され、このコンピューターであなたのアカウントが触れるものをすべて変更・削除できます。</string>
   <string name="remote_task_note_test_run">承認するとすぐに1回試し実行され、動作を確認します。</string>
@@ -3253,6 +3254,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="remote_task_agent_missing">%2$s に %1$s が見つかりません。インストールするか、エージェントツールでフルパスを設定するまで、許可しても失敗します。</string>
   <string name="remote_task_step_create">定期タスク「%1$s」を設定</string>
   <string name="remote_task_step_update">定期タスク「%1$s」を変更</string>
+  <string name="remote_task_step_update_unnamed">定期タスクを変更</string>
   <string name="remote_task_step_delete">定期タスクを削除</string>
   <string name="remote_task_step_run_now">タスクを今すぐ実行</string>
   <string name="remote_task_step_enable">定期タスクを再開</string>

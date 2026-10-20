@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.tools.parseAgentToolDefinition
+import me.ayuilos.miffan.data.ai.tools.mergeTaskUpdate
 import me.ayuilos.miffan.data.ai.tools.parseScheduleTaskDraft
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.remotetask.AgentToolDefinition
@@ -66,11 +67,33 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
         .collectAsStateWithLifecycle(initialValue = null)
     val zone = host?.let { RemoteTaskProbe(it.scheduler, timezone = it.timezone, utcOffset = it.utcOffset).zone() }
 
+    val taskId = toolArg(tool, "task_id")
+    val tasks by remember(hostId) { hostId?.let { repository.tasksFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList()) }
+        .collectAsStateWithLifecycle(initialValue = null)
+
     if (action == "create" || action == "update") {
         val tools = settings.allAgentTools()
-        val draft = remember(input, tools) {
-            runCatching { parseScheduleTaskDraft(input, tools, RemoteTaskMeta.Owner(Uuid.random()), action == "update") }.getOrNull()
+        // An update may name only what changes: read it against the stored task, and show what it was.
+        val stored = if (action == "update") {
+            val all = tasks ?: return
+            all.find { it.taskId == taskId }?.let { task -> repository.decodeMeta(task)?.let { task to it } }
+        } else null
+        val owner = remember { RemoteTaskMeta.Owner(Uuid.random()) }
+        val before = remember(stored, tools) {
+            stored?.let { (task, meta) ->
+                runCatching {
+                    parseScheduleTaskDraft(mergeTaskUpdate(JsonObject(mapOf("task_id" to JsonPrimitive(task.taskId))), task, meta, tools), tools, owner, true)
+                }.getOrNull()
+            }
+        }
+        val draft = remember(input, stored, tools) {
+            runCatching {
+                val fields = stored?.let { (task, meta) -> mergeTaskUpdate(input, task, meta, tools) } ?: input
+                parseScheduleTaskDraft(fields, tools, owner, action == "update")
+            }.getOrNull()
         } ?: return ThreadGenericApprovalCardFallback(tool, assistant, onApproval)
+        @Composable fun was(old: String?, new: String?): String? =
+            if (before != null && old != new) stringResource(R.string.remote_task_field_was, old ?: "—") else null
         val agent = draft.agentToolId?.let { id -> tools.find { it.id == id } }
         val resolved by produceState<ResolvedAgentCommand?>(null, hostId, draft) {
             if (hostId != null && agent != null) value = runCatching {
@@ -83,24 +106,41 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
         ApprovalCardFrame(tool, stringResource(if (action == "create") R.string.remote_task_card_create else R.string.remote_task_card_update, who),
             onApproval, icon = HugeIcons.Clock01, allowDanger = argv?.let(RemoteTaskScript::grantsFullAccess) == true) {
             ApprovalFields(listOfNotNull(
-                stringResource(R.string.remote_task_field_name) to @Composable { FieldText(draft.name) },
+                stringResource(R.string.remote_task_field_name) to @Composable { FieldText(draft.name, detail = was(before?.name, draft.name)) },
                 computer?.let { stringResource(R.string.remote_task_field_computer) to @Composable { FieldText(it) } },
                 stringResource(R.string.remote_task_field_time) to @Composable {
-                    FieldText(scheduleLabel(draft.schedule), detail = zoneNote(draft.schedule, zone))
+                    val label = scheduleLabel(draft.schedule)
+                    FieldText(label, detail = was(before?.schedule?.let { scheduleLabel(it) }, label) ?: zoneNote(draft.schedule, zone))
                 },
                 if (agent != null) stringResource(R.string.remote_task_field_agent) to @Composable {
                     val level = agent.permissions.find { it.name == draft.permission }
-                    val levelText = permissionLabel(draft.permission)
-                    Text(listOfNotNull(agent.name, levelText).joinToString(" · "), style = MaterialTheme.typography.bodyMedium,
-                        color = if (level?.writes == true) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface)
+                    val label = listOfNotNull(agent.name, permissionLabel(draft.permission)).joinToString(" · ")
+                    val old = before?.let { b ->
+                        b.agentToolId?.let { id -> listOfNotNull(tools.find { it.id == id }?.name, permissionLabel(b.permission)).joinToString(" · ") }
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(label, style = MaterialTheme.typography.bodyMedium,
+                            color = if (level?.writes == true) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface)
+                        was(old, label)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
                 } else stringResource(R.string.remote_task_field_command) to @Composable {
-                    FieldText(draft.command.orEmpty(), mono = true, maxLines = 8)
+                    FieldText(draft.command.orEmpty(), detail = was(before?.command, draft.command), mono = true, maxLines = 8)
                 },
-                stringResource(R.string.remote_task_field_result) to @Composable { FieldText(notifyLabel(draft.notify, assistant?.let { partnerName(it) })) },
+                stringResource(R.string.remote_task_field_result) to @Composable {
+                    val partner = assistant?.let { partnerName(it) }
+                    val label = notifyLabel(draft.notify, partner)
+                    FieldText(label, detail = was(before?.notify?.let { notifyLabel(it, partner) }, label))
+                },
             ))
             draft.prompt?.let { prompt ->
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
-                    Text(prompt, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(prompt, style = MaterialTheme.typography.bodyMedium)
+                        was(before?.prompt, prompt)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                    }
                 }
             }
             // Found nowhere on the computer: saving would fail, so say it before the owner allows.
@@ -122,10 +162,7 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
         }
         return
     }
-    val taskId = toolArg(tool, "task_id")
-    val tasks by remember(hostId) { hostId?.let { repository.tasksFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList()) }
-        .collectAsStateWithLifecycle(initialValue = emptyList())
-    val name = tasks.find { it.taskId == taskId }?.let { repository.decodeMeta(it)?.name } ?: taskId.orEmpty()
+    val name = tasks?.find { it.taskId == taskId }?.let { repository.decodeMeta(it)?.name } ?: taskId.orEmpty()
     val title = when (action) {
         "delete" -> R.string.remote_task_card_delete
         "run_now" -> R.string.remote_task_card_run_now
@@ -333,8 +370,26 @@ internal fun NoteLines(lines: List<Pair<ImageVector, String>>) {
     }
 }
 
-/** Arguments the app cannot read (an older or malformed call): the generic card still lets the owner decide. */
+/**
+ * Arguments the app cannot read (an older or malformed call, a task no longer on the computer): still
+ * a card a person can follow, with the task's name when the call gives one. Allowing lets the tool
+ * explain what is wrong to the partner.
+ */
 @Composable
-private fun ThreadGenericApprovalCardFallback(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) =
-    ApprovalCardFrame(tool, stringResource(R.string.im_approval_tool, assistant?.let { partnerName(it) }
-        ?: stringResource(R.string.im_approval_partner), tool.toolName), onApproval, icon = HugeIcons.Clock01)
+private fun ThreadGenericApprovalCardFallback(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) {
+    val who = assistant?.let { partnerName(it) } ?: stringResource(R.string.im_approval_partner)
+    val schedule = tool.toolName == SCHEDULE_TASK
+    val title = when {
+        schedule && toolArg(tool, "action") == "create" -> stringResource(R.string.remote_task_card_create, who)
+        schedule && toolArg(tool, "action") == "update" -> stringResource(R.string.remote_task_card_update, who)
+        tool.toolName == AGENT_TOOLS && toolArg(tool, "action") == "save" -> toolArg(tool, "tool_id")
+            ?.let { stringResource(R.string.agent_tool_card_change, who, toolArg(tool, "name").orEmpty()) }
+            ?: stringResource(R.string.agent_tool_card_add, who)
+        else -> stringResource(R.string.im_approval_tool, who, tool.toolName)
+    }
+    ApprovalCardFrame(tool, title, onApproval, icon = if (schedule) HugeIcons.Clock01 else HugeIcons.Wrench01) {
+        toolArg(tool, "name")?.let { name ->
+            ApprovalFields(listOf(stringResource(R.string.remote_task_field_name) to @Composable { FieldText(name) }))
+        }
+    }
+}

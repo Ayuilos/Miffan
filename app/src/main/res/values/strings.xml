@@ -3141,6 +3141,7 @@
   <string name="remote_task_field_agent">Uses</string>
   <string name="remote_task_field_command">Command</string>
   <string name="remote_task_field_result">Results</string>
+  <string name="remote_task_field_was">Was: %1$s</string>
   <string name="remote_task_full_command">Full command</string>
   <string name="remote_task_danger_full_access">Full access: %1$s will not ask before anything and can change or delete everything your account on the computer can reach.</string>
   <string name="remote_task_note_test_run">It runs once right after you allow it, to check it works.</string>
@@ -3271,6 +3272,7 @@
   <string name="remote_task_agent_missing">%1$s was not found on %2$s. Allowing will fail until it is installed or its path is set under Agent tools.</string>
   <string name="remote_task_step_create">Schedule task “%1$s”</string>
   <string name="remote_task_step_update">Change task “%1$s”</string>
+  <string name="remote_task_step_update_unnamed">Change a scheduled task</string>
   <string name="remote_task_step_delete">Delete a scheduled task</string>
   <string name="remote_task_step_run_now">Run a task now</string>
   <string name="remote_task_step_enable">Resume a scheduled task</string>

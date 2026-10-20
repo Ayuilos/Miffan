@@ -92,7 +92,17 @@ fun createScheduleTaskTool(
                     "list" -> listOf(text(listResult(runCatching { repository.refresh(hostId) }.exceptionOrNull(),
                         repository.cachedTasks(hostId), repository)))
                     "create", "update" -> {
-                        val draft = parseScheduleTaskDraft(input, agentTools(), RemoteTaskMeta.Owner(assistantId, conversationId),
+                        val fields = if (action == "update") {
+                            val taskId = input.requireTaskId()
+                            val existing = repository.cachedTasks(hostId).find { it.taskId == taskId }
+                                ?: repository.refresh(hostId).let { repository.cachedTasks(hostId).find { it.taskId == taskId } }
+                                ?: throw IllegalArgumentException("No task $taskId on $computerName; call list for the task ids.")
+                            val meta = requireNotNull(repository.decodeMeta(existing)) {
+                                "Task $taskId was not made by Miffan and cannot be changed; delete it and create a new one."
+                            }
+                            mergeTaskUpdate(input, existing, meta, agentTools())
+                        } else input
+                        val draft = parseScheduleTaskDraft(fields, agentTools(), RemoteTaskMeta.Owner(assistantId, conversationId),
                             update = action == "update")
                         val taskId = repository.save(hostId, draft)
                         val testRun = input.bool("test_run") ?: (draft.kind == TaskKind.AGENT)
@@ -130,6 +140,39 @@ fun createScheduleTaskTool(
             }
         },
     )
+}
+
+/**
+ * An update as full arguments: the stored task overlaid with what the partner passed, so a call that
+ * names only what changes ("move it to 9:00") keeps the rest. The schedule merges field by field.
+ */
+internal fun mergeTaskUpdate(input: JsonObject, existing: RemoteTaskEntity, meta: RemoteTaskMeta, agentTools: List<AgentToolDefinition>): JsonObject {
+    val base = buildJsonObject {
+        put("name", meta.name)
+        put("kind", if (meta.kind == TaskKind.AGENT) "agent" else "command")
+        meta.command?.let { put("command", it) }
+        meta.agent?.let { agent ->
+            // By id first: the tool may have been renamed since the task was saved.
+            put("agent_tool", agentTools.find { it.id == agent.toolId }?.name ?: agent.toolName)
+            agent.permission?.let { put("permission", it) }
+        }
+        meta.prompt?.let { put("prompt", it) }
+        put("notify", meta.notify.name.lowercase())
+        put("timeout_minutes", (existing.timeoutSeconds / 60).coerceAtLeast(1))
+        TaskSchedule.parseHelper(existing.schedule)?.let { put("schedule", it.toInput()) }
+    }
+    val schedule = listOfNotNull(base["schedule"] as? JsonObject, input["schedule"] as? JsonObject)
+        .takeIf { it.isNotEmpty() }?.reduce { old, new -> JsonObject(old + new) }
+    return JsonObject(base + input + listOfNotNull(schedule?.let { "schedule" to it }))
+}
+
+private fun TaskSchedule.toInput(): JsonObject = buildJsonObject {
+    fun time(hour: Int, minute: Int) = put("time", "%02d:%02d".format(hour, minute))
+    when (this@toInput) {
+        is TaskSchedule.Daily -> { put("type", "daily"); time(hour, minute) }
+        is TaskSchedule.Weekly -> { put("type", "weekly"); putJsonArray("weekdays") { days.sorted().forEach { add(it) } }; time(hour, minute) }
+        is TaskSchedule.Interval -> { put("type", "interval"); put("minutes", minutes) }
+    }
 }
 
 /** Turns tool arguments into a draft. Pure, so the rules are testable without a computer. */
@@ -267,7 +310,10 @@ private fun scheduleTaskSchema() = InputSchema.Obj(
             put("type", "string")
             putJsonArray("enum") { listOf("list", "create", "update", "delete", "run_now", "enable", "disable").forEach { add(it) } }
         }
-        putJsonObject("task_id") { put("type", "string"); put("description", "For update, delete, run_now, enable, disable.") }
+        putJsonObject("task_id") {
+            put("type", "string")
+            put("description", "For update, delete, run_now, enable, disable. An update needs only the fields that change; the rest stay as they are.")
+        }
         putJsonObject("name") { put("type", "string"); put("description", "Short name the user will recognise.") }
         putJsonObject("schedule") {
             put("type", "object")
