@@ -129,6 +129,8 @@ data class RemoteTaskMeta(
         /** Display name at creation, kept for when the definition is later renamed or deleted. */
         val toolName: String,
         val permission: String? = null,
+        /** How results were read when the task was saved; still works after the tool is edited or deleted. */
+        val extraction: ResultExtraction? = null,
     )
 
     /** Where results go. Null for tasks the user made without a partner. */
@@ -172,8 +174,9 @@ sealed interface ResultExtraction {
 }
 
 /**
- * An agent command line the user can schedule. Built-in presets are code; users copy them or make
- * their own. Only the user edits these: a partner can pick one but never write a command line.
+ * An agent command line the user can schedule. Built-in presets are code; the user, or a partner
+ * with the user's approval of each change, adds their own. A task keeps the command line it was
+ * saved with, so editing a definition never silently changes what existing tasks run.
  */
 @Serializable
 data class AgentToolDefinition(
@@ -189,11 +192,14 @@ data class AgentToolDefinition(
     val versionArg: String? = null,
     /** Extra variables to inherit besides [DEFAULT_TASK_ENV]. */
     val extraEnv: List<String> = emptyList(),
+    /** The partner that proposed it (the user approved); null when the user added it. */
+    val addedBy: Uuid? = null,
 ) {
     @Serializable
     data class Permission(val name: String, val args: List<String>, val writes: Boolean = false)
 
     val takesPromptArgument: Boolean get() = args.any { it == PROMPT_PLACEHOLDER }
+    val isPreset: Boolean get() = id.startsWith(PRESET_PREFIX)
 
     fun validate() {
         require(name.isNotBlank()) { "Name is empty" }
@@ -207,6 +213,7 @@ data class AgentToolDefinition(
 
     companion object {
         const val PROMPT_PLACEHOLDER = "{prompt}"
+        const val PRESET_PREFIX = "preset:"
         val ENV_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*")
 
         /** Arguments that hand an unattended agent the whole machine; the approval card warns about them. */

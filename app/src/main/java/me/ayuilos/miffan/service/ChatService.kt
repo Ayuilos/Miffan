@@ -1332,7 +1332,10 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
-                    createScheduleTaskToolIfReady(assistant, conversation.id)?.let { add(it) }
+                    createScheduleTaskToolIfReady(assistant, conversation.id)?.let { scheduleTool ->
+                        add(scheduleTool)
+                        createAgentToolsToolIfReady(assistant)?.let { add(it) }
+                    }
                     val builtInSkills = buildList {
                         if (miffanHelpEnabled) add(miffanHelpBuiltInSkill)
                         if (extensionManagementEnabled) add(extensionManagementBuiltInSkill)
@@ -1537,6 +1540,21 @@ class ChatService(
             agentTools = { settingsStore.settingsFlow.value.allAgentTools() },
             timezone = repository.timezone(host.id),
             repository = repository,
+        )
+    }
+
+    /** Only alongside [createScheduleTaskToolIfReady], and never for Windows computers (no tasks there yet). */
+    private suspend fun createAgentToolsToolIfReady(assistant: Assistant): Tool? {
+        val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        if (me.rerere.workspace.RemotePlatform.parse(host.platform) == me.rerere.workspace.RemotePlatform.WINDOWS) return null
+        return me.ayuilos.miffan.data.ai.tools.createAgentToolsTool(
+            hostId = host.id,
+            computerName = host.name,
+            assistantId = assistant.id,
+            tools = { settingsStore.settingsFlow.value.allAgentTools() },
+            store = { custom -> settingsStore.update { it.copy(agentTools = custom) } },
+            repository = getKoin().get(),
         )
     }
 

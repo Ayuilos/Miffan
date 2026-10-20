@@ -22,6 +22,9 @@ interface RemoteTaskDAO {
     @Query("SELECT * FROM remote_task WHERE host_id = :hostId")
     suspend fun tasks(hostId: String): List<RemoteTaskEntity>
 
+    @Query("SELECT * FROM remote_task")
+    suspend fun allTasks(): List<RemoteTaskEntity>
+
     @Query("SELECT DISTINCT host_id FROM remote_task")
     suspend fun allTaskHostIds(): List<String>
 

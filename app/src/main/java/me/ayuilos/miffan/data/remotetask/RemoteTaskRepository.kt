@@ -97,12 +97,44 @@ class RemoteTaskRepository(
         probe
     }
 
+    /** Where [tool]'s executable is on the computer, and its version. */
+    suspend fun resolveExecutable(hostId: String, tool: AgentToolDefinition): RemoteExecutable =
+        withClient(hostId) { it.which(tool.executable, tool.versionArg) }
+
     /** Finds an agent tool's executable on the computer and builds its command line. */
     suspend fun resolveAgent(hostId: String, toolId: String, permission: String?, prompt: String): ResolvedAgentCommand {
         val tool = requireNotNull(settingsStore.settingsFlow.value.allAgentTools().find { it.id == toolId }) { "Unknown agent tool" }
         val executable = withClient(hostId) { it.which(tool.executable, tool.versionArg) }
         val argv = executable.path?.let { RemoteTaskScript.agentArgv(tool, permission, it, prompt) }
         return ResolvedAgentCommand(tool, executable, argv)
+    }
+
+    /** The draft that saves [task] again as it is, e.g. to pick up an edited agent tool. */
+    fun draftOf(task: RemoteTaskEntity): RemoteTaskDraft? {
+        val meta = decodeMeta(task) ?: return null
+        val schedule = TaskSchedule.parseHelper(task.schedule) ?: return null
+        return RemoteTaskDraft(
+            taskId = task.taskId, name = meta.name, kind = meta.kind, command = meta.command,
+            agentToolId = meta.agent?.toolId, permission = meta.agent?.permission, prompt = meta.prompt,
+            cwd = meta.cwd, schedule = schedule, timeoutSeconds = task.timeoutSeconds, notify = meta.notify, owner = meta.owner,
+        )
+    }
+
+    /** Cached tasks on any computer that run [toolId], as (host, task). */
+    suspend fun tasksUsing(toolId: String): List<RemoteTaskEntity> =
+        dao.allTasks().filter { decodeMeta(it)?.agent?.toolId == toolId }
+
+    /**
+     * Saves every task that runs [toolId] again so it uses the tool's current command line. Returns
+     * the names that could not be updated (an unreachable computer, a missing executable) with why.
+     */
+    suspend fun retarget(toolId: String): Map<String, String> = buildMap {
+        for (task in tasksUsing(toolId)) {
+            val draft = draftOf(task)
+            val name = draft?.name ?: task.taskId
+            if (draft == null) { put(name, "unreadable task"); continue }
+            runCatching { save(task.hostId, draft) }.onFailure { put(name, it.message ?: it.javaClass.simpleName) }
+        }
     }
 
     /** Creates or replaces a task, then refreshes the cache. Returns its id. */
@@ -129,7 +161,7 @@ class RemoteTaskRepository(
                     val executable = client.which(tool.executable, null)
                     val path = executable.path ?: throw RemoteTaskCommandException("agent_missing:${tool.executable}")
                     val meta = RemoteTaskMeta(name = draft.name, kind = draft.kind, cwd = cwd, prompt = prompt,
-                        agent = RemoteTaskMeta.AgentRef(tool.id, tool.name, draft.permission),
+                        agent = RemoteTaskMeta.AgentRef(tool.id, tool.name, draft.permission, tool.extraction),
                         env = (DEFAULT_TASK_ENV + tool.extraEnv).distinct(),
                         notify = draft.notify, owner = draft.owner, createdAt = created)
                     meta to RemoteTaskScript.renderAgent(tool, draft.permission, prompt, cwd, path, executable.pathEnv)
@@ -178,7 +210,7 @@ class RemoteTaskRepository(
         val runs = sync.runs.map { record ->
             val excerpt = RemoteTaskClient.excerpt(record)
             val meta = tasks[record.taskId]?.let(::decodeMeta)
-            val extraction = meta?.agent?.toolId?.let { tools[it]?.extraction }
+            val extraction = meta?.agent?.let { it.extraction ?: tools[it.toolId]?.extraction }
             val extracted = extraction?.let { RemoteTaskResults.extract(excerpt, it) }
             RemoteTaskRunEntity(
                 hostId = hostId, runId = record.runId, taskId = record.taskId,
