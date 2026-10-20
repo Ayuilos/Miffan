@@ -23,6 +23,7 @@ import me.ayuilos.miffan.data.remotetask.RemoteExecutable
 import me.ayuilos.miffan.data.remotetask.RemoteTaskMeta
 import me.ayuilos.miffan.data.remotetask.RemoteTaskProbe
 import me.ayuilos.miffan.data.remotetask.RemoteTaskRepository
+import me.ayuilos.miffan.data.remotetask.ResolvedAgentCommand
 import me.ayuilos.miffan.data.remotetask.RemoteTaskScript
 import me.ayuilos.miffan.data.remotetask.ResultExtraction
 import me.ayuilos.miffan.data.remotetask.TaskKind
@@ -71,16 +72,16 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
             runCatching { parseScheduleTaskDraft(input, tools, RemoteTaskMeta.Owner(Uuid.random()), action == "update") }.getOrNull()
         } ?: return ThreadGenericApprovalCardFallback(tool, assistant, onApproval)
         val agent = draft.agentToolId?.let { id -> tools.find { it.id == id } }
-        val resolved by produceState<List<String>?>(null, hostId, draft) {
+        val resolved by produceState<ResolvedAgentCommand?>(null, hostId, draft) {
             if (hostId != null && agent != null) value = runCatching {
-                repository.resolveAgent(hostId, agent.id, draft.permission, draft.prompt.orEmpty()).argv
+                repository.resolveAgent(hostId, agent.id, draft.permission, draft.prompt.orEmpty())
             }.getOrNull()
         }
-        val argv = resolved ?: agent?.let { RemoteTaskScript.agentArgv(it, draft.permission, it.executable, draft.prompt.orEmpty()) }
+        val argv = resolved?.argv ?: agent?.let { RemoteTaskScript.agentArgv(it, draft.permission, it.executable, draft.prompt.orEmpty()) }
         val testRun = (input["test_run"] as? JsonPrimitive)?.booleanOrNull ?: (draft.kind == TaskKind.AGENT)
         var showCommand by remember(tool.toolCallId) { mutableStateOf(false) }
         ApprovalCardFrame(tool, stringResource(if (action == "create") R.string.remote_task_card_create else R.string.remote_task_card_update, who),
-            onApproval, icon = HugeIcons.Clock01) {
+            onApproval, icon = HugeIcons.Clock01, allowDanger = argv?.let(RemoteTaskScript::grantsFullAccess) == true) {
             ApprovalFields(listOfNotNull(
                 stringResource(R.string.remote_task_field_name) to @Composable { FieldText(draft.name) },
                 computer?.let { stringResource(R.string.remote_task_field_computer) to @Composable { FieldText(it) } },
@@ -101,6 +102,10 @@ internal fun ThreadScheduleTaskCard(tool: UIMessagePart.Tool, assistant: Assista
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
                     Text(prompt, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium)
                 }
+            }
+            // Found nowhere on the computer: saving would fail, so say it before the owner allows.
+            if (agent != null && resolved != null && !resolved!!.found) {
+                DangerNote(stringResource(R.string.remote_task_agent_missing, agent.executable, computer ?: ""))
             }
             if (argv != null) {
                 TextButton(onClick = { showCommand = !showCommand }, contentPadding = PaddingValues(horizontal = 4.dp)) {
@@ -182,6 +187,7 @@ internal fun ThreadAgentToolCard(tool: UIMessagePart.Tool, assistant: Assistant?
             existing == null -> R.string.agent_tool_add
             else -> R.string.agent_tool_change
         }),
+        allowDanger = dangerous,
         onAllow = if (offerUpdate) { _ ->
             actions!!.approveWithInput(tool.toolCallId, JsonObject(input + ("update_tasks" to JsonPrimitive(updateTasks))))
         } else null,
@@ -223,7 +229,7 @@ internal fun ThreadAgentToolCard(tool: UIMessagePart.Tool, assistant: Assistant?
                 }
             }
         }
-        NoteLines(listOf(HugeIcons.InformationCircle to stringResource(R.string.agent_tool_note_after)))
+        if (existing == null) NoteLines(listOf(HugeIcons.InformationCircle to stringResource(R.string.agent_tool_note_after)))
     }
 }
 

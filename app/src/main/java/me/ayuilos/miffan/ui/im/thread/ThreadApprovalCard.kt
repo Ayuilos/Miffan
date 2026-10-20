@@ -75,6 +75,8 @@ internal fun ApprovalCardFrame(
     allowEnabled: Boolean = true,
     footnote: String? = null,
     onAllow: ((always: Boolean) -> Unit)? = null,
+    /** Allowing does something risky (an agent that skips every question); the button turns red. */
+    allowDanger: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val actions = LocalToolCardActions.current
@@ -114,7 +116,9 @@ internal fun ApprovalCardFrame(
                 }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(modifier = Modifier.weight(1f).heightIn(min = 48.dp), enabled = allowEnabled && LocalToolCardAllowEnabled.current, onClick = {
+                    Button(modifier = Modifier.weight(1f).heightIn(min = 48.dp), enabled = allowEnabled && LocalToolCardAllowEnabled.current,
+                        colors = if (allowDanger) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError) else ButtonDefaults.buttonColors(), onClick = {
                         allowed = true
                         val alwaysChosen = always && canAlways
                         when {

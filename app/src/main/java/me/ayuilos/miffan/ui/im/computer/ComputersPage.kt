@@ -219,8 +219,8 @@ fun ComputerDetailPage(hostId: String) {
     var offlinePaired by rememberSaveable { mutableStateOf(false) }
     val hostList by remember(workspaces) { workspaces.listHostsFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val remoteTasks: me.ayuilos.miffan.data.remotetask.RemoteTaskRepository = koinInject()
-    val taskCount by remember(hostId) { remoteTasks.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
-        .let { state -> derivedStateOf { state.value.size } }
+    val hostTasks by remember(hostId) { remoteTasks.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val taskCount = hostTasks.size
     var loaded by remember { mutableStateOf(false) }
     LaunchedEffect(computer) {
         if (computer != null) loaded = true

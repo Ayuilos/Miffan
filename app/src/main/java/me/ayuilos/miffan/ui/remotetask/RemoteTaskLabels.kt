@@ -9,7 +9,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
-import java.util.Locale
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.remotetask.AgentToolPresets
 import me.ayuilos.miffan.data.remotetask.TaskNotify
@@ -22,7 +21,7 @@ import me.ayuilos.miffan.data.remotetask.toDayOfWeek
 fun scheduleLabel(schedule: TaskSchedule): String = when (schedule) {
     is TaskSchedule.Daily -> stringResource(R.string.remote_task_daily, clock(schedule.hour, schedule.minute))
     is TaskSchedule.Weekly -> {
-        val locale = Locale.getDefault()
+        val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
         val separator = stringResource(R.string.im_computers_name_separator)
         val days = schedule.days.sortedBy { if (it == 0) 7 else it }
             .joinToString(separator) { it.toDayOfWeek().getDisplayName(TextStyle.SHORT, locale) }

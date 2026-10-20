@@ -151,7 +151,7 @@ class RemoteTaskRepository(
         draft.schedule.validate()
         require(draft.name.isNotBlank()) { "Name is empty" }
         val taskId = draft.taskId ?: Uuid.random().toString()
-        val cwd = draft.cwd ?: computerRoot(hostId)
+        val cwd = draft.cwd ?: computerRoot(hostId, draft.owner)
         val tool = draft.agentToolId?.let { id ->
             requireNotNull(settingsStore.settingsFlow.value.allAgentTools().find { it.id == id }) { "Unknown agent tool" }
         }
@@ -250,8 +250,18 @@ class RemoteTaskRepository(
         }
     }
 
-    private suspend fun computerRoot(hostId: String): String =
-        requireNotNull(workspaceDao.getByRemoteHostId(hostId).minByOrNull { it.createdAt }?.root) { "The computer has no workspace" }
+    /**
+     * The folder a task runs in when none is given: the owner partner's workspace on this computer,
+     * else its oldest one. A remote workspace's `root` is a local id; its folder there is `remotePath`.
+     */
+    private suspend fun computerRoot(hostId: String, owner: RemoteTaskMeta.Owner?): String {
+        val workspaces = workspaceDao.getByRemoteHostId(hostId)
+        val partnerWorkspace = owner?.let { o ->
+            settingsStore.settingsFlow.value.assistants.find { it.id == o.assistantId }?.workspaceId?.toString()
+        }
+        val workspace = workspaces.find { it.id == partnerWorkspace } ?: workspaces.minByOrNull { it.createdAt }
+        return requireNotNull(workspace?.remotePath?.takeIf { it.startsWith("/") }) { "The computer has no workspace folder" }
+    }
 
     private suspend fun <T> withClient(hostId: String, block: (RemoteTaskClient) -> T): T {
         if (!isSupported(hostId)) throw RemoteTasksUnsupportedException()

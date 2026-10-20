@@ -3241,4 +3241,16 @@
   <string name="agent_tools_update">一起更新</string>
   <string name="agent_tools_keep">保持原樣</string>
   <string name="agent_tools_update_failed">這些沒能更新：%1$s</string>
+  <string name="remote_task_agent_missing">在 %2$s 上找不到 %1$s。現在核准會失敗，要先在電腦上安裝好它，或在「Agent 工具」裡填上完整路徑。</string>
+  <string name="remote_task_step_create">安排排程任務「%1$s」</string>
+  <string name="remote_task_step_update">修改排程任務「%1$s」</string>
+  <string name="remote_task_step_delete">刪除排程任務</string>
+  <string name="remote_task_step_run_now">立即執行任務</string>
+  <string name="remote_task_step_enable">恢復排程任務</string>
+  <string name="remote_task_step_disable">暫停排程任務</string>
+  <string name="remote_task_step_list">查看排程任務</string>
+  <string name="agent_tool_step_add">新增 Agent 工具「%1$s」</string>
+  <string name="agent_tool_step_change">修改 Agent 工具「%1$s」</string>
+  <string name="agent_tool_step_delete">刪除 Agent 工具</string>
+  <string name="agent_tool_step_list">查看 Agent 工具</string>
 </resources>

@@ -272,7 +272,8 @@ private fun RunSheet(hostId: String, taskName: String, agentName: String?, run: 
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SetupCard { SelectionContainer { Text(run.resultText) } }
                 }
-                run.excerpt.isNotBlank() -> SetupCard {
+                // The full log, once loaded, replaces the excerpt below.
+                run.excerpt.isNotBlank() && log == null -> SetupCard {
                     SelectionContainer {
                         Text(run.excerpt.takeLast(4_000), Modifier.horizontalScroll(rememberScrollState()),
                             style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
@@ -286,7 +287,8 @@ private fun RunSheet(hostId: String, taskName: String, agentName: String?, run: 
                             fontFamily = FontFamily.Monospace)
                     }
                 }
-                run.logBytes > 0 -> OutlinedButton(onClick = {
+                // A log no longer than the excerpt is already shown in full.
+                run.logBytes > run.excerpt.toByteArray().size -> OutlinedButton(onClick = {
                     loading = true
                     scope.launch {
                         runCatching { repository.log(hostId, run.taskId, run.runId) }
@@ -298,7 +300,7 @@ private fun RunSheet(hostId: String, taskName: String, agentName: String?, run: 
                 }
             }
             logError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-            if (log == null) Text(stringResource(R.string.remote_task_full_output_help), style = MaterialTheme.typography.bodySmall,
+            if (log == null && run.logBytes > run.excerpt.toByteArray().size) Text(stringResource(R.string.remote_task_full_output_help), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

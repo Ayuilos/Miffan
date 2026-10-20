@@ -3246,4 +3246,16 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="agent_tools_update">まとめて更新</string>
   <string name="agent_tools_keep">そのまま維持</string>
   <string name="agent_tools_update_failed">次の項目を更新できませんでした：%1$s</string>
+  <string name="remote_task_agent_missing">%2$s に %1$s が見つかりません。インストールするか、エージェントツールでフルパスを設定するまで、許可しても失敗します。</string>
+  <string name="remote_task_step_create">定期タスク「%1$s」を設定</string>
+  <string name="remote_task_step_update">定期タスク「%1$s」を変更</string>
+  <string name="remote_task_step_delete">定期タスクを削除</string>
+  <string name="remote_task_step_run_now">タスクを今すぐ実行</string>
+  <string name="remote_task_step_enable">定期タスクを再開</string>
+  <string name="remote_task_step_disable">定期タスクを一時停止</string>
+  <string name="remote_task_step_list">定期タスクを確認</string>
+  <string name="agent_tool_step_add">エージェントツール「%1$s」を追加</string>
+  <string name="agent_tool_step_change">エージェントツール「%1$s」を変更</string>
+  <string name="agent_tool_step_delete">エージェントツールを削除</string>
+  <string name="agent_tool_step_list">エージェントツールを確認</string>
 </resources>
