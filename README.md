@@ -48,6 +48,7 @@ Connect a Mac, Windows or Linux computer over SSH, including over Tailscale, and
 - **One shared screen.** View and control the desktop from your phone, in portrait or full-screen landscape. Touch the screen and you take over right away.
 - **High-performance mode.** With Sunshine on the computer, the graphics card encodes the picture for lower latency, smoother motion and sound. Miffan sets it up and pairs for you.
 - **You stay in charge.** Choose per computer whether the partner asks first, works on its own or leaves it alone. Each approval is recorded in a permission history that stays even if you delete the chat.
+- **Tasks that run on schedule.** Ask a partner to do something every morning and the computer's own scheduler runs it on time, even while your phone is off (Mac and Linux). A task can be a command or a call to an AI tool already installed there, such as Claude Code, Codex CLI or Gemini CLI. Results come back to the chat when you open Miffan, and "My computers" keeps the output of every run.
 - **Easy to connect.** Easy chat finds computers on your Wi-Fi and on Tailscale. Sign in once with the account password and Miffan switches to its own key; Windows gets a one-step setup script.
 
 <table>
@@ -67,7 +68,7 @@ Supported desktops: macOS, Windows, and Linux with GNOME, KDE (through their bui
 
 ## Approve with a tap
 
-When a partner wants to do something that matters, such as running a command, adding a calendar event or calling an MCP tool, it asks with a card you can read: one sentence on what it wants to do and the key details, with the raw call one tap away.
+When a partner wants to do something that matters, such as running a command, scheduling a task, adding a calendar event or calling an MCP tool, it asks with a card you can read: one sentence on what it wants to do and the key details, with the raw call one tap away.
 
 - Allow several ordinary requests at once, or always allow a kind of action and take that back later in the permission history.
 - Adjust a calendar event's time before it's added.
@@ -118,6 +119,7 @@ Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an
 | Oct 2026 | 4.1 | High-performance mode for the remote screen, and GNOME and KDE desktops. |
 | Oct 2026 | 4.2 | Partner chats and groups, Windows computers and servers without a screen. |
 | Oct 2026 | 4.3 | Drawing, a redesigned way to connect a computer, and readable approval cards. |
+| Oct 2026 | 4.4 | Scheduled tasks that your computer runs on its own, even while your phone is off. |
 
 Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 
