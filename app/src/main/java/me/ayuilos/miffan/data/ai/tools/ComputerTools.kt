@@ -21,6 +21,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import me.ayuilos.miffan.data.ai.computer.ComputerHolder
+import me.ayuilos.miffan.data.ai.computer.PartnerActResult
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.files.FilesManager
@@ -165,8 +167,11 @@ suspend fun createComputerTools(
     registry: RemoteComputerRegistry,
     control: RemoteComputerControl,
     filesManager: FilesManager,
+    /** The partner's display name, shown to other partners refused while this one holds the desktop. */
+    partnerName: String = "",
 ): List<Tool> {
     val workspaceId = snapshot.workspaceId
+    val holder = ComputerHolder(snapshot.assistantId, snapshot.conversationId.orEmpty(), partnerName)
     val capabilities = registry.capabilities(workspaceId)
     val hostId = capabilities.hostId
     val target = snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
@@ -197,13 +202,17 @@ suspend fun createComputerTools(
                     if (tool.name in OBSERVE_TOOLS) {
                         convert(registry.call(workspaceId, tool.name, arguments), filesManager)
                     } else {
-                        control.partnerActs(hostId) {
+                        when (val result = control.partnerActs(hostId, holder) {
                             if (focusClick != null) typeAfterFocusClick(workspaceId, registry, focusClick, arguments, filesManager)
                             else convert(registry.call(workspaceId, tool.name, arguments), filesManager)
-                        } ?: listOf(UIMessagePart.Text(
+                        }) {
+                            is PartnerActResult.Done -> result.value
+                            PartnerActResult.UserHolds -> listOf(UIMessagePart.Text(
                                 """{"status":"refused","reason":"The user has taken control of the remote screen. """ +
                                     """Stop acting and wait until the user hands control back."}""",
                             ))
+                            is PartnerActResult.Busy -> listOf(UIMessagePart.Text(busyRefusal(result.holder, holder, target)))
+                        }
                     }
                 },
             ))
@@ -211,6 +220,18 @@ suspend fun createComputerTools(
         add(createReadGuideTool(workspaceId, target, capabilities, registry))
     }
 }
+
+/** Why another turn holds the desktop and what to do instead of retrying the action. */
+internal fun busyRefusal(holder: ComputerHolder, me: ComputerHolder, target: String): String = buildJsonObject {
+    put("status", "busy")
+    put("reason", when {
+        holder.assistantId == me.assistantId -> "You are already operating $target in another conversation."
+        holder.name.isNotBlank() -> "${holder.name} is operating $target right now."
+        else -> "Another partner is operating $target right now."
+    })
+    put("next", "Do not retry the action now. Continue with work that does not need the desktop, or tell the user " +
+        "you are waiting for the computer to be free. Only one partner can operate it at a time.")
+}.toString()
 
 private val DESKTOP_TYPE_POSITION = setOf("x", "y")
 

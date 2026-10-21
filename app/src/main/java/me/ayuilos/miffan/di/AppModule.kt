@@ -115,6 +115,7 @@ val appModule = module {
             httpClient = get(),
             backgroundModelHealth = get(),
             recentErrorStore = get(),
+            computerControl = get(),
         )
     }
 

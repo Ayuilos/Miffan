@@ -41,6 +41,17 @@ class PartnerDisplayNameTest {
         assertEquals("蓝鲸 · 默认助手", partnerChatTitle(group, settings))
     }
 
+    @Test fun groupContextAsksToSerializeWorkOnASharedComputer() {
+        val computer = Uuid.random()
+        val shared = Settings(assistants = listOf(blank.copy(workspaceId = computer), named.copy(workspaceId = computer)))
+        val group = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, listOf(named.id, blank.id), createdAt = Instant.EPOCH, hostId = named.id)
+        val rule = "同一时间只能由一个伙伴操作"
+        assertTrue(perspectiveContext(group, named.id, shared, setOf(computer)).contains(rule))
+        assertFalse("a shared local workspace is no computer", perspectiveContext(group, named.id, shared).contains(rule))
+        val oneOperates = Settings(assistants = listOf(blank.copy(workspaceId = computer, computerUse = ComputerUseMode.OFF), named.copy(workspaceId = computer)))
+        assertFalse(perspectiveContext(group, named.id, oneOperates, setOf(computer)).contains(rule))
+    }
+
     @Test fun groupMentionsRecognizeEveryBlankPartnerAliasAndIgnoreSelf() {
         val group = PartnerChat(Uuid.random(), PartnerChatKind.GROUP, listOf(named.id, blank.id), createdAt = Instant.EPOCH)
         for (alias in BLANK_PARTNER_NAMES) {
