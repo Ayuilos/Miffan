@@ -84,8 +84,6 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
     // Everything the partner is waiting on, not only computer actions: commands and questions block it too.
     val pending = replies.flatMap { item -> item.message.parts.filterIsInstance<UIMessagePart.Tool>()
         .filter { it.approvalState is ToolApprovalState.Pending }.map { item to it } }
-    val partnerBusy = latest?.streaming == true && latest.message.parts.let(::latestComputerAction)
-        ?.let { it.approvalState !is ToolApprovalState.Pending } == true
     fun openChat(item: TimelineItem.Message?) {
         val id = assistantId.toString()
         // Remove existing variants of this thread, then return with the requested message focus.
@@ -100,7 +98,6 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
         onSettings = { vm.handBackToPartner(); nav.navigate(Screen.ComputerSetup(assistantId.toString())) },
         onBack = { vm.handBackToPartner(); nav.popBackStack() },
         failureText = { computerErrorMessage(resources, it) },
-        partnerBusy = partnerBusy,
         snackbar = snackbar,
     ) {
         // The partner's side of the page: what it is doing, what it asks, and a way to talk to it.

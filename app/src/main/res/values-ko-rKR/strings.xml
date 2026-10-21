@@ -2417,6 +2417,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="computer_use_enabled">파트너의 컴퓨터 조작</string>
   <string name="computer_use_enabled_help">파트너가 이 컴퓨터의 데스크톱을 보고 조작할 수 있어요. 클릭하거나 입력하고 앱을 열 수 있어요. 화면 페이지에서 언제든 직접 조작할 수 있어요. 호스트의 화면을 켜고 cua-driver 0.34 이상을 설치해야 해요. 호스트의 화면 설정 → 환경 확인에서 설치하거나 업데이트하세요.</string>
   <string name="workspace_screen_partner_operating">파트너가 이 컴퓨터를 조작 중이에요</string>
+  <string name="workspace_screen_named_partner_operating">%1$s 님이 이 컴퓨터를 조작 중이에요</string>
   <string name="workspace_screen_user_operating">직접 조작 중 · 파트너는 대기 중이에요</string>
   <string name="workspace_screen_hand_back">파트너에게 다시 넘기기</string>
   <string name="computer_use_view_screen">화면 보기</string>

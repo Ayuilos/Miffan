@@ -2420,6 +2420,7 @@
   <string name="computer_use_enabled">Управление компьютером партнёром</string>
   <string name="computer_use_enabled_help">Партнёр может просматривать рабочий стол этого компьютера и управлять им: нажимать, вводить текст и открывать приложения. Вы можете в любой момент перехватить управление на странице экрана. Для этого экран компьютера должен быть включён, а cua-driver — версии 0.34 или новее. Установите или обновите его в настройках экрана компьютера → «Проверить среду».</string>
   <string name="workspace_screen_partner_operating">Партнёр управляет этим компьютером</string>
+  <string name="workspace_screen_named_partner_operating">%1$s управляет этим компьютером</string>
   <string name="workspace_screen_user_operating">Вы управляете компьютером; партнёр приостановил работу</string>
   <string name="workspace_screen_hand_back">Вернуть управление партнёру</string>
   <string name="computer_use_view_screen">Посмотреть экран</string>

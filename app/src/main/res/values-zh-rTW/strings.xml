@@ -2415,6 +2415,7 @@
   <string name="computer_use_enabled">夥伴操作電腦</string>
   <string name="computer_use_enabled_help">夥伴可以查看並操作這台電腦的桌面，包括點按、輸入和開啟應用程式。你可以隨時在螢幕頁接手操作。需要啟用主機的螢幕，並安裝 cua-driver 0.34 或更新版本；可在主機的「螢幕設定 → 檢查環境」中安裝或升級。</string>
   <string name="workspace_screen_partner_operating">夥伴正在操作這台電腦</string>
+  <string name="workspace_screen_named_partner_operating">%1$s 正在操作這台電腦</string>
   <string name="workspace_screen_user_operating">你正在操作，夥伴已暫停</string>
   <string name="workspace_screen_hand_back">交還給夥伴</string>
   <string name="computer_use_view_screen">查看螢幕</string>

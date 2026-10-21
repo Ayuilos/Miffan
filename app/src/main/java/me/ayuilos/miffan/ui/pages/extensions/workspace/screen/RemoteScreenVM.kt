@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import me.ayuilos.miffan.data.ai.computer.ComputerHolder
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteController
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
@@ -223,6 +224,10 @@ class RemoteScreenVM(
     val controller: StateFlow<RemoteController> = combine(_hostId, control.states) { hostId, states ->
         hostId?.let { states[it] } ?: RemoteController.IDLE
     }.stateIn(viewModelScope, SharingStarted.Eagerly, RemoteController.IDLE)
+
+    /** The partner turn holding this desktop, from its first action until its reply ends; null when none. */
+    val holder: StateFlow<ComputerHolder?> = combine(_hostId, control.holders) { hostId, holders -> hostId?.let { holders[it] } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** The partner tried to act while the user held this desktop and is waiting for it back. */
     val partnerWaiting: StateFlow<Boolean> = combine(_hostId, control.waiting) { hostId, waiting -> hostId in waiting }

@@ -56,6 +56,8 @@ internal fun RemoteScreenControllerBanner(
     partnerBusy: Boolean = false,
     /** The partner tried to act while the user held the desktop. */
     partnerWaiting: Boolean = false,
+    /** Who holds the desktop, when known; several partners may share one computer. */
+    partnerName: String? = null,
     modifier: Modifier = Modifier,
 ) {
     // The controller is PARTNER only while one action runs (often a few milliseconds), so the
@@ -69,6 +71,8 @@ internal fun RemoteScreenControllerBanner(
     // Keep the last visible message during the exit transition.
     var visibleController by remember { mutableStateOf(shown) }
     if (shown != RemoteController.IDLE && visibleController != shown) visibleController = shown
+    var visibleName by remember { mutableStateOf(partnerName) }
+    if (partnerName != null && visibleName != partnerName) visibleName = partnerName
     // Spelled out when the user takes over or the partner starts waiting, then only "hand back".
     var spelled by remember { mutableStateOf(true) }
     LaunchedEffect(shown, partnerWaiting) {
@@ -98,9 +102,11 @@ internal fun RemoteScreenControllerBanner(
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 }
                 if (!user || spelled) Text(
-                    stringResource(if (visibleController == RemoteController.PARTNER) {
-                        R.string.workspace_screen_partner_operating
-                    } else R.string.workspace_screen_user_operating),
+                    when {
+                        user -> stringResource(R.string.workspace_screen_user_operating)
+                        visibleName != null -> stringResource(R.string.workspace_screen_named_partner_operating, visibleName!!)
+                        else -> stringResource(R.string.workspace_screen_partner_operating)
+                    },
                     modifier = Modifier.padding(vertical = 10.dp),
                     style = MaterialTheme.typography.labelLarge,
                 )

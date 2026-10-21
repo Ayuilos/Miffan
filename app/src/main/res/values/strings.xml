@@ -2459,6 +2459,7 @@
   <string name="computer_use_enabled" tools:ignore="MissingTranslation">Partner computer control</string>
   <string name="computer_use_enabled_help" tools:ignore="MissingTranslation">Your partner can view and operate this computer’s desktop: click, type and open apps. You can take over at any time on the screen page. Needs the host’s screen turned on and cua-driver 0.34 or newer; install or upgrade it in the host’s Screen settings → Check environment.</string>
   <string name="workspace_screen_partner_operating" tools:ignore="MissingTranslation">The partner is operating this computer</string>
+  <string name="workspace_screen_named_partner_operating" tools:ignore="MissingTranslation">%1$s is operating this computer</string>
   <string name="workspace_screen_user_operating" tools:ignore="MissingTranslation">You are operating; the partner is paused</string>
   <string name="workspace_screen_hand_back" tools:ignore="MissingTranslation">Hand back to partner</string>
   <string name="computer_use_view_screen" tools:ignore="MissingTranslation">View screen</string>
