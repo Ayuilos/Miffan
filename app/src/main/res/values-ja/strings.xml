@@ -3320,7 +3320,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_profile_history">プロフィールの変更履歴</string>
   <string name="im_edit_personality_help">ここに書いた内容どおりに接します。普段話すような言葉で書いてください。</string>
   <string name="im_edit_personality_hint">例：あなたは温かくて好奇心旺盛な話し相手です。よく話を聞き、軽い質問を一度に一つだけしてください。</string>
-  <string name="im_edit_avatar_hint">アイコンをタップすると見た目を変えられます</string>
   <string name="im_edit_add_line">一文を追加</string>
   <string name="im_edit_chip_short">回答を短く</string>
   <string name="im_edit_line_short">回答は短めに、結論から話してください。</string>
@@ -3462,4 +3461,31 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
     <item quantity="other">%1$d 個のモデル</item>
   </plurals>
   <string name="magpie_description">**スマホから、パソコンの AI を使えます。** Magpie はパソコンにインストールする無料のゲートウェイで、Claude Code や Codex にログイン済みのモデルを含め、パソコンで使えるモデルを 1 つのアドレスにまとめます。\n\n1. パソコンで Magpie を開き、**設定** から **ローカルネットワークで共有** をオンにします。\n2. そこに表示される **アドレス** と **APIキー** を、下の入力欄にコピーします。\n3. **有効にする** をオンにしてから、**モデル** タブでモデルを追加します。\n\n自宅の Wi-Fi 以外から使う場合は、Tailscale などの VPN でパソコンに接続し、Tailscale のアドレスを使ってください。\n\n公式サイト：[usemagpie.ai](https://usemagpie.ai)</string>
+  <string name="im_look_title">見た目を変える</string>
+  <string name="im_look_done">完了</string>
+  <string name="im_look_tab_kind">キャラクター</string>
+  <string name="im_look_tab_color">配色</string>
+  <string name="im_look_tab_motion">動き</string>
+  <string name="im_look_follow_short">アプリに合わせる</string>
+  <string name="im_look_photo">写真</string>
+  <string name="im_look_photo_desc">写真から 1 枚選びます</string>
+  <string name="im_look_photo_again">別の写真を選ぶ</string>
+  <string name="im_look_emoji">絵文字</string>
+  <string name="im_look_emoji_desc">アイコンにする絵文字を選びます</string>
+  <string name="im_look_emoji_again">別の絵文字を選ぶ</string>
+  <string name="im_look_whale_desc">キャラクターテーマの専用パートナー</string>
+  <string name="im_look_palette_classic">クラシック</string>
+  <string name="im_look_palette_matcha">抹茶</string>
+  <string name="im_look_palette_sakura">桜</string>
+  <string name="im_look_palette_moonlight">月光</string>
+  <string name="im_look_palette_sea_salt">シーソルト</string>
+  <string name="im_look_palette_ink_jade">墨翡翠</string>
+  <string name="im_look_follow_app">アプリの色に合わせる</string>
+  <string name="im_look_follow_app_desc">アプリのテーマカラーやダーク／ライトモードが変わると、これも一緒に変わります</string>
+  <string name="im_look_whale_colors">あおクジラには専用の配色があるので、選ぶものはありません。</string>
+  <string name="im_look_picture_colors">写真と絵文字は元の色のままです。Miffan に戻すと、配色を選べます。</string>
+  <string name="im_look_whale_motion">あおクジラには専用の動きがあるので、選ぶものはありません。</string>
+  <string name="im_look_picture_motion">写真と絵文字は動きません。Miffan に戻すと、動き方を選べます。</string>
+  <string name="im_look_motion_hint">上のプレビューは、選んだ動きで動きます。</string>
+  <string name="im_look_shuffle">ランダムに選ぶ</string>
 </resources>

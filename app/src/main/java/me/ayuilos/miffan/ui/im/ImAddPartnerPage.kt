@@ -1,9 +1,12 @@
 package me.ayuilos.miffan.ui.im
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -12,8 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -23,11 +28,18 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.MiffanAppearance
+import me.ayuilos.miffan.data.model.MiffanKind
 import me.ayuilos.miffan.data.model.MiffanPalette
+import me.ayuilos.miffan.data.model.MiffanMotionProfile
+import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
+import me.ayuilos.miffan.ui.components.ui.MiffanMascot
+import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
+import me.ayuilos.miffan.ui.components.ui.displayName
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Shuffle
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import org.koin.compose.koinInject
@@ -140,15 +152,16 @@ fun ImAddPartnerPage(custom: Boolean) {
     }
 }
 
-/** Name, colour and traits; the traits become the new partner's personality. */
+/** Look, name and traits; the traits become the new partner's personality. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ImCustomPartnerStep(busy: Boolean, onBack: () -> Unit, onDone: (Assistant) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
-    var palette by rememberSaveable { mutableStateOf(MiffanPalette.CLASSIC) }
+    var avatarJson by rememberSaveable { mutableStateOf(Json.encodeToString(Avatar.serializer(), Avatar.Miffan())) }
+    val avatar = remember(avatarJson) { Json.decodeFromString(Avatar.serializer(), avatarJson) }
+    var lookOpen by rememberSaveable { mutableStateOf(false) }
     var traits by rememberSaveable { mutableStateOf(listOf(R.string.im_trait_gentle)) }
     var extra by rememberSaveable { mutableStateOf("") }
-    val avatar = Avatar.Miffan(MiffanAppearance(palette = palette))
     val traitNames = traits.map { stringResource(it) }
     val separator = stringResource(R.string.im_list_separator)
     val trimmed = name.trim()
@@ -158,6 +171,13 @@ private fun ImCustomPartnerStep(busy: Boolean, onBack: () -> Unit, onDone: (Assi
         extra.trim(),
     ).filter { it.isNotEmpty() }.joinToString("\n")
 
+    if (lookOpen) {
+        ImLookEditor(trimmed, avatar, onCancel = { lookOpen = false }) { picked ->
+            avatarJson = Json.encodeToString(Avatar.serializer(), picked)
+            lookOpen = false
+        }
+        return
+    }
     Scaffold(topBar = { ImPageBar(stringResource(R.string.im_add_partner_new), onBack = onBack) }, bottomBar = {
         Box(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
             Button(enabled = trimmed.isNotEmpty() && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), onClick = {
@@ -169,8 +189,13 @@ private fun ImCustomPartnerStep(busy: Boolean, onBack: () -> Unit, onDone: (Assi
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                AssistantAvatar(trimmed, avatar, Modifier.size(96.dp))
-                ImPalettePicker(palette, { palette = it })
+                ImLookEntry(trimmed, avatar, onOpen = { lookOpen = true }) {
+                    OutlinedButton(onClick = { avatarJson = Json.encodeToString(Avatar.serializer(), randomMiffan(avatar)) }) {
+                        Icon(HugeIcons.Shuffle, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.im_look_shuffle))
+                    }
+                }
             }
             OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true,
                 label = { Text(stringResource(R.string.im_add_partner_name)) },
@@ -190,15 +215,14 @@ private fun ImCustomPartnerStep(busy: Boolean, onBack: () -> Unit, onDone: (Assi
     }
 }
 
-/** A row of Miffan colours; the chosen one is ringed. */
-@Composable
-internal fun ImPalettePicker(selected: MiffanPalette, onSelect: (MiffanPalette) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        MiffanPalette.entries.forEach { palette ->
-            val ring = if (palette == selected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent
-            Box(Modifier.size(44.dp).border(2.dp, ring, CircleShape).padding(4.dp)) {
-                AssistantAvatar("", Avatar.Miffan(MiffanAppearance(palette = palette)), Modifier.fillMaxSize(), onClick = { onSelect(palette) })
-            }
-        }
-    }
+/** A Miffan unlike [current] in kind and colours, with any motion, for a partner nobody wants to dress up by hand. */
+private fun randomMiffan(current: Avatar): Avatar.Miffan {
+    val now = (current as? Avatar.Miffan)?.appearance
+    return Avatar.Miffan(
+        appearance = MiffanAppearance(
+            kind = MiffanKind.entries.filter { it != now?.kind }.random(),
+            palette = MiffanPalette.entries.filter { it != now?.palette }.random(),
+        ),
+        motionProfile = MiffanMotionProfile.entries.random(),
+    )
 }

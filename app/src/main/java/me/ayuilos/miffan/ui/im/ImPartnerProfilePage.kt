@@ -94,7 +94,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item("identity") {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AssistantAvatar(partner.name, partner.avatar, Modifier.size(112.dp), onUpdate = { avatar -> perform { vm.update { it.copy(avatar = avatar) } } })
+                    AssistantAvatar(partner.name, partner.avatar, Modifier.size(112.dp), onClick = { nav.navigate(Screen.PartnerEdit(assistantId, look = true)) })
                     Text(partnerName(partner), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -208,7 +208,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                     deletePartnerConfirm = false
                     // Its thread and pages no longer have anything to show.
                     nav.removeAll(Screen.Home) { screen ->
-                        screen == Screen.PartnerProfile(assistantId) || screen == Screen.PartnerEdit(assistantId) ||
+                        screen == Screen.PartnerProfile(assistantId) || (screen is Screen.PartnerEdit && screen.assistantId == assistantId) ||
                             screen == Screen.PartnerComputer(assistantId) || (screen is Screen.Thread && screen.assistantId == assistantId)
                     }
                 }

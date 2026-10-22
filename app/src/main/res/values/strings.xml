@@ -3338,7 +3338,6 @@
   <string name="im_profile_history">Profile changes</string>
   <string name="im_edit_personality_help">It treats you the way this describes. Write it the way you would say it.</string>
   <string name="im_edit_personality_hint">e.g. You are a warm, curious companion. You listen closely and ask one light question at a time.</string>
-  <string name="im_edit_avatar_hint">Tap the avatar for more looks</string>
   <string name="im_edit_add_line">Add a line</string>
   <string name="im_edit_chip_short">Shorter answers</string>
   <string name="im_edit_line_short">Keep answers short and lead with the conclusion.</string>
@@ -3460,4 +3459,31 @@
   <string name="im_ai_service_same_as_default">Same as the default model</string>
   <plurals name="im_ai_service_model_count"><item quantity="one">%1$d model</item><item quantity="other">%1$d models</item></plurals>
   <string name="magpie_description">**Use the AI on your computer from your phone.** Magpie is a free gateway on your computer that brings the models you have there, including Claude Code and Codex sign-ins, to one address.\n\n1. On the computer, open Magpie → Settings and turn on **Share on local network**.\n2. Copy the **address** and **API key** shown there into the fields below.\n3. Turn on **Enable**, then add models on the **Models** tab.\n\nAway from home Wi-Fi? Reach the computer through a VPN such as Tailscale, and use its Tailscale address instead.\n\nWebsite: [usemagpie.ai](https://usemagpie.ai)</string>
+  <string name="im_look_title">Change look</string>
+  <string name="im_look_done">Done</string>
+  <string name="im_look_tab_kind">Character</string>
+  <string name="im_look_tab_color">Colors</string>
+  <string name="im_look_tab_motion">Motion</string>
+  <string name="im_look_follow_short">Matches app</string>
+  <string name="im_look_photo">Photo</string>
+  <string name="im_look_photo_desc">Pick one from your photos</string>
+  <string name="im_look_photo_again">Pick another photo</string>
+  <string name="im_look_emoji">Emoji</string>
+  <string name="im_look_emoji_desc">Pick an emoji as the avatar</string>
+  <string name="im_look_emoji_again">Pick another emoji</string>
+  <string name="im_look_whale_desc">The character theme’s own partner</string>
+  <string name="im_look_palette_classic">Classic</string>
+  <string name="im_look_palette_matcha">Matcha</string>
+  <string name="im_look_palette_sakura">Sakura</string>
+  <string name="im_look_palette_moonlight">Moonlight</string>
+  <string name="im_look_palette_sea_salt">Sea salt</string>
+  <string name="im_look_palette_ink_jade">Ink jade</string>
+  <string name="im_look_follow_app">Match the app’s colors</string>
+  <string name="im_look_follow_app_desc">Changes when the app’s theme color or dark mode changes</string>
+  <string name="im_look_whale_colors">The whale has her own colors; there is nothing to pick.</string>
+  <string name="im_look_picture_colors">Photos and emoji keep their own colors. Switch back to a Miffan to pick colors.</string>
+  <string name="im_look_whale_motion">The whale has her own way of moving; there is nothing to pick.</string>
+  <string name="im_look_picture_motion">Photos and emoji don’t move. Switch back to a Miffan to pick how it moves.</string>
+  <string name="im_look_motion_hint">The preview above moves the way you pick.</string>
+  <string name="im_look_shuffle">Surprise me</string>
 </resources>

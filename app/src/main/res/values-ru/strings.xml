@@ -3335,7 +3335,6 @@
   <string name="im_profile_history">История изменений профиля</string>
   <string name="im_edit_personality_help">Он будет общаться с вами так, как здесь написано. Пишите так, как говорите сами.</string>
   <string name="im_edit_personality_hint">например: Ты тёплый и любознательный собеседник. Внимательно слушай и задавай по одному простому вопросу за раз.</string>
-  <string name="im_edit_avatar_hint">Нажмите на аватар, чтобы выбрать другой образ</string>
   <string name="im_edit_add_line">Добавить строку</string>
   <string name="im_edit_chip_short">Короче ответы</string>
   <string name="im_edit_line_short">Отвечай коротко, начинай с вывода.</string>
@@ -3507,4 +3506,31 @@
     <item quantity="other">%1$d модели</item>
   </plurals>
   <string name="magpie_description">**Пользуйтесь ИИ с вашего компьютера прямо с телефона.** Magpie — бесплатный шлюз на вашем компьютере, который собирает в один адрес модели, доступные на нём, включая вход в Claude Code и Codex.\n\n1. На компьютере откройте Magpie → **Settings (Настройки)** и включите **Share on local network (Общий доступ в локальной сети)**.\n2. Скопируйте **Address (Адрес)** и **API key (API-ключ)**, которые там показаны, в поля ниже.\n3. Включите переключатель **Включить**, затем добавьте модели на вкладке **Модели**.\n\nНе дома и не в своей Wi-Fi сети? Подключитесь к компьютеру через VPN, например Tailscale, и используйте его адрес Tailscale.\n\nСайт: [usemagpie.ai](https://usemagpie.ai)</string>
+  <string name="im_look_title">Сменить образ</string>
+  <string name="im_look_done">Готово</string>
+  <string name="im_look_tab_kind">Персонаж</string>
+  <string name="im_look_tab_color">Цвета</string>
+  <string name="im_look_tab_motion">Движение</string>
+  <string name="im_look_follow_short">Как в приложении</string>
+  <string name="im_look_photo">Фото</string>
+  <string name="im_look_photo_desc">Выберите фото из галереи</string>
+  <string name="im_look_photo_again">Выбрать другое фото</string>
+  <string name="im_look_emoji">Эмодзи</string>
+  <string name="im_look_emoji_desc">Выберите эмодзи вместо аватара</string>
+  <string name="im_look_emoji_again">Выбрать другое эмодзи</string>
+  <string name="im_look_whale_desc">Личный партнёр темы персонажа</string>
+  <string name="im_look_palette_classic">Классика</string>
+  <string name="im_look_palette_matcha">Матча</string>
+  <string name="im_look_palette_sakura">Сакура</string>
+  <string name="im_look_palette_moonlight">Лунный свет</string>
+  <string name="im_look_palette_sea_salt">Морская соль</string>
+  <string name="im_look_palette_ink_jade">Тушь и нефрит</string>
+  <string name="im_look_follow_app">Цвета как в приложении</string>
+  <string name="im_look_follow_app_desc">Меняется вместе с цветом темы и тёмным режимом приложения</string>
+  <string name="im_look_whale_colors">У Китюши свои цвета, выбирать нечего.</string>
+  <string name="im_look_picture_colors">Фото и эмодзи сохраняют свои цвета. Выберите Miffan, чтобы настроить цвета.</string>
+  <string name="im_look_whale_motion">У Китюши свой способ двигаться, выбирать нечего.</string>
+  <string name="im_look_picture_motion">Фото и эмодзи не двигаются. Выберите Miffan, чтобы настроить движение.</string>
+  <string name="im_look_motion_hint">Превью выше двигается так, как вы выбрали.</string>
+  <string name="im_look_shuffle">Удиви меня</string>
 </resources>

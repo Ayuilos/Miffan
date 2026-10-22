@@ -3325,7 +3325,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_profile_history">资料改动记录</string>
   <string name="im_edit_personality_help">它会照着这里说的和你相处。用平常说话的方式写就行。</string>
   <string name="im_edit_personality_hint">比如：你是温暖、好奇的聊天伙伴。认真听我说话，适时问一个轻松的问题。</string>
-  <string name="im_edit_avatar_hint">点头像有更多样子</string>
   <string name="im_edit_add_line">加一句</string>
   <string name="im_edit_chip_short">回答短一点</string>
   <string name="im_edit_line_short">回答尽量简短，先说结论。</string>
@@ -3447,4 +3446,31 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_ai_service_same_as_default">跟默认模型一样</string>
   <plurals name="im_ai_service_model_count"><item quantity="other">%1$d 个模型</item></plurals>
   <string name="magpie_description">**在手机上用你电脑上的 AI。** Magpie 是装在电脑上的免费网关，把你在电脑上能用的模型（包括登录好的 Claude Code、Codex）汇到一个地址。\n\n1. 在电脑上打开 Magpie →「设置」，打开 **局域网共享**。\n2. 把那里显示的 **地址** 和 **API 密钥** 填到下面。\n3. 打开 **是否启用**，再到 **模型** 页添加模型。\n\n不在家里的 Wi-Fi 时，可以用 Tailscale 等 VPN 连回电脑，把地址换成电脑的 Tailscale 地址。\n\n官网：[usemagpie.ai](https://usemagpie.ai)</string>
+  <string name="im_look_title">换个样子</string>
+  <string name="im_look_done">完成</string>
+  <string name="im_look_tab_kind">角色</string>
+  <string name="im_look_tab_color">颜色</string>
+  <string name="im_look_tab_motion">动作</string>
+  <string name="im_look_follow_short">跟着 App</string>
+  <string name="im_look_photo">用照片</string>
+  <string name="im_look_photo_desc">从相册里挑一张</string>
+  <string name="im_look_photo_again">换一张照片</string>
+  <string name="im_look_emoji">用表情</string>
+  <string name="im_look_emoji_desc">挑一个表情当头像</string>
+  <string name="im_look_emoji_again">换一个表情</string>
+  <string name="im_look_whale_desc">角色主题的专属伙伴</string>
+  <string name="im_look_palette_classic">经典</string>
+  <string name="im_look_palette_matcha">抹茶</string>
+  <string name="im_look_palette_sakura">樱花</string>
+  <string name="im_look_palette_moonlight">月光</string>
+  <string name="im_look_palette_sea_salt">海盐</string>
+  <string name="im_look_palette_ink_jade">墨玉</string>
+  <string name="im_look_follow_app">跟着 App 换颜色</string>
+  <string name="im_look_follow_app_desc">App 换主题色、深浅色时，它也跟着变</string>
+  <string name="im_look_whale_colors">蓝色大肥鱼有自己的配色，不用挑。</string>
+  <string name="im_look_picture_colors">照片和表情用它本来的颜色。换回米饭，就能挑配色。</string>
+  <string name="im_look_whale_motion">蓝色大肥鱼有自己的动作，不用挑。</string>
+  <string name="im_look_picture_motion">照片和表情不会动。换回米饭，就能挑它怎么动。</string>
+  <string name="im_look_motion_hint">上面的预览会按选中的样子动起来。</string>
+  <string name="im_look_shuffle">随机换一个</string>
 </resources>

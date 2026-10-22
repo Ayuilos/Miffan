@@ -3320,7 +3320,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_profile_history">프로필 변경 기록</string>
   <string name="im_edit_personality_help">여기 적은 대로 대해 줘요. 평소 말하듯이 적어 주세요.</string>
   <string name="im_edit_personality_hint">예: 당신은 따뜻하고 호기심 많은 대화 상대예요. 말을 잘 들어주고, 가벼운 질문은 한 번에 하나만 해 주세요.</string>
-  <string name="im_edit_avatar_hint">아바타를 누르면 모습을 더 고를 수 있어요</string>
   <string name="im_edit_add_line">한 줄 추가</string>
   <string name="im_edit_chip_short">답변을 짧게</string>
   <string name="im_edit_line_short">답변은 짧게, 결론부터 말해 주세요.</string>
@@ -3462,4 +3461,31 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
     <item quantity="other">%1$d개 모델</item>
   </plurals>
   <string name="magpie_description">**휴대폰에서 내 컴퓨터의 AI를 사용하세요.** Magpie는 컴퓨터에 설치하는 무료 게이트웨이로, Claude Code와 Codex에 로그인해 둔 모델을 포함해 컴퓨터에서 쓸 수 있는 모델을 하나의 주소로 모아 줍니다.\n\n1. 컴퓨터에서 Magpie를 열고 **Settings (설정)** 메뉴에서 **Share on local network (로컬 네트워크 공유)** 옵션을 켜세요.\n2. 거기에 표시된 **Address (주소)**, **API key (API 키)** 값을 아래 입력란에 복사하세요.\n3. **활성화**를 켜고, **모델** 탭에서 모델을 추가하세요.\n\n집 Wi-Fi가 아닌 곳에 있다면 Tailscale 같은 VPN으로 컴퓨터에 연결하고, Tailscale 주소를 대신 입력하세요.\n\n웹사이트: [usemagpie.ai](https://usemagpie.ai)</string>
+  <string name="im_look_title">모습 바꾸기</string>
+  <string name="im_look_done">완료</string>
+  <string name="im_look_tab_kind">캐릭터</string>
+  <string name="im_look_tab_color">색상</string>
+  <string name="im_look_tab_motion">움직임</string>
+  <string name="im_look_follow_short">앱에 맞춤</string>
+  <string name="im_look_photo">사진</string>
+  <string name="im_look_photo_desc">사진첩에서 한 장 고르세요</string>
+  <string name="im_look_photo_again">다른 사진 고르기</string>
+  <string name="im_look_emoji">이모지</string>
+  <string name="im_look_emoji_desc">아바타로 쓸 이모지를 고르세요</string>
+  <string name="im_look_emoji_again">다른 이모지 고르기</string>
+  <string name="im_look_whale_desc">캐릭터 테마의 전용 파트너</string>
+  <string name="im_look_palette_classic">클래식</string>
+  <string name="im_look_palette_matcha">말차</string>
+  <string name="im_look_palette_sakura">벚꽃</string>
+  <string name="im_look_palette_moonlight">달빛</string>
+  <string name="im_look_palette_sea_salt">씨솔트</string>
+  <string name="im_look_palette_ink_jade">먹옥</string>
+  <string name="im_look_follow_app">앱 색상에 맞춤</string>
+  <string name="im_look_follow_app_desc">앱의 테마 색이나 다크 모드가 바뀌면 이 색도 함께 바뀌어요</string>
+  <string name="im_look_whale_colors">파랑고래는 고유한 색상이 있어서 고를 수 없어요.</string>
+  <string name="im_look_picture_colors">사진과 이모지는 원래 색 그대로 보여요. Miffan으로 바꾸면 색상을 고를 수 있어요.</string>
+  <string name="im_look_whale_motion">파랑고래는 고유한 움직임이 있어서 고를 수 없어요.</string>
+  <string name="im_look_picture_motion">사진과 이모지는 움직이지 않아요. Miffan으로 바꾸면 움직임을 고를 수 있어요.</string>
+  <string name="im_look_motion_hint">위 미리보기가 고른 움직임대로 움직여요.</string>
+  <string name="im_look_shuffle">무작위로 바꾸기</string>
 </resources>

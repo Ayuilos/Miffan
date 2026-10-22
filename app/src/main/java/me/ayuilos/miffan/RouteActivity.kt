@@ -479,7 +479,7 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.ImFavorites> { ImFavoritesPage() }
                             entry<Screen.ImTranslate> { ImTranslatePage() }
                             entry<Screen.AddPartner> { key -> ImAddPartnerPage(key.custom) }
-                            entry<Screen.PartnerEdit> { key -> ImPartnerEditPage(key.assistantId) }
+                            entry<Screen.PartnerEdit> { key -> ImPartnerEditPage(key.assistantId, openLook = key.look) }
                             entry<Screen.PartnerComputer> { key -> PartnerComputerPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.RevisionHistory> { key -> ImRevisionHistoryPage(key.subject, key.subjectId) }
                             entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
@@ -838,7 +838,7 @@ sealed interface Screen : NavKey {
 
     /** A partner's name, personality and avatar. */
     @Serializable
-    data class PartnerEdit(val assistantId: String) : Screen
+    data class PartnerEdit(val assistantId: String, val look: Boolean = false) : Screen
 
     /** How a partner uses its computer: the computer, permission, tasks. */
     @Serializable

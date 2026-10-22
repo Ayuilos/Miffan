@@ -17,7 +17,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.model.Avatar
-import me.ayuilos.miffan.data.model.MiffanPalette
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import org.koin.androidx.compose.koinViewModel
@@ -31,10 +30,14 @@ private val EDIT_LINES = listOf(
     R.string.im_edit_chip_check to R.string.im_edit_line_check,
 )
 
-/** Name, look and personality on one page; nothing changes until Save, and leaving with edits asks first. */
+/**
+ * Name, look and personality on one page; nothing changes until Save, and leaving with edits asks first.
+ * The look has a page of its own inside this one. Opened for the look alone ([openLook], from the
+ * profile's avatar), Done there saves and goes back.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ImPartnerEditPage(assistantId: String, vm: ImPartnerVM = koinViewModel(key = assistantId, parameters = { parametersOf(Uuid.parse(assistantId)) })) {
+fun ImPartnerEditPage(assistantId: String, openLook: Boolean = false, vm: ImPartnerVM = koinViewModel(key = assistantId, parameters = { parametersOf(Uuid.parse(assistantId)) })) {
     val nav = LocalNavController.current
     val partner by vm.assistant.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -49,6 +52,22 @@ fun ImPartnerEditPage(assistantId: String, vm: ImPartnerVM = koinViewModel(key =
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     val dirty = name != original.name || personality != original.systemPrompt || avatar != original.avatar
     val leave = { if (dirty) confirmDiscard = true else nav.popBackStack() }
+    var lookOpen by rememberSaveable { mutableStateOf(openLook) }
+    if (lookOpen) {
+        ImLookEditor(name.ifBlank { original.name }, avatar, onCancel = { if (openLook) nav.popBackStack() else lookOpen = false }) { picked ->
+            avatarJson = Json.encodeToString(Avatar.serializer(), picked)
+            if (!openLook) lookOpen = false
+            else scope.launch {
+                try {
+                    vm.update { it.copy(avatar = picked) }
+                    nav.popBackStack()
+                } catch (e: CancellationException) { throw e }
+                // Back on the full edit page the draft look waits there, with Save to try again.
+                catch (_: Exception) { lookOpen = false; snackbar.showSnackbar(failure) }
+            }
+        }
+        return
+    }
     BackHandler(enabled = dirty, onBack = leave)
 
     Scaffold(
@@ -78,14 +97,7 @@ fun ImPartnerEditPage(assistantId: String, vm: ImPartnerVM = koinViewModel(key =
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                AssistantAvatar(name, avatar, Modifier.size(96.dp), onUpdate = { avatarJson = Json.encodeToString(Avatar.serializer(), it) })
-                val miffan = avatar as? Avatar.Miffan
-                if (miffan != null) ImPalettePicker(miffan.appearance.palette, { palette: MiffanPalette ->
-                    val updated = miffan.copy(appearance = miffan.appearance.copy(palette = palette))
-                    avatarJson = Json.encodeToString(Avatar.serializer(), updated)
-                })
-                Text(stringResource(R.string.im_edit_avatar_hint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ImLookEntry(name, avatar, onOpen = { lookOpen = true })
             }
             OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.im_p5_name)) },
                 placeholder = { if (original.name.isBlank()) Text(stringResource(R.string.assistant_page_default_assistant)) })

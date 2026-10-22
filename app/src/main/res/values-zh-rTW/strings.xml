@@ -3315,7 +3315,6 @@
   <string name="im_profile_history">資料變更紀錄</string>
   <string name="im_edit_personality_help">它會照著這裡說的和你相處。用平常說話的方式寫就好。</string>
   <string name="im_edit_personality_hint">例如：你是溫暖、好奇的聊天夥伴。認真聽我說話，適時問一個輕鬆的問題。</string>
-  <string name="im_edit_avatar_hint">點頭像有更多樣子</string>
   <string name="im_edit_add_line">加一句</string>
   <string name="im_edit_chip_short">回答短一點</string>
   <string name="im_edit_line_short">回答盡量簡短，先說結論。</string>
@@ -3437,4 +3436,31 @@
   <string name="im_ai_service_same_as_default">跟預設模型一樣</string>
   <plurals name="im_ai_service_model_count"><item quantity="other">%1$d 個模型</item></plurals>
   <string name="magpie_description">**在手機上用你電腦上的 AI。** Magpie 是裝在電腦上的免費閘道，把你在電腦上能用的模型（包括登入好的 Claude Code、Codex）匯到一個位址。\n\n1. 在電腦上打開 Magpie →「設定」，打開 **區域網共享**。\n2. 把那裡顯示的 **位址** 和 **API 金鑰** 填到下面。\n3. 打開 **是否啟用**，再到 **模型** 頁新增模型。\n\n不在家裡的 Wi-Fi 時，可以用 Tailscale 等 VPN 連回電腦，把位址換成電腦的 Tailscale 位址。\n\n官網：[usemagpie.ai](https://usemagpie.ai)</string>
+  <string name="im_look_title">換個樣子</string>
+  <string name="im_look_done">完成</string>
+  <string name="im_look_tab_kind">角色</string>
+  <string name="im_look_tab_color">顏色</string>
+  <string name="im_look_tab_motion">動作</string>
+  <string name="im_look_follow_short">跟著 App</string>
+  <string name="im_look_photo">用照片</string>
+  <string name="im_look_photo_desc">從相簿裡挑一張</string>
+  <string name="im_look_photo_again">換一張照片</string>
+  <string name="im_look_emoji">用表情</string>
+  <string name="im_look_emoji_desc">挑一個表情當頭像</string>
+  <string name="im_look_emoji_again">換一個表情</string>
+  <string name="im_look_whale_desc">角色主題的專屬夥伴</string>
+  <string name="im_look_palette_classic">經典</string>
+  <string name="im_look_palette_matcha">抹茶</string>
+  <string name="im_look_palette_sakura">櫻花</string>
+  <string name="im_look_palette_moonlight">月光</string>
+  <string name="im_look_palette_sea_salt">海鹽</string>
+  <string name="im_look_palette_ink_jade">墨玉</string>
+  <string name="im_look_follow_app">跟著 App 換顏色</string>
+  <string name="im_look_follow_app_desc">App 換主題色、深淺色時，它也跟著變</string>
+  <string name="im_look_whale_colors">藍色大肥魚有自己的配色，不用挑。</string>
+  <string name="im_look_picture_colors">照片和表情用它本來的顏色。換回米飯，就能挑配色。</string>
+  <string name="im_look_whale_motion">藍色大肥魚有自己的動作，不用挑。</string>
+  <string name="im_look_picture_motion">照片和表情不會動。換回米飯，就能挑它怎麼動。</string>
+  <string name="im_look_motion_hint">上面的預覽會按選中的樣子動起來。</string>
+  <string name="im_look_shuffle">隨機換一個</string>
 </resources>
