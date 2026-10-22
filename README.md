@@ -20,7 +20,7 @@
   </tr>
 </table>
 
-Bring the AI service you already use, whether that's an API key for an OpenAI-compatible, Gemini or Claude service, a ChatGPT subscription through Codex sign-in, or an OpenRouter account. Miffan doesn't bundle a model. Your chats and settings stay on your phone.
+Bring the AI service you already use, whether that's an API key for an OpenAI-compatible, Gemini or Claude service, a ChatGPT subscription through Codex sign-in, an OpenRouter account, or a [Magpie](https://usemagpie.ai) gateway on your own computer. Miffan doesn't bundle a model. Your chats and settings stay on your phone.
 
 ## Chat like a messenger
 
@@ -31,6 +31,7 @@ Each AI partner is one ongoing chat. There's nothing to start, no model to pick 
 - **Change a partner by telling it.** "Keep your answers shorter" adjusts its preferences. With your approval a partner can also change its own name, avatar and instructions. Every change is linked to the message behind it, kept in a history and can be undone.
 - **See what AI knows about you.** Each memory shows where it came from, and you can delete it at any time.
 - **Ask for a picture.** Pick a drawing model once and any partner can draw, or edit its last picture when you say "change it to…".
+- **Keep what matters.** Long-press a message to save it. The Discover tab gathers your saved messages and recent drawings, and lets you draw or translate without picking a partner.
 
 ## Partners that work together
 
@@ -92,7 +93,7 @@ The [feature matrix](docs/FEATURE_MATRIX.md) lists every supported provider, sea
   <img src="docs/assets/branding/miffan-whale-girl.png" alt="The blue whale girl pointing forward from a smiling Miffan rice bowl" width="420" />
 </p>
 
-Choose a Miffan rice bowl or the blue whale girl. Their expressions follow the conversation: they eat while you wait, get dizzy while the AI reasons, smile when a reply arrives and doze off at night.
+Each partner gets its own look: a Miffan rice bowl in four kinds and six colors, the blue whale girl, a photo or an emoji, picked on its Change look page with a live preview, along with how a Miffan moves. Their expressions follow the conversation: they eat while you wait, get dizzy while the AI reasons, smile when a reply arrives and doze off at night.
 
 ## Get started
 
@@ -120,6 +121,7 @@ Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an
 | Oct 2026 | 4.2 | Partner chats and groups, Windows computers and servers without a screen. |
 | Oct 2026 | 4.3 | Drawing, a redesigned way to connect a computer, and readable approval cards. |
 | Oct 2026 | 4.4 | Scheduled tasks that your computer runs on its own, even while your phone is off. |
+| Oct 2026 | 4.5 | A redesigned easy chat: partner, Me and Discover pages, a Change look page, saved messages, and the Magpie gateway. |
 
 Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 
