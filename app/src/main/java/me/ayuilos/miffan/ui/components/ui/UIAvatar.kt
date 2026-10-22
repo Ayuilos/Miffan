@@ -105,51 +105,11 @@ fun UIAvatar(
     allowCharacterPicker: Boolean = false,
     transparentCharacter: Boolean = false,
 ) {
-    val filesManager: FilesManager = koinInject()
-    val context = LocalContext.current
     var showPickOption by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showUrlInput by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
-    var preCropTempFile by remember { mutableStateOf<File?>(null) }
-
-    fun saveAvatarImage(uri: Uri) {
-        val localUris = filesManager.createChatFilesByContents(listOf(uri))
-        localUris.firstOrNull()?.let { localUri ->
-            onUpdate?.invoke(Avatar.Image(localUri.toString()))
-        }
-    }
-
-    val (_, launchImageCrop) = useCropLauncher(
-        onCroppedImageReady = { croppedUri ->
-            saveAvatarImage(croppedUri)
-        },
-        onCleanup = {
-            preCropTempFile?.delete()
-            preCropTempFile = null
-        },
-        aspectRatio = 1f to 1f,
-        freeStyleCropEnabled = false
-    )
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { selectedUri ->
-            val tempFile = File(context.appTempFolder, "avatar_pick_${System.currentTimeMillis()}.jpg")
-            runCatching {
-                context.contentResolver.openInputStream(selectedUri)?.use { input ->
-                    tempFile.outputStream().use { output -> input.copyTo(output) }
-                } ?: error("Failed to open input stream for $selectedUri")
-                preCropTempFile?.delete()
-                preCropTempFile = tempFile
-                launchImageCrop(tempFile.toUri())
-            }.onFailure {
-                tempFile.delete()
-                launchImageCrop(selectedUri)
-            }
-        }
-    }
+    val pickImage = rememberAvatarImagePicker { onUpdate?.invoke(it) }
 
     Box(modifier = modifier.then(Modifier.size(32.dp))) {
         val unframed = transparentCharacter || value is Avatar.WhaleGirl
@@ -176,11 +136,12 @@ fun UIAvatar(
                             text = value.content,
                             autoSize = TextAutoSize.StepBased(
                                 minFontSize = 15.sp,
-                                maxFontSize = 30.sp,
+                                maxFontSize = 160.sp,
                             ),
                             lineHeight = 0.8.em,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(5.dp)
+                            // Grows with the avatar: a list's small one and a profile's large one look alike.
+                            modifier = Modifier.fillMaxSize(0.68f).wrapContentHeight()
                         )
                     }
 
@@ -265,7 +226,7 @@ fun UIAvatar(
                     Button(
                         onClick = {
                             showPickOption = false
-                            imagePickerLauncher.launch("image/*")
+                            pickImage()
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -314,23 +275,10 @@ fun UIAvatar(
     }
 
     if (showEmojiPicker) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                showEmojiPicker = false
-            },
-            sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
-        ) {
-            EmojiPicker(
-                onEmojiSelected = { emoji ->
-                    onUpdate?.invoke(Avatar.Emoji(content = emoji.emoji))
-                    showEmojiPicker = false
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .wrapContentHeight()
-                    .padding(16.dp)
-            )
-        }
+        AvatarEmojiSheet(
+            onPick = { onUpdate?.invoke(it) },
+            onDismiss = { showEmojiPicker = false },
+        )
     }
 
     if (showUrlInput) {
@@ -371,6 +319,66 @@ fun UIAvatar(
                     Text(stringResource(id = R.string.avatar_cancel))
                 }
             }
+        )
+    }
+}
+
+/** Picks a photo, crops it square and keeps a copy in the app; returns the launcher to call. */
+@Composable
+fun rememberAvatarImagePicker(onPicked: (Avatar) -> Unit): () -> Unit {
+    val filesManager: FilesManager = koinInject()
+    val context = LocalContext.current
+    var preCropTempFile by remember { mutableStateOf<File?>(null) }
+    val (_, launchImageCrop) = useCropLauncher(
+        onCroppedImageReady = { croppedUri ->
+            filesManager.createChatFilesByContents(listOf(croppedUri)).firstOrNull()?.let { localUri ->
+                onPicked(Avatar.Image(localUri.toString()))
+            }
+        },
+        onCleanup = {
+            preCropTempFile?.delete()
+            preCropTempFile = null
+        },
+        aspectRatio = 1f to 1f,
+        freeStyleCropEnabled = false
+    )
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { selectedUri ->
+            val tempFile = File(context.appTempFolder, "avatar_pick_${System.currentTimeMillis()}.jpg")
+            runCatching {
+                context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: error("Failed to open input stream for $selectedUri")
+                preCropTempFile?.delete()
+                preCropTempFile = tempFile
+                launchImageCrop(tempFile.toUri())
+            }.onFailure {
+                tempFile.delete()
+                launchImageCrop(selectedUri)
+            }
+        }
+    }
+    return { imagePickerLauncher.launch("image/*") }
+}
+
+/** A sheet of emoji; picking one makes it the avatar and closes the sheet. */
+@Composable
+fun AvatarEmojiSheet(onPick: (Avatar) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
+    ) {
+        EmojiPicker(
+            onEmojiSelected = { emoji ->
+                onPick(Avatar.Emoji(content = emoji.emoji))
+                onDismiss()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(16.dp)
         )
     }
 }

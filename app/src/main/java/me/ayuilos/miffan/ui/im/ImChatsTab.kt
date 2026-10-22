@@ -35,8 +35,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,15 +88,8 @@ internal fun ImChatsTab(
     onSearchFieldMoved: (Float) -> Unit,
 ) {
     val navController = LocalNavController.current
-    val scope = rememberCoroutineScope()
     // Same as "add partner" in the Partners tab: a new partner opens on its profile to be set up.
-    val onAddPartner: () -> Unit = {
-        scope.launch {
-            val partner = me.ayuilos.miffan.data.model.Assistant(name = "Miffan")
-            vm.addPartner(partner)
-            navController.navigate(Screen.PartnerProfile(partner.id.toString()))
-        }
-    }
+    val onAddPartner: () -> Unit = { navController.navigate(Screen.AddPartner()) }
     val sections by vm.sections.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -286,11 +277,14 @@ private fun ImChatGroupHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(section.group.name, style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false))
-            Icon(HugeIcons.ArrowDown01, null, Modifier.size(18.dp).rotate(arrow), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
+            // Name, how many chats, then the arrow at the start; a folded group's unread badge sits at the far end.
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(section.group.name, style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+                ImCountTag(section.chats.size)
+                Icon(HugeIcons.ArrowDown01, null, Modifier.size(18.dp).rotate(arrow), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (section.collapsed && section.unread > 0) ImUnreadBadge(section.unread)
         }
         ImPressMenu(menu) {

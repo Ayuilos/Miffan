@@ -35,8 +35,8 @@ import me.ayuilos.miffan.ui.theme.CustomColors
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-fun BackupPage(vm: BackupVM = koinViewModel()) {
-    val pagerState = rememberPagerState { 4 }
+fun BackupPage(vm: BackupVM = koinViewModel(), tab: Int = 0) {
+    val pagerState = rememberPagerState(initialPage = tab) { 4 }
     val scope = rememberCoroutineScope()
     var showRestartDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()

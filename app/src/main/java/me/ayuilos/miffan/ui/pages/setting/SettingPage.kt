@@ -278,7 +278,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     title = { Text(stringResource(R.string.setting_page_data_settings)) },
                 ) {
                     item(
-                        onClick = { navController.navigate(Screen.Backup) },
+                        onClick = { navController.navigate(Screen.Backup()) },
                         leadingContent = { Icon(HugeIcons.Database02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_data_backup_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_data_backup)) },

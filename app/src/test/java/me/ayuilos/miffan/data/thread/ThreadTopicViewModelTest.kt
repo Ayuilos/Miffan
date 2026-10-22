@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.data.model.FavoriteType
+import me.ayuilos.miffan.data.repository.FavoriteRepository
 import me.ayuilos.miffan.data.db.dao.ThreadCatalogEntry
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
@@ -51,7 +53,9 @@ class ThreadTopicViewModelTest {
         every { service.pendingNewTopic } returns MutableStateFlow(emptySet())
         val notices = mockk<ThreadNoticeSource>()
         every { notices.observe(assistant.id) } returns flowOf(emptyList())
-        val vm = AgentThreadVM(assistant.id, settings, repo, notices, chat, service, mockk(), mockk(relaxed = true))
+        val favorites = mockk<FavoriteRepository>()
+        every { favorites.listByType(FavoriteType.NODE) } returns flowOf(emptyList())
+        val vm = AgentThreadVM(assistant.id, settings, repo, notices, chat, service, mockk(), mockk(relaxed = true), favorites)
         val store = ViewModelStore()
         store.put("thread", vm)
         try {

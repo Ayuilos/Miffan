@@ -94,12 +94,14 @@ fun TranslatorPage(vm: TranslatorVM = koinViewModel()) {
                 actions = {
                     ModelSelector(
                         modelId = settings.translateModeId,
+                        defaultModelId = settings.chatModelId,
                         onSelect = {
                             vm.updateSettings(settings.copy(translateModeId = it.id))
                         },
                         providers = settings.providers,
                         type = ModelType.CHAT,
                         onlyIcon = true,
+                        textOnly = true,
                     )
                 }
             )

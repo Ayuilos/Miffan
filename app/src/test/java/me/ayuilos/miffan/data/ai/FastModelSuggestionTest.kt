@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai
 
+import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
@@ -66,5 +67,13 @@ class FastModelSuggestionTest {
     fun noLightModelReturnsNull() {
         assertNull(ProviderSetting.OpenAI(models = listOf(Model(modelId = "pro"))).suggestFastModel(null))
         assertNull(ProviderSetting.OpenAI().suggestFastModel(null))
+    }
+
+    @Test
+    fun chatModelsThatDrawAreNotSuggestedEvenWithAFastName() {
+        val drawing = Model(modelId = "google/gemini-flash-lite-preview", outputModalities = listOf(Modality.TEXT, Modality.IMAGE))
+        val text = Model(modelId = "gpt-4o-mini")
+        assertEquals(text, ProviderSetting.OpenAI(models = listOf(drawing, text)).suggestFastModel(null))
+        assertNull(ProviderSetting.OpenAI(models = listOf(drawing)).suggestFastModel(null))
     }
 }

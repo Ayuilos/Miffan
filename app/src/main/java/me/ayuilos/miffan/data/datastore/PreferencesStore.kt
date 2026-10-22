@@ -847,6 +847,9 @@ fun Settings.findModelById(uuid: Uuid?, fallback: Uuid? = null): Model? {
         ?: fallback?.let { this.providers.findModelById(it) }
 }
 
+/** The model that translates: the one picked for it, or the default chat model when none is. */
+fun Settings.translationModel(): Model? = findModelById(translateModeId, fallback = chatModelId)
+
 fun List<ProviderSetting>.findModelById(uuid: Uuid): Model? {
     this.forEach { setting ->
         setting.models.forEach { model ->

@@ -1,6 +1,10 @@
 package me.ayuilos.miffan.ui.im.thread
 
 import androidx.lifecycle.ViewModel
+import me.ayuilos.miffan.data.repository.FavoriteRepository
+import me.ayuilos.miffan.data.model.FavoriteType
+import me.ayuilos.miffan.data.model.NodeFavoriteTarget
+import me.ayuilos.miffan.data.favorite.NodeFavoriteAdapter
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +89,21 @@ class AgentThreadVM(
     private val threadService: ThreadService,
     private val revisionService: RevisionService,
     private val listState: ThreadListState,
+    private val favoriteRepository: FavoriteRepository,
 ) : ViewModel() {
+    /** Messages the owner saved, by node, so the press menu offers to save or unsave. */
+    val favoriteNodes: StateFlow<Set<Uuid>> = favoriteRepository.listByType(FavoriteType.NODE)
+        .map { favorites -> favorites.mapNotNullTo(HashSet()) { NodeFavoriteAdapter.decodeRef(it)?.nodeId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /** Saves the message to (or takes it out of) the owner's favorites, shown under Discover. */
+    fun toggleFavorite(item: TimelineItem.Message, title: String) {
+        viewModelScope.launch {
+            if (favoriteRepository.isNodeFavorited(item.segmentId, item.node.id)) favoriteRepository.removeNodeFavorite(item.segmentId, item.node.id)
+            else favoriteRepository.addNodeFavorite(NodeFavoriteTarget(item.segmentId, title, item.node.id, item.node))
+        }
+    }
+
     private val visible = MutableStateFlow(false)
     private val segmentLimit = MutableStateFlow(PAGE_SEGMENTS)
 

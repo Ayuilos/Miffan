@@ -34,4 +34,16 @@ class DefaultProvidersTest {
         assertEquals("/credits", provider.balanceOption.apiPath)
         assertEquals("balance", provider.balanceOption.resultPath)
     }
+
+    @Test
+    fun `magpie starts off as a built-in OpenAI gateway on a local network address`() {
+        val provider = DEFAULT_PROVIDERS.single { it.id == MAGPIE_PROVIDER_ID }
+
+        assertTrue(provider is ProviderSetting.OpenAI)
+        provider as ProviderSetting.OpenAI
+        assertEquals("Magpie", provider.name)
+        assertEquals("http://192.168.1.20:3425/v1", provider.baseUrl)
+        assertFalse(provider.enabled)
+        assertTrue(provider.builtIn)
+    }
 }

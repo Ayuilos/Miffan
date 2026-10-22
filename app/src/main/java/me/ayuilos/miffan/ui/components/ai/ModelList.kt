@@ -100,6 +100,7 @@ class ModelListState internal constructor(
     modelId: Uuid?,
     providers: List<ProviderSetting>,
     type: ModelType,
+    textOnly: Boolean = false,
 ) {
     var modelId by mutableStateOf(modelId)
         private set
@@ -110,6 +111,10 @@ class ModelListState internal constructor(
     var type by mutableStateOf(type)
         private set
 
+    /** Leaves out chat models that also draw, for jobs that only want text back (translating, for one). */
+    var textOnly by mutableStateOf(textOnly)
+        private set
+
     var visible by mutableStateOf(false)
         private set
 
@@ -118,7 +123,7 @@ class ModelListState internal constructor(
 
     val filteredProviders: List<ProviderSetting>
         get() = providers.fastFilter { provider ->
-            provider.enabled && provider.models.fastAny { model -> model.type == type }
+            provider.enabled && provider.models.fastAny { model -> model.listedFor(type, textOnly) }
         }
 
     fun open() {
@@ -133,10 +138,12 @@ class ModelListState internal constructor(
         modelId: Uuid?,
         providers: List<ProviderSetting>,
         type: ModelType,
+        textOnly: Boolean,
     ) {
         this.modelId = modelId
         this.providers = providers
         this.type = type
+        this.textOnly = textOnly
     }
 }
 
@@ -145,21 +152,28 @@ fun rememberModelListState(
     modelId: Uuid?,
     providers: List<ProviderSetting>,
     type: ModelType,
+    textOnly: Boolean = false,
 ): ModelListState {
     return remember {
         ModelListState(
             modelId = modelId,
             providers = providers,
             type = type,
+            textOnly = textOnly,
         )
     }.also {
         it.update(
             modelId = modelId,
             providers = providers,
             type = type,
+            textOnly = textOnly,
         )
     }
 }
+
+/** Whether [this] belongs in a picker of [type] models; [textOnly] also drops chat models that output images. */
+internal fun Model.listedFor(type: ModelType, textOnly: Boolean): Boolean =
+    this.type == type && !(textOnly && Modality.IMAGE in outputModalities)
 
 @Composable
 fun ModelSelector(
@@ -170,12 +184,14 @@ fun ModelSelector(
     onlyIcon: Boolean = false,
     onClear: (() -> Unit)? = null,
     defaultModelId: Uuid? = null,
+    textOnly: Boolean = false,
     onSelect: (Model) -> Unit
 ) {
     val state = rememberModelListState(
         modelId = modelId ?: defaultModelId,
         providers = providers,
         type = type,
+        textOnly = textOnly,
     )
 
     ModelSelectorButton(
@@ -304,6 +320,7 @@ fun ModelListSheet(
                 currentModel = state.modelId,
                 providers = state.filteredProviders,
                 modelType = state.type,
+                textOnly = state.textOnly,
                 onSelect = {
                     onSelect(it)
                     dismiss()
@@ -321,6 +338,7 @@ private fun ColumnScope.ModelList(
     currentModel: Uuid? = null,
     providers: List<ProviderSetting>,
     modelType: ModelType,
+    textOnly: Boolean = false,
     onSelect: (Model) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -331,23 +349,23 @@ private fun ColumnScope.ModelList(
 
     val favoriteModels = settings.value.favoriteModels.mapNotNull { modelId ->
         val model = settings.value.providers.findModelById(modelId) ?: return@mapNotNull null
-        if (model.type != modelType) return@mapNotNull null
+        if (!model.listedFor(modelType, textOnly)) return@mapNotNull null
         val provider = model.findProvider(providers = settings.value.providers, checkOverwrite = false) ?: return@mapNotNull null
         model to provider
     }
 
     var searchKeywords by remember { mutableStateOf("") }
 
-    val typeFilteredModelsByProvider = remember(providers, modelType) {
+    val typeFilteredModelsByProvider = remember(providers, modelType, textOnly) {
         providers.associate { provider ->
-            provider.id to provider.models.fastFilter { it.type == modelType }
+            provider.id to provider.models.fastFilter { it.listedFor(modelType, textOnly) }
         }
     }
 
-    val searchFilteredModelsByProvider = remember(providers, modelType, searchKeywords) {
+    val searchFilteredModelsByProvider = remember(providers, modelType, textOnly, searchKeywords) {
         providers.associate { provider ->
             provider.id to provider.models.fastFilter {
-                it.type == modelType && it.displayName.contains(searchKeywords, true)
+                it.listedFor(modelType, textOnly) && it.displayName.contains(searchKeywords, true)
             }
         }
     }

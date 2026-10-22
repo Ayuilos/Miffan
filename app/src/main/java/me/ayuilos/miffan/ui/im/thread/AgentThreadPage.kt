@@ -96,6 +96,7 @@ fun AgentThreadPage(
     val reply by vm.replyTarget.collectAsStateWithLifecycle()
     val merged by vm.undoableMerge.collectAsStateWithLifecycle()
     val newTopicPending by vm.newTopicPending.collectAsStateWithLifecycle()
+    val favoriteNodes by vm.favoriteNodes.collectAsStateWithLifecycle()
     // A wrongly split topic and the earlier topics it can go back to.
     var mergeChoice by remember { mutableStateOf<Pair<Uuid, List<ThreadTopic>>?>(null) }
     val assistantName = threadAssistantName(assistant)
@@ -309,6 +310,7 @@ fun AgentThreadPage(
                 merged?.takeIf { it.anchor?.messageId == item.message.id }?.let { ThreadMergedLine(it, vm::undoMerge) }
                 ThreadMessageBubble(item, highlighted = highlighted == item.message.id.toString(),
                 onReply = { replyTo(item) }, onFilter = { filterTo(item) }, onRegenerate = { vm.regenerate(item) },
+                favorited = item.node.id in favoriteNodes, onFavorite = { vm.toggleFavorite(item, assistantName) },
                 onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },

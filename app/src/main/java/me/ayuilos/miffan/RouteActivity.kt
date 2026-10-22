@@ -98,6 +98,15 @@ import me.ayuilos.miffan.ui.im.ImApprovalHistoryPage
 import me.ayuilos.miffan.ui.im.ImChatBackgroundPage
 import me.ayuilos.miffan.ui.im.ImRevisionHistoryPage
 import me.ayuilos.miffan.ui.im.ImPartnerProfilePage
+import me.ayuilos.miffan.ui.im.ImAddPartnerPage
+import me.ayuilos.miffan.ui.im.ImAppearancePage
+import me.ayuilos.miffan.ui.im.ImBackupPage
+import me.ayuilos.miffan.ui.im.ImDrawPage
+import me.ayuilos.miffan.ui.im.ImFavoritesPage
+import me.ayuilos.miffan.ui.im.ImTranslatePage
+import me.ayuilos.miffan.ui.im.ImNotificationsPage
+import me.ayuilos.miffan.ui.im.ImPartnerEditPage
+import me.ayuilos.miffan.ui.im.computer.PartnerComputerPage
 import me.ayuilos.miffan.ui.im.ImChatRedirect
 import me.ayuilos.miffan.ui.im.ImHomePage
 import me.ayuilos.miffan.ui.im.InterfaceModeChoiceHost
@@ -462,7 +471,16 @@ class RouteActivity : ComponentActivity() {
                                 ImHomePage()
                             }
 
-                            entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId) }
+                            entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId, key.assistantId) }
+                            entry<Screen.ImAppearance> { ImAppearancePage() }
+                            entry<Screen.ImNotifications> { ImNotificationsPage() }
+                            entry<Screen.ImBackup> { ImBackupPage() }
+                            entry<Screen.ImDraw> { key -> ImDrawPage(key.gallery) }
+                            entry<Screen.ImFavorites> { ImFavoritesPage() }
+                            entry<Screen.ImTranslate> { ImTranslatePage() }
+                            entry<Screen.AddPartner> { key -> ImAddPartnerPage(key.custom) }
+                            entry<Screen.PartnerEdit> { key -> ImPartnerEditPage(key.assistantId, openLook = key.look) }
+                            entry<Screen.PartnerComputer> { key -> PartnerComputerPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.RevisionHistory> { key -> ImRevisionHistoryPage(key.subject, key.subjectId) }
                             entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
 
@@ -570,8 +588,8 @@ class RouteActivity : ComponentActivity() {
                                 SettingPage()
                             }
 
-                            entry<Screen.Backup> {
-                                BackupPage()
+                            entry<Screen.Backup> { key ->
+                                BackupPage(tab = key.tab)
                             }
 
                             entry<Screen.ImageGen> {
@@ -790,8 +808,41 @@ sealed interface Screen : NavKey {
     @Serializable
     data class RevisionHistory(val subject: String, val subjectId: String) : Screen
 
+    /** Memories under [ownerId]; [assistantId] adds that partner's "remember" switch on top. */
     @Serializable
-    data class ImMemory(val ownerId: String) : Screen
+    data class ImMemory(val ownerId: String, val assistantId: String? = null) : Screen
+
+    /** Easy chat's appearance, notification and backup pages. */
+    @Serializable
+    data object ImAppearance : Screen
+
+    @Serializable
+    data object ImNotifications : Screen
+
+    @Serializable
+    data object ImBackup : Screen
+
+    /** Easy chat's drawing page; [gallery] opens it on the album. */
+    @Serializable
+    data class ImDraw(val gallery: Boolean = false) : Screen
+
+    @Serializable
+    data object ImFavorites : Screen
+
+    @Serializable
+    data object ImTranslate : Screen
+
+    /** Add a partner: from a template, or made from scratch, where [custom] starts. */
+    @Serializable
+    data class AddPartner(val custom: Boolean = false) : Screen
+
+    /** A partner's name, personality and avatar. */
+    @Serializable
+    data class PartnerEdit(val assistantId: String, val look: Boolean = false) : Screen
+
+    /** How a partner uses its computer: the computer, permission, tasks. */
+    @Serializable
+    data class PartnerComputer(val assistantId: String) : Screen
 
     /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
     @Serializable
@@ -904,8 +955,11 @@ sealed interface Screen : NavKey {
     @Serializable
     data object Setting : Screen
 
+    /** The professional backup page; [tab] opens local, WebDAV, S3 or the reminder. */
+
     @Serializable
-    data object Backup : Screen
+
+    data class Backup(val tab: Int = 0) : Screen
 
     @Serializable
     data object ImageGen : Screen

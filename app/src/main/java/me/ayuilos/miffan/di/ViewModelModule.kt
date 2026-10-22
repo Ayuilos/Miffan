@@ -1,6 +1,8 @@
 package me.ayuilos.miffan.di
 
 import me.ayuilos.miffan.ui.im.ImSearchVM
+import me.ayuilos.miffan.ui.im.ImDiscoverVM
+import me.ayuilos.miffan.ui.im.ImDrawVM
 import me.ayuilos.miffan.ui.im.ImMemoryVM
 import me.ayuilos.miffan.ui.im.ImRevisionVM
 import me.ayuilos.miffan.ui.im.ImPartnerVM
@@ -64,6 +66,7 @@ val viewModelModule = module {
             threadService = get(),
             revisionService = get(),
             listState = get(),
+            favoriteRepository = get(),
         )
     }
     viewModelOf(::SettingVM)
@@ -103,6 +106,8 @@ val viewModelModule = module {
         RemoteScreenVM(args = it.get(), repository = get(), workspaces = get(), control = get(), context = get())
     }
     viewModelOf(::FavoriteVM)
+    viewModelOf(::ImDiscoverVM)
+    viewModelOf(::ImDrawVM)
     viewModelOf(::SearchVM)
     viewModelOf(::StatsVM)
 }

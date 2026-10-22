@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.im
 
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
+import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.MiffanHelpOverride
 import org.junit.Assert.*
 import org.junit.Test
@@ -50,5 +51,17 @@ class ImPartnerTemplatesTest {
         }
         assertEquals(imPartnerTemplates(Locale.ENGLISH), imPartnerTemplates(Locale.forLanguageTag("ja")))
         assertEquals(imPartnerTemplates(Locale.ENGLISH), imPartnerTemplates(Locale.forLanguageTag("en-Hant-TW")))
+    }
+
+    @Test fun taglineIsTheTemplateBlurbOrThePersonalitysFirstRealSentence() {
+        val templates = imPartnerTemplates(Locale.SIMPLIFIED_CHINESE)
+        assertEquals(templates.first().description, partnerTagline(templates.first().assistant(), templates))
+        // An edited template personality no longer matches the blurb.
+        assertEquals("温柔的翻译", partnerTagline(templates.first().assistant().copy(systemPrompt = "你是温柔的翻译。只说中文。"), templates))
+        assertEquals("你的性格：温柔耐心、幽默",
+            partnerTagline(Assistant(name = "小橘", systemPrompt = "你是小橘。你的性格：温柔耐心、幽默。\n回答尽量简短。"), templates))
+        assertEquals("Patient coach", partnerTagline(Assistant(systemPrompt = "You are a patient coach. Ask one question."), templates))
+        assertEquals(null, partnerTagline(Assistant(name = "Momo", systemPrompt = "You are Momo."), templates))
+        assertEquals(null, partnerTagline(Assistant(systemPrompt = "  "), templates))
     }
 }

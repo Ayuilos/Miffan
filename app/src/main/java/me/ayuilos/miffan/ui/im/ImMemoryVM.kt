@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import me.ayuilos.miffan.data.datastore.SettingsStore
@@ -40,4 +42,15 @@ class ImMemoryVM(
     suspend fun delete(memory: MemoryEntity): String? = memoriesRepository.deleteMemory(memory.id)?.id
 
     suspend fun undo(id: String) = revisionService.undo(id)
+
+    /** Whether [assistantId] remembers new things; null while it is unknown or gone. */
+    fun memoryEnabled(assistantId: Uuid) = settingsStore.settingsFlow.map { settings ->
+        settings.assistants.find { it.id == assistantId }?.enableMemory
+    }.distinctUntilChanged()
+
+    suspend fun setMemoryEnabled(assistantId: Uuid, enabled: Boolean) {
+        settingsStore.update { settings ->
+            settings.copy(assistants = settings.assistants.map { if (it.id == assistantId) it.copy(enableMemory = enabled) else it })
+        }
+    }
 }

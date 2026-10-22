@@ -80,3 +80,18 @@ internal fun imPartnerTemplates(locale: Locale): List<ImPartnerTemplate> {
         miffanHelpOverride = MiffanHelpOverride.ENABLED,
     )
 }
+
+private val TAGLINE_PREFIXES = listOf("你是一位", "你是一个", "你是一個", "你是", "You are an ", "You are a ", "You are ", "You're ")
+
+/**
+ * One line about a partner for lists: its template's blurb while the personality is the template's own,
+ * otherwise the personality's first sentence without the "You are" opener. Null when it has none.
+ */
+internal fun partnerTagline(assistant: Assistant, templates: List<ImPartnerTemplate>): String? {
+    templates.firstOrNull { it.id == assistant.id && it.prompt == assistant.systemPrompt }?.let { return it.description }
+    // "You are <name>." on its own says nothing about the partner, so the line is the next sentence.
+    val line = assistant.systemPrompt.trim().split(Regex("(?<=[。！？!?])|(?<=\\.)\\s|\\n"))
+        .map { sentence -> sentence.trim().let { text -> TAGLINE_PREFIXES.firstOrNull { text.startsWith(it) }?.let { text.removePrefix(it) } ?: text } }
+        .firstOrNull { it.isNotBlank() && it.trimEnd('。', '.', '！', '!').trim() != assistant.name.trim() } ?: return null
+    return line.trimEnd('。', '.', '！', '!').replaceFirstChar { it.uppercase() }.ifBlank { null }
+}

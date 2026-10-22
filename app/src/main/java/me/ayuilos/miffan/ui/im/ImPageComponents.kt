@@ -1,11 +1,18 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.context.LocalNavController
@@ -15,10 +22,10 @@ import me.rerere.hugeicons.stroke.ArrowRight01
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ImPageBar(title: String, actions: @Composable RowScope.() -> Unit = {}) {
+internal fun ImPageBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     val nav = LocalNavController.current
     TopAppBar(title = { Text(title) }, navigationIcon = {
-        IconButton(onClick = nav::popBackStack) { Icon(HugeIcons.ArrowLeft01, stringResource(R.string.back)) }
+        IconButton(onClick = onBack ?: nav::popBackStack) { Icon(HugeIcons.ArrowLeft01, stringResource(R.string.back)) }
     }, actions = actions)
 }
 
@@ -40,4 +47,110 @@ internal fun ImSettingRow(title: String, onClick: () -> Unit, supporting: String
             Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/** Caption above an [ImCardGroup]. */
+@Composable
+internal fun ImSectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(text, modifier.padding(start = 4.dp, top = 12.dp), style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** A group's size as a small pill, set right after the group's name. */
+@Composable
+internal fun ImCountTag(count: Int) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(50)) {
+        Text(count.toString(), Modifier.padding(horizontal = 7.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** The rows of one settings group on a single card; separate them with [ImCardDivider]. */
+@Composable
+internal fun ImCardGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(20.dp)) {
+        Column(content = content)
+    }
+}
+
+/** Divider between [ImListRow]s, starting where their text does. */
+@Composable
+internal fun ImCardDivider(start: Dp = 68.dp) {
+    HorizontalDivider(Modifier.padding(start = start), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+}
+
+/** Colour family of an [ImListRow]'s icon tile, so groups of rows can be told apart at a glance. */
+internal enum class ImIconTone { PRIMARY, SECONDARY, TERTIARY, NEUTRAL }
+
+/**
+ * One row of an [ImCardGroup]: an icon tile, a title with optional supporting text, and a trailing slot
+ * that shows a chevron for rows that open something.
+ */
+@Composable
+internal fun ImListRow(
+    icon: ImageVector?,
+    title: String,
+    onClick: (() -> Unit)?,
+    supporting: String? = null,
+    tone: ImIconTone = ImIconTone.NEUTRAL,
+    enabled: Boolean = true,
+    titleColor: Color = Color.Unspecified,
+    supportingColor: Color = Color.Unspecified,
+    /** Lines an icon-less row up with the text of rows that have one, e.g. a sub-item. */
+    indent: Boolean = false,
+    trailing: (@Composable () -> Unit)? = if (onClick != null) {
+        { Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+    } else null,
+) {
+    val colors = MaterialTheme.colorScheme
+    val (container, content) = when (tone) {
+        ImIconTone.PRIMARY -> colors.primaryContainer to colors.onPrimaryContainer
+        ImIconTone.SECONDARY -> colors.secondaryContainer to colors.onSecondaryContainer
+        ImIconTone.TERTIARY -> colors.tertiaryContainer to colors.onTertiaryContainer
+        ImIconTone.NEUTRAL -> colors.surfaceContainerHighest to colors.onSurfaceVariant
+    }
+    Row(
+        Modifier.fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
+            .heightIn(min = 60.dp)
+            .padding(start = if (indent) 68.dp else 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        if (icon != null) Surface(color = container, contentColor = content, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(38.dp)) {
+            Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(20.dp)) }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
+            supporting?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = supportingColor.takeOrElse { colors.onSurfaceVariant })
+            }
+        }
+        trailing?.invoke()
+    }
+}
+
+/** Trailing slot of an [ImListRow] that opens a page and shows its current value. */
+@Composable
+internal fun ImRowValue(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1)
+        Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** An on/off switch whose row toggles it too. */
+@Composable
+internal fun ImSwitchRow(
+    title: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    supporting: String? = null,
+    icon: ImageVector? = null,
+    tone: ImIconTone = ImIconTone.NEUTRAL,
+    enabled: Boolean = true,
+) {
+    ImListRow(icon, title, { onChange(!checked) }, supporting, tone, enabled,
+        trailing = { Switch(checked, onChange, enabled = enabled) })
 }

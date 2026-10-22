@@ -18,6 +18,7 @@ fun computeAIIconByName(name: String): String? {
         PATTERN_QWEN.containsMatchIn(lowerName) -> "qwen-color.svg"
         PATTERN_DOUBAO.containsMatchIn(lowerName) -> "doubao-color.svg"
         PATTERN_OPENROUTER.containsMatchIn(lowerName) -> "openrouter.svg"
+        PATTERN_MAGPIE.containsMatchIn(lowerName) -> "magpie.svg"
         PATTERN_ZHIPU.containsMatchIn(lowerName) -> "zhipu-color.svg"
         PATTERN_MISTRAL.containsMatchIn(lowerName) -> "mistral-color.svg"
         PATTERN_META.containsMatchIn(lowerName) -> "meta-color.svg"
@@ -77,6 +78,7 @@ private val PATTERN_GROK = Regex("grok")
 private val PATTERN_QWEN = Regex("qwen|qwq|qvq|\\bwanx?[\\d-]")
 private val PATTERN_DOUBAO = Regex("doubao|豆包|火山")
 private val PATTERN_OPENROUTER = Regex("openrouter")
+private val PATTERN_MAGPIE = Regex("magpie")
 private val PATTERN_ZHIPU = Regex("zhipu|智谱|glm")
 private val PATTERN_MISTRAL = Regex("mistral")
 private val PATTERN_META = Regex("meta\\b|(?<!o)llama|muse")

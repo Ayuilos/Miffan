@@ -15,8 +15,8 @@ import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.StreamChunkHandler
 import me.rerere.ai.ui.UIMessage
 import me.ayuilos.miffan.data.datastore.Settings
-import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.datastore.findProvider
+import me.ayuilos.miffan.data.datastore.translationModel
 import me.ayuilos.miffan.utils.applyPlaceholders
 import java.util.Locale
 
@@ -29,7 +29,7 @@ class TranslationHandler(
         targetLanguage: Locale,
         onStreamUpdate: ((String) -> Unit)? = null,
     ): Flow<String> = flow {
-        val model = settings.providers.findModelById(settings.translateModeId)
+        val model = settings.translationModel()
             ?: error("Translation model not found")
         val provider = model.findProvider(settings.providers)
             ?: error("Translation provider not found")
