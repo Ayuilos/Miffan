@@ -3453,4 +3453,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <plurals name="im_draw_count">
     <item quantity="other">%1$d 枚</item>
   </plurals>
+  <string name="im_translate_pick_language">翻訳先の言語</string>
 </resources>

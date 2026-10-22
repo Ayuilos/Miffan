@@ -3440,4 +3440,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_translate_copied">已复制</string>
   <plurals name="im_discover_favorites_all"><item quantity="other">全部 %1$d 条</item></plurals>
   <plurals name="im_draw_count"><item quantity="other">%1$d 张</item></plurals>
+  <string name="im_translate_pick_language">翻成哪种语言</string>
 </resources>

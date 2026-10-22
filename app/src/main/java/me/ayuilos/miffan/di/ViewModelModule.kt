@@ -2,6 +2,7 @@ package me.ayuilos.miffan.di
 
 import me.ayuilos.miffan.ui.im.ImSearchVM
 import me.ayuilos.miffan.ui.im.ImDiscoverVM
+import me.ayuilos.miffan.ui.im.ImDrawVM
 import me.ayuilos.miffan.ui.im.ImMemoryVM
 import me.ayuilos.miffan.ui.im.ImRevisionVM
 import me.ayuilos.miffan.ui.im.ImPartnerVM
@@ -106,6 +107,7 @@ val viewModelModule = module {
     }
     viewModelOf(::FavoriteVM)
     viewModelOf(::ImDiscoverVM)
+    viewModelOf(::ImDrawVM)
     viewModelOf(::SearchVM)
     viewModelOf(::StatsVM)
 }

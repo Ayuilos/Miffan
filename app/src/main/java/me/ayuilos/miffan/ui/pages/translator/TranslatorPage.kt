@@ -100,6 +100,7 @@ fun TranslatorPage(vm: TranslatorVM = koinViewModel()) {
                         providers = settings.providers,
                         type = ModelType.CHAT,
                         onlyIcon = true,
+                        textOnly = true,
                     )
                 }
             )

@@ -55,6 +55,7 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.findModelById
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
+import me.ayuilos.miffan.ui.components.ai.listedFor
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Brain02
@@ -290,7 +291,8 @@ private fun TranslationModelButton(
             .filter(ProviderSetting::enabled)
             .flatMap { provider ->
                 provider.models
-                    .filter { it.type == ModelType.CHAT }
+                    // Chat models that also draw are no use for translating.
+                    .filter { it.listedFor(ModelType.CHAT, textOnly = true) }
                     .map { model -> provider to model }
             }
     }

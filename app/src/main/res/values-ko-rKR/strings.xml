@@ -3453,4 +3453,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <plurals name="im_draw_count">
     <item quantity="other">%1$d장</item>
   </plurals>
+  <string name="im_translate_pick_language">번역할 언어</string>
 </resources>

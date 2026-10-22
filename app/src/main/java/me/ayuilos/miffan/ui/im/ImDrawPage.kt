@@ -35,14 +35,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
-import me.ayuilos.miffan.data.datastore.findModelById
+import me.ayuilos.miffan.data.ai.tools.imageToolModelOrNull
 import me.ayuilos.miffan.data.files.FileUtils
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.ui.components.ui.ImagePreviewDialog
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.pages.imggen.GeneratedImage
-import me.ayuilos.miffan.ui.pages.imggen.ImgGenVM
+import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.utils.ImageUtils
 import me.rerere.ai.ui.ImageGenSize
 import me.rerere.common.android.appTempFolder
@@ -71,16 +71,18 @@ private val DRAW_EXAMPLES = listOf(R.string.im_draw_example_1, R.string.im_draw_
  * plain choices above the input, and every earlier drawing one tap away in the album.
  */
 @Composable
-fun ImDrawPage(gallery: Boolean, vm: ImgGenVM = koinViewModel()) {
+fun ImDrawPage(gallery: Boolean, vm: ImDrawVM = koinViewModel()) {
     val nav = LocalNavController.current
     val toaster = LocalToaster.current
-    val settings by vm.settingsStore.settingsFlow.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     var album by rememberSaveable { mutableStateOf(gallery) }
     LaunchedEffect(error) {
         error?.let { toaster.show(message = it, type = ToastType.Error); vm.clearError() }
     }
-    val ready = settings.findModelById(settings.imageGenerationModelId) != null
+    // The model chosen under Me → service → drawing, the one partners draw with.
+    val model = settings.imageToolModelOrNull()
+    val ready = model != null
     Scaffold(topBar = {
         ImPageBar(stringResource(if (album) R.string.im_discover_drawings else R.string.im_discover_image_gen)) {
             FilledTonalButton(onClick = { album = !album }, Modifier.padding(end = 8.dp)) {
@@ -98,7 +100,7 @@ fun ImDrawPage(gallery: Boolean, vm: ImgGenVM = koinViewModel()) {
             }
             if (album) ImDrawAlbum(vm, Modifier.weight(1f)) else {
                 ImDrawSession(vm, Modifier.weight(1f))
-                ImDrawComposer(vm, ready)
+                ImDrawComposer(vm, ready, sized = model?.type == ModelType.IMAGE)
             }
         }
     }
@@ -106,12 +108,13 @@ fun ImDrawPage(gallery: Boolean, vm: ImgGenVM = koinViewModel()) {
 
 /** This visit's request and its pictures, or ideas to start from. */
 @Composable
-private fun ImDrawSession(vm: ImgGenVM, modifier: Modifier) {
-    val images by vm.currentGeneratedImages.collectAsStateWithLifecycle()
-    val generating by vm.isGenerating.collectAsStateWithLifecycle()
-    val count by vm.numberOfImages.collectAsStateWithLifecycle()
+private fun ImDrawSession(vm: ImDrawVM, modifier: Modifier) {
+    val session by vm.session.collectAsStateWithLifecycle()
+    val generating by vm.drawing.collectAsStateWithLifecycle()
+    val count by vm.count.collectAsStateWithLifecycle()
     var preview by remember { mutableStateOf<String?>(null) }
-    if (images.isEmpty() && !generating) {
+    val current = session
+    if (current == null) {
         Column(modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
             Surface(color = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -130,14 +133,13 @@ private fun ImDrawSession(vm: ImgGenVM, modifier: Modifier) {
         }
         return
     }
+    val (prompt, images) = current
     LazyVerticalGrid(GridCells.Fixed(2), modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        images.firstOrNull()?.prompt?.let { prompt ->
-            item(span = { GridItemSpan(maxLineSpan) }, key = "prompt") {
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp)) {
-                        Text(prompt, Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
-                    }
+        item(span = { GridItemSpan(maxLineSpan) }, key = "prompt") {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp)) {
+                    Text(prompt, Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
                 }
             }
         }
@@ -145,7 +147,7 @@ private fun ImDrawSession(vm: ImgGenVM, modifier: Modifier) {
             Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(16.dp), modifier = Modifier.aspectRatio(1f)) {
                 Box(contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) }
             }
-        } else items(images, key = { "${it.id}:${it.filePath}" }) { image ->
+        } else items(images, key = { it.filePath }) { image ->
             ImDrawing(image, onOpen = { preview = image.filePath })
         }
     }
@@ -181,14 +183,14 @@ private fun ImDrawing(image: GeneratedImage, onOpen: () -> Unit) {
 
 /** How many, what shape, pictures to start from, and the request itself. */
 @Composable
-private fun ImDrawComposer(vm: ImgGenVM, ready: Boolean) {
+private fun ImDrawComposer(vm: ImDrawVM, ready: Boolean, sized: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prompt by vm.prompt.collectAsStateWithLifecycle()
-    val count by vm.numberOfImages.collectAsStateWithLifecycle()
+    val count by vm.count.collectAsStateWithLifecycle()
     val size by vm.size.collectAsStateWithLifecycle()
-    val references by vm.referenceImages.collectAsStateWithLifecycle()
-    val generating by vm.isGenerating.collectAsStateWithLifecycle()
+    val references by vm.references.collectAsStateWithLifecycle()
+    val generating by vm.drawing.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch {
@@ -203,7 +205,7 @@ private fun ImDrawComposer(vm: ImgGenVM, ready: Boolean) {
                     }.getOrNull()
                 }
             }
-            vm.addReferenceImages(paths)
+            vm.addReferences(paths)
         }
     }
     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp),
@@ -212,7 +214,7 @@ private fun ImDrawComposer(vm: ImgGenVM, ready: Boolean) {
             items(references, key = { it }) { path ->
                 Box {
                     AsyncImage(File(path), null, Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-                    Surface(onClick = { vm.removeReferenceImage(path) }, shape = CircleShape, color = MaterialTheme.colorScheme.inverseSurface,
+                    Surface(onClick = { vm.removeReference(path) }, shape = CircleShape, color = MaterialTheme.colorScheme.inverseSurface,
                         contentColor = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.align(Alignment.TopEnd).size(20.dp)) {
                         Icon(HugeIcons.Cancel01, stringResource(R.string.delete), Modifier.padding(3.dp))
                     }
@@ -220,11 +222,14 @@ private fun ImDrawComposer(vm: ImgGenVM, ready: Boolean) {
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(onClick = { vm.updateNumberOfImages(DRAW_COUNTS[(DRAW_COUNTS.indexOf(count) + 1) % DRAW_COUNTS.size]) },
+            AssistChip(onClick = { vm.updateCount(DRAW_COUNTS[(DRAW_COUNTS.indexOf(count) + 1) % DRAW_COUNTS.size]) },
                 label = { Text(pluralStringResource(R.plurals.im_draw_count, count, count)) })
-            val shape = DRAW_SHAPES.indexOfFirst { it.first.value == size }.coerceAtLeast(0)
-            AssistChip(onClick = { vm.updateSize(DRAW_SHAPES[(shape + 1) % DRAW_SHAPES.size].first.value) },
-                label = { Text(stringResource(DRAW_SHAPES[shape].second)) })
+            // Only models behind the Images API take a size.
+            if (sized) {
+                val shape = DRAW_SHAPES.indexOfFirst { it.first == size }.coerceAtLeast(0)
+                AssistChip(onClick = { vm.updateSize(DRAW_SHAPES[(shape + 1) % DRAW_SHAPES.size].first) },
+                    label = { Text(stringResource(DRAW_SHAPES[shape].second)) })
+            }
             AssistChip(onClick = { picker.launch("image/*") }, label = { Text(stringResource(R.string.im_draw_reference)) })
         }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -232,7 +237,7 @@ private fun ImDrawComposer(vm: ImgGenVM, ready: Boolean) {
                 placeholder = { Text(stringResource(R.string.im_draw_hint)) })
             val canSend = ready && prompt.isNotBlank()
             FilledIconButton(
-                onClick = { if (generating) vm.cancelGeneration() else if (references.isEmpty()) vm.generateImage() else vm.editImage() },
+                onClick = { if (generating) vm.cancel() else vm.draw() },
                 enabled = generating || canSend,
                 modifier = Modifier.size(52.dp),
                 colors = if (generating) IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -247,8 +252,8 @@ private fun ImDrawComposer(vm: ImgGenVM, ready: Boolean) {
 
 /** Every drawing so far; tap to look closer, long press to keep or delete it. */
 @Composable
-private fun ImDrawAlbum(vm: ImgGenVM, modifier: Modifier) {
-    val drawings = vm.generatedImages.collectAsLazyPagingItems()
+private fun ImDrawAlbum(vm: ImDrawVM, modifier: Modifier) {
+    val drawings = vm.album.collectAsLazyPagingItems()
     val context = LocalContext.current
     val resources = LocalResources.current
     val toaster = LocalToaster.current
@@ -281,7 +286,7 @@ private fun ImDrawAlbum(vm: ImgGenVM, modifier: Modifier) {
                         }
                     }
                     ImPressMenuItem(HugeIcons.Delete01, stringResource(R.string.imggen_page_delete), destructive = true) {
-                        menu.close(); vm.deleteImage(image)
+                        menu.close(); vm.delete(image)
                     }
                 }
             }

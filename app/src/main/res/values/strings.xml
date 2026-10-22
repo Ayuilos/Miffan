@@ -3453,4 +3453,5 @@
   <string name="im_translate_copied">Copied</string>
   <plurals name="im_discover_favorites_all"><item quantity="one">All %1$d</item><item quantity="other">All %1$d</item></plurals>
   <plurals name="im_draw_count"><item quantity="one">%1$d picture</item><item quantity="other">%1$d pictures</item></plurals>
+  <string name="im_translate_pick_language">Translate into</string>
 </resources>

@@ -3495,4 +3495,5 @@
     <item quantity="many">%1$d рисунков</item>
     <item quantity="other">%1$d рисунка</item>
   </plurals>
+  <string name="im_translate_pick_language">На какой язык перевести</string>
 </resources>

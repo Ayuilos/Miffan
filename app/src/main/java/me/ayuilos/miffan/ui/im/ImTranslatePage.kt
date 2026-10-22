@@ -2,7 +2,14 @@ package me.ayuilos.miffan.ui.im
 
 import android.content.ClipData
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.Role
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
+import java.util.Locale
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,7 +57,8 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
         vm.errorFlow.collect { toaster.show(it.message ?: it.javaClass.simpleName, type = ToastType.Error) }
     }
     val model = settings.findModelById(settings.translateModeId)
-    val models = rememberModelListState(model?.id, settings.providers, ModelType.CHAT)
+    val models = rememberModelListState(model?.id, settings.providers, ModelType.CHAT, textOnly = true)
+    var choosing by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(topBar = { ImPageBar(stringResource(R.string.im_discover_translate)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
@@ -60,14 +68,6 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
                 Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.im_translate_no_model), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                     TextButton(onClick = models::open) { Text(stringResource(R.string.im_draw_pick_model)) }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.im_translate_into), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(TranslatorLocales, key = { it.toLanguageTag() }) { locale ->
-                        FilterChip(target == locale, { vm.updateTargetLanguage(locale) }, label = { Text(getLanguageDisplayName(locale)) })
-                    }
                 }
             }
             ImCardGroup {
@@ -90,9 +90,20 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
                     }
                 }
             }
-            Button(onClick = { if (translating) vm.cancelTranslation() else vm.translate() }, enabled = translating || (input.isNotBlank() && model != null),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                Text(stringResource(if (translating) R.string.im_draw_stop else R.string.im_discover_translate))
+            // Which language to read it in comes after what to translate, next to the button that starts it.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(onClick = { choosing = true }, shape = RoundedCornerShape(26.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp)) {
+                    Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.im_translate_into), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(getLanguageDisplayName(target), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Icon(HugeIcons.ArrowDown01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Button(onClick = { if (translating) vm.cancelTranslation() else vm.translate() }, enabled = translating || (input.isNotBlank() && model != null),
+                    modifier = Modifier.heightIn(min = 52.dp)) {
+                    Text(stringResource(if (translating) R.string.im_draw_stop else R.string.im_discover_translate))
+                }
             }
             if (result.isNotBlank()) Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
@@ -115,4 +126,25 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
         }
     }
     ModelListSheet(models) { picked -> vm.updateTranslationModel(picked.id) }
+    if (choosing) ImLanguageSheet(target, onPick = { vm.updateTargetLanguage(it); choosing = false }, onDismiss = { choosing = false })
+}
+
+/** Every language the translator offers, one tap each; the current one is marked. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ImLanguageSheet(current: Locale, onPick: (Locale) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(stringResource(R.string.im_translate_pick_language), style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
+        LazyColumn(Modifier.selectableGroup(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            items(TranslatorLocales, key = { it.toLanguageTag() }) { locale ->
+                val selected = locale == current
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected, role = Role.RadioButton, onClick = { onPick(locale) })
+                    .padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(getLanguageDisplayName(locale), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    RadioButton(selected, onClick = null)
+                }
+            }
+        }
+    }
 }

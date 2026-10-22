@@ -22,7 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
-import me.ayuilos.miffan.data.datastore.findModelById
+import me.ayuilos.miffan.data.ai.tools.imageToolModelOrNull
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.utils.toLocalString
@@ -51,7 +51,7 @@ internal fun ImDiscoverTab(innerPadding: PaddingValues, vm: ImDiscoverVM = koinV
         item("title") { ImTabTitle(R.string.im_tab_discover) }
         item("tools") {
             Row(Modifier.padding(horizontal = 16.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val drawReady = settings.findModelById(settings.imageGenerationModelId) != null
+                val drawReady = settings.imageToolModelOrNull() != null
                 ImToolCard(HugeIcons.PencilEdit01, stringResource(R.string.im_discover_image_gen), stringResource(R.string.im_discover_draw_desc),
                     colors.primaryContainer, colors.onPrimaryContainer, colors.primary, colors.onPrimary, { nav.navigate(Screen.ImDraw()) }) {
                     if (drawings.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

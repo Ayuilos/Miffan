@@ -3430,4 +3430,5 @@
   <string name="im_translate_copied">已複製</string>
   <plurals name="im_discover_favorites_all"><item quantity="other">全部 %1$d 則</item></plurals>
   <plurals name="im_draw_count"><item quantity="other">%1$d 張</item></plurals>
+  <string name="im_translate_pick_language">翻成哪種語言</string>
 </resources>
