@@ -2,7 +2,9 @@ package me.ayuilos.miffan.ui.im.computer
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -11,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,6 +28,9 @@ import me.ayuilos.miffan.data.db.entity.RemoteTaskRunEntity
 import me.ayuilos.miffan.data.remotetask.RemoteTaskRepository
 import me.ayuilos.miffan.data.remotetask.TaskKind
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.ui.im.partnerName
+import me.ayuilos.miffan.ui.im.thread.ThreadAvatar
 import me.ayuilos.miffan.ui.remotetask.clock
 import me.ayuilos.miffan.ui.remotetask.isRunFailure
 import me.ayuilos.miffan.ui.remotetask.runStatusLabel
@@ -167,7 +174,7 @@ internal fun PartnerTasksSection(hostId: String, tasks: List<RemoteTaskEntity>, 
             }
             ordered.take(PARTNER_TASKS_SHOWN).forEachIndexed { index, task ->
                 if (index > 0) HorizontalDivider(Modifier.padding(start = 70.dp))
-                TaskRow(task, latest.find { it.taskId == task.taskId }, repository) {
+                TaskRow(task, latest.find { it.taskId == task.taskId }, repository, showOwner = false) {
                     nav.navigate(Screen.RemoteTaskDetail(hostId, task.taskId))
                 }
             }
@@ -189,24 +196,44 @@ internal fun PartnerTasksSection(hostId: String, tasks: List<RemoteTaskEntity>, 
 
 private const val PARTNER_TASKS_SHOWN = 3
 
+/**
+ * [showOwner] puts the partner that set the task up in front, with the task kind as a corner badge, so
+ * a computer's list tells partners apart; a partner's own list leaves it out. Tasks whose partner is
+ * gone keep the plain kind icon.
+ */
 @Composable
-private fun TaskRow(task: RemoteTaskEntity, last: RemoteTaskRunEntity?, repository: RemoteTaskRepository, onClick: () -> Unit) {
+private fun TaskRow(task: RemoteTaskEntity, last: RemoteTaskRunEntity?, repository: RemoteTaskRepository, showOwner: Boolean = true,
+    onClick: () -> Unit) {
     val meta = remember(task.metaJson) { repository.decodeMeta(task) }
+    val owner = meta?.owner?.assistantId?.takeIf { showOwner }?.let { id -> LocalSettings.current.assistants.find { it.id == id } }
     Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             val agent = meta?.kind == TaskKind.AGENT
-            Surface(color = if (agent) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                shape = MaterialTheme.shapes.medium, modifier = Modifier.size(40.dp)) {
+            val kindIcon = if (agent) HugeIcons.AiMagic else HugeIcons.ComputerTerminal01
+            val kindColor = if (agent) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+            if (owner != null) {
+                val arrangedBy = stringResource(R.string.remote_task_arranged_by, partnerName(owner))
+                Box(Modifier.size(40.dp).semantics { contentDescription = arrangedBy }) {
+                    ThreadAvatar(owner, modifier = Modifier.fillMaxSize())
+                    // Ringed in the row's colour so the badge reads as separate from the avatar.
+                    Surface(color = kindColor, shape = CircleShape,
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.surfaceContainerLow),
+                        modifier = Modifier.size(19.dp).align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp)) {
+                        Box(contentAlignment = Alignment.Center) { Icon(kindIcon, null, Modifier.size(11.dp)) }
+                    }
+                }
+            } else Surface(color = kindColor, shape = MaterialTheme.shapes.medium, modifier = Modifier.size(40.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(if (agent) HugeIcons.AiMagic else HugeIcons.ComputerTerminal01, null, Modifier.size(20.dp))
+                    Icon(kindIcon, null, Modifier.size(20.dp))
                 }
             }
             Column(Modifier.weight(1f)) {
                 Text(meta?.name ?: task.taskId, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (task.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(listOf(scheduleLabel(task.schedule), meta?.agent?.toolName ?: stringResource(R.string.remote_task_kind_command))
-                    .joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // The name too: partners that kept the default avatar look the same.
+                Text(listOfNotNull(scheduleLabel(task.schedule), meta?.agent?.toolName ?: stringResource(R.string.remote_task_kind_command),
+                    owner?.let { partnerName(it) }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             when {
