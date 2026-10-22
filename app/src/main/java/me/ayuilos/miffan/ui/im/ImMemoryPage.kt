@@ -24,9 +24,12 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.uuid.Uuid
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Brain02
 
 @Composable
-fun ImMemoryPage(ownerId: String, vm: ImMemoryVM = koinViewModel(key = ownerId, parameters = { parametersOf(ownerId) })) {
+fun ImMemoryPage(ownerId: String, assistantId: String? = null, vm: ImMemoryVM = koinViewModel(key = ownerId, parameters = { parametersOf(ownerId) })) {
     val nav = LocalNavController.current
     val rows by vm.rows.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -41,6 +44,7 @@ fun ImMemoryPage(ownerId: String, vm: ImMemoryVM = koinViewModel(key = ownerId, 
         TextButton(onClick = { nav.navigate(Screen.RevisionHistory(RevisionSubject.MEMORY.name, ownerId)) }) { Text(stringResource(R.string.im_p5_history)) }
     } }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
+            assistantId?.let { id -> item("remember") { ImRememberSwitch(vm, Uuid.parse(id)) } }
             item("explanation") { Text(stringResource(R.string.im_p5_memory_info), Modifier.padding(bottom = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (rows?.isEmpty() == true) item("empty") { ImEmpty(stringResource(R.string.im_p5_memory_empty)) }
             items(rows.orEmpty(), key = { it.memory.id }) { row ->
@@ -76,5 +80,18 @@ fun ImMemoryPage(ownerId: String, vm: ImMemoryVM = koinViewModel(key = ownerId, 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
             }
         }
+    }
+}
+
+/** The partner's own "remember our conversations" switch, kept beside what it remembers. */
+@Composable
+private fun ImRememberSwitch(vm: ImMemoryVM, assistantId: Uuid) {
+    val enabled by remember(assistantId) { vm.memoryEnabled(assistantId) }.collectAsStateWithLifecycle(initialValue = null)
+    val scope = rememberCoroutineScope()
+    val on = enabled ?: return
+    ImCardGroup(Modifier.padding(bottom = 16.dp)) {
+        ImListRow(HugeIcons.Brain02, stringResource(R.string.im_p5_remember), tone = ImIconTone.SECONDARY,
+            onClick = { scope.launch { vm.setMemoryEnabled(assistantId, !on) } },
+            trailing = { Switch(on, { scope.launch { vm.setMemoryEnabled(assistantId, it) } }) })
     }
 }

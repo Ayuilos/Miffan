@@ -44,7 +44,7 @@ fun ImRevisionHistoryPage(subject: String, subjectId: String,
     val missing = stringResource(R.string.im_p5_not_found)
     val sourceMissing = stringResource(R.string.im_p5_source_missing)
     val failure = stringResource(R.string.im_p5_failed)
-    Scaffold(topBar = { ImPageBar(stringResource(if (subject == RevisionSubject.MEMORY.name) R.string.im_p5_history else R.string.im_p5_settings_history)) },
+    Scaffold(topBar = { ImPageBar(stringResource(if (subject == RevisionSubject.MEMORY.name) R.string.im_p5_history else R.string.im_profile_history)) },
         snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp)) {
             if (history?.isEmpty() == true) item("empty") { ImEmpty(stringResource(R.string.im_p5_history_empty)) }

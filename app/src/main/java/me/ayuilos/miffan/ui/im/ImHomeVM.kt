@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.flowOf
 import me.rerere.ai.ui.UIMessagePart
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.datastore.Settings
@@ -164,6 +165,12 @@ class ImHomeVM(
             }
             items + unstarted
         }
+        // Read by both the Chats list and the Partners tab's lights; summarizing threads is not cheap.
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
+
+    /** Each partner's own thread by partner, for the Partners tab's working and waiting lights. */
+    val partnerThreads: StateFlow<Map<Uuid, ImChatItem>> = threads.map { items -> items.associateBy { it.assistant.id } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Chats between partners; only groups count unread, a chat of two partners never does. */
     private val partnerChats = combine(

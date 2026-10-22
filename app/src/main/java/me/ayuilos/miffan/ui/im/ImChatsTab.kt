@@ -35,8 +35,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,15 +88,8 @@ internal fun ImChatsTab(
     onSearchFieldMoved: (Float) -> Unit,
 ) {
     val navController = LocalNavController.current
-    val scope = rememberCoroutineScope()
     // Same as "add partner" in the Partners tab: a new partner opens on its profile to be set up.
-    val onAddPartner: () -> Unit = {
-        scope.launch {
-            val partner = me.ayuilos.miffan.data.model.Assistant(name = "Miffan")
-            vm.addPartner(partner)
-            navController.navigate(Screen.PartnerProfile(partner.id.toString()))
-        }
-    }
+    val onAddPartner: () -> Unit = { navController.navigate(Screen.AddPartner()) }
     val sections by vm.sections.collectAsStateWithLifecycle()
 
     val context = LocalContext.current

@@ -98,6 +98,9 @@ import me.ayuilos.miffan.ui.im.ImApprovalHistoryPage
 import me.ayuilos.miffan.ui.im.ImChatBackgroundPage
 import me.ayuilos.miffan.ui.im.ImRevisionHistoryPage
 import me.ayuilos.miffan.ui.im.ImPartnerProfilePage
+import me.ayuilos.miffan.ui.im.ImAddPartnerPage
+import me.ayuilos.miffan.ui.im.ImPartnerEditPage
+import me.ayuilos.miffan.ui.im.computer.PartnerComputerPage
 import me.ayuilos.miffan.ui.im.ImChatRedirect
 import me.ayuilos.miffan.ui.im.ImHomePage
 import me.ayuilos.miffan.ui.im.InterfaceModeChoiceHost
@@ -462,7 +465,10 @@ class RouteActivity : ComponentActivity() {
                                 ImHomePage()
                             }
 
-                            entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId) }
+                            entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId, key.assistantId) }
+                            entry<Screen.AddPartner> { key -> ImAddPartnerPage(key.custom) }
+                            entry<Screen.PartnerEdit> { key -> ImPartnerEditPage(key.assistantId) }
+                            entry<Screen.PartnerComputer> { key -> PartnerComputerPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.RevisionHistory> { key -> ImRevisionHistoryPage(key.subject, key.subjectId) }
                             entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
 
@@ -790,8 +796,21 @@ sealed interface Screen : NavKey {
     @Serializable
     data class RevisionHistory(val subject: String, val subjectId: String) : Screen
 
+    /** Memories under [ownerId]; [assistantId] adds that partner's "remember" switch on top. */
     @Serializable
-    data class ImMemory(val ownerId: String) : Screen
+    data class ImMemory(val ownerId: String, val assistantId: String? = null) : Screen
+
+    /** Add a partner: from a template, or made from scratch, where [custom] starts. */
+    @Serializable
+    data class AddPartner(val custom: Boolean = false) : Screen
+
+    /** A partner's name, personality and avatar. */
+    @Serializable
+    data class PartnerEdit(val assistantId: String) : Screen
+
+    /** How a partner uses its computer: the computer, permission, tasks. */
+    @Serializable
+    data class PartnerComputer(val assistantId: String) : Screen
 
     /** One assistant's continuous IM timeline; [focusMessageId] scrolls to and highlights a message. */
     @Serializable
