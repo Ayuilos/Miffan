@@ -3459,4 +3459,5 @@
   <string name="im_ai_service_draw_off">Off · pick a drawing model and partners can draw and edit pictures for you</string>
   <string name="im_ai_service_same_as_default">Same as the default model</string>
   <plurals name="im_ai_service_model_count"><item quantity="one">%1$d model</item><item quantity="other">%1$d models</item></plurals>
+  <string name="magpie_description">**Use the AI on your computer from your phone.** Magpie is a free gateway on your computer that brings the models you have there, including Claude Code and Codex sign-ins, to one address.\n\n1. On the computer, open Magpie → Settings and turn on **Share on local network**.\n2. Copy the **address** and **API key** shown there into the fields below.\n3. Turn on **Enable**, then add models on the **Models** tab.\n\nAway from home Wi-Fi? Reach the computer through a VPN such as Tailscale, and use its Tailscale address instead.\n\nWebsite: [usemagpie.ai](https://usemagpie.ai)</string>
 </resources>

@@ -3446,4 +3446,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_ai_service_draw_off">未开启 · 选一个画图模型，伙伴就能帮你画图、改图</string>
   <string name="im_ai_service_same_as_default">跟默认模型一样</string>
   <plurals name="im_ai_service_model_count"><item quantity="other">%1$d 个模型</item></plurals>
+  <string name="magpie_description">**在手机上用你电脑上的 AI。** Magpie 是装在电脑上的免费网关，把你在电脑上能用的模型（包括登录好的 Claude Code、Codex）汇到一个地址。\n\n1. 在电脑上打开 Magpie →「设置」，打开 **局域网共享**。\n2. 把那里显示的 **地址** 和 **API 密钥** 填到下面。\n3. 打开 **是否启用**，再到 **模型** 页添加模型。\n\n不在家里的 Wi-Fi 时，可以用 Tailscale 等 VPN 连回电脑，把地址换成电脑的 Tailscale 地址。\n\n官网：[usemagpie.ai](https://usemagpie.ai)</string>
 </resources>

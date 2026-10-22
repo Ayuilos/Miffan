@@ -3436,4 +3436,5 @@
   <string name="im_ai_service_draw_off">未開啟 · 選一個畫圖模型，夥伴就能幫你畫圖、改圖</string>
   <string name="im_ai_service_same_as_default">跟預設模型一樣</string>
   <plurals name="im_ai_service_model_count"><item quantity="other">%1$d 個模型</item></plurals>
+  <string name="magpie_description">**在手機上用你電腦上的 AI。** Magpie 是裝在電腦上的免費閘道，把你在電腦上能用的模型（包括登入好的 Claude Code、Codex）匯到一個位址。\n\n1. 在電腦上打開 Magpie →「設定」，打開 **區域網共享**。\n2. 把那裡顯示的 **位址** 和 **API 金鑰** 填到下面。\n3. 打開 **是否啟用**，再到 **模型** 頁新增模型。\n\n不在家裡的 Wi-Fi 時，可以用 Tailscale 等 VPN 連回電腦，把位址換成電腦的 Tailscale 位址。\n\n官網：[usemagpie.ai](https://usemagpie.ai)</string>
 </resources>

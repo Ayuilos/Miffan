@@ -3461,4 +3461,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <plurals name="im_ai_service_model_count">
     <item quantity="other">%1$d 個のモデル</item>
   </plurals>
+  <string name="magpie_description">**スマホから、パソコンの AI を使えます。** Magpie はパソコンにインストールする無料のゲートウェイで、Claude Code や Codex にログイン済みのモデルを含め、パソコンで使えるモデルを 1 つのアドレスにまとめます。\n\n1. パソコンで Magpie を開き、**設定** から **ローカルネットワークで共有** をオンにします。\n2. そこに表示される **アドレス** と **APIキー** を、下の入力欄にコピーします。\n3. **有効にする** をオンにしてから、**モデル** タブでモデルを追加します。\n\n自宅の Wi-Fi 以外から使う場合は、Tailscale などの VPN でパソコンに接続し、Tailscale のアドレスを使ってください。\n\n公式サイト：[usemagpie.ai](https://usemagpie.ai)</string>
 </resources>

@@ -17,6 +17,7 @@ import kotlin.uuid.Uuid
 val DEFAULT_AUTO_MODEL_ID = Uuid.parse("b7055fb4-39f9-4042-a88a-0d80ed76cf08")
 val OPENROUTER_PROVIDER_ID = Uuid.parse("d5734028-d39b-4d41-9841-fd648d65440e")
 val OPENROUTER_FREE_MODEL_ID = Uuid.parse("778d52b4-e443-42f6-9da8-dc353afdfdc6")
+val MAGPIE_PROVIDER_ID = Uuid.parse("ea57b7cd-1699-49ea-90b0-130312dde34c")
 
 val DEFAULT_PROVIDERS = listOf(
     ProviderSetting.OpenAI(
@@ -84,6 +85,19 @@ val DEFAULT_PROVIDERS = listOf(
             apiPath = "/credits",
             resultPath = "data.total_credits - data.total_usage",
         )
+    ),
+    // A gateway the user runs on their own computer: the address is that computer's, so it starts off
+    // until the user fills in what magpie shows under Settings → Share on local network.
+    ProviderSetting.OpenAI(
+        id = MAGPIE_PROVIDER_ID,
+        name = "Magpie",
+        baseUrl = "http://192.168.1.20:3425/v1",
+        apiKey = "",
+        enabled = false,
+        builtIn = true,
+        description = {
+            MarkdownBlock(content = stringResource(R.string.magpie_description))
+        },
     ),
     ProviderSetting.OpenAI(
         id = Uuid.parse("386e0f29-8228-4512-affe-8fd8add82d88"),

@@ -3461,4 +3461,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <plurals name="im_ai_service_model_count">
     <item quantity="other">%1$d개 모델</item>
   </plurals>
+  <string name="magpie_description">**휴대폰에서 내 컴퓨터의 AI를 사용하세요.** Magpie는 컴퓨터에 설치하는 무료 게이트웨이로, Claude Code와 Codex에 로그인해 둔 모델을 포함해 컴퓨터에서 쓸 수 있는 모델을 하나의 주소로 모아 줍니다.\n\n1. 컴퓨터에서 Magpie를 열고 **Settings (설정)** 메뉴에서 **Share on local network (로컬 네트워크 공유)** 옵션을 켜세요.\n2. 거기에 표시된 **Address (주소)**, **API key (API 키)** 값을 아래 입력란에 복사하세요.\n3. **활성화**를 켜고, **모델** 탭에서 모델을 추가하세요.\n\n집 Wi-Fi가 아닌 곳에 있다면 Tailscale 같은 VPN으로 컴퓨터에 연결하고, Tailscale 주소를 대신 입력하세요.\n\n웹사이트: [usemagpie.ai](https://usemagpie.ai)</string>
 </resources>
