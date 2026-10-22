@@ -52,7 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.datastore.Settings
-import me.ayuilos.miffan.data.datastore.findModelById
+import me.ayuilos.miffan.data.datastore.translationModel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
 import me.ayuilos.miffan.ui.components.ai.listedFor
@@ -296,7 +296,7 @@ private fun TranslationModelButton(
                     .map { model -> provider to model }
             }
     }
-    val currentModel = settings.providers.findModelById(settings.translateModeId)
+    val currentModel = settings.translationModel()
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -330,7 +330,7 @@ private fun TranslationModelButton(
     if (pickerVisible) {
         TranslationModelPickerDialog(
             modelOptions = modelOptions,
-            selectedModelId = settings.translateModeId,
+            selectedModelId = currentModel?.id,
             onDismiss = { pickerVisible = false },
             onModelSelected = { modelId ->
                 pickerVisible = false
@@ -343,7 +343,7 @@ private fun TranslationModelButton(
 @Composable
 private fun TranslationModelPickerDialog(
     modelOptions: List<Pair<ProviderSetting, Model>>,
-    selectedModelId: Uuid,
+    selectedModelId: Uuid?,
     onDismiss: () -> Unit,
     onModelSelected: (Uuid) -> Unit,
 ) {

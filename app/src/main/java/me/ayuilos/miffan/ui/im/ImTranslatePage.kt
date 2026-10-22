@@ -27,7 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.data.datastore.findModelById
+import me.ayuilos.miffan.data.datastore.translationModel
 import me.ayuilos.miffan.ui.components.ai.ModelListSheet
 import me.ayuilos.miffan.ui.components.ai.rememberModelListState
 import me.ayuilos.miffan.ui.context.LocalTTSState
@@ -56,7 +56,7 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
     LaunchedEffect(Unit) {
         vm.errorFlow.collect { toaster.show(it.message ?: it.javaClass.simpleName, type = ToastType.Error) }
     }
-    val model = settings.findModelById(settings.translateModeId)
+    val model = settings.translationModel()
     val models = rememberModelListState(model?.id, settings.providers, ModelType.CHAT, textOnly = true)
     var choosing by rememberSaveable { mutableStateOf(false) }
 

@@ -3150,9 +3150,9 @@
   <string name="remote_task_note_billing">Usage is billed to the account %1$s is signed in with on that computer.</string>
   <string name="remote_task_note_billing_custom">Usage is billed to whichever account %1$s uses on that computer.</string>
   <string name="remote_task_note_run_now">It runs on the computer right away.</string>
-  <string name="agent_tool_card_add">%1$s wants to add an agent tool</string>
-  <string name="agent_tool_card_change">%1$s wants to change the agent tool %2$s</string>
-  <string name="agent_tool_card_delete">%1$s wants to delete the agent tool %2$s</string>
+  <string name="agent_tool_card_add">%1$s wants to add an AI tool</string>
+  <string name="agent_tool_card_change">%1$s wants to change the AI tool %2$s</string>
+  <string name="agent_tool_card_delete">%1$s wants to delete the AI tool %2$s</string>
   <string name="agent_tool_add">Add</string>
   <string name="agent_tool_change">Change</string>
   <string name="agent_tool_delete">Delete</string>
@@ -3172,7 +3172,7 @@
   <string name="agent_tool_changes">What changes</string>
   <string name="agent_tool_update_tasks">Also update the %1$d tasks that use it</string>
   <string name="agent_tool_update_tasks_help">If unchecked, they keep running the way they were saved.</string>
-  <string name="agent_tool_note_after">Partners can pick it when scheduling; each task still needs your approval. You can change or delete it under Agent tools.</string>
+  <string name="agent_tool_note_after">Partners can pick it when scheduling; each task still needs your approval. You can change or delete it under AI tools on your computers.</string>
   <string name="agent_tool_note_delete_used">%1$d tasks still use it. They keep running as saved but can no longer be updated.</string>
   <string name="agent_tool_result_text">The whole output</string>
   <string name="agent_tool_result_json">JSON field %1$s</string>
@@ -3226,13 +3226,13 @@
   <string name="remote_task_full_output">Show full output</string>
   <string name="remote_task_loading_log">Loading…</string>
   <string name="remote_task_full_output_help">The full output stays on the computer; it has to be reachable to open it.</string>
-  <string name="agent_tools_title">Agent tools</string>
-  <string name="agent_tools_entry_desc">AI agents on your computers that scheduled tasks can run</string>
+  <string name="agent_tools_title">AI tools on your computers</string>
+  <string name="agent_tools_entry_desc">Partners can hand tasks to them to do on your computer</string>
   <string name="agent_tools_intro">When partners schedule AI tasks, these tools do the work on your computer, with their own sign-in and account there.</string>
   <string name="agent_tools_ask_partner">Ask a partner to add one</string>
   <string name="agent_tools_ask_help">Tell the partner which tool to use; it looks it up on the computer and asks you to confirm.</string>
   <string name="agent_tools_ask_needs_computer">First give a partner a Mac or Linux computer.</string>
-  <string name="agent_tools_prefill">"Add this tool on my computer as an agent tool: "</string>
+  <string name="agent_tools_prefill">"Add this tool on my computer as an AI tool: "</string>
   <string name="agent_tools_pick_partner">Which partner?</string>
   <string name="agent_tools_builtin">Built in</string>
   <string name="agent_tools_builtin_help">Built-in tools cannot be changed; make a copy to change it.</string>
@@ -3240,7 +3240,7 @@
   <string name="agent_tools_added_by">Added by %1$s, allowed by you</string>
   <string name="agent_tools_added_by_you">Added by you</string>
   <string name="agent_tools_add_manually">Add manually</string>
-  <string name="agent_tools_edit_title">Agent tool</string>
+  <string name="agent_tools_edit_title">AI tool</string>
   <string name="agent_tools_save">Save</string>
   <string name="agent_tools_copy">Make a copy to change</string>
   <string name="agent_tools_copy_name">%1$s (mine)</string>
@@ -3272,7 +3272,7 @@
   <string name="agent_tools_update">Update them</string>
   <string name="agent_tools_keep">Keep as they are</string>
   <string name="agent_tools_update_failed">Could not update: %1$s</string>
-  <string name="remote_task_agent_missing">%1$s was not found on %2$s. Allowing will fail until it is installed or its path is set under Agent tools.</string>
+  <string name="remote_task_agent_missing">%1$s was not found on %2$s. Allowing will fail until it is installed or its path is set under AI tools on your computers.</string>
   <string name="remote_task_step_create">Schedule task “%1$s”</string>
   <string name="remote_task_step_update">Change task “%1$s”</string>
   <string name="remote_task_step_update_unnamed">Change a scheduled task</string>
@@ -3281,10 +3281,10 @@
   <string name="remote_task_step_enable">Resume a scheduled task</string>
   <string name="remote_task_step_disable">Pause a scheduled task</string>
   <string name="remote_task_step_list">Check scheduled tasks</string>
-  <string name="agent_tool_step_add">Add agent tool “%1$s”</string>
-  <string name="agent_tool_step_change">Change agent tool “%1$s”</string>
-  <string name="agent_tool_step_delete">Delete an agent tool</string>
-  <string name="agent_tool_step_list">Check agent tools</string>
+  <string name="agent_tool_step_add">Add AI tool “%1$s”</string>
+  <string name="agent_tool_step_change">Change AI tool “%1$s”</string>
+  <string name="agent_tool_step_delete">Delete an AI tool</string>
+  <string name="agent_tool_step_list">Check AI tools</string>
   <string name="remote_task_line">%1$s · %2$s · ran %3$s · synced %4$s</string>
   <string name="remote_task_line_ok_times">succeeded %1$d times</string>
   <string name="remote_task_line_failed_times">%1$d of %2$d failed</string>
@@ -3454,4 +3454,9 @@
   <plurals name="im_discover_favorites_all"><item quantity="one">All %1$d</item><item quantity="other">All %1$d</item></plurals>
   <plurals name="im_draw_count"><item quantity="one">%1$d picture</item><item quantity="other">%1$d pictures</item></plurals>
   <string name="im_translate_pick_language">Translate into</string>
+  <string name="im_ai_service_manage">Add or manage services</string>
+  <string name="im_ai_service_draw">Drawing</string>
+  <string name="im_ai_service_draw_off">Off · pick a drawing model and partners can draw and edit pictures for you</string>
+  <string name="im_ai_service_same_as_default">Same as the default model</string>
+  <plurals name="im_ai_service_model_count"><item quantity="one">%1$d model</item><item quantity="other">%1$d models</item></plurals>
 </resources>

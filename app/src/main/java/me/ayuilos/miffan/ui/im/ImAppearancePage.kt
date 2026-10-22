@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.im
 
 import android.os.Build
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -31,7 +32,9 @@ import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.rememberAmoledDarkMode
 import me.ayuilos.miffan.ui.hooks.rememberColorMode
-import me.ayuilos.miffan.ui.pages.setting.LauncherIconPicker
+import me.ayuilos.miffan.ui.pages.setting.rememberLauncherIconPreview
+import me.ayuilos.miffan.ui.pages.setting.rememberLauncherIconState
+import me.ayuilos.miffan.utils.LauncherIcon
 import me.ayuilos.miffan.ui.pages.setting.SettingVM
 import me.ayuilos.miffan.ui.theme.ColorMode
 import me.ayuilos.miffan.ui.theme.LocalDarkMode
@@ -151,8 +154,17 @@ fun ImAppearancePage(vm: SettingVM = koinViewModel()) {
                 }
             }
             item("icon") {
+                val icons = rememberLauncherIconState()
+                ImSectionLabel(stringResource(R.string.launcher_icon_title))
                 Spacer(Modifier.height(8.dp))
-                LauncherIconPicker()
+                Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LauncherIcon.choices.forEach { icon ->
+                        ImLauncherIconTile(icon, icons.selected == icon, enabled = !icons.switching) { icons.select(icon) }
+                    }
+                }
+                Text(icons.message ?: stringResource(R.string.launcher_icon_hint), Modifier.padding(start = 4.dp, top = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (icons.hasError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -197,6 +209,24 @@ private fun RowScope.ImModeTile(mode: ColorMode, label: String, selected: Boolea
                     ColorMode.DARK -> Brush.linearGradient(List(2) { night })
                 }))
             Text(label, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/** One launcher icon as it looks on the home screen, ringed when it is the one in use. */
+@Composable
+private fun RowScope.ImLauncherIconTile(icon: LauncherIcon, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val preview = rememberLauncherIconPreview(icon)
+    Surface(
+        color = colors.surfaceContainerLow, shape = RoundedCornerShape(18.dp),
+        border = if (selected) androidx.compose.foundation.BorderStroke(2.dp, colors.primary) else null,
+        modifier = Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
+            .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+    ) {
+        Column(Modifier.padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (preview != null) Image(preview, null, Modifier.size(56.dp))
+            Text(stringResource(icon.label), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

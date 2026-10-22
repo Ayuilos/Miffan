@@ -3454,4 +3454,11 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
     <item quantity="other">%1$d장</item>
   </plurals>
   <string name="im_translate_pick_language">번역할 언어</string>
+  <string name="im_ai_service_manage">서비스 추가 및 관리</string>
+  <string name="im_ai_service_draw">그리기</string>
+  <string name="im_ai_service_draw_off">아직 설정 안 됨 · 그림 모델을 고르면 파트너가 그림을 그리거나 고쳐 줄 수 있어요</string>
+  <string name="im_ai_service_same_as_default">기본 모델과 같음</string>
+  <plurals name="im_ai_service_model_count">
+    <item quantity="other">%1$d개 모델</item>
+  </plurals>
 </resources>

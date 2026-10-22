@@ -3496,4 +3496,14 @@
     <item quantity="other">%1$d рисунка</item>
   </plurals>
   <string name="im_translate_pick_language">На какой язык перевести</string>
+  <string name="im_ai_service_manage">Добавить или настроить сервисы</string>
+  <string name="im_ai_service_draw">Рисование</string>
+  <string name="im_ai_service_draw_off">Ещё не включено · выберите модель для рисования, и партнёры смогут рисовать и редактировать картинки для вас</string>
+  <string name="im_ai_service_same_as_default">Как модель по умолчанию</string>
+  <plurals name="im_ai_service_model_count">
+    <item quantity="one">%1$d модель</item>
+    <item quantity="few">%1$d модели</item>
+    <item quantity="many">%1$d моделей</item>
+    <item quantity="other">%1$d модели</item>
+  </plurals>
 </resources>

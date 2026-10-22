@@ -56,6 +56,15 @@ internal fun ImSectionLabel(text: String, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** A group's size as a small pill, set right after the group's name. */
+@Composable
+internal fun ImCountTag(count: Int) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(50)) {
+        Text(count.toString(), Modifier.padding(horizontal = 7.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall)
+    }
+}
+
 /** The rows of one settings group on a single card; separate them with [ImCardDivider]. */
 @Composable
 internal fun ImCardGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {

@@ -3454,4 +3454,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
     <item quantity="other">%1$d 枚</item>
   </plurals>
   <string name="im_translate_pick_language">翻訳先の言語</string>
+  <string name="im_ai_service_manage">サービスを追加・管理</string>
+  <string name="im_ai_service_draw">描画</string>
+  <string name="im_ai_service_draw_off">未設定 · 描画モデルを選ぶと、パートナーが絵を描いたり直したりできます</string>
+  <string name="im_ai_service_same_as_default">デフォルトモデルと同じ</string>
+  <plurals name="im_ai_service_model_count">
+    <item quantity="other">%1$d 個のモデル</item>
+  </plurals>
 </resources>
