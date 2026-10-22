@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.horizontalScroll
@@ -168,16 +169,20 @@ private fun ImPartnerSearchField(query: String, onQuery: (String) -> Unit, modif
 
 @Composable
 private fun ImPartnerGroupHeader(name: String, count: Int, open: Boolean, onToggle: () -> Unit) {
+    // Same as the Chats tab's group header: the arrow follows the name and points right while folded.
+    val arrow by animateFloatAsState(if (open) 0f else -90f, label = "group arrow")
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        Text("· $count", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.weight(1f))
-        Icon(HugeIcons.ArrowDown01, null, Modifier.size(18.dp).rotate(if (open) 180f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Name and arrow share one weighted row, so the count sits at the far end.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Icon(HugeIcons.ArrowDown01, null, Modifier.size(18.dp).rotate(arrow), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(count.toString(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
