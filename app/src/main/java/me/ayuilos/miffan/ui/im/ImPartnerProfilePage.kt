@@ -274,7 +274,7 @@ private fun PartnerModelRow(partner: Assistant, settings: Settings, enabled: Boo
     val own = partner.chatModelId?.let { settings.providers.findModelById(it) }
     val fallback = settings.findModelById(settings.chatModelId)
     val missing = partner.chatModelId != null && own == null
-    val state = rememberModelListState(own?.id ?: fallback?.id, settings.providers, ModelType.CHAT)
+    val state = rememberModelListState(own?.id ?: fallback?.id, settings.providers, ModelType.CHAT, textOnly = true)
     val supporting = when {
         missing -> stringResource(R.string.im_p5_model_missing)
         own != null -> own.displayName

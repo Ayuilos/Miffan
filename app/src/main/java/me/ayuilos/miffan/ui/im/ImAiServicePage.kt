@@ -68,13 +68,14 @@ fun ImAiServicePage(settingsStore: SettingsStore = koinInject(), backgroundHealt
     val colors = MaterialTheme.colorScheme
     val connected = settings.providers.filter { provider -> provider.enabled && provider.models.any { it.type == ModelType.CHAT } }
     val defaultModel = settings.findModelById(settings.chatModelId)
-    val defaultModels = rememberModelListState(defaultModel?.id, settings.providers, ModelType.CHAT)
+    val defaultModels = rememberModelListState(defaultModel?.id, settings.providers, ModelType.CHAT, textOnly = true)
     // Memory is the chore every partner relies on, so its model stands for the whole helper.
     val background = settings.backgroundModelFor(BackgroundTask.MEMORY, settings.assistants.find { it.id == settings.assistantId })
     val backgroundModels = rememberModelListState(
         background?.takeIf { it.source == BackgroundModelSource.FAST }?.model?.id,
         settings.providers,
         ModelType.CHAT,
+        textOnly = true,
     )
     val pickedTranslation = settings.findModelById(settings.translateModeId)
     val translation = settings.translationModel()

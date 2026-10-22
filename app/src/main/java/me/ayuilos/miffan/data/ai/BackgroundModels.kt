@@ -9,6 +9,7 @@ import me.ayuilos.miffan.data.datastore.findModelById
 import me.ayuilos.miffan.data.datastore.findProvider
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.isImMode
+import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
@@ -75,7 +76,7 @@ fun Settings.backgroundModelSource(assistant: Assistant?): BackgroundModelSource
  */
 fun ProviderSetting.suggestFastModel(chatModel: Model?): Model? {
     val candidates = models.filter { model ->
-        model.type == ModelType.CHAT && model.id != chatModel?.id &&
+        model.type == ModelType.CHAT && model.id != chatModel?.id && Modality.IMAGE !in model.outputModalities &&
             FAST_MODEL_SKIP_WORDS.none { it in model.fastModelName() }
     }
     FAST_MODEL_TIERS.forEach { tier ->

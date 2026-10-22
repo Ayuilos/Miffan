@@ -28,6 +28,7 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.withWhaleThemeTrial
+import me.ayuilos.miffan.ui.components.ai.listedFor
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.rerere.ai.provider.ModelType
@@ -89,8 +90,9 @@ fun ImOnboardingPage(settingsStore: SettingsStore = koinInject(), auth: OpenRout
                     try {
                         val chosen = selectedAssistant
                         if (!whaleSelected && chosen == null) return@launch
-                        val model = provider?.models?.find { it.id == settings.chatModelId && it.type == ModelType.CHAT }
-                            ?: provider?.models?.firstOrNull { it.type == ModelType.CHAT }
+                        // Chat models that only draw would leave every partner unable to reply in words.
+                        val model = provider?.models?.find { it.id == settings.chatModelId && it.listedFor(ModelType.CHAT, textOnly = true) }
+                            ?: provider?.models?.firstOrNull { it.listedFor(ModelType.CHAT, textOnly = true) }
                         if (model == null) { step = 0; return@launch }
                         settingsStore.update { current ->
                             // The whale shares the trial helper so its assistant and palette are adopted together.
