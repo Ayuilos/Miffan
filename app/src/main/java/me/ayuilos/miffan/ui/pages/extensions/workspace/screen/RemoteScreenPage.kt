@@ -54,6 +54,7 @@ import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
 import me.ayuilos.miffan.data.repository.RemoteStreamPermissions
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 import me.ayuilos.miffan.utils.fileSizeToString
 import me.rerere.hugeicons.HugeIcons
@@ -103,8 +104,6 @@ internal fun RemoteScreenScaffold(
     onBack: () -> Unit,
     /** Overrides the failure panel's explanation, e.g. with easy mode wording. */
     failureText: (Throwable) -> String? = { null },
-    /** The partner's turn is still running on this computer (see [RemoteScreenControllerBanner]). */
-    partnerBusy: Boolean = false,
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
     bottom: @Composable ColumnScope.() -> Unit = {},
 ) {
@@ -113,6 +112,14 @@ internal fun RemoteScreenScaffold(
     val state by vm.state.collectAsStateWithLifecycle()
     val controller by vm.controller.collectAsStateWithLifecycle()
     val partnerWaiting by vm.partnerWaiting.collectAsStateWithLifecycle()
+    // A partner turn holds the desktop between its actions too, so the banner follows the whole turn.
+    val holder by vm.holder.collectAsStateWithLifecycle()
+    val partnerBusy = holder != null
+    val assistants = LocalSettings.current.assistants
+    val unnamed = stringResource(R.string.assistant_page_default_assistant)
+    val holderName = holder?.let { h ->
+        assistants.find { it.id.toString() == h.assistantId }?.name?.ifBlank { unnamed } ?: h.name.ifBlank { null }
+    }
     val bytes by vm.bytesReceived.collectAsStateWithLifecycle()
     val quality by vm.quality.collectAsStateWithLifecycle()
     val custom by vm.custom.collectAsStateWithLifecycle()
@@ -328,7 +335,7 @@ internal fun RemoteScreenScaffold(
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Full screen shows who drives in its corner controls instead of over the picture.
                     if (!fullscreen) RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner,
-                        partnerBusy = partnerBusy, partnerWaiting = partnerWaiting)
+                        partnerBusy = partnerBusy, partnerWaiting = partnerWaiting, partnerName = holderName)
                     RemoteStreamSuggestion(vm)
                 }
                 if (perfOverlay) RemoteScreenStatsOverlay(vm, Modifier.align(Alignment.BottomStart).padding(8.dp))

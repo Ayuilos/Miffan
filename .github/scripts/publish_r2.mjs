@@ -141,6 +141,13 @@ function putObject(key, file, metadata, condition) {
   return s3('put-object', args);
 }
 
+// The aws CLI retries a request whose response was lost; if the first attempt landed, the retried
+// conditional write is refused. Such a refusal is accepted only after reading back the exact object
+// this run meant to write, so another publisher's write still fails.
+export function isPreconditionFailed(error) {
+  return /\bPreconditionFailed\b/.test(error?.message ?? '');
+}
+
 export async function ensureImmutable(key, file, metadata, io) {
   const expected = { size: statSync(file).size, sha256: await fileHash(file) };
   const existing = await io.read(key);
@@ -148,7 +155,14 @@ export async function ensureImmutable(key, file, metadata, io) {
     await verifyFile(existing.file, expected);
     return; // No overwrites of any versioned object, including checksum and metadata.
   }
-  await io.write(key, file, metadata, {});
+  try {
+    await io.write(key, file, metadata, {});
+  } catch (error) {
+    if (!isPreconditionFailed(error)) throw error;
+    const landed = await io.read(key);
+    if (!landed) throw error;
+    await verifyFile(landed.file, expected);
+  }
 }
 
 function publicDownload(url, file) {
@@ -182,7 +196,13 @@ export async function publishRelease(release, files, io) {
   }
   if (JSON.stringify(previous) !== JSON.stringify(release)) {
     // R2 rejects the write if another publisher changed the pointer after readLatest().
-    await io.writeLatest(files.manifest, current?.etag);
+    try {
+      await io.writeLatest(files.manifest, current?.etag);
+    } catch (error) {
+      if (!isPreconditionFailed(error)) throw error;
+      const now = await io.readLatest();
+      if (!now || JSON.stringify(parseManifest(now.value)) !== JSON.stringify(release)) throw error;
+    }
   }
   await io.verifyPublicManifest(release);
   return { promoted: true, message: 'Public APK and latest.json verified.' };

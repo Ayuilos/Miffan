@@ -15,6 +15,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -70,8 +72,11 @@ class ChatVM(
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
-    val recentConversations: StateFlow<List<Conversation>> = conversationRepo
-        .observeRecentConversations(limit = RECENT_CHAT_SHORTCUT_LIMIT + 1)
+    /** Only this conversation's assistant: the welcome shortcuts must not mix in other assistants' chats. */
+    val recentConversations: StateFlow<List<Conversation>> = conversation
+        .map { it.assistantId }
+        .distinctUntilChanged()
+        .flatMapLatest { conversationRepo.observeRecentConversations(it, limit = RECENT_CHAT_SHORTCUT_LIMIT + 1) }
         .map { conversations -> conversations.toRecentChatShortcuts(_conversationId) }
         .stateIn(
             scope = viewModelScope,

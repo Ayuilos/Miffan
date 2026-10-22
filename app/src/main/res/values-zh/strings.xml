@@ -2450,6 +2450,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="computer_use_enabled">伙伴操作电脑</string>
   <string name="computer_use_enabled_help">伙伴可以查看并操作这台电脑的桌面，包括点击、输入和打开应用；你可以随时在屏幕页接管。需要在主机的屏幕设置里开启屏幕，并安装 cua-driver 0.34 或更新版本（屏幕设置 → 检测环境）。</string>
   <string name="workspace_screen_partner_operating">伙伴正在操作这台电脑</string>
+  <string name="workspace_screen_named_partner_operating">%1$s 正在操作这台电脑</string>
   <string name="workspace_screen_user_operating">你正在操作，伙伴已暂停</string>
   <string name="workspace_screen_hand_back">交还给伙伴</string>
   <string name="computer_use_view_screen">查看屏幕</string>

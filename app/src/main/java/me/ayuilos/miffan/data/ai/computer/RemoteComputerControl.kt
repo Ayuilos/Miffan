@@ -8,22 +8,65 @@ import kotlinx.coroutines.flow.update
 /** Who is driving one remote desktop. A desktop has a single pointer and keyboard focus. */
 enum class RemoteController { IDLE, PARTNER, USER }
 
+/** The partner turn holding a desktop. [name] is only for display; identity is the turn. */
+data class ComputerHolder(val assistantId: String, val conversationId: String, val name: String) {
+    fun sameTurn(other: ComputerHolder): Boolean =
+        assistantId == other.assistantId && conversationId == other.conversationId
+}
+
+sealed interface PartnerActResult<out T> {
+    data class Done<T>(val value: T) : PartnerActResult<T>
+    /** The user holds the desktop; the action did not run. */
+    data object UserHolds : PartnerActResult<Nothing>
+    /** Another partner turn holds the desktop; the action did not run. */
+    data class Busy(val holder: ComputerHolder) : PartnerActResult<Nothing>
+}
+
+private data class HostControl(
+    val holder: ComputerHolder? = null,
+    /** When the holder last started or finished an action. */
+    val lastActionAt: Long = 0,
+    /** Actions running now; the holder never loses the desktop in the middle of one. */
+    val acting: Int = 0,
+    val user: Boolean = false,
+) {
+    val unused: Boolean get() = holder == null && acting == 0 && !user
+}
+
 /**
- * Arbitrates one remote machine between the user (screen page) and the partner (computer
- * tools). The user always wins: touching the screen while the partner acts hands control to
- * the user, and the partner's action tools refuse to run until the user hands it back.
+ * Arbitrates one remote machine between the user (screen page) and partners (computer tools).
+ *
+ * The user always wins: touching the screen while a partner acts hands control to the user, and
+ * partners' action tools refuse to run until the user hands it back. Between partners, the first
+ * turn to act holds the desktop until its generation ends ([release]) or it stays idle for
+ * [holdMillis]; other turns are refused meanwhile, so their clicks and typing never interleave.
  */
-class RemoteComputerControl(private val onUserTransition: (String, Boolean) -> Unit = { _, _ -> }) {
+class RemoteComputerControl(
+    private val onUserTransition: (String, Boolean) -> Unit = { _, _ -> },
+    private val holdMillis: Long = 90_000L,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
+    private val lock = Any()
+    private var hosts = emptyMap<String, HostControl>()
+
     private val _states = MutableStateFlow<Map<String, RemoteController>>(emptyMap())
 
-    /** Current controller per host id; absent means [RemoteController.IDLE]. */
+    /**
+     * Current controller per host id; absent means [RemoteController.IDLE]. PARTNER only while an
+     * action runs; [holders] tells which turn holds the desktop between actions.
+     */
     val states: StateFlow<Map<String, RemoteController>> = _states.asStateFlow()
+
+    private val _holders = MutableStateFlow<Map<String, ComputerHolder>>(emptyMap())
+
+    /** The partner turn holding each host, kept while the user has taken over so it resumes after. */
+    val holders: StateFlow<Map<String, ComputerHolder>> = _holders.asStateFlow()
 
     fun controller(hostId: String): RemoteController = _states.value[hostId] ?: RemoteController.IDLE
 
     private val _waiting = MutableStateFlow<Set<String>>(emptySet())
     /**
-     * Hosts where the partner tried to act while the user held control. The screen page tells
+     * Hosts where a partner tried to act while the user held control. The screen page tells
      * the user only then, instead of every time they touch a desktop the partner is not using.
      */
     val waiting: StateFlow<Set<String>> = _waiting.asStateFlow()
@@ -37,41 +80,73 @@ class RemoteComputerControl(private val onUserTransition: (String, Boolean) -> U
     }
 
     /**
-     * Marks the partner as acting for the duration of [block]. Returns null without running it
-     * when the user holds control.
+     * Runs [block] as an action of [holder]'s turn, which then holds the desktop. Refuses without
+     * running it while the user or another turn holds the desktop. A holder idle for [holdMillis]
+     * gives way, so a stalled turn never locks the computer.
      */
-    suspend fun <T> partnerActs(hostId: String, block: suspend () -> T): T? {
-        var allowed = false
-        _states.update { states ->
-            if (states[hostId] == RemoteController.USER) states
-            else {
-                allowed = true
-                states + (hostId to RemoteController.PARTNER)
+    suspend fun <T> partnerActs(hostId: String, holder: ComputerHolder, block: suspend () -> T): PartnerActResult<T> {
+        val refusal = synchronized(lock) {
+            val now = clock()
+            val current = hosts[hostId] ?: HostControl()
+            val other = current.holder?.takeUnless { it.sameTurn(holder) }
+            when {
+                current.user -> PartnerActResult.UserHolds
+                other != null && (current.acting > 0 || now - current.lastActionAt < holdMillis) -> PartnerActResult.Busy(other)
+                else -> {
+                    write(hostId, current.copy(holder = holder, lastActionAt = now, acting = current.acting + 1))
+                    null
+                }
             }
         }
-        if (!allowed) {
-            _waiting.update { it + hostId }
-            return null
-        }
+        if (refusal == PartnerActResult.UserHolds) _waiting.update { it + hostId }
+        if (refusal != null) return refusal
         try {
-            return block()
+            return PartnerActResult.Done(block())
         } finally {
-            _states.update { if (it[hostId] == RemoteController.PARTNER) it - hostId else it }
+            synchronized(lock) {
+                hosts[hostId]?.let { current ->
+                    val mine = current.holder?.sameTurn(holder) == true
+                    write(hostId, current.copy(
+                        acting = (current.acting - 1).coerceAtLeast(0),
+                        lastActionAt = if (mine) clock() else current.lastActionAt,
+                    ))
+                }
+            }
+        }
+    }
+
+    /** The turn of [conversationId] ended (finished, failed or cancelled): it no longer holds any desktop. */
+    fun release(conversationId: String) = synchronized(lock) {
+        hosts.filterValues { it.holder?.conversationId == conversationId }.forEach { (hostId, current) ->
+            write(hostId, current.copy(holder = null))
         }
     }
 
     private fun userTransition(hostId: String, takeover: Boolean) {
-        while (true) {
-            val before = _states.value
-            if ((before[hostId] == RemoteController.USER) == takeover) return
-            val after = if (takeover) before + (hostId to RemoteController.USER) else before - hostId
-            if (_states.compareAndSet(before, after)) {
-                if (!takeover) _waiting.update { it - hostId }
-                // Never emit inside StateFlow.update: its lambda may be retried.
-                runCatching { onUserTransition(hostId, takeover) }
-                    .onFailure { android.util.Log.w("RemoteComputerControl", "Audit callback failed", it) }
-                return
-            }
+        val changed = synchronized(lock) {
+            val current = hosts[hostId] ?: HostControl()
+            if (current.user == takeover) return@synchronized false
+            // Handing back gives the holder a fresh window to resume instead of losing the desktop
+            // to whoever acts first because the user's turn outlasted holdMillis.
+            write(hostId, current.copy(user = takeover, lastActionAt = if (takeover) current.lastActionAt else clock()))
+            true
         }
+        if (!changed) return
+        if (!takeover) _waiting.update { it - hostId }
+        runCatching { onUserTransition(hostId, takeover) }
+            .onFailure { android.util.Log.w("RemoteComputerControl", "Audit callback failed", it) }
+    }
+
+    /** Callers hold [lock]. */
+    private fun write(hostId: String, control: HostControl) {
+        hosts = if (control.unused) hosts - hostId else hosts + (hostId to control)
+        _states.value = hosts.mapNotNull { (id, it) ->
+            when {
+                it.user -> id to RemoteController.USER
+                it.acting > 0 -> id to RemoteController.PARTNER
+                else -> null
+            }
+        }.toMap()
+        _holders.value = hosts.mapNotNull { (id, it) -> it.holder?.let { holder -> id to holder } }.toMap()
     }
 }

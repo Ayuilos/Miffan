@@ -90,6 +90,7 @@ import me.ayuilos.miffan.data.ai.tools.availableWorkspaceSkills
 import me.ayuilos.miffan.data.partner.ownerMentionedPartnerIds
 import me.ayuilos.miffan.data.ai.tools.createConversationTools
 import me.ayuilos.miffan.data.ai.tools.createExtensionManagementTools
+import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.ai.tools.createMiffanHelpTool
 import me.ayuilos.miffan.data.ai.tools.createSearchTools
@@ -426,6 +427,7 @@ class ChatService(
     private val httpClient: OkHttpClient,
     private val backgroundModelHealth: BackgroundModelHealth = BackgroundModelHealth(),
     private val recentErrorStore: me.ayuilos.miffan.data.bugreport.RecentErrorStore? = null,
+    private val computerControl: RemoteComputerControl? = null,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -569,6 +571,8 @@ class ChatService(
             try {
                 block()
             } finally {
+                // The turn may have held a computer; it never outlives the generation.
+                computerControl?.release(conversationId.toString())
                 if (foregroundStarted) {
                     ChatGenerationForegroundService.release(context, generationId)
                 }
@@ -1261,7 +1265,7 @@ class ChatService(
                 localToolOutputRoot = boundWorkspace?.takeUnless { it.isRemote }?.root,
                 threadContext = listOfNotNull(if (conversation.chatId != null) {
                     getKoin().get<me.ayuilos.miffan.data.partner.PartnerChatStore>().chat(conversation.chatId)?.let {
-                        me.ayuilos.miffan.data.partner.perspectiveContext(it, assistant.id, settings)
+                        me.ayuilos.miffan.data.partner.perspectiveContext(it, assistant.id, settings, computerWorkspaces(it, settings))
                     }
                 } else if (settings.isImMode) {
                     ThreadContext.build(conversationRepo, assistant.id, conversation.id)
@@ -1500,6 +1504,13 @@ class ChatService(
         )
     }
 
+    /** Workspaces of [chat]'s members whose computer they may operate: remote, with a screen set up. */
+    private suspend fun computerWorkspaces(chat: me.ayuilos.miffan.data.model.PartnerChat, settings: Settings): Set<Uuid> =
+        chat.memberIds.mapNotNull { settings.getAssistantById(it)?.workspaceId }.toSet().filterTo(mutableSetOf()) { id ->
+            val workspace = workspaceRepository.getById(id.toString())
+            workspace?.isRemote == true && workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled == true
+        }
+
     /**
      * The computer toolbox for a partner bound to a remote computer it may operate. Conversations
      * that already used the computer get the full tools straight away (bounded, so an unreachable
@@ -1529,8 +1540,9 @@ class ChatService(
                     snapshot = snapshot,
                     approvalRequired = approvalRequired,
                     registry = getKoin().get(),
-                    control = getKoin().get(),
+                    control = computerControl ?: getKoin().get(),
                     filesManager = getKoin().get(),
+                    partnerName = assistant.name,
                 )
             }
         }

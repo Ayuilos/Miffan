@@ -55,9 +55,9 @@ class ConversationRepository(
         }
     }
 
-    fun observeRecentConversations(limit: Int): Flow<List<Conversation>> {
+    fun observeRecentConversations(assistantId: Uuid, limit: Int): Flow<List<Conversation>> {
         return conversationDAO
-            .observeRecentConversations(limit)
+            .observeRecentConversationsOfAssistant(assistantId.toString(), limit)
             .map { conversations -> conversations.map(::conversationSummaryToConversation) }
     }
 

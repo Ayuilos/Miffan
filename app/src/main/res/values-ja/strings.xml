@@ -2417,6 +2417,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="computer_use_enabled">パートナーによるコンピューター操作</string>
   <string name="computer_use_enabled_help">パートナーはこのコンピューターのデスクトップを表示して操作できます。クリック、入力、アプリの起動が可能です。画面ページからいつでも操作を引き継げます。ホストの画面を有効にし、cua-driver 0.34 以上をインストールしてください。ホストの画面設定 → 環境を確認からインストールまたはアップグレードできます。</string>
   <string name="workspace_screen_partner_operating">パートナーがこのコンピューターを操作中</string>
+  <string name="workspace_screen_named_partner_operating">%1$s がこのコンピューターを操作中</string>
   <string name="workspace_screen_user_operating">あなたが操作中です。パートナーは一時停止しています</string>
   <string name="workspace_screen_hand_back">パートナーに操作を戻す</string>
   <string name="computer_use_view_screen">画面を表示</string>

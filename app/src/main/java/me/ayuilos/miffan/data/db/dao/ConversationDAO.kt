@@ -34,8 +34,8 @@ interface ConversationDAO {
     @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND chat_id IS NULL ORDER BY CASE WHEN :newestFirst THEN 0 ELSE is_pinned END DESC, update_at DESC LIMIT :limit")
     suspend fun getRecentConversationsOfAssistant(assistantId: String, limit: Int, newestFirst: Boolean = false): List<ConversationEntity>
 
-    @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, chat_id as chatId FROM conversationentity WHERE chat_id IS NULL ORDER BY update_at DESC LIMIT :limit")
-    fun observeRecentConversations(limit: Int): Flow<List<LightConversationEntity>>
+    @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, chat_id as chatId FROM conversationentity WHERE chat_id IS NULL AND assistant_id = :assistantId ORDER BY update_at DESC LIMIT :limit")
+    fun observeRecentConversationsOfAssistant(assistantId: String, limit: Int): Flow<List<LightConversationEntity>>
 
     /**
      * Change stamps of the newest segments of an assistant's IM thread. Reading message_node makes
