@@ -1768,13 +1768,8 @@
   <string name="im_partners_mine">My partners</string>
   <string name="im_partners_add">Add partner</string>
   <string name="im_discover_image_gen">Draw</string>
-  <string name="im_discover_image_gen_desc">Turn what you imagine into pictures</string>
   <string name="im_discover_translate">Translate</string>
-  <string name="im_discover_translate_desc">Understand the world and express yourself</string>
   <string name="im_discover_favorites">Favorites</string>
-  <string name="im_discover_favorites_desc">Keep the messages you like</string>
-  <string name="im_discover_extensions">Extensions</string>
-  <string name="im_discover_extensions_desc">Give your partners new skills</string>
   <string name="im_me_memory">What partners remember</string>
   <string name="im_me_ai_service">Service connection</string>
   <string name="im_me_ai_connected">Connected</string>
@@ -3419,4 +3414,43 @@
   <plurals name="im_me_backup_days"><item quantity="one">%1$d day without a backup</item><item quantity="other">%1$d days without a backup</item></plurals>
   <plurals name="im_backup_days_ago"><item quantity="one">It has been %1$d day since the last backup</item><item quantity="other">It has been %1$d days since the last backup</item></plurals>
   <plurals name="im_backup_remind_desc"><item quantity="one">After %1$d day</item><item quantity="other">After %1$d days</item></plurals>
+  <string name="im_time_today">Today</string>
+  <string name="im_thread_favorite">Save</string>
+  <string name="im_thread_unfavorite">Remove from saved</string>
+  <string name="im_discover_draw_desc">Describe it and see it drawn</string>
+  <string name="im_discover_draw_off">Not set up yet</string>
+  <string name="im_discover_translate_desc2">Paste something, understand it</string>
+  <string name="im_discover_favorites_empty">Long-press anything in a chat and choose Save to keep it here.</string>
+  <string name="im_discover_drawings">My drawings</string>
+  <string name="im_discover_album">Album</string>
+  <string name="im_favorites_search">Search saved messages</string>
+  <string name="im_favorites_all">All</string>
+  <string name="im_favorites_no_match">No saved message matches</string>
+  <string name="im_favorites_month_pattern">MMMM yyyy</string>
+  <string name="im_favorites_more">More</string>
+  <string name="im_favorites_removed">Removed from saved</string>
+  <string name="im_draw_go_draw">Draw</string>
+  <string name="im_draw_no_model">Pick a model for drawing first</string>
+  <string name="im_draw_pick_model">Pick</string>
+  <string name="im_draw_empty_title">What shall we draw?</string>
+  <string name="im_draw_empty_desc">Describe the picture in a sentence; the more detail, the better</string>
+  <string name="im_draw_example_1">An orange cat in a scarf in the snow</string>
+  <string name="im_draw_example_2">A lighthouse by the sea at dusk</string>
+  <string name="im_draw_example_3">A watercolor path under cherry blossoms</string>
+  <string name="im_draw_example_4">A pixel-art little house</string>
+  <string name="im_draw_shape_auto">Any shape</string>
+  <string name="im_draw_shape_square">Square</string>
+  <string name="im_draw_shape_portrait">Portrait</string>
+  <string name="im_draw_shape_landscape">Landscape</string>
+  <string name="im_draw_reference">+ Reference</string>
+  <string name="im_draw_hint">Describe the picture you want…</string>
+  <string name="im_draw_stop">Stop</string>
+  <string name="im_translate_no_model">Pick a model for translating first</string>
+  <string name="im_translate_into">Into</string>
+  <string name="im_translate_hint">Type or paste what to translate</string>
+  <string name="im_translate_paste">Paste</string>
+  <string name="im_translate_clear">Clear</string>
+  <string name="im_translate_copied">Copied</string>
+  <plurals name="im_discover_favorites_all"><item quantity="one">All %1$d</item><item quantity="other">All %1$d</item></plurals>
+  <plurals name="im_draw_count"><item quantity="one">%1$d picture</item><item quantity="other">%1$d pictures</item></plurals>
 </resources>

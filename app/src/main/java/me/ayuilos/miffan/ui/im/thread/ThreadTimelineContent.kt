@@ -48,6 +48,7 @@ import me.ayuilos.miffan.ui.context.LocalTTSState
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Star
 import me.rerere.hugeicons.stroke.Alert01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Copy01
@@ -112,6 +113,8 @@ internal fun ThreadMessageBubble(
     onReply: () -> Unit = {},
     onFilter: () -> Unit = {},
     onRegenerate: () -> Unit = {},
+    favorited: Boolean = false,
+    onFavorite: (() -> Unit)? = null,
     onQuote: (MessageRef) -> Unit = {},
     onToolApproval: (String, Boolean) -> Unit = { _, _ -> },
     onToolAnswer: (String, String) -> Unit = { _, _ -> },
@@ -225,6 +228,9 @@ internal fun ThreadMessageBubble(
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", item.message.toText()))) }
                 }
                 if (item.canRegenerate) ImPressMenuItem(HugeIcons.Refresh01, stringResource(R.string.im_thread_regenerate)) { menu.close(); onRegenerate() }
+                if (onFavorite != null && !item.streaming) ImPressMenuItem(HugeIcons.Star, stringResource(if (favorited) R.string.im_thread_unfavorite else R.string.im_thread_favorite)) {
+                    menu.close(); onFavorite()
+                }
                 if (canSpeak && !user && text.isNotBlank()) {
                     ImPressMenuItem(if (speaking) HugeIcons.VolumeOff else HugeIcons.VolumeHigh,
                         stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {

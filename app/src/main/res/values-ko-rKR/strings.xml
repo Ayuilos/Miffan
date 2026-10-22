@@ -1758,13 +1758,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_partners_mine">내 파트너</string>
   <string name="im_partners_add">파트너 추가</string>
   <string name="im_discover_image_gen">그림 그리기</string>
-  <string name="im_discover_image_gen_desc">상상한 장면을 그림으로</string>
   <string name="im_discover_translate">번역</string>
-  <string name="im_discover_translate_desc">세상을 이해하고, 나를 표현하기</string>
   <string name="im_discover_favorites">즐겨찾기</string>
-  <string name="im_discover_favorites_desc">마음에 드는 메시지 보관</string>
-  <string name="im_discover_extensions">확장</string>
-  <string name="im_discover_extensions_desc">파트너에게 새로운 능력을</string>
   <string name="im_me_memory">파트너가 기억하는 나</string>
   <string name="im_me_ai_service">서비스 연결</string>
   <string name="im_me_ai_connected">연결됨</string>

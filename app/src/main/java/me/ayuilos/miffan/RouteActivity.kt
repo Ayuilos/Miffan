@@ -101,6 +101,9 @@ import me.ayuilos.miffan.ui.im.ImPartnerProfilePage
 import me.ayuilos.miffan.ui.im.ImAddPartnerPage
 import me.ayuilos.miffan.ui.im.ImAppearancePage
 import me.ayuilos.miffan.ui.im.ImBackupPage
+import me.ayuilos.miffan.ui.im.ImDrawPage
+import me.ayuilos.miffan.ui.im.ImFavoritesPage
+import me.ayuilos.miffan.ui.im.ImTranslatePage
 import me.ayuilos.miffan.ui.im.ImNotificationsPage
 import me.ayuilos.miffan.ui.im.ImPartnerEditPage
 import me.ayuilos.miffan.ui.im.computer.PartnerComputerPage
@@ -472,6 +475,9 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.ImAppearance> { ImAppearancePage() }
                             entry<Screen.ImNotifications> { ImNotificationsPage() }
                             entry<Screen.ImBackup> { ImBackupPage() }
+                            entry<Screen.ImDraw> { key -> ImDrawPage(key.gallery) }
+                            entry<Screen.ImFavorites> { ImFavoritesPage() }
+                            entry<Screen.ImTranslate> { ImTranslatePage() }
                             entry<Screen.AddPartner> { key -> ImAddPartnerPage(key.custom) }
                             entry<Screen.PartnerEdit> { key -> ImPartnerEditPage(key.assistantId) }
                             entry<Screen.PartnerComputer> { key -> PartnerComputerPage(Uuid.parse(key.assistantId)) }
@@ -815,6 +821,16 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object ImBackup : Screen
+
+    /** Easy chat's drawing page; [gallery] opens it on the album. */
+    @Serializable
+    data class ImDraw(val gallery: Boolean = false) : Screen
+
+    @Serializable
+    data object ImFavorites : Screen
+
+    @Serializable
+    data object ImTranslate : Screen
 
     /** Add a partner: from a template, or made from scratch, where [custom] starts. */
     @Serializable

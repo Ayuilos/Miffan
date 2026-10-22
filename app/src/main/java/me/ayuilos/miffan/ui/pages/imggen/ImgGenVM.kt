@@ -42,7 +42,7 @@ data class GeneratedImage(
     val model: String
 )
 
-private fun GenMediaEntity.toGeneratedImage(filesManager: FilesManager): GeneratedImage {
+internal fun GenMediaEntity.toGeneratedImage(filesManager: FilesManager): GeneratedImage {
     val imagesDir = filesManager.getImagesDir()
     val fullPath = File(imagesDir, this.path.removePrefix("images/")).absolutePath
 

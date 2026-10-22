@@ -1761,13 +1761,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_partners_mine">我的伙伴</string>
   <string name="im_partners_add">添加伙伴</string>
   <string name="im_discover_image_gen">画图</string>
-  <string name="im_discover_image_gen_desc">把脑海里的画面画出来</string>
   <string name="im_discover_translate">翻译</string>
-  <string name="im_discover_translate_desc">读懂世界，也表达自己</string>
   <string name="im_discover_favorites">收藏</string>
-  <string name="im_discover_favorites_desc">留住喜欢的消息</string>
-  <string name="im_discover_extensions">扩展</string>
-  <string name="im_discover_extensions_desc">为伙伴添一点新本领</string>
   <string name="im_me_memory">伙伴记得的我</string>
   <string name="im_me_ai_service">服务连接</string>
   <string name="im_me_ai_connected">已连接</string>
@@ -3406,4 +3401,43 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <plurals name="im_me_backup_days"><item quantity="other">%1$d 天没备份</item></plurals>
   <plurals name="im_backup_days_ago"><item quantity="other">已经 %1$d 天没备份了</item></plurals>
   <plurals name="im_backup_remind_desc"><item quantity="other">超过 %1$d 天</item></plurals>
+  <string name="im_time_today">今天</string>
+  <string name="im_thread_favorite">收藏</string>
+  <string name="im_thread_unfavorite">取消收藏</string>
+  <string name="im_discover_draw_desc">说一句话，画给你看</string>
+  <string name="im_discover_draw_off">还没开启</string>
+  <string name="im_discover_translate_desc2">粘贴一段，马上看懂</string>
+  <string name="im_discover_favorites_empty">长按聊天里的任意一句话，选“收藏”，就会出现在这里。</string>
+  <string name="im_discover_drawings">我画过的</string>
+  <string name="im_discover_album">相册</string>
+  <string name="im_favorites_search">搜索收藏的内容</string>
+  <string name="im_favorites_all">全部</string>
+  <string name="im_favorites_no_match">没有找到相关的收藏</string>
+  <string name="im_favorites_month_pattern">yyyy年M月</string>
+  <string name="im_favorites_more">更多</string>
+  <string name="im_favorites_removed">已取消收藏</string>
+  <string name="im_draw_go_draw">去画图</string>
+  <string name="im_draw_no_model">还没选画图用的模型，先选一个才能开始</string>
+  <string name="im_draw_pick_model">去选</string>
+  <string name="im_draw_empty_title">想画点什么？</string>
+  <string name="im_draw_empty_desc">用一句话描述画面就行，越具体越好</string>
+  <string name="im_draw_example_1">雪地里戴围巾的橘猫</string>
+  <string name="im_draw_example_2">黄昏时的海边灯塔</string>
+  <string name="im_draw_example_3">水彩风格的樱花小路</string>
+  <string name="im_draw_example_4">像素风的小房子</string>
+  <string name="im_draw_shape_auto">自动比例</string>
+  <string name="im_draw_shape_square">方形</string>
+  <string name="im_draw_shape_portrait">竖图</string>
+  <string name="im_draw_shape_landscape">横图</string>
+  <string name="im_draw_reference">+ 参考图</string>
+  <string name="im_draw_hint">描述你想要的画面…</string>
+  <string name="im_draw_stop">停止</string>
+  <string name="im_translate_no_model">还没选翻译用的模型，先选一个才能开始</string>
+  <string name="im_translate_into">翻成</string>
+  <string name="im_translate_hint">输入或粘贴要翻译的内容</string>
+  <string name="im_translate_paste">粘贴</string>
+  <string name="im_translate_clear">清空</string>
+  <string name="im_translate_copied">已复制</string>
+  <plurals name="im_discover_favorites_all"><item quantity="other">全部 %1$d 条</item></plurals>
+  <plurals name="im_draw_count"><item quantity="other">%1$d 张</item></plurals>
 </resources>

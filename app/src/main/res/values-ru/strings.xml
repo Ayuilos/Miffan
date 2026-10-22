@@ -1758,13 +1758,8 @@
   <string name="im_partners_mine">Мои партнёры</string>
   <string name="im_partners_add">Добавить партнёра</string>
   <string name="im_discover_image_gen">Рисование</string>
-  <string name="im_discover_image_gen_desc">Превратите задумки в картинки</string>
   <string name="im_discover_translate">Перевод</string>
-  <string name="im_discover_translate_desc">Понимайте мир и выражайте себя</string>
   <string name="im_discover_favorites">Избранное</string>
-  <string name="im_discover_favorites_desc">Сохраняйте понравившиеся сообщения</string>
-  <string name="im_discover_extensions">Расширения</string>
-  <string name="im_discover_extensions_desc">Новые навыки для ваших партнёров</string>
   <string name="im_me_memory">Что партнёры помнят обо мне</string>
   <string name="im_me_ai_service">Подключение к сервису</string>
   <string name="im_me_ai_connected">Подключено</string>
