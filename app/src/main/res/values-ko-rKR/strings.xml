@@ -3410,4 +3410,47 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <plurals name="im_backup_remind_desc">
     <item quantity="other">%1$d일이 지나면</item>
   </plurals>
+  <string name="im_time_today">오늘</string>
+  <string name="im_thread_favorite">저장</string>
+  <string name="im_thread_unfavorite">저장 취소</string>
+  <string name="im_discover_draw_desc">한 마디만 하면, 그림으로 보여드려요</string>
+  <string name="im_discover_draw_off">아직 설정 안 됨</string>
+  <string name="im_discover_translate_desc2">붙여넣으면 바로 이해해요</string>
+  <string name="im_discover_favorites_empty">채팅에서 메시지를 길게 누르고 “저장”을 선택하면 여기에 보여요.</string>
+  <string name="im_discover_drawings">내가 그린 그림</string>
+  <string name="im_discover_album">앨범</string>
+  <string name="im_favorites_search">저장한 메시지 검색</string>
+  <string name="im_favorites_all">전체</string>
+  <string name="im_favorites_no_match">일치하는 저장된 메시지가 없어요</string>
+  <string name="im_favorites_month_pattern">yyyy년 M월</string>
+  <string name="im_favorites_more">더보기</string>
+  <string name="im_favorites_removed">저장을 취소했어요</string>
+  <string name="im_draw_go_draw">그리기</string>
+  <string name="im_draw_no_model">그림에 사용할 모델을 먼저 선택하세요</string>
+  <string name="im_draw_pick_model">선택</string>
+  <string name="im_draw_empty_title">무엇을 그려볼까요?</string>
+  <string name="im_draw_empty_desc">그림을 한 문장으로 설명해 주세요. 자세할수록 좋아요</string>
+  <string name="im_draw_example_1">눈 덮인 들판에서 목도리를 한 주황 고양이</string>
+  <string name="im_draw_example_2">해질녘 바닷가의 등대</string>
+  <string name="im_draw_example_3">수채화 느낌의 벚꽃길</string>
+  <string name="im_draw_example_4">픽셀 아트 스타일의 작은 집</string>
+  <string name="im_draw_shape_auto">자동 비율</string>
+  <string name="im_draw_shape_square">정사각형</string>
+  <string name="im_draw_shape_portrait">세로</string>
+  <string name="im_draw_shape_landscape">가로</string>
+  <string name="im_draw_reference">+ 참고 이미지</string>
+  <string name="im_draw_hint">원하는 그림을 설명해 주세요…</string>
+  <string name="im_draw_stop">중지</string>
+  <string name="im_translate_no_model">번역에 사용할 모델을 먼저 선택하세요</string>
+  <string name="im_translate_into">번역 언어</string>
+  <string name="im_translate_hint">번역할 내용을 입력하거나 붙여넣으세요</string>
+  <string name="im_translate_paste">붙여넣기</string>
+  <string name="im_translate_clear">지우기</string>
+  <string name="im_translate_copied">복사됨</string>
+  <plurals name="im_discover_favorites_all">
+    <item quantity="other">전체 %1$d개</item>
+  </plurals>
+  <plurals name="im_draw_count">
+    <item quantity="other">%1$d장</item>
+  </plurals>
 </resources>

@@ -3446,4 +3446,53 @@
     <item quantity="many">Через %1$d дней</item>
     <item quantity="other">Через %1$d дня</item>
   </plurals>
+  <string name="im_time_today">Сегодня</string>
+  <string name="im_thread_favorite">Сохранить</string>
+  <string name="im_thread_unfavorite">Убрать из сохранённых</string>
+  <string name="im_discover_draw_desc">Опишите словами — и увидите картинку</string>
+  <string name="im_discover_draw_off">Ещё не включено</string>
+  <string name="im_discover_translate_desc2">Вставьте текст — и сразу поймёте его</string>
+  <string name="im_discover_favorites_empty">Нажмите и удерживайте любое сообщение в чате и выберите «Сохранить», чтобы оно появилось здесь.</string>
+  <string name="im_discover_drawings">Мои рисунки</string>
+  <string name="im_discover_album">Альбом</string>
+  <string name="im_favorites_search">Поиск по сохранённым сообщениям</string>
+  <string name="im_favorites_all">Все</string>
+  <string name="im_favorites_no_match">Сохранённых сообщений не найдено</string>
+  <string name="im_favorites_month_pattern">LLLL yyyy</string>
+  <string name="im_favorites_more">Ещё</string>
+  <string name="im_favorites_removed">Удалено из сохранённых</string>
+  <string name="im_draw_go_draw">Рисовать</string>
+  <string name="im_draw_no_model">Сначала выберите модель для рисования</string>
+  <string name="im_draw_pick_model">Выбрать</string>
+  <string name="im_draw_empty_title">Что нарисуем?</string>
+  <string name="im_draw_empty_desc">Опишите картинку одним предложением; чем подробнее, тем лучше</string>
+  <string name="im_draw_example_1">Оранжевый кот в шарфе на снегу</string>
+  <string name="im_draw_example_2">Маяк на берегу моря на закате</string>
+  <string name="im_draw_example_3">Акварельная аллея под цветущей сакурой</string>
+  <string name="im_draw_example_4">Маленький домик в пиксель-арте</string>
+  <string name="im_draw_shape_auto">Авто</string>
+  <string name="im_draw_shape_square">Квадрат</string>
+  <string name="im_draw_shape_portrait">Вертикальный</string>
+  <string name="im_draw_shape_landscape">Горизонтальный</string>
+  <string name="im_draw_reference">+ Референс</string>
+  <string name="im_draw_hint">Опишите, что хотите нарисовать…</string>
+  <string name="im_draw_stop">Стоп</string>
+  <string name="im_translate_no_model">Сначала выберите модель для перевода</string>
+  <string name="im_translate_into">На</string>
+  <string name="im_translate_hint">Введите или вставьте текст для перевода</string>
+  <string name="im_translate_paste">Вставить</string>
+  <string name="im_translate_clear">Очистить</string>
+  <string name="im_translate_copied">Скопировано</string>
+  <plurals name="im_discover_favorites_all">
+    <item quantity="one">Все %1$d</item>
+    <item quantity="few">Все %1$d</item>
+    <item quantity="many">Все %1$d</item>
+    <item quantity="other">Все %1$d</item>
+  </plurals>
+  <plurals name="im_draw_count">
+    <item quantity="one">%1$d рисунок</item>
+    <item quantity="few">%1$d рисунка</item>
+    <item quantity="many">%1$d рисунков</item>
+    <item quantity="other">%1$d рисунка</item>
+  </plurals>
 </resources>
