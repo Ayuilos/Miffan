@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
@@ -85,6 +86,9 @@ internal fun ImListRow(
     tone: ImIconTone = ImIconTone.NEUTRAL,
     enabled: Boolean = true,
     titleColor: Color = Color.Unspecified,
+    supportingColor: Color = Color.Unspecified,
+    /** Lines an icon-less row up with the text of rows that have one, e.g. a sub-item. */
+    indent: Boolean = false,
     trailing: (@Composable () -> Unit)? = if (onClick != null) {
         { Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     } else null,
@@ -100,7 +104,7 @@ internal fun ImListRow(
         Modifier.fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
             .heightIn(min = 60.dp)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(start = if (indent) 68.dp else 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -110,9 +114,34 @@ internal fun ImListRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
             supporting?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = supportingColor.takeOrElse { colors.onSurfaceVariant })
             }
         }
         trailing?.invoke()
     }
+}
+
+/** Trailing slot of an [ImListRow] that opens a page and shows its current value. */
+@Composable
+internal fun ImRowValue(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1)
+        Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** An on/off switch whose row toggles it too. */
+@Composable
+internal fun ImSwitchRow(
+    title: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    supporting: String? = null,
+    icon: ImageVector? = null,
+    tone: ImIconTone = ImIconTone.NEUTRAL,
+    enabled: Boolean = true,
+) {
+    ImListRow(icon, title, { onChange(!checked) }, supporting, tone, enabled,
+        trailing = { Switch(checked, onChange, enabled = enabled) })
 }

@@ -1768,8 +1768,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_discover_favorites_desc">留住喜欢的消息</string>
   <string name="im_discover_extensions">扩展</string>
   <string name="im_discover_extensions_desc">为伙伴添一点新本领</string>
-  <string name="im_me_memory">AI 对我的了解</string>
-  <string name="im_me_ai_service">AI 服务</string>
+  <string name="im_me_memory">伙伴记得的我</string>
+  <string name="im_me_ai_service">服务连接</string>
   <string name="im_me_ai_connected">已连接</string>
   <string name="im_me_ai_not_connected">未连接</string>
   <string name="im_me_ai_needs_attention">需要检查</string>
@@ -3349,4 +3349,61 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <plurals name="im_profile_tasks"><item quantity="other">%1$d 个定时任务</item></plurals>
   <plurals name="im_profile_memory_on"><item quantity="other">%1$d 件 · 聊天时会记下新的</item></plurals>
   <plurals name="im_profile_memory_paused"><item quantity="other">%1$d 件 · 暂停记新的</item></plurals>
+  <string name="im_me_profile_desc">伙伴们这样称呼你 · 点一下修改</string>
+  <string name="im_me_section_partners">伙伴与你</string>
+  <string name="im_me_section_prefs">偏好</string>
+  <string name="im_me_memory_none">还没有记下什么</string>
+  <string name="im_me_advanced_desc">全部设置、专业模式</string>
+  <string name="im_me_on">已开启</string>
+  <string name="im_me_off">已关闭</string>
+  <string name="im_me_about_miffan">关于 Miffan</string>
+  <string name="im_backup_never">还没备份过</string>
+  <string name="im_backup_today">今天备份过</string>
+  <string name="im_appearance_mode_system">跟随系统</string>
+  <string name="im_appearance_mode_light">浅色</string>
+  <string name="im_appearance_mode_dark">深色</string>
+  <string name="im_appearance_preview_partner">早呀，今天想先忙点什么？</string>
+  <string name="im_appearance_preview_me">帮我看看今天的日程</string>
+  <string name="im_appearance_mode">显示模式</string>
+  <string name="im_appearance_amoled">深色时用纯黑背景</string>
+  <string name="im_appearance_amoled_desc">更省电，适合 OLED 屏幕</string>
+  <string name="im_appearance_color">主题色</string>
+  <string name="im_appearance_wallpaper">跟随壁纸</string>
+  <string name="im_appearance_custom">自己调一个颜色</string>
+  <string name="im_appearance_role">角色主题</string>
+  <string name="im_appearance_whale_desc">换上蓝鱼配色和专属伙伴</string>
+  <string name="im_appearance_whale_try">试一试</string>
+  <string name="im_appearance_whale_restore">恢复原样</string>
+  <string name="im_appearance_whale_in_use">使用中</string>
+  <string name="im_notify_blocked">手机系统关掉了 Miffan 的通知</string>
+  <string name="im_notify_blocked_desc">下面的开关要先在系统里允许才会生效</string>
+  <string name="im_notify_open">去打开</string>
+  <string name="im_notify_reply">伙伴回复时提醒我</string>
+  <string name="im_notify_reply_desc">你不在 Miffan 里的时候，伙伴说完话会发通知</string>
+  <string name="im_notify_progress">在通知栏看伙伴的进度</string>
+  <string name="im_notify_progress_desc">伙伴忙一件长任务时，通知栏会显示它做到哪了</string>
+  <string name="im_notify_update">有新版本时告诉我</string>
+  <string name="im_notify_update_desc">在“我”页面和横幅里提示更新</string>
+  <string name="im_backup_contains">伙伴、记忆和设置都在里面</string>
+  <string name="im_backup_choose_place">会让你选一个保存的位置</string>
+  <string name="im_backup_again">再备份一次</string>
+  <string name="im_backup_include">要不要带上</string>
+  <string name="im_backup_chats_desc">所有伙伴和群聊里的消息</string>
+  <string name="im_backup_files">图片和文件</string>
+  <string name="im_backup_files_desc">聊天里发过的图片、文档，体积会大一些</string>
+  <string name="im_backup_cloud">存到云端</string>
+  <string name="im_backup_webdav">网盘</string>
+  <string name="im_backup_webdav_desc">坚果云、Nextcloud 等（WebDAV）</string>
+  <string name="im_backup_s3">云存储</string>
+  <string name="im_backup_s3_desc">S3 兼容的存储桶</string>
+  <string name="im_backup_set">已设置</string>
+  <string name="im_backup_not_set">未设置</string>
+  <string name="im_backup_remind">太久没备份时提醒我</string>
+  <string name="im_backup_restore_section">换手机或重装后</string>
+  <string name="im_backup_restore">从备份恢复</string>
+  <string name="im_backup_import_other">从其他 App 搬过来</string>
+  <plurals name="im_me_memory_count"><item quantity="other">%1$d 件事 · 可以随时删掉</item></plurals>
+  <plurals name="im_me_backup_days"><item quantity="other">%1$d 天没备份</item></plurals>
+  <plurals name="im_backup_days_ago"><item quantity="other">已经 %1$d 天没备份了</item></plurals>
+  <plurals name="im_backup_remind_desc"><item quantity="other">超过 %1$d 天</item></plurals>
 </resources>

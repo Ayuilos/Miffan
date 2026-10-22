@@ -1763,8 +1763,8 @@
   <string name="im_discover_favorites_desc">留住喜歡的訊息</string>
   <string name="im_discover_extensions">擴充</string>
   <string name="im_discover_extensions_desc">為夥伴添一點新本領</string>
-  <string name="im_me_memory">AI 對我的了解</string>
-  <string name="im_me_ai_service">AI 服務</string>
+  <string name="im_me_memory">夥伴記得的我</string>
+  <string name="im_me_ai_service">服務連線</string>
   <string name="im_me_ai_connected">已連線</string>
   <string name="im_me_ai_not_connected">未連線</string>
   <string name="im_me_ai_needs_attention">需要檢查</string>
@@ -3339,4 +3339,61 @@
   <plurals name="im_profile_tasks"><item quantity="other">%1$d 個定時任務</item></plurals>
   <plurals name="im_profile_memory_on"><item quantity="other">%1$d 件 · 聊天時會記下新的</item></plurals>
   <plurals name="im_profile_memory_paused"><item quantity="other">%1$d 件 · 暫停記新的</item></plurals>
+  <string name="im_me_profile_desc">夥伴們這樣稱呼你 · 點一下修改</string>
+  <string name="im_me_section_partners">夥伴與你</string>
+  <string name="im_me_section_prefs">偏好</string>
+  <string name="im_me_memory_none">還沒有記下什麼</string>
+  <string name="im_me_advanced_desc">全部設定、專業模式</string>
+  <string name="im_me_on">已開啟</string>
+  <string name="im_me_off">已關閉</string>
+  <string name="im_me_about_miffan">關於 Miffan</string>
+  <string name="im_backup_never">還沒備份過</string>
+  <string name="im_backup_today">今天備份過</string>
+  <string name="im_appearance_mode_system">跟隨系統</string>
+  <string name="im_appearance_mode_light">淺色</string>
+  <string name="im_appearance_mode_dark">深色</string>
+  <string name="im_appearance_preview_partner">早呀，今天想先忙點什麼？</string>
+  <string name="im_appearance_preview_me">幫我看看今天的行程</string>
+  <string name="im_appearance_mode">顯示模式</string>
+  <string name="im_appearance_amoled">深色時用純黑背景</string>
+  <string name="im_appearance_amoled_desc">更省電，適合 OLED 螢幕</string>
+  <string name="im_appearance_color">主題色</string>
+  <string name="im_appearance_wallpaper">跟隨桌布</string>
+  <string name="im_appearance_custom">自己調一個顏色</string>
+  <string name="im_appearance_role">角色主題</string>
+  <string name="im_appearance_whale_desc">換上藍魚配色和專屬夥伴</string>
+  <string name="im_appearance_whale_try">試一試</string>
+  <string name="im_appearance_whale_restore">恢復原樣</string>
+  <string name="im_appearance_whale_in_use">使用中</string>
+  <string name="im_notify_blocked">手機系統關閉了 Miffan 的通知</string>
+  <string name="im_notify_blocked_desc">下面的開關要先在系統裡允許才會生效</string>
+  <string name="im_notify_open">去開啟</string>
+  <string name="im_notify_reply">夥伴回覆時提醒我</string>
+  <string name="im_notify_reply_desc">你不在 Miffan 裡的時候，夥伴說完話會發通知</string>
+  <string name="im_notify_progress">在通知欄看夥伴的進度</string>
+  <string name="im_notify_progress_desc">夥伴忙一件長任務時，通知欄會顯示它做到哪了</string>
+  <string name="im_notify_update">有新版本時告訴我</string>
+  <string name="im_notify_update_desc">在「我」頁面和橫幅裡提示更新</string>
+  <string name="im_backup_contains">夥伴、記憶和設定都在裡面</string>
+  <string name="im_backup_choose_place">會讓你選一個儲存的位置</string>
+  <string name="im_backup_again">再備份一次</string>
+  <string name="im_backup_include">要不要帶上</string>
+  <string name="im_backup_chats_desc">所有夥伴和群聊裡的訊息</string>
+  <string name="im_backup_files">圖片和檔案</string>
+  <string name="im_backup_files_desc">聊天裡傳過的圖片、文件，體積會大一些</string>
+  <string name="im_backup_cloud">存到雲端</string>
+  <string name="im_backup_webdav">雲端硬碟</string>
+  <string name="im_backup_webdav_desc">堅果雲、Nextcloud 等（WebDAV）</string>
+  <string name="im_backup_s3">雲端儲存</string>
+  <string name="im_backup_s3_desc">S3 相容的儲存桶</string>
+  <string name="im_backup_set">已設定</string>
+  <string name="im_backup_not_set">未設定</string>
+  <string name="im_backup_remind">太久沒備份時提醒我</string>
+  <string name="im_backup_restore_section">換手機或重裝後</string>
+  <string name="im_backup_restore">從備份還原</string>
+  <string name="im_backup_import_other">從其他 App 搬過來</string>
+  <plurals name="im_me_memory_count"><item quantity="other">%1$d 件事 · 可以隨時刪掉</item></plurals>
+  <plurals name="im_me_backup_days"><item quantity="other">%1$d 天沒備份</item></plurals>
+  <plurals name="im_backup_days_ago"><item quantity="other">已經 %1$d 天沒備份了</item></plurals>
+  <plurals name="im_backup_remind_desc"><item quantity="other">超過 %1$d 天</item></plurals>
 </resources>

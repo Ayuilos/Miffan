@@ -182,7 +182,7 @@ fun ChatDrawerContent(
         ) {
             BackupReminderCard(
                 settings = settings,
-                onClick = { navController.navigate(Screen.Backup) },
+                onClick = { navController.navigate(Screen.Backup()) },
             )
 
             // 用户头像和昵称自定义区域

@@ -99,6 +99,9 @@ import me.ayuilos.miffan.ui.im.ImChatBackgroundPage
 import me.ayuilos.miffan.ui.im.ImRevisionHistoryPage
 import me.ayuilos.miffan.ui.im.ImPartnerProfilePage
 import me.ayuilos.miffan.ui.im.ImAddPartnerPage
+import me.ayuilos.miffan.ui.im.ImAppearancePage
+import me.ayuilos.miffan.ui.im.ImBackupPage
+import me.ayuilos.miffan.ui.im.ImNotificationsPage
 import me.ayuilos.miffan.ui.im.ImPartnerEditPage
 import me.ayuilos.miffan.ui.im.computer.PartnerComputerPage
 import me.ayuilos.miffan.ui.im.ImChatRedirect
@@ -466,6 +469,9 @@ class RouteActivity : ComponentActivity() {
                             }
 
                             entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId, key.assistantId) }
+                            entry<Screen.ImAppearance> { ImAppearancePage() }
+                            entry<Screen.ImNotifications> { ImNotificationsPage() }
+                            entry<Screen.ImBackup> { ImBackupPage() }
                             entry<Screen.AddPartner> { key -> ImAddPartnerPage(key.custom) }
                             entry<Screen.PartnerEdit> { key -> ImPartnerEditPage(key.assistantId) }
                             entry<Screen.PartnerComputer> { key -> PartnerComputerPage(Uuid.parse(key.assistantId)) }
@@ -576,8 +582,8 @@ class RouteActivity : ComponentActivity() {
                                 SettingPage()
                             }
 
-                            entry<Screen.Backup> {
-                                BackupPage()
+                            entry<Screen.Backup> { key ->
+                                BackupPage(tab = key.tab)
                             }
 
                             entry<Screen.ImageGen> {
@@ -800,6 +806,16 @@ sealed interface Screen : NavKey {
     @Serializable
     data class ImMemory(val ownerId: String, val assistantId: String? = null) : Screen
 
+    /** Easy chat's appearance, notification and backup pages. */
+    @Serializable
+    data object ImAppearance : Screen
+
+    @Serializable
+    data object ImNotifications : Screen
+
+    @Serializable
+    data object ImBackup : Screen
+
     /** Add a partner: from a template, or made from scratch, where [custom] starts. */
     @Serializable
     data class AddPartner(val custom: Boolean = false) : Screen
@@ -923,8 +939,11 @@ sealed interface Screen : NavKey {
     @Serializable
     data object Setting : Screen
 
+    /** The professional backup page; [tab] opens local, WebDAV, S3 or the reminder. */
+
     @Serializable
-    data object Backup : Screen
+
+    data class Backup(val tab: Int = 0) : Screen
 
     @Serializable
     data object ImageGen : Screen

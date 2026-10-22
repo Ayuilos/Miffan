@@ -1775,8 +1775,8 @@
   <string name="im_discover_favorites_desc">Keep the messages you like</string>
   <string name="im_discover_extensions">Extensions</string>
   <string name="im_discover_extensions_desc">Give your partners new skills</string>
-  <string name="im_me_memory">What AI knows about me</string>
-  <string name="im_me_ai_service">AI service</string>
+  <string name="im_me_memory">What partners remember</string>
+  <string name="im_me_ai_service">Service connection</string>
   <string name="im_me_ai_connected">Connected</string>
   <string name="im_me_ai_not_connected">Not connected</string>
   <string name="im_me_ai_needs_attention">Needs attention</string>
@@ -3362,4 +3362,61 @@
   <plurals name="im_profile_tasks"><item quantity="one">%1$d scheduled task</item><item quantity="other">%1$d scheduled tasks</item></plurals>
   <plurals name="im_profile_memory_on"><item quantity="one">%1$d thing · learns as you chat</item><item quantity="other">%1$d things · learns as you chat</item></plurals>
   <plurals name="im_profile_memory_paused"><item quantity="one">%1$d thing · not learning new ones</item><item quantity="other">%1$d things · not learning new ones</item></plurals>
+  <string name="im_me_profile_desc">What your partners call you · tap to change</string>
+  <string name="im_me_section_partners">Partners and you</string>
+  <string name="im_me_section_prefs">Preferences</string>
+  <string name="im_me_memory_none">Nothing remembered yet</string>
+  <string name="im_me_advanced_desc">All settings, professional mode</string>
+  <string name="im_me_on">On</string>
+  <string name="im_me_off">Off</string>
+  <string name="im_me_about_miffan">About Miffan</string>
+  <string name="im_backup_never">Never backed up</string>
+  <string name="im_backup_today">Backed up today</string>
+  <string name="im_appearance_mode_system">System</string>
+  <string name="im_appearance_mode_light">Light</string>
+  <string name="im_appearance_mode_dark">Dark</string>
+  <string name="im_appearance_preview_partner">Morning! What shall we start with today?</string>
+  <string name="im_appearance_preview_me">Check today\'s schedule for me</string>
+  <string name="im_appearance_mode">Display</string>
+  <string name="im_appearance_amoled">Pure black when dark</string>
+  <string name="im_appearance_amoled_desc">Saves power on OLED screens</string>
+  <string name="im_appearance_color">Theme color</string>
+  <string name="im_appearance_wallpaper">Wallpaper</string>
+  <string name="im_appearance_custom">Make your own color</string>
+  <string name="im_appearance_role">Character theme</string>
+  <string name="im_appearance_whale_desc">Whale colors and a whale partner</string>
+  <string name="im_appearance_whale_try">Try it</string>
+  <string name="im_appearance_whale_restore">Undo</string>
+  <string name="im_appearance_whale_in_use">In use</string>
+  <string name="im_notify_blocked">Your phone has turned off Miffan\'s notifications</string>
+  <string name="im_notify_blocked_desc">The switches below work only once the system allows them</string>
+  <string name="im_notify_open">Turn on</string>
+  <string name="im_notify_reply">Tell me when a partner replies</string>
+  <string name="im_notify_reply_desc">When you are not in Miffan, a finished reply sends a notification</string>
+  <string name="im_notify_progress">Show progress in notifications</string>
+  <string name="im_notify_progress_desc">While a partner works on something long, the notification shows how far it got</string>
+  <string name="im_notify_update">Tell me about new versions</string>
+  <string name="im_notify_update_desc">A banner and a dot on the Me tab</string>
+  <string name="im_backup_contains">Partners, memories and settings are always included</string>
+  <string name="im_backup_choose_place">You will pick where to save it</string>
+  <string name="im_backup_again">Back up again</string>
+  <string name="im_backup_include">What to include</string>
+  <string name="im_backup_chats_desc">Messages from every partner and group</string>
+  <string name="im_backup_files">Images and files</string>
+  <string name="im_backup_files_desc">Images and documents from chats; makes the backup bigger</string>
+  <string name="im_backup_cloud">Back up online</string>
+  <string name="im_backup_webdav">Cloud drive</string>
+  <string name="im_backup_webdav_desc">Nutstore, Nextcloud and others (WebDAV)</string>
+  <string name="im_backup_s3">Cloud storage</string>
+  <string name="im_backup_s3_desc">An S3-compatible bucket</string>
+  <string name="im_backup_set">set up</string>
+  <string name="im_backup_not_set">not set up</string>
+  <string name="im_backup_remind">Remind me when it has been too long</string>
+  <string name="im_backup_restore_section">After a new phone or a reinstall</string>
+  <string name="im_backup_restore">Restore from a backup</string>
+  <string name="im_backup_import_other">Move over from another app</string>
+  <plurals name="im_me_memory_count"><item quantity="one">%1$d thing · delete any time</item><item quantity="other">%1$d things · delete any time</item></plurals>
+  <plurals name="im_me_backup_days"><item quantity="one">%1$d day without a backup</item><item quantity="other">%1$d days without a backup</item></plurals>
+  <plurals name="im_backup_days_ago"><item quantity="one">It has been %1$d day since the last backup</item><item quantity="other">It has been %1$d days since the last backup</item></plurals>
+  <plurals name="im_backup_remind_desc"><item quantity="one">After %1$d day</item><item quantity="other">After %1$d days</item></plurals>
 </resources>
