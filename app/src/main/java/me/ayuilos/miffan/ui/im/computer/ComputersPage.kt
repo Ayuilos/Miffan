@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,6 +29,9 @@ import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.computer.ComputerHasWorkspacesException
+import me.ayuilos.miffan.data.ai.computer.ComputerStatusStore
+import me.ayuilos.miffan.data.ai.computer.CuaUpdateState
+import me.ayuilos.miffan.data.ai.computer.CuaUpdates
 import me.ayuilos.miffan.data.ai.computer.ComputerUnreachableException
 import me.ayuilos.miffan.data.ai.computer.ComputerWorkFiles
 import me.ayuilos.miffan.data.ai.computer.KnownComputer
@@ -278,8 +282,7 @@ fun ComputerDetailPage(hostId: String) {
                     }, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp))
                     if (current.screenEnabled) {
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                        DetailRow(stringResource(R.string.im_computer_detail_check), stringResource(R.string.im_computer_detail_check_help),
-                            enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId)) }
+                        ComputerStatusRow(hostId, enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId, status = true)) }
                     }
                 }
             }
@@ -477,6 +480,64 @@ private fun ComputerUseMode.label(): Int = when (this) {
     ComputerUseMode.OFF -> R.string.computer_use_mode_off
 }
 
+/**
+ * "Computer status" on a computer's page: what its last check found and any cua-driver update, read
+ * from this phone without connecting; opens the status page.
+ */
+@Composable
+private fun ComputerStatusRow(hostId: String, enabled: Boolean, onClick: () -> Unit) {
+    val statuses: ComputerStatusStore = koinInject()
+    val updates: CuaUpdates = koinInject()
+    val record = statuses.records.collectAsStateWithLifecycle().value[hostId]
+    val update = updates.states.collectAsStateWithLifecycle().value[hostId]
+    val error = MaterialTheme.colorScheme.error
+    val primary = MaterialTheme.colorScheme.primary
+    val (line, color) = when {
+        update is CuaUpdateState.Running -> stringResource(R.string.im_computer_status_row_updating) to primary
+        update is CuaUpdateState.Waiting -> stringResource(R.string.im_computer_status_row_waiting,
+            update.partner.ifBlank { stringResource(R.string.im_computer_update_partner) }) to primary
+        update is CuaUpdateState.Failed && !update.stillWorks -> stringResource(R.string.im_computer_status_row_update_failed) to error
+        record == null -> null to null
+        record.pending > 0 -> pluralStringResource(R.plurals.im_computer_status_row_pending, record.pending, record.pending) to error
+        record.updateTo != null && update !is CuaUpdateState.Updated -> stringResource(R.string.im_computer_status_row_update) to primary
+        else -> stringResource(R.string.im_computer_status_row_fine) to null
+    }
+    val checked = record?.let { checkedText(it.checkedAt) }
+    Surface(onClick = onClick, enabled = enabled, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.im_computer_detail_check))
+                when {
+                    line == null -> Text(stringResource(R.string.im_computer_detail_check_help), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color == null -> Text(listOfNotNull(line, checked).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.size(8.dp).background(color, CircleShape))
+                            Text(line, style = MaterialTheme.typography.bodyMedium, color = color)
+                        }
+                        checked?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** "Checked just now" / "Checked 10 minutes ago" / "Checked yesterday". */
+@Composable
+private fun checkedText(at: Long): String {
+    val now = System.currentTimeMillis()
+    return if (now - at < android.text.format.DateUtils.MINUTE_IN_MILLIS) stringResource(R.string.im_computer_status_checked_now)
+    else stringResource(R.string.im_computer_status_checked_at,
+        android.text.format.DateUtils.getRelativeTimeSpanString(at, now, android.text.format.DateUtils.MINUTE_IN_MILLIS).toString())
+}
+
 @Composable
 private fun DetailRow(title: String, supporting: String?, enabled: Boolean, onClick: () -> Unit) {
     Surface(onClick = onClick, enabled = enabled, color = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -584,7 +645,7 @@ fun ComputerScreenPage(hostId: String) {
             vm = vm,
             title = current.name,
             settingsLabel = stringResource(R.string.im_computer_detail_check),
-            onSettings = { vm.handBackToPartner(); nav.navigate(Screen.ComputerSetup(hostId = hostId)) },
+            onSettings = { vm.handBackToPartner(); nav.navigate(Screen.ComputerSetup(hostId = hostId, status = true)) },
             onBack = { vm.handBackToPartner(); nav.popBackStack() },
             failureText = { computerErrorMessage(resources, it) },
         )

@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 11
+$script:HelperVersion = 12
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -817,7 +817,8 @@ $script:CuaBridgeSource = @'
 #include CuaBridge.cs
 '@
 # P7c: ordinary interactive task + authenticated local pipe. No TCP/file MCP transport.
-$script:CuaVersion = '0.34.0'
+# The oldest cua-driver Miffan works with; installs and updates follow the official stable release.
+$script:CuaMinVersion = '0.34.0'
 function Initialize-CuaBridge {
     if ('MiffanCuaBridge' -as [type]) { return }
     Add-Type -TypeDefinition $script:CuaBridgeSource -ReferencedAssemblies 'System.dll','System.Core.dll','System.Web.Extensions.dll'
@@ -888,7 +889,7 @@ function Get-CuaStatus {
     $integrity=@($daemons | Where-Object {$_.SessionId -eq $context.console.id} | ForEach-Object {[MiffanCuaBridge]::ProcessIntegrity([int]$_.ProcessId)})
     $review=Test-CuaPermissionReview $task $context $integrity
     $available=(Test-CuaBridgeAvailable $context.pipe)
-    return @{path=$exe;installed=[bool]$exe;version=$version;min=$script:CuaVersion;ok=([bool]$version -and [version]$version -ge [version]$script:CuaVersion -and -not $review);autostart_run_level=$runLevel;daemon_session_ids=$sessions;daemon_integrity_rids=$integrity;bridge_available=$available;permission_review_needed=[bool]$review}
+    return @{path=$exe;installed=[bool]$exe;version=$version;min=$script:CuaMinVersion;ok=([bool]$version -and [version]$version -ge [version]$script:CuaMinVersion -and -not $review);autostart_run_level=$runLevel;daemon_session_ids=$sessions;daemon_integrity_rids=$integrity;bridge_available=$available;permission_review_needed=[bool]$review}
 }
 function Ensure-CuaBridge {
     $context=Get-CuaBridgeContext
@@ -980,11 +981,17 @@ function Invoke-CuaClipboard([string]$Text) {
     if (-not [MiffanCuaBridge]::Clipboard($context.pipe,$context.directory,$Text)) {throw 'Clipboard readback did not match'}
     return @{success=$true;verified=$true;session_id=$context.console.id;transport='cua-bridge';detail='Clipboard written and read back'}
 }
-function Invoke-CuaInstall {
-    $existing=Get-CuaTask
-    if ($existing -and ([string]$existing.Principal.RunLevel -ne 'Limited' -or [string]$existing.Principal.LogonType -ne 'Interactive')) {throw 'Cua autostart uses elevated permissions; user review required'}
+# Whether this computer reaches GitHub's release downloads. Any HTTP answer counts; only a connection that
+# never answers (a network that blocks GitHub) does not. Checked first so a blocked update fails in seconds.
+function Test-CuaDownloadReachable {
+    try {$null=Invoke-WebRequest -UseBasicParsing -Method Head -Uri 'https://release-assets.githubusercontent.com/' -TimeoutSec 15; return $true}
+    catch {return $null -ne $_.Exception.Response}
+}
+# Runs the official installer for [Release] (empty: the stable release it resolves) in isolated mode, so
+# it never re-registers the autostart task as Highest; Invoke-CuaInstall owns the task.
+function Install-CuaRelease([string]$Release) {
+    if ($Release -and $Release -notmatch '^\d+\.\d+\.\d+$') {throw 'Cua installer failed; existing autostart was not changed'}
     $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    if ($existing -and -not (Test-CuaTaskOwner $existing $sid)) {throw 'Cua autostart belongs to another user'}
     $directory=Join-Path $env:LOCALAPPDATA ('Miffan\cua-install-'+[Guid]::NewGuid().ToString('N'))
     Assert-CuaDirectoryParents (Join-Path $env:LOCALAPPDATA 'Miffan')
     New-PrivateDirectory $directory $sid
@@ -993,28 +1000,106 @@ function Invoke-CuaInstall {
         Invoke-WebRequest -UseBasicParsing -Uri 'https://cua.ai/driver/install.ps1' -OutFile $installer
         # Official NoAutoStart alone re-registers an existing task as Highest! Explicit default
         # per-user paths make the installer skip ALL shared autostart changes (isolated mode).
-        $installCode=@'
-$env:CUA_DRIVER_RS_VERSION='0.34.0'
+        $pin=$(if ($Release) {"`$env:CUA_DRIVER_RS_VERSION='$Release'`n"} else {''})
+        $release=$(if ($Release) {" -Release $Release"} else {''})
+        $installCode=$pin+@'
 $env:CUA_DRIVER_RS_HOME=Join-Path $env:USERPROFILE '.cua-driver'
 $env:CUA_DRIVER_RS_INSTALL_DIR=Join-Path $env:LOCALAPPDATA 'Programs\Cua\cua-driver\bin'
-& $args[0] -Release 0.34.0 -NoAutoStart
-'@
+'@+"`n& `$args[0]$release -NoAutoStart`nexit `$LASTEXITCODE`n"
         $bootstrap=Join-Path $directory 'install-user.ps1'
         [IO.File]::WriteAllText($bootstrap,$installCode,(New-Object Text.UTF8Encoding($true)))
-        & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $bootstrap $installer *> $null
-        if ($LASTEXITCODE -ne 0) {throw 'Cua installer failed; existing autostart was not changed'}
-        $status=Get-CuaStatus
-        if ($status.version -ne $script:CuaVersion -or $status.permission_review_needed) {throw 'Cua installation could not be verified'}
-        $arguments='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$script:HelperFile+'" cua daemon'
-        $action=New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument $arguments
-        $principal=New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
-        $trigger=New-ScheduledTaskTrigger -AtLogOn -User $sid
-        $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        # Only after the user's existing install/upgrade confirmation; never used by status/open.
-        $null=Register-ScheduledTask -TaskName 'cua-driver-serve' -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Force -ErrorAction Stop
-        Start-ScheduledTask -TaskName 'cua-driver-serve'
-        return @{success=$true;version=$script:CuaVersion;autostart_run_level='Limited';detail='Cua installed for this user with ordinary interactive autostart'}
+        # A process, not `&`: under ErrorActionPreference Stop, any installer line on stderr would
+        # otherwise end this helper even when the install succeeds. Only the exit code decides.
+        $start=New-Object Diagnostics.ProcessStartInfo
+        $start.FileName=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $start.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$bootstrap+'" "'+$installer+'"'
+        $start.UseShellExecute=$false; $start.CreateNoWindow=$true
+        $start.RedirectStandardInput=$true; $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
+        $process=[Diagnostics.Process]::Start($start)
+        try {
+            $process.StandardInput.Close()
+            $output=$process.StandardOutput.ReadToEndAsync(); $errors=$process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit(600000)) {$process.Kill(); throw 'Cua installer failed; existing autostart was not changed'}
+            $code=$process.ExitCode
+        } finally {$process.Dispose()}
+        if ($code -ne 0) {
+            # The installer changes nothing before the release is downloaded and verified.
+            if (($output.Result+$errors.Result) -match 'download attempt \d+ of \d+ failed|Unable to connect|could not connect|timed out') {throw 'Cua download failed; nothing was changed'}
+            throw 'Cua installer failed; existing autostart was not changed'
+        }
     } finally {Remove-Item -LiteralPath $directory -Recurse -Force}
+}
+# Points the autostart task at this helper's hidden `cua daemon` wrapper (ordinary permissions) and starts it.
+function Register-CuaDaemonTask([string]$Sid) {
+    Stop-ScheduledTask -TaskName 'cua-driver-serve' -ErrorAction SilentlyContinue
+    $arguments='-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$script:HelperFile+'" cua daemon'
+    $action=New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument $arguments
+    $principal=New-ScheduledTaskPrincipal -UserId $Sid -LogonType Interactive -RunLevel Limited
+    $trigger=New-ScheduledTaskTrigger -AtLogOn -User $Sid
+    $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    # Only after the user's existing install/upgrade confirmation; never used by status/open.
+    $null=Register-ScheduledTask -TaskName 'cua-driver-serve' -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Force -ErrorAction Stop
+    Start-ScheduledTask -TaskName 'cua-driver-serve'
+}
+# Whether the installed driver works for partners: an ordinary daemon in the console session and, when the
+# desktop is unlocked, one MCP handshake through the bridge answering with the installed version.
+function Test-CuaWorks([string]$Version) {
+    $deadline=[DateTime]::UtcNow.AddSeconds(30)
+    while ($true) {
+        $status=Get-CuaStatus; $context=Get-CuaBridgeContext
+        if ($status.ok -and $status.version -eq $Version -and $context.console.id -in $status.daemon_session_ids) {break}
+        if ([DateTime]::UtcNow -ge $deadline) {return $false}
+        Start-Sleep -Milliseconds 500
+    }
+    # A locked desktop refuses the bridge; the running daemon is all that can be checked then.
+    if ($context.console.lock_state -ne 'unlocked') {return $true}
+    try {
+        $context=Ensure-CuaBridge
+        return [MiffanCuaBridge]::Ping($context.pipe,$context.directory) -eq $Version
+    } catch {return $false}
+}
+function Invoke-CuaInstall {
+    $existing=Get-CuaTask
+    if ($existing -and ([string]$existing.Principal.RunLevel -ne 'Limited' -or [string]$existing.Principal.LogonType -ne 'Interactive')) {throw 'Cua autostart uses elevated permissions; user review required'}
+    $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    if ($existing -and -not (Test-CuaTaskOwner $existing $sid)) {throw 'Cua autostart belongs to another user'}
+    $before=Get-CuaStatus
+    $previous=$(if ($before.ok) {$before.version} else {$null})
+    if (-not (Test-CuaDownloadReachable)) {throw 'Cua download failed; nothing was changed'}
+    Install-CuaRelease ''
+    $status=Get-CuaStatus
+    if (-not $status.version -or [version]$status.version -lt [version]$script:CuaMinVersion -or $status.permission_review_needed) {throw 'Cua installation could not be verified'}
+    # Nothing newer was installed (the installer's stable release is the one already here).
+    if ($previous -and $status.version -eq $previous) {return @{success=$false;version=$previous;previous=$previous;rolled_back=$false;detail='Cua update did not change the installed version'}}
+    Register-CuaDaemonTask $sid
+    if (Test-CuaWorks $status.version) {
+        return @{success=$true;version=$status.version;previous=$previous;autostart_run_level='Limited';detail='Cua installed for this user with ordinary interactive autostart'}
+    }
+    # The new release does not work through the bridge: put back the one that did.
+    if (-not $previous -or $previous -eq $status.version) {return @{success=$false;version=$status.version;previous=$previous;rolled_back=$false;detail='Cua installed but did not pass its check'}}
+    Install-CuaRelease $previous
+    Register-CuaDaemonTask $sid
+    $restored=Test-CuaWorks $previous
+    return @{success=$false;version=(Get-CuaStatus).version;previous=$previous;failed_version=$status.version;rolled_back=$restored;detail='Cua update did not pass its check; the previous version was restored'}
+}
+# cua-driver's own release check, fresh rather than from its on-disk cache. Read-only.
+function Invoke-CuaCheckUpdate {
+    $exe=Get-CuaExecutable
+    if (-not $exe) {return @{error='not_installed'}}
+    # Never invoke a native command via PowerShell's pipeline on a stdio connection (see Get-CuaStatus).
+    $start=New-Object Diagnostics.ProcessStartInfo
+    $start.FileName=$exe; $start.Arguments='check-update --json --no-cache'; $start.UseShellExecute=$false; $start.CreateNoWindow=$true
+    $start.RedirectStandardInput=$true; $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
+    $start.StandardOutputEncoding=$script:Utf8; $start.StandardErrorEncoding=$script:Utf8
+    $process=[Diagnostics.Process]::Start($start)
+    try {
+        $process.StandardInput.Close()
+        $output=$process.StandardOutput.ReadToEndAsync(); $errors=$process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(30000)) {$process.Kill(); return @{error='check_failed'}}
+        if ($process.ExitCode -ne 0) {return @{error='check_failed'}}
+        $value=$output.Result | ConvertFrom-Json
+    } catch {return @{error='check_failed'}} finally {$process.Dispose()}
+    return @{current_version=[string]$value.current_version;latest_version=[string]$value.latest_version;update_available=[bool]$value.update_available;release_notes_url=[string]$value.release_notes_url;error=$(if ($value.error) {[string]$value.error} else {$null})}
 }
 
 function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation) {
@@ -1044,7 +1129,7 @@ function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation
             }
         }
         'clip' { if ($Subcommand -or $Suboperation) {throw 'Clipboard text must come from stdin'}; return Invoke-CuaClipboard ([Console]::In.ReadToEnd()) }
-        'cua' { if ($Subcommand -eq 'status' -and -not $Suboperation) {return Get-CuaStatus}; if ($Subcommand -eq 'install' -and -not $Suboperation) {return Invoke-CuaInstall}; if ($Subcommand -eq 'warm' -and -not $Suboperation) {return Invoke-CuaWarm}; throw 'Usage: cua [status|install|warm|bridge]' }
+        'cua' { if ($Subcommand -eq 'status' -and -not $Suboperation) {return Get-CuaStatus}; if ($Subcommand -eq 'install' -and -not $Suboperation) {return Invoke-CuaInstall}; if ($Subcommand -eq 'warm' -and -not $Suboperation) {return Invoke-CuaWarm}; if ($Subcommand -eq 'check-update' -and -not $Suboperation) {return Invoke-CuaCheckUpdate}; throw 'Usage: cua [status|install|warm|check-update|bridge]' }
         default { throw 'Usage: version|probe [display]|sunshine|clip|cua' }
     }
 }
@@ -1066,6 +1151,7 @@ $script:SafeFailures = @(
     'Cua autostart uses elevated permissions; user review required',
     'Cua permissions are elevated or unknown; user review required',
     'Cua installer failed; existing autostart was not changed',
+    'Cua download failed; nothing was changed',
     'Cua autostart belongs to another user',
     'Cua requires the SSH user to match the console user',
     'Cua requires a confirmed unlocked console session',

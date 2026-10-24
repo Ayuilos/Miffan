@@ -145,6 +145,17 @@ data class RemoteMachineProbe(
 /** Result of a remote install or upgrade the user confirmed; [output] is the command's tail. */
 data class RemoteCommandOutcome(val success: Boolean, val output: String)
 
+/** `miffan cua check-update`: cua-driver's own release check. Read-only. */
+@Serializable
+data class RemoteCuaUpdateCheck(
+    @SerialName("current_version") val currentVersion: String? = null,
+    @SerialName("latest_version") val latestVersion: String? = null,
+    @SerialName("update_available") val updateAvailable: Boolean = false,
+    @SerialName("release_notes_url") val releaseNotesUrl: String? = null,
+    /** `not_installed`, `check_failed`, or cua-driver's own reason (no network, GitHub refused). */
+    val error: String? = null,
+)
+
 /** A desktop viewer bound to a workspace's SSH lease. Call [RemoteDesktopSession.start] once. */
 class RemoteScreenConnection internal constructor(
     val hostId: String,
@@ -668,9 +679,18 @@ class RemoteScreenRepository(
     suspend fun probeHost(hostId: String, expectedRevision: String): RemoteMachineProbe =
         probe(workspaceOnHost(hostId, expectedRevision))
 
+    /** Asks the host's cua-driver whether a newer release exists; see [probeHost]. */
+    suspend fun checkCuaUpdateOnHost(hostId: String, expectedRevision: String): RemoteCuaUpdateCheck =
+        withRemote(workspaceOnHost(hostId, expectedRevision)) { ssh ->
+            ensureHelper(ssh)
+            val result = ssh.execute(screenHelperCommand(ssh.platform, "cua check-update"), timeoutMillis = 45_000)
+            check(result.exitCode == 0 && !result.timedOut) { result.stderr.ifBlank { "Update check failed" } }
+            json.decodeFromString<RemoteCuaUpdateCheck>(result.stdout.trim().lineSequence().last())
+        }
+
     /** [installCuaDriver] for a host; see [probeHost]. */
-    suspend fun installCuaDriverOnHost(hostId: String, expectedRevision: String, upgradePath: String?): RemoteCommandOutcome =
-        installCuaDriver(workspaceOnHost(hostId, expectedRevision), upgradePath)
+    suspend fun installCuaDriverOnHost(hostId: String, expectedRevision: String): RemoteCommandOutcome =
+        installCuaDriver(workspaceOnHost(hostId, expectedRevision))
 
     private suspend fun workspaceOnHost(hostId: String, expectedRevision: String): String {
         val host = hostDao.getById(hostId) ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
@@ -709,13 +729,13 @@ class RemoteScreenRepository(
     }
 
     /**
-     * Installs cua-driver, or upgrades it when [upgradePath] names the installed binary. Runs the
+     * Installs cua-driver, or updates the installed one, through the helper. Runs the
      * vendor's installer on the remote machine, so call it only after the user confirmed.
      */
-    suspend fun installCuaDriver(workspaceId: String, upgradePath: String?): RemoteCommandOutcome =
+    suspend fun installCuaDriver(workspaceId: String): RemoteCommandOutcome =
         withRemote(workspaceId) { ssh ->
-            if (ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) ensureHelper(ssh)
-            val command = cuaDriverCommand(upgradePath, ssh.platform)
+            ensureHelper(ssh)
+            val command = cuaDriverCommand(ssh.platform)
             val result = ssh.execute(command, timeoutMillis = 10 * 60_000L, maxOutputBytes = 256 * 1024)
             RemoteCommandOutcome(result.exitCode == 0 && !result.timedOut,
                 (result.stdout + result.stderr).lines().takeLast(30).joinToString("\n"))
@@ -774,26 +794,13 @@ class RemoteScreenRepository(
 
     companion object {
         /**
-         * The exact shell command [installCuaDriver] runs, for the confirmation the user sees:
-         * the vendor installer, or `<path> update --apply` when upgrading [upgradePath].
+         * The exact command [installCuaDriver] runs, for the confirmation the user sees: the helper's
+         * `cua install`, which installs or updates cua-driver through the computer's own proxy.
          */
-        fun cuaDriverCommand(upgradePath: String?, platform: me.rerere.workspace.RemotePlatform = me.rerere.workspace.RemotePlatform.POSIX): String {
-            if (platform == me.rerere.workspace.RemotePlatform.WINDOWS) return screenHelperCommand(platform, "cua install")
-            val installer = "/bin/bash -c \"\$(curl -fsSL $CUA_INSTALLER)\""
-            // cua-driver 0.24's `update` fails its own release check ("Could not reach GitHub")
-            // even where `check-update` succeeds, so an upgrade falls back to the installer,
-            // which replaces the installed release in place.
-            val install = if (upgradePath != null) "${shellQuote(upgradePath)} update --apply || $installer" else installer
-            // The installer stops a running daemon; a systemd user service (Restart=on-failure)
-            // stays down after that clean stop, so bring it back on the new release.
-            return "$install; status=\$?; systemctl --user is-enabled cua-driver.service >/dev/null 2>&1 && " +
-                "systemctl --user restart cua-driver.service; exit \$status"
-        }
+        fun cuaDriverCommand(platform: me.rerere.workspace.RemotePlatform = me.rerere.workspace.RemotePlatform.POSIX): String =
+            screenHelperCommand(platform, "cua install")
 
         private const val HELPER = "\"\$HOME/.miffan/bin/miffan\""
-        private const val CUA_INSTALLER = "https://cua.ai/driver/install.sh"
-
-        private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
     }
 
     private fun RemoteHostEntity.screenConfig(hasPassword: Boolean) = RemoteHostScreenConfig(

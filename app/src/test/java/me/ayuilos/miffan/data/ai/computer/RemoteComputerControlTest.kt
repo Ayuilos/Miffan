@@ -18,6 +18,27 @@ class RemoteComputerControlTest {
     private var now = 1_000_000L
     private val control = RemoteComputerControl(clock = { now })
 
+    @Test fun anUpdateWaitsForThePartnerTurnAndKeepsPartnersOffUntilItEnds() = runTest {
+        assertEquals(PartnerActResult.Done("ok"), control.partnerActs("host", a) { "ok" })
+        assertEquals("a turn using the computer refuses the update", a, control.beginUpdate("host"))
+        assertEquals(a, control.partnerUsing("host"))
+
+        control.release("conversation-a")
+        assertEquals(null, control.partnerUsing("host"))
+        assertEquals(null, control.beginUpdate("host"))
+        assertEquals(PartnerActResult.Updating, control.partnerActs("host", b) { "blocked" })
+
+        control.endUpdate("host")
+        assertEquals(PartnerActResult.Done("after"), control.partnerActs("host", b) { "after" })
+    }
+
+    @Test fun anIdleHolderDoesNotHoldUpAnUpdate() = runTest {
+        assertEquals(PartnerActResult.Done("ok"), control.partnerActs("host", a) { "ok" })
+        now += 90_001L
+        assertEquals(null, control.partnerUsing("host"))
+        assertEquals(null, control.beginUpdate("host"))
+    }
+
     @Test fun partnerRefusedWhileUserHoldsControlIsWaitingUntilHandBack() = runTest {
         assertEquals(PartnerActResult.Done("ok"), control.partnerActs("host", a) { "ok" })
         assertTrue(control.waiting.value.isEmpty())

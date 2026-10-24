@@ -711,6 +711,77 @@ Test 'install refuses elevated existing task before network or mutation (mocked)
     try {Invoke-CuaInstall} catch {$message=$_.Exception.Message}
     Assert-Equal $message 'Cua autostart uses elevated permissions; user review required' 'explicit review refusal'
 }
+Test 'install follows the stable release and keeps the autostart ordinary (mocked)' {
+    function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
+    function Test-CuaTaskOwner {param($Task,$Sid);return $true}
+    $script:Releases=@();$script:Registered=0
+    function Test-CuaDownloadReachable {return $true}
+    function Install-CuaRelease {param($Release);$script:Releases+=,$Release}
+    function Register-CuaDaemonTask {param($Sid);$script:Registered++}
+    function Get-CuaStatus {return @{ok=$true;version=$(if ($script:Releases.Count) {'0.37.0'} else {'0.34.0'});permission_review_needed=$false}}
+    function Test-CuaWorks {param($Version);Assert-Equal $Version '0.37.0' 'new release checked';return $true}
+    $result=Invoke-CuaInstall
+    Assert-True $result.success 'update succeeded'
+    Assert-Equal $result.version '0.37.0' 'installed version reported'
+    Assert-Equal $result.previous '0.34.0' 'previous version reported'
+    Assert-Equal ($script:Releases -join ',') '' 'only the stable release installed'
+    Assert-Equal $script:Registered 1 'ordinary autostart registered once'
+}
+Test 'install puts the previous release back when the new one fails its check (mocked)' {
+    function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
+    function Test-CuaTaskOwner {param($Task,$Sid);return $true}
+    $script:Releases=@();$script:Registered=0
+    function Test-CuaDownloadReachable {return $true}
+    function Install-CuaRelease {param($Release);$script:Releases+=,$Release}
+    function Register-CuaDaemonTask {param($Sid);$script:Registered++}
+    function Get-CuaStatus {return @{ok=$true;version=$(if ($script:Releases.Count -eq 1) {'0.37.0'} else {'0.34.0'});permission_review_needed=$false}}
+    function Test-CuaWorks {param($Version);return $Version -eq '0.34.0'}
+    $result=Invoke-CuaInstall
+    Assert-True (-not $result.success) 'update reported as failed'
+    Assert-True $result.rolled_back 'previous release works again'
+    Assert-Equal $result.failed_version '0.37.0' 'failed release named'
+    Assert-Equal $result.version '0.34.0' 'previous release installed'
+    Assert-Equal ($script:Releases -join ',') ',0.34.0' 'stable, then the previous release'
+    Assert-Equal $script:Registered 2 'autostart registered for each release'
+}
+Test 'install that leaves the same version is not reported as an update (mocked)' {
+    function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
+    function Test-CuaTaskOwner {param($Task,$Sid);return $true}
+    function Test-CuaDownloadReachable {return $true}
+    function Install-CuaRelease {param($Release)}
+    function Register-CuaDaemonTask {throw 'MUST NOT REREGISTER'}
+    function Get-CuaStatus {return @{ok=$true;version='0.34.0';permission_review_needed=$false}}
+    $result=Invoke-CuaInstall
+    Assert-True (-not $result.success) 'unchanged version is a failed update'
+    Assert-Equal $result.version '0.34.0' 'installed version unchanged'
+}
+Test 'install stops before the installer when GitHub downloads are unreachable (mocked)' {
+    function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
+    function Test-CuaTaskOwner {param($Task,$Sid);return $true}
+    function Get-CuaStatus {return @{ok=$true;version='0.34.0';permission_review_needed=$false}}
+    function Test-CuaDownloadReachable {return $false}
+    function Install-CuaRelease {throw 'MUST NOT INSTALL'}
+    $message=$null
+    try {Invoke-CuaInstall} catch {$message=$_.Exception.Message}
+    Assert-Equal $message 'Cua download failed; nothing was changed' 'blocked network reported before any change'
+}
+Test 'install refuses an invalid release before downloading (mocked)' {
+    function New-PrivateDirectory {throw 'MUST NOT CREATE A DIRECTORY'}
+    function Invoke-WebRequest {throw 'MUST NOT DOWNLOAD'}
+    $message=$null
+    try {Install-CuaRelease '0.34.0; calc'} catch {$message=$_.Exception.Message}
+    Assert-Equal $message 'Cua installer failed; existing autostart was not changed' 'release refused'
+}
+Test 'install check accepts a running daemon on a locked desktop without the bridge (mocked)' {
+    function Get-CuaStatus {return @{ok=$true;version='0.37.0';daemon_session_ids=@(1)}}
+    function Get-CuaBridgeContext {return @{console=@{present=$true;sid='S-1';id=1;lock_state='locked'}}}
+    function Ensure-CuaBridge {throw 'MUST NOT START THE BRIDGE'}
+    Assert-True (Test-CuaWorks '0.37.0') 'locked desktop: daemon is enough'
+}
+Test 'check-update reports a missing driver (mocked)' {
+    function Get-CuaExecutable {return $null}
+    Assert-Equal (Invoke-CuaCheckUpdate).error 'not_installed' 'not installed'
+}
 Test 'clipboard chooses available bridge, and unavailable bridge falls back (mocked)' {
     function Get-CuaBridgeContext {return @{console=@{present=$true;sid='S-1';id=1;lock_state='unlocked'};sid='S-1';pipe='Miffan-offline';directory='C:\offline'}}
     function Test-CuaBridgeAvailable {param($Name);return $false}

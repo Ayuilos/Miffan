@@ -76,6 +76,8 @@ internal fun SetupScreen(
     /** Centre the title (screens led by a picture). */
     centered: Boolean = false,
     hero: (@Composable () -> Unit)? = null,
+    /** A small line above the title, such as the computer a status page is about. */
+    eyebrow: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val resources = LocalResources.current
@@ -88,6 +90,10 @@ internal fun SetupScreen(
             if (title != null) Column(Modifier.fillMaxWidth().padding(top = if (hero == null) 8.dp else 0.dp, bottom = 8.dp),
                 horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                eyebrow?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold,
                     textAlign = if (centered) TextAlign.Center else TextAlign.Start)
                 subtitle?.let {

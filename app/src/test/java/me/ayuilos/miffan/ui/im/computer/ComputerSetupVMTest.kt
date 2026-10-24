@@ -7,6 +7,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -14,7 +15,12 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import me.ayuilos.miffan.data.ai.computer.ComputerStatusRecord
+import me.ayuilos.miffan.data.ai.computer.ComputerStatusStore
+import me.ayuilos.miffan.data.ai.computer.CuaUpdateState
+import me.ayuilos.miffan.data.ai.computer.CuaUpdates
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
+import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.SettingsStore
@@ -30,6 +36,7 @@ import me.ayuilos.miffan.data.remote.NearbyNetwork
 import me.ayuilos.miffan.data.remote.NearbySystem
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.KeySignInCheck
+import me.ayuilos.miffan.data.repository.RemoteCuaUpdateCheck
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.RemoteAuthentication
@@ -76,14 +83,20 @@ class ComputerSetupVMTest {
         val screens = mockk<RemoteScreenRepository>()
         val registry = mockk<RemoteComputerRegistry>()
         val computers = mockk<PartnerComputers>()
+        val updateStates = MutableStateFlow<Map<String, CuaUpdateState>>(emptyMap())
+        val updates = mockk<CuaUpdates>(relaxed = true)
+        val statuses = mockk<ComputerStatusStore>(relaxed = true)
+        val control = RemoteComputerControl()
         val probe = RemoteMachineProbe(
             helper = 5, os = "linux", arch = "x86_64",
             session = RemoteMachineProbe.Session(present = true, type = "wayland"),
-            cua = RemoteMachineProbe.Cua(min = "0.34.0", ok = true),
+            cua = RemoteMachineProbe.Cua(path = "/usr/bin/cua-driver", version = "0.35.4", min = "0.34.0", ok = true),
             vnc = RemoteMachineProbe.Vnc(server = "wayvnc"),
         )
 
         init {
+            every { updates.states } returns updateStates
+            coEvery { updates.check(any(), any(), any()) } returns null
             every { store.settingsFlow } returns settings
             every { workspaces.listFlow() } returns workspaceList
             every { workspaces.listHostsFlow() } returns MutableStateFlow(listOf(host))
@@ -106,7 +119,7 @@ class ComputerSetupVMTest {
     }
 
     private fun vm(f: Fixture, args: ComputerSetupArgs = ComputerSetupArgs()): ComputerSetupVM =
-        ComputerSetupVM(args, f.workspaces, f.screens, f.registry, f.store, f.computers).also {
+        ComputerSetupVM(args, f.workspaces, f.screens, f.registry, f.store, f.computers, f.updates, f.statuses, f.control).also {
             viewModels.put(Uuid.random().toString(), it)
         }
 
@@ -145,6 +158,31 @@ class ComputerSetupVMTest {
         assertEquals(f.probe, vm.state.value.probe)
         assertTrue(vm.state.value.ready)
         assertFalse(vm.back())
+    }
+
+    @Test
+    fun `a status page offers a newer helper and saves what it found`() = runTest {
+        val f = Fixture()
+        coEvery { f.updates.check("host", any(), any()) } returns
+            RemoteCuaUpdateCheck(currentVersion = "0.35.4", latestVersion = "0.37.0", updateAvailable = true)
+        val vm = vm(f, ComputerSetupArgs(hostId = "host", status = true))
+        runCurrent()
+        assertTrue(vm.statusPage)
+        assertTrue(vm.state.value.ready)
+        assertEquals("0.37.0", vm.state.value.cuaUpdateTo)
+        assertEquals(0, vm.state.value.pendingCount)
+        verify { f.statuses.put("host", match<ComputerStatusRecord> { it.pending == 0 && it.updateTo == "0.37.0" }) }
+        vm.updateCuaDriver()
+        verify { f.updates.start("host", any(), "/usr/bin/cua-driver", "0.35.4", "0.37.0") }
+    }
+
+    @Test
+    fun `setup never asks for helper updates`() = runTest {
+        val f = Fixture()
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        coVerify(exactly = 0) { f.updates.check(any(), any(), any()) }
+        assertNull(vm.state.value.cuaUpdateTo)
     }
 
     @Test

@@ -292,14 +292,16 @@ class RouteActivity : ComponentActivity() {
         super.onNewIntent(intent)
         normalLauncherEntry = isNormalLauncherEntry(intent)
         // Navigate to the chat screen if a conversation ID is provided
-        notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"))?.let {
+        notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"),
+            intent.getStringExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA))?.let {
             navStack?.add(it)
         }
     }
 
     private fun isNormalLauncherEntry(intent: Intent?): Boolean = intent != null &&
         (intent.action == Intent.ACTION_MAIN || intent.action == null) && intent.data == null &&
-        !intent.hasExtra("chatId") && !intent.hasExtra("conversationId") && !intent.hasExtra(Intent.EXTRA_TEXT) &&
+        !intent.hasExtra("chatId") && !intent.hasExtra("conversationId") &&
+        !intent.hasExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA) && !intent.hasExtra(Intent.EXTRA_TEXT) &&
         !intent.hasExtra(Intent.EXTRA_STREAM)
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -336,7 +338,8 @@ class RouteActivity : ComponentActivity() {
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
         val requestedStartScreen: Screen = remember {
-            notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"))
+            notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"),
+            intent.getStringExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA))
                 ?: if (settings.isNotConfigured()) {
                     Screen.Onboarding
                 } else if (settings.isImMode) {
@@ -354,7 +357,8 @@ class RouteActivity : ComponentActivity() {
         val conversations = koinInject<me.ayuilos.miffan.data.db.dao.ConversationDAO>()
         val startScreen by produceState<Screen?>(initialValue = null, requestedStartScreen) {
             value = if (!settings.isImMode && requestedStartScreen is Screen.Chat &&
-                notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId")) == null) {
+                notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"),
+            intent.getStringExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA)) == null) {
                 professionalStartupDestination(requestedStartScreen, conversations)
             } else requestedStartScreen
         }
@@ -486,7 +490,7 @@ class RouteActivity : ComponentActivity() {
 
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ComputerSetup> { key ->
-                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen))
+                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen, key.status))
                             }
                             entry<Screen.Computers> { ComputersPage() }
                             entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
@@ -870,7 +874,11 @@ sealed interface Screen : NavKey {
 
     /** Connect a computer: for one partner, or with no partner from "my computers"; see ComputerSetupArgs. */
     @Serializable
-    data class ComputerSetup(val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false, val screen: Boolean = false) : Screen
+    data class ComputerSetup(
+        val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false, val screen: Boolean = false,
+        /** A saved computer's status page instead of its setup; see ComputerSetupArgs.status. */
+        val status: Boolean = false,
+    ) : Screen
 
     /** Easy chat's list of computers. */
     @Serializable
@@ -1079,8 +1087,9 @@ sealed interface Screen : NavKey {
 }
 
 /** Shared by cold launches and notification taps while the activity is already running. */
-internal fun notificationDestination(chatId: String?, conversationId: String?): Screen? = when {
+internal fun notificationDestination(chatId: String?, conversationId: String?, computerId: String? = null): Screen? = when {
     chatId != null -> Screen.PartnerChat(chatId)
     conversationId != null -> Screen.Chat(conversationId)
+    computerId != null -> Screen.ComputerSetup(hostId = computerId, status = true)
     else -> null
 }

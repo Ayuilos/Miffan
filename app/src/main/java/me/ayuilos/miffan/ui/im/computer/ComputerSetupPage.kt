@@ -11,7 +11,9 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.data.ai.computer.CuaUpdateState
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -37,7 +39,9 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     val nav = LocalNavController.current
     val assistants = LocalSettings.current.assistants
     // This page's own entry on the back stack, to replace it on the way out.
-    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen)
+    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status)
+    val statusPage = args.status && state.step == ComputerSetupStep.READY
+    val update by vm.cuaUpdate.collectAsStateWithLifecycle()
     fun back() {
         if (state.busy) return
         if (!vm.back()) nav.popBackStack()
@@ -48,7 +52,14 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
             title = {
                 when {
                     state.editing && state.step == ComputerSetupStep.MANUAL -> Text(host?.name.orEmpty())
+                    statusPage -> Text(stringResource(R.string.im_computer_status_title))
                     else -> state.step.dot()?.let { StepDots(it) }
+                }
+            },
+            actions = {
+                if (statusPage) IconButton(onClick = vm::reprobe,
+                    enabled = !state.busy && update !is CuaUpdateState.Running && update !is CuaUpdateState.Waiting) {
+                    Icon(HugeIcons.Refresh01, stringResource(R.string.im_computer_recheck))
                 }
             },
             navigationIcon = {

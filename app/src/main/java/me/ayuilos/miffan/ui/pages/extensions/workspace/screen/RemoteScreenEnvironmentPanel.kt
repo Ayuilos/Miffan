@@ -177,7 +177,7 @@ internal fun RemoteScreenEnvironmentPanel(
                 Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.workspace_screen_install_disclosure))
-                    RemoteScreenCopyCommand(host.name, remoteCuaDriverCommand(request.upgradePath, RemotePlatform.parse(host.platform)))
+                    RemoteScreenCopyCommand(host.name, remoteCuaDriverCommand(RemotePlatform.parse(host.platform)))
                 }
             },
             confirmButton = {
