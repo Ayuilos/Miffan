@@ -715,7 +715,7 @@ Test 'install follows the stable release and keeps the autostart ordinary (mocke
     function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
     function Test-CuaTaskOwner {param($Task,$Sid);return $true}
     $script:Releases=@();$script:Registered=0
-    function Test-CuaDownloadReachable {return $true}
+    function Test-CuaDownloadFast {return $true}
     function Install-CuaRelease {param($Release);$script:Releases+=,$Release}
     function Register-CuaDaemonTask {param($Sid);$script:Registered++}
     function Get-CuaStatus {return @{ok=$true;version=$(if ($script:Releases.Count) {'0.37.0'} else {'0.34.0'});permission_review_needed=$false}}
@@ -731,7 +731,7 @@ Test 'install puts the previous release back when the new one fails its check (m
     function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
     function Test-CuaTaskOwner {param($Task,$Sid);return $true}
     $script:Releases=@();$script:Registered=0
-    function Test-CuaDownloadReachable {return $true}
+    function Test-CuaDownloadFast {return $true}
     function Install-CuaRelease {param($Release);$script:Releases+=,$Release}
     function Register-CuaDaemonTask {param($Sid);$script:Registered++}
     function Get-CuaStatus {return @{ok=$true;version=$(if ($script:Releases.Count -eq 1) {'0.37.0'} else {'0.34.0'});permission_review_needed=$false}}
@@ -747,7 +747,7 @@ Test 'install puts the previous release back when the new one fails its check (m
 Test 'install that leaves the same version is not reported as an update (mocked)' {
     function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
     function Test-CuaTaskOwner {param($Task,$Sid);return $true}
-    function Test-CuaDownloadReachable {return $true}
+    function Test-CuaDownloadFast {return $true}
     function Install-CuaRelease {param($Release)}
     function Register-CuaDaemonTask {throw 'MUST NOT REREGISTER'}
     function Get-CuaStatus {return @{ok=$true;version='0.34.0';permission_review_needed=$false}}
@@ -755,11 +755,11 @@ Test 'install that leaves the same version is not reported as an update (mocked)
     Assert-True (-not $result.success) 'unchanged version is a failed update'
     Assert-Equal $result.version '0.34.0' 'installed version unchanged'
 }
-Test 'install stops before the installer when GitHub downloads are unreachable (mocked)' {
+Test 'install stops before the installer when GitHub downloads are unreachable or too slow (mocked)' {
     function Get-CuaTask {return @{Principal=@{RunLevel='Limited';LogonType='Interactive'}}}
     function Test-CuaTaskOwner {param($Task,$Sid);return $true}
     function Get-CuaStatus {return @{ok=$true;version='0.34.0';permission_review_needed=$false}}
-    function Test-CuaDownloadReachable {return $false}
+    function Test-CuaDownloadFast {return $false}
     function Install-CuaRelease {throw 'MUST NOT INSTALL'}
     $message=$null
     try {Invoke-CuaInstall} catch {$message=$_.Exception.Message}

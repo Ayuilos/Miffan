@@ -3,7 +3,7 @@
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
 param([string]$Command, [string]$Action, [string]$Operation)
 
-$script:HelperVersion = 12
+$script:HelperVersion = 13
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -981,11 +981,24 @@ function Invoke-CuaClipboard([string]$Text) {
     if (-not [MiffanCuaBridge]::Clipboard($context.pipe,$context.directory,$Text)) {throw 'Clipboard readback did not match'}
     return @{success=$true;verified=$true;session_id=$context.console.id;transport='cua-bridge';detail='Clipboard written and read back'}
 }
-# Whether this computer reaches GitHub's release downloads. Any HTTP answer counts; only a connection that
-# never answers (a network that blocks GitHub) does not. Checked first so a blocked update fails in seconds.
-function Test-CuaDownloadReachable {
-    try {$null=Invoke-WebRequest -UseBasicParsing -Method Head -Uri 'https://release-assets.githubusercontent.com/' -TimeoutSec 15; return $true}
-    catch {return $null -ne $_.Exception.Response}
+# Whether 1 MiB of a GitHub release arrives within 20 s, through the system proxy as the installer's own
+# download goes. The release is tens of MB, so a blocked or crawling network fails here in seconds
+# instead of leaving the installer running for many minutes.
+function Test-CuaDownloadFast {
+    $response=$null
+    try {
+        $request=[Net.HttpWebRequest]::Create('https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.34.0/cua-driver-rs-0.34.0-windows-x86_64.zip')
+        $request.AddRange(0,1048575); $request.Timeout=20000; $request.ReadWriteTimeout=20000
+        $watch=[Diagnostics.Stopwatch]::StartNew()
+        $response=$request.GetResponse(); $stream=$response.GetResponseStream()
+        $buffer=New-Object byte[] 65536; $total=0
+        while ($total -lt 1048576 -and $watch.ElapsedMilliseconds -lt 20000) {
+            $read=$stream.Read($buffer,0,$buffer.Length)
+            if ($read -le 0) {break}
+            $total+=$read
+        }
+        return $total -ge 1048576
+    } catch {return $false} finally {if ($response) {$response.Close()}}
 }
 # Runs the official installer for [Release] (empty: the stable release it resolves) in isolated mode, so
 # it never re-registers the autostart task as Highest; Invoke-CuaInstall owns the task.
@@ -1065,7 +1078,7 @@ function Invoke-CuaInstall {
     if ($existing -and -not (Test-CuaTaskOwner $existing $sid)) {throw 'Cua autostart belongs to another user'}
     $before=Get-CuaStatus
     $previous=$(if ($before.ok) {$before.version} else {$null})
-    if (-not (Test-CuaDownloadReachable)) {throw 'Cua download failed; nothing was changed'}
+    if (-not (Test-CuaDownloadFast)) {throw 'Cua download failed; nothing was changed'}
     Install-CuaRelease ''
     $status=Get-CuaStatus
     if (-not $status.version -or [version]$status.version -lt [version]$script:CuaMinVersion -or $status.permission_review_needed) {throw 'Cua installation could not be verified'}
