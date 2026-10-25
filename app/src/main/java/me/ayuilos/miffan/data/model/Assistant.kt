@@ -7,6 +7,7 @@ import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.core.ReasoningLevel
+import me.ayuilos.miffan.data.ai.tools.local.DEFAULT_LOCAL_TOOLS
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.utils.SimpleCache
 import me.rerere.workspace.WorkspaceScope
@@ -45,7 +46,7 @@ data class Assistant(
     val mcpServers: Set<Uuid> = emptySet(),
     /** Exact tool names the owner has allowed to run without asking again. */
     val standingToolApprovals: Set<String> = emptySet(),
-    val localTools: List<LocalToolOption> = listOf(LocalToolOption.TimeInfo),
+    val localTools: List<LocalToolOption> = DEFAULT_LOCAL_TOOLS,
     val miffanHelpOverride: MiffanHelpOverride = MiffanHelpOverride.INHERIT,
     val enableWebSearch: Boolean = false, // 网络搜索开关(每个助手独立)
     val workspaceId: Uuid? = null,

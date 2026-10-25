@@ -15,6 +15,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.standingApprovalKey
+import me.ayuilos.miffan.data.ai.tools.PartnerAbility
+import me.ayuilos.miffan.data.ai.tools.REQUEST_ABILITY
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.components.message.tools.DefaultToolPreview
@@ -26,7 +28,11 @@ import me.ayuilos.miffan.ui.im.ImCardButton
 import me.ayuilos.miffan.ui.im.ImCardButtons
 import me.ayuilos.miffan.ui.im.ImCardOutlinedButton
 import me.ayuilos.miffan.ui.im.ImCardStatus
+import me.ayuilos.miffan.ui.im.description
+import me.ayuilos.miffan.ui.im.icon
 import me.ayuilos.miffan.ui.im.partnerName
+import me.ayuilos.miffan.ui.im.rememberAbilityGate
+import me.ayuilos.miffan.ui.im.title
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ComputerTerminal01
@@ -82,6 +88,8 @@ internal fun ApprovalCardFrame(
     onAllow: ((always: Boolean) -> Unit)? = null,
     /** Allowing does something risky (an agent that skips every question); the button turns red. */
     allowDanger: Boolean = false,
+    /** Runs before the allow takes effect and calls `proceed` once it may (e.g. after a system permission). */
+    beforeAllow: ((proceed: () -> Unit) -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val actions = LocalToolCardActions.current
@@ -105,13 +113,16 @@ internal fun ApprovalCardFrame(
         } else {
             ImCardButtons {
                 ImCardButton(allowLabel, enabled = allowEnabled && LocalToolCardAllowEnabled.current, danger = allowDanger, onClick = {
-                    allowed = true
-                    val alwaysChosen = always && canAlways
-                    when {
-                        onAllow != null -> onAllow(alwaysChosen)
-                        alwaysChosen -> actions!!.alwaysAllow(tool.toolCallId)
-                        else -> onApproval(tool.toolCallId, true)
+                    val proceed = {
+                        allowed = true
+                        val alwaysChosen = always && canAlways
+                        when {
+                            onAllow != null -> onAllow(alwaysChosen)
+                            alwaysChosen -> actions!!.alwaysAllow(tool.toolCallId)
+                            else -> onApproval(tool.toolCallId, true)
+                        }
                     }
+                    beforeAllow?.invoke(proceed) ?: proceed()
                 })
                 ImCardOutlinedButton(stringResource(R.string.im_p5_not_now), onClick = {
                     decline?.invoke(tool.toolCallId) ?: onApproval(tool.toolCallId, false)
@@ -193,6 +204,7 @@ internal fun ThreadGenericApprovalCard(tool: UIMessagePart.Tool, assistant: Assi
     val renderer = remember(tool.toolName) { ToolUIRegistry.resolve(tool.toolName) }
     val path = toolArg(tool, "path")
     when (tool.toolName) {
+        REQUEST_ABILITY -> ThreadAbilityRequestCard(tool, who, onApproval)
         REQUEST_WEB_SEARCH -> ApprovalCardFrame(tool, stringResource(R.string.im_approval_web_search, who), onApproval,
             icon = HugeIcons.Globe02, footnote = stringResource(R.string.im_p5_web_permission)) {
             Text(toolArg(tool, "reason") ?: stringResource(R.string.im_p5_web))
@@ -256,3 +268,26 @@ internal fun ThreadGenericApprovalCard(tool: UIMessagePart.Tool, assistant: Assi
 }
 
 private const val MAX_ARG_FIELDS = 4
+
+/**
+ * The partner asks to switch on one of its abilities. Allowing first gets what Android needs for it
+ * (calendar permission, usage access); only then is the request approved and the ability turned on.
+ */
+@Composable
+private fun ThreadAbilityRequestCard(tool: UIMessagePart.Tool, who: String, onApproval: (String, Boolean) -> Unit) {
+    val ability = PartnerAbility.of(toolArg(tool, "ability"))
+    if (ability == null) {
+        ApprovalCardFrame(tool, stringResource(R.string.im_approval_tool, who, tool.toolName), onApproval, icon = HugeIcons.Tools)
+        return
+    }
+    val gate = rememberAbilityGate()
+    ApprovalCardFrame(tool, stringResource(R.string.im_ability_request_title, who, stringResource(ability.title)), onApproval,
+        icon = ability.icon, allowLabel = stringResource(R.string.im_ability_turn_on), footnote = stringResource(ability.description),
+        beforeAllow = { proceed -> gate.request(ability, proceed) }) {
+        toolArg(tool, "reason")?.let { Text(it) }
+        if (gate.waitingFor == ability) Text(
+            stringResource(if (ability == PartnerAbility.CALENDAR) R.string.im_ability_waiting_calendar else R.string.im_ability_waiting_usage),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}

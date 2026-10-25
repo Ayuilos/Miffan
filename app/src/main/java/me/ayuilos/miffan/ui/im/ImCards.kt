@@ -242,17 +242,10 @@ internal fun ImChoiceQuiz(
                     QuizOption(index, option, chosen = false, onClick = if (enabled) ({ onPick(index) }) else null)
                 }
             } else {
-                Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { expanded = !expanded }
-                    .heightIn(min = 40.dp).padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(HugeIcons.LeftToRightListBullet, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(when (answer) {
-                        is QuizAnswer.Picked -> stringResource(R.string.im_quiz_picked, quizLetter(answer.index))
-                        QuizAnswer.Replied -> stringResource(R.string.im_quiz_replied)
-                    }, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(stringResource(if (expanded) R.string.im_quiz_hide else R.string.im_quiz_view),
-                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                }
+                ImFoldedLine(when (answer) {
+                    is QuizAnswer.Picked -> stringResource(R.string.im_quiz_picked, quizLetter(answer.index))
+                    QuizAnswer.Replied -> stringResource(R.string.im_quiz_replied)
+                }, expanded) { expanded = !expanded }
                 if (expanded) Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     options.forEachIndexed { index, option ->
                         QuizOption(index, option, chosen = answer == QuizAnswer.Picked(index), onClick = null)
@@ -260,6 +253,19 @@ internal fun ImChoiceQuiz(
                 }
             }
         }
+    }
+}
+
+/** A settled question folded into one line; tapping it shows what was asked again, read-only. */
+@Composable
+internal fun ImFoldedLine(summary: String, expanded: Boolean, onToggle: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = onToggle)
+        .heightIn(min = 40.dp).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(HugeIcons.LeftToRightListBullet, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(if (expanded) R.string.im_quiz_hide else R.string.im_quiz_view),
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     }
 }
 

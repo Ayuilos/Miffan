@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.tools.PartnerAbility
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.datastore.findModelById
@@ -71,6 +72,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     var deletePartnerConfirm by rememberSaveable { mutableStateOf(false) }
     var showContacts by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    val abilities = rememberAbilityGate()
     val failure = stringResource(R.string.im_p5_failed)
     val deleted = stringResource(R.string.im_p5_chats_deleted)
     fun perform(message: String? = null, block: suspend () -> Unit) {
@@ -123,6 +125,20 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                         onClick = { perform { vm.update { it.copy(enableWebSearch = !it.enableWebSearch) } } },
                         trailing = { Switch(partner.enableWebSearch, { enabled -> perform { vm.update { it.copy(enableWebSearch = enabled) } } }, enabled = !busy) })
                     ImCardDivider()
+                    PartnerAbility.entries.forEach { ability ->
+                        val on = ability.option in partner.localTools
+                        // Turning on first gets what Android needs (calendar permission, usage access).
+                        val switch = { enabled: Boolean ->
+                            if (!enabled) perform { vm.update { it.copy(localTools = it.localTools - ability.option) } }
+                            else abilities.request(ability) {
+                                perform { vm.update { if (ability.option in it.localTools) it else it.copy(localTools = it.localTools + ability.option) } }
+                            }
+                        }
+                        ImListRow(ability.icon, stringResource(ability.title), enabled = !busy, tone = ImIconTone.PRIMARY,
+                            supporting = stringResource(ability.description), onClick = { switch(!on) },
+                            trailing = { Switch(on, { switch(it) }, enabled = !busy) })
+                        ImCardDivider()
+                    }
                     val bound = computer
                     when {
                         bound != null -> {

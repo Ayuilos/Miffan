@@ -19,14 +19,14 @@ class ImPartnerTemplatesTest {
             assertEquals(chinese.map { it.id }, templates.map { it.id })
             assertEquals(chinese.map { it.avatar }, templates.map { it.avatar })
             templates.dropLast(1).forEach {
-                assertEquals(listOf(LocalToolOption.TimeInfo), it.assistant().localTools)
+                assertEquals(listOf(LocalToolOption.TimeInfo, LocalToolOption.AskUser), it.assistant().localTools)
                 assertEquals(MiffanHelpOverride.INHERIT, it.assistant().miffanHelpOverride)
             }
         }
         assertEquals("反馈助手", chinese.last().name); assertEquals("Bug reporter", english.last().name)
         for (template in variants.map { it.last() }) {
             val assistant = template.assistant()
-            assertEquals(setOf(LocalToolOption.TimeInfo, LocalToolOption.BugReport), assistant.localTools.toSet())
+            assertEquals(setOf(LocalToolOption.TimeInfo, LocalToolOption.AskUser, LocalToolOption.BugReport), assistant.localTools.toSet())
             assertEquals(MiffanHelpOverride.ENABLED, assistant.miffanHelpOverride)
             assertTrue(assistant.useAssistantAvatar)
             assertTrue(template.description.isNotBlank())

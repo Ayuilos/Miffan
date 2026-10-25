@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import me.ayuilos.miffan.data.ai.tools.local.DEFAULT_LOCAL_TOOLS
 import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.model.MiffanHelpOverride
 import me.ayuilos.miffan.data.model.Assistant
@@ -17,7 +18,7 @@ internal data class ImPartnerTemplate(
     val description: String,
     val prompt: String,
     val avatar: Avatar,
-    val localTools: List<LocalToolOption> = listOf(LocalToolOption.TimeInfo),
+    val localTools: List<LocalToolOption> = DEFAULT_LOCAL_TOOLS,
     val miffanHelpOverride: MiffanHelpOverride = MiffanHelpOverride.INHERIT,
 ) {
     fun assistant() = Assistant(id = id, name = name, systemPrompt = prompt, avatar = avatar,
@@ -76,7 +77,7 @@ internal fun imPartnerTemplates(locale: Locale): List<ImPartnerTemplate> {
             Use draft_bug_report when ready for the owner's approval. Explain that submission happens on GitHub, submitted content is public, and the owner needs a GitHub account. The owner opens the link, reviews and submits; you cannot know whether it was submitted.
         """.trimIndent(),
         avatar = Avatar.Miffan(MiffanAppearance(palette = MiffanPalette.SEA_SALT, kind = MiffanKind.RICE)),
-        localTools = listOf(LocalToolOption.TimeInfo, LocalToolOption.BugReport),
+        localTools = DEFAULT_LOCAL_TOOLS + LocalToolOption.BugReport,
         miffanHelpOverride = MiffanHelpOverride.ENABLED,
     )
 }

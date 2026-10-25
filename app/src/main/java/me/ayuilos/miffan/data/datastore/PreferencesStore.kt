@@ -46,6 +46,7 @@ import me.ayuilos.miffan.data.datastore.migration.PreferenceStoreV1Migration
 import me.ayuilos.miffan.data.datastore.migration.PreferenceStoreV2Migration
 import me.ayuilos.miffan.data.datastore.migration.PreferenceStoreV3Migration
 import me.ayuilos.miffan.data.datastore.migration.dropRemovedSearchServices
+import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.InjectionPosition
@@ -84,6 +85,7 @@ private val Context.settingsStore by preferencesDataStore(
             WhaleThemeDiscoveryMigration(),
             InterfaceModeMigration(),
             OnboardingMigration(),
+            AskUserDefaultMigration(),
         )
     }
 )
@@ -146,6 +148,31 @@ internal class OnboardingMigration : DataMigration<Preferences> {
     override suspend fun cleanUp() = Unit
 }
 
+/**
+ * Asking the owner a question on a card became a default ability; partners made before that get it once.
+ * Fresh installations have no stored partners yet and start from the new defaults.
+ */
+internal class AskUserDefaultMigration : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+        currentData[SettingsStore.ASK_USER_DEFAULTED] == null
+
+    override suspend fun migrate(currentData: Preferences): Preferences = currentData.toMutablePreferences().apply {
+        this[SettingsStore.ASSISTANTS]?.let { stored -> this[SettingsStore.ASSISTANTS] = withAskUser(stored) }
+        this[SettingsStore.ASK_USER_DEFAULTED] = true
+    }
+
+    override suspend fun cleanUp() = Unit
+}
+
+/** The stored partners with [LocalToolOption.AskUser] turned on; unreadable data is left as it is. */
+internal fun withAskUser(assistantsJson: String): String = runCatching {
+    val assistants = JsonInstant.decodeFromString<List<Assistant>>(assistantsJson)
+    if (assistants.all { LocalToolOption.AskUser in it.localTools }) return assistantsJson
+    JsonInstant.encodeToString(assistants.map {
+        if (LocalToolOption.AskUser in it.localTools) it else it.copy(localTools = it.localTools + LocalToolOption.AskUser)
+    })
+}.getOrDefault(assistantsJson)
+
 class SettingsStore(
     context: Context,
     scope: AppScope,
@@ -161,6 +188,7 @@ class SettingsStore(
         val REMOTE_WORKSPACE_INTRO_SEEN = booleanPreferencesKey("remote_workspace_intro_seen")
         val INTERFACE_MODE = stringPreferencesKey("interface_mode")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val ASK_USER_DEFAULTED = booleanPreferencesKey("ask_user_defaulted")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
         val NETWORK_SETTING = stringPreferencesKey("network_setting")

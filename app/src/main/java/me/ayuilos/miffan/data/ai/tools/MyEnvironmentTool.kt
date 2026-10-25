@@ -30,7 +30,7 @@ fun createMyEnvironmentTool(
     require(settings.isImMode) { "my_environment is available only in IM mode" }
     return Tool(
         name = "my_environment",
-        description = "Read your own identity and current app environment. Use this when the owner asks who you are, what you can do, which workspace or computer you use, or which groups you belong to. Returns your name, avatar type, model/provider display names, abilities available this turn, group member names, and authorized contact names. No prompts, other partners' configuration, paths, connection URLs or credentials.",
+        description = "Read your own identity and current app environment. Use this when the owner asks who you are, what you can do, which workspace or computer you use, or which groups you belong to. Returns your name, avatar type, model/provider display names, a summary of abilities available this turn (every tool you were given is usable, listed or not), abilities that are off but can be requested with request_ability, group member names, and authorized contact names. No prompts, other partners' configuration, paths, connection URLs or credentials.",
         parameters = { InputSchema.Obj(buildJsonObject {}) },
         execute = {
             listOf(UIMessagePart.Text(buildMyEnvironment(
@@ -96,10 +96,15 @@ internal fun buildMyEnvironment(
             if ("extensions_preview_changes" in toolNames) add("扩展管理（变更需主人审批）")
             if ("miffan_help" in toolNames) add("Miffan 使用帮助")
             if ("send_message" in toolNames) add("联系伙伴")
+            imAbilityNames.forEach { (tool, label) -> if (tool in toolNames) add(label) }
             if ("use_skill" in toolNames) skillNames.distinct().forEach { add("Skill：$it") }
             settings.mcpServers.filter { it.id in caller.mcpServers }.forEach {
                 add("已绑定 MCP：${it.commonOptions.name}")
             }
+        })
+        if (REQUEST_ABILITY in toolNames) put("abilities_off", buildJsonArray {
+            // Off, but one request_ability call (approved by the owner) away.
+            PartnerAbility.offIn(caller.localTools).forEach { add("${it.id}：${offAbilityNames.getValue(it)}") }
         })
         workspaceName?.let { put("workspace", it) }
         computerName?.let { put("computer", it) }
@@ -134,4 +139,23 @@ private val localAbilityNames = linkedMapOf(
     "calendar_create" to "创建日历事件",
     "app_diagnostics" to "App 诊断（脱敏报错摘要）",
     "draft_bug_report" to "反馈草稿（需主人审批）",
+)
+
+private val imAbilityNames = linkedMapOf(
+    "update_my_profile" to "修改自己的资料（需主人审批）",
+    "update_my_preferences" to "记住主人对自己的长期要求",
+    "create_partner" to "创建新伙伴（需主人审批）",
+    "create_group_chat" to "创建群聊",
+    "invite_to_group_chat" to "邀请伙伴进群",
+    "view_chat_list" to "查看聊天列表",
+    "organize_chat_list" to "整理聊天列表",
+    "request_web_search" to "申请打开联网搜索（需主人同意）",
+)
+
+private val offAbilityNames = mapOf(
+    PartnerAbility.ASK_USER to "向主人提问",
+    PartnerAbility.CALENDAR to "查询日历、创建日历事件",
+    PartnerAbility.CLIPBOARD to "读写剪贴板",
+    PartnerAbility.SCREEN_TIME to "查询屏幕使用时间",
+    PartnerAbility.READ_ALOUD to "朗读",
 )

@@ -1,11 +1,14 @@
 package me.ayuilos.miffan.data.ai.tools
 
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import me.ayuilos.miffan.data.ai.tools.local.LocalToolOption
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.MessageRef
 import me.ayuilos.miffan.data.revision.RevisionAuthor
@@ -31,6 +34,8 @@ fun buildSelfConfigTools(
     trigger: MessageRef?,
     triggerText: String,
     webSearchEnabled: Boolean,
+    /** The partner's local tools; when given, the abilities still off can be requested with [REQUEST_ABILITY]. */
+    localTools: List<LocalToolOption>? = null,
 ): List<Tool> = buildList {
     add(
         Tool(
@@ -132,7 +137,65 @@ fun buildSelfConfigTools(
             )
         )
     }
+    val requestable = localTools?.let(PartnerAbility::offIn).orEmpty()
+    if (requestable.isNotEmpty()) add(requestAbilityTool(assistantId, settingsStore, trigger, requestable))
 }
+
+private fun requestAbilityTool(
+    assistantId: Uuid,
+    settingsStore: SettingsStore,
+    trigger: MessageRef?,
+    requestable: List<PartnerAbility>,
+) = Tool(
+    name = REQUEST_ABILITY,
+    description = buildString {
+        appendLine("Ask the user to turn on one of your abilities that is currently off, when the task needs it.")
+        appendLine("Do this instead of saying you cannot do something. The abilities you can ask for:")
+        requestable.forEach { appendLine("- ${it.id}: ${it.meaning}") }
+        append("The user approves or declines in the chat. Once approved, the ability's tools are available right away: ")
+        append("continue the task in the same reply.")
+    },
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("ability", buildJsonObject {
+                    put("type", "string")
+                    put("enum", buildJsonArray { requestable.forEach { add(it.id) } })
+                })
+                put("reason", buildJsonObject {
+                    put("type", "string")
+                    put("description", "What you want to do with it, in the user's language")
+                })
+            },
+            required = listOf("ability", "reason"),
+        )
+    },
+    needsApproval = { true },
+    execute = { input ->
+        val params = input.jsonObject
+        val ability = PartnerAbility.of(params["ability"]?.jsonPrimitive?.contentOrNull)
+        val reason = params["reason"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val result = when {
+            trigger == null -> rejection("Rejected: only an owner turn may change abilities.")
+            ability == null -> rejection("Rejected: unknown ability.")
+            else -> {
+                withContext(RevisionOrigin(RevisionAuthor.AGENT, trigger = trigger, summary = reason)) {
+                    settingsStore.update { settings ->
+                        settings.copy(assistants = settings.assistants.map {
+                            if (it.id == assistantId && ability.option !in it.localTools) it.copy(localTools = it.localTools + ability.option)
+                            else it
+                        })
+                    }
+                }
+                buildJsonObject {
+                    put("success", true)
+                    put("note", "${ability.id} is on and its tools are available now. Continue the task.")
+                }
+            }
+        }
+        listOf(UIMessagePart.Text(result.toString()))
+    },
+)
 
 /** True when [request] (ignoring whitespace and case) appears in [message] and is not trivial. */
 internal fun isQuotedFrom(request: String, message: String): Boolean {
