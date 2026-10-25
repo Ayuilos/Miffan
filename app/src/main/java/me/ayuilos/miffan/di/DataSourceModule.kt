@@ -311,6 +311,8 @@ val dataSourceModule = module {
         )
     }
 
+    single { me.ayuilos.miffan.data.onboarding.OnboardingConnector(get(), get(), get()) }
+
     single {
         WebDavSync(
             settingsStore = get(),

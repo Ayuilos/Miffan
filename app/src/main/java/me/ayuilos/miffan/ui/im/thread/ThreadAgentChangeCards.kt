@@ -135,7 +135,7 @@ internal fun ChangeLongText(label: String, text: String) {
     var expanded by remember(text) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Surface(onClick = { expanded = !expanded }, color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium) {
+        Surface(onClick = { expanded = !expanded }, color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
             Text(text, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium,
                 maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis)
         }
@@ -248,7 +248,7 @@ internal fun OrganizeContent(tool: UIMessagePart.Tool) {
             else -> op.str("type").orEmpty()
         }
     }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             lines.forEachIndexed { index, line ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

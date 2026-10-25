@@ -195,6 +195,18 @@ public static class MiffanCuaBridge {
         }
         throw new IOException("MCP response missing");
     }
+    /** One MCP handshake and tool listing through the bridge, after an install: the driver's version. */
+    public static string Ping(string name,string root) {
+        using(var pipe=Connect(name,root)) {
+            var initialized=Rpc(pipe,1,"initialize",new { protocolVersion="2025-06-18", capabilities=new {}, clientInfo=new {name="miffan-check",version="1.0"} });
+            WriteLine(pipe,"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+            var listed=Rpc(pipe,2,"tools/list",new {});
+            var tools=listed.ContainsKey("tools") ? listed["tools"] as System.Collections.ArrayList : null;
+            if(tools==null || tools.Count==0) throw new IOException("No tools");
+            var server=initialized.ContainsKey("serverInfo") ? initialized["serverInfo"] as Dictionary<string,object> : null;
+            return server!=null && server.ContainsKey("version") ? Convert.ToString(server["version"]) : "";
+        }
+    }
     public static bool Clipboard(string name,string root,string text) {
         using(var session=new ClipSession(name,root)) return session.Write(text);
     }

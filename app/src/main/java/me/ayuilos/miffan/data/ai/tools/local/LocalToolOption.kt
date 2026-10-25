@@ -41,3 +41,6 @@ sealed class LocalToolOption {
     @SerialName("extension_management")
     data object ExtensionManagement : LocalToolOption()
 }
+
+/** What every new partner can do without asking: tell the time, and ask the owner a question on a card. */
+val DEFAULT_LOCAL_TOOLS: List<LocalToolOption> = listOf(LocalToolOption.TimeInfo, LocalToolOption.AskUser)

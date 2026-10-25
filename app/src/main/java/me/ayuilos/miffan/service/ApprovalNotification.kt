@@ -5,6 +5,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.tools.PartnerAbility
+import me.ayuilos.miffan.data.ai.tools.REQUEST_ABILITY
+import me.ayuilos.miffan.ui.im.title
 import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
 import me.ayuilos.miffan.data.ai.tools.GENERATE_IMAGE_TOOL
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
@@ -54,6 +57,8 @@ internal fun approvalNotificationSummary(
             stringArgument("title"), R.string.notification_approval_calendar, R.string.im_step_calendar_add,
         )
         first.toolName == "request_web_search" -> text(R.string.notification_approval_web_search, emptyList())
+        first.toolName == REQUEST_ABILITY && PartnerAbility.of(stringArgument("ability")) != null ->
+            text(R.string.notification_approval_ability, listOf(text(PartnerAbility.of(stringArgument("ability"))!!.title, emptyList())))
         first.toolName == "workspace_fetch_url" -> actionWithArgument(
             stringArgument("url")?.let { runCatching { URI(it).host }.getOrNull() },
             R.string.notification_approval_fetch, R.string.notification_approval_fetch_any,

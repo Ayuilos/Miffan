@@ -15,6 +15,9 @@ import me.ayuilos.miffan.utils.stripMarkdown
 import java.time.ZoneId
 import kotlin.uuid.Uuid
 
+/** Kind of the event that introduces a newly added partner, who then says hello on its own. */
+const val PARTNER_ADDED_EVENT = "partner_added"
+
 /** One row of an assistant's IM timeline, which merges every segment (conversation) by time. */
 sealed interface TimelineItem {
     val key: String

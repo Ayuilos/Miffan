@@ -20,6 +20,8 @@ sealed interface PartnerActResult<out T> {
     data object UserHolds : PartnerActResult<Nothing>
     /** Another partner turn holds the desktop; the action did not run. */
     data class Busy(val holder: ComputerHolder) : PartnerActResult<Nothing>
+    /** The computer's cua-driver is being updated; the action did not run. */
+    data object Updating : PartnerActResult<Nothing>
 }
 
 private data class HostControl(
@@ -29,8 +31,10 @@ private data class HostControl(
     /** Actions running now; the holder never loses the desktop in the middle of one. */
     val acting: Int = 0,
     val user: Boolean = false,
+    /** cua-driver is being updated; see [RemoteComputerControl.beginUpdate]. */
+    val updating: Boolean = false,
 ) {
-    val unused: Boolean get() = holder == null && acting == 0 && !user
+    val unused: Boolean get() = holder == null && acting == 0 && !user && !updating
 }
 
 /**
@@ -90,6 +94,7 @@ class RemoteComputerControl(
             val current = hosts[hostId] ?: HostControl()
             val other = current.holder?.takeUnless { it.sameTurn(holder) }
             when {
+                current.updating -> PartnerActResult.Updating
                 current.user -> PartnerActResult.UserHolds
                 other != null && (current.acting > 0 || now - current.lastActionAt < holdMillis) -> PartnerActResult.Busy(other)
                 else -> {
@@ -113,6 +118,27 @@ class RemoteComputerControl(
                 }
             }
         }
+    }
+
+    /** The partner turn using [hostId] now: acting, or holding it between actions; null when none is. */
+    fun partnerUsing(hostId: String): ComputerHolder? = synchronized(lock) {
+        hosts[hostId]?.takeIf { it.acting > 0 || clock() - it.lastActionAt < holdMillis }?.holder
+    }
+
+    /**
+     * Reserves [hostId] for updating its cua-driver, which restarts the driver under any action. Refused
+     * (returning the turn) while a partner uses the computer; once reserved, partner actions are refused
+     * with [PartnerActResult.Updating] until [endUpdate].
+     */
+    fun beginUpdate(hostId: String): ComputerHolder? = synchronized(lock) {
+        val current = hosts[hostId] ?: HostControl()
+        val using = current.holder?.takeIf { current.acting > 0 || clock() - current.lastActionAt < holdMillis }
+        if (using == null) write(hostId, current.copy(updating = true))
+        using
+    }
+
+    fun endUpdate(hostId: String) = synchronized(lock) {
+        hosts[hostId]?.let { write(hostId, it.copy(updating = false)) }
     }
 
     /** The turn of [conversationId] ended (finished, failed or cancelled): it no longer holds any desktop. */

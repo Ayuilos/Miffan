@@ -24,10 +24,12 @@ Bring the AI service you already use, whether that's an API key for an OpenAI-co
 
 ## Chat like a messenger
 
-Each AI partner is one ongoing chat. There's nothing to start, no model to pick and nothing to tune.
+Each AI partner is one ongoing chat. There's nothing to start and nothing you have to tune.
 
 - **One partner, one conversation.** Your history with a partner reads as one timeline across days. Behind the scenes Miffan keeps topics apart, so long chats stay quick and on point. A divider shows where a new topic began, and one tap continues the last topic instead.
 - **Ask several things at once.** Unrelated questions run in parallel, and each reply quotes the message it answers.
+- **Quick answers or careful ones.** On a partner's page, choose how long it thinks before replying, from instant to thinking deeply. For one hard question, pick "Think hard this time" in the + menu.
+- **Abilities when they're needed.** When a partner needs your calendar, clipboard or screen time, it asks in the chat and carries on once you allow it.
 - **Change a partner by telling it.** "Keep your answers shorter" adjusts its preferences. With your approval a partner can also change its own name, avatar and instructions. Every change is linked to the message behind it, kept in a history and can be undone.
 - **See what AI knows about you.** Each memory shows where it came from, and you can delete it at any time.
 - **Ask for a picture.** Pick a drawing model once and any partner can draw, or edit its last picture when you say "change it to…".
@@ -50,6 +52,7 @@ Connect a Mac, Windows or Linux computer over SSH, including over Tailscale, and
 - **High-performance mode.** With Sunshine on the computer, the graphics card encodes the picture for lower latency, smoother motion and sound. Miffan sets it up and pairs for you.
 - **You stay in charge.** Choose per computer whether the partner asks first, works on its own or leaves it alone. Each approval is recorded in a permission history that stays even if you delete the chat.
 - **Tasks that run on schedule.** Ask a partner to do something every morning and the computer's own scheduler runs it on time, even while your phone is off (Mac and Linux). A task can be a command or a call to an AI tool already installed there, such as Claude Code, Codex CLI or Gemini CLI. Results come back to the chat when you open Miffan, and "My computers" keeps the output of every run.
+- **See how a computer is doing.** A status page says in one line whether the computer is ready, fixes problems in place and offers updates for the control helper.
 - **Easy to connect.** Easy chat finds computers on your Wi-Fi and on Tailscale. Sign in once with the account password and Miffan switches to its own key; Windows gets a one-step setup script.
 
 <table>
@@ -98,7 +101,7 @@ Each partner gets its own look: a Miffan rice bowl in four kinds and six colors,
 ## Get started
 
 1. Download the latest APK from [GitHub Releases](https://github.com/Ayuilos/Miffan/releases). Official builds are for `arm64-v8a` devices on Android 8.0 or later. Later updates download and install from inside the app.
-2. On first launch, connect an AI service with an API key or sign in with a supported account.
+2. On first launch, Miffan walks you through it in a chat: connect an AI service (one-tap OpenRouter sign-in or an API key), pick a model and your first partner. You can also restore from a backup.
 3. Start chatting.
 
 The [user guide](https://miffan.ayuilos.me/docs/en) walks through each feature. If something goes wrong, add the Bug reporter partner: it helps you narrow the problem down and writes it up as an issue for you to submit.
@@ -122,6 +125,7 @@ Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an
 | Oct 2026 | 4.3 | Drawing, a redesigned way to connect a computer, and readable approval cards. |
 | Oct 2026 | 4.4 | Scheduled tasks that your computer runs on its own, even while your phone is off. |
 | Oct 2026 | 4.5 | A redesigned easy chat: partner, Me and Discover pages, a Change look page, saved messages, and the Magpie gateway. |
+| Oct 2026 | 4.6 | A first run that is a chat with Miffan, choosing how long a partner thinks, and a computer status page. |
 
 Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 

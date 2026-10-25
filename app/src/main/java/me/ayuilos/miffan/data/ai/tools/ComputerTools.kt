@@ -212,6 +212,7 @@ suspend fun createComputerTools(
                                     """Stop acting and wait until the user hands control back."}""",
                             ))
                             is PartnerActResult.Busy -> listOf(UIMessagePart.Text(busyRefusal(result.holder, holder, target)))
+                            PartnerActResult.Updating -> listOf(UIMessagePart.Text(updatingRefusal(target)))
                         }
                     }
                 },
@@ -231,6 +232,13 @@ internal fun busyRefusal(holder: ComputerHolder, me: ComputerHolder, target: Str
     })
     put("next", "Do not retry the action now. Continue with work that does not need the desktop, or tell the user " +
         "you are waiting for the computer to be free. Only one partner can operate it at a time.")
+}.toString()
+
+/** The computer's cua-driver is being updated; the partner waits instead of retrying. */
+internal fun updatingRefusal(target: String): String = buildJsonObject {
+    put("status", "refused")
+    put("reason", "The computer-use driver on $target is being updated, which takes about a minute.")
+    put("next", "Do not retry right away. Continue with work that does not need the desktop, then try again in a minute.")
 }.toString()
 
 private val DESKTOP_TYPE_POSITION = setOf("x", "y")

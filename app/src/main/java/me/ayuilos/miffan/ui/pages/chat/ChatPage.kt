@@ -1358,7 +1358,7 @@ private fun TopBar(
                     }
                     generatedTitleCandidate?.let { candidate ->
                         Text(
-                            text = "AI · ${stringResource(R.string.onboarding_page_recommended_badge)}",
+                            text = "AI · ${stringResource(R.string.recommended_badge)}",
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 6.dp),
                             color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.labelMedium,

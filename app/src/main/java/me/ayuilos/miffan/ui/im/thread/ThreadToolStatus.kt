@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -18,6 +19,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.tools.PartnerAbility
+import me.ayuilos.miffan.data.ai.tools.REQUEST_ABILITY
+import me.ayuilos.miffan.ui.im.title
+import me.ayuilos.miffan.ui.im.ImActionCard
+import me.ayuilos.miffan.ui.im.ImFoldedLine
+import me.ayuilos.miffan.ui.im.ImOption
+import me.ayuilos.miffan.ui.im.ImOptionList
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.revision.RevisionService
@@ -79,7 +87,12 @@ private fun toolStatus(name: String): Int =
  */
 internal fun UIMessagePart.Tool.isThreadPrompt(): Boolean =
     approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered) ||
+        isQuestionRepliedInChat() ||
         (isSettledPermission() && !isImageGeneration()) || isPartnerMessage()
+
+/** Questions the owner did not answer on the card because they wrote in the chat instead. */
+internal fun UIMessagePart.Tool.isQuestionRepliedInChat(): Boolean =
+    toolName == ASK_USER && approvalRecord?.decision == ToolDecision.REPLIED_IN_CHAT
 
 /** A permission card the user (or stopping the reply) already settled; it shrinks to a one-line record in place. */
 internal fun UIMessagePart.Tool.isSettledPermission(): Boolean {
@@ -123,6 +136,7 @@ internal fun ThreadToolPrompt(
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == AGENT_TOOLS ->
             ThreadAgentToolCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadGenericApprovalCard(tool, assistant, onApproval)
+        tool.isQuestionRepliedInChat() -> ThreadSkippedQuestions(tool)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
         tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)
         // The event itself says it was added; the decision stays one tap away in the record sheet.
@@ -156,11 +170,33 @@ private fun ThreadAnsweredQuestions(tool: UIMessagePart.Tool) {
         rows.forEach { (question, answer) ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (question.isNotBlank()) Text(question, style = MaterialTheme.typography.titleMedium)
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.large) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(answer, Modifier.weight(1f))
                         Icon(HugeIcons.Tick01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Questions the owner skipped by replying in the chat: folded into one line, like an answered quiz,
+ * that opens to show what was asked. The options can no longer be picked.
+ */
+@Composable
+private fun ThreadSkippedQuestions(tool: UIMessagePart.Tool) {
+    val questions = remember(tool.input) { tool.userQuestions() }
+    var expanded by rememberSaveable(tool.toolCallId) { mutableStateOf(false) }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ImFoldedLine(stringResource(R.string.im_question_replied_in_chat), expanded) { expanded = !expanded }
+            if (expanded) Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                questions.forEach { question ->
+                    if (question.question.isNotBlank()) Text(question.question, style = MaterialTheme.typography.titleSmall)
+                    ImOptionList(question.options.map { ImOption(it, it) }, selected = emptySet(), onSelect = {},
+                        multiple = question.type == "multi", enabled = false)
                 }
             }
         }
@@ -178,16 +214,14 @@ private fun ThreadTerminalCard(
     onApproval: (String, Boolean) -> Unit,
     onAnswer: (String, String) -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            CompositionLocalProvider(LocalTerminalConversationId provides conversationId) {
-                ChainOfThought(steps = listOf(ThinkingStep.ToolStep(tool)), collapsedVisibleCount = Int.MAX_VALUE) {
-                    ChatMessageToolStep(tool, onToolAnswer = onAnswer,
-                        onToolApproval = { id, approved, _ -> onApproval(id, approved) })
-                }
+    ImActionCard {
+        CompositionLocalProvider(LocalTerminalConversationId provides conversationId) {
+            ChainOfThought(steps = listOf(ThinkingStep.ToolStep(tool)), collapsedVisibleCount = Int.MAX_VALUE) {
+                ChatMessageToolStep(tool, onToolAnswer = onAnswer,
+                    onToolApproval = { id, approved, _ -> onApproval(id, approved) })
             }
-            RelayApprovalNotice(tool)
         }
+        RelayApprovalNotice(tool)
     }
 }
 
@@ -293,6 +327,8 @@ internal fun toolRecordTitle(tool: UIMessagePart.Tool): String {
     val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), tool.outputJsonOrNull(), false) }
     return when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
+        tool.toolName == REQUEST_ABILITY -> PartnerAbility.of(toolArg(tool, "ability"))
+            ?.let { stringResource(R.string.notification_approval_ability, stringResource(it.title)) } ?: tool.toolName
         tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
         tool.toolName == DRAFT_BUG_REPORT -> toolArg(tool, "title")?.let { "bug: $it" } ?: stringResource(R.string.im_bug_report_title)
         tool.isComputerTool() -> computerActionText(tool)

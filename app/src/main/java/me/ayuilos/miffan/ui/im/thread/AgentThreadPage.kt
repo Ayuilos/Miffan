@@ -51,6 +51,7 @@ import me.ayuilos.miffan.ui.components.ui.GlassIconButton
 import me.ayuilos.miffan.ui.components.ui.GlassSurface
 import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.Filter
@@ -60,6 +61,9 @@ import me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer
 import me.ayuilos.miffan.ui.pages.chat.AssistantBackground
 import me.rerere.hugeicons.stroke.Reply
 import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.ui.im.thinkingModelOf
+import me.ayuilos.miffan.ui.im.thinkTimeOf
+import me.ayuilos.miffan.ui.im.ThinkTime
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.thread.TimelineItem
@@ -133,6 +137,21 @@ fun AgentThreadPage(
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
     val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
     val status = threadHeaderStatus(timeline, generating)
+    val thinkHarder by vm.thinkHarder.collectAsStateWithLifecycle()
+    val deepMessageIds by vm.deepMessageIds.collectAsStateWithLifecycle()
+    val settings = LocalSettings.current
+    val partnerLevel = assistant?.reasoningLevel ?: ReasoningLevel.AUTO
+    val thinkingModel = assistant?.let { settings.thinkingModelOf(it) }
+    val thinkTime = thinkingModel?.let { thinkTimeOf(partnerLevel, it) }
+    val thinksDeeply = thinkingModel != null && thinkingModel.resolveReasoningLevel(partnerLevel) == ThinkTime.DEEP.levelFor(thinkingModel)
+    // How hard the partner thinks about the newest owner message; the header counts the seconds for the long tiers.
+    val depth = remember(timeline, deepMessageIds, thinkTime) {
+        val lastOwner = timeline.lastOrNull { it is TimelineItem.Message && it.message.role == MessageRole.USER } as TimelineItem.Message?
+        if (lastOwner != null && lastOwner.message.id in deepMessageIds) ThinkTime.DEEP
+        else thinkTime?.takeIf { it == ThinkTime.MORE || it == ThinkTime.DEEP }
+    }
+    var busySince by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(status != null) { busySince = if (status != null) System.currentTimeMillis() else null }
 
     // The welcome hero stands in for the hidden history, so list rows and timeline indices differ.
     fun welcomeAt(): Instant? = welcomeCutoff?.takeIf { filter == null }?.let(Instant::ofEpochMilli)
@@ -299,6 +318,7 @@ fun AgentThreadPage(
         // The composer grows (keyboard, attachments); keep the newest message above it while following.
         if (loaded && followLatest && !jumping) scrollToLatest()
     }
+    val starter = remember(timeline) { threadStarter(timeline) }
     @Composable
     fun TimelineRow(item: TimelineItem) {
         when (item) {
@@ -315,7 +335,12 @@ fun AgentThreadPage(
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
-                assistant = assistant) }
+                assistant = assistant)
+                if (starter?.greetingId == item.message.id) ThreadStarterQuiz(assistant, starter, enabled = generating.isEmpty()) {
+                    followLatest = true
+                    vm.sendText(it)
+                }
+            }
             is TimelineItem.Typing -> ThreadTyping(assistant)
             is TimelineItem.Event -> if (item.origin.kind == SCHEDULED_RUN || item.origin.kind == SCHEDULED_RUN_FAILED) {
                 val target = item.origin.link?.removePrefix("remote-task:")?.split('/')?.takeIf { it.size == 2 }
@@ -398,7 +423,7 @@ fun AgentThreadPage(
                                 Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 // Fades between states and grows or shrinks the line as the status appears or clears.
                                 AnimatedContent(status, transitionSpec = { fadeIn() togetherWith fadeOut() using SizeTransform(clip = false) }, label = "thread-status") { shown ->
-                                    if (shown != null) Text(stringResource(shown.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                                    if (shown != null) Text(threadStatusText(shown, depth, busySince), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                                 }
                             }
                         }
@@ -467,7 +492,9 @@ fun AgentThreadPage(
                 hazeState = hazeState, mentionables = mentionables, initialFiles = initialFiles,
                 // Right after the welcome the next message starts fresh anyway.
                 onNewTopic = if (newTopicPending || freshStart()) null else { { followLatest = true; vm.requestNewTopic() } },
-                freshTopic = newTopicPending)
+                freshTopic = newTopicPending,
+                onThinkHarder = if (thinkingModel != null) vm::setThinkHarder else null,
+                thinkHarder = thinkHarder, thinksDeeply = thinksDeeply)
         }
         mergeChoice?.let { (segmentId, targets) ->
             ThreadMergeSheet(targets, assistantName,

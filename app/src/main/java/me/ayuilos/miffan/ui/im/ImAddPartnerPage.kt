@@ -27,10 +27,6 @@ import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
-import me.ayuilos.miffan.data.model.MiffanAppearance
-import me.ayuilos.miffan.data.model.MiffanKind
-import me.ayuilos.miffan.data.model.MiffanPalette
-import me.ayuilos.miffan.data.model.MiffanMotionProfile
 import kotlinx.serialization.json.Json
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.MiffanMascot
@@ -46,11 +42,6 @@ import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
 private enum class AddStep { PICK, CUSTOM, DONE }
-
-private val TRAITS = listOf(
-    R.string.im_trait_gentle, R.string.im_trait_direct, R.string.im_trait_funny, R.string.im_trait_curious,
-    R.string.im_trait_rigorous, R.string.im_trait_brief, R.string.im_trait_encouraging, R.string.im_trait_snarky,
-)
 
 /**
  * Adding a partner, one decision per screen: make one from a name, a colour and a few traits, or take
@@ -162,14 +153,8 @@ private fun ImCustomPartnerStep(busy: Boolean, onBack: () -> Unit, onDone: (Assi
     var lookOpen by rememberSaveable { mutableStateOf(false) }
     var traits by rememberSaveable { mutableStateOf(listOf(R.string.im_trait_gentle)) }
     var extra by rememberSaveable { mutableStateOf("") }
-    val traitNames = traits.map { stringResource(it) }
-    val separator = stringResource(R.string.im_list_separator)
     val trimmed = name.trim()
-    val prompt = listOf(
-        if (traitNames.isEmpty()) stringResource(R.string.im_add_partner_prompt_plain, trimmed)
-        else stringResource(R.string.im_add_partner_prompt, trimmed, traitNames.joinToString(separator)),
-        extra.trim(),
-    ).filter { it.isNotEmpty() }.joinToString("\n")
+    val prompt = partnerPrompt(trimmed, traits, extra)
 
     if (lookOpen) {
         ImLookEditor(trimmed, avatar, onCancel = { lookOpen = false }) { picked ->
@@ -202,7 +187,7 @@ private fun ImCustomPartnerStep(busy: Boolean, onBack: () -> Unit, onDone: (Assi
                 placeholder = { Text(stringResource(R.string.im_add_partner_name_hint)) })
             Text(stringResource(R.string.im_add_partner_traits), Modifier.padding(top = 12.dp), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TRAITS.forEach { trait ->
+                PARTNER_TRAITS.forEach { trait ->
                     val on = trait in traits
                     FilterChip(selected = on, onClick = { traits = if (on) traits - trait else traits + trait },
                         label = { Text(stringResource(trait)) })
@@ -213,16 +198,4 @@ private fun ImCustomPartnerStep(busy: Boolean, onBack: () -> Unit, onDone: (Assi
                 placeholder = { Text(stringResource(R.string.im_add_partner_extra_hint)) })
         }
     }
-}
-
-/** A Miffan unlike [current] in kind and colours, with any motion, for a partner nobody wants to dress up by hand. */
-private fun randomMiffan(current: Avatar): Avatar.Miffan {
-    val now = (current as? Avatar.Miffan)?.appearance
-    return Avatar.Miffan(
-        appearance = MiffanAppearance(
-            kind = MiffanKind.entries.filter { it != now?.kind }.random(),
-            palette = MiffanPalette.entries.filter { it != now?.palette }.random(),
-        ),
-        motionProfile = MiffanMotionProfile.entries.random(),
-    )
 }

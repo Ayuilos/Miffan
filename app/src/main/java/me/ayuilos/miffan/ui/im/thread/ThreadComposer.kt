@@ -79,6 +79,8 @@ import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.hooks.ChatInputState
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import androidx.compose.ui.draw.alpha
+import me.rerere.hugeicons.stroke.Idea01
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.BubbleChatAdd
@@ -113,6 +115,12 @@ internal fun ThreadComposer(
     onNewTopic: (() -> Unit)? = null,
     /** The next message starts a new topic. */
     freshTopic: Boolean = false,
+    /** Arms or disarms deep thinking for the next message; null hides the entry (the model cannot think). */
+    onThinkHarder: ((Boolean) -> Unit)? = null,
+    /** The next message gets deep thinking. */
+    thinkHarder: Boolean = false,
+    /** The partner already thinks deeply every time, so the entry has nothing to add. */
+    thinksDeeply: Boolean = false,
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -237,6 +245,15 @@ internal fun ThreadComposer(
         if (attachments.messageContent.isNotEmpty()) GlassSurface(hazeState, cardShape, Modifier.fillMaxWidth()) {
             Box(Modifier.padding(8.dp)) { MediaFileInputRow(attachments) }
         }
+        if (thinkHarder && onThinkHarder != null) GlassSurface(hazeState, CircleShape) {
+            Row(Modifier.padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(HugeIcons.Idea01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.im_think_harder), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                IconButton(onClick = { onThinkHarder(false) }) {
+                    Icon(HugeIcons.Cancel01, stringResource(R.string.im_think_harder_cancel), Modifier.size(18.dp))
+                }
+            }
+        }
         if (importing) GlassSurface(hazeState, CircleShape) {
             Text(stringResource(R.string.im_thread_loading), Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium)
         }
@@ -248,6 +265,13 @@ internal fun ThreadComposer(
                     if (onNewTopic != null) {
                         ThreadAttachmentMenuItem(HugeIcons.BubbleChatAdd, stringResource(R.string.im_thread_new_topic),
                             stringResource(R.string.im_thread_new_topic_hint)) { menu = false; onNewTopic() }
+                    }
+                    if (onThinkHarder != null) {
+                        ThreadAttachmentMenuItem(HugeIcons.Idea01, stringResource(R.string.im_think_harder),
+                            stringResource(if (thinksDeeply) R.string.im_think_harder_already else R.string.im_think_harder_hint),
+                            enabled = !thinksDeeply) { menu = false; onThinkHarder(true) }
+                    }
+                    if (onNewTopic != null || onThinkHarder != null) {
                         HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
                     }
                     ThreadAttachmentMenuItem(HugeIcons.Image02, stringResource(R.string.im_thread_photo)) { menu = false; photos.launch("image/*") }
@@ -351,8 +375,9 @@ private val MENU_SHADOW_ROOM = 48.dp
 private val CHIP_AVATAR_SLOT = 0.8.em
 
 @Composable
-private fun ThreadAttachmentMenuItem(icon: ImageVector, label: String, supporting: String? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+private fun ThreadAttachmentMenuItem(icon: ImageVector, label: String, supporting: String? = null, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).alpha(if (enabled) 1f else .5f)
+        .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
         Column {

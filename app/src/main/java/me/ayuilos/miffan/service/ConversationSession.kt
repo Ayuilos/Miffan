@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.service
 
+import me.rerere.ai.core.ReasoningLevel
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -32,6 +33,8 @@ data class QueuedMessage(
     val createdAt: LocalDateTime? = null,
     /** Who wrote it when not the owner; see [me.ayuilos.miffan.data.model.MessageOrigin]. */
     val origin: me.ayuilos.miffan.data.model.MessageOrigin? = null,
+    /** Overrides the assistant's reasoning level for the reply to this message only. */
+    val reasoningLevel: ReasoningLevel? = null,
 )
 
 data class MessageQueueState(

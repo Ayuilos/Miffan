@@ -13,6 +13,11 @@ import coil3.compose.AsyncImage
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.im.ImActionCard
+import me.ayuilos.miffan.ui.im.ImCardBlock
+import me.ayuilos.miffan.ui.im.ImCardButton
+import me.ayuilos.miffan.ui.im.ImCardButtons
+import me.ayuilos.miffan.ui.im.ImCardOutlinedButton
 import me.ayuilos.miffan.data.ai.computer.PartnerComputer
 import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
 import me.ayuilos.miffan.ui.components.message.ComputerToolStatus
@@ -28,7 +33,6 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.ComputerVideo
-import androidx.compose.ui.graphics.Color
 
 private val computerObservationNames = setOf(
     "start", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "read_guide",
@@ -159,40 +163,31 @@ internal fun ThreadComputerApprovalCard(
 ) {
     var answered by remember(tool.toolCallId) { mutableStateOf(false) }
     var details by remember(tool.toolCallId) { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(if (compact) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(HugeIcons.Computer, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                Text(stringResource(R.string.im_computer_wants_to_operate, name), Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (canOpen) IconButton(onClick = onScreen, modifier = Modifier.size(32.dp)) {
-                    Icon(HugeIcons.ComputerVideo, stringResource(R.string.im_computer_view_screen), Modifier.size(18.dp))
-                }
+    ImActionCard(title = stringResource(R.string.im_computer_wants_to_operate, name), icon = HugeIcons.Computer, compact = compact,
+        trailing = if (canOpen) ({
+            IconButton(onClick = onScreen) { Icon(HugeIcons.ComputerVideo, stringResource(R.string.im_computer_view_screen), Modifier.size(20.dp)) }
+        }) else null) {
+        // The action itself; tapping it shows the exact arguments the partner sent.
+        ImCardBlock(onClick = { details = true }) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(computerActionText(tool), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Icon(HugeIcons.ArrowRight01, stringResource(R.string.im_computer_details), Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            // The action itself; tapping it shows the exact arguments the partner sent.
-            Surface(onClick = { details = true }, color = Color.Transparent, shape = MaterialTheme.shapes.small) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(computerActionText(tool), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
-                        maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Icon(HugeIcons.ArrowRight01, stringResource(R.string.im_computer_details), Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+        }
+        RelayApprovalNotice(tool)
+        if (computerToolNeedsForegroundWarning(tool.toolName, tool.inputAsJson())) {
+            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
+                Text(stringResource(R.string.im_computer_foreground_warning), Modifier.fillMaxWidth().padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
             }
-            RelayApprovalNotice(tool)
-            if (computerToolNeedsForegroundWarning(tool.toolName, tool.inputAsJson())) {
-                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
-                    Text(stringResource(R.string.im_computer_foreground_warning), Modifier.fillMaxWidth().padding(12.dp),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, true) }) {
-                    Text(stringResource(R.string.im_computer_allow))
-                }
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(tool.toolCallId, false) }) {
-                    Text(stringResource(R.string.im_computer_decline))
-                }
-            }
+        }
+        ImCardButtons {
+            ImCardButton(stringResource(R.string.im_computer_allow), enabled = !answered,
+                onClick = { answered = true; onApproval(tool.toolCallId, true) })
+            ImCardOutlinedButton(stringResource(R.string.im_computer_decline), enabled = !answered,
+                onClick = { answered = true; onApproval(tool.toolCallId, false) })
         }
     }
     if (details) ModalBottomSheet(onDismissRequest = { details = false }) {

@@ -129,7 +129,7 @@ class WindowsScreenRepositoryTest {
         assertSame(stream, handle.value)
         verify(exactly = 1) { ssh.openProcess(screenHelperCommand(RemotePlatform.WINDOWS, "cua")) }
         handle.close()
-        assertTrue(repository.installCuaDriver("ws", "C:/old").success)
+        assertTrue(repository.installCuaDriver("ws").success)
         assertEquals(1, commands.count { it.endsWith("cua install") })
         assertFalse(commands.any { "/bin/bash" in it || "systemctl" in it })
     }

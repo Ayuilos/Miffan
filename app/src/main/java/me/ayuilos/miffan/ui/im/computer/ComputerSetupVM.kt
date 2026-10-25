@@ -16,13 +16,21 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.ayuilos.miffan.data.ai.computer.ComputerHolder
 import me.ayuilos.miffan.data.ai.computer.ComputerPermissions
+import me.ayuilos.miffan.data.ai.computer.ComputerStatusRecord
+import me.ayuilos.miffan.data.ai.computer.ComputerStatusStore
+import me.ayuilos.miffan.data.ai.computer.CuaUpdateState
+import me.ayuilos.miffan.data.ai.computer.CuaUpdates
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
+import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
@@ -38,6 +46,7 @@ import me.ayuilos.miffan.data.remote.NearbySystem
 import me.ayuilos.miffan.data.remote.nearbyBannerSystem
 import me.ayuilos.miffan.data.remote.probeNearbySsh
 import me.ayuilos.miffan.data.repository.RemoteCommandOutcome
+import me.ayuilos.miffan.data.repository.RemoteCuaUpdateCheck
 import me.ayuilos.miffan.data.repository.RemoteMachineProbe
 import me.ayuilos.miffan.data.repository.KeySignInCheck
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
@@ -145,6 +154,8 @@ data class ComputerSetupState(
     val keyRefused: Boolean = false,
     /** [ComputerSetupStep.MANUAL]: nothing answered as a computer with remote login at that address. */
     val unreachable: Boolean = false,
+    /** The computer's cua-driver release check; null before it ran or when the computer could not ask. */
+    val updateCheck: RemoteCuaUpdateCheck? = null,
 ) {
     val busy: Boolean get() = task != null
     /** The computer's system: what the check found, else what finding it suggested. */
@@ -185,6 +196,18 @@ data class ComputerSetupState(
 
     /** Everything [ComputerSetupStep.READY] lists is done, or there is nothing to check. */
     val ready: Boolean get() = probe != null && (!usesScreen || (machineReady && macAccountReady && grantsReady))
+
+    /** Required items of [ComputerSetupStep.READY] still to do; zero when [ready]. */
+    val pendingCount: Int get() {
+        val probe = probe ?: return 0
+        if (!usesScreen) return 0
+        val screen = sessionReady && screenServiceReady && probe.session.lockState != "locked"
+        return listOf(screen, cuaReady, macAccountReady, grantsReady).count { !it }
+    }
+
+    /** A newer cua-driver release a working driver may update to; null when it is current or unknown. */
+    val cuaUpdateTo: String? get() = updateCheck?.takeIf { cuaReady && it.updateAvailable }?.latestVersion
+        ?.takeIf { it.isNotBlank() && it != probe?.cua?.version }
 }
 
 /**
@@ -198,6 +221,11 @@ data class ComputerSetupArgs(
     val edit: Boolean = false,
     /** The user turned the screen on for [hostId]: the check starts with it on even without a desktop found. */
     val screen: Boolean = false,
+    /**
+     * The status page of the saved computer [hostId]: the same checks, read as a report on a computer
+     * already set up, with updates offered, and no way on to sharing.
+     */
+    val status: Boolean = false,
 )
 
 /**
@@ -213,6 +241,9 @@ class ComputerSetupVM(
     private val registry: RemoteComputerRegistry,
     private val settingsStore: SettingsStore,
     private val partnerComputers: PartnerComputers,
+    private val cuaUpdates: CuaUpdates,
+    private val statuses: ComputerStatusStore,
+    private val control: RemoteComputerControl,
 ) : ViewModel() {
     /** The partner this setup is for; null when opened from "my computers". */
     val assistantId: Uuid? get() = args.assistantId
@@ -267,6 +298,14 @@ class ComputerSetupVM(
     /** A computer saved in this setup under a guessed name, renamed once it says what it is called. */
     private var guessedNameHostId: String? = null
 
+    /** This computer's cua-driver update, running or finished; null when there is none. */
+    val cuaUpdate: StateFlow<CuaUpdateState?> = combine(cuaUpdates.states, _state) { updates, state -> state.hostId?.let { updates[it] } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** The partner turn using this computer now; updating would cut it off. */
+    val partnerUsing: StateFlow<ComputerHolder?> = combine(control.holders, _state) { holders, state -> state.hostId?.let { holders[it] } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private val streamSetup = RemoteStreamSetupController(screens, viewModelScope)
     /** Optional high-performance mode for the computer being set up; see [RemoteStreamSetupController]. */
     val streamSetups = streamSetup.states
@@ -279,6 +318,29 @@ class ComputerSetupVM(
                     val setup = current.hostId?.let { setups[it] }?.takeIf { it.connectionRevision == current.hostRevision }
                     current.copy(streamReady = setup?.streamReady == true)
                 }
+            }
+        }
+        // An update that finished (here or after leaving) brings the computer's state as it is now.
+        viewModelScope.launch {
+            cuaUpdate.collect { update ->
+                val probe = when (update) {
+                    is CuaUpdateState.Updated -> update.probe
+                    is CuaUpdateState.Failed -> update.probe
+                    else -> null
+                } ?: return@collect
+                _state.update { if (it.step == ComputerSetupStep.READY) it.copy(probe = probe, updateCheck = null) else it }
+                afterProbe()
+            }
+        }
+        // The computer's page shows what the last check found without connecting.
+        viewModelScope.launch {
+            _state.map { state ->
+                val hostId = state.hostId
+                if (hostId == null || state.step != ComputerSetupStep.READY || state.probe == null || state.busy) null
+                else Triple(hostId, state.pendingCount, state.cuaUpdateTo)
+            }.distinctUntilChanged().collect { found ->
+                val (hostId, pending, updateTo) = found ?: return@collect
+                statuses.put(hostId, ComputerStatusRecord(System.currentTimeMillis(), pending, updateTo))
             }
         }
         when {
@@ -305,8 +367,27 @@ class ComputerSetupVM(
     fun openSunshineSettings(permission: RemoteSunshinePermission) =
         withProbedHost { hostId, revision -> streamSetup.openPermissionSettings(hostId, revision, permission) }
 
+    /** Whether this is a saved computer's status page; see [ComputerSetupArgs.status]. */
+    val statusPage: Boolean get() = args.status
+
+    /** The user is looking at the status; finished updates notify only when nobody is. */
+    fun watchUpdates(): () -> Unit = _state.value.hostId?.let(cuaUpdates::watch) ?: {}
+
+    /**
+     * Updates the installed cua-driver, now or once [partnerUsing] is done with the computer; call only
+     * after the user confirmed [cuaInstallCommand]. The update goes on after this page closes.
+     */
+    fun updateCuaDriver() {
+        val state = _state.value
+        val cua = state.probe?.cua ?: return
+        cuaUpdates.start(state.hostId ?: return, state.hostRevision ?: return, cua.path, cua.version,
+            state.cuaUpdateTo ?: state.updateCheck?.latestVersion)
+    }
+
+    fun cancelWaitingUpdate() = _state.value.hostId?.let(cuaUpdates::cancelWaiting)
+
     /** The exact command [installCuaDriver] runs, for the confirmation dialog. */
-    fun cuaInstallCommand(): String = RemoteScreenRepository.cuaDriverCommand(upgradePath(),
+    fun cuaInstallCommand(): String = RemoteScreenRepository.cuaDriverCommand(
         if (_state.value.probe?.os == "windows") RemotePlatform.WINDOWS else RemotePlatform.POSIX)
 
     fun dismissError() = _state.update { it.copy(error = null) }
@@ -620,7 +701,11 @@ class ComputerSetupVM(
 
     // ---- Getting ready ----
 
-    fun reprobe() = run(ComputerSetupTask.PREPARING) { probe() }
+    /** Checks again; on the status page also asks for a newer cua-driver afresh. */
+    fun reprobe() = run(ComputerSetupTask.PREPARING) {
+        _state.value.hostId?.let(cuaUpdates::clear)
+        probe(freshUpdateCheck = true)
+    }
 
     /**
      * Checks again without showing progress, while the user fixes something at the computer; the
@@ -660,7 +745,7 @@ class ComputerSetupVM(
     /** Installs or upgrades cua-driver; call only after the user confirmed [cuaInstallCommand]. */
     fun installCuaDriver() = run(ComputerSetupTask.INSTALLING) {
         val host = currentHost()
-        val outcome = screens.installCuaDriverOnHost(host.id, host.connectionRevision, upgradePath())
+        val outcome = screens.installCuaDriverOnHost(host.id, host.connectionRevision)
         _state.update { it.copy(install = outcome) }
         probe()
     }
@@ -837,11 +922,16 @@ class ComputerSetupVM(
         null
     }
 
-    private suspend fun probe() {
+    private suspend fun probe(freshUpdateCheck: Boolean = false) {
         _state.update { it.copy(task = ComputerSetupTask.PREPARING) }
         val host = currentHost()
         val probe = screens.probeHost(host.id, host.connectionRevision)
         _state.update { it.copy(probe = probe, hostRevision = host.connectionRevision) }
+        // Beside the checks, never holding them up; the status page is where updates are offered.
+        if (args.status && probe.cua.ok) viewModelScope.launch {
+            val check = cuaUpdates.check(host.id, host.connectionRevision, fresh = freshUpdateCheck)
+            _state.update { if (it.hostId == host.id && it.hostRevision == host.connectionRevision) it.copy(updateCheck = check) else it }
+        }
         adoptComputerName(host, probe.hostname)
         // Sunshine is optional on Linux and macOS and required on Windows; its check runs beside the others.
         if (probe.os in setOf("linux", "macos", "windows")) streamSetup.check(host.id, host.connectionRevision)
@@ -868,10 +958,14 @@ class ComputerSetupVM(
 
     private fun RemoteHostEntity.target() = SetupTarget(name, host, port, system())
 
-    private fun upgradePath(): String? = _state.value.probe?.cua?.takeIf { !it.ok }?.path
 
     private suspend fun currentHost(): RemoteHostEntity =
         requireNotNull(_state.value.hostId?.let { workspaces.getHostById(it) }) { "Computer not found" }
+
+    override fun onCleared() {
+        // The outcome was on screen; the computer's page goes back to the last check.
+        _state.value.hostId?.let(cuaUpdates::clear)
+    }
 
     private fun run(task: ComputerSetupTask, block: suspend () -> Unit) {
         if (_state.value.busy) return

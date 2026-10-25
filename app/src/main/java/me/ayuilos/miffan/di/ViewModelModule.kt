@@ -8,6 +8,7 @@ import me.ayuilos.miffan.ui.im.ImRevisionVM
 import me.ayuilos.miffan.ui.im.ImPartnerVM
 import me.ayuilos.miffan.ui.im.computer.ComputerSetupVM
 import me.ayuilos.miffan.ui.im.ImHomeVM
+import me.ayuilos.miffan.ui.im.welcome.ImWelcomeVM
 import me.ayuilos.miffan.ui.im.thread.AgentThreadVM
 import me.ayuilos.miffan.ui.pages.assistant.AssistantVM
 import me.ayuilos.miffan.ui.pages.assistant.detail.AssistantDetailVM
@@ -48,10 +49,11 @@ val viewModelModule = module {
     }
     viewModelOf(::ChatDrawerVM)
     viewModelOf(::ImHomeVM)
+    viewModelOf(::ImWelcomeVM)
     viewModelOf(::ImSearchVM)
     viewModel<ImMemoryVM> { params -> ImMemoryVM(params.get(), get(), get(), get(), get()) }
     viewModel<ImRevisionVM> { params -> ImRevisionVM(params.get(), params.get(), get(), get(), get()) }
-    viewModel<ComputerSetupVM> { params -> ComputerSetupVM(params.get(), get(), get(), get(), get(), get()) }
+    viewModel<ComputerSetupVM> { params -> ComputerSetupVM(params.get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel<ImPartnerVM> { params -> ImPartnerVM(params.get(), get(), get(), get(), get()) }
     viewModel<me.ayuilos.miffan.ui.im.PartnerChatVM> { params ->
         me.ayuilos.miffan.ui.im.PartnerChatVM(chatId = params.get(), settingsStore = get(), service = get(), listState = get())

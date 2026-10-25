@@ -24,8 +24,7 @@ concurrency:
 jobs:
   verify:
     if: github.event_name != 'release' || github.event.release.prerelease == false
-    # Fork PRs that touch this workflow never run on the self-hosted runner.
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","miffan"]') || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -45,7 +44,7 @@ jobs:
       github.repository == 'Ayuilos/Miffan' &&
       ((github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false) ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'))
-    runs-on: [self-hosted, Linux, X64, miffan]
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       # Never execute code from an arbitrary release tag with deployment credentials.

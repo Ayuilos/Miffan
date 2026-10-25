@@ -13,7 +13,7 @@ class WindowsScreenHelperTest {
             screenHelperCommand(RemotePlatform.WINDOWS, "sunshine firewall check"))
         assertEquals("\"\$HOME/.miffan/bin/miffan\" clip", screenHelperCommand(RemotePlatform.POSIX, "clip"))
         assertTrue(runCatching { screenHelperCommand(RemotePlatform.WINDOWS, "clip; Write-Host secret") }.isFailure)
-        assertEquals(screenHelperCommand(RemotePlatform.WINDOWS, "cua install"), RemoteScreenRepository.cuaDriverCommand("C:/old", RemotePlatform.WINDOWS))
+        assertEquals(screenHelperCommand(RemotePlatform.WINDOWS, "cua install"), RemoteScreenRepository.cuaDriverCommand(RemotePlatform.WINDOWS))
         assertTrue(windowsHelperInstallCommand.contains("OpenStandardInput().CopyTo"))
         assertTrue(windowsHelperInstallCommand.contains("[IO.File]::Replace"))
         val asset = File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readBytes()

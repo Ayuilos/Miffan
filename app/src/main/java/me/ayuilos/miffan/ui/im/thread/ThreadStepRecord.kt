@@ -32,6 +32,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.ai.tools.REQUEST_ABILITY
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
 import me.ayuilos.miffan.ui.modifier.shimmer
@@ -64,7 +65,7 @@ internal data class ThreadStep(
 internal fun threadSteps(parts: List<UIMessagePart>): List<ThreadStep> = parts.mapNotNull { part ->
     (part as? UIMessagePart.Tool)?.takeUnless {
         it.isComputerTool() || it.isPartnerMessage() || it.isImageGeneration() || it.addedCalendarEvent() != null ||
-            it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH ||
+            it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH || it.toolName == REQUEST_ABILITY ||
             it.isPending || it.approvalState is ToolApprovalState.Denied
     }?.let(::threadStep)
 }

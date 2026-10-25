@@ -26,6 +26,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.im.ImPressMenu
 import me.ayuilos.miffan.ui.im.ImPressMenuItem
@@ -104,7 +106,7 @@ internal fun ThreadAvatar(assistant: Assistant?, phase: AssistantGenerationPhase
 
 /** Bubbles leave a gutter on the opposite side, like an IM, but stay readable on wide screens. */
 @Composable
-private fun threadBubbleMaxWidth() = (LocalConfiguration.current.screenWidthDp * .86f).coerceAtMost(640f).dp
+internal fun threadBubbleMaxWidth() = (LocalConfiguration.current.screenWidthDp * .86f).coerceAtMost(640f).dp
 
 @Composable
 internal fun ThreadMessageBubble(
@@ -259,11 +261,16 @@ internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () 
     val text = when {
         toolsOff -> R.string.im_thread_error_tools_off
         listOf("401", "403", "api key", "unauthorized", "authentication").any { it in detail } -> R.string.im_thread_error_connection
+        // Checked before "busy": an empty balance also answers 429 ("insufficient_quota").
+        listOf("402", "insufficient", "balance", "余额", "欠费").any { it in detail } -> R.string.im_thread_error_balance
         listOf("429", "rate limit", "quota").any { it in detail } -> R.string.im_thread_error_busy
         error.error is java.io.IOException -> R.string.im_thread_error_network
         else -> R.string.im_thread_error_reply
     }
     val retry = canRetry && !toolsOff
+    // Problems only the service's settings can fix lead there.
+    val nav = LocalNavController.current
+    val toService = text == R.string.im_thread_error_connection || text == R.string.im_thread_error_balance
     Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Box(Modifier.widthIn(max = threadBubbleMaxWidth())) {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer,
@@ -273,6 +280,9 @@ internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () 
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(HugeIcons.Alert01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                     Text(stringResource(text), Modifier.weight(1f, fill = false).padding(vertical = 8.dp))
+                    if (toService) TextButton(onClick = { nav.navigate(Screen.ImAiService) }) {
+                        Text(stringResource(R.string.im_thread_error_open_service))
+                    }
                     // Retry is the one inline action: a failed reply is where people look for it.
                     if (retry) IconButton(onClick = onRetry) { Icon(HugeIcons.Refresh01, stringResource(R.string.im_thread_retry)) }
                     else Spacer(Modifier.width(10.dp))

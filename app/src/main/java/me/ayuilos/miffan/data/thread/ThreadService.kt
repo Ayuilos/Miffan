@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.thread
 
+import me.rerere.ai.core.ReasoningLevel
 import android.util.Log
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +80,8 @@ class ThreadService(
         createdAt: LocalDateTime? = null,
         freshStart: Boolean = false,
         reviewedHistory: Boolean = false,
+        /** Overrides the partner's reasoning level for this message's reply. */
+        reasoningLevel: ReasoningLevel? = null,
     ): Uuid {
         val assistant = settingsStore.settingsFlow.value.getAssistantById(assistantId)
             ?: error("Assistant not found: $assistantId")
@@ -134,16 +137,17 @@ class ThreadService(
                     ?: content.filterIsInstance<UIMessagePart.Text>().joinToString(" ") { it.text }.take(120)
                 recentTopics[segmentId] = RecentTopic(assistantId, label, now)
             }
-            deliver(assistantId, segmentId, content, replyTo, messageId, createdAt, start)
+            deliver(assistantId, segmentId, content, replyTo, messageId, createdAt, start, reasoningLevel)
             if (decision is RouteDecision.New && ownerStart) cancelNewTopic(assistantId)
             undoMerges.remove(assistantId)
             segmentId
         }
     }
 
-    private suspend fun deliver(assistantId: Uuid, segmentId: Uuid, content: List<UIMessagePart>, replyTo: MessageRef?, messageId: Uuid, createdAt: LocalDateTime?, start: TopicStart?) {
+    private suspend fun deliver(assistantId: Uuid, segmentId: Uuid, content: List<UIMessagePart>, replyTo: MessageRef?, messageId: Uuid, createdAt: LocalDateTime?, start: TopicStart?, reasoningLevel: ReasoningLevel?) {
         chatService.openThreadSegment(segmentId, assistantId, start)
-        chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId, createdAt = createdAt)
+        chatService.sendMessage(segmentId, content, immediately = false, replyTo = replyTo, messageId = messageId, createdAt = createdAt,
+            reasoningLevel = reasoningLevel)
         chatService.resumeMessageQueue(segmentId)
     }
 

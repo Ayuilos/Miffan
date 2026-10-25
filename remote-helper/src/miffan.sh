@@ -7,6 +7,8 @@
 #   miffan probe            describe the machine as one line of JSON
 #   miffan env              print the graphical session environment as shell exports
 #   miffan cua              run `cua-driver mcp` (MCP over stdio) inside the session
+#   miffan cua check-update ask cua-driver whether a newer release exists (one line of JSON)
+#   miffan cua install      install or update cua-driver through the computer's own proxy
 #   miffan vnc start|stop|status
 #                           manage a VNC server only this user can reach (JSON on stdout)
 #   miffan rdp start        password on stdin; safe per-user RDP startup (JSON)
@@ -18,7 +20,7 @@
 #   miffan task probe|which|stage|commit|list|remove|enable|disable|run|sync|log|exec
 #                           scheduled tasks run by the system timer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=21
+MIFFAN_HELPER_VERSION=23
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -149,6 +151,57 @@ mac_shortcut() {
 
 cua_version() {
     "$1" --version 2>/dev/null | head -n 1 | sed -n 's/.*cua-driver \([0-9][0-9.]*\).*/\1/p'
+}
+
+# cua-driver's own release check, fresh rather than from its on-disk cache, flattened to one line
+# (its JSON strings hold no raw newlines). Read-only: nothing is downloaded or installed.
+cua_check_update() {
+    cua=$(cua_path) || { echo '{"error":"not_installed"}'; return 0; }
+    out=$("$cua" check-update --json --no-cache 2>/dev/null) && [ -n "$out" ] ||
+        { echo '{"error":"check_failed"}'; return 0; }
+    printf '%s\n' "$out" | tr '\n\r' '  '
+    echo
+}
+
+# A fixed release download that stays published; only its first MiB is fetched, to measure speed.
+CUA_PROBE_ASSET=https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.34.0/cua-driver-rs-0.34.0-darwin-universal.tar.gz
+
+# The computer's own proxy for downloads. SSH commands lack the proxy variables a login shell sets,
+# and on some networks GitHub downloads crawl without one: the macOS system proxy, else the
+# desktop session's environment. Variables already set win.
+cua_proxy() {
+    [ -n "${HTTPS_PROXY:-}${https_proxy:-}" ] && return 0
+    if [ "$(os)" = macos ]; then
+        p=$(scutil --proxy 2>/dev/null | awk '/HTTPSEnable : 1/ {e=1} / HTTPSProxy : / {h=$3} / HTTPSPort : / {port=$3}
+            END {if (e && h != "" && port != "") print "http://" h ":" port}')
+    else
+        p=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^\(https_proxy\|HTTPS_PROXY\|all_proxy\|ALL_PROXY\)=//p' | head -n 1)
+    fi
+    [ -n "$p" ] && export HTTPS_PROXY="$p" https_proxy="$p" HTTP_PROXY="$p" http_proxy="$p"
+    return 0
+}
+
+# 0 when 1 MiB of a GitHub release arrives within 20 s; the release itself is tens of MB, so a slower
+# network would leave the installer running for many minutes.
+cua_download_fast() {
+    got=$(curl -sS -L -o /dev/null -r 0-1048575 --max-time 20 -w '%{size_download}' "$CUA_PROBE_ASSET" 2>/dev/null) || return 1
+    [ "${got%%.*}" -ge 1048576 ] 2>/dev/null
+}
+
+# Installs cua-driver, or updates the installed one (`update --apply`, falling back to the installer:
+# 0.24's update fails its own release check). The installer stops a running daemon, and a systemd
+# user service (Restart=on-failure) stays down after that clean stop, so bring it back.
+cua_install() {
+    cua_proxy
+    cua_download_fast || { echo 'Cua download failed; nothing was changed' >&2; return 1; }
+    if cua=$(cua_path) && "$cua" update --apply; then
+        status=0
+    else
+        /bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"
+        status=$?
+    fi
+    systemctl --user is-enabled cua-driver.service >/dev/null 2>&1 && systemctl --user restart cua-driver.service
+    return "$status"
 }
 
 # 0 when version $1 >= $2 (dotted numeric).
@@ -1845,6 +1898,8 @@ case "${1:-}" in
         done
         ;;
     cua)
+        if [ "${2:-}" = check-update ]; then cua_check_update; exit 0; fi
+        if [ "${2:-}" = install ]; then cua_install; exit $?; fi
         [ "$(os)" = macos ] || load_session_env || { echo "no graphical session" >&2; exit 1; }
         [ "$(session_type)" = wayland ] && export CUA_DRIVER_RS_ENABLE_WAYLAND=1
         [ "$(os)" = macos ] || utf8_ctype

@@ -6,6 +6,7 @@ import me.ayuilos.miffan.data.audit.recordCardDecision
 import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.ToolDecisionVia
 import me.rerere.ai.ui.recordDecision
+import me.ayuilos.miffan.data.ai.tools.PartnerAbility
 import me.ayuilos.miffan.data.ai.tools.buildSelfConfigTools
 import me.ayuilos.miffan.data.ai.tools.isCardSwitchEdit
 import android.app.Application
@@ -183,6 +184,11 @@ internal fun backgroundTextGenerationParams(
     customHeaders = model.customHeaders,
     customBody = model.customBodies,
 )
+
+/** Partner abilities switched on since [start] was read, e.g. approved through request_ability mid-turn. */
+internal fun abilitiesTurnedOnSince(start: Assistant, now: Settings): List<LocalToolOption> =
+    now.assistants.firstOrNull { it.id == start.id }?.localTools.orEmpty()
+        .filter { option -> option !in start.localTools && PartnerAbility.entries.any { it.option == option } }
 
 internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
     return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
@@ -750,10 +756,13 @@ class ChatService(
         createdAt: LocalDateTime? = null,
         /** Who wrote it when not the owner; null means the owner. */
         origin: me.ayuilos.miffan.data.model.MessageOrigin? = null,
+        /** Overrides the assistant's reasoning level for this message's reply ("think hard this time"). */
+        reasoningLevel: ReasoningLevel? = null,
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
-        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt, origin = origin)
+        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt, origin = origin,
+            reasoningLevel = reasoningLevel)
         // A message sent while an approval waits is the user's answer to it, not a turn behind it.
         val answersApproval = origin == null && !session.isGenerating && session.state.value.hasPendingToolApprovals()
         if ((immediately || answersApproval) && !(origin != null && session.state.value.hasPendingToolApprovals())) {
@@ -818,7 +827,7 @@ class ChatService(
 
                 // 开始补全
                 if (message.answer) {
-                    handleMessageComplete(conversationId)
+                    handleMessageComplete(conversationId, reasoningLevel = message.reasoningLevel)
                 }
 
                 _generationDoneFlow.emit(conversationId)
@@ -1161,12 +1170,13 @@ class ChatService(
 
     private suspend fun handleMessageComplete(
         conversationId: Uuid,
-        messageRange: ClosedRange<Int>? = null
+        messageRange: ClosedRange<Int>? = null,
+        reasoningLevel: ReasoningLevel? = null,
     ) {
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
-        val assistant = settings.getAssistantById(initialConversation.assistantId)
-            ?: settings.getCurrentAssistant()
+        val assistant = (settings.getAssistantById(initialConversation.assistantId) ?: settings.getCurrentAssistant())
+            .let { assistant -> reasoningLevel?.let { assistant.copy(reasoningLevel = it) } ?: assistant }
         val configuredModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
             ?: error(context.getString(R.string.chat_page_select_model_first))
 
@@ -1286,7 +1296,11 @@ class ChatService(
                     add(me.ayuilos.miffan.data.ai.transformers.PartnerMentionTransformer(turnConversation, settings))
                 },
                 outputTransformers = outputTransformers,
-                dynamicTools = { computerToolbox?.tools().orEmpty().withStandingApprovals(assistant).withAgentRelayApproval(access, dynamic = true) },
+                dynamicTools = {
+                    computerToolbox?.tools().orEmpty().withStandingApprovals(assistant).withAgentRelayApproval(access, dynamic = true) +
+                        // Abilities the owner approved during this turn (request_ability) work from the next step.
+                        localTools.getTools(abilitiesTurnedOnSince(assistant, settingsStore.settingsFlow.value)).withStandingApprovals(assistant).withAgentRelayApproval(access)
+                },
                 tools = buildList {
                     if (imageToolEnabled) {
                         add(createImageGenerationTool(
@@ -1353,6 +1367,7 @@ class ChatService(
                                 trigger = trigger,
                                 triggerText = trigger?.let { conversation.getMessageNodeByMessageId(it.messageId)?.message?.toText() }.orEmpty(),
                                 webSearchEnabled = assistant.enableWebSearch,
+                                localTools = assistant.localTools,
                             )
                         )
                     }

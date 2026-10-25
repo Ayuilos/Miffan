@@ -1,19 +1,16 @@
 package me.ayuilos.miffan.ui.im.thread
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -27,6 +24,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.im.ImActionCard
+import me.ayuilos.miffan.ui.im.ImCardBlock
+import me.ayuilos.miffan.ui.im.ImCardButton
+import me.ayuilos.miffan.ui.im.ImCardButtons
+import me.ayuilos.miffan.ui.im.ImCardOutlinedButton
 import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.PartnerMessageTool
@@ -109,27 +111,18 @@ private fun PartnerMessagePermission(
     val toolCallId = tool.toolCallId
     var answered by remember(toolCallId) { mutableStateOf(false) }
     val senderName = sender?.let { partnerName(it) }.orEmpty()
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                target?.let { AssistantAvatar(it.name, it.avatar, Modifier.size(32.dp)) }
-                Text(stringResource(R.string.im_partner_msg_permission_title, senderName, targetName),
-                    style = MaterialTheme.typography.titleMedium)
-            }
-            if (text.isNotBlank()) Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium) {
-                Text(text, Modifier.fillMaxWidth().padding(12.dp), maxLines = 6, overflow = TextOverflow.Ellipsis)
-            }
-            if (tool.isRelayApproval()) RelayApprovalNotice(tool)
-            else Text(stringResource(R.string.im_partner_msg_permission_desc), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(toolCallId, true) }) {
-                    Text(stringResource(R.string.im_p5_allow))
-                }
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = { answered = true; onApproval(toolCallId, false) }) {
-                    Text(stringResource(R.string.im_p5_not_now))
-                }
-            }
+    ImActionCard(title = stringResource(R.string.im_partner_msg_permission_title, senderName, targetName),
+        leading = target?.let { { AssistantAvatar(it.name, it.avatar, Modifier.size(40.dp)) } }) {
+        if (text.isNotBlank()) ImCardBlock {
+            Text(text, Modifier.fillMaxWidth().padding(12.dp), maxLines = 6, overflow = TextOverflow.Ellipsis)
+        }
+        if (tool.isRelayApproval()) RelayApprovalNotice(tool)
+        else Text(stringResource(R.string.im_partner_msg_permission_desc), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ImCardButtons {
+            ImCardButton(stringResource(R.string.im_p5_allow), enabled = !answered, onClick = { answered = true; onApproval(toolCallId, true) })
+            ImCardOutlinedButton(stringResource(R.string.im_p5_not_now), enabled = !answered,
+                onClick = { answered = true; onApproval(toolCallId, false) })
         }
     }
 }

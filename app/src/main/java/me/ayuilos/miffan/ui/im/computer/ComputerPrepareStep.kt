@@ -11,16 +11,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.data.ai.computer.CuaUpdateState
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteScreenCopyCommand
@@ -45,13 +48,21 @@ private const val QUIET_RECHECK_INTERVAL_MS = 5_000L
 @Composable
 internal fun ComputerReadyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     var installCommand by remember(state.hostId) { mutableStateOf<String?>(null) }
+    var confirmUpdate by remember(state.hostId) { mutableStateOf(false) }
+    val update by vm.cuaUpdate.collectAsStateWithLifecycle()
+    val partnerUsing by vm.partnerUsing.collectAsStateWithLifecycle()
+    val statusPage = vm.statusPage
+    // Finished updates notify only when the user is not already looking.
+    if (statusPage) LifecycleResumeEffect(state.hostId) {
+        val stop = vm.watchUpdates()
+        onPauseOrDispose { stop() }
+    }
     var askMacAccount by remember(state.hostId) { mutableStateOf(false) }
     val streamSetups by vm.streamSetups.collectAsStateWithLifecycle()
     val stream = state.hostId?.let { streamSetups[it] }?.takeIf { it.connectionRevision == state.hostRevision }
     var enablingStream by remember(state.hostId) { mutableStateOf(false) }
     val nav = LocalNavController.current
     val probe = state.probe
-    val upgrade = probe?.cua?.path != null
     // The user is likely fixing something at the computer: pick it up without asking for a tap.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(vm, lifecycle, state.ready, state.usesScreen, probe != null) {
@@ -64,23 +75,46 @@ internal fun ComputerReadyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
         }
     }
     val name = state.target?.name.orEmpty()
+    val retry = if (probe == null && !state.busy) SetupAction(stringResource(R.string.im_computer_retry)) {
+        state.hostId?.let { vm.chooseHost(it, fromList = true) }
+    } else null
     SetupScreen(
-        title = if (state.ready) stringResource(R.string.im_computer_ready_done_title, name) else stringResource(R.string.im_computer_ready_title, name),
-        subtitle = stringResource(when {
-            probe == null -> R.string.im_computer_ready_connecting_help
-            state.ready -> R.string.im_computer_ready_done_help
-            else -> R.string.im_computer_ready_help
-        }),
+        title = when {
+            !statusPage -> if (state.ready) stringResource(R.string.im_computer_ready_done_title, name) else stringResource(R.string.im_computer_ready_title, name)
+            probe == null -> stringResource(if (state.busy) R.string.im_computer_status_checking else R.string.im_computer_status_unreachable)
+            update is CuaUpdateState.Running -> stringResource(R.string.im_computer_status_updating)
+            state.pendingCount > 0 -> pluralStringResource(R.plurals.im_computer_status_pending, state.pendingCount, state.pendingCount)
+            state.cuaUpdateTo != null -> stringResource(R.string.im_computer_status_usable)
+            else -> stringResource(R.string.im_computer_status_fine)
+        },
+        subtitle = when {
+            !statusPage -> stringResource(when {
+                probe == null -> R.string.im_computer_ready_connecting_help
+                state.ready -> R.string.im_computer_ready_done_help
+                else -> R.string.im_computer_ready_help
+            })
+            probe == null -> if (state.busy) null else stringResource(R.string.im_computer_status_unreachable_help)
+            update is CuaUpdateState.Running -> stringResource(R.string.im_computer_status_updating_help)
+            state.pendingCount > 0 -> stringResource(R.string.im_computer_status_pending_help)
+            state.cuaUpdateTo != null -> stringResource(R.string.im_computer_status_usable_help)
+            state.busy -> null
+            else -> stringResource(R.string.im_computer_status_fine_help)
+        },
+        eyebrow = name.takeIf { statusPage },
         state = state, onDismissError = vm::dismissError,
-        primary = if (probe == null && !state.busy) SetupAction(stringResource(R.string.im_computer_retry)) {
-            state.hostId?.let { vm.chooseHost(it, fromList = true) }
-        } else SetupAction(stringResource(R.string.im_computer_continue), enabled = state.ready, onClick = vm::continueToShare),
+        // A status page reports and fixes in place; it never leads on to sharing.
+        primary = when {
+            retry != null -> retry
+            statusPage -> null
+            else -> SetupAction(stringResource(R.string.im_computer_continue), enabled = state.ready, onClick = vm::continueToShare)
+        },
         secondary = when {
-            probe == null -> null
+            probe == null || statusPage -> null
             state.usesScreen -> SetupAction(stringResource(R.string.im_computer_no_screen)) { vm.setWantsScreen(false) }
             else -> SetupAction(stringResource(R.string.im_computer_use_screen_again)) { vm.setWantsScreen(true) }
         },
     ) {
+        if (statusPage && state.busy && probe != null) LinearProgressIndicator(Modifier.fillMaxWidth())
         SetupGroup {
             ChecklistRow(if (probe != null) CheckState.DONE else if (state.busy) CheckState.WAITING else CheckState.TODO,
                 stringResource(if (probe != null) R.string.im_computer_check_connected else R.string.im_computer_check_connecting),
@@ -93,24 +127,9 @@ internal fun ComputerReadyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
             }
             ScreenRow(vm, state, stream, enablingStream = enablingStream, onEnableStream = { enablingStream = true })
             val screenOk = state.sessionReady && state.screenServiceReady
-            ChecklistRow(when {
-                state.cuaReady -> CheckState.DONE
-                state.task == ComputerSetupTask.INSTALLING -> CheckState.WAITING
-                else -> CheckState.TODO
-            }, stringResource(if (state.cuaReady) R.string.im_computer_check_helper_done else R.string.im_computer_check_helper),
-                if (state.cuaReady) null else stringResource(R.string.im_computer_check_helper_help),
-                divider = state.isMac || optionalRows(state, stream)) {
-                if (!state.cuaReady && state.task != ComputerSetupTask.INSTALLING) Row(verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Button(enabled = !state.busy, onClick = { installCommand = vm.cuaInstallCommand() }) {
-                        Text(stringResource(if (upgrade) R.string.im_computer_upgrade else R.string.im_computer_install))
-                    }
-                }
-                state.install?.takeIf { !it.success }?.let { result ->
-                    Text(stringResource(R.string.im_computer_install_failed), color = MaterialTheme.colorScheme.error)
-                    RemoteScreenLog(result.output.ifBlank { stringResource(R.string.im_computer_no_output) })
-                }
-            }
+            CuaRow(state, update, partnerUsing, statusPage, divider = state.isMac || optionalRows(state, stream),
+                onInstall = { installCommand = vm.cuaInstallCommand() }, onUpdate = { confirmUpdate = true },
+                onCancelWaiting = vm::cancelWaitingUpdate)
             if (state.isMac) {
                 val accountState = when {
                     state.macAccount != null -> CheckState.DONE
@@ -162,8 +181,12 @@ internal fun ComputerReadyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
             }, confirmButton = { TextButton(enabled = !state.busy && command == vm.cuaInstallCommand(), onClick = {
                 installCommand = null
                 vm.installCuaDriver()
-            }) { Text(stringResource(if (upgrade) R.string.im_computer_upgrade else R.string.im_computer_install)) } },
+            }) { Text(stringResource(R.string.im_computer_install)) } },
             dismissButton = { TextButton(onClick = { installCommand = null }) { Text(stringResource(R.string.common_cancel)) } })
+    }
+    if (confirmUpdate) CuaUpdateDialog(state, vm.cuaInstallCommand(), partnerUsing, onDismiss = { confirmUpdate = false }) {
+        confirmUpdate = false
+        vm.updateCuaDriver()
     }
     if (askMacAccount) MacAccountDialog(state.username, onDismiss = { askMacAccount = false }) { user, password ->
         askMacAccount = false

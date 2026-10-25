@@ -96,7 +96,7 @@ fun WorkspaceTerminalPage(
             ) {
                 if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Text(state.error ?: if (state.loading) workspaceStrings.getString(R.string.workspace_loading_workspace) else workspaceStrings.getString(R.string.workspace_not_found))
-                if (!state.loading) TextButton(onClick = vm::reloadMetadataOnly) { Text(stringResource(R.string.onboarding_page_retry)) }
+                if (!state.loading) TextButton(onClick = vm::reloadMetadataOnly) { Text(stringResource(R.string.retry)) }
             }
         }
         return

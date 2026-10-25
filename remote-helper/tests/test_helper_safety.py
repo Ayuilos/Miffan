@@ -304,6 +304,77 @@ with tempfile.TemporaryDirectory(prefix="mac-shortcut-") as tmp:
     assert shortcut("other").returncode == 2
     print("PASS: Mac shortcuts press Control+fn+arrow through cua-driver; missing driver exits 127")
 
+# `miffan cua check-update` asks the driver afresh and prints its answer as one JSON line.
+CHECK_MOCK = r'''#!/bin/sh
+case "$(basename "$0")" in
+    uname) [ "${1:-}" = -s ] && echo Linux || echo x86_64 ;;
+    cua-driver)
+        printf '%s\n' "$*" > "$HOME/cua-args"
+        [ -n "${FIXTURE_FAIL:-}" ] && exit 1
+        printf '{\n  "current_version": "0.35.4",\n  "latest_version": "0.37.0",\n  "update_available": true,\n  "error": null\n}\n' ;;
+esac
+'''
+with tempfile.TemporaryDirectory(prefix="cua-check-") as tmp:
+    root = Path(tmp)
+    tools = root / "tools"
+    tools.mkdir()
+    (tools / "mock").write_text(CHECK_MOCK)
+    (tools / "mock").chmod(0o755)
+    (tools / "uname").symlink_to(tools / "mock")
+    for name in ["sh", "basename", "printf", "tr", "cat", "head", "sed"]:
+        if shutil.which(name): (tools / name).symlink_to(shutil.which(name))
+    def check(**extra):
+        env = dict(os.environ, HOME=str(root), PATH=str(tools), **extra)
+        result = subprocess.run([shutil.which("sh"), str(HELPER), "cua", "check-update"], text=True, capture_output=True, env=env, timeout=10)
+        assert result.returncode == 0, result.stderr
+        lines = result.stdout.splitlines()
+        assert len(lines) == 1, result.stdout
+        return json.loads(lines[0])
+    assert check() == {"error": "not_installed"}
+    (tools / "cua-driver").symlink_to(tools / "mock")
+    assert check() == {"current_version": "0.35.4", "latest_version": "0.37.0", "update_available": True, "error": None}
+    assert (root / "cua-args").read_text().strip() == "check-update --json --no-cache"
+    assert check(FIXTURE_FAIL="1") == {"error": "check_failed"}
+    print("PASS: cua check-update asks afresh, flattens to one JSON line, reports missing and failing drivers")
+
+# `miffan cua install` downloads through the computer's own proxy and refuses a network too slow to finish.
+INSTALL_MOCK = r'''#!/bin/sh
+case "$(basename "$0")" in
+    uname) [ "${1:-}" = -s ] && echo Darwin || echo arm64 ;;
+    scutil) printf '<dictionary> {\n  HTTPSEnable : 1\n  HTTPSPort : 8889\n  HTTPSProxy : 127.0.0.1\n}\n' ;;
+    curl)
+        printf '%s|%s\n' "${HTTPS_PROXY:-}" "$*" >> "$HOME/curl-calls"
+        printf '%s' "${FIXTURE_BYTES:-1048576}" ;;
+    cua-driver) printf '%s|%s\n' "${HTTPS_PROXY:-}" "$*" > "$HOME/cua-args" ;;
+esac
+'''
+with tempfile.TemporaryDirectory(prefix="cua-install-") as tmp:
+    root = Path(tmp)
+    tools = root / "tools"
+    tools.mkdir()
+    (tools / "mock").write_text(INSTALL_MOCK)
+    (tools / "mock").chmod(0o755)
+    for name in ["uname", "scutil", "curl", "cua-driver"]:
+        (tools / name).symlink_to(tools / "mock")
+    for name in ["sh", "basename", "printf", "awk", "sed", "head", "cat"]:
+        if shutil.which(name): (tools / name).symlink_to(shutil.which(name))
+    def install(**extra):
+        for name in ["curl-calls", "cua-args"]:
+            (root / name).unlink(missing_ok=True)
+        env = {k: v for k, v in os.environ.items() if not k.lower().endswith("_proxy")}
+        env.update(HOME=str(root), PATH=str(tools), **extra)
+        return subprocess.run([shutil.which("sh"), str(HELPER), "cua", "install"], text=True, capture_output=True, env=env, timeout=10)
+    result = install()
+    assert result.returncode == 0, result.stderr
+    assert (root / "cua-args").read_text().strip() == "http://127.0.0.1:8889|update --apply"
+    assert (root / "curl-calls").read_text().startswith("http://127.0.0.1:8889|"), "speed check uses the system proxy"
+    result = install(HTTPS_PROXY="http://10.0.0.1:3128")
+    assert (root / "cua-args").read_text().startswith("http://10.0.0.1:3128|"), "a set proxy wins"
+    result = install(FIXTURE_BYTES="803105")
+    assert result.returncode == 1 and "Cua download failed; nothing was changed" in result.stderr, result
+    assert not (root / "cua-args").exists(), "a slow network never starts the installer"
+    print("PASS: cua install uses the computer's proxy, refuses slow downloads before installing, updates in place")
+
 # Fixed probe/VNC environments: every OS capability lookup is stubbed, no host session is used.
 PROBE_MOCK = r'''#!/usr/bin/env python3
 import os,sys
