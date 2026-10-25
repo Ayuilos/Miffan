@@ -27,6 +27,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
+import me.ayuilos.miffan.ui.im.ThinkTime
+import me.ayuilos.miffan.ui.im.thinkingModelOf
+import me.rerere.ai.core.ReasoningLevel
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.MessageNode
@@ -82,7 +85,7 @@ data class ThreadTimelineState(val items: List<TimelineItem>, val loaded: Boolea
 @OptIn(ExperimentalCoroutinesApi::class)
 class AgentThreadVM(
     val assistantId: Uuid,
-    settingsStore: SettingsStore,
+    private val settingsStore: SettingsStore,
     private val threadRepository: ThreadRepository,
     noticeSource: ThreadNoticeSource,
     private val chatService: ChatService,
@@ -119,6 +122,20 @@ class AgentThreadVM(
 
     /** Message the next send replies to; shown above the composer. */
     val replyTarget: StateFlow<TimelineItem.Message?> = _replyTarget.asStateFlow()
+
+    private val _thinkHarder = MutableStateFlow(false)
+
+    /** The next message gets the deepest thinking its model offers, whatever the partner's own setting. */
+    val thinkHarder: StateFlow<Boolean> = _thinkHarder.asStateFlow()
+
+    private val _deepMessageIds = MutableStateFlow<Set<Uuid>>(emptySet())
+
+    /** Messages sent with [thinkHarder], so the header can say the partner is thinking hard about them. */
+    val deepMessageIds: StateFlow<Set<Uuid>> = _deepMessageIds.asStateFlow()
+
+    fun setThinkHarder(on: Boolean) {
+        _thinkHarder.value = on
+    }
 
     val assistant: StateFlow<Assistant?> = settingsStore.settingsFlow
         .map { it.getAssistantById(assistantId) }
@@ -307,6 +324,9 @@ class AgentThreadVM(
         val replyTo = _replyTarget.value?.ref
         _replyTarget.value = null
         val message = UIMessage(role = MessageRole.USER, parts = parts)
+        val reasoningLevel = if (_thinkHarder.value) deepReasoningLevel() else null
+        _thinkHarder.value = false
+        if (reasoningLevel != null) _deepMessageIds.update { it + message.id }
         pending.update { it + message }
         viewModelScope.launch {
             try {
@@ -320,6 +340,7 @@ class AgentThreadVM(
                     reviewedHistory = reviewedHistory,
                     messageId = message.id,
                     createdAt = message.createdAt,
+                    reasoningLevel = reasoningLevel,
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -328,6 +349,12 @@ class AgentThreadVM(
                 chatService.addError(e)
             }
         }
+    }
+
+    private fun deepReasoningLevel(): ReasoningLevel? {
+        val settings = settingsStore.settingsFlow.value
+        val partner = settings.getAssistantById(assistantId) ?: return null
+        return settings.thinkingModelOf(partner)?.let { ThinkTime.DEEP.levelFor(it) }
     }
 
     fun sendText(text: String) {

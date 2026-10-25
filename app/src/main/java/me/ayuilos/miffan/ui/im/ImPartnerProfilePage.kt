@@ -187,6 +187,11 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                 Spacer(Modifier.height(8.dp))
                 ImCardGroup {
                     PartnerModelRow(partner, currentSettings, !busy) { id -> perform { vm.update { it.copy(chatModelId = id) } } }
+                    // Next to the model: which tiers exist depends on it.
+                    currentSettings.thinkingModelOf(partner)?.let { model ->
+                        ImCardDivider()
+                        PartnerThinkTimeRow(partner, model, !busy) { level -> perform { vm.update { it.copy(reasoningLevel = level) } } }
+                    }
                     ImCardDivider()
                     ImListRow(HugeIcons.Shield01, stringResource(R.string.im_audit_title), { nav.navigate(Screen.ApprovalHistory(assistantId)) })
                     ImCardDivider()

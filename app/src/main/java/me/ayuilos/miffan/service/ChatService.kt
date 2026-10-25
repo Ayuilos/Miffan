@@ -756,10 +756,13 @@ class ChatService(
         createdAt: LocalDateTime? = null,
         /** Who wrote it when not the owner; null means the owner. */
         origin: me.ayuilos.miffan.data.model.MessageOrigin? = null,
+        /** Overrides the assistant's reasoning level for this message's reply ("think hard this time"). */
+        reasoningLevel: ReasoningLevel? = null,
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
-        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt, origin = origin)
+        val message = QueuedMessage(id = messageId, content = content.toList(), answer = answer, replyTo = replyTo, createdAt = createdAt, origin = origin,
+            reasoningLevel = reasoningLevel)
         // A message sent while an approval waits is the user's answer to it, not a turn behind it.
         val answersApproval = origin == null && !session.isGenerating && session.state.value.hasPendingToolApprovals()
         if ((immediately || answersApproval) && !(origin != null && session.state.value.hasPendingToolApprovals())) {
@@ -824,7 +827,7 @@ class ChatService(
 
                 // 开始补全
                 if (message.answer) {
-                    handleMessageComplete(conversationId)
+                    handleMessageComplete(conversationId, reasoningLevel = message.reasoningLevel)
                 }
 
                 _generationDoneFlow.emit(conversationId)
@@ -1167,12 +1170,13 @@ class ChatService(
 
     private suspend fun handleMessageComplete(
         conversationId: Uuid,
-        messageRange: ClosedRange<Int>? = null
+        messageRange: ClosedRange<Int>? = null,
+        reasoningLevel: ReasoningLevel? = null,
     ) {
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
-        val assistant = settings.getAssistantById(initialConversation.assistantId)
-            ?: settings.getCurrentAssistant()
+        val assistant = (settings.getAssistantById(initialConversation.assistantId) ?: settings.getCurrentAssistant())
+            .let { assistant -> reasoningLevel?.let { assistant.copy(reasoningLevel = it) } ?: assistant }
         val configuredModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
             ?: error(context.getString(R.string.chat_page_select_model_first))
 
