@@ -1,15 +1,8 @@
 package me.ayuilos.miffan.ui.im.thread
 
 import android.content.ClipData
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -18,19 +11,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.im.ImActionCard
+import me.ayuilos.miffan.ui.im.ImCardButton
+import me.ayuilos.miffan.ui.im.ImCardButtons
+import me.ayuilos.miffan.ui.im.ImCardOutlinedButton
 import me.ayuilos.miffan.data.bugreport.buildBugReportIssueUrl
 import me.ayuilos.miffan.data.bugreport.deviceDiagnostics
 import me.ayuilos.miffan.data.bugreport.parseBugReportDraft
@@ -40,6 +35,8 @@ import me.ayuilos.miffan.data.model.isImMode
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.utils.openUrl
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Bug01
 
 internal const val APP_DIAGNOSTICS = "app_diagnostics"
 internal const val DRAFT_BUG_REPORT = "draft_bug_report"
@@ -59,41 +56,39 @@ internal fun ThreadBugReportCard(tool: UIMessagePart.Tool, onApproval: (String, 
         runCatching { parseBugReportDraft(tool.inputAsJson()).withEnvironment(deviceDiagnostics(context, imMode)).sanitized() }.getOrNull()
     }
     var answered by remember(tool.toolCallId) { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.im_bug_report_title), style = MaterialTheme.typography.titleMedium)
-            if (draft == null) {
-                Text(stringResource(R.string.im_p5_permission_info), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text(draft.title, fontWeight = FontWeight.Medium)
-                ChangeLongText(stringResource(R.string.im_bug_report_description), draft.description)
-                ChangeLongText(stringResource(R.string.im_bug_report_actual), draft.actual)
-                ChangeLongText(stringResource(R.string.im_bug_report_expected), draft.expected)
-                draft.logs?.takeIf { it.isNotBlank() }?.let { ChangeLongText(stringResource(R.string.im_bug_report_logs), it) }
-                val environment = listOf(draft.provider, draft.model, draft.app_version, draft.android_version, draft.device_model)
-                    .mapNotNull { it?.takeIf(String::isNotBlank) }
-                ChangeField(stringResource(R.string.im_bug_report_environment)) {
-                    Text(environment.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
-                }
+    ImActionCard(title = stringResource(R.string.im_bug_report_title), icon = HugeIcons.Bug01, trailing = {
+        TextButton(enabled = draft != null, onClick = {
+            val text = draft?.let { runCatching { it.toMarkdown() }.getOrNull() } ?: return@TextButton
+            scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", text))) }
+        }) { Text(stringResource(R.string.im_bug_report_copy)) }
+    }) {
+        if (draft == null) {
+            Text(stringResource(R.string.im_p5_permission_info), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Text(draft.title, fontWeight = FontWeight.Medium)
+            ChangeLongText(stringResource(R.string.im_bug_report_description), draft.description)
+            ChangeLongText(stringResource(R.string.im_bug_report_actual), draft.actual)
+            ChangeLongText(stringResource(R.string.im_bug_report_expected), draft.expected)
+            draft.logs?.takeIf { it.isNotBlank() }?.let { ChangeLongText(stringResource(R.string.im_bug_report_logs), it) }
+            val environment = listOf(draft.provider, draft.model, draft.app_version, draft.android_version, draft.device_model)
+                .mapNotNull { it?.takeIf(String::isNotBlank) }
+            ChangeField(stringResource(R.string.im_bug_report_environment)) {
+                Text(environment.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
             }
-            Text(stringResource(R.string.im_bug_report_public), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            RelayApprovalNotice(tool)
-            Button(modifier = Modifier.fillMaxWidth(), enabled = !answered, onClick = {
+        }
+        Text(stringResource(R.string.im_bug_report_public), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        RelayApprovalNotice(tool)
+        ImCardButtons {
+            ImCardButton(stringResource(R.string.im_bug_report_submit), enabled = !answered, onClick = {
                 answered = true
                 draft?.let { runCatching { buildBugReportIssueUrl(it) }.getOrNull() }?.let(context::openUrl)
                 onApproval(tool.toolCallId, true)
-            }) { Text(stringResource(R.string.im_bug_report_submit)) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = draft != null, onClick = {
-                    val text = draft?.let { runCatching { it.toMarkdown() }.getOrNull() } ?: return@OutlinedButton
-                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", text))) }
-                }) { Text(stringResource(R.string.im_bug_report_copy)) }
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !answered, onClick = {
-                    answered = true
-                    onApproval(tool.toolCallId, false)
-                }) { Text(stringResource(R.string.im_bug_report_skip)) }
-            }
+            })
+            ImCardOutlinedButton(stringResource(R.string.im_bug_report_skip), enabled = !answered, onClick = {
+                answered = true
+                onApproval(tool.toolCallId, false)
+            })
         }
     }
 }

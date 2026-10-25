@@ -14,6 +14,7 @@ import me.rerere.ai.ui.UIMessage
 // 提供商实现
 // 采用无状态设计，使用时除了需要传入需要的参数外，还需要传入provider setting作为参数
 interface Provider<T : ProviderSetting> {
+    /** Throws [ModelListException] when the service answers with an error status. */
     suspend fun listModels(providerSetting: T): List<Model>
 
     suspend fun getBalance(providerSetting: T): String {
@@ -127,3 +128,6 @@ data class CustomBody(
     val key: String,
     val value: JsonElement
 )
+
+/** The service refused to list models; [code] tells a rejected key (401/403) from other failures. */
+class ModelListException(val code: Int, val body: String) : IllegalStateException("Failed to get models: $code $body")

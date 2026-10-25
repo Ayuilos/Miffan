@@ -8,7 +8,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.JsonObject
@@ -21,6 +20,12 @@ import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.components.message.tools.DefaultToolPreview
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIRegistry
+import me.ayuilos.miffan.ui.im.ImActionCard
+import me.ayuilos.miffan.ui.im.ImCardBlock
+import me.ayuilos.miffan.ui.im.ImCardButton
+import me.ayuilos.miffan.ui.im.ImCardButtons
+import me.ayuilos.miffan.ui.im.ImCardOutlinedButton
+import me.ayuilos.miffan.ui.im.ImCardStatus
 import me.ayuilos.miffan.ui.im.partnerName
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
@@ -87,53 +92,33 @@ internal fun ApprovalCardFrame(
     var allowed by remember(tool.toolCallId) { mutableStateOf(false) }
     var always by remember(tool.toolCallId) { mutableStateOf(false) }
     var details by remember(tool.toolCallId) { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                icon?.let {
-                    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.size(40.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(it, null, Modifier.size(22.dp)) }
+    ImActionCard(title = title, icon = icon,
+        trailing = { TextButton(onClick = { details = true }) { Text(stringResource(R.string.im_approval_details)) } }) {
+        content()
+        footnote?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        RelayApprovalNotice(tool)
+        if (canAlways && !allowed) StandingApprovalSwitch(always) { always = it }
+        if (allowed) {
+            ImCardStatus(stringResource(R.string.im_approval_allowed_continuing))
+        } else {
+            ImCardButtons {
+                ImCardButton(allowLabel, enabled = allowEnabled && LocalToolCardAllowEnabled.current, danger = allowDanger, onClick = {
+                    allowed = true
+                    val alwaysChosen = always && canAlways
+                    when {
+                        onAllow != null -> onAllow(alwaysChosen)
+                        alwaysChosen -> actions!!.alwaysAllow(tool.toolCallId)
+                        else -> onApproval(tool.toolCallId, true)
                     }
-                }
-                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = { details = true }) { Text(stringResource(R.string.im_approval_details)) }
+                })
+                ImCardOutlinedButton(stringResource(R.string.im_p5_not_now), onClick = {
+                    decline?.invoke(tool.toolCallId) ?: onApproval(tool.toolCallId, false)
+                })
             }
-            content()
-            footnote?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            RelayApprovalNotice(tool)
-            if (canAlways && !allowed) StandingApprovalSwitch(always) { always = it }
-            if (allowed) {
-                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text(stringResource(R.string.im_approval_allowed_continuing))
-                    }
-                }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(modifier = Modifier.weight(1f).heightIn(min = 48.dp), enabled = allowEnabled && LocalToolCardAllowEnabled.current,
-                        colors = if (allowDanger) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError) else ButtonDefaults.buttonColors(), onClick = {
-                        allowed = true
-                        val alwaysChosen = always && canAlways
-                        when {
-                            onAllow != null -> onAllow(alwaysChosen)
-                            alwaysChosen -> actions!!.alwaysAllow(tool.toolCallId)
-                            else -> onApproval(tool.toolCallId, true)
-                        }
-                    }) { Text(allowLabel) }
-                    OutlinedButton(modifier = Modifier.weight(1f).heightIn(min = 48.dp), onClick = {
-                        decline?.invoke(tool.toolCallId) ?: onApproval(tool.toolCallId, false)
-                    }) { Text(stringResource(R.string.im_p5_not_now)) }
-                }
-                if (decline == null) Text(stringResource(R.string.im_approval_reply_hint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            if (decline == null) Text(stringResource(R.string.im_approval_reply_hint), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     if (details) ModalBottomSheet(onDismissRequest = { details = false }) {
@@ -160,7 +145,7 @@ private fun StandingApprovalSwitch(checked: Boolean, onChange: (Boolean) -> Unit
 @Composable
 internal fun ApprovalFields(fields: List<Pair<String, @Composable () -> Unit>>) {
     if (fields.isEmpty()) return
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium) {
+    ImCardBlock {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
             fields.forEachIndexed { index, (label, value) ->
                 if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)

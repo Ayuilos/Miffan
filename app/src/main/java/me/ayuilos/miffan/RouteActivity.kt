@@ -68,6 +68,8 @@ import com.dokar.sonner.rememberToasterState
 import kotlinx.serialization.Serializable
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.isNotConfigured
+import me.ayuilos.miffan.data.onboarding.OnboardingStage
+import me.ayuilos.miffan.data.onboarding.onboardingStage
 import me.ayuilos.miffan.data.db.DatabaseMigrationTracker
 import me.ayuilos.miffan.data.db.MigrationState
 import me.ayuilos.miffan.data.event.AppEvent
@@ -91,7 +93,7 @@ import me.ayuilos.miffan.ui.hooks.readStringPreference
 import me.ayuilos.miffan.ui.hooks.rememberCurrentColorMode
 import me.ayuilos.miffan.ui.hooks.rememberCustomAsrState
 import me.ayuilos.miffan.ui.hooks.rememberCustomTtsState
-import me.ayuilos.miffan.ui.im.ImOnboardingPage
+import me.ayuilos.miffan.ui.im.welcome.ImWelcomePage
 import me.ayuilos.miffan.ui.im.ImMemoryPage
 import me.ayuilos.miffan.ui.im.ImAiServicePage
 import me.ayuilos.miffan.ui.im.ImApprovalHistoryPage
@@ -147,7 +149,6 @@ import me.ayuilos.miffan.ui.pages.favorite.FavoritePage
 import me.ayuilos.miffan.ui.pages.history.HistoryPage
 import me.ayuilos.miffan.ui.pages.imggen.ImageGenPage
 import me.ayuilos.miffan.ui.pages.log.LogPage
-import me.ayuilos.miffan.ui.pages.onboarding.OnboardingPage
 import me.ayuilos.miffan.ui.pages.search.SearchPage
 import me.ayuilos.miffan.ui.pages.setting.SettingAboutPage
 import me.ayuilos.miffan.ui.pages.setting.SettingPreferencesPage
@@ -340,7 +341,7 @@ class RouteActivity : ComponentActivity() {
         val requestedStartScreen: Screen = remember {
             notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"),
             intent.getStringExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA))
-                ?: if (settings.isNotConfigured()) {
+                ?: if (settings.onboardingStage() != OnboardingStage.NONE) {
                     Screen.Onboarding
                 } else if (settings.isImMode) {
                     Screen.Home
@@ -530,7 +531,7 @@ class RouteActivity : ComponentActivity() {
                                 metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
                                     + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
                             ) {
-                                if (settings.isImMode) ImOnboardingPage() else OnboardingPage()
+                                ImWelcomePage()
                             }
 
                             entry<Screen.ShareHandler> { key ->

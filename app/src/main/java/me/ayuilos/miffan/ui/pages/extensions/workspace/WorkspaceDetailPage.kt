@@ -1169,7 +1169,7 @@ private fun ErrorCard(message: String, onRetry: () -> Unit, onCheckHost: (() -> 
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onRetry) { Text(stringResource(R.string.onboarding_page_retry)) }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 onCheckHost?.let { action -> TextButton(onClick = action) { Text(stringResource(R.string.workspace_check_host)) } }
             }
         }

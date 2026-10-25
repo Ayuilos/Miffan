@@ -299,6 +299,7 @@ fun AgentThreadPage(
         // The composer grows (keyboard, attachments); keep the newest message above it while following.
         if (loaded && followLatest && !jumping) scrollToLatest()
     }
+    val starter = remember(timeline) { threadStarter(timeline) }
     @Composable
     fun TimelineRow(item: TimelineItem) {
         when (item) {
@@ -315,7 +316,12 @@ fun AgentThreadPage(
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
-                assistant = assistant) }
+                assistant = assistant)
+                if (starter?.greetingId == item.message.id) ThreadStarterQuiz(assistant, starter, enabled = generating.isEmpty()) {
+                    followLatest = true
+                    vm.sendText(it)
+                }
+            }
             is TimelineItem.Typing -> ThreadTyping(assistant)
             is TimelineItem.Event -> if (item.origin.kind == SCHEDULED_RUN || item.origin.kind == SCHEDULED_RUN_FAILED) {
                 val target = item.origin.link?.removePrefix("remote-task:")?.split('/')?.takeIf { it.size == 2 }

@@ -18,6 +18,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.ui.im.ImActionCard
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.revision.RevisionService
@@ -178,16 +179,14 @@ private fun ThreadTerminalCard(
     onApproval: (String, Boolean) -> Unit,
     onAnswer: (String, String) -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            CompositionLocalProvider(LocalTerminalConversationId provides conversationId) {
-                ChainOfThought(steps = listOf(ThinkingStep.ToolStep(tool)), collapsedVisibleCount = Int.MAX_VALUE) {
-                    ChatMessageToolStep(tool, onToolAnswer = onAnswer,
-                        onToolApproval = { id, approved, _ -> onApproval(id, approved) })
-                }
+    ImActionCard {
+        CompositionLocalProvider(LocalTerminalConversationId provides conversationId) {
+            ChainOfThought(steps = listOf(ThinkingStep.ToolStep(tool)), collapsedVisibleCount = Int.MAX_VALUE) {
+                ChatMessageToolStep(tool, onToolAnswer = onAnswer,
+                    onToolApproval = { id, approved, _ -> onApproval(id, approved) })
             }
-            RelayApprovalNotice(tool)
         }
+        RelayApprovalNotice(tool)
     }
 }
 

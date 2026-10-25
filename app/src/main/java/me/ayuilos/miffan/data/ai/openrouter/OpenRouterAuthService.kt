@@ -48,7 +48,7 @@ private const val OPENROUTER_KEY_EXCHANGE_URL = "https://openrouter.ai/api/v1/au
 private const val OPENROUTER_KEY_INFO_URL = "https://openrouter.ai/api/v1/key"
 private const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 private const val OPENROUTER_CALLBACK_URL = "https://miffan.ayuilos.me/openrouter-callback.html"
-private const val OPENROUTER_FREE_MODEL = "openrouter/free"
+internal const val OPENROUTER_FREE_MODEL = "openrouter/free"
 private val OPENROUTER_FREE_MODEL_ABILITIES = listOf(
     ModelAbility.TOOL,
     ModelAbility.REASONING,

@@ -33,6 +33,7 @@ import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelListException
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.Provider
@@ -158,7 +159,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     )
                 }
             } else {
-                emptyList()
+                throw ModelListException(response.code, response.body?.string().orEmpty())
             }
         }
 

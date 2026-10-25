@@ -51,6 +51,7 @@ import me.ayuilos.miffan.data.model.Avatar
 import me.ayuilos.miffan.data.model.InjectionPosition
 import me.ayuilos.miffan.data.model.InterfaceModeState
 import me.ayuilos.miffan.data.model.initialInterfaceMode
+import me.ayuilos.miffan.data.onboarding.initialOnboardingDone
 import me.ayuilos.miffan.data.model.Lorebook
 import me.ayuilos.miffan.data.model.PromptInjection
 import me.ayuilos.miffan.data.model.QuickMessage
@@ -82,6 +83,7 @@ private val Context.settingsStore by preferencesDataStore(
             PreferenceStoreV3Migration(),
             WhaleThemeDiscoveryMigration(),
             InterfaceModeMigration(),
+            OnboardingMigration(),
         )
     }
 )
@@ -127,6 +129,23 @@ internal class InterfaceModeMigration : DataMigration<Preferences> {
     override suspend fun cleanUp() = Unit
 }
 
+/** Records once whether the first-run onboarding still has to run; installations already in use skip it. */
+internal class OnboardingMigration : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+        currentData[SettingsStore.ONBOARDING_DONE] == null
+
+    override suspend fun migrate(currentData: Preferences): Preferences = currentData.toMutablePreferences().apply {
+        if (this[SettingsStore.ONBOARDING_DONE] == null) {
+            this[SettingsStore.ONBOARDING_DONE] = initialOnboardingDone(
+                launchCount = this[SettingsStore.LAUNCH_COUNT] ?: 0,
+                hasSavedProviders = this[SettingsStore.PROVIDERS] != null,
+            )
+        }
+    }
+
+    override suspend fun cleanUp() = Unit
+}
+
 class SettingsStore(
     context: Context,
     scope: AppScope,
@@ -141,6 +160,7 @@ class SettingsStore(
         val WHALE_THEME_DISCOVERY = stringPreferencesKey("whale_theme_discovery")
         val REMOTE_WORKSPACE_INTRO_SEEN = booleanPreferencesKey("remote_workspace_intro_seen")
         val INTERFACE_MODE = stringPreferencesKey("interface_mode")
+        val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
@@ -288,6 +308,7 @@ class SettingsStore(
                 interfaceMode = preferences[INTERFACE_MODE]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: InterfaceModeState(choicePending = true),
+                onboardingDone = preferences[ONBOARDING_DONE] != false,
                 whaleThemeDiscovery = preferences[WHALE_THEME_DISCOVERY]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: WhaleThemeDiscovery(settingsSeen = true),
@@ -483,6 +504,7 @@ class SettingsStore(
             preferences[THEME_ID] = settings.themeId
             preferences[REMOTE_WORKSPACE_INTRO_SEEN] = settings.remoteWorkspaceIntroSeen
             preferences[INTERFACE_MODE] = JsonInstant.encodeToString(settings.interfaceMode)
+            preferences[ONBOARDING_DONE] = settings.onboardingDone
             preferences[WHALE_THEME_DISCOVERY] = JsonInstant.encodeToString(settings.whaleThemeDiscovery)
             preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
             preferences[DEVELOPER_MODE] = settings.developerMode
@@ -688,6 +710,8 @@ data class Settings(
     val remoteWorkspaceIntroSeen: Boolean = false,
     // Settings without a recorded shell (such as older backups) keep the professional shell and ask.
     val interfaceMode: InterfaceModeState = InterfaceModeState(choicePending = true),
+    // Settings without the flag (such as older backups) belong to someone past the first run.
+    val onboardingDone: Boolean = true,
     val whaleThemeDiscovery: WhaleThemeDiscovery = WhaleThemeDiscovery(),
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
