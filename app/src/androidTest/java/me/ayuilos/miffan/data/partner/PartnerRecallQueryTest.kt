@@ -12,7 +12,6 @@ import kotlinx.coroutines.runBlocking
 import me.ayuilos.miffan.data.db.AppDatabase
 import me.ayuilos.miffan.data.db.entity.ConversationEntity
 import me.ayuilos.miffan.data.db.fts.MessageFtsManager
-import me.ayuilos.miffan.data.db.fts.SimpleDictManager
 import me.ayuilos.miffan.data.model.Conversation
 import me.rerere.ai.ui.UIMessage
 import org.junit.Assert.*
@@ -36,7 +35,6 @@ class PartnerRecallQueryTest {
                 })))
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
-                    db.query("SELECT jieba_dict(?)", arrayOf(SimpleDictManager.extractDict(context).absolutePath)).use { it.moveToFirst() }
                     db.execSQL("CREATE VIRTUAL TABLE message_fts USING fts5(text, node_id UNINDEXED, message_id UNINDEXED, conversation_id UNINDEXED, title UNINDEXED, update_at UNINDEXED, tokenize='simple')")
                 }
             }).build()
