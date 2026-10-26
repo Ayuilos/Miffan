@@ -76,7 +76,8 @@ private fun openRouterImageReference(source: String): String {
 
 /** OpenRouter uses media_type, Magpie uses mime_type, and OpenAI uses output_format. */
 internal fun JsonObject.base64ImageOrNull(defaultFormat: String = "png"): ImageGenerationItem? {
-    val data = get("b64_json")?.jsonPrimitive?.contentOrNull ?: return null
+    // 部分中转同时给 url 和空字符串的 b64_json，空串当作没有
+    val data = get("b64_json")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return null
     val format = get("output_format")?.jsonPrimitive?.contentOrNull ?: defaultFormat
     val mediaType = listOf("media_type", "mime_type").firstNotNullOfOrNull { key ->
         get(key)?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("image/") }

@@ -53,7 +53,7 @@ class OpenAIImagesApiCompatibilityTest {
             val download = request.url.encodedPath == "/generated.webp"
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
                 .body(if (download) bytes.toResponseBody("image/webp".toMediaType()) else
-                    """{"data":[{"b64_json":"AQIDBA==","mime_type":"image/jpeg"},{"url":"https://images.example/generated.webp"}]}"""
+                    """{"data":[{"b64_json":"AQIDBA==","mime_type":"image/jpeg"},{"b64_json":"","url":"https://images.example/generated.webp"}]}"""
                         .toResponseBody("application/json".toMediaType())).build()
         }.build()
         val images = OpenAIProvider(client).generateImage(setting, ImageGenerationParams(model, "Draw a bowl")).toList()
