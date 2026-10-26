@@ -12,12 +12,13 @@ enum class LauncherIcon(
     val aliasName: String,
     @param:StringRes val label: Int,
     @param:DrawableRes val preview: Int,
+    @param:DrawableRes val notificationIcon: Int,
     val enabledByDefault: Boolean = false,
 ) {
-    MIFFAN("Miffan", R.string.launcher_icon_original, R.mipmap.ic_launcher, enabledByDefault = true),
-    WHALE_GIRL("WhaleGirl", R.string.whale_name, R.mipmap.ic_launcher_whale_girl),
+    MIFFAN("Miffan", R.string.launcher_icon_original, R.mipmap.ic_launcher, R.drawable.small_icon, enabledByDefault = true),
+    WHALE_GIRL("WhaleGirl", R.string.whale_name, R.mipmap.ic_launcher_whale_girl, R.drawable.small_icon_whale_girl),
     // Retained only to recognize component overrides from older installations.
-    WHALE_GIRL_DEEP_SEA("WhaleGirlDeepSea", R.string.whale_name, R.mipmap.ic_launcher_whale_girl);
+    WHALE_GIRL_DEEP_SEA("WhaleGirlDeepSea", R.string.whale_name, R.mipmap.ic_launcher_whale_girl, R.drawable.small_icon_whale_girl);
 
     val canonical: LauncherIcon get() = if (this == WHALE_GIRL_DEEP_SEA) WHALE_GIRL else this
 
@@ -25,6 +26,11 @@ enum class LauncherIcon(
         val choices: List<LauncherIcon> = listOf(MIFFAN, WHALE_GIRL)
     }
 }
+
+/** Status bar, notification and Live Update (e.g. ColorOS Fluid Cloud) icon matching the launcher icon. */
+@DrawableRes
+fun Context.notificationSmallIcon(): Int =
+    runCatching { LauncherIconManager(this).selectedIcon() }.getOrNull()?.notificationIcon ?: R.drawable.small_icon
 
 /** PackageManager persists the choice across app restarts and upgrades. */
 class LauncherIconManager(context: Context) {

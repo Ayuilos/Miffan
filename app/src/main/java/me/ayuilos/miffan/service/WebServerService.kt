@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.WEB_SERVER_NOTIFICATION_CHANNEL_ID
 import me.ayuilos.miffan.data.datastore.SettingsStore
+import me.ayuilos.miffan.utils.notificationSmallIcon
 import me.ayuilos.miffan.web.WebServerManager
 import org.koin.android.ext.android.inject
 
@@ -149,7 +150,7 @@ class WebServerService : Service() {
     )
 
     private fun buildStartingNotification() = NotificationCompat.Builder(this, WEB_SERVER_NOTIFICATION_CHANNEL_ID)
-        .setSmallIcon(R.drawable.small_icon)
+        .setSmallIcon(notificationSmallIcon())
         .setContentTitle(getString(R.string.notification_channel_web_server))
         .setContentText(getString(R.string.notification_web_server_starting))
         .setContentIntent(buildLaunchPendingIntent())
@@ -168,7 +169,7 @@ class WebServerService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, WEB_SERVER_NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.small_icon)
+            .setSmallIcon(notificationSmallIcon())
             .setContentTitle(getString(R.string.notification_web_server_running))
             .setContentText(url)
             .setContentIntent(buildLaunchPendingIntent())

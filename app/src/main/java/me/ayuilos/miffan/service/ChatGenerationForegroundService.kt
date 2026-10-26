@@ -21,6 +21,7 @@ import me.ayuilos.miffan.AppScope
 import me.ayuilos.miffan.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.RouteActivity
+import me.ayuilos.miffan.utils.notificationSmallIcon
 import org.koin.android.ext.android.inject
 import kotlin.uuid.Uuid
 
@@ -223,7 +224,7 @@ class ChatGenerationForegroundService : Service() {
 
     private fun buildNotification(conversationId: String) =
         NotificationCompat.Builder(this, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.small_icon)
+            .setSmallIcon(notificationSmallIcon())
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.notification_live_update_title))
             .setContentIntent(getConversationPendingIntent(conversationId))

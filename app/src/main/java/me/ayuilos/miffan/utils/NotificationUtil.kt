@@ -19,7 +19,7 @@ class NotificationConfig {
     var title: String = ""
     var content: String = ""
     var subText: String? = null
-    var smallIcon: Int = R.drawable.small_icon
+    var smallIcon: Int? = null
     var autoCancel: Boolean = false
     var ongoing: Boolean = false
     var onlyAlertOnce: Boolean = false
@@ -86,7 +86,7 @@ object NotificationUtil {
         return NotificationCompat.Builder(context, channelId).apply {
             setContentTitle(config.title)
             setContentText(config.content)
-            setSmallIcon(config.smallIcon)
+            setSmallIcon(config.smallIcon ?: context.notificationSmallIcon())
             setAutoCancel(config.autoCancel)
             setOngoing(config.ongoing)
             setOnlyAlertOnce(config.onlyAlertOnce)

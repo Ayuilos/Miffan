@@ -26,7 +26,7 @@ internal object UpdateDownloadNotifications {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, context.getString(R.string.update_download_channel_name), NotificationManager.IMPORTANCE_LOW)
         )
-        return NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.small_icon)
+        return NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(context.notificationSmallIcon())
     }
 
     fun progress(context: Context, state: UpdateDownloadState): Notification {
