@@ -31,7 +31,12 @@ class PartnerSearchTest {
         val caller = Uuid.random()
         val access = AgentAccess(caller, true, caller.toString())
         val queries = mutableListOf<Array<out Any?>>()
-        every { sqlite.query(any<String>(), capture(queries)) } returns cursor
+        every { sqlite.query(match<String> { "FROM message_fts" in it }, capture(queries)) } returns cursor
+        // English keywords go through the simple extension's query builder first.
+        val simpleQuery = mockk<Cursor>(relaxed = true)
+        every { simpleQuery.moveToFirst() } returns true
+        every { simpleQuery.getString(0) } returns "needle"
+        every { sqlite.query(match<String> { it.startsWith("SELECT simple_query") }, any<Array<out Any?>>()) } returns simpleQuery
         manager.search("needle")
         org.junit.Assert.assertNull(queries.last()[1])
         for (mode in listOf(false, true)) {
