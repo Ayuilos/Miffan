@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -236,6 +237,7 @@ private fun ImportProviderButton(
 ) {
     val toaster = LocalToaster.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     var showImportDialog by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
 
@@ -247,7 +249,7 @@ private fun ImportProviderButton(
             },
             onPermissionDenied = {
                 showScanner = false
-                toaster.show(context.getString(R.string.setting_provider_page_no_permission), type = ToastType.Error)
+                toaster.show(resources.getString(R.string.setting_provider_page_no_permission), type = ToastType.Error)
             },
             onDismissRequest = { showScanner = false },
         )
