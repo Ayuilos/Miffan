@@ -123,8 +123,9 @@ private val parser by lazy {
     MarkdownParser(flavour)
 }
 
-private val INLINE_LATEX_REGEX = Regex("\\\\\\((.+?)\\\\\\)")
-private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
+// 前面紧跟反斜杠时是 \\ 换行，不是定界符，比如 \\[4pt] 里的 \[ 不是块级公式的开头
+private val INLINE_LATEX_REGEX = Regex("(?<!\\\\)\\\\\\((.+?)\\\\\\)")
+private val BLOCK_LATEX_REGEX = Regex("(?<!\\\\)\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
 val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(?:</think>|$)", RegexOption.DOT_MATCHES_ALL)
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
