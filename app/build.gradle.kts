@@ -180,7 +180,11 @@ kotlin {
 
 // kotlin-reflect 只由 ktor-server-core 传递引入，用到它的只有按配置加载模块、开发模式热重载等用不到的路径。
 // 它在 classpath 上时 stdlib 的 Reflection 会 Class.forName 加载 ReflectionFactoryImpl，R8 因此保留整个实现（约 0.7MB dex）
-configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
+// 测试里的 MockK 需要它，只从打进 APK 的 classpath 排除
+configurations.matching {
+    it.name.endsWith("RuntimeClasspath") && !it.name.endsWith("UnitTestRuntimeClasspath") &&
+        !it.name.endsWith("AndroidTestRuntimeClasspath")
+}.configureEach {
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
 }
 
