@@ -267,13 +267,14 @@ dependencies {
     // YAML front matter
     implementation(libs.snakeyaml)
 
-    // zxing
+    // zxing + CameraX (qrcode scanner)
     implementation(libs.zxing.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.compose)
 
-    // quickie (qrcode scanner)
-    implementation(libs.quickie.bundled)
-    implementation(libs.barcode.scanning)
-    implementation(libs.androidx.camera.core)
+    // EXIF orientation for picked images
+    implementation(libs.androidx.exifinterface)
 
     // Room
     implementation(libs.androidx.room.runtime)
