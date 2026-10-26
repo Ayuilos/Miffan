@@ -249,9 +249,8 @@ class ConversationSessionTest {
         )
         try {
             val pending = message("not saved yet")
-            val job = session.launchGeneration(pending) { error("must not start") }
-            job.cancel()
-            job.join()
+            session.launchGeneration(pending) { error("must not start") }
+            session.stopGeneration().forEach { it.join() }
             assertEquals(listOf(pending), session.messageQueue.value.messages)
             assertTrue(session.messageQueue.value.paused)
         } finally {
@@ -263,14 +262,36 @@ class ConversationSessionTest {
     fun `cancelling an already saved input does not put it back in the queue`() = runBlocking {
         Fixture().use { f ->
             val content = message("already in history")
-            val job = f.session.launchGeneration(content) {
+            f.session.launchGeneration(content) {
                 f.commit(content)
                 awaitCancellation()
             }
-            job.cancel()
-            job.join()
+            f.session.stopGeneration().forEach { it.join() }
             assertTrue(f.session.messageQueue.value.messages.isEmpty())
             assertTrue(f.session.messageQueue.value.paused)
+        }
+    }
+
+    @Test
+    fun `a message sent after stopping goes out once the stopped turn ends`() = runBlocking {
+        Fixture().use { f ->
+            val cleanup = CompletableDeferred<Unit>()
+            f.session.launchGeneration {
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { cleanup.await() }
+                }
+            }
+            val stopped = f.session.stopGeneration()
+            val next = message("sent right after stop")
+            f.session.enqueueMessage(next)
+            assertTrue(f.started.isEmpty())
+
+            cleanup.complete(Unit)
+            stopped.forEach { it.join() }
+            assertEquals(listOf(next), f.started)
+            assertFalse(f.session.messageQueue.value.paused)
         }
     }
 

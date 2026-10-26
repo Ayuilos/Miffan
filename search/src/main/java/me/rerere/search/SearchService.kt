@@ -17,6 +17,7 @@ import okhttp3.internal.closeQuietly
 import okio.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
+import kotlin.reflect.KClass
 import kotlin.uuid.Uuid
 
 interface SearchService<T : SearchServiceOptions> {
@@ -158,6 +159,28 @@ sealed class SearchServiceOptions {
             TinyfishOptions::class to "Tinyfish",
             SerperOptions::class to "Serper",
             CustomJsOptions::class to "Custom JS",
+        )
+
+        /** 新建各类型的默认配置，避免依赖 kotlin-reflect 调用构造函数 */
+        val FACTORIES: Map<KClass<out SearchServiceOptions>, () -> SearchServiceOptions> = mapOf(
+            BingLocalOptions::class to { BingLocalOptions() },
+            ZhipuOptions::class to { ZhipuOptions() },
+            DoubaoOptions::class to { DoubaoOptions() },
+            TavilyOptions::class to { TavilyOptions() },
+            ExaOptions::class to { ExaOptions() },
+            SearXNGOptions::class to { SearXNGOptions() },
+            LinkUpOptions::class to { LinkUpOptions() },
+            BraveOptions::class to { BraveOptions() },
+            MetasoOptions::class to { MetasoOptions() },
+            OllamaOptions::class to { OllamaOptions() },
+            PerplexityOptions::class to { PerplexityOptions() },
+            FirecrawlOptions::class to { FirecrawlOptions() },
+            JinaOptions::class to { JinaOptions() },
+            BochaOptions::class to { BochaOptions() },
+            GrokOptions::class to { GrokOptions() },
+            TinyfishOptions::class to { TinyfishOptions() },
+            SerperOptions::class to { SerperOptions() },
+            CustomJsOptions::class to { CustomJsOptions() },
         )
     }
 

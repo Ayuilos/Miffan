@@ -4,6 +4,7 @@ import me.rerere.ai.core.ReasoningLevel
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,7 +147,9 @@ class ConversationSession(
                 unfinishedJobs.remove(job)
                 // A cancelled turn must never clear or advance its replacement's queue.
                 if (!_generationJob.compareAndSet(job, null)) return@invokeOnCompletion
-                if (cause != null) pauseQueue()
+                // Cancellation comes only from stop (which already paused) or closing; pausing here would undo
+                // the resume of a message sent right after stopping.
+                if (cause != null && cause !is CancellationException) pauseQueue()
                 requestQueueDispatch()
                 if (refCount.get() <= 0) {
                     scheduleIdleCheck()

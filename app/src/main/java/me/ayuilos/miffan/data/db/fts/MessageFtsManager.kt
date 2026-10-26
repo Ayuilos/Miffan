@@ -70,13 +70,14 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
         access: AgentAccess? = null,
     ): List<MessageSearchResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<MessageSearchResult>()
+        val matchQuery = buildFtsMatchQuery(keyword, ::simpleQuery) ?: return@withContext results
         val cursor = db.query(
             """
             SELECT node_id, message_id, conversation_id, title, update_at,
                    simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet,
                    (SELECT chat_id FROM conversationentity WHERE id = conversation_id) AS chat_id
             FROM message_fts
-            WHERE text MATCH jieba_query(?)
+            WHERE text MATCH ?
               AND conversation_id IN (SELECT id FROM conversationentity WHERE (? IS NULL AND chat_id IS NULL)
                   OR (assistant_id = ? AND (
                     (? = 1 AND chat_id IS NULL)
@@ -88,7 +89,7 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
             ORDER BY ${sort.orderBy}
             LIMIT 50
             """.trimIndent(),
-            arrayOf<Any?>(keyword, access?.callerId?.toString(), access?.callerId?.toString(),
+            arrayOf<Any?>(matchQuery, access?.callerId?.toString(), access?.callerId?.toString(),
                 if (access?.ownerInitiated == true) 1 else 0, if (imMode()) 1 else 0, access?.callerId?.toString())
         )
         Log.i(TAG, "search: $keyword")
@@ -109,7 +110,43 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
         }
         results
     }
+
+    // simple 扩展生成的查询，带拼音展开和前缀匹配
+    private fun simpleQuery(text: String): String =
+        db.query(
+            "SELECT simple_query(?)",
+            arrayOf(text)
+        ).use { if (it.moveToFirst()) it.getString(0).orEmpty() else "" }
 }
+
+private val QUERY_RUN = Regex("[A-Za-z0-9]+|[^\\sA-Za-z0-9]+")
+
+// 中文片段各字之间最多允许夹几个额外的字（如标点、“的”），再大就容易把散落各处的字也算作命中
+private const val CJK_NEAR_SLACK = 2
+
+/**
+ * 把搜索词拼成 FTS5 查询，各段之间用 AND 连接：
+ * 英文和数字交给 [asciiQuery]（simple_query，支持拼音和前缀匹配）；
+ * 索引按单字切分中文，所以中文等其他字符的连续片段拆成单字，用 NEAR 要求它们挨得足够近，
+ * 效果接近按词匹配，又不需要 jieba 词典。
+ * 没有可搜索的内容时返回 null。
+ */
+internal fun buildFtsMatchQuery(keyword: String, asciiQuery: (String) -> String): String? {
+    val terms = QUERY_RUN.findAll(keyword).mapNotNull { match ->
+        val text = match.value
+        val term = if (text.first().isAsciiLetterOrDigit()) asciiQuery(text) else nearQuery(text)
+        term.takeIf { it.isNotBlank() }
+    }.toList()
+    return terms.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
+}
+
+private fun nearQuery(text: String): String {
+    val chars = text.codePoints().toArray().map { "\"${String(Character.toChars(it)).replace("\"", "\"\"")}\"" }
+    if (chars.size == 1) return chars.single()
+    return "NEAR(${chars.joinToString(" ")}, ${chars.size - 2 + CJK_NEAR_SLACK})"
+}
+
+private fun Char.isAsciiLetterOrDigit(): Boolean = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
 
 private fun UIMessage.extractFtsText(): String =
     parts.filterIsInstance<UIMessagePart.Text>()

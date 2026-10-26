@@ -48,8 +48,8 @@ android {
         applicationId = "me.ayuilos.miffan.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 178041
-        versionName = "4.6.0"
+        versionCode = 178042
+        versionName = "4.6.1"
 
         buildConfigField("boolean", "FIREBASE_ENABLED", hasGoogleServicesConfig.toString())
 
@@ -129,11 +129,17 @@ android {
     }
     androidResources {
         generateLocaleConfig = true
+        // 只保留 app 自己翻译过的语言，依赖库（AndroidX、GMS 等）带的其他语言资源不打包
+        localeFilters += listOf("en", "ja", "ko", "ko-rKR", "ru", "zh", "zh-rTW")
     }
     packaging {
         jniLibs {
             useLegacyPackaging = true
             pickFirsts += "lib/*/libtermux.so"
+        }
+        resources {
+            // BouncyCastle 的 Picnic 后量子签名查找表（约 1.2MB），JSch 用不到
+            excludes += "org/bouncycastle/pqc/crypto/picnic/**"
         }
     }
     tasks.withType<KotlinCompile>().configureEach {
@@ -170,6 +176,16 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+// kotlin-reflect 只由 ktor-server-core 传递引入，用到它的只有按配置加载模块、开发模式热重载等用不到的路径。
+// 它在 classpath 上时 stdlib 的 Reflection 会 Class.forName 加载 ReflectionFactoryImpl，R8 因此保留整个实现（约 0.7MB dex）
+// 测试里的 MockK 需要它，只从打进 APK 的 classpath 排除
+configurations.matching {
+    it.name.endsWith("RuntimeClasspath") && !it.name.endsWith("UnitTestRuntimeClasspath") &&
+        !it.name.endsWith("AndroidTestRuntimeClasspath")
+}.configureEach {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
 }
 
 // JVM tests (including MockK) must not initialize an Android Log-backed SLF4J provider.
@@ -263,13 +279,14 @@ dependencies {
     // YAML front matter
     implementation(libs.snakeyaml)
 
-    // zxing
+    // zxing + CameraX (qrcode scanner)
     implementation(libs.zxing.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.compose)
 
-    // quickie (qrcode scanner)
-    implementation(libs.quickie.bundled)
-    implementation(libs.barcode.scanning)
-    implementation(libs.androidx.camera.core)
+    // EXIF orientation for picked images
+    implementation(libs.androidx.exifinterface)
 
     // Room
     implementation(libs.androidx.room.runtime)
@@ -331,7 +348,6 @@ dependencies {
     implementation(project(":rdp"))
     implementation(project(":stream"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
-    implementation(kotlin("reflect"))
 
     // Leak Canary
     // debugImplementation(libs.leakcanary.android)

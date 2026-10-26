@@ -46,9 +46,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,14 +58,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
-import io.github.g00fy2.quickie.QRResult
-import io.github.g00fy2.quickie.ScanQRCode
 import me.rerere.ai.provider.ProviderSetting
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
@@ -71,6 +72,7 @@ import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
 import me.ayuilos.miffan.ui.components.ui.Tag
 import me.ayuilos.miffan.ui.components.ui.TagType
+import me.ayuilos.miffan.ui.components.ui.QRCodeScannerDialog
 import me.ayuilos.miffan.ui.components.ui.decodeProviderSetting
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalToaster
@@ -108,6 +110,24 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
         }
     }
 
+    // 设置是异步写入的，等新提供商真正出现在列表里再滚过去
+    var pendingScrollId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(pendingScrollId, filteredProviders) {
+        val id = pendingScrollId ?: return@LaunchedEffect
+        val index = filteredProviders.indexOfFirst { it.id.toString() == id }
+        if (index >= 0) {
+            lazyListState.animateScrollToItem(index)
+            pendingScrollId = null
+        }
+    }
+
+    fun addProvider(provider: ProviderSetting) {
+        // 搜索词可能把新提供商过滤掉
+        searchQuery = ""
+        pendingScrollId = provider.id.toString()
+        vm.updateSettings(settings.copy(providers = listOf(provider) + settings.providers))
+    }
+
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
@@ -119,18 +139,10 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
                 },
                 actions = {
                     ImportProviderButton {
-                        vm.updateSettings(
-                            settings.copy(
-                                providers = listOf(it.copyProvider(Uuid.random())) + settings.providers
-                            )
-                        )
+                        addProvider(it.copyProvider(Uuid.random()))
                     }
                     AddButton {
-                        vm.updateSettings(
-                            settings.copy(
-                                providers = listOf(it) + settings.providers
-                            )
-                        )
+                        addProvider(it)
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -225,10 +237,22 @@ private fun ImportProviderButton(
 ) {
     val toaster = LocalToaster.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     var showImportDialog by remember { mutableStateOf(false) }
+    var showScanner by remember { mutableStateOf(false) }
 
-    val scanQrCodeLauncher = rememberLauncherForActivityResult(ScanQRCode()) { result ->
-        handleQRResult(result, onAdd, toaster, context)
+    if (showScanner) {
+        QRCodeScannerDialog(
+            onResult = { content ->
+                showScanner = false
+                handleScannedQRCode(content, onAdd, toaster, context)
+            },
+            onPermissionDenied = {
+                showScanner = false
+                toaster.show(resources.getString(R.string.setting_provider_page_no_permission), type = ToastType.Error)
+            },
+            onDismissRequest = { showScanner = false },
+        )
     }
 
     val pickImageLauncher = rememberLauncherForActivityResult(
@@ -274,7 +298,7 @@ private fun ImportProviderButton(
                         Button(
                             onClick = {
                                 showImportDialog = false
-                                scanQrCodeLauncher.launch(null)
+                                showScanner = true
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -350,41 +374,19 @@ private fun ImportProviderButton(
     }
 }
 
-private fun handleQRResult(
-    result: QRResult,
+private fun handleScannedQRCode(
+    content: String,
     onAdd: (ProviderSetting) -> Unit,
     toaster: com.dokar.sonner.ToasterState,
     context: android.content.Context
 ) {
     runCatching {
-        when (result) {
-            is QRResult.QRError -> {
-                toaster.show(
-                    context.getString(
-                        R.string.setting_provider_page_scan_error,
-                        result
-                    ), type = ToastType.Error
-                )
-            }
-
-            QRResult.QRMissingPermission -> {
-                toaster.show(
-                    context.getString(R.string.setting_provider_page_no_permission),
-                    type = ToastType.Error
-                )
-            }
-
-            is QRResult.QRSuccess -> {
-                val setting = decodeProviderSetting(result.content.rawValue ?: "")
-                onAdd(setting)
-                toaster.show(
-                    context.getString(R.string.setting_provider_page_import_success),
-                    type = ToastType.Success
-                )
-            }
-
-            QRResult.QRUserCanceled -> {}
-        }
+        val setting = decodeProviderSetting(content)
+        onAdd(setting)
+        toaster.show(
+            context.getString(R.string.setting_provider_page_import_success),
+            type = ToastType.Success
+        )
     }.onFailure { error ->
         toaster.show(
             context.getString(R.string.setting_provider_page_qr_decode_failed, error.message ?: ""),

@@ -16,6 +16,7 @@ import me.ayuilos.miffan.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.ayuilos.miffan.R
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
+import me.ayuilos.miffan.utils.notificationSmallIcon
 
 /** Expedited JobScheduler work keeps background turns runnable when Android denies an FGS. */
 class ChatGenerationKeepAliveWorker(context: Context, params: androidx.work.WorkerParameters) :
@@ -35,7 +36,7 @@ class ChatGenerationKeepAliveWorker(context: Context, params: androidx.work.Work
     override suspend fun getForegroundInfo(): ForegroundInfo = ForegroundInfo(
         ChatGenerationForegroundService.NOTIFICATION_ID,
         NotificationCompat.Builder(applicationContext, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.small_icon)
+            .setSmallIcon(applicationContext.notificationSmallIcon())
             .setContentTitle(applicationContext.getString(R.string.app_name))
             .setContentText(applicationContext.getString(R.string.notification_live_update_title))
             .setOngoing(true).build(),

@@ -354,7 +354,7 @@ class OpenAIProvider(
         return data.map { element ->
             val obj = element.jsonObject
             obj.base64ImageOrNull(defaultFormat) ?: run {
-                val url = obj["url"]?.jsonPrimitive?.contentOrNull
+                val url = obj["url"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
                     ?: error("No b64_json or url in image response")
                 downloadImageAsBase64(url)
             }
