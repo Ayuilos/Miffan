@@ -886,7 +886,14 @@ class WorkspaceRepository(
      * Records a partner's own computer: the cua Space [spaceName] already created on [hostId] by the
      * helper. Its files live in the Space under [SpaceWorkspaceFiles.DEFAULT_ROOT].
      */
-    suspend fun createSpaceWorkspace(name: String, hostId: String, spaceName: String): WorkspaceEntity {
+    suspend fun createSpaceWorkspace(
+        name: String,
+        hostId: String,
+        spaceName: String,
+        cpus: Int,
+        memoryMb: Int,
+        handoff: String,
+    ): WorkspaceEntity {
         require(CuaSpaceSessions.SPACE_NAME.matches(spaceName)) { "Invalid Space name" }
         requireNotNull(hostDao.getById(hostId)) { workspaceStrings.getString(R.string.workspace_remote_host_not_found) }
         val now = System.currentTimeMillis()
@@ -901,7 +908,15 @@ class WorkspaceRepository(
             remoteHostId = hostId,
             remotePath = SpaceWorkspaceFiles.DEFAULT_ROOT,
             spaceName = spaceName,
+            spaceCpus = cpus,
+            spaceMemoryMb = memoryMb,
+            spaceHandoff = handoff,
         ).also { dao.upsert(it) }
+    }
+
+    suspend fun updateSpaceSize(id: String, cpus: Int, memoryMb: Int) {
+        val workspace = dao.getById(id)?.takeIf { it.isSpace } ?: return
+        dao.upsert(workspace.copy(spaceCpus = cpus, spaceMemoryMb = memoryMb, updatedAt = System.currentTimeMillis()))
     }
 
     private fun authType(authentication: RemoteAuthentication): String = when (authentication) {
@@ -1815,6 +1830,6 @@ class WorkspaceRepository(
         private const val TAG = "WorkspaceRepository"
         private const val MAX_PREVIEW_BYTES = 512L * 1024
         private const val AUTH_MANAGED_KEY = "MANAGED_KEY"
-        private val SPACE_HELPER_ARG = Regex("[a-z][a-z0-9-]{0,31}")
+        private val SPACE_HELPER_ARG = Regex("[a-z0-9][a-z0-9-]{0,31}")
     }
 }

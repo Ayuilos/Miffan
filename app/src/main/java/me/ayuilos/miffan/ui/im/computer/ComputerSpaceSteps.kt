@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +84,27 @@ internal fun ComputerHowStep(vm: ComputerSetupVM, state: ComputerSetupState) {
             tag = stringResource(R.string.im_space_safer),
             enabled = !state.busy,
         ) { vm.chooseSpace(true) }
+        if (state.useSpace) {
+            var adjusting by rememberSaveable { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth().padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (state.pickedTier == null && state.spaceCapacity != null)
+                        stringResource(R.string.im_space_tier_line, state.spaceTier.summary(), computer)
+                    else stringResource(R.string.im_space_tier_line_picked, state.spaceTier.summary()),
+                    Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { adjusting = true }, enabled = !state.busy) { Text(stringResource(R.string.im_space_tier_adjust)) }
+            }
+            if (adjusting) SpaceTierSheet(
+                current = state.spaceTier,
+                recommended = state.recommendedTier.takeIf { state.spaceCapacity != null },
+                capacity = state.spaceCapacity,
+                usedMemoryMb = state.spaceUsedMemoryMb,
+                count = partners.size,
+                onPick = { vm.pickTier(it); adjusting = false },
+                onDismiss = { adjusting = false },
+            )
+        }
     }
 }
 

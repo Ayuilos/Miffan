@@ -3678,7 +3678,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_space_own_title_many">给它们各一台独立的电脑</string>
   <string name="im_space_safer">更安全</string>
   <string name="im_space_own_body">在 %1$s 里单独开一台小电脑给它。它在里面装软件、跑命令、上网，都碰不到你的文件和桌面。</string>
-  <string name="im_space_own_cost">约占 1 GB 内存、5 GB 磁盘</string>
+  <string name="im_space_own_cost">需要约 5 GB 磁盘空间</string>
   <string name="im_space_continue">继续</string>
   <string name="im_space_install_title">先在 %1$s 上装个小工具</string>
   <string name="im_space_install_help">独立的电脑由开源工具 cua 提供。不用注册账号，也不用管理员密码。</string>
@@ -3749,4 +3749,21 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_space_error_disk">电脑的磁盘空间不够。</string>
   <string name="im_space_error_timeout">等太久了，再试一次。</string>
   <string name="im_space_error_failed">电脑没能准备好：%1$s</string>
+  <string name="im_space_tier_light">轻量</string>
+  <string name="im_space_tier_standard">标准</string>
+  <string name="im_space_tier_performance">性能</string>
+  <string name="im_space_tier_spec">%1$d 核 · %2$d GB</string>
+  <string name="im_space_tier_light_hint">看网页、写写文档</string>
+  <string name="im_space_tier_standard_hint">装软件、跑脚本、开浏览器</string>
+  <string name="im_space_tier_performance_hint">编译代码、同时开很多程序</string>
+  <string name="im_space_tier_line">将分配 %1$s，按 %2$s 的配置推荐</string>
+  <string name="im_space_tier_line_picked">将分配 %1$s</string>
+  <string name="im_space_tier_adjust">调整</string>
+  <string name="im_space_tier_sheet_title">给它多大的电脑？</string>
+  <string name="im_space_tier_sheet_help">这些是上限：它平时只用需要的部分，其余留给你自己用。</string>
+  <string name="im_space_tier_recommended">推荐</string>
+  <string name="im_space_tier_too_big">超出这台电脑能分出来的</string>
+  <string name="im_space_tier_row">配置</string>
+  <string name="im_space_tier_mac_fixed">在 Mac 上暂时不能直接改配置。</string>
+  <string name="im_space_resized">已改为 %1$s</string>
 </resources>

@@ -35,6 +35,8 @@ data class PartnerComputer(
     val computerUse: ComputerUseMode,
     /** The partner's own cua Space on this host, not the host's desktop. */
     val space: Boolean = false,
+    /** The Space's size; null when it is not a Space or was sized outside the app. */
+    val spaceTier: SpaceTier? = null,
 ) {
     /** Easy mode shows the computer entry only when there is a screen to open. */
     val showsEntry: Boolean get() = screenEnabled
@@ -260,6 +262,7 @@ class PartnerComputers(
             screenEnabled = host.screenEnabled && !workspace.isSpace,
             computerUse = assistant.computerUse,
             space = workspace.isSpace,
+            spaceTier = if (workspace.isSpace) SpaceTier.of(workspace.spaceCpus, workspace.spaceMemoryMb) else null,
         )
     }.distinctUntilChanged()
 

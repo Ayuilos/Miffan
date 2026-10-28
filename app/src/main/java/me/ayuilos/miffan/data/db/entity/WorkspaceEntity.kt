@@ -43,6 +43,14 @@ data class WorkspaceEntity(
     // inside the Space, and the SSH connection to the host is rooted at "/" (see sshRoot).
     @ColumnInfo("space_name")
     val spaceName: String? = null,
+    /** The Space's CPU and memory (MiB) limits, as last set by the app. */
+    @ColumnInfo("space_cpus")
+    val spaceCpus: Int? = null,
+    @ColumnInfo("space_memory_mb")
+    val spaceMemoryMb: Int? = null,
+    /** The host's handoff folder for this Space, relative to the host account's home. */
+    @ColumnInfo("space_handoff")
+    val spaceHandoff: String? = null,
 ) {
     // Fail closed for unknown future kinds: never send them to the local PRoot manager.
     val isRemote: Boolean get() = kind != KIND_LOCAL

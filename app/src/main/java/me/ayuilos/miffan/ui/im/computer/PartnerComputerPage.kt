@@ -53,6 +53,8 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
     var busy by remember { mutableStateOf(false) }
     var confirmDisconnect by rememberSaveable { mutableStateOf(false) }
     var confirmReset by rememberSaveable { mutableStateOf(false) }
+    var resizing by rememberSaveable { mutableStateOf(false) }
+    var resetting by remember { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val spaces: PartnerSpaces = koinInject()
     val resetDone = stringResource(R.string.im_space_reset_done)
@@ -80,6 +82,13 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
         else if (bound.space) LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item("space") { SpaceCard(bound.name, bound.workspaceId, spaces) }
+            item("size") {
+                Spacer(Modifier.height(8.dp))
+                ImCardGroup {
+                    ImListRow(null, stringResource(R.string.im_space_tier_row), { resizing = true }, enabled = !busy,
+                        supporting = bound.spaceTier?.summary())
+                }
+            }
             item("mode") {
                 ImSectionLabel(stringResource(R.string.im_partner_computer_mode))
                 Spacer(Modifier.height(8.dp))
@@ -92,7 +101,7 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
             item("manage") {
                 Spacer(Modifier.height(16.dp))
                 ImCardGroup {
-                    ImListRow(null, stringResource(if (busy) R.string.im_space_resetting else R.string.im_space_reset), { confirmReset = true },
+                    ImListRow(null, stringResource(if (resetting) R.string.im_space_resetting else R.string.im_space_reset), { confirmReset = true },
                         supporting = stringResource(R.string.im_space_reset_detail), enabled = !busy, trailing = null)
                     ImCardDivider(start = 16.dp)
                     ImListRow(null, stringResource(R.string.im_space_delete), { confirmDelete = true }, enabled = !busy,
@@ -155,13 +164,44 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
         }
     }
     val bound = computer
+    if (resizing && bound != null) {
+        val mac = bound.platform == me.ayuilos.miffan.data.repository.RemoteScreenPlatform.MACOS
+        val probe by produceState<me.ayuilos.miffan.data.ai.computer.CuaSpaceProbe?>(null, bound.hostId) {
+            value = runCatching { spaces.probe(bound.hostId) }.getOrNull()
+        }
+        val used by produceState(0, bound.hostId) { value = runCatching { spaces.usedMemoryMb(bound.hostId) }.getOrDefault(0) }
+        val current = bound.spaceTier ?: me.ayuilos.miffan.data.ai.computer.SpaceTier.DEFAULT
+        val resized = me.ayuilos.miffan.data.ai.computer.SpaceTier.entries.associateWith { stringResource(R.string.im_space_resized, it.summary()) }
+        SpaceTierSheet(
+            current = current,
+            recommended = null,
+            capacity = me.ayuilos.miffan.data.ai.computer.SpaceCapacity.from(probe?.host),
+            // This Space's own share is free to move.
+            usedMemoryMb = (used - current.memoryMb).coerceAtLeast(0),
+            count = 1,
+            note = if (mac) stringResource(R.string.im_space_tier_mac_fixed) else null,
+            enabled = !mac && !busy,
+            onPick = { tier ->
+                resizing = false
+                if (tier != current) perform {
+                    spaces.resize(bound.workspaceId, tier)
+                    snackbar.showSnackbar(resized.getValue(tier))
+                }
+            },
+            onDismiss = { resizing = false },
+        )
+    }
     if (confirmReset && bound != null) AlertDialog(onDismissRequest = { confirmReset = false },
         title = { Text(stringResource(R.string.im_space_reset_confirm_title, name)) },
         text = { Text(stringResource(R.string.im_space_reset_confirm_body)) },
         confirmButton = {
             TextButton(onClick = {
                 confirmReset = false
-                perform { spaces.reset(bound.workspaceId); snackbar.showSnackbar(resetDone) }
+                perform {
+                    resetting = true
+                    try { spaces.reset(bound.workspaceId) } finally { resetting = false }
+                    snackbar.showSnackbar(resetDone)
+                }
             }) { Text(stringResource(R.string.im_space_reset), color = MaterialTheme.colorScheme.error) }
         },
         dismissButton = { TextButton(onClick = { confirmReset = false }) { Text(stringResource(R.string.common_cancel)) } })

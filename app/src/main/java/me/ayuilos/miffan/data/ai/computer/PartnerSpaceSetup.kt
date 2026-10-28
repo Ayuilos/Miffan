@@ -29,6 +29,7 @@ data class SpaceSetupJob(
     /** Workspace → its network check; null where the check could not run. */
     val network: Map<String, CuaSpaceNetcheck?> = emptyMap(),
     val error: Throwable? = null,
+    val tier: SpaceTier = SpaceTier.DEFAULT,
 ) {
     enum class Stage { CREATING, CHECKING_NETWORK, DONE, FAILED }
 
@@ -55,13 +56,13 @@ class PartnerSpaceSetup(
 
     /** Starts creating a Space for each partner on [hostId]; a run already going there is kept. */
     @Synchronized
-    fun start(hostId: String, partnerIds: List<Uuid>) {
+    fun start(hostId: String, partnerIds: List<Uuid>, tier: SpaceTier = SpaceTier.DEFAULT) {
         if (running[hostId]?.isActive == true) return
-        _jobs.update { it + (hostId to SpaceSetupJob(hostId, partnerIds)) }
+        _jobs.update { it + (hostId to SpaceSetupJob(hostId, partnerIds, tier = tier)) }
         running[hostId] = appScope.launch {
             try {
                 partnerIds.forEach { partnerId ->
-                    val created = spaces.create(hostId, partnerId)
+                    val created = spaces.create(hostId, partnerId, tier)
                     update(hostId) {
                         it.copy(created = it.created + (partnerId to created.workspaceId),
                             network = it.network + (created.workspaceId to created.netcheck))

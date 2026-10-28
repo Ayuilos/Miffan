@@ -33,7 +33,9 @@ import me.ayuilos.miffan.data.ai.computer.CuaSpaceProbe
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup
 import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
+import me.ayuilos.miffan.data.ai.computer.SpaceCapacity
 import me.ayuilos.miffan.data.ai.computer.SpaceSetupJob
+import me.ayuilos.miffan.data.ai.computer.SpaceTier
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.SettingsStore
@@ -175,7 +177,17 @@ data class ComputerSetupState(
     val useSpace: Boolean = true,
     /** What the computer offers for Spaces, from the helper. */
     val spaceProbe: CuaSpaceProbe? = null,
+    /** Memory already given to other partners' Spaces on this computer. */
+    val spaceUsedMemoryMb: Int = 0,
+    /** The size the user picked; null follows [recommendedTier]. */
+    val pickedTier: SpaceTier? = null,
 ) {
+    /** What this computer can give the new Spaces; null until the check ran or when it could not tell. */
+    val spaceCapacity: SpaceCapacity? get() = SpaceCapacity.from(spaceProbe?.host)
+    val recommendedTier: SpaceTier get() =
+        spaceCapacity?.recommend(spaceUsedMemoryMb, sharePartners.size) ?: SpaceTier.DEFAULT
+    val spaceTier: SpaceTier get() = pickedTier ?: recommendedTier
+
     val busy: Boolean get() = task != null
     /** The computer's system: what the check found, else what finding it suggested. */
     val system: NearbySystem get() = when (probe?.os) {
@@ -911,7 +923,16 @@ class ComputerSetupVM(
             return
         }
         go(ComputerSetupStep.HOW) { it.copy(sharePartners = assistantIds.toList()) }
+        // The size line on the Space option needs the host's size; the choice itself never waits for it.
+        viewModelScope.launch {
+            val hostId = _state.value.hostId ?: return@launch
+            val probe = runCatching { spaces.probe(hostId) }.getOrNull() ?: return@launch
+            val used = runCatching { spaces.usedMemoryMb(hostId) }.getOrDefault(0)
+            _state.update { it.copy(spaceProbe = probe, spaceUsedMemoryMb = used) }
+        }
     }
+
+    fun pickTier(tier: SpaceTier) = _state.update { it.copy(pickedTier = tier) }
 
     fun chooseSpace(useSpace: Boolean) = _state.update { it.copy(useSpace = useSpace) }
 
@@ -947,7 +968,7 @@ class ComputerSetupVM(
 
     private fun startSpaces() {
         val state = _state.value
-        spaceSetup.start(requireNotNull(state.hostId), state.sharePartners)
+        spaceSetup.start(requireNotNull(state.hostId), state.sharePartners, state.spaceTier)
         // No way back into a run that is under way.
         _state.update { it.copy(step = ComputerSetupStep.SPACE_PREPARE, history = emptyList(), error = null) }
     }
@@ -956,7 +977,7 @@ class ComputerSetupVM(
     fun retrySpaces() {
         val state = _state.value
         val job = spaceJob.value ?: return
-        spaceSetup.start(requireNotNull(state.hostId), job.partnerIds.filter { it !in job.created })
+        spaceSetup.start(requireNotNull(state.hostId), job.partnerIds.filter { it !in job.created }, job.tier)
     }
 
     fun recheckNetwork() {
