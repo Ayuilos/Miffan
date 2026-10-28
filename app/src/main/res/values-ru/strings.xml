@@ -3838,4 +3838,5 @@
   <string name="im_space_run_running">Выполняется. Если потребуется пароль, введите пароль компьютера и нажмите Enter.</string>
   <string name="im_space_run_ok">Готово. Снова проверяем интернет.</string>
   <string name="im_space_run_failed">Остановилось с кодом %1$d. Посмотрите вывод выше.</string>
+  <string name="im_space_fix_card_title">Подключить его компьютер к интернету</string>
 </resources>

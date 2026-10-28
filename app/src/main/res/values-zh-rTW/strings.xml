@@ -3762,4 +3762,5 @@
   <string name="im_space_run_running">正在執行。如果要求密碼，輸入電腦的密碼後按 Enter。</string>
   <string name="im_space_run_ok">完成了，正在重新檢查網路。</string>
   <string name="im_space_run_failed">指令沒有成功（代碼 %1$d），請看上面的輸出。</string>
+  <string name="im_space_fix_card_title">讓它的電腦能上網</string>
 </resources>

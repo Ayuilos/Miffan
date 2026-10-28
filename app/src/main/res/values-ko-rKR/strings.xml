@@ -3787,4 +3787,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_run_running">실행하고 있어요. 비밀번호를 물으면 컴퓨터 비밀번호를 입력하고 Enter를 누르세요.</string>
   <string name="im_space_run_ok">완료됐어요. 인터넷을 다시 확인하고 있어요.</string>
   <string name="im_space_run_failed">코드 %1$d(으)로 멈췄어요. 위의 출력을 확인해 주세요.</string>
+  <string name="im_space_fix_card_title">컴퓨터를 인터넷에 연결하기</string>
 </resources>

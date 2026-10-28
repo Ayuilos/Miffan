@@ -3787,4 +3787,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_run_running">実行中です。パスワードを求められたら、コンピューターのパスワードを入力して Enter を押してください。</string>
   <string name="im_space_run_ok">完了しました。ネットワークを再確認しています。</string>
   <string name="im_space_run_failed">コマンドが終了コード %1$d で止まりました。上の出力を確認してください。</string>
+  <string name="im_space_fix_card_title">コンピューターをインターネットにつなぐ</string>
 </resources>
