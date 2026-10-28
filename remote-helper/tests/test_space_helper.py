@@ -223,6 +223,30 @@ def test_probe(base):
     assert data["spaces"] == [{"id": f"local:{NAME}", "state": "running"}, {"id": "local:miffan-ffffffff", "state": "stopped"}]
     host.state(daemon=False)
     assert host.json("probe")["spaces"] == []  # not asked: a stopped daemon would be started by listing
+    # The host's size, for the app's recommendation; on macOS also cua's VM, which every Space shares.
+    conf = host.home / ".cua/runtimes/linux/vm/cua"
+    conf.mkdir(parents=True)
+    (conf / "colima.yaml").write_text("cpu: 4\ndisk: 60\nmemory: 12\n")
+    assert host.json("probe")["host"]["runtime"] == {"cpus": 4, "memory_mb": 12288}
+    linux = sub(base, "c")
+    assert set(linux.json("probe")["host"]) == {"cpus", "memory_mb", "runtime"}
+    assert linux.json("probe")["host"]["runtime"] is None
+
+
+def test_sizes(base):
+    host = Host(base)
+    host.json("create", NAME, "4", "8192")
+    create = [c for c in host.calls() if c[:2] == ["spaces", "create"]][-1]
+    assert create[create.index("--cpus") + 1] == "4" and create[create.index("--memory-mb") + 1] == "8192"
+    for bad in [("0", "4096"), ("2", "100"), ("x", "4096"), ("2", "4g"), ("2",), ()]:
+        assert host.error("create", NAME, *bad)["error"] == "bad_input", bad
+    # Resizing works in place on Linux through docker, and is refused on macOS.
+    assert host.json("resize", NAME, "4", "8192") == {"id": f"local:{NAME}", "cpus": 4, "memory_mb": 8192}
+    assert ["update", "--cpus", "4", "--memory", "8192m", "--memory-swap", "8192m", NAME] in host.calls("docker")
+    mac = sub(base, "m", os_name="Darwin")
+    mac.add_space()
+    assert mac.error("resize", NAME, "4", "8192")["error"] == "unsupported"
+    assert mac.error("resize", "miffan-0000ffff", "4", "8192")["error"] == "not_found"
 
     perm = sub(base, "c", docker="permission")
     docker = perm.json("probe")["docker"]
@@ -255,7 +279,7 @@ def test_install(base):
 
 def test_create(base):
     host = Host(base, daemon=False)
-    created = host.json("create", NAME, extra_env={"HTTPS_PROXY": "http://proxy.local:8080"})
+    created = host.json("create", NAME, "2", "4096", extra_env={"HTTPS_PROXY": "http://proxy.local:8080"})
     assert created == {"id": f"local:{NAME}", "state": "running"}
     # The daemon was started first, with the proxy, and every create asked for runc.
     assert json.loads((host.base / "daemon_env.json").read_text())["HTTPS_PROXY"] == "http://proxy.local:8080"
@@ -277,22 +301,22 @@ def test_create_errors(base):
     ]
     for i, (state, code) in enumerate(cases):
         host = sub(base, str(i), **state)
-        err = host.error("create", NAME)
+        err = host.error("create", NAME, "2", "4096")
         assert err["error"] == code and err["detail"], (state, err)
         assert host.read_state()["spaces"] == {}
     host = sub(base, "p", docker="ok")
     host.state(docker="permission")
-    err = host.error("create", NAME)
+    err = host.error("create", NAME, "2", "4096")
     assert err["error"] == "needs_docker" and "permission denied" in err["detail"]
     assert not [c for c in host.calls() if c[:2] == ["spaces", "create"]]
     mac = sub(base, "m", os_name="Darwin", with_docker=False)  # macOS has no docker precheck
-    assert mac.json("create", NAME)["state"] == "running"
+    assert mac.json("create", NAME, "2", "4096")["state"] == "running"
     low = sub(base, "l", free_kb=1024 * 1024)
-    assert low.error("create", NAME)["error"] == "disk_low"
+    assert low.error("create", NAME, "2", "4096")["error"] == "disk_low"
     stuck = sub(base, "w", never_running=True)
-    assert stuck.error("create", NAME)["error"] == "create_failed"
-    assert sub(base, "n", cua=False).error("create", NAME) == {"error": "cua_missing", "detail": None}
-    assert sub(base, "k", daemon=False, daemon_fail=True).error("create", NAME)["error"] == "daemon_failed"
+    assert stuck.error("create", NAME, "2", "4096")["error"] == "create_failed"
+    assert sub(base, "n", cua=False).error("create", NAME, "2", "4096") == {"error": "cua_missing", "detail": None}
+    assert sub(base, "k", daemon=False, daemon_fail=True).error("create", NAME, "2", "4096")["error"] == "daemon_failed"
 
 
 def test_name_validation(base):
@@ -344,7 +368,8 @@ def test_lifecycle(base):
     assert host.json("delete", NAME) == {"id": f"local:{NAME}", "deleted": True}
     assert [c for c in host.calls() if c[:2] == ["spaces", "delete"]] == [["spaces", "delete", f"local:{NAME}", "--force"]]
     for command in ["stop", "start", "delete", "reset", "info", "netcheck"]:
-        assert host.error(command, NAME)["error"] == "not_found", command
+        sizes = ["2", "4096"] if command == "reset" else []
+        assert host.error(command, NAME, *sizes)["error"] == "not_found", command
 
     host.add_space(NAME)
     host.state(delete_fail=True)
@@ -353,7 +378,7 @@ def test_lifecycle(base):
 
     # reset: delete, then create under the same name with runc.
     mark = len(host.calls())
-    assert host.json("reset", NAME) == {"id": f"local:{NAME}", "state": "running"}
+    assert host.json("reset", NAME, "2", "4096") == {"id": f"local:{NAME}", "state": "running"}
     steps = [c[:2] for c in host.calls()[mark:] if c[:1] == ["spaces"]]
     assert steps == [["spaces", "delete"], ["spaces", "create"]]
     create = [c for c in host.calls() if c[:2] == ["spaces", "create"]][-1]
@@ -393,7 +418,7 @@ def test_netcheck(base):
 def test_handoff_out(base):
     host = Host(base)
     host.add_space()
-    box = host.space_home() / "交接"
+    box = host.space_home() / "Desktop" / "Shared"
     (box / "dir/sub").mkdir(parents=True)
     (box / "报告.txt").write_text("one")
     (box / "notes").write_text("n1")
@@ -439,7 +464,7 @@ def test_handoff_out(base):
 def test_handoff_json_strings(base):
     host = Host(base)
     host.add_space()
-    box = host.space_home() / "交接"
+    box = host.space_home() / "Desktop" / "Shared"
     box.mkdir(parents=True)
     (box / 'say "hi".txt').write_text("q")
     odd = host.base / 'odd "q" \\ folder'
@@ -463,7 +488,7 @@ def test_handoff_in(base):
     (folder / "sub/x.txt").write_text("x1")
     (folder / ".DS_Store").write_text("junk")
     (folder / "link").symlink_to(folder / "论文.pdf")
-    box = host.space_home() / "交接"
+    box = host.space_home() / "Desktop" / "Shared"
 
     first = host.handoff("in", {"folder": str(folder)})
     assert sorted(first["copied"]) == ["sub/x.txt", "论文.pdf"]
@@ -508,7 +533,7 @@ def test_exec_failures(base):
 
 def main():
     tests = [test_probe, test_install, test_create, test_create_errors, test_name_validation, test_info,
-             test_lifecycle, test_netcheck, test_handoff_out, test_handoff_json_strings, test_handoff_in,
+             test_lifecycle, test_sizes, test_netcheck, test_handoff_out, test_handoff_json_strings, test_handoff_in,
              test_exec_failures]
     for test in tests:
         with tempfile.TemporaryDirectory() as base:

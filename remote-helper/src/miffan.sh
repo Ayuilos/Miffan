@@ -19,10 +19,10 @@
 #                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 #   miffan task probe|which|stage|commit|list|remove|enable|disable|run|sync|log|exec
 #                           scheduled tasks run by the system timer (JSON on stdout)
-#   miffan space probe|install|create|info|start|stop|delete|reset|netcheck|handoff
+#   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=25
+MIFFAN_HELPER_VERSION=26
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1849,7 +1849,8 @@ task() {
 # Wraps the `cua` CLI. Every `space` command prints one JSON line on stdout; diagnostics go to
 # stderr and never carry the Space token.
 
-SPACE_HANDOFF_DIR=/home/cua/交接
+# On the Space's desktop, so it is in sight once its screen is shown.
+SPACE_HANDOFF_DIR=/home/cua/Desktop/Shared
 
 # {"error":code,"detail":text|null}, exit 1.
 space_fail() {
@@ -2011,8 +2012,35 @@ space_probe() {
         fi
     fi
     if [ "$(os)" = linux ]; then docker=$(space_docker_json); else docker=null; fi
-    printf '{"cua":{"path":%s,"version":%s},"daemon":{"running":%s},"docker":%s,"disk_free_gb":%s,"spaces":%s}\n' \
-        "$(json_or_null "$path")" "$(json_or_null "$version")" "$running" "$docker" "$(space_disk_free_gb)" "$spaces"
+    printf '{"cua":{"path":%s,"version":%s},"daemon":{"running":%s},"docker":%s,"disk_free_gb":%s,"host":%s,"spaces":%s}\n' \
+        "$(json_or_null "$path")" "$(json_or_null "$version")" "$running" "$docker" "$(space_disk_free_gb)" "$(space_host_json)" "$spaces"
+}
+
+# This computer's CPUs and memory and, on macOS, the Linux VM cua runs every Space in (they all share it).
+space_host_json() {
+    if [ "$(os)" = macos ]; then
+        cpus=$(sysctl -n hw.ncpu 2>/dev/null)
+        mem=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1048576 ))
+        conf="$HOME/.cua/runtimes/linux/vm/cua/colima.yaml"
+        vcpu=$(sed -n 's/^cpu: *\([0-9][0-9]*\).*/\1/p' "$conf" 2>/dev/null | head -n 1)
+        vmem=$(sed -n 's/^memory: *\([0-9][0-9]*\).*/\1/p' "$conf" 2>/dev/null | head -n 1)
+        if [ -n "$vcpu" ] && [ -n "$vmem" ]; then runtime="{\"cpus\":$vcpu,\"memory_mb\":$((vmem * 1024))}"; else runtime=null; fi
+    else
+        cpus=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
+        mem=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
+        runtime=null
+    fi
+    printf '{"cpus":%s,"memory_mb":%s,"runtime":%s}' "${cpus:-null}" "${mem:-null}" "$runtime"
+}
+
+# Validated CPU count and memory (MiB) for a Space: $SPACE_CPUS and $SPACE_MEMORY, or bad_input.
+space_need_size() {
+    case "${1:-}" in ''|*[!0-9]*) space_fail bad_input "cpus" ;; esac
+    case "${2:-}" in ''|*[!0-9]*) space_fail bad_input "memory" ;; esac
+    { [ "$1" -ge 1 ] && [ "$1" -le 64 ]; } || space_fail bad_input "cpus"
+    { [ "$2" -ge 512 ] && [ "$2" -le 262144 ]; } || space_fail bad_input "memory"
+    SPACE_CPUS=$1
+    SPACE_MEMORY=$2
 }
 
 space_install() {
@@ -2056,7 +2084,8 @@ space_create_do() {
     free=$(space_disk_free_gb)
     if [ -n "$free" ] && [ "$free" -lt 2 ]; then space_fail disk_low "${free} GB free"; fi
     errfile=$(mktemp "${TMPDIR:-/tmp}/miffan-space.XXXXXX") || space_fail create_failed "no temp file"
-    out=$("$SPACE_CUA" spaces create linux --on local --kind container --runtime runc --name "$name" --json 2>"$errfile")
+    out=$("$SPACE_CUA" spaces create linux --on local --kind container --runtime runc --name "$name" \
+        --cpus "$SPACE_CPUS" --memory-mb "$SPACE_MEMORY" --json 2>"$errfile")
     status=$?
     stderr_text=$(cat "$errfile")
     rm -f "$errfile"
@@ -2112,6 +2141,16 @@ space_delete() {
 space_reset() {
     space_delete_do "$1"
     space_create "$1"
+}
+
+# Changes a running Space's CPUs and memory in place (files stay). Linux only: on macOS the Spaces live in
+# cua's own VM, where the app cannot reach their containers.
+space_resize() {
+    space_known "$1" || space_fail not_found
+    [ "$(os)" = linux ] || space_fail unsupported "resizing needs a Linux host"
+    err=$(docker update --cpus "$SPACE_CPUS" --memory "${SPACE_MEMORY}m" --memory-swap "${SPACE_MEMORY}m" "$1" 2>&1 >/dev/null) ||
+        space_fail exec_failed "$(space_last_line "$err")"
+    printf '{"id":"local:%s","cpus":%s,"memory_mb":%s}\n' "$1" "$SPACE_CPUS" "$SPACE_MEMORY"
 }
 
 space_netcheck() {
@@ -2287,7 +2326,14 @@ space() {
     case "$action" in
         probe) space_probe; return ;;
         install) space_install; return ;;
-        create|info|start|stop|delete|reset|netcheck)
+        create|reset|resize)
+            # create|reset|resize <name> <cpus> <memory MiB>
+            space_need_name "${1:-}"
+            space_need_size "${2:-}" "${3:-}"
+            space_ready
+            "space_$action" "$1"
+            ;;
+        info|start|stop|delete|netcheck)
             space_need_name "${1:-}"
             space_ready
             "space_$action" "$1"
@@ -2297,7 +2343,7 @@ space() {
             space_ready
             space_handoff "$@"
             ;;
-        *) echo "usage: miffan space probe|install|create|info|start|stop|delete|reset|netcheck|handoff" >&2; exit 2 ;;
+        *) echo "usage: miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff" >&2; exit 2 ;;
     esac
 }
 

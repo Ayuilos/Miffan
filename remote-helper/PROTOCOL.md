@@ -195,7 +195,7 @@ POSIX sh 与系统自带工具（含 curl、awk），不需要 python3。
 文件或任何进程参数。失败为 `{"error":"<code>","detail":<string|null>}` 并退出 1；Space 名不合法时
 `{"error":"bad_name","detail":null}` 并退出 2。名字必须是 `miffan-[0-9a-f]{8}`。
 错误码：`cua_missing`、`daemon_failed`、`needs_docker`（仅 Linux：无 docker 或无权限）、`download_failed`、
-`disk_low`、`create_failed`、`not_found`、`start_failed`、`exec_failed`、`bad_name`、`bad_input`。
+`disk_low`、`create_failed`、`not_found`、`start_failed`、`exec_failed`、`unsupported`、`bad_name`、`bad_input`。
 
 `cua` 在 `~/.local/bin/cua`（非交互 PATH 里没有），helper 按 `PATH`、`~/.local/bin`、`/opt/homebrew/bin`、
 `/usr/local/bin` 查找。除 `probe` 外的命令都会先确认 cua 守护进程在运行，没有则带着电脑的代理变量
@@ -203,14 +203,15 @@ POSIX sh 与系统自带工具（含 curl、awk），不需要 python3。
 
 | 调用 | stdin / stdout | 说明 |
 |---|---|---|
-| `space probe` | 无 / `{cua:{path,version},daemon:{running},docker,disk_free_gb,spaces:[{id,state}]}` | 只读，不启动任何东西。docker 在 Linux 为 `{ok,detail}`，macOS 为 null（用 cua 自带运行时）。守护进程没运行时 `spaces` 为空（列出会拉起运行时）。只列 `miffan-*` 的 Space |
+| `space probe` | 无 / `{cua:{path,version},daemon:{running},docker,disk_free_gb,host:{cpus,memory_mb,runtime},spaces:[{id,state}]}` | 只读，不启动任何东西。`host` 是本机 CPU 数与内存（MiB，读不到为 null）；`runtime` 在 macOS 为 cua 的 Linux 虚拟机 `{cpus,memory_mb}`（所有 Space 共用，读自 `~/.cua/runtimes/linux/vm/cua/colima.yaml`），Linux 为 null（helper 26 起）。docker 在 Linux 为 `{ok,detail}`，macOS 为 null（用 cua 自带运行时）。守护进程没运行时 `spaces` 为空（列出会拉起运行时）。只列 `miffan-*` 的 Space |
 | `space install` | 无 / `{cua:{path,version},daemon:{running:true}}` | cua 已装则不下载；否则经代理下载 `https://cua.ai/install.sh` 并以 `--cli-only --yes --no-modify-path --no-onboarding` 运行（安装器输出走 stderr），失败为 `download_failed`。然后确保守护进程在运行（`daemon_failed`） |
-| `space create <名>` | 无 / `{id:"local:<名>",state:"running"}` | Linux 先检查 docker（`needs_docker`）与磁盘（<2 GB 为 `disk_low`）。`cua spaces create linux --on local --kind container --runtime runc --name <名> --json`，再等 `sb info` 为 running 且发布了回环端口（默认 90 秒，超时 `create_failed`）。cua 失败时 JSON 的 `error` 或退出码非 0 都算失败，按文本分类：磁盘/空间 → `disk_low`；pull/download/proxy/timeout/dial tcp → `download_failed`；docker → `needs_docker`；其余 `create_failed`，detail 为 cua 的原文 |
+| `space create <名> <cpus> <内存 MiB>` | 无 / `{id:"local:<名>",state:"running"}` | cpus 1–64、内存 512–262144，否则 `bad_input`（helper 26 起必填）。Linux 先检查 docker（`needs_docker`）与磁盘（<2 GB 为 `disk_low`）。`cua spaces create linux --on local --kind container --runtime runc --name <名> --cpus <cpus> --memory-mb <内存> --json`，再等 `sb info` 为 running 且发布了回环端口（默认 90 秒，超时 `create_failed`）。cua 失败时 JSON 的 `error` 或退出码非 0 都算失败，按文本分类：磁盘/空间 → `disk_low`；pull/download/proxy/timeout/dial tcp → `download_failed`；docker → `needs_docker`；其余 `create_failed`，detail 为 cua 的原文 |
 | `space info <名>` | 无 / `{id,state:"running",port,token,driver_version}` | Space 未运行先 `cua spaces start`（`start_failed`）。回环端口每次启动都变，每次现查，不缓存。token 来自 `~/.cua/spaces-credentials.json`。`driver_version` 是 Space 里 cua-driver 的版本，经 `http://127.0.0.1:<port>/mcp` 的 initialize 读取（token 通过 curl 配置走 stdin），读不到为 null |
 | `space start\|stop\|delete <名>` | 无 / `{id,state}`；delete 为 `{id,deleted:true}` | 未知的名为 `not_found`。stop 只暂停容器（内存不释放）；delete 用 `--force` |
-| `space reset <名>` | 无 / 同 create | 先 delete 再用同名 create；Space 不存在为 `not_found`。交接文件夹在宿主上，不受影响 |
+| `space reset <名> <cpus> <内存 MiB>` | 无 / 同 create | 先 delete 再用同名、给定配置 create；Space 不存在为 `not_found`。交接文件夹在宿主上，不受影响 |
+| `space resize <名> <cpus> <内存 MiB>` | 无 / `{id,cpus,memory_mb}` | 原地改配置，文件保留（helper 26 起）。只支持 Linux：`docker update --cpus … --memory …m --memory-swap …m <名>`，失败为 `exec_failed`；macOS 的 Space 在 cua 自己的虚拟机里，返回 `unsupported` |
 | `space netcheck <名>` | 无 / `{dns,https,detail,hint}` | 在 Space 里对 `www.cloudflare.com`（全球）与 `www.baidu.com`（国内）各做 DNS（5 秒）与 HTTPS（6 秒）。任一主机成功即为 true；`detail` 列出失败项（如 `https:www.baidu.com`），全部成功为 null。检查在 Space 里没能跑完时（helper 25 起）也按离线输出（两者为 false），不再报 `exec_failed`。Linux 上检查未通过且 `systemctl is-active ufw` 为 active 时 `hint:"ufw"`，其余为 null；helper 从不修改防火墙 |
-| `space handoff out\|in <名>` | `{"folder":"<宿主绝对路径>","path":"<相对路径，仅 out>"}` / `{copied:[…]}` | Space 里的交接文件夹为 `/home/cua/交接`，两侧缺失时创建（宿主 `<folder>` 为 700）。冲突不覆盖：在扩展名前加 ` (2)`、` (3)`…（`.tar.*` 算一个扩展名，点开头的文件无扩展名）。`copied` 是写到宿主（out）或 Space 交接文件夹（in）里的相对名 |
+| `space handoff out\|in <名>` | `{"folder":"<宿主绝对路径>","path":"<相对路径，仅 out>"}` / `{copied:[…]}` | Space 里的交接文件夹为桌面上的 `/home/cua/Desktop/Shared`（helper 26 起；名字固定为英文），两侧缺失时创建（宿主 `<folder>` 为 700）。冲突不覆盖：在扩展名前加 ` (2)`、` (3)`…（`.tar.*` 算一个扩展名，点开头的文件无扩展名）。`copied` 是写到宿主（out）或 Space 交接文件夹（in）里的相对名 |
 
 handoff 细节：stdin 是单个 JSON 对象，字符串里只接受 `\"`、`\\`、`\/` 三种转义，非 ASCII 字符须原样 UTF-8（App 的
 JSON 编码默认如此），其他转义（含 `\n`、`\u`）为 `bad_input`。`folder` 必须是不含 `..`、`.`、空段的绝对路径，
