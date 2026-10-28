@@ -245,6 +245,12 @@ internal fun ComputerSpaceNetworkStep(vm: ComputerSetupVM, state: ComputerSetupS
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val checking = job?.stage == SpaceSetupJob.Stage.CHECKING_NETWORK
+    var running by rememberSaveable { mutableStateOf(false) }
+    val hostId = state.hostId
+    if (running && hostId != null) HostCommandTerminal(hostId, UFW_FIX_COMMAND,
+        // A fixed firewall checks again by itself; the terminal stays open to show what happened.
+        onFinished = { ok -> if (ok) vm.recheckNetwork() },
+        onDismiss = { running = false })
     SetupScreen(
         title = if (partners.size == 1 && first != null) stringResource(R.string.im_space_network_title, threadAssistantName(first))
             else stringResource(R.string.im_space_network_title_many),
@@ -265,6 +271,9 @@ internal fun ComputerSpaceNetworkStep(vm: ComputerSetupVM, state: ComputerSetupS
             }
             Text(stringResource(R.string.im_space_network_note), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Already connected to the computer: run it from here, typing the password on the phone.
+            FilledTonalButton(onClick = { running = true }, enabled = !checking && hostId != null,
+                modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.im_space_run_here)) }
         }
     }
 }

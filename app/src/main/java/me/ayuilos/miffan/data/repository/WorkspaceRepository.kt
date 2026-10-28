@@ -700,6 +700,24 @@ class WorkspaceRepository(
         }
     }
 
+    /**
+     * Runs one fixed [command] on the saved host [hostId] in its own PTY, so the user can watch it and
+     * answer prompts such as sudo's password on the phone. Closing the terminal ends its SSH session.
+     */
+    suspend fun openHostCommandTerminal(hostId: String, command: String, columns: Int, rows: Int): RemoteTerminalConnection {
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
+        val session = connectSavedHost(host.id, host.config(), host.connectionRevision)
+        try {
+            val pty = runRemoteInterruptible {
+                session.openTerminal(columns, rows, me.rerere.workspace.RemoteTerminalCommandSpec(command, ""), false)
+            }
+            return RemoteTerminalConnection(pty) { session.close() }
+        } catch (error: Throwable) {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+            throw error
+        }
+    }
+
     /** Probe only: never records an address, platform, or trusted fingerprint. */
     suspend fun checkKeySignIn(host: String, port: Int, username: String, sshKeyId: String): KeySignInCheck {
         val authentication = loadVerifiedSshKey(sshKeyId)

@@ -106,7 +106,11 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                         nav.removeAll(Screen.Home) { it is Screen.ComputerSetup || it == Screen.PartnerScreen(id) || it is Screen.Thread && it.assistantId == id }
                         nav.navigate(Screen.Thread(id))
                     },
-                    onChangeMode = { partner -> nav.replace(self, Screen.PartnerComputer(partner.id.toString()), Screen.Home) })
+                    onChangeMode = { partner ->
+                        // Setup can sit on the stack twice (picking a saved computer opens its own entry).
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup }
+                        nav.navigate(Screen.PartnerComputer(partner.id.toString()))
+                    })
                 ComputerSetupStep.DONE -> {
                     val bound by vm.boundPartnerIds.collectAsStateWithLifecycle()
                     val partner = assistants.find { it.id == forPartner && it.id in bound } ?: assistants.firstOrNull { it.id in bound }

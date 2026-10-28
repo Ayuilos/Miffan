@@ -3709,7 +3709,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_space_network_title_many">它们的电脑还上不了网</string>
   <string name="im_space_network_help_ufw">电脑已经准备好了，但连不上互联网：%1$s 开着防火墙，挡住了它。</string>
   <string name="im_space_network_help">电脑已经准备好了，但连不上互联网。看看 %1$s 的网络或代理设置。</string>
-  <string name="im_space_network_run">在 %1$s 上运行这条命令，再点「再检查一次」：</string>
+  <string name="im_space_network_run">在 %1$s 上运行这条命令，或者直接在手机上运行，再点「再检查一次」：</string>
   <string name="im_space_network_note">它只让独立的电脑能出去上网，不会让别人连进你的电脑。需要输入你电脑的管理员密码。</string>
   <string name="im_space_network_skip">先不上网，继续</string>
   <string name="im_space_copy_command">复制命令</string>
@@ -3766,4 +3766,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_space_tier_row">配置</string>
   <string name="im_space_tier_mac_fixed">在 Mac 上暂时不能直接改配置。</string>
   <string name="im_space_resized">已改为 %1$s</string>
+  <string name="im_space_run_here">在手机上运行</string>
+  <string name="im_space_run_title">在电脑上运行</string>
+  <string name="im_space_run_connecting">正在连接电脑…</string>
+  <string name="im_space_run_running">正在运行。要密码时，输入电脑的密码再按回车。</string>
+  <string name="im_space_run_ok">完成了，正在重新检查网络。</string>
+  <string name="im_space_run_failed">命令没有成功（代码 %1$d），看看上面的输出。</string>
 </resources>

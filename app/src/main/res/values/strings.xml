@@ -3724,7 +3724,7 @@
   <string name="im_space_network_title_many">Their computers are offline</string>
   <string name="im_space_network_help_ufw">It is ready but cannot reach the internet: the firewall on %1$s blocks it.</string>
   <string name="im_space_network_help">It is ready but cannot reach the internet. Check the network or proxy settings on %1$s.</string>
-  <string name="im_space_network_run">Run this on %1$s, then tap Check again:</string>
+  <string name="im_space_network_run">Run this on %1$s, or from this phone, then tap Check again:</string>
   <string name="im_space_network_note">It only lets its own computer go out to the internet; nobody can get into yours through it. It asks for your computer\'s administrator password.</string>
   <string name="im_space_network_skip">Continue offline</string>
   <string name="im_space_copy_command">Copy command</string>
@@ -3781,4 +3781,10 @@
   <string name="im_space_tier_row">Size</string>
   <string name="im_space_tier_mac_fixed">On a Mac the size cannot be changed in place yet.</string>
   <string name="im_space_resized">Now %1$s</string>
+  <string name="im_space_run_here">Run it from this phone</string>
+  <string name="im_space_run_title">Run on the computer</string>
+  <string name="im_space_run_connecting">Connecting to the computer…</string>
+  <string name="im_space_run_running">Running. If it asks for a password, type the computer\'s password and press Enter.</string>
+  <string name="im_space_run_ok">Done. Checking the internet again.</string>
+  <string name="im_space_run_failed">It stopped with code %1$d. Check the output above.</string>
 </resources>
