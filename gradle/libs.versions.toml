@@ -65,6 +65,7 @@ termux = "0.118.0"
 diffutils = "4.17"
 snakeyaml = "2.6"
 jsch = "2.28.7"
+wire = "7.1.0"
 bouncycastle = "1.86"
 apacheSshd = "2.16.0"
 
@@ -118,6 +119,7 @@ jetbrains-markdown = { module = "com.github.rikkahub:markdown", version.ref = "m
 metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-sse = { group = "com.squareup.okhttp3", name = "okhttp-sse", version.ref = "okhttp" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttp" }
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-serialization-json = { group = "com.squareup.retrofit2", name = "converter-kotlinx-serialization", version.ref = "retrofit" }
@@ -151,6 +153,7 @@ pebble = { module = "io.pebbletemplates:pebble", version.ref = "pebble" }
 diffutils = { module = "io.github.java-diff-utils:java-diff-utils", version.ref = "diffutils" }
 snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
+wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "wire" }
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 apache-sshd-core = { module = "org.apache.sshd:sshd-core", version.ref = "apacheSshd" }
 apache-sshd-sftp = { module = "org.apache.sshd:sshd-sftp", version.ref = "apacheSshd" }
@@ -200,3 +203,4 @@ google-services = { id = "com.google.gms.google-services", version.ref = "google
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics" }
 android-test = { id = "com.android.test", version.ref = "agp" }
 baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }
+wire = { id = "com.squareup.wire", version.ref = "wire" }
