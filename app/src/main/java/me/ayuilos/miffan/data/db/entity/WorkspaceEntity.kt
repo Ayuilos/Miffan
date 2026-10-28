@@ -39,8 +39,8 @@ data class WorkspaceEntity(
     val remoteHostId: String? = null,
     @ColumnInfo("remote_path")
     val remotePath: String? = null,
-    // A SPACE workspace lives in this cua Space on the remote host; remote_path is then the host's
-    // home, used only for the SSH connection, never as a file root.
+    // A SPACE workspace lives in this cua Space on the remote host; remote_path is then the root
+    // inside the Space, and the SSH connection to the host is rooted at "/" (see sshRoot).
     @ColumnInfo("space_name")
     val spaceName: String? = null,
 ) {
@@ -49,6 +49,9 @@ data class WorkspaceEntity(
 
     /** A partner's own isolated computer: host-level abilities (desktop, scheduled tasks) stay off. */
     val isSpace: Boolean get() = kind == KIND_SPACE
+
+    /** The directory the SSH session to the host is rooted at: for a Space only the helper and tunnels use it. */
+    val sshRoot: String? get() = if (isSpace) "/" else remotePath
 
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)

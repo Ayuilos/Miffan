@@ -81,11 +81,10 @@ class PartnerSpaces(
         val name = "miffan-" + Uuid.random().toHexString().take(8)
         requireSuccess(parse<SpaceResult>(workspaces.runSpaceHelper(hostId, listOf("create", name),
             timeoutMillis = CREATE_TIMEOUT_MILLIS)))
-        val home = workspaces.remoteHome(hostId)
         val label = generateSequence(1) { it + 1 }
             .map { if (it == 1) "${assistant.name} · ${host.name}" else "${assistant.name} · ${host.name} $it" }
             .first { !workspaces.isNameTaken(it, null) }
-        val workspace = workspaces.createSpaceWorkspace(label, hostId, home, name)
+        val workspace = workspaces.createSpaceWorkspace(label, hostId, name)
         val workspaceId = Uuid.parse(workspace.id)
         settingsStore.update { settings ->
             settings.copy(assistants = settings.assistants.map {

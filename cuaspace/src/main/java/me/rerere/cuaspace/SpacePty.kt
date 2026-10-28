@@ -8,6 +8,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,6 +16,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 /**
  * A process running under a PTY in a Space, as blocking streams (the shape the persistent shell and
@@ -32,6 +34,8 @@ class SpacePty internal constructor(
     @Volatile var exitCode: Int = -1
         private set
     @Volatile private var ended = false
+    // Input addressed to the process by its tag fails until the server has registered it.
+    private val started = CompletableDeferred<Unit>()
 
     val isConnected: Boolean get() = !closed.get() && !ended
 
@@ -74,7 +78,10 @@ class SpacePty internal constructor(
             if (length == 0) return
             if (!isConnected) throw IOException("Space terminal is closed")
             val bytes = buffer.copyOfRange(offset, offset + length)
-            runBlocking(Dispatchers.IO) { client.sendInput(process, bytes, pty = true) }
+            runBlocking(Dispatchers.IO) {
+                awaitStarted()
+                client.sendInput(process, bytes, pty = true)
+            }
         }
     }
 
@@ -83,36 +90,46 @@ class SpacePty internal constructor(
             try {
                 events().collect { response ->
                     val event = response.event ?: return@collect
+                    if (event.start != null) started.complete(Unit)
                     event.data_?.let { data -> (data.pty ?: data.stdout ?: data.stderr)?.let { chunks.offer(it.toByteArray()) } }
                     event.end?.let { end ->
                         exitCode = end.exit_code ?: if (end.signal_number != 0) 128 + end.signal_number else -1
                     }
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 // The stream ending for any reason closes the terminal; readers see EOF.
+                started.completeExceptionally(IOException("Space terminal did not start", error))
             } finally {
+                started.completeExceptionally(IOException("Space terminal ended"))
                 ended = true
                 chunks.offer(END)
             }
         }
     }
 
+    /** Suspends until the process runs; fails when it could not start or ended first. */
+    suspend fun awaitStarted(timeoutMillis: Long = START_TIMEOUT_MILLIS) {
+        withTimeout(timeoutMillis) { started.await() }
+    }
+
     fun resize(columns: Int, rows: Int) {
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
-        scope.launch { runCatching { client.resize(process, columns, rows) } }
+        scope.launch { runCatching { awaitStarted(); client.resize(process, columns, rows) } }
     }
 
     fun interrupt() {
-        scope.launch { runCatching { client.signal(process, Signal.SIGNAL_INT) } }
+        scope.launch { runCatching { awaitStarted(); client.signal(process, Signal.SIGNAL_INT) } }
     }
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        started.completeExceptionally(IOException("Space terminal is closed"))
         scope.cancel()
         chunks.offer(END)
     }
 
     private companion object {
+        const val START_TIMEOUT_MILLIS = 20_000L
         val EMPTY = ByteArray(0)
         val END = ByteArray(0)
     }

@@ -135,7 +135,15 @@ class SpaceWorkspaceFiles(
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
         val script = command?.shellScript(paths.root) ?: RemoteShell.posixTerminal(paths.root, persistentCommands)
         call { requireDirectory(paths.root) }
-        return SpaceTerminal(client.openPty("/bin/sh", listOf("-c", script), paths.root, columns, rows))
+        val pty = client.openPty("/bin/sh", listOf("-c", script), paths.root, columns, rows)
+        try {
+            // Hand out the terminal only once the process runs, so the first bytes written reach it.
+            call { pty.awaitStarted() }
+        } catch (error: Throwable) {
+            pty.close()
+            throw error
+        }
+        return SpaceTerminal(pty)
     }
 
     private suspend fun requireDirectory(absolute: String) {
