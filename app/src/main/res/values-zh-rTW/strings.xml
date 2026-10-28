@@ -3668,7 +3668,7 @@
   <string name="im_space_own_title_many">給它們各一台獨立的電腦</string>
   <string name="im_space_safer">比較安全</string>
   <string name="im_space_own_body">在 %1$s 裡另外開一台小電腦給它。它在裡面安裝軟體、執行指令、上網，都碰不到你的檔案和桌面。</string>
-  <string name="im_space_own_cost">約佔用 1 GB 記憶體、5 GB 磁碟空間</string>
+  <string name="im_space_own_cost">需要約 5 GB 磁碟空間</string>
   <string name="im_space_continue">繼續</string>
   <string name="im_space_install_title">先在 %1$s 上安裝一個小工具</string>
   <string name="im_space_install_help">獨立的電腦由開源工具 cua 提供。不需要帳號，也不需要系統管理員密碼。</string>
@@ -3739,4 +3739,21 @@
   <string name="im_space_error_disk">電腦的磁碟空間不足。</string>
   <string name="im_space_error_timeout">耗時太長，請再試一次。</string>
   <string name="im_space_error_failed">無法準備好它的電腦：%1$s</string>
+  <string name="im_space_tier_light">輕量</string>
+  <string name="im_space_tier_standard">標準</string>
+  <string name="im_space_tier_performance">效能</string>
+  <string name="im_space_tier_spec">%1$d 核心 · %2$d GB</string>
+  <string name="im_space_tier_light_hint">看網頁、寫寫文件</string>
+  <string name="im_space_tier_standard_hint">裝軟體、跑腳本、開瀏覽器</string>
+  <string name="im_space_tier_performance_hint">編譯程式碼、同時開很多程式</string>
+  <string name="im_space_tier_line">將分配 %1$s，依 %2$s 的配置推薦</string>
+  <string name="im_space_tier_line_picked">將分配 %1$s</string>
+  <string name="im_space_tier_adjust">調整</string>
+  <string name="im_space_tier_sheet_title">給它多大的電腦？</string>
+  <string name="im_space_tier_sheet_help">這些是上限：它平時只用需要的部分，其餘留給你自己用。</string>
+  <string name="im_space_tier_recommended">推薦</string>
+  <string name="im_space_tier_too_big">超出這台電腦能分出來的</string>
+  <string name="im_space_tier_row">配置</string>
+  <string name="im_space_tier_mac_fixed">在 Mac 上暫時不能直接更改配置。</string>
+  <string name="im_space_resized">已改為 %1$s</string>
 </resources>

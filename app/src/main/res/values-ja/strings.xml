@@ -3693,7 +3693,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_own_title_many">それぞれに専用のコンピューターを持たせる</string>
   <string name="im_space_safer">より安全</string>
   <string name="im_space_own_body">%1$s の中で専用の小さなコンピューターが動きます。そこでインストールしたり、実行したり、開いたりしたものが、あなたのファイルやデスクトップに触れることはありません。</string>
-  <string name="im_space_own_cost">メモリ約 1 GB、ディスク約 5 GB を使います</string>
+  <string name="im_space_own_cost">ディスクを約 5 GB 使います</string>
   <string name="im_space_continue">続ける</string>
   <string name="im_space_install_title">まず %1$s に小さなツールを入れます</string>
   <string name="im_space_install_help">専用のコンピューターは、オープンソースのツール cua で作られます。アカウントも管理者パスワードも必要ありません。</string>
@@ -3764,4 +3764,21 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_error_disk">コンピューターのディスクの空きが足りません。</string>
   <string name="im_space_error_timeout">時間がかかりすぎました。もう一度お試しください。</string>
   <string name="im_space_error_failed">専用のコンピューターを用意できませんでした：%1$s</string>
+  <string name="im_space_tier_light">軽量</string>
+  <string name="im_space_tier_standard">標準</string>
+  <string name="im_space_tier_performance">パフォーマンス</string>
+  <string name="im_space_tier_spec">%1$d コア · %2$d GB</string>
+  <string name="im_space_tier_light_hint">Web やドキュメントの閲覧</string>
+  <string name="im_space_tier_standard_hint">ソフトウェアのインストール、スクリプト、ブラウザ</string>
+  <string name="im_space_tier_performance_hint">コードのビルドや多くのプログラムの同時実行</string>
+  <string name="im_space_tier_line">%1$s を割り当て、%2$s 向けに推奨</string>
+  <string name="im_space_tier_line_picked">%1$s を割り当て</string>
+  <string name="im_space_tier_adjust">調整</string>
+  <string name="im_space_tier_sheet_title">どのくらいの大きさのコンピューターにしますか？</string>
+  <string name="im_space_tier_sheet_help">これらは上限です。必要な分だけ使われ、残りはあなたの作業のために空けられます。</string>
+  <string name="im_space_tier_recommended">おすすめ</string>
+  <string name="im_space_tier_too_big">このコンピューターから割り当てられる量を超えています</string>
+  <string name="im_space_tier_row">サイズ</string>
+  <string name="im_space_tier_mac_fixed">Mac では、まだサイズをその場で変更できません。</string>
+  <string name="im_space_resized">%1$s に変更しました</string>
 </resources>

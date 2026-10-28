@@ -3693,7 +3693,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_own_title_many">각자 전용 컴퓨터 주기</string>
   <string name="im_space_safer">더 안전함</string>
   <string name="im_space_own_body">%1$s 안에서 작은 전용 컴퓨터가 따로 돌아가요. 거기서 설치하거나 실행하거나 여는 것은 내 파일이나 데스크톱에 닿지 않아요.</string>
-  <string name="im_space_own_cost">메모리 약 1 GB, 디스크 약 5 GB를 써요</string>
+  <string name="im_space_own_cost">디스크를 약 5 GB 써요</string>
   <string name="im_space_continue">계속</string>
   <string name="im_space_install_title">먼저 %1$s에 작은 도구를 설치해요</string>
   <string name="im_space_install_help">전용 컴퓨터는 오픈소스 도구 cua로 만들어져요. 계정도, 관리자 비밀번호도 필요 없어요.</string>
@@ -3764,4 +3764,21 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_error_disk">컴퓨터의 디스크 여유 공간이 부족해요.</string>
   <string name="im_space_error_timeout">너무 오래 걸렸어요. 다시 시도해 주세요.</string>
   <string name="im_space_error_failed">전용 컴퓨터를 만들지 못했어요: %1$s</string>
+  <string name="im_space_tier_light">라이트</string>
+  <string name="im_space_tier_standard">표준</string>
+  <string name="im_space_tier_performance">고성능</string>
+  <string name="im_space_tier_spec">%1$d코어 · %2$d GB</string>
+  <string name="im_space_tier_light_hint">웹 검색과 문서 작업</string>
+  <string name="im_space_tier_standard_hint">소프트웨어 설치, 스크립트, 브라우저</string>
+  <string name="im_space_tier_performance_hint">코드 빌드와 여러 프로그램 동시 실행</string>
+  <string name="im_space_tier_line">%1$s 할당, %2$s에 추천해요</string>
+  <string name="im_space_tier_line_picked">%1$s 할당</string>
+  <string name="im_space_tier_adjust">조정</string>
+  <string name="im_space_tier_sheet_title">컴퓨터를 얼마나 크게 할까요?</string>
+  <string name="im_space_tier_sheet_help">이건 최대치예요. 필요한 만큼만 쓰고, 나머지는 내 작업에 남겨 둬요.</string>
+  <string name="im_space_tier_recommended">추천</string>
+  <string name="im_space_tier_too_big">이 컴퓨터가 나눠 줄 수 있는 양을 넘어요</string>
+  <string name="im_space_tier_row">사양</string>
+  <string name="im_space_tier_mac_fixed">Mac에서는 아직 크기를 바로 바꿀 수 없어요.</string>
+  <string name="im_space_resized">지금 %1$s</string>
 </resources>

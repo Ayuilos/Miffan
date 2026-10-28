@@ -3744,7 +3744,7 @@
   <string name="im_space_own_title_many">Дать каждому свой компьютер</string>
   <string name="im_space_safer">Безопаснее</string>
   <string name="im_space_own_body">Внутри %1$s работает отдельный маленький компьютер. Всё, что там устанавливается, запускается или открывается, не затрагивает ваши файлы и рабочий стол.</string>
-  <string name="im_space_own_cost">Занимает около 1 ГБ памяти и 5 ГБ на диске</string>
+  <string name="im_space_own_cost">Нужно около 5 ГБ на диске</string>
   <string name="im_space_continue">Продолжить</string>
   <string name="im_space_install_title">Сначала небольшой инструмент на %1$s</string>
   <string name="im_space_install_help">Собственный компьютер создаётся с помощью cua — инструмента с открытым исходным кодом. Аккаунт и пароль администратора не нужны.</string>
@@ -3815,4 +3815,21 @@
   <string name="im_space_error_disk">На компьютере не хватает свободного места на диске.</string>
   <string name="im_space_error_timeout">Это заняло слишком много времени. Попробуйте ещё раз.</string>
   <string name="im_space_error_failed">Не удалось подготовить компьютер: %1$s</string>
+  <string name="im_space_tier_light">Лёгкий</string>
+  <string name="im_space_tier_standard">Стандартный</string>
+  <string name="im_space_tier_performance">Мощный</string>
+  <string name="im_space_tier_spec">%1$d ядер · %2$d ГБ</string>
+  <string name="im_space_tier_light_hint">Сайты и документы</string>
+  <string name="im_space_tier_standard_hint">Установка программ, скрипты и браузер</string>
+  <string name="im_space_tier_performance_hint">Сборка кода и много программ сразу</string>
+  <string name="im_space_tier_line">Получит %1$s, рекомендуем для «%2$s»</string>
+  <string name="im_space_tier_line_picked">Получит %1$s</string>
+  <string name="im_space_tier_adjust">Изменить</string>
+  <string name="im_space_tier_sheet_title">Какой компьютер нужен?</string>
+  <string name="im_space_tier_sheet_help">Это лимиты: он использует только нужное, а остальное остаётся для вашей работы.</string>
+  <string name="im_space_tier_recommended">Рекомендуем</string>
+  <string name="im_space_tier_too_big">Больше, чем может выделить этот компьютер</string>
+  <string name="im_space_tier_row">Размер</string>
+  <string name="im_space_tier_mac_fixed">На Mac пока нельзя изменить размер на месте.</string>
+  <string name="im_space_resized">Теперь %1$s</string>
 </resources>
