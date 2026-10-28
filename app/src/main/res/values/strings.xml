@@ -3787,4 +3787,5 @@
   <string name="im_space_run_running">Running. If it asks for a password, type the computer\'s password and press Enter.</string>
   <string name="im_space_run_ok">Done. Checking the internet again.</string>
   <string name="im_space_run_failed">It stopped with code %1$d. Check the output above.</string>
+  <string name="im_space_fix_card_title">Let its computer go online</string>
 </resources>

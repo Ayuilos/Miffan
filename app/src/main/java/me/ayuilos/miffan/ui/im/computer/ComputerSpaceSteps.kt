@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.SpaceSetupJob
+import me.ayuilos.miffan.data.ai.tools.SPACE_NETWORK_FIX_COMMAND
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalSettings
@@ -38,8 +39,6 @@ import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.WifiOff01
 
-/** The fix the network check suggests on a Linux computer whose ufw firewall blocks the Space bridge. */
-private const val UFW_FIX_COMMAND = "sudo ufw route allow in on docker0"
 
 /** First disk size, roughly: the runtime, the image and room to work. */
 private const val SPACE_DISK_GB = 5
@@ -247,7 +246,7 @@ internal fun ComputerSpaceNetworkStep(vm: ComputerSetupVM, state: ComputerSetupS
     val checking = job?.stage == SpaceSetupJob.Stage.CHECKING_NETWORK
     var running by rememberSaveable { mutableStateOf(false) }
     val hostId = state.hostId
-    if (running && hostId != null) HostCommandTerminal(hostId, UFW_FIX_COMMAND,
+    if (running && hostId != null) HostCommandTerminal(hostId, SPACE_NETWORK_FIX_COMMAND,
         // A fixed firewall checks again by itself; the terminal stays open to show what happened.
         onFinished = { ok -> if (ok) vm.recheckNetwork() },
         onDismiss = { running = false })
@@ -264,9 +263,9 @@ internal fun ComputerSpaceNetworkStep(vm: ComputerSetupVM, state: ComputerSetupS
         if (job?.firewallHint == true) SetupCard {
             Text(stringResource(R.string.im_space_network_run, computer), style = MaterialTheme.typography.bodyLarge)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { CommandPreview(UFW_FIX_COMMAND) }
+                Box(Modifier.weight(1f)) { CommandPreview(SPACE_NETWORK_FIX_COMMAND) }
                 IconButton(onClick = {
-                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("command", UFW_FIX_COMMAND))) }
+                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("command", SPACE_NETWORK_FIX_COMMAND))) }
                 }) { Icon(HugeIcons.Copy01, stringResource(R.string.im_space_copy_command)) }
             }
             Text(stringResource(R.string.im_space_network_note), style = MaterialTheme.typography.bodyMedium,

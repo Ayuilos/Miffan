@@ -81,7 +81,7 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
         }
         else if (bound.space) LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item("space") { SpaceCard(bound.name, bound.workspaceId, spaces) }
+            item("space") { SpaceCard(bound.name, bound.hostId, bound.workspaceId, spaces) }
             item("size") {
                 Spacer(Modifier.height(8.dp))
                 ImCardGroup {
@@ -229,16 +229,21 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
 
 private sealed interface SpaceNetwork {
     data object Checking : SpaceNetwork
-    data class Known(val online: Boolean) : SpaceNetwork
+    data class Known(val check: me.ayuilos.miffan.data.ai.computer.CuaSpaceNetcheck) : SpaceNetwork
     data object Unknown : SpaceNetwork
 }
 
-/** The partner's own computer: where it runs and whether it reaches the internet (checked on open). */
+/**
+ * The partner's own computer: where it runs and whether it reaches the internet (checked on open). Offline,
+ * the fix stays right here, so a setup left halfway can be finished any time.
+ */
 @Composable
-private fun SpaceCard(host: String, workspaceId: String, spaces: PartnerSpaces) {
-    val network by produceState<SpaceNetwork>(SpaceNetwork.Checking, workspaceId) {
+private fun SpaceCard(host: String, hostId: String, workspaceId: String, spaces: PartnerSpaces) {
+    var round by remember { mutableIntStateOf(0) }
+    val network by produceState<SpaceNetwork>(SpaceNetwork.Checking, workspaceId, round) {
+        value = SpaceNetwork.Checking
         value = runCatching { spaces.netcheck(workspaceId) }
-            .fold({ SpaceNetwork.Known(it.online) }, { SpaceNetwork.Unknown })
+            .fold({ SpaceNetwork.Known(it) }, { SpaceNetwork.Unknown })
     }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -255,9 +260,15 @@ private fun SpaceCard(host: String, workspaceId: String, spaces: PartnerSpaces) 
                 when (val state = network) {
                     SpaceNetwork.Checking -> Text(stringResource(R.string.im_space_net_checking), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SpaceNetwork.Unknown -> Text(stringResource(R.string.im_space_net_unknown), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    is SpaceNetwork.Known -> Text(stringResource(if (state.online) R.string.im_space_net_ok else R.string.im_space_net_off),
-                        color = if (state.online) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    is SpaceNetwork.Known -> Text(stringResource(if (state.check.online) R.string.im_space_net_ok else R.string.im_space_net_off),
+                        color = if (state.check.online) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                 }
+            }
+            val offline = (network as? SpaceNetwork.Known)?.check?.takeIf { !it.online }
+            if (offline != null || network == SpaceNetwork.Unknown) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SpaceNetworkFixPanel(hostId, host, firewall = offline?.hint == "ufw", checking = network == SpaceNetwork.Checking,
+                    onRecheck = { round++ })
             }
         }
     }

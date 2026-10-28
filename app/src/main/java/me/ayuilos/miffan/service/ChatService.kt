@@ -1372,6 +1372,7 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
+                    createSpaceNetworkToolIfReady(assistant, conversation.id.toString())?.let { add(it) }
                     createScheduleTaskToolIfReady(assistant, conversation.id)?.let { scheduleTool ->
                         add(scheduleTool)
                         createAgentToolsToolIfReady(assistant)?.let { add(it) }
@@ -1593,6 +1594,26 @@ class ChatService(
             agentTools = { settingsStore.settingsFlow.value.allAgentTools() },
             timezone = repository.timezone(host.id),
             repository = repository,
+        )
+    }
+
+    /**
+     * A partner's own computer on a Linux host can ask the owner to open its network; the fix (ufw) is a
+     * Linux one, and a Mac host's Spaces share cua's VM network instead.
+     */
+    private suspend fun createSpaceNetworkToolIfReady(assistant: Assistant, conversationId: String): Tool? {
+        val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        if (!workspace.isSpace || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        if (partnerComputerUse(assistant, workspace) == ComputerUseMode.OFF) return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        if (host.screenPlatform == "macos") return null
+        return me.ayuilos.miffan.data.ai.tools.createSpaceNetworkTool(
+            workspaceId = workspace.id,
+            computerName = host.name,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspace.id, assistant.workspaceScopeId?.toString(),
+            )?.copy(conversationId = conversationId),
+            spaces = getKoin().get(),
         )
     }
 

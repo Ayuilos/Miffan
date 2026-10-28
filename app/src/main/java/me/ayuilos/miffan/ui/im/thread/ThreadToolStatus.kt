@@ -135,6 +135,8 @@ internal fun ThreadToolPrompt(
             ThreadScheduleTaskCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == AGENT_TOOLS ->
             ThreadAgentToolCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == me.ayuilos.miffan.data.ai.tools.SPACE_NETWORK_FIX_TOOL ->
+            ThreadSpaceNetworkCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadGenericApprovalCard(tool, assistant, onApproval)
         tool.isQuestionRepliedInChat() -> ThreadSkippedQuestions(tool)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
@@ -331,6 +333,7 @@ internal fun toolRecordTitle(tool: UIMessagePart.Tool): String {
             ?.let { stringResource(R.string.notification_approval_ability, stringResource(it.title)) } ?: tool.toolName
         tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
         tool.toolName == DRAFT_BUG_REPORT -> toolArg(tool, "title")?.let { "bug: $it" } ?: stringResource(R.string.im_bug_report_title)
+        tool.toolName == me.ayuilos.miffan.data.ai.tools.SPACE_NETWORK_FIX_TOOL -> stringResource(R.string.im_space_fix_card_title)
         tool.isComputerTool() -> computerActionText(tool)
         tool.toolName.startsWith("mcp__") -> mcpToolParts(tool.toolName).let { (service, step) ->
             stringResource(R.string.im_record_mcp, service, step) }
