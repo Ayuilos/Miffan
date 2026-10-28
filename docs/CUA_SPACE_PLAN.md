@@ -145,9 +145,10 @@
 
 ### 数据模型
 
-- 新增 `cua_spaces` 表：`id`、`host_id`（宿主电脑）、`space_id`（如 `local:miffan-<短 id>`）、`image`、`kind`/`runtime`、`assistant_id`、`created_at`、`last_status`。
-- 工作区新增 kind `SPACE`，指向 `cua_spaces`。注意 `WorkspaceEntity.isRemote` 目前把所有非 LOCAL 都当作 SSH 远程，需要显式区分。
-- `WorkspaceToolTargetSnapshot` 加入 Space 身份；重置后的 Space 视为新目标，旧的工具调用不能落到新 Space 上。
+- 不建新表：工作区新增 kind `SPACE` 与 `space_name` 列（DB 41），每个伙伴一个 SPACE 工作区。`remote_host_id` 是宿主电脑，`remote_path` 是 Space 内的根目录 `/home/cua`；到宿主的 SSH 会话以 `/` 为根（`sshRoot`），只用于跑 helper 和开隧道。`isRemote` 对 SPACE 仍为 true，沿用 SSH 连接池、主机指纹与凭据。
+- 文件、命令和终端经 `RemoteWorkspaceFiles` / `RemoteTerminal` 接口分流：SSH 会话与 `SpaceWorkspaceFiles` 各实现一份。
+- 重置时更新伙伴的 `workspacePermissionRevision`，为旧 Space 准备的工具调用会因目标变化而失败。
+- 宿主层面的能力对 SPACE 关闭：宿主桌面、宿主 cua-driver、定时任务、agent 工具；`openLeasedRemote` 拒绝 SPACE 工作区。
 - 屏幕：`RemoteDesktopProtocol` 增加 `CUA_SPACE`，实现 `RemoteDesktopSession`；H.264 解码复用 `stream` 模块的 `StreamDecoder`。
 - 电脑操作仍走 `ComputerToolbox` / `RemoteComputerRegistry`，只换 MCP 传输；`RemoteComputerControl` 的控制权仲裁按 Space 计算，而不是按宿主电脑。
 
@@ -168,11 +169,18 @@
 | 阶段 | 内容 | 交付 |
 | --- | --- | --- |
 | P0 补充验证 | 已完成，见上文 | 伙伴工具走原生接口；独立电脑用 runc |
-| P1 创建与绑定 | helper `space` 子命令、数据表、设置流程中的“独立电脑”分支、网络检查、伙伴的命令与文件跑在 Space 里 | 伙伴能在独立电脑里跑命令、读写文件 |
+| P1 创建与绑定 | helper `space` 子命令、数据表、设置流程中的“独立电脑”分支、网络检查、伙伴的命令与文件跑在 Space 里 | 已完成（2026-10-28，`feature/cua-space`），见下方“P1 状态” |
 | P2 画面 | cua 媒体客户端（OpenMedia + rcdp v2）、输入、剪贴板，接入现有屏幕页 | 用户在手机上看和操作独立电脑 |
 | P3 电脑操作 | 经 Space 内 driver MCP 的电脑操作、控制权按 Space 仲裁、独立电脑的默认权限 | 伙伴在独立电脑里完成“打开应用—输入—验证” |
 | P4 管理 | 重置、删除、占用显示、交接文件夹、宿主电脑删除时的处理 | 完整的轻松模式体验 |
 | P5 扩展 | Linux + NVIDIA 主机上可选的 Sunshine 高性能画面；macOS / Windows Space 镜像 | 按需求再定 |
+
+## P1 状态（2026-10-28）
+
+- 代码：`cuaspace` 模块（vendored proto + Wire 消息 + 自写 gRPC 调用层，经 SSH direct-tcpip）、SPACE 工作区、helper 25 的 `space` 命令、`PartnerSpaces` / `PartnerSpaceSetup`、设置流程新增“怎么用 / 安装 cua / 准备中 / 上不了网 / 完成”五屏、伙伴“用电脑”页的独立电脑版本（主机、网络、权限、重置、删除）。
+- 模拟器联调（CachyOS 宿主，Claude Haiku 5.5）：从伙伴资料页走完设置；准备完成后伙伴在聊天里说“我有自己的小电脑啦”；命令跑在 Space 里（Ubuntu 24.04、容器主机名），文件写在 `/home/cua`，`/home/ayuilos` 在 Space 里不存在；CachyOS 的 ufw 挡住网络时显示修复命令；重置清空 Space、删除移除 Space 与工作区。
+- 联调中修复：Space 的工作区根曾是宿主家目录，伙伴报出宿主路径；新 PTY 在进程注册前写入导致第一条命令失败；DNS 卡住使网络检查超时而丢失 ufw 提示。
+- 尚未做：交接文件夹（P4）、屏幕（P2）、桌面操作（P3）；“看看它的电脑”和“交接文件夹”入口暂不显示；Mac 宿主上 cua 守护进程不走代理的问题未处理（国内网络首次下载可能失败）。
 
 ## 验收
 
