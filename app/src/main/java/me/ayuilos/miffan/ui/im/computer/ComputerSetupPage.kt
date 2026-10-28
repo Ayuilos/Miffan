@@ -18,13 +18,18 @@ import me.rerere.hugeicons.stroke.ArrowLeft01
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
+/** Screens past the point of no return (a run under way, or finished) have no back arrow. */
+private val ComputerSetupStep.canGoBack: Boolean get() = this !in setOf(ComputerSetupStep.DONE, ComputerSetupStep.SPACE_PREPARE,
+    ComputerSetupStep.SPACE_NETWORK, ComputerSetupStep.SPACE_DONE)
+
 /** Which of the four dots a screen lights: find, sign in, get ready, share. */
 private fun ComputerSetupStep.dot(): Int? = when (this) {
     ComputerSetupStep.FIND, ComputerSetupStep.MANUAL -> 0
     ComputerSetupStep.SIGN_IN, ComputerSetupStep.PASSWORD, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
     ComputerSetupStep.READY -> 2
-    ComputerSetupStep.SHARE -> 3
-    ComputerSetupStep.DONE -> null
+    ComputerSetupStep.SHARE, ComputerSetupStep.HOW -> 3
+    ComputerSetupStep.SPACE_INSTALL, ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK,
+    ComputerSetupStep.SPACE_DONE, ComputerSetupStep.DONE -> null
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,7 +68,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 }
             },
             navigationIcon = {
-                if (state.step != ComputerSetupStep.DONE) IconButton(onClick = ::back, enabled = !state.busy) {
+                if (state.step.canGoBack) IconButton(onClick = ::back, enabled = !state.busy) {
                     Icon(HugeIcons.ArrowLeft01, stringResource(R.string.back))
                 }
             },
@@ -83,6 +88,25 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 ComputerSetupStep.VERIFY -> ComputerVerifyStep(vm, state)
                 ComputerSetupStep.READY -> ComputerReadyStep(vm, state)
                 ComputerSetupStep.SHARE -> ComputerShareStep(vm, state, forPartner)
+                ComputerSetupStep.HOW -> ComputerHowStep(vm, state)
+                ComputerSetupStep.SPACE_INSTALL -> ComputerSpaceInstallStep(vm, state)
+                ComputerSetupStep.SPACE_PREPARE -> ComputerSpacePrepareStep(vm, state) {
+                    // The run goes on without this page; the partner says so in its chat when it is done.
+                    val id = state.sharePartners.firstOrNull()?.toString()
+                    if (id == null) nav.popBackStack()
+                    else {
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup || it == Screen.PartnerScreen(id) || it is Screen.Thread && it.assistantId == id }
+                        nav.navigate(Screen.Thread(id))
+                    }
+                }
+                ComputerSetupStep.SPACE_NETWORK -> ComputerSpaceNetworkStep(vm, state)
+                ComputerSetupStep.SPACE_DONE -> ComputerSpaceDoneStep(vm, state,
+                    onChat = { partner ->
+                        val id = partner.id.toString()
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup || it == Screen.PartnerScreen(id) || it is Screen.Thread && it.assistantId == id }
+                        nav.navigate(Screen.Thread(id))
+                    },
+                    onChangeMode = { partner -> nav.replace(self, Screen.PartnerComputer(partner.id.toString()), Screen.Home) })
                 ComputerSetupStep.DONE -> {
                     val bound by vm.boundPartnerIds.collectAsStateWithLifecycle()
                     val partner = assistants.find { it.id == forPartner && it.id in bound } ?: assistants.firstOrNull { it.id in bound }

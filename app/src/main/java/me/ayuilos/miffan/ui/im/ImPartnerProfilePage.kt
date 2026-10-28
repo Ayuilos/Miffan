@@ -149,7 +149,8 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                             })
                             val tasks = computerTasks.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.im_profile_tasks, it, it) }
                             ImListRow(HugeIcons.Computer, stringResource(R.string.im_profile_computer), tone = ImIconTone.TERTIARY,
-                                supporting = listOfNotNull(bound.name, mode, tasks).joinToString(" · "),
+                                supporting = if (bound.space) listOf(stringResource(R.string.im_space_profile_detail, bound.name), mode).joinToString(" · ")
+                                    else listOfNotNull(bound.name, mode, tasks).joinToString(" · "),
                                 onClick = { nav.navigate(Screen.PartnerComputer(assistantId)) })
                         }
                         usesPhone -> ImListRow(HugeIcons.SmartPhone01, stringResource(R.string.im_computer_phone_title), tone = ImIconTone.TERTIARY,

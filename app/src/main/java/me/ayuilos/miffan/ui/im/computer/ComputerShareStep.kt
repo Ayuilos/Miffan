@@ -69,7 +69,7 @@ internal fun ComputerShareStep(vm: ComputerSetupVM, state: ComputerSetupState, f
             picked.isEmpty() -> stringResource(R.string.im_computer_pick_someone)
             picked.size == 1 -> stringResource(R.string.im_computer_give_to, threadAssistantName(first))
             else -> stringResource(R.string.im_computer_bind_many_confirm, picked.size)
-        }, enabled = picked.isNotEmpty()) { vm.bind(picked.map { it.id }.toSet()) },
+        }, enabled = picked.isNotEmpty()) { vm.share(picked.map { it.id }.toSet()) },
         // A computer someone already uses is not "kept from partners": it is just done.
         secondary = SetupAction(stringResource(if (bound.isEmpty()) R.string.im_computer_bind_none else R.string.im_computer_done)) {
             vm.bind(emptySet())
