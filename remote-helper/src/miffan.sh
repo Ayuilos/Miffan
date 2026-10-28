@@ -22,7 +22,7 @@
 #   miffan space probe|install|create|info|start|stop|delete|reset|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=24
+MIFFAN_HELPER_VERSION=25
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2116,10 +2116,12 @@ space_reset() {
 
 space_netcheck() {
     space_start_do "$1"
-    script='d=0; h=0; f=""; for u in www.cloudflare.com www.baidu.com; do if getent hosts "$u" >/dev/null 2>&1; then d=1; else f="$f dns:$u"; fi; if curl -sS -o /dev/null -m 6 --connect-timeout 4 "https://$u" >/dev/null 2>&1; then h=1; else f="$f https:$u"; fi; done; echo "NETCHECK dns=$d https=$h fail=$f"'
-    out=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null) || space_fail exec_failed "the network check could not run in the Space"
+    # A broken resolver makes getent hang for long; bound every probe so the whole check stays short.
+    script='d=0; h=0; f=""; for u in www.cloudflare.com www.baidu.com; do if timeout 5 getent hosts "$u" >/dev/null 2>&1; then d=1; else f="$f dns:$u"; fi; if curl -sS -o /dev/null -m 6 --connect-timeout 4 "https://$u" >/dev/null 2>&1; then h=1; else f="$f https:$u"; fi; done; echo "NETCHECK dns=$d https=$h fail=$f"'
+    out=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null)
     line=$(printf '%s\n' "$out" | grep '^NETCHECK ' | tail -n 1)
-    [ -n "$line" ] || space_fail exec_failed "the network check printed nothing"
+    # A check that could not finish counts as offline; the firewall hint below still applies.
+    [ -n "$line" ] || line="NETCHECK dns=0 https=0 fail= check did not finish"
     dns=false
     https=false
     case "$line" in *" dns=1 "*) dns=true ;; esac

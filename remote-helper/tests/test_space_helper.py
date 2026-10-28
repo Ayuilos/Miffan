@@ -383,8 +383,10 @@ def test_netcheck(base):
     mac.add_space()
     assert mac.json("netcheck", NAME)["hint"] is None
 
+    # A check that cannot finish in the Space (a hanging resolver) reads as offline, firewall hint included.
     host.state(netcheck=None)
-    assert host.error("netcheck", NAME)["error"] == "exec_failed"
+    unfinished = host.json("netcheck", NAME)
+    assert unfinished["dns"] is False and unfinished["https"] is False and unfinished["hint"] == "ufw"
     check_no_token(host)
 
 

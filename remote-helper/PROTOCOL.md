@@ -209,7 +209,7 @@ POSIX sh 与系统自带工具（含 curl、awk），不需要 python3。
 | `space info <名>` | 无 / `{id,state:"running",port,token,driver_version}` | Space 未运行先 `cua spaces start`（`start_failed`）。回环端口每次启动都变，每次现查，不缓存。token 来自 `~/.cua/spaces-credentials.json`。`driver_version` 是 Space 里 cua-driver 的版本，经 `http://127.0.0.1:<port>/mcp` 的 initialize 读取（token 通过 curl 配置走 stdin），读不到为 null |
 | `space start\|stop\|delete <名>` | 无 / `{id,state}`；delete 为 `{id,deleted:true}` | 未知的名为 `not_found`。stop 只暂停容器（内存不释放）；delete 用 `--force` |
 | `space reset <名>` | 无 / 同 create | 先 delete 再用同名 create；Space 不存在为 `not_found`。交接文件夹在宿主上，不受影响 |
-| `space netcheck <名>` | 无 / `{dns,https,detail,hint}` | 在 Space 里对 `www.cloudflare.com`（全球）与 `www.baidu.com`（国内）各做 DNS 与 HTTPS，6 秒超时。任一主机成功即为 true；`detail` 列出失败项（如 `https:www.baidu.com`），全部成功为 null。Linux 上检查未通过且 `systemctl is-active ufw` 为 active 时 `hint:"ufw"`，其余为 null；helper 从不修改防火墙 |
+| `space netcheck <名>` | 无 / `{dns,https,detail,hint}` | 在 Space 里对 `www.cloudflare.com`（全球）与 `www.baidu.com`（国内）各做 DNS（5 秒）与 HTTPS（6 秒）。任一主机成功即为 true；`detail` 列出失败项（如 `https:www.baidu.com`），全部成功为 null。检查在 Space 里没能跑完时（helper 25 起）也按离线输出（两者为 false），不再报 `exec_failed`。Linux 上检查未通过且 `systemctl is-active ufw` 为 active 时 `hint:"ufw"`，其余为 null；helper 从不修改防火墙 |
 | `space handoff out\|in <名>` | `{"folder":"<宿主绝对路径>","path":"<相对路径，仅 out>"}` / `{copied:[…]}` | Space 里的交接文件夹为 `/home/cua/交接`，两侧缺失时创建（宿主 `<folder>` 为 700）。冲突不覆盖：在扩展名前加 ` (2)`、` (3)`…（`.tar.*` 算一个扩展名，点开头的文件无扩展名）。`copied` 是写到宿主（out）或 Space 交接文件夹（in）里的相对名 |
 
 handoff 细节：stdin 是单个 JSON 对象，字符串里只接受 `\"`、`\\`、`\/` 三种转义，非 ASCII 字符须原样 UTF-8（App 的

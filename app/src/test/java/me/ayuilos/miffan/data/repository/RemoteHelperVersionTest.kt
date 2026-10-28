@@ -13,10 +13,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteHelperVersionTest {
-    @Test fun `older helpers refresh while current POSIX 24 and Windows 13 stay installed`() {
+    @Test fun `older helpers refresh while current POSIX 25 and Windows 13 stay installed`() {
         for ((platform, installedVersion, refresh) in listOf(
-            Triple(RemotePlatform.POSIX, "23", true),
-            Triple(RemotePlatform.POSIX, "24", false),
+            Triple(RemotePlatform.POSIX, "24", true),
+            Triple(RemotePlatform.POSIX, "25", false),
             Triple(RemotePlatform.WINDOWS, "12", true),
             Triple(RemotePlatform.WINDOWS, "13", false),
         )) {
