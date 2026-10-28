@@ -44,14 +44,17 @@ internal fun HostCommandTerminal(hostId: String, command: String, onFinished: (B
     val context = LocalContext.current
     val workspaces: WorkspaceRepository = koinInject()
     val screen = remember { RemoteTerminalScreen() }
-    val view = remember { RemoteTerminalView(context) }
+    // This terminal only takes sudo's password: the IME's password keyboard, not composing CJK input.
+    val view = remember { RemoteTerminalView(context).apply { passwordInput = true } }
     var state by remember { mutableStateOf<HostCommandState>(HostCommandState.Connecting) }
     var connection by remember { mutableStateOf<RemoteTerminalConnection?>(null) }
+    // The view's size in cells, kept until the terminal exists and applied to it then.
+    val size = remember { intArrayOf(80, 24) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(hostId, command) {
         screen.appendOutput("$ $command\r\n".toByteArray())
         try {
-            val opened = workspaces.openHostCommandTerminal(hostId, command, 80, 24)
+            val opened = workspaces.openHostCommandTerminal(hostId, command, size[0], size[1])
             connection = opened
             state = HostCommandState.Running
             withContext(Dispatchers.IO) {
@@ -84,7 +87,13 @@ internal fun HostCommandTerminal(hostId: String, command: String, onFinished: (B
                 runCatching { opened.output.write(bytes); opened.output.flush() }
             }
         }
-        view.onSizeInCellsChanged = { columns, rows -> connection?.let { runCatching { it.resize(columns, rows) } } }
+        // Never on the main thread: a JSch write there fails half-way and breaks the whole SSH session
+        // (this is what ended the terminal as soon as the keyboard opened).
+        view.onSizeInCellsChanged = { columns, rows ->
+            size[0] = columns
+            size[1] = rows
+            connection?.let { opened -> scope.launch(Dispatchers.IO) { runCatching { opened.resize(columns, rows) } } }
+        }
         onDispose {
             view.sendBytes = {}
             view.onSizeInCellsChanged = { _, _ -> }
@@ -93,19 +102,26 @@ internal fun HostCommandTerminal(hostId: String, command: String, onFinished: (B
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         MiffanTheme(colorMode = ColorMode.DARK) {
+            val status = when (val current = state) {
+                HostCommandState.Connecting -> stringResource(R.string.im_space_run_connecting)
+                HostCommandState.Running -> stringResource(R.string.im_space_run_running)
+                is HostCommandState.Finished -> if (current.exitCode == 0) stringResource(R.string.im_space_run_ok)
+                    else stringResource(R.string.im_space_run_failed, current.exitCode)
+                is HostCommandState.Failed -> computerErrorMessage(context.resources, current.error)
+            }
             Scaffold(topBar = {
-                TopAppBar(title = { Text(stringResource(R.string.im_space_run_title)) }, navigationIcon = {
+                // The status sits in the bar: the terminal view paints over anything placed right above it.
+                TopAppBar(title = {
+                    Column {
+                        Text(stringResource(R.string.im_space_run_title))
+                        Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2)
+                    }
+                }, navigationIcon = {
                     TextButton(onClick = onDismiss) { Text(stringResource(if (state is HostCommandState.Finished) R.string.im_computer_done else R.string.common_cancel)) }
                 })
             }) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding).imePadding().background(Color.Black)) {
-                    Text(when (val current = state) {
-                        HostCommandState.Connecting -> stringResource(R.string.im_space_run_connecting)
-                        HostCommandState.Running -> stringResource(R.string.im_space_run_running)
-                        is HostCommandState.Finished -> if (current.exitCode == 0) stringResource(R.string.im_space_run_ok)
-                            else stringResource(R.string.im_space_run_failed, current.exitCode)
-                        is HostCommandState.Failed -> computerErrorMessage(context.resources, current.error)
-                    }, modifier = Modifier.padding(12.dp), color = Color.White)
                     if (state == HostCommandState.Connecting) LinearProgressIndicator(Modifier.fillMaxWidth())
                     AndroidView(factory = { view }, modifier = Modifier.weight(1f).fillMaxWidth())
                     RemoteTerminalKeyBar(enabled = state == HostCommandState.Running, view = view)
