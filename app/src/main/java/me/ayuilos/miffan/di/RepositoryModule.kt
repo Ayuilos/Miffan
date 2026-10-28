@@ -8,6 +8,7 @@ import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
 import me.ayuilos.miffan.data.repository.AssistantRemover
 import me.ayuilos.miffan.data.repository.ConversationRepository
+import me.ayuilos.miffan.data.repository.CuaSpaceSessions
 import me.ayuilos.miffan.data.repository.FavoriteRepository
 import me.ayuilos.miffan.data.repository.FolderRepository
 import me.ayuilos.miffan.data.repository.FilesRepository
@@ -135,7 +136,8 @@ val repositoryModule = module {
     single { NativeSshWorkspaceTransport }
 
     single {
-        WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources, RemoteSunshineUnpair(get()))
+        WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources, RemoteSunshineUnpair(get()),
+            CuaSpaceSessions(get<android.content.Context>().assets))
     }
 
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets, get()) }

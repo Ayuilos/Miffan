@@ -43,7 +43,8 @@ import me.rerere.workspace.tryRemoteAddresses
 import me.rerere.workspace.isRemoteKeyAuthenticationRefused
 import me.rerere.workspace.RemoteHostConfig
 import me.rerere.workspace.RemoteHostKey
-import me.rerere.workspace.RemoteTerminalSession
+import me.rerere.workspace.RemoteTerminal
+import me.rerere.workspace.RemoteWorkspaceFiles
 import me.rerere.workspace.RemoteWorkspaceSession
 import me.rerere.workspace.RemoteWorkspaceDirectoryException
 import me.rerere.workspace.RemoteFileTimeoutException
@@ -87,6 +88,7 @@ class WorkspaceRepository(
     private val sshKeyCredentialStore: SshKeyCredentialStore,
     private val workspaceStrings: Resources,
     private val sunshineUnpair: RemoteSunshineUnpair? = null,
+    private val cuaSpaces: CuaSpaceSessions? = null,
 ) {
     private val localWorkspaceCreator = LocalWorkspaceCreator(dao, manager)
     private val remoteRuntime = RemoteWorkspaceRuntimeTracker()
@@ -848,6 +850,33 @@ class WorkspaceRepository(
         }
     }
 
+    /** SPACE workspaces run their files and commands inside the cua Space, never on the host. */
+    private fun remoteFiles(workspace: WorkspaceEntity, session: RemoteWorkspaceSession): RemoteWorkspaceFiles =
+        if (workspace.isSpace) requireNotNull(cuaSpaces) { "cua Spaces are unavailable" }.files(workspace, session)
+        else session
+
+    /**
+     * Records a partner's own computer: the cua Space [spaceName] already created on [hostId] by the
+     * helper. The SSH connection is rooted at the host's [hostHome]; files live in the Space.
+     */
+    suspend fun createSpaceWorkspace(name: String, hostId: String, hostHome: String, spaceName: String): WorkspaceEntity {
+        require(CuaSpaceSessions.SPACE_NAME.matches(spaceName)) { "Invalid Space name" }
+        requireNotNull(hostDao.getById(hostId)) { workspaceStrings.getString(R.string.workspace_remote_host_not_found) }
+        val now = System.currentTimeMillis()
+        return WorkspaceEntity(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            root = UUID.randomUUID().toString(), // local storage identity, never a remote path
+            shellStatus = WorkspaceShellStatus.READY.name,
+            createdAt = now,
+            updatedAt = now,
+            kind = WorkspaceEntity.KIND_SPACE,
+            remoteHostId = hostId,
+            remotePath = hostHome,
+            spaceName = spaceName,
+        ).also { dao.upsert(it) }
+    }
+
     private fun authType(authentication: RemoteAuthentication): String = when (authentication) {
         is RemoteAuthentication.Password -> "PASSWORD"
         is RemoteAuthentication.PrivateKey -> "PRIVATE_KEY"
@@ -924,7 +953,7 @@ class WorkspaceRepository(
         workspace: WorkspaceEntity,
         expectedTarget: WorkspaceToolTargetSnapshot? = null,
         recordOperation: Boolean = true,
-        block: (RemoteWorkspaceSession) -> T,
+        block: (RemoteWorkspaceFiles) -> T,
     ): T {
         validateLoadedWorkspace(expectedTarget, workspace)
         val hostId = requireNotNull(workspace.remoteHostId)
@@ -970,7 +999,7 @@ class WorkspaceRepository(
                     it.isRemote && it.remoteHostId == hostId && it.remotePath == workspace.remotePath
                 } != true) throw WorkspaceToolTargetChangedException()
             validateWorkspaceToolTarget(expectedTarget, workspace.id)
-            val result = runRemoteOperation(opened) { block(opened) }
+            val result = runRemoteOperation(opened) { block(remoteFiles(workspace, opened)) }
             if (!recordOperation) {
                 return result
             }
@@ -1061,7 +1090,7 @@ class WorkspaceRepository(
         require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
         val hostId = requireNotNull(workspace.remoteHostId)
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
-        if (!host.supportsInteractiveTerminal) throw me.rerere.workspace.RemoteTerminalUnsupportedException()
+        if (!workspace.isSpace && !host.supportsInteractiveTerminal) throw me.rerere.workspace.RemoteTerminalUnsupportedException()
         val revision = host.connectionRevision
         if ((expectedHostId != null && expectedHostId != hostId) ||
             (expectedHostRevision != null && expectedHostRevision != revision) ||
@@ -1069,7 +1098,7 @@ class WorkspaceRepository(
         ) throw WorkspaceToolTargetChangedException()
         remoteRuntime.begin(hostId, id, revision)
         var lease: RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>.Lease? = null
-        var terminal: RemoteTerminalSession? = null
+        var terminal: RemoteTerminal? = null
         var handedOff = false
         var classified = false
         try {
@@ -1093,7 +1122,7 @@ class WorkspaceRepository(
             ) throw WorkspaceToolTargetChangedException()
             validateWorkspaceToolTarget(expectedTarget, id, requireShell = command != null || persistentCommands)
             val pty = runRemoteOperation(opened) {
-                opened.openTerminal(columns, rows, command, persistentCommands).also { terminal = it }
+                remoteFiles(workspace, opened).openTerminal(columns, rows, command, persistentCommands).also { terminal = it }
             }
             currentCoroutineContext().ensureActive()
             // Metadata may change during the PTY handshake; never hand off an unexpected target.
@@ -1150,6 +1179,8 @@ class WorkspaceRepository(
     ): LeasedRemote<T> {
         val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_not_found))
         require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
+        // These resources (desktop streams, cua-driver) belong to the host; a Space must not reach them.
+        require(!workspace.isSpace) { "Host resources are not available to a partner's own computer" }
         val hostId = requireNotNull(workspace.remoteHostId)
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
         val revision = host.connectionRevision
@@ -1709,6 +1740,7 @@ class WorkspaceRepository(
         if (workspace.isRemote) {
             closeRemoteTerminals(id)
             remoteConnections.forget(id)
+            if (workspace.isSpace) cuaSpaces?.forget(id)
         }
         dao.deleteById(id)
         if (!workspace.isRemote) withContext(Dispatchers.IO) {

@@ -295,7 +295,7 @@ class RemoteWorkspaceSession internal constructor(
     private var paths: RemoteWorkspacePath,
     private val channelTimeoutMillis: Int,
     private val sftpIdleTimeoutMillis: Long,
-) : Closeable {
+) : Closeable, RemoteWorkspaceFiles {
     private val closed = AtomicBoolean(false)
     private val activeChannels = ConcurrentHashMap<Thread, Channel>()
     private val operation = ThreadLocal<OperationHandle?>()
@@ -331,7 +331,7 @@ class RemoteWorkspaceSession internal constructor(
     }
 
     val isConnected: Boolean get() = !closed.get() && session.isConnected
-    val resolvedRoot: String get() = paths.root
+    override val resolvedRoot: String get() = paths.root
     var platform: RemotePlatform = RemotePlatform.POSIX
         private set
     var homeDirectory: String = "/"
@@ -382,12 +382,12 @@ class RemoteWorkspaceSession internal constructor(
      * Executes in the selected remote directory. A timeout closes the SSH channel; SSH does not
      * guarantee that the remote process is terminated when its channel is closed.
      */
-    fun execute(
+    override fun execute(
         command: String,
-        workingDirectory: String = "",
-        timeoutMillis: Long = 30_000,
-        maxOutputBytes: Int = 1_048_576,
-        stdin: InputStream? = null,
+        workingDirectory: String,
+        timeoutMillis: Long,
+        maxOutputBytes: Int,
+        stdin: InputStream?,
     ): WorkspaceCommandResult {
         require(timeoutMillis > 0 && maxOutputBytes > 0)
         val directory = if (platform == RemotePlatform.WINDOWS) WindowsRemotePath.workingDirectory(paths.root,
@@ -434,8 +434,8 @@ class RemoteWorkspaceSession internal constructor(
      * Opens a persistent interactive SSH PTY in the selected remote directory. The returned
      * terminal owns only its PTY channel; the caller owns the parent SSH session.
      */
-    fun openTerminal(columns: Int = 80, rows: Int = 24, command: RemoteTerminalCommandSpec? = null,
-        persistentCommands: Boolean = false): RemoteTerminalSession {
+    override fun openTerminal(columns: Int, rows: Int, command: RemoteTerminalCommandSpec?,
+        persistentCommands: Boolean): RemoteTerminalSession {
         if (!supportsInteractiveTerminal) throw RemoteTerminalUnsupportedException()
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
         var channel: ChannelExec? = null
@@ -534,7 +534,7 @@ class RemoteWorkspaceSession internal constructor(
         }
     }
 
-    fun list(path: String = ""): List<WorkspaceFileEntry> = withSftp { sftp, _ ->
+    override fun list(path: String): List<WorkspaceFileEntry> = withSftp { sftp, _ ->
         val directory = paths.absolute(path, allowRoot = true)
         requireDirectoryPath(sftp, directory)
         val entries = ArrayList<ChannelSftp.LsEntry>(MAX_LIST_ENTRIES)
@@ -554,21 +554,21 @@ class RemoteWorkspaceSession internal constructor(
             .toList()
     }
 
-    fun fileSize(path: String): Long = withSftp { sftp, _ ->
+    override fun fileSize(path: String): Long = withSftp { sftp, _ ->
         val attrs = requireSafePath(sftp, paths.absolute(path), expectFile = true)
         attrs.size
     }
 
-    fun readText(path: String, maxBytes: Long = 512 * 1024): String =
+    override fun readText(path: String, maxBytes: Long): String =
         String(readBytes(path, maxBytes), StandardCharsets.UTF_8)
 
-    fun readBytes(path: String, maxBytes: Long = 512 * 1024): ByteArray {
+    override fun readBytes(path: String, maxBytes: Long): ByteArray {
         val output = ByteArrayOutputStream()
         exportFile(path, output, maxBytes)
         return output.toByteArray()
     }
 
-    fun exportFile(path: String, out: OutputStream, maxBytes: Long = Long.MAX_VALUE) {
+    override fun exportFile(path: String, out: OutputStream, maxBytes: Long) {
         require(maxBytes >= 0)
         withSftp { sftp, progress ->
             val absolute = paths.absolute(path)
@@ -578,17 +578,17 @@ class RemoteWorkspaceSession internal constructor(
         }
     }
 
-    fun writeText(path: String, text: String, overwrite: Boolean = true): WorkspaceFileEntry =
+    override fun writeText(path: String, text: String, overwrite: Boolean): WorkspaceFileEntry =
         writeBytes(path, text.toByteArray(StandardCharsets.UTF_8), overwrite)
 
-    fun writeBytes(path: String, bytes: ByteArray, overwrite: Boolean = true): WorkspaceFileEntry =
+    override fun writeBytes(path: String, bytes: ByteArray, overwrite: Boolean): WorkspaceFileEntry =
         importFile(path, ByteArrayInputStream(bytes), overwrite, bytes.size.toLong())
 
-    fun importFile(
+    override fun importFile(
         path: String,
         input: InputStream,
-        overwrite: Boolean = true,
-        maxBytes: Long = 32L * 1024 * 1024,
+        overwrite: Boolean,
+        maxBytes: Long,
     ): WorkspaceFileEntry {
         require(maxBytes >= 0)
         val relative = paths.relative(path)
@@ -636,12 +636,12 @@ class RemoteWorkspaceSession internal constructor(
         }
     }
 
-    fun mkdir(path: String) = withSftp { sftp, _ ->
+    override fun mkdir(path: String) = withSftp { sftp, _ ->
         val absolute = paths.absolute(path)
         ensureDirectory(sftp, absolute)
     }
 
-    fun delete(path: String, recursive: Boolean = false): Boolean = withSftp { sftp, _ ->
+    override fun delete(path: String, recursive: Boolean): Boolean = withSftp { sftp, _ ->
         val absolute = paths.absolute(path)
         val attrs = optionalAttrs(sftp, absolute) ?: return@withSftp false
         requireSafePath(sftp, absolute)
@@ -649,7 +649,7 @@ class RemoteWorkspaceSession internal constructor(
         true
     }
 
-    fun move(from: String, to: String, overwrite: Boolean = false): WorkspaceFileEntry = withSftp { sftp, _ ->
+    override fun move(from: String, to: String, overwrite: Boolean): WorkspaceFileEntry = withSftp { sftp, _ ->
         val source = paths.absolute(from)
         val destination = paths.absolute(to)
         require(source != destination) { "Source and destination are the same" }
@@ -793,17 +793,17 @@ class RemoteWorkspaceSession internal constructor(
 class RemoteTerminalSession internal constructor(
     private val owner: RemoteWorkspaceSession,
     private val channel: ChannelExec,
-    val input: InputStream,
-    val output: OutputStream,
-) : Closeable {
+    override val input: InputStream,
+    override val output: OutputStream,
+) : RemoteTerminal {
     private val closed = AtomicBoolean(false)
     private val controlLock = Any()
 
     val platform: RemotePlatform get() = owner.platform
-    val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
-    val exitStatus: Int get() = channel.exitStatus
+    override val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
+    override val exitStatus: Int get() = channel.exitStatus
 
-    fun resize(columns: Int, rows: Int) {
+    override fun resize(columns: Int, rows: Int) {
         require(columns in 1..4096 && rows in 1..4096) { "Invalid terminal size" }
         synchronized(controlLock) {
             check(isConnected) { "Remote terminal is disconnected" }
@@ -812,7 +812,7 @@ class RemoteTerminalSession internal constructor(
     }
 
     /** A literal ETX byte; with an SSH PTY this is the terminal's Ctrl-C input. */
-    fun sendCtrlC() {
+    override fun sendCtrlC() {
         synchronized(controlLock) {
             check(isConnected) { "Remote terminal is disconnected" }
             output.write(3)

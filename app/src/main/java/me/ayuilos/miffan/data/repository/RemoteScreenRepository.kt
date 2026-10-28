@@ -498,7 +498,7 @@ class RemoteScreenRepository(
         options: RemoteScreenOptions = RemoteScreenOptions(),
         stream: RemoteStreamRequest = RemoteStreamRequest(),
     ): RemoteScreenConnection {
-        val workspace = workspaceDao.getById(workspaceId)?.takeIf { it.isRemote }
+        val workspace = workspaceDao.getById(workspaceId)?.takeIf { it.isRemote && !it.isSpace }
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)

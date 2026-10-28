@@ -33,6 +33,8 @@ data class PartnerComputer(
     val screenEnabled: Boolean,
     /** How the partner may operate it. */
     val computerUse: ComputerUseMode,
+    /** The partner's own cua Space on this host, not the host's desktop. */
+    val space: Boolean = false,
 ) {
     /** Easy mode shows the computer entry only when there is a screen to open. */
     val showsEntry: Boolean get() = screenEnabled
@@ -54,6 +56,8 @@ data class KnownComputer(
     val otherWorkspaceCount: Int,
     /** Partners bound to any workspace of this host, in the order of the partner list. */
     val partnerIds: List<Uuid>,
+    /** Partners' own Spaces on this host; deleting the host waits until they are gone. */
+    val spaceCount: Int = 0,
 )
 
 /** Deleting a computer that still has professional-interface workspaces is refused. */
@@ -171,6 +175,7 @@ class PartnerComputers(
     suspend fun delete(hostId: String, forgetOnComputer: Boolean, deleteWorkFiles: Boolean = false): ForgetOutcome {
         val workspaceList = workspaces.listFlow().first()
         val workspace = computerWorkspace(hostId, workspaceList, settingsStore.settingsFlow.value.assistants)
+        // Spaces count too: they live on this host and would be orphaned with it.
         val otherCount = workspaceList.count { it.isRemote && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
         if (otherCount > 0) throw ComputerHasWorkspacesException(otherCount)
         val host = if (forgetOnComputer) workspaces.getHostById(hostId) else null
@@ -205,7 +210,7 @@ class PartnerComputers(
         assistants: List<Assistant>,
     ): WorkspaceEntity? {
         val partnerCounts = assistants.mapNotNull { it.workspaceId?.toString() }.groupingBy { it }.eachCount()
-        return workspaceList.filter { it.isRemote && it.remoteHostId == hostId }.minWithOrNull(
+        return workspaceList.filter { it.isRemote && !it.isSpace && it.remoteHostId == hostId }.minWithOrNull(
             compareByDescending<WorkspaceEntity> { partnerCounts[it.id] ?: 0 }
                 .thenBy { it.createdAt }.thenBy { it.id },
         )
@@ -216,9 +221,10 @@ class PartnerComputers(
         workspaceList: List<WorkspaceEntity>,
         assistants: List<Assistant>,
     ): KnownComputer {
-        val hostWorkspaces = workspaceList.filter { it.isRemote && it.remoteHostId == host.id }
+        val allHostWorkspaces = workspaceList.filter { it.isRemote && it.remoteHostId == host.id }
+        val hostWorkspaces = allHostWorkspaces.filterNot { it.isSpace }
         val workspace = computerWorkspace(host.id, hostWorkspaces, assistants)
-        val workspaceIds = hostWorkspaces.map { it.id }.toSet()
+        val workspaceIds = allHostWorkspaces.map { it.id }.toSet()
         val address = host.lastAddress ?: host.addresses.first()
         return KnownComputer(
             hostId = host.id,
@@ -229,6 +235,7 @@ class PartnerComputers(
             screenEnabled = host.screenEnabled,
             workspaceId = workspace?.id,
             otherWorkspaceCount = hostWorkspaces.size - if (workspace != null) 1 else 0,
+            spaceCount = allHostWorkspaces.size - hostWorkspaces.size,
             partnerIds = assistants.filter { it.workspaceId?.toString() in workspaceIds }.map { it.id },
         )
     }
@@ -249,8 +256,10 @@ class PartnerComputers(
             hostId = host.id,
             name = host.name,
             platform = computerPlatform(host),
-            screenEnabled = host.screenEnabled,
+            // The host's screen is not the Space's; the Space screen arrives with its own stream.
+            screenEnabled = host.screenEnabled && !workspace.isSpace,
             computerUse = assistant.computerUse,
+            space = workspace.isSpace,
         )
     }.distinctUntilChanged()
 

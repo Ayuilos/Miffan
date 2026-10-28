@@ -53,6 +53,8 @@ data class SpaceEntry(
     val path: String,
     val name: String,
     val isDirectory: Boolean,
+    val isFile: Boolean,
+    val isSymlink: Boolean,
     val sizeBytes: Long,
     val modifiedAtMillis: Long,
 )
@@ -214,16 +216,26 @@ class SpaceClient(
     /** Reads up to [maxBytes]; a longer file fails rather than being cut silently. */
     suspend fun read(path: String, maxBytes: Long): ByteArray {
         val out = ByteArrayOutputStream()
+        readTo(path, maxBytes) { out.write(it) }
+        return out.toByteArray()
+    }
+
+    /** Streams the file to [sink] chunk by chunk; fails once more than [maxBytes] arrive. */
+    suspend fun readTo(path: String, maxBytes: Long, sink: (ByteArray) -> Unit) {
+        var received = 0L
+        // length 0 reads to the end; otherwise ask for one byte more to notice an oversized file.
+        val length = if (maxBytes >= Long.MAX_VALUE - 1) 0L else maxBytes + 1
         grpc.serverStream("cua.env.v1.FilesystemService/ReadFile",
-            ReadFileRequest(path = path, length = maxBytes + 1), ReadFileResponse.ADAPTER)
+            ReadFileRequest(path = path, length = length), ReadFileResponse.ADAPTER)
             .collect { response ->
                 response.entry?.let { if (it.type == FileType.FILE_TYPE_DIRECTORY) throw SpaceGrpcException(
                     SpaceGrpcException.FAILED_PRECONDITION, "$path is a directory") }
-                response.chunk?.data_?.let { out.write(it.toByteArray()) }
-                if (out.size() > maxBytes) throw SpaceGrpcException(SpaceGrpcException.FAILED_PRECONDITION,
+                val bytes = response.chunk?.data_?.toByteArray() ?: return@collect
+                received += bytes.size
+                if (received > maxBytes) throw SpaceGrpcException(SpaceGrpcException.FAILED_PRECONDITION,
                     "$path is larger than $maxBytes bytes")
+                sink(bytes)
             }
-        return out.toByteArray()
     }
 
     suspend fun write(path: String, bytes: ByteArray, overwrite: Boolean, createParents: Boolean = true): SpaceEntry {
@@ -264,6 +276,8 @@ class SpaceClient(
         path = path,
         name = name.ifEmpty { path.substringAfterLast('/') },
         isDirectory = type == FileType.FILE_TYPE_DIRECTORY,
+        isFile = type == FileType.FILE_TYPE_FILE,
+        isSymlink = type == FileType.FILE_TYPE_SYMLINK,
         sizeBytes = size,
         modifiedAtMillis = modified_at?.toEpochMilli() ?: 0L,
     )

@@ -1523,7 +1523,8 @@ class ChatService(
     private suspend fun computerWorkspaces(chat: me.ayuilos.miffan.data.model.PartnerChat, settings: Settings): Set<Uuid> =
         chat.memberIds.mapNotNull { settings.getAssistantById(it)?.workspaceId }.toSet().filterTo(mutableSetOf()) { id ->
             val workspace = workspaceRepository.getById(id.toString())
-            workspace?.isRemote == true && workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled == true
+            workspace?.isRemote == true && !workspace.isSpace &&
+                workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled == true
         }
 
     /**
@@ -1540,6 +1541,8 @@ class ChatService(
         val workspaceId = assistant.workspaceId?.toString() ?: return null
         val workspace = workspaceRepository.getById(workspaceId) ?: return null
         if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        // The host's desktop is out of reach from inside a partner's own Space.
+        if (workspace.isSpace) return null
         // A host without a screen is a server, not a computer to operate.
         if (workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled != true) return null
         val snapshot = workspaceRepository.currentWorkspaceToolTarget(
@@ -1573,6 +1576,8 @@ class ChatService(
         val workspaceId = assistant.workspaceId?.toString() ?: return null
         val workspace = workspaceRepository.getById(workspaceId) ?: return null
         if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        // Tasks run on the host by its system timer, outside the Space.
+        if (workspace.isSpace) return null
         val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
         if (host.trustedHostKeySha256 == null || partnerComputerUse(assistant, workspace) == ComputerUseMode.OFF) return null
         val repository = getKoin().get<me.ayuilos.miffan.data.remotetask.RemoteTaskRepository>()
@@ -1594,6 +1599,7 @@ class ChatService(
     /** Only alongside [createScheduleTaskToolIfReady], and never for Windows computers (no tasks there yet). */
     private suspend fun createAgentToolsToolIfReady(assistant: Assistant): Tool? {
         val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        if (workspace.isSpace) return null
         val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
         if (me.rerere.workspace.RemotePlatform.parse(host.platform) == me.rerere.workspace.RemotePlatform.WINDOWS) return null
         return me.ayuilos.miffan.data.ai.tools.createAgentToolsTool(

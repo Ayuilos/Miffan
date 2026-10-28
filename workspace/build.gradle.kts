@@ -40,6 +40,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.xz)
     api(libs.jsch)
+    api(project(":cuaspace"))
     implementation(libs.bouncycastle)
     testImplementation(libs.junit)
     testImplementation(libs.apache.sshd.core)

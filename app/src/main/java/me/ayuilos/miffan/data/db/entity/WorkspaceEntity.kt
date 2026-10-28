@@ -39,9 +39,16 @@ data class WorkspaceEntity(
     val remoteHostId: String? = null,
     @ColumnInfo("remote_path")
     val remotePath: String? = null,
+    // A SPACE workspace lives in this cua Space on the remote host; remote_path is then the host's
+    // home, used only for the SSH connection, never as a file root.
+    @ColumnInfo("space_name")
+    val spaceName: String? = null,
 ) {
     // Fail closed for unknown future kinds: never send them to the local PRoot manager.
     val isRemote: Boolean get() = kind != KIND_LOCAL
+
+    /** A partner's own isolated computer: host-level abilities (desktop, scheduled tasks) stay off. */
+    val isSpace: Boolean get() = kind == KIND_SPACE
 
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)
@@ -61,5 +68,6 @@ data class WorkspaceEntity(
     companion object {
         const val KIND_LOCAL = "LOCAL"
         const val KIND_REMOTE = "REMOTE"
+        const val KIND_SPACE = "SPACE"
     }
 }
