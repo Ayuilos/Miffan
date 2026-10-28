@@ -3775,7 +3775,7 @@
   <string name="im_space_network_title_many">Их компьютеры не в сети</string>
   <string name="im_space_network_help_ufw">Компьютер готов, но не может выйти в интернет: брандмауэр на %1$s его блокирует.</string>
   <string name="im_space_network_help">Компьютер готов, но не может выйти в интернет. Проверьте настройки сети или прокси на %1$s.</string>
-  <string name="im_space_network_run">Выполните эту команду на %1$s, затем нажмите «Проверить снова»:</string>
+  <string name="im_space_network_run">Выполните эту команду на %1$s или прямо с этого телефона, затем нажмите «Проверить снова»:</string>
   <string name="im_space_network_note">Команда разрешает собственному компьютеру выходить в интернет; через него никто не сможет попасть на ваш. Понадобится пароль администратора вашего компьютера.</string>
   <string name="im_space_network_skip">Продолжить без сети</string>
   <string name="im_space_copy_command">Копировать команду</string>
@@ -3832,4 +3832,10 @@
   <string name="im_space_tier_row">Размер</string>
   <string name="im_space_tier_mac_fixed">На Mac пока нельзя изменить размер на месте.</string>
   <string name="im_space_resized">Теперь %1$s</string>
+  <string name="im_space_run_here">Выполнить с этого телефона</string>
+  <string name="im_space_run_title">Запуск на компьютере</string>
+  <string name="im_space_run_connecting">Подключаемся к компьютеру…</string>
+  <string name="im_space_run_running">Выполняется. Если потребуется пароль, введите пароль компьютера и нажмите Enter.</string>
+  <string name="im_space_run_ok">Готово. Снова проверяем интернет.</string>
+  <string name="im_space_run_failed">Остановилось с кодом %1$d. Посмотрите вывод выше.</string>
 </resources>

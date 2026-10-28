@@ -3724,7 +3724,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_network_title_many">専用のコンピューターがオフラインです</string>
   <string name="im_space_network_help_ufw">準備はできていますが、インターネットに接続できません。%1$s のファイアウォールがブロックしています。</string>
   <string name="im_space_network_help">準備はできていますが、インターネットに接続できません。%1$s のネットワークまたはプロキシの設定を確認してください。</string>
-  <string name="im_space_network_run">%1$s で次のコマンドを実行してから、「もう一度確認」をタップしてください：</string>
+  <string name="im_space_network_run">%1$s でこのコマンドを実行するか、スマホから直接実行してから、「もう一度確認」をタップしてください：</string>
   <string name="im_space_network_note">専用のコンピューターがインターネットに出られるようにするだけで、あなたのコンピューターに外から入られることはありません。コンピューターの管理者パスワードが必要です。</string>
   <string name="im_space_network_skip">オフラインのまま続ける</string>
   <string name="im_space_copy_command">コマンドをコピー</string>
@@ -3781,4 +3781,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_tier_row">サイズ</string>
   <string name="im_space_tier_mac_fixed">Mac では、まだサイズをその場で変更できません。</string>
   <string name="im_space_resized">%1$s に変更しました</string>
+  <string name="im_space_run_here">スマホで実行する</string>
+  <string name="im_space_run_title">コンピューターで実行</string>
+  <string name="im_space_run_connecting">コンピューターに接続しています…</string>
+  <string name="im_space_run_running">実行中です。パスワードを求められたら、コンピューターのパスワードを入力して Enter を押してください。</string>
+  <string name="im_space_run_ok">完了しました。ネットワークを再確認しています。</string>
+  <string name="im_space_run_failed">コマンドが終了コード %1$d で止まりました。上の出力を確認してください。</string>
 </resources>

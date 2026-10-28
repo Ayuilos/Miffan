@@ -3724,7 +3724,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_network_title_many">전용 컴퓨터들이 오프라인이에요</string>
   <string name="im_space_network_help_ufw">준비는 됐지만 인터넷에 연결할 수 없어요. %1$s의 방화벽이 막고 있어요.</string>
   <string name="im_space_network_help">준비는 됐지만 인터넷에 연결할 수 없어요. %1$s의 네트워크 또는 프록시 설정을 확인해 주세요.</string>
-  <string name="im_space_network_run">%1$s에서 이 명령을 실행한 다음 “다시 확인”을 눌러 주세요:</string>
+  <string name="im_space_network_run">%1$s에서 이 명령을 실행하거나 이 휴대폰에서 바로 실행한 다음 “다시 확인”을 눌러 주세요:</string>
   <string name="im_space_network_note">전용 컴퓨터가 인터넷으로 나갈 수만 허용해요. 이 경로로 누구도 내 컴퓨터에 들어올 수 없어요. 컴퓨터의 관리자 비밀번호를 물어봐요.</string>
   <string name="im_space_network_skip">오프라인으로 계속</string>
   <string name="im_space_copy_command">명령 복사</string>
@@ -3781,4 +3781,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_tier_row">사양</string>
   <string name="im_space_tier_mac_fixed">Mac에서는 아직 크기를 바로 바꿀 수 없어요.</string>
   <string name="im_space_resized">지금 %1$s</string>
+  <string name="im_space_run_here">이 휴대폰에서 실행해요</string>
+  <string name="im_space_run_title">컴퓨터에서 실행</string>
+  <string name="im_space_run_connecting">컴퓨터에 연결하고 있어요…</string>
+  <string name="im_space_run_running">실행하고 있어요. 비밀번호를 물으면 컴퓨터 비밀번호를 입력하고 Enter를 누르세요.</string>
+  <string name="im_space_run_ok">완료됐어요. 인터넷을 다시 확인하고 있어요.</string>
+  <string name="im_space_run_failed">코드 %1$d(으)로 멈췄어요. 위의 출력을 확인해 주세요.</string>
 </resources>

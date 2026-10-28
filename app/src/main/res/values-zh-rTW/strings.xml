@@ -3699,7 +3699,7 @@
   <string name="im_space_network_title_many">它們的電腦無法上網</string>
   <string name="im_space_network_help_ufw">電腦已準備好，但連不上網路：%1$s 的防火牆擋住了它。</string>
   <string name="im_space_network_help">電腦已準備好，但連不上網路。請檢查 %1$s 的網路或代理設定。</string>
-  <string name="im_space_network_run">在 %1$s 上執行這個指令，然後點「再檢查一次」：</string>
+  <string name="im_space_network_run">在 %1$s 上執行這個指令，或直接在手機上執行，然後點「再檢查一次」：</string>
   <string name="im_space_network_note">這只會讓獨立的電腦對外連網，不會讓別人透過它連進你的電腦。執行時需要輸入你電腦的系統管理員密碼。</string>
   <string name="im_space_network_skip">離線繼續</string>
   <string name="im_space_copy_command">複製指令</string>
@@ -3756,4 +3756,10 @@
   <string name="im_space_tier_row">配置</string>
   <string name="im_space_tier_mac_fixed">在 Mac 上暫時不能直接更改配置。</string>
   <string name="im_space_resized">已改為 %1$s</string>
+  <string name="im_space_run_here">在手機上執行</string>
+  <string name="im_space_run_title">在電腦上執行</string>
+  <string name="im_space_run_connecting">正在連線到電腦…</string>
+  <string name="im_space_run_running">正在執行。如果要求密碼，輸入電腦的密碼後按 Enter。</string>
+  <string name="im_space_run_ok">完成了，正在重新檢查網路。</string>
+  <string name="im_space_run_failed">指令沒有成功（代碼 %1$d），請看上面的輸出。</string>
 </resources>
