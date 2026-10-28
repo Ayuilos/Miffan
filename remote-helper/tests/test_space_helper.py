@@ -138,7 +138,7 @@ class Host:
         creds = self.home / ".cua"
         creds.mkdir()
         (creds / "spaces-credentials.json").write_text(json.dumps({
-            f"local:{NAME}": {"token": TOKEN}, "local:miffan-0000test": {"token": TOKEN},
+            f"local:{NAME}": {"token": TOKEN},
             "direct:100.64.0.5:3213": {"url": "http://100.64.0.5:3213", "token": "x" * 32}}, indent=2))
 
     def state(self, **values):

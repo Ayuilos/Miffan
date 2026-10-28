@@ -193,7 +193,7 @@ POSIX sh 与系统自带工具（含 curl、awk），不需要 python3。
 
 输出：stdout 最后一行是一行 JSON；诊断写 stderr；Space 的 token 只出现在 `info` 的 stdout，从不写入 stderr、
 文件或任何进程参数。失败为 `{"error":"<code>","detail":<string|null>}` 并退出 1；Space 名不合法时
-`{"error":"bad_name","detail":null}` 并退出 2。名字必须是 `miffan-[0-9a-f]{8}`（另允许实测用的 `miffan-0000test`）。
+`{"error":"bad_name","detail":null}` 并退出 2。名字必须是 `miffan-[0-9a-f]{8}`。
 错误码：`cua_missing`、`daemon_failed`、`needs_docker`（仅 Linux：无 docker 或无权限）、`download_failed`、
 `disk_low`、`create_failed`、`not_found`、`start_failed`、`exec_failed`、`bad_name`、`bad_input`。
 

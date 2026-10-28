@@ -1862,9 +1862,8 @@ space_last_line() {
     printf '%s\n' "$1" | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | tail -n 1
 }
 
-# Space names are app-generated. miffan-0000test is the fixed name of the live check.
+# Space names are app-generated.
 space_name_ok() {
-    case "$1" in miffan-0000test) return 0 ;; esac
     printf '%s' "$1" | grep -Eq '^miffan-[0-9a-f]{8}$'
 }
 
