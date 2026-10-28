@@ -151,6 +151,7 @@ val repositoryModule = module {
 
     single { me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry(get(), get<AppScope>()) }
     single { me.ayuilos.miffan.data.ai.computer.PartnerComputers(get(), get()) }
+    single { me.ayuilos.miffan.data.ai.computer.PartnerSpaces(get(), get()) }
     single { me.ayuilos.miffan.data.ai.computer.ComputerStatusStore(get()) }
     single {
         me.ayuilos.miffan.data.ai.computer.CuaUpdates(get(), get<AppScope>(), get(), get(), get(), get(), get())

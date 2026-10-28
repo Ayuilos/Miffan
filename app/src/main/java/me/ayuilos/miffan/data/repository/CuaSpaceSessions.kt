@@ -70,6 +70,8 @@ class CuaSpaceSessions internal constructor(assets: AssetManager) {
         return client
     }
 
+    internal fun ensureHelper(ssh: RemoteWorkspaceSession) = helper.ensureInstalled(ssh)
+
     fun forget(workspaceId: String) {
         cache.remove(workspaceId)?.client?.close()
     }

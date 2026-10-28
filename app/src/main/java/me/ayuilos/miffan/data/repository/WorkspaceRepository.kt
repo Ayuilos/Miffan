@@ -679,6 +679,26 @@ class WorkspaceRepository(
         return home
     }
 
+    /**
+     * Runs the host helper's `space` command ([args] are fixed words and app-made Space names; any
+     * user text goes in [stdin]) on a fresh connection to the saved host [hostId].
+     */
+    suspend fun runSpaceHelper(
+        hostId: String,
+        args: List<String>,
+        stdin: ByteArray? = null,
+        timeoutMillis: Long = 60_000,
+    ): WorkspaceCommandResult {
+        require(args.isNotEmpty() && args.all { SPACE_HELPER_ARG.matches(it) }) { "Invalid Space helper arguments" }
+        val spaces = requireNotNull(cuaSpaces) { "cua Spaces are unavailable" }
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
+        return withSavedHostConnection(host, host.config()) { session ->
+            spaces.ensureHelper(session)
+            session.execute("\"\$HOME/.miffan/bin/miffan\" space ${args.joinToString(" ")}",
+                timeoutMillis = timeoutMillis, stdin = stdin?.inputStream())
+        }
+    }
+
     /** Probe only: never records an address, platform, or trusted fingerprint. */
     suspend fun checkKeySignIn(host: String, port: Int, username: String, sshKeyId: String): KeySignInCheck {
         val authentication = loadVerifiedSshKey(sshKeyId)
@@ -854,6 +874,12 @@ class WorkspaceRepository(
     private fun remoteFiles(workspace: WorkspaceEntity, session: RemoteWorkspaceSession): RemoteWorkspaceFiles =
         if (workspace.isSpace) requireNotNull(cuaSpaces) { "cua Spaces are unavailable" }.files(workspace, session)
         else session
+
+    /** Drops the Space's terminals and cached client, e.g. before the Space is reset. */
+    fun forgetSpaceConnection(id: String) {
+        closeRemoteTerminals(id)
+        cuaSpaces?.forget(id)
+    }
 
     /**
      * Records a partner's own computer: the cua Space [spaceName] already created on [hostId] by the
@@ -1788,5 +1814,6 @@ class WorkspaceRepository(
         private const val TAG = "WorkspaceRepository"
         private const val MAX_PREVIEW_BYTES = 512L * 1024
         private const val AUTH_MANAGED_KEY = "MANAGED_KEY"
+        private val SPACE_HELPER_ARG = Regex("[a-z][a-z0-9-]{0,31}")
     }
 }
