@@ -100,10 +100,25 @@
 伙伴在独立电脑里的产出，用户需要拿到；用户也要能把文件交给伙伴。两种都做：
 
 - 手机直接上传、下载：经 `FilesystemService`，与现有工作区文件页一致。
-- 宿主电脑上的交接文件夹（例如 `~/Miffan/<伙伴名>`），对应 Space 里的 `~/交接`。cua 不能直接挂载主机文件夹，由 Miffan 同步：
+- 宿主电脑上的交接文件夹 `~/Miffan Partners/<伙伴名>`，对应 Space 桌面上的 `~/Desktop/Shared`。名字固定用英文，不随 App 语言变化；伙伴名里文件系统不允许的字符换成 `_`，同一宿主上重名时加 ` (2)`…，路径在创建时存进工作区（`space_handoff`），伙伴改名不影响。cua 不能直接挂载主机文件夹，由 Miffan 同步：
   - 伙伴交出：伙伴把文件放进 `~/交接` 后，用工具“交给用户”，helper 拷到宿主电脑的交接文件夹。
   - 用户交入：用户放进宿主文件夹的新文件，在伙伴每轮开始时拷进 Space 的 `~/交接`。
   - 同名冲突时不覆盖，加后缀。伙伴在宿主电脑上只碰得到这个文件夹。重置独立电脑不清空交接文件夹。
+
+### 配置
+
+三档，都是上限而不是预留，平时只用需要的部分：
+
+| 档位 | CPU | 内存 |
+| --- | --- | --- |
+| 轻量 | 2 核 | 2 GB |
+| 标准 | 2 核 | 4 GB |
+| 性能 | 4 核 | 8 GB |
+
+- 推荐：Linux 宿主给用户留一半内存（至少 4 GB），扣掉这台宿主上已有独立电脑的内存后，选能放下的最大档；一个 Space 最多用宿主一半的 CPU（至少 2 核）。macOS 上所有 Space 共用 cua 的一台 Linux 虚拟机（读 `colima.yaml`），以它的大小减 1 GB 为预算。读不到宿主配置时用标准档。
+- 用户手动选：只要求给用户留出 4 GB，所以 16 GB 的电脑默认推荐标准，也可以手动选性能。
+- 改配置：Linux 用 `docker update` 原地生效、文件保留、重启后仍在；macOS 暂不支持（Space 在 cua 的虚拟机里），页面说明原因。
+- 屏幕分辨率（现在为 1280×800）留到 P2 一起定。
 
 ### 权限
 
@@ -145,7 +160,7 @@
 
 ### 数据模型
 
-- 不建新表：工作区新增 kind `SPACE` 与 `space_name` 列（DB 41），每个伙伴一个 SPACE 工作区。`remote_host_id` 是宿主电脑，`remote_path` 是 Space 内的根目录 `/home/cua`；到宿主的 SSH 会话以 `/` 为根（`sshRoot`），只用于跑 helper 和开隧道。`isRemote` 对 SPACE 仍为 true，沿用 SSH 连接池、主机指纹与凭据。
+- 不建新表：工作区新增 kind `SPACE` 与 `space_name` 列（DB 41），以及 `space_cpus`、`space_memory_mb`、`space_handoff`（DB 42），每个伙伴一个 SPACE 工作区。`remote_host_id` 是宿主电脑，`remote_path` 是 Space 内的根目录 `/home/cua`；到宿主的 SSH 会话以 `/` 为根（`sshRoot`），只用于跑 helper 和开隧道。`isRemote` 对 SPACE 仍为 true，沿用 SSH 连接池、主机指纹与凭据。
 - 文件、命令和终端经 `RemoteWorkspaceFiles` / `RemoteTerminal` 接口分流：SSH 会话与 `SpaceWorkspaceFiles` 各实现一份。
 - 重置时更新伙伴的 `workspacePermissionRevision`，为旧 Space 准备的工具调用会因目标变化而失败。
 - 宿主层面的能力对 SPACE 关闭：宿主桌面、宿主 cua-driver、定时任务、agent 工具；`openLeasedRemote` 拒绝 SPACE 工作区。
