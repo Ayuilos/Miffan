@@ -46,7 +46,7 @@ class ThreadReplyBlocksTest {
     }
 
     @Test
-    fun promptsStayInPlaceAndTheOwnersAnswersJoinTheComputerCard() {
+    fun theOwnersQuestionsAndAnswersAllJoinTheComputerCard() {
         val allowed = tool("computer_click", "allowed").copy(
             approvalState = ToolApprovalState.Approved,
             approvalRecord = ToolApprovalRecord(decidedAt = 1, decision = ToolDecision.ALLOWED, via = ToolDecisionVia.CARD))
@@ -58,7 +58,7 @@ class ThreadReplyBlocksTest {
             allowed,
             declined,
         ), recordSteps = false)
-        assertEquals(listOf("computer:a,allowed,denied", "computer_type_text"), blocks.shape())
+        assertEquals(listOf("computer:a,pending,allowed,denied"), blocks.shape())
     }
 
     @Test

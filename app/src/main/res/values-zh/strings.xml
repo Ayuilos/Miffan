@@ -2576,8 +2576,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_observed_mini_box">看了看小电脑的屏幕</string>
   <string name="im_computer_observed_hint">没有动任何东西</string>
   <string name="im_computer_live_step">正在操作%1$s · 第 %2$d 步</string>
-  <string name="im_computer_wants_to">%1$s想操作%2$s</string>
   <string name="im_computer_approval_what">它具体要做什么</string>
+  <string name="im_computer_partner">伙伴</string>
+  <string name="im_computer_asks_mini_box">%1$s想在小电脑上%2$s</string>
+  <string name="im_computer_asks_desktop">%1$s想在你的%2$s上%3$s</string>
+  <plurals name="im_computer_more_waiting">
+    <item quantity="other">后面还有 %d 步也等你点头</item>
+  </plurals>
+  <string name="im_computer_allow_all">这几步都允许</string>
   <string name="im_computer_click_here">要点这里</string>
   <string name="im_computer_handoff_title">%1$s交给你的文件</string>
   <string name="im_computer_handoff_title_any">伙伴交给你的文件</string>

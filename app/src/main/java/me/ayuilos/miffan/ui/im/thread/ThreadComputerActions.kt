@@ -46,7 +46,6 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.PartnerComputer
 import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
 import me.ayuilos.miffan.ui.components.message.ComputerToolStatus
-import me.ayuilos.miffan.ui.components.message.computerToolNeedsForegroundWarning
 import me.ayuilos.miffan.ui.components.message.computerToolStatus
 import me.ayuilos.miffan.ui.components.message.tools.DefaultToolPreview
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
@@ -144,7 +143,7 @@ internal fun ThreadComputerBlock(
     partner: String = "",
 ) {
     // A question waiting for the owner always belongs to the live card, even if the reply has moved on.
-    val live = live || tools.any { it.approvalState is ToolApprovalState.Pending }
+    val live = live || pendingComputerActions(tools).isNotEmpty()
     val steps = remember(tools, live) { computerRecordSteps(tools, live) }
     val evidence = remember(tools) { threadComputerEvidence(tools) }
     val latest = tools.last()
@@ -303,7 +302,8 @@ private fun ThreadComputerLiveCard(
     onApproval: (String, Boolean) -> Unit,
     partner: String,
 ) {
-    val pending = tools.lastOrNull { it.isComputerTool() && it.approvalState is ToolApprovalState.Pending }
+    val waiting = pendingComputerActions(tools)
+    val pending = waiting.firstOrNull()
     val current = steps.currentStep()
     val action = pending ?: current?.tool
     val caption = pending?.let { computerActionText(it) } ?: current?.text()
@@ -327,7 +327,7 @@ private fun ThreadComputerLiveCard(
                 if (canOpen) ViewScreenLink()
             }
         }
-        if (pending != null) ComputerInPlaceApproval(pending, name, partner, onApproval)
+        if (pending != null) ComputerInPlaceApproval(waiting, name, partner, onApproval)
         else if (screenshot != null) Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stepLine, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -408,21 +408,27 @@ private fun BoxScope.ComputerHighlight(at: Offset, color: Color, click: Boolean)
     }
 }
 
-/** The partner's question inside its live card: what it wants, allow or not, and the exact arguments one tap away. */
+/**
+ * The partner's question inside its live card: the first action waiting, allow or not, and the exact arguments one tap
+ * away. Actions asked together are answered one by one, or all at once; saying no to one leaves the rest waiting.
+ */
 @Composable
-private fun ComputerInPlaceApproval(tool: UIMessagePart.Tool, name: String, partner: String, onApproval: (String, Boolean) -> Unit) {
+private fun ComputerInPlaceApproval(waiting: List<UIMessagePart.Tool>, name: String, partner: String, onApproval: (String, Boolean) -> Unit) {
+    val tool = waiting.first()
     var answered by remember(tool.toolCallId) { mutableStateOf(false) }
     var details by remember(tool.toolCallId) { mutableStateOf(false) }
+    val who = partner.ifBlank { stringResource(R.string.im_computer_partner) }
+    val action = computerActionText(tool)
     Column(Modifier.padding(horizontal = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Column {
-            Text(if (partner.isBlank()) stringResource(R.string.im_computer_wants_to_operate, name)
-                else stringResource(R.string.im_computer_wants_to, partner, name),
-                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(computerActionText(tool), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(if (tool.inMiniBox()) stringResource(R.string.im_computer_asks_mini_box, who, action)
+                else stringResource(R.string.im_computer_asks_desktop, who, name, action),
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (waiting.size > 1) Text(pluralStringResource(R.plurals.im_computer_more_waiting, waiting.size - 1, waiting.size - 1),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         RelayApprovalNotice(tool)
-        if (computerToolNeedsForegroundWarning(tool.toolName, tool.inputAsJson())) {
+        if (tool.interruptsOwner()) {
             Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = MaterialTheme.shapes.medium) {
                 Text(stringResource(R.string.im_computer_foreground_warning), Modifier.fillMaxWidth().padding(12.dp),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -434,9 +440,15 @@ private fun ComputerInPlaceApproval(tool: UIMessagePart.Tool, name: String, part
             ImCardButton(stringResource(R.string.im_computer_allow), enabled = !answered,
                 onClick = { answered = true; onApproval(tool.toolCallId, true) })
         }
-        TextButton(onClick = { details = true }, Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.im_computer_approval_what), style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            TextButton(onClick = { details = true }) {
+                Text(stringResource(R.string.im_computer_approval_what), style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (waiting.size > 1) TextButton(enabled = !answered, onClick = { answered = true; waiting.forEach { onApproval(it.toolCallId, true) } }) {
+                Text(stringResource(R.string.im_computer_allow_all), style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
     if (details) ModalBottomSheet(onDismissRequest = { details = false }) {
@@ -469,7 +481,7 @@ internal fun ThreadComputerApprovalCard(
             }
         }
         RelayApprovalNotice(tool)
-        if (computerToolNeedsForegroundWarning(tool.toolName, tool.inputAsJson())) {
+        if (tool.interruptsOwner()) {
             Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
                 Text(stringResource(R.string.im_computer_foreground_warning), Modifier.fillMaxWidth().padding(12.dp),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
