@@ -2891,16 +2891,33 @@
   <string name="im_computers_empty_title" tools:ignore="MissingTranslation">No computers yet</string>
   <string name="im_computers_empty_help" tools:ignore="MissingTranslation">Connect a computer and your partners can see its screen and work on it for you.</string>
   <string name="im_computers_connect_first" tools:ignore="MissingTranslation">Connect a computer</string>
-  <string name="im_computers_connect_new" tools:ignore="MissingTranslation">Connect another computer</string>
+  <string name="im_computers_connect_new" tools:ignore="MissingTranslation">Connect a new computer</string>
+  <string name="im_computers_connect_new_help" tools:ignore="MissingTranslation">A Mac, Linux or Windows computer at home or work</string>
   <string name="im_computers_screen_ready" tools:ignore="MissingTranslation">Screen ready</string>
-  <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">No screen</string>
+  <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">Screen off</string>
+  <string name="im_computers_row_desktop" tools:ignore="MissingTranslation">Desktop</string>
+  <string name="im_computers_row_boxes" tools:ignore="MissingTranslation">Mini boxes</string>
   <string name="im_computers_used_by" tools:ignore="MissingTranslation">Used by %1$s</string>
   <string name="im_computers_name_separator" tools:ignore="MissingTranslation">", "</string>
   <string name="im_computers_unused" tools:ignore="MissingTranslation">No partner uses it yet</string>
-  <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">View screen</string>
-  <string name="im_computer_detail_users" tools:ignore="MissingTranslation">Who uses this computer</string>
+  <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">See this computer\'s desktop</string>
+  <string name="im_computer_detail_tasks_empty" tools:ignore="MissingTranslation">None yet. Ask a partner in chat to add one</string>
+  <plurals name="im_computer_detail_tasks_count" tools:ignore="MissingTranslation">
+    <item quantity="one">%d task</item>
+    <item quantity="other">%d tasks</item>
+  </plurals>
+  <string name="im_computer_detail_users" tools:ignore="MissingTranslation">Your desktop</string>
+  <string name="im_computer_detail_users_help" tools:ignore="MissingTranslation">Work with the apps and files on this computer</string>
+  <string name="im_computer_detail_mode_auto" tools:ignore="MissingTranslation">Just do it</string>
   <string name="im_computer_detail_user_space">Mini box</string>
-  <string name="im_computer_detail_add_partner" tools:ignore="MissingTranslation">Let a partner use it</string>
+  <string name="im_computer_detail_add_partner" tools:ignore="MissingTranslation">Let a partner use this computer</string>
+  <string name="im_computer_detail_boxes" tools:ignore="MissingTranslation">Mini boxes on this computer</string>
+  <string name="im_computer_detail_boxes_help" tools:ignore="MissingTranslation">One for each partner. They can\'t touch your desktop or files</string>
+  <string name="im_computer_detail_box_name" tools:ignore="MissingTranslation">%1$s\'s mini box</string>
+  <string name="im_computer_detail_box_used" tools:ignore="MissingTranslation">using %1$s</string>
+  <string name="im_computer_detail_boxes_limit" tools:ignore="MissingTranslation">Mini boxes can use up to %1$s of memory</string>
+  <string name="im_computer_detail_boxes_total" tools:ignore="MissingTranslation">This computer has %1$s</string>
+  <string name="im_computer_detail_add_box" tools:ignore="MissingTranslation">Give a partner a mini box</string>
   <string name="im_computer_detail_check" tools:ignore="MissingTranslation">Check this computer</string>
   <string name="im_computer_detail_check_help" tools:ignore="MissingTranslation">Desktop, screen service and cua-driver</string>
   <string name="im_computer_detail_connection" tools:ignore="MissingTranslation">Connection</string>
@@ -2912,6 +2929,7 @@
   <string name="im_computer_delete_blocked_title" tools:ignore="MissingTranslation">Can\'t delete it here</string>
   <string name="im_computer_delete_blocked" tools:ignore="MissingTranslation">%1$d more workspaces on this computer were set up in professional mode. Remove them there first.</string>
   <string name="im_computer_pick_partner" tools:ignore="MissingTranslation">Which partner may use it?</string>
+  <string name="im_computer_pick_box_partner" tools:ignore="MissingTranslation">Which partner gets a mini box?</string>
   <string name="im_computer_pick_screen_partner" tools:ignore="MissingTranslation">Watch with which partner?</string>
   <string name="im_computer_screen_only" tools:ignore="MissingTranslation">Just the screen</string>
   <string name="im_computer_replaces_computer" tools:ignore="MissingTranslation">Replaces the computer it uses now</string>
