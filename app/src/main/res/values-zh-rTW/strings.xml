@@ -2809,6 +2809,7 @@
   <string name="im_computers_unused">還沒有夥伴使用</string>
   <string name="im_computer_detail_view_screen">查看螢幕</string>
   <string name="im_computer_detail_users">誰在用這台電腦</string>
+  <string name="im_computer_detail_user_space">用的是這裡的獨立電腦</string>
   <string name="im_computer_detail_add_partner">讓夥伴使用</string>
   <string name="im_computer_detail_check">檢查電腦狀態</string>
   <string name="im_computer_detail_check_help">桌面、螢幕服務和 cua-driver</string>
@@ -3763,4 +3764,5 @@
   <string name="im_space_run_ok">完成了，正在重新檢查網路。</string>
   <string name="im_space_run_failed">指令沒有成功（代碼 %1$d），請看上面的輸出。</string>
   <string name="im_space_fix_card_title">讓它的電腦能上網</string>
+  <string name="im_space_fix_card_online">它的電腦現在已經能上網了。</string>
 </resources>

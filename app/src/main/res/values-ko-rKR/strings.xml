@@ -2803,6 +2803,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computers_unused">아직 사용하는 파트너가 없어요</string>
   <string name="im_computer_detail_view_screen">화면 보기</string>
   <string name="im_computer_detail_users">이 컴퓨터를 쓰는 파트너</string>
+  <string name="im_computer_detail_user_space">여기서 전용 컴퓨터를 사용 중</string>
   <string name="im_computer_detail_add_partner">파트너에게 사용 허용</string>
   <string name="im_computer_detail_check">컴퓨터 상태 확인</string>
   <string name="im_computer_detail_check_help">데스크톱, 화면 서비스, cua-driver</string>
@@ -3788,4 +3789,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_run_ok">완료됐어요. 인터넷을 다시 확인하고 있어요.</string>
   <string name="im_space_run_failed">코드 %1$d(으)로 멈췄어요. 위의 출력을 확인해 주세요.</string>
   <string name="im_space_fix_card_title">컴퓨터를 인터넷에 연결하기</string>
+  <string name="im_space_fix_card_online">이제 전용 컴퓨터가 인터넷에 연결되었습니다.</string>
 </resources>

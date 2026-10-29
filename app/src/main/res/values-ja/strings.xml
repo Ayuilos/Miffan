@@ -2803,6 +2803,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computers_unused">まだパートナーは使っていません</string>
   <string name="im_computer_detail_view_screen">画面を表示</string>
   <string name="im_computer_detail_users">このコンピューターを使うパートナー</string>
+  <string name="im_computer_detail_user_space">ここで専用のコンピューターを使用中</string>
   <string name="im_computer_detail_add_partner">パートナーに使わせる</string>
   <string name="im_computer_detail_check">コンピューターの状態を確認</string>
   <string name="im_computer_detail_check_help">デスクトップ、画面サービス、cua-driver</string>
@@ -3788,4 +3789,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_run_ok">完了しました。ネットワークを再確認しています。</string>
   <string name="im_space_run_failed">コマンドが終了コード %1$d で止まりました。上の出力を確認してください。</string>
   <string name="im_space_fix_card_title">コンピューターをインターネットにつなぐ</string>
+  <string name="im_space_fix_card_online">専用のコンピューターがインターネットに接続できるようになりました。</string>
 </resources>

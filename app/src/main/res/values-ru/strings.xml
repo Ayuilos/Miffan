@@ -2806,6 +2806,7 @@
   <string name="im_computers_unused">Пока никто из партнёров не использует</string>
   <string name="im_computer_detail_view_screen">Посмотреть экран</string>
   <string name="im_computer_detail_users">Кто использует этот компьютер</string>
+  <string name="im_computer_detail_user_space">Использует собственный компьютер здесь</string>
   <string name="im_computer_detail_add_partner">Разрешить партнёру использовать</string>
   <string name="im_computer_detail_check">Проверить компьютер</string>
   <string name="im_computer_detail_check_help">Рабочий стол, служба экрана и cua-driver</string>
@@ -3839,4 +3840,5 @@
   <string name="im_space_run_ok">Готово. Снова проверяем интернет.</string>
   <string name="im_space_run_failed">Остановилось с кодом %1$d. Посмотрите вывод выше.</string>
   <string name="im_space_fix_card_title">Подключить его компьютер к интернету</string>
+  <string name="im_space_fix_card_online">Его компьютер сейчас подключён к интернету.</string>
 </resources>
