@@ -1568,6 +1568,7 @@ class ChatService(
                     control = computerControl ?: getKoin().get(),
                     filesManager = getKoin().get(),
                     partnerName = assistant.name,
+                    snapshots = getKoin().get(),
                 )
             }
         }

@@ -169,6 +169,7 @@ suspend fun createComputerTools(
     filesManager: FilesManager,
     /** The partner's display name, shown to other partners refused while this one holds the desktop. */
     partnerName: String = "",
+    snapshots: me.ayuilos.miffan.data.ai.computer.ComputerSnapshots? = null,
 ): List<Tool> {
     val workspaceId = snapshot.workspaceId
     val holder = ComputerHolder(snapshot.assistantId, snapshot.conversationId.orEmpty(), partnerName)
@@ -201,7 +202,7 @@ suspend fun createComputerTools(
                 execute = { args ->
                     val arguments = withScreenshotCap(tool, args.jsonObject)
                     val focusClick = desktopTypeFocusClick(tool, arguments, clickTool)
-                    if (tool.name in OBSERVE_TOOLS) {
+                    val output = if (tool.name in OBSERVE_TOOLS) {
                         convert(registry.call(workspaceId, tool.name, arguments), filesManager)
                     } else {
                         when (val result = control.partnerActs(controlKey, holder) {
@@ -217,6 +218,8 @@ suspend fun createComputerTools(
                             PartnerActResult.Updating -> listOf(UIMessagePart.Text(updatingRefusal(target)))
                         }
                     }
+                    snapshots?.record(workspaceId, output)
+                    output
                 },
             ))
         }
