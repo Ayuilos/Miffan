@@ -55,7 +55,7 @@ import kotlin.uuid.Uuid
  * in the background, so everything here says when it was last brought over and what that means.
  */
 @Composable
-internal fun ComputerTasksSection(hostId: String, windows: Boolean, username: String) {
+internal fun ComputerTasksSection(hostId: String, windows: Boolean, username: String, title: Boolean = true) {
     val nav = LocalNavController.current
     val repository: RemoteTaskRepository = koinInject()
     val scope = rememberCoroutineScope()
@@ -78,9 +78,10 @@ internal fun ComputerTasksSection(hostId: String, windows: Boolean, username: St
     LaunchedEffect(hostId) { sync() }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.Bottom) {
-            Text(stringResource(R.string.remote_task_section), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
+        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = if (title) 8.dp else 0.dp), verticalAlignment = Alignment.Bottom) {
+            if (title) Text(stringResource(R.string.remote_task_section), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else Spacer(Modifier.weight(1f))
             val synced = host?.lastSyncedAt
             if (!windows) Text(when {
                 syncing -> stringResource(R.string.remote_task_syncing)
