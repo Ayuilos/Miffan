@@ -1,6 +1,9 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import me.rerere.ai.ui.ToolApprovalRecord
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolDecision
+import me.rerere.ai.ui.ToolDecisionVia
 import me.rerere.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -34,19 +37,33 @@ class ThreadReplyBlocksTest {
     }
 
     @Test
-    fun hiddenStepsDoNotSplitAComputerRun() {
+    fun aReplyHasOneComputerCardWhereverItsActionsHappened() {
         val parts = listOf(tool("computer_click", "a"), tool("search_web", "s"), tool("computer_click", "b"))
         assertEquals(listOf("computer:a,b"), threadReplyBlocks(parts, recordSteps = false).shape())
-        assertEquals(listOf("computer:a", "steps:s", "computer:b"), threadReplyBlocks(parts, recordSteps = true).shape())
+        assertEquals(listOf("computer:a,b", "steps:s"), threadReplyBlocks(parts, recordSteps = true).shape())
+        val spoken = listOf(tool("computer_click", "a"), UIMessagePart.Text("再试一次"), tool("computer_click", "b"))
+        assertEquals(listOf("computer:a,b", "再试一次"), threadReplyBlocks(spoken, recordSteps = false).shape())
     }
 
     @Test
-    fun promptsStayInPlaceAndDeclinedActionsLeaveNoCard() {
+    fun promptsStayInPlaceAndTheOwnersAnswersJoinTheComputerCard() {
+        val allowed = tool("computer_click", "allowed").copy(
+            approvalState = ToolApprovalState.Approved,
+            approvalRecord = ToolApprovalRecord(decidedAt = 1, decision = ToolDecision.ALLOWED, via = ToolDecisionVia.CARD))
+        val declined = tool("computer_click", "denied", ToolApprovalState.Denied("no")).copy(
+            approvalRecord = ToolApprovalRecord(decidedAt = 2, decision = ToolDecision.DECLINED, via = ToolDecisionVia.CARD))
         val blocks = threadReplyBlocks(listOf(
             tool("computer_click", "a"),
             tool("computer_type_text", "pending", ToolApprovalState.Pending),
-            tool("computer_click", "denied", ToolApprovalState.Denied("no")),
+            allowed,
+            declined,
         ), recordSteps = false)
-        assertEquals(listOf("computer:a", "computer_type_text"), blocks.shape())
+        assertEquals(listOf("computer:a,allowed,denied", "computer_type_text"), blocks.shape())
+    }
+
+    @Test
+    fun aDeclinedActionAloneLeavesNoCardOfItsOwn() {
+        val blocks = threadReplyBlocks(listOf(tool("computer_click", "denied", ToolApprovalState.Denied("no"))), recordSteps = false)
+        assertEquals(emptyList<String>(), blocks.shape())
     }
 }

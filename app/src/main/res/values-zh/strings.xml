@@ -2474,7 +2474,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_continue">继续</string>
   <string name="im_computer_control">操作电脑</string>
   <string name="im_computer_cua_needed">需要 cua-driver %1$s 或更新版本</string>
-  <string name="im_computer_decline">这次不用</string>
+  <string name="im_computer_decline">不行</string>
   <string name="im_computer_desktop">桌面会话</string>
   <string name="im_computer_details">查看参数</string>
   <string name="im_computer_disconnected">已断开</string>
@@ -2537,6 +2537,23 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <plurals name="im_computer_steps">
     <item quantity="other">在 %1$s 上操作了 %2$d 步</item>
   </plurals>
+  <plurals name="im_computer_record_mini_box">
+    <item quantity="other">在小电脑上做了 %d 步</item>
+  </plurals>
+  <plurals name="im_computer_record_desktop">
+    <item quantity="other">在你的 %1$s 桌面上操作了 %2$d 步</item>
+  </plurals>
+  <string name="im_computer_record_not_done">，没做成</string>
+  <string name="im_computer_record_last">最后：%1$s</string>
+  <string name="im_computer_record_stuck">卡在：%1$s</string>
+  <string name="im_computer_record_declined">你没让它：%1$s</string>
+  <string name="im_computer_record_retried">没成功，换了个办法</string>
+  <string name="im_computer_observed_mini_box">看了看小电脑的屏幕</string>
+  <string name="im_computer_observed_hint">没有动任何东西</string>
+  <string name="im_computer_live_step">正在操作%1$s · 第 %2$d 步</string>
+  <string name="im_computer_wants_to">%1$s想操作%2$s</string>
+  <string name="im_computer_approval_what">它具体要做什么</string>
+  <string name="im_computer_click_here">要点这里</string>
   <string name="im_computer_taken_over">你接管了屏幕，伙伴已停下</string>
   <string name="im_computer_test">试一试</string>
   <string name="im_computer_trust_connect">是我的电脑，继续连接</string>
@@ -2881,8 +2898,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_step_read_file">查看文件 %1$s</string>
   <string name="im_step_read_file_any">查看文件</string>
   <string name="im_step_publish">把文件发给你</string>
-  <string name="im_step_hand_over">把 %1$s 放到你的电脑上</string>
-  <string name="im_step_hand_over_any">把文件放到你的电脑上</string>
+  <string name="im_step_hand_over">把 %1$s 交给你</string>
+  <string name="im_step_hand_over_any">把文件交给你</string>
   <string name="im_step_read_web">读取网页</string>
   <string name="im_step_search">搜索网页</string>
   <string name="im_step_chats">查看聊天记录</string>
