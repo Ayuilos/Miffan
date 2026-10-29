@@ -3765,6 +3765,8 @@
   <string name="im_space_run_failed">指令沒有成功（代碼 %1$d），請看上面的輸出。</string>
   <string name="im_space_fix_card_title">讓它的電腦能上網</string>
   <string name="im_space_fix_card_online">它的電腦現在已經能上網了。</string>
+  <string name="im_space_screen_title">%1$s的電腦</string>
+  <string name="im_space_screen_description">查看%1$s的電腦</string>
   <string name="im_thread_status_offline">沒有網路，連上後再試</string>
   <string name="im_thread_status_connecting">正在連線…</string>
   <string name="im_thread_status_connecting_slow">連線有點慢…</string>

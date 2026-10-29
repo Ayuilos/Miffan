@@ -3841,6 +3841,8 @@
   <string name="im_space_run_failed">Остановилось с кодом %1$d. Посмотрите вывод выше.</string>
   <string name="im_space_fix_card_title">Подключить его компьютер к интернету</string>
   <string name="im_space_fix_card_online">Его компьютер сейчас подключён к интернету.</string>
+  <string name="im_space_screen_title">Компьютер %1$s</string>
+  <string name="im_space_screen_description">Посмотреть компьютер %1$s</string>
   <string name="im_thread_status_offline">Нет сети</string>
   <string name="im_thread_status_connecting">Подключение…</string>
   <string name="im_thread_status_connecting_slow">Медленное подключение…</string>
