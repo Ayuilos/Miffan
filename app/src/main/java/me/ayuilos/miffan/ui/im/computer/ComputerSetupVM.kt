@@ -181,6 +181,8 @@ data class ComputerSetupState(
     val spaceUsedMemoryMb: Int = 0,
     /** The size the user picked; null follows [recommendedTier]. */
     val pickedTier: SpaceTier? = null,
+    /** The Linux family of the computer, read when Docker needs fixing; null when unknown or not read. */
+    val spaceFamily: LinuxFamily? = null,
 ) {
     /** What this computer can give the new Spaces; null until the check ran or when it could not tell. */
     val spaceCapacity: SpaceCapacity? get() = SpaceCapacity.from(spaceProbe?.host)
@@ -945,9 +947,19 @@ class ComputerSetupVM(
         }
         run(ComputerSetupTask.PREPARING) {
             val probe = spaces.probe(requireNotNull(state.hostId))
-            _state.update { it.copy(spaceProbe = probe) }
+            val family = if (probe.docker?.ok == false) readLinuxFamily() else null
+            _state.update { it.copy(spaceProbe = probe, spaceFamily = family ?: it.spaceFamily) }
             if (probe.cuaInstalled && probe.docker?.ok != false) startSpaces() else go(ComputerSetupStep.SPACE_INSTALL)
         }
+    }
+
+    /** `ID` and `ID_LIKE` of the computer's /etc/os-release (a read, nothing is changed); null when it cannot be read. */
+    private suspend fun readLinuxFamily(): LinuxFamily? {
+        val workspaceId = _state.value.workspaceId ?: return null
+        val result = runCatching {
+            workspaces.executeCommand(workspaceId, "sed -n '/^ID=/p;/^ID_LIKE=/p' /etc/os-release", timeoutMillis = 10_000)
+        }.getOrNull() ?: return null
+        return if (result.exitCode == 0 && !result.timedOut) linuxFamily(result.stdout) else null
     }
 
     /** Installs cua on the computer (the user confirmed on [ComputerSetupStep.SPACE_INSTALL]), then goes on. */
