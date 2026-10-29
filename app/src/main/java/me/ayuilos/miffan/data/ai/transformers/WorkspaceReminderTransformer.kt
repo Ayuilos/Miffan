@@ -194,7 +194,7 @@ private fun StringBuilder.appendSpaceWorkspacePrompt(
     val artifactReal = conversationId?.let { "$root/.miffan/conversations/$it" }
     val host = hostName?.let { "the owner's computer \"$it\"" } ?: "one of the owner's computers"
     appendLine("<workspace>")
-    appendLine("You have your own computer: an isolated Linux machine (Ubuntu, user `cua`) that runs inside $host. It is yours alone. Nothing you do there can reach the owner's own files, apps or desktop, and the owner can reset it to a fresh state.")
+    appendLine("You have your own computer, which the app calls your mini box: an isolated Linux machine (Ubuntu, user `cua`) that runs inside $host. It is yours alone. Nothing you do there can reach the owner's own files, apps or desktop, and the owner can reset it to a fresh state.")
     appendLine("- `workspace_shell` and `workspace_terminal` run commands in it, starting in `$root`. File tools map `/workspace` to `$root`.")
     appendLine("- You have passwordless sudo there: install what a task needs (for example `sudo apt-get install -y ...`) instead of asking the owner to. Use `sudo -n`; never ask for a password.")
     appendLine("- It is not the owner's computer: do not tell the owner a file is on their computer, and do not try to reach or change $host itself.")

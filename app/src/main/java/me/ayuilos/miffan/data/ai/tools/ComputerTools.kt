@@ -227,7 +227,7 @@ suspend fun createComputerTools(
 /** Why another turn holds the desktop and what to do instead of retrying the action. */
 /** How the tools name the machine they operate: a partner's own computer is not its host. */
 internal fun computerTarget(snapshot: WorkspaceToolTargetSnapshot): String =
-    if (snapshot.kind == me.ayuilos.miffan.data.db.entity.WorkspaceEntity.KIND_SPACE) "your own computer (a Linux desktop)"
+    if (snapshot.kind == me.ayuilos.miffan.data.db.entity.WorkspaceEntity.KIND_SPACE) "your mini box (your own Linux desktop)"
     else snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
 
 internal fun busyRefusal(holder: ComputerHolder, me: ComputerHolder, target: String): String = buildJsonObject {
