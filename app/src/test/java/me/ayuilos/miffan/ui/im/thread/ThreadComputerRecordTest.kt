@@ -163,11 +163,37 @@ class ThreadComputerRecordTest {
     }
 
     @Test
-    fun aQuestionWaitingInAStreamingReplyJoinsTheComputerCard() {
-        val pending = computer("click", "ask", output = null, state = ToolApprovalState.Pending)
-        val parts = listOf(computer("click", "a"), pending)
-        assertEquals(listOf("a", "ask"), (threadReplyBlocks(parts, recordSteps = false, streaming = true).single() as ThreadReplyBlock.Computer).tools.map { it.toolCallId })
-        assertEquals(2, threadReplyBlocks(parts, recordSteps = false, streaming = false).size)
+    fun everyQuestionWaitingInAReplyIsInTheOneComputerCard() {
+        val asks = (1..5).map { computer("scroll", "s$it", output = null, state = ToolApprovalState.Pending) }
+        val blocks = threadReplyBlocks(listOf(UIMessagePart.Text("我滚一滚")) + asks, recordSteps = false)
+        assertEquals(2, blocks.size)
+        val card = blocks[1] as ThreadReplyBlock.Computer
+        assertEquals(listOf("s1", "s2", "s3", "s4", "s5"), pendingComputerActions(card.tools).map { it.toolCallId })
+    }
+
+    @Test
+    fun onlyTheStillWaitingActionsAreAskedAboutInTheOrderAsked() {
+        val tools = listOf(
+            computer("click", "done"),
+            computer("scroll", "no", output = null, state = ToolApprovalState.Denied("no")),
+            computer("scroll", "b", output = null, state = ToolApprovalState.Pending),
+            boxTool("workspace_shell", "run"),
+            computer("scroll", "c", output = null, state = ToolApprovalState.Pending),
+        )
+        assertEquals(listOf("b", "c"), pendingComputerActions(tools).map { it.toolCallId })
+        // Once the first is answered the next one is first.
+        val answered = tools.map { if (it.toolCallId == "b") it.copy(approvalState = ToolApprovalState.Approved) else it }
+        assertEquals(listOf("c"), pendingComputerActions(answered).map { it.toolCallId })
+    }
+
+    @Test
+    fun theForegroundWarningNeverShowsInTheMiniBox() {
+        val front = """{"delivery_mode":"foreground"}"""
+        assertTrue(computer("click", input = front).interruptsOwner())
+        assertTrue(computer("bring_to_front").interruptsOwner())
+        assertFalse(computer("click").interruptsOwner())
+        assertFalse(computer("bring_to_front").copy(workspaceTarget = space).interruptsOwner())
+        assertFalse(computer("click", input = front).copy(workspaceTarget = space).interruptsOwner())
     }
 
     @Test

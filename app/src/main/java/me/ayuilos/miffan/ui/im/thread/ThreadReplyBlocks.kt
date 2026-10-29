@@ -18,10 +18,9 @@ internal sealed interface ThreadReplyBlock {
 
 /**
  * [recordSteps] off: the reply's plain steps stay hidden, and do not split the computer actions around them.
- * While the reply is [streaming], a computer action waiting for the owner joins the computer card, which asks
- * in place; otherwise it stays a prompt of its own.
+ * Computer actions waiting for the owner join the computer card too, which asks for them one by one in place.
  */
-internal fun threadReplyBlocks(parts: List<UIMessagePart>, recordSteps: Boolean, streaming: Boolean = false): List<ThreadReplyBlock> {
+internal fun threadReplyBlocks(parts: List<UIMessagePart>, recordSteps: Boolean): List<ThreadReplyBlock> {
     val blocks = mutableListOf<ThreadReplyBlock>()
     val hasComputer = parts.any {
         it is UIMessagePart.Tool && it.isComputerTool() && it.approvalState !is ToolApprovalState.Denied
@@ -36,10 +35,8 @@ internal fun threadReplyBlocks(parts: List<UIMessagePart>, recordSteps: Boolean,
             is UIMessagePart.Text -> if (part.text.isNotBlank()) blocks += ThreadReplyBlock.Content(part)
             is UIMessagePart.Image, is UIMessagePart.Document -> blocks += ThreadReplyBlock.Content(part)
             is UIMessagePart.Tool -> when {
-                streaming && part.isComputerTool() && part.approvalState is ToolApprovalState.Pending -> addComputer(part)
                 // Answered questions are part of the card (a declined one shows as how the record ends), not lines of their own.
-                part.isComputerTool() && part.approvalState !is ToolApprovalState.Pending &&
-                    (part.approvalState !is ToolApprovalState.Denied || hasComputer) -> addComputer(part)
+                part.isComputerTool() && (part.approvalState !is ToolApprovalState.Denied || hasComputer) -> addComputer(part)
                 part.isThreadPrompt() || part.isImageGeneration() || part.addedCalendarEvent() != null ->
                     blocks += ThreadReplyBlock.Content(part)
                 // What it does in its own mini box is computer work too, once there is a record to put it in.

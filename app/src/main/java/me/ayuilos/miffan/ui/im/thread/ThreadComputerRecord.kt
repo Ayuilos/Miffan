@@ -11,6 +11,7 @@ import me.ayuilos.miffan.data.ai.tools.SPACE_HANDOFF_TOOL
 import me.ayuilos.miffan.data.ai.tools.spaceSharedPath
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.ui.components.message.ComputerToolStatus
+import me.ayuilos.miffan.ui.components.message.computerToolNeedsForegroundWarning
 import me.ayuilos.miffan.ui.components.message.computerToolStatus
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
@@ -84,6 +85,14 @@ internal fun declinedAtEnd(tools: List<UIMessagePart.Tool>): UIMessagePart.Tool?
 /** How the record ends badly: its last step failed, unless the owner said no after that, which is no failure. */
 internal fun recordFailure(steps: List<ComputerRecordStep>, tools: List<UIMessagePart.Tool>): ComputerRecordStep? =
     if (declinedAtEnd(tools) != null) null else steps.unresolvedFailure()
+
+/** The computer actions of a reply that wait for the owner, in the order the partner asked. */
+internal fun pendingComputerActions(tools: List<UIMessagePart.Tool>): List<UIMessagePart.Tool> =
+    tools.filter { it.isComputerTool() && it.approvalState is ToolApprovalState.Pending }
+
+/** The action would bring a window to the front over the owner's own work; in the partner's mini box it cannot. */
+internal fun UIMessagePart.Tool.interruptsOwner(): Boolean =
+    !inMiniBox() && computerToolNeedsForegroundWarning(toolName, inputAsJson())
 
 /** What the live card is on: the step still running, else the latest one. */
 internal fun List<ComputerRecordStep>.currentStep(): ComputerRecordStep? = lastOrNull { it.running } ?: lastOrNull()

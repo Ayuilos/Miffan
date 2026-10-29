@@ -139,7 +139,7 @@ internal fun ThreadMessageBubble(
     val liveComputer = computerWorkIsLive(parts, item.streaming)
     val steps = remember(parts) { if (user) emptyList() else threadSteps(parts) }
     val recordSteps = steps.worthRecording()
-    val blocks = remember(parts, recordSteps, item.streaming) { threadReplyBlocks(parts, recordSteps, item.streaming) }
+    val blocks = remember(parts, recordSteps) { threadReplyBlocks(parts, recordSteps) }
     val liveStatus = threadLiveStatus(parts, item.streaming, item.segmentId in connection.connected, connection.online)
     // The record and the live computer card already say what is happening.
     val status = if (liveComputer || recordSteps && item.streaming) null else liveStatus
@@ -211,10 +211,6 @@ internal fun ThreadMessageBubble(
                             }
                             is UIMessagePart.Tool -> if (part.isThreadPrompt()) {
                                 if (part.isPartnerMessage()) ThreadPartnerMessage(part, assistant, onToolApproval)
-                                else if (part.isComputerTool() && part.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending) ThreadComputerApprovalCard(part,
-                                    computerTargetName(part, computer, stringResource(R.string.im_computer_computer),
-                                        stringResource(R.string.im_computer_detail_user_space)),
-                                    canOpenComputer(part, computer), onComputerScreen, onToolApproval)
                                 else ThreadToolPrompt(part, onToolApproval, onToolAnswer, assistant, item.segmentId.toString())
                             } else if (part.isImageGeneration()) ThreadGeneratedImages(part, item.streaming)
                             // Added without asking (the owner allowed it for good): the event still shows.
