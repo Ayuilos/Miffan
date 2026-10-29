@@ -1,14 +1,19 @@
 package me.ayuilos.miffan.data.ai.computer
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.core.net.toUri
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import me.rerere.ai.ui.UIMessagePart
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /** A picture of a computer's screen and when it was taken. [url] is a file URI that changes with every new picture. */
@@ -22,6 +27,7 @@ data class ComputerSnapshot(val url: String, val at: Long)
 class ComputerSnapshots(context: Context) {
     private val dir = File(context.filesDir, "computer-snapshots")
     private val changes = MutableStateFlow(0L)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun latest(workspaceId: String): Flow<ComputerSnapshot?> =
         changes.map { find(workspaceId) }.distinctUntilChanged()
@@ -41,6 +47,19 @@ class ComputerSnapshots(context: Context) {
         file.writeBytes(jpeg)
         prune(workspaceId, keep = file)
         changes.value = now
+    }
+
+    /** Keeps what [frame] shows now; it is copied at once, so the caller may keep drawing into it. */
+    fun capture(workspaceId: String, frame: Bitmap) {
+        val copy = runCatching { frame.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull() ?: return
+        scope.launch {
+            val jpeg = ByteArrayOutputStream().use { out ->
+                copy.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                copy.recycle()
+                out.toByteArray()
+            }
+            runCatching { save(workspaceId, jpeg) }
+        }
     }
 
     /** Keeps the last screenshot among a tool's [output], if it has one. */

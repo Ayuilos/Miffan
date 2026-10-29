@@ -23,6 +23,9 @@ internal fun RemoteScreenViewport(
     modifier: Modifier = Modifier,
     /** The phone-side zoom buttons; small previews leave them out. */
     zoomControls: Boolean = true,
+    marker: RemoteScreenMarker? = null,
+    blocked: Boolean = false,
+    onBlockedTap: () -> Unit = {},
     failure: @Composable (RemoteScreenUiState) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -38,7 +41,7 @@ internal fun RemoteScreenViewport(
             val pixels = bitmap.takeIf { video == null }
             RemoteScreenCanvas(pixels?.width ?: connected.width, pixels?.height ?: connected.height, pixels, video,
                 frames, cursor, trackpad, platform == RemoteScreenPlatform.MACOS, vm, Modifier.fillMaxSize(),
-                zoomControls = zoomControls)
+                zoomControls = zoomControls, marker = marker, blocked = blocked, onBlockedTap = onBlockedTap)
         }
         when (val current = state) {
             RemoteScreenUiState.Connecting -> CircularProgressIndicator()

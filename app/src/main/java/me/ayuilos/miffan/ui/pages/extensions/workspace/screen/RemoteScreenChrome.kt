@@ -5,38 +5,23 @@ import android.content.res.Resources
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.Alignment
-import kotlinx.coroutines.delay
-import me.ayuilos.miffan.data.ai.computer.RemoteController
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -51,10 +36,6 @@ import me.ayuilos.miffan.data.repository.RemoteStreamCustom
 import me.ayuilos.miffan.data.repository.streamConfig
 import kotlin.math.roundToInt
 import me.ayuilos.miffan.utils.fileSizeToString
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Keyboard
-import me.rerere.hugeicons.stroke.UserSwitch
-import me.rerere.hugeicons.stroke.MinimizeScreen
 
 /**
  * Full screen for the remote desktop: landscape, no system bars (a swipe from the edge shows
@@ -76,53 +57,6 @@ internal fun RemoteScreenFullscreenEffect(enabled: Boolean) {
             controller.show(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = previousBehavior
             activity.requestedOrientation = previousOrientation
-        }
-    }
-}
-
-/**
- * The only controls left in full screen: a faint pill so it never hides much of the desktop. Who
- * drives the desktop lives here too, instead of the banner over the picture: a spinner while the
- * partner acts, and a hand-back button (briefly labelled) while it waits for the user.
- */
-@Composable
-internal fun RemoteScreenFullscreenControls(
-    keyboard: Boolean,
-    onKeyboard: () -> Unit,
-    onExit: () -> Unit,
-    controller: RemoteController,
-    partnerBusy: Boolean,
-    partnerWaiting: Boolean,
-    onHandBack: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val shown = shownController(controller, partnerBusy, partnerWaiting)
-    var spelled by remember { mutableStateOf(false) }
-    LaunchedEffect(shown, partnerWaiting) {
-        spelled = shown == RemoteController.USER
-        if (spelled) {
-            delay(USER_NOTICE_MILLIS)
-            spelled = false
-        }
-    }
-    Surface(color = Color.Black.copy(alpha = 0.45f), contentColor = Color.White, shape = CircleShape, modifier = modifier) {
-        Row(Modifier.animateContentSize(tween(150)), verticalAlignment = Alignment.CenterVertically) {
-            when (shown) {
-                RemoteController.PARTNER -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                }
-                RemoteController.USER -> {
-                    if (spelled) Text(stringResource(R.string.workspace_screen_user_operating), Modifier.padding(start = 16.dp),
-                        style = MaterialTheme.typography.labelLarge)
-                    IconButton(onClick = onHandBack) { Icon(HugeIcons.UserSwitch, stringResource(R.string.workspace_screen_hand_back)) }
-                }
-                RemoteController.IDLE -> Unit
-            }
-            IconButton(onClick = onKeyboard) {
-                Icon(HugeIcons.Keyboard, stringResource(R.string.workspace_screen_keyboard),
-                    tint = if (keyboard) MaterialTheme.colorScheme.primary else Color.White)
-            }
-            IconButton(onClick = onExit) { Icon(HugeIcons.MinimizeScreen, stringResource(R.string.workspace_screen_fullscreen_exit)) }
         }
     }
 }

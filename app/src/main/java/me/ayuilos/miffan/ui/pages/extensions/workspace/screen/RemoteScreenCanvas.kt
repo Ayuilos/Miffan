@@ -24,6 +24,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,6 +85,11 @@ internal fun RemoteScreenCanvas(
     vm: RemoteScreenVM,
     modifier: Modifier = Modifier,
     zoomControls: Boolean = true,
+    /** The spot an action awaiting approval would act on; drawn at the picture's zoom and pan. */
+    marker: RemoteScreenMarker? = null,
+    /** Touches only call [onBlockedTap] (one per tap) instead of reaching the computer. */
+    blocked: Boolean = false,
+    onBlockedTap: () -> Unit = {},
 ) {
     var macExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -107,6 +114,9 @@ internal fun RemoteScreenCanvas(
         delay(ScreenGestures.PREDICTED_POINTER_HOLD_MS)
         predicted.animateTo(0f, tween(ScreenGestures.PREDICTED_POINTER_FADE_MS))
     }
+    val markerStyle = RemoteScreenMarkerStyle(MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.onTertiary, rememberTextMeasurer())
+    var blockedDown by remember { mutableStateOf<Offset?>(null) }
+    val slop = remember(context) { ViewConfiguration.get(context).scaledTouchSlop.toFloat() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(input, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -121,7 +131,19 @@ internal fun RemoteScreenCanvas(
     Canvas(Modifier.fillMaxSize().onSizeChanged { viewSize.value = Size(it.width.toFloat(), it.height.toFloat()); input.resize(viewSize.value) }
         // Touching the picture folds the desktop shortcuts away, without taking the touch.
         .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); macExpanded = false } }
-        .pointerInteropFilter { input.event(it) }) {
+        .pointerInteropFilter { event ->
+            if (!blocked) return@pointerInteropFilter input.event(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> blockedDown = Offset(event.x, event.y)
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> blockedDown = null
+                MotionEvent.ACTION_UP -> {
+                    val down = blockedDown
+                    if (down != null && hypot(event.x - down.x, event.y - down.y) < slop) onBlockedTap()
+                    blockedDown = null
+                }
+            }
+            true
+        }) {
         // The VM mutates the same Bitmap. Reading this State here invalidates drawing each frame
         // without recomposing the page or allocating another framebuffer.
         frameVersion.value
@@ -133,6 +155,7 @@ internal fun RemoteScreenCanvas(
                 dstSize = IntSize(max(1, (width * scale).roundToInt()), max(1, (height * scale).roundToInt())),
                 filterQuality = FilterQuality.Medium)
         }
+        if (marker != null) drawApprovalMarker(input.toViewport(Offset(marker.x * width, marker.y * height)), marker, markerStyle)
         if (trackpad && video != null && predicted.value > 0f) drawPredictedPointer(input.toViewport(input.pointer), predicted.value)
         if (trackpad) {
             val tip = input.toViewport(input.pointer)
