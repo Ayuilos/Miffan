@@ -407,6 +407,11 @@ class AgentThreadVM(
         viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved, via = via) }
     }
 
+    /** Answers several pending calls of [item] in one step, e.g. "allow these steps". */
+    fun answerToolApprovals(item: TimelineItem.Message, toolCallIds: List<String>, approved: Boolean) {
+        viewModelScope.launch { threadService.answerTools(assistantId, item.segmentId, toolCallIds, approved) }
+    }
+
     /** The extra answers a card in [item] can give: always allow, and allow with corrected arguments. */
     internal fun toolCardActions(item: TimelineItem.Message) = ToolCardActions(
         alwaysAllow = { id -> viewModelScope.launch { threadService.alwaysAllowTool(assistantId, item.segmentId, id) } },

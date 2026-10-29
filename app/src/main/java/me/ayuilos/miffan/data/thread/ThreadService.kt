@@ -299,6 +299,13 @@ class ThreadService(
         chatService.handleToolApproval(segmentId, toolCallId, approved, answer = answer, via = via)
     }
 
+    /** Decides several pending calls of one reply together; see [ChatService.handleToolApprovals]. */
+    suspend fun answerTools(assistantId: Uuid, segmentId: Uuid, toolCallIds: List<String>, approved: Boolean,
+        via: me.rerere.ai.ui.ToolDecisionVia = me.rerere.ai.ui.ToolDecisionVia.CARD) {
+        chatService.openThreadSegment(segmentId, assistantId)
+        chatService.handleToolApprovals(segmentId, toolCallIds, approved, via = via)
+    }
+
     /** Allows this call and remembers its kind for the partner, so the same step no longer asks. */
     suspend fun alwaysAllowTool(assistantId: Uuid, segmentId: Uuid, toolCallId: String) {
         chatService.openThreadSegment(segmentId, assistantId)

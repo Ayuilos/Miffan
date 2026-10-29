@@ -981,6 +981,8 @@ class ChatService(
         via: ToolDecisionVia,
         standingKey: String? = null,
         editedInput: JsonObject? = null,
+        /** Other pending calls of the same reply decided the same way in this one step. */
+        alsoIds: Set<String> = emptySet(),
     ): Job? {
         val session = getOrCreateSession(conversationId)
         val receiptId = terminalResultReceiptId(answer)
@@ -1002,7 +1004,7 @@ class ChatService(
         val batchIds = if (standingKey != null) session.state.value.currentMessageNodes.lastOrNull()
             ?.currentMessage?.getTools().orEmpty()
             .filter { it.isPending && !it.isExecuted && standingApprovalKey(it.toolName) == standingKey }
-            .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId)
+            .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId) + alsoIds
         val hasOtherPendingTools = session.state.value.currentMessageNodes.any { node ->
             node.currentMessage.parts.any { part ->
                 part is UIMessagePart.Tool && part.isPending && part.toolCallId !in batchIds
@@ -1025,7 +1027,8 @@ class ChatService(
                 }
                 val approvedIds = if (standingKey != null) tip?.getTools().orEmpty()
                     .filter { it.isPending && !it.isExecuted && standingApprovalKey(it.toolName) == standingKey }
-                    .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId)
+                    .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId) +
+                    tip?.getTools().orEmpty().filter { it.toolCallId in alsoIds && it.isPending && !it.isExecuted }.map { it.toolCallId }
                 val newApprovalState = when {
                     answer != null -> ToolApprovalState.Answered(answer)
                     approved -> ToolApprovalState.Approved
@@ -1096,6 +1099,15 @@ class ChatService(
     }
 
     /** Persists an eligible pending call's standing grant and approves matching calls in this reply. */
+    /**
+     * Decides several pending calls of the latest reply at once. Each decision starts the turn's next step and cancels
+     * the one before it, so deciding them one by one in a row would lose all but the last.
+     */
+    fun handleToolApprovals(conversationId: Uuid, toolCallIds: List<String>, approved: Boolean, via: ToolDecisionVia = ToolDecisionVia.CARD) {
+        val first = toolCallIds.firstOrNull() ?: return
+        applyToolApproval(conversationId, first, approved, "", null, via, alsoIds = toolCallIds.drop(1).toSet())
+    }
+
     fun alwaysAllowTool(conversationId: Uuid, toolCallId: String) {
         val call = getOrCreateSession(conversationId).state.value.currentMessageNodes.lastOrNull()
             ?.currentMessage?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted } ?: return

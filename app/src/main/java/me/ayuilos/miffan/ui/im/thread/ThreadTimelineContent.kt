@@ -120,6 +120,8 @@ internal fun ThreadMessageBubble(
     onFavorite: (() -> Unit)? = null,
     onQuote: (MessageRef) -> Unit = {},
     onToolApproval: (String, Boolean) -> Unit = { _, _ -> },
+    /** Decides several pending calls together; one by one in a row would lose all but the last. */
+    onToolApprovals: (List<String>, Boolean) -> Unit = { ids, approved -> ids.forEach { onToolApproval(it, approved) } },
     onToolAnswer: (String, String) -> Unit = { _, _ -> },
     computer: PartnerComputer? = null,
     onComputerScreen: () -> Unit = {},
@@ -188,14 +190,15 @@ internal fun ThreadMessageBubble(
                                 ThreadStepRecord(block.steps, live = current, liveStatus = liveStatus)
                             }
                             is ThreadReplyBlock.Computer -> key(block.tools.first().toolCallId) {
-                                ThreadComputerBlock(block.tools, live = liveComputer, computer, onComputerScreen, onToolApproval, threadAssistantName(assistant))
+                                ThreadComputerBlock(block.tools, live = liveComputer, computer, onComputerScreen, onToolApproval, threadAssistantName(assistant),
+                                    onApproveAll = { onToolApprovals(it, true) })
                             }
                             is ThreadReplyBlock.Content -> Unit
                         }
                         val part = (block as? ThreadReplyBlock.Content)?.part
                         // Several plain requests waiting together: one "allow all" right above the first of them.
                         if (batch.size > 1 && part === batch.first())
-                            ThreadBatchApprovalHeader(batch.size) { batch.forEach { onToolApproval(it.toolCallId, true) } }
+                            ThreadBatchApprovalHeader(batch.size) { onToolApprovals(batch.map { it.toolCallId }, true) }
                         when (part) {
                             is UIMessagePart.Text -> if (part.text.isBlank()) Unit
                             // The owner's own words with @partners in them read as typed, the mentions colored as in the input.

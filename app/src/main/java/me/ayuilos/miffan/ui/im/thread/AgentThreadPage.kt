@@ -338,6 +338,7 @@ fun AgentThreadPage(
                 favorited = item.node.id in favoriteNodes, onFavorite = { vm.toggleFavorite(item, assistantName) },
                 onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
+                onToolApprovals = { ids, approved -> vm.answerToolApprovals(item, ids, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
                 assistant = assistant, connection = connection)

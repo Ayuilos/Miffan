@@ -58,6 +58,7 @@ import me.ayuilos.miffan.utils.computerActionTitle
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.Alert02
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
@@ -141,6 +142,8 @@ internal fun ThreadComputerBlock(
     onScreen: () -> Unit,
     onApproval: (String, Boolean) -> Unit = { _, _ -> },
     partner: String = "",
+    /** Allows several waiting actions in one step; deciding them one by one in a row would lose all but the last. */
+    onApproveAll: (List<String>) -> Unit = { ids -> ids.forEach { onApproval(it, true) } },
 ) {
     // A question waiting for the owner always belongs to the live card, even if the reply has moved on.
     val live = live || pendingComputerActions(tools).isNotEmpty()
@@ -155,7 +158,7 @@ internal fun ThreadComputerBlock(
     // The owner said no to the last thing it asked: the record ends with that.
     val declined = declinedAtEnd(tools)
     when {
-        live -> ThreadComputerLiveCard(tools, steps, evidence?.screenshot, name, canOpen, onScreen, onApproval, partner)
+        live -> ThreadComputerLiveCard(tools, steps, evidence?.screenshot, name, canOpen, onScreen, onApproval, partner, onApproveAll)
         steps.isNotEmpty() -> ThreadComputerRecordCard(key, steps, recordFailure(steps, tools), declined, evidence?.screenshot, name, miniBox, canOpen, onScreen)
         evidence != null -> ThreadComputerObserved(evidence.screenshot, name, miniBox, canOpen, onScreen)
     }
@@ -301,6 +304,7 @@ private fun ThreadComputerLiveCard(
     onScreen: () -> Unit,
     onApproval: (String, Boolean) -> Unit,
     partner: String,
+    onApproveAll: (List<String>) -> Unit,
 ) {
     val waiting = pendingComputerActions(tools)
     val pending = waiting.firstOrNull()
@@ -308,8 +312,12 @@ private fun ThreadComputerLiveCard(
     val action = pending ?: current?.tool
     val caption = pending?.let { computerActionText(it) } ?: current?.text()
     val position = if (current == null) 1 else steps.indexOf(current) + 1
-    val stepLine = if (current == null) stringResource(R.string.im_computer_operating, name)
-        else stringResource(R.string.im_computer_live_step, name, position)
+    val stepLine = when {
+        // Nothing moves while it waits for the owner, so the line says so instead of counting steps.
+        pending != null -> stringResource(R.string.workspace_screen_status_approval, partner.ifBlank { stringResource(R.string.im_computer_partner) })
+        current == null -> stringResource(R.string.im_computer_operating, name)
+        else -> stringResource(R.string.im_computer_live_step, name, position)
+    }
     // x,y are places on the picture the partner saw; the action's own picture already shows the result.
     val pointerTool = action?.takeIf { tool -> tool.hasPointer() && tool.output.none { it is UIMessagePart.Image } }
     val open = if (canOpen) onScreen else null
@@ -319,7 +327,8 @@ private fun ThreadComputerLiveCard(
         } else Surface(onClick = onScreen, enabled = canOpen, color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(14.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (pending == null) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Icon(HugeIcons.AlertCircle, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
                 Column(Modifier.weight(1f)) {
                     Text(stepLine, style = MaterialTheme.typography.titleSmall)
                     caption?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
@@ -327,7 +336,7 @@ private fun ThreadComputerLiveCard(
                 if (canOpen) ViewScreenLink()
             }
         }
-        if (pending != null) ComputerInPlaceApproval(waiting, name, partner, onApproval)
+        if (pending != null) ComputerInPlaceApproval(waiting, name, partner, onApproval, onApproveAll)
         else if (screenshot != null) Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stepLine, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -413,7 +422,8 @@ private fun BoxScope.ComputerHighlight(at: Offset, color: Color, click: Boolean)
  * away. Actions asked together are answered one by one, or all at once; saying no to one leaves the rest waiting.
  */
 @Composable
-private fun ComputerInPlaceApproval(waiting: List<UIMessagePart.Tool>, name: String, partner: String, onApproval: (String, Boolean) -> Unit) {
+private fun ComputerInPlaceApproval(waiting: List<UIMessagePart.Tool>, name: String, partner: String, onApproval: (String, Boolean) -> Unit,
+    onApproveAll: (List<String>) -> Unit) {
     val tool = waiting.first()
     var answered by remember(tool.toolCallId) { mutableStateOf(false) }
     var details by remember(tool.toolCallId) { mutableStateOf(false) }
@@ -445,7 +455,7 @@ private fun ComputerInPlaceApproval(waiting: List<UIMessagePart.Tool>, name: Str
                 Text(stringResource(R.string.im_computer_approval_what), style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (waiting.size > 1) TextButton(enabled = !answered, onClick = { answered = true; waiting.forEach { onApproval(it.toolCallId, true) } }) {
+            if (waiting.size > 1) TextButton(enabled = !answered, onClick = { answered = true; onApproveAll(waiting.map { it.toolCallId }) }) {
                 Text(stringResource(R.string.im_computer_allow_all), style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
