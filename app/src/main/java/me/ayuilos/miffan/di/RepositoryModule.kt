@@ -151,7 +151,8 @@ val repositoryModule = module {
 
     single { me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry(get(), get<AppScope>()) }
     single { me.ayuilos.miffan.data.ai.computer.PartnerComputers(get(), get(), get()) }
-    single { me.ayuilos.miffan.data.ai.computer.PartnerSpaces(get(), get(), get<AppScope>()) }
+    single { me.ayuilos.miffan.data.ai.computer.PartnerSpaces(get(), get(), get<AppScope>(),
+        me.ayuilos.miffan.data.ai.computer.SpaceFileLog(File(get<Context>().filesDir, "space-file-log"))) }
     single { me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup(get(), get(), get(), get<android.content.Context>().resources) }
     single { me.ayuilos.miffan.data.ai.computer.ComputerStatusStore(get()) }
     single { me.ayuilos.miffan.data.ai.computer.ComputerSnapshots(get()) }

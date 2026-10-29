@@ -2,12 +2,15 @@ package me.ayuilos.miffan.data.ai.computer
 
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -92,6 +95,18 @@ data class SpaceArrivals(val names: List<String>, val at: Long)
 /** What the Space uses now: memory as the kernel counts it for its limit, CPU as a share of its cores. */
 data class SpaceUsage(val memoryMb: Int, val memoryLimitMb: Int?, val cpuPercent: Int?)
 
+/** Whether the Space's container runs, as the host lists it; [UNKNOWN] when the host does not list it (its daemon is off). */
+enum class SpacePower { AWAKE, ASLEEP, UNKNOWN, UNREACHABLE }
+
+internal fun spacePowerOf(probe: CuaSpaceProbe, spaceName: String): SpacePower {
+    val entry = probe.spaces.firstOrNull { it.id == spaceName || it.id.endsWith(":$spaceName") } ?: return SpacePower.UNKNOWN
+    return when (entry.state?.lowercase()) {
+        "running" -> SpacePower.AWAKE
+        "stopped", "paused", "exited" -> SpacePower.ASLEEP
+        else -> SpacePower.UNKNOWN
+    }
+}
+
 /**
  * A partner's own computer: a cua Space on one of the user's computers, bound to the partner as a
  * SPACE workspace. Every step runs the host helper's `space` command over SSH.
@@ -100,8 +115,11 @@ class PartnerSpaces(
     private val settingsStore: SettingsStore,
     private val workspaces: WorkspaceRepository,
     private val scope: CoroutineScope,
+    private val fileLog: SpaceFileLog,
 ) {
     private val lastChecks = ConcurrentHashMap<String, CuaSpaceNetcheck>()
+    private val lastPowers = ConcurrentHashMap<String, SpacePower>()
+    private val lastUsages = ConcurrentHashMap<String, SpaceUsage>()
     private val syncs = ConcurrentHashMap<String, Sync>()
     private val arrivals = ConcurrentHashMap<String, SpaceArrivals>()
 
@@ -182,6 +200,7 @@ class PartnerSpaces(
         val tier = SpaceTier.of(workspace.spaceCpus, workspace.spaceMemoryMb) ?: SpaceTier.DEFAULT
         requireSuccess(parse<SpaceResult>(workspaces.runSpaceHelper(requireNotNull(workspace.remoteHostId),
             listOf("reset", requireNotNull(workspace.spaceName)) + tier.args(), timeoutMillis = CREATE_TIMEOUT_MILLIS)))
+        fileLog.clear(workspaceId)
         // A reset Space is a new machine: calls prepared for the old one must not land on it.
         settingsStore.update { settings ->
             settings.copy(assistants = settings.assistants.map {
@@ -230,8 +249,15 @@ class PartnerSpaces(
             listOf("handoff", "out", requireNotNull(workspace.spaceName)),
             stdin = JsonInstant.encodeToString(HandoffRequest(folder, path)).encodeToByteArray(), timeoutMillis = HANDOFF_TIMEOUT_MILLIS))
         result.error?.let { throw CuaSpaceException(it, result.detail) }
+        fileLog.record(workspaceId, listOf(path.trim().trimEnd('/')), SpaceFileDirection.FROM_PARTNER)
         return result.copied.map { "$folder/$it" }
     }
+
+    /** Which way files went between the owner and this Space, newest first. */
+    fun fileNotes(workspaceId: String): Flow<List<SpaceFileNote>> = fileLog.notes(workspaceId)
+
+    /** [path] (relative to the Shared folder) was deleted. */
+    fun forgetFile(workspaceId: String, path: String) = fileLog.forget(workspaceId, path)
 
     /**
      * Brings what the owner newly put in the host's handoff folder into the Space's Shared folder, at most
@@ -252,6 +278,7 @@ class PartnerSpaces(
     fun noteArrivals(workspaceId: String, names: List<String>) {
         if (names.isEmpty()) return
         val now = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) { fileLog.record(workspaceId, names, SpaceFileDirection.TO_PARTNER, now) }
         arrivals.merge(workspaceId, SpaceArrivals(names, now)) { old, new ->
             if (now - old.at < ARRIVALS_SHOWN_MILLIS) SpaceArrivals((old.names + new.names).distinct(), now) else new
         }
@@ -267,13 +294,39 @@ class PartnerSpaces(
         noteArrivals(workspaceId, result.copied)
     }
 
-    /** What the Space uses now, read from its cgroup; null when it cannot be read. */
+    /**
+     * What the Space uses now, read from its cgroup; null when it cannot be read. Any command in the Space
+     * starts a stopped one first, so ask only when [power] says it is awake.
+     */
     suspend fun usage(workspaceId: String): SpaceUsage? {
         val workspace = space(workspaceId)
         val result = workspaces.runInSpace(workspaceId, USAGE_COMMAND, 15_000)
         if (result.exitCode != 0) return null
-        return parseSpaceUsage(result.stdout, workspace.spaceCpus)
+        return parseSpaceUsage(result.stdout, workspace.spaceCpus)?.also { lastUsages[workspaceId] = it }
     }
+
+    /** The last usage read in this run of the app. */
+    fun lastUsage(workspaceId: String): SpaceUsage? = lastUsages[workspaceId]
+
+    /**
+     * Whether the Space is awake, from the host's read-only listing: unlike a command in the Space it does not
+     * wake a sleeping one. [SpacePower.UNREACHABLE] when the host does not answer.
+     */
+    suspend fun power(workspaceId: String): SpacePower {
+        val workspace = space(workspaceId)
+        val result = try {
+            spacePowerOf(probe(requireNotNull(workspace.remoteHostId)), requireNotNull(workspace.spaceName))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            SpacePower.UNREACHABLE
+        }
+        lastPowers[workspaceId] = result
+        return result
+    }
+
+    /** The last answer of [power] in this run of the app. */
+    fun lastPower(workspaceId: String): SpacePower? = lastPowers[workspaceId]
 
     /** Deletes the Space on the host, then its workspace (unbinding the partner). */
     suspend fun delete(workspaceId: String) {
@@ -282,6 +335,10 @@ class PartnerSpaces(
             listOf("delete", requireNotNull(workspace.spaceName)), timeoutMillis = 120_000))
         if (result.error != null && result.error != "not_found") throw CuaSpaceException(result.error, result.detail)
         workspaces.delete(workspaceId)
+        fileLog.clear(workspaceId)
+        lastPowers.remove(workspaceId)
+        lastUsages.remove(workspaceId)
+        lastChecks.remove(workspaceId)
     }
 
     private suspend fun space(workspaceId: String): WorkspaceEntity =

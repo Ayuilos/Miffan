@@ -8,33 +8,54 @@ import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.text.format.DateUtils
 import java.io.File
+import java.io.FilterInputStream
+import java.io.InputStream
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
+import me.ayuilos.miffan.data.ai.computer.SpaceFileDirection
+import me.ayuilos.miffan.data.model.Avatar
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
-import me.ayuilos.miffan.ui.im.ImCardDivider
-import me.ayuilos.miffan.ui.im.ImCardGroup
 import me.ayuilos.miffan.ui.im.ImEmpty
-import me.ayuilos.miffan.ui.im.ImListRow
 import me.ayuilos.miffan.ui.im.ImPageBar
 import me.ayuilos.miffan.ui.im.ImPartnerVM
 import me.ayuilos.miffan.ui.im.imChatTime
@@ -45,8 +66,14 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete02
 import me.rerere.hugeicons.stroke.Download04
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Exchange01
 import me.rerere.hugeicons.stroke.File01
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.FolderAdd
+import me.rerere.hugeicons.stroke.FolderOpen
+import me.rerere.hugeicons.stroke.SmartPhone01
+import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Share08
 import me.rerere.workspace.WorkspaceFileEntry
@@ -54,6 +81,8 @@ import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
+import android.content.ClipData
+import android.content.ClipboardManager
 import kotlin.uuid.Uuid
 
 /**
@@ -61,6 +90,7 @@ import kotlin.uuid.Uuid
  * save or share, and files to give it. What the owner adds here the partner hears about on its next turn,
  * like files dropped in the handoff folder on the host.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PartnerSpaceFilesPage(assistantId: Uuid) {
     val partnerVm: ImPartnerVM = koinViewModel(key = assistantId.toString(), parameters = { parametersOf(assistantId) })
@@ -75,11 +105,22 @@ fun PartnerSpaceFilesPage(assistantId: Uuid) {
         viewModel(key = "space-files-$id") { SpaceFilesVM(context.applicationContext as Application, id, repository, spaces) }
     }
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val failed = stringResource(R.string.im_space_files_failed)
     val tooLarge = stringResource(R.string.im_space_files_too_large)
+    val uploaded = stringResource(R.string.im_space_files_uploaded, name)
+    val saved = stringResource(R.string.im_space_files_saved)
+    val deleted = stringResource(R.string.im_space_files_deleted)
+    val copied = stringResource(R.string.im_space_handoff_copied)
     LaunchedEffect(vm) {
         vm?.messages?.collect { message ->
-            snackbar.showSnackbar(when (message) { SpaceFilesMessage.FAILED -> failed; SpaceFilesMessage.TOO_LARGE -> tooLarge })
+            snackbar.showSnackbar(when (message) {
+                SpaceFilesMessage.FAILED -> failed
+                SpaceFilesMessage.TOO_LARGE -> tooLarge
+                SpaceFilesMessage.UPLOADED -> uploaded
+                SpaceFilesMessage.SAVED -> saved
+                SpaceFilesMessage.DELETED -> deleted
+            })
         }
     }
     LaunchedEffect(vm) {
@@ -89,6 +130,9 @@ fun PartnerSpaceFilesPage(assistantId: Uuid) {
         }
     }
     val state = vm?.state?.collectAsStateWithLifecycle()?.value
+    val notes by remember(spaces, workspaceId) { workspaceId?.let { spaces.fileNotes(it) } ?: flowOf(emptyList()) }
+        .collectAsStateWithLifecycle(emptyList())
+    val directions = remember(notes) { notes.associate { it.path to it.direction } }
     val folder = state?.folder.orEmpty()
     BackHandler(enabled = folder.isNotEmpty()) { vm?.open(folder.substringBeforeLast('/', "")) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -100,29 +144,26 @@ fun PartnerSpaceFilesPage(assistantId: Uuid) {
         saving = null
         if (uri != null && entry != null) vm?.save(entry, uri)
     }
+    var acting by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var deleting by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
 
     Scaffold(
         topBar = {
-            ImPageBar(if (folder.isEmpty()) stringResource(R.string.im_space_files_title, name) else folder.substringAfterLast('/'),
+            ImPageBar(if (folder.isEmpty()) stringResource(R.string.im_space_files_page_title) else folder.substringAfterLast('/'),
                 onBack = if (folder.isNotEmpty()) ({ vm?.open(folder.substringBeforeLast('/', "")) }) else null)
         },
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = {
-            if (state != null && state.error == null) ExtendedFloatingActionButton(
-                onClick = { if (state.upload == null) pick.launch(arrayOf("*/*")) },
-                icon = { Icon(HugeIcons.Add01, null) },
-                text = { Text(stringResource(R.string.im_space_files_add)) },
-            )
+        bottomBar = {
+            if (state != null && state.error == null) Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)
+                .navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)) {
+                Button(onClick = { pick.launch(arrayOf("*/*")) }, enabled = state.upload == null, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                    Icon(HugeIcons.Add01, null, Modifier.size(19.dp))
+                    Text(stringResource(R.string.im_space_files_add), Modifier.padding(start = 8.dp))
+                }
+            }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            state?.upload?.let { upload ->
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(stringResource(R.string.im_space_files_uploading, upload.name, upload.index, upload.count),
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             when {
                 vm == null || state == null -> ImEmpty(stringResource(R.string.im_p5_missing_partner))
                 state.error != null -> Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
@@ -134,24 +175,59 @@ fun PartnerSpaceFilesPage(assistantId: Uuid) {
                 state.entries == null -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     CircularProgressIndicator()
                 }
-                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp)) {
-                    if (folder.isEmpty()) item("about") {
-                        Text(stringResource(R.string.im_space_files_about, name), Modifier.padding(start = 4.dp, end = 4.dp, bottom = 12.dp),
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (state.entries.isEmpty()) item("empty") { ImEmpty(stringResource(R.string.im_space_files_empty)) }
-                    else item("list") {
-                        ImCardGroup {
-                            state.entries.forEachIndexed { index, entry ->
-                                if (index > 0) ImCardDivider()
-                                SpaceFileRow(entry, busy = state.opening == entry.path,
-                                    onOpen = { if (entry.isDirectory) vm.open(vm.shared(entry.path)) else vm.view(entry) },
-                                    onSave = { saving = entry; save.launch(entry.name) },
-                                    onShare = { vm.share(entry) },
-                                    onDelete = { deleting = entry })
+                else -> {
+                    val groups = remember(state.entries) { groupSpaceFiles(state.entries, System.currentTimeMillis()) }
+                    val upload = state.upload
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (folder.isEmpty()) item("about") {
+                            SpaceFilesIntro(name, partner?.avatar, computer?.name, computer?.spaceHandoff, onCopy = { path ->
+                                context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Miffan", path))
+                                scope.launch { snackbar.showSnackbar(copied) }
+                            })
+                        }
+                        if (state.entries.isEmpty() && upload == null) item("empty") { SpaceFilesEmpty(name) }
+                        if (groups.today.isNotEmpty() || upload != null) item("today") {
+                            SpaceFileGroup(stringResource(R.string.im_space_files_today)) {
+                                upload?.let { SpaceUploadRow(it) }
+                                groups.today.forEach { entry ->
+                                    SpaceFileEntryRow(entry, name, directions[vm.shared(entry.path)], today = true, busy = state.opening == entry.path,
+                                        onOpen = { if (entry.isDirectory) vm.open(vm.shared(entry.path)) else vm.view(entry) }, onMore = { acting = entry })
+                                }
+                            }
+                        }
+                        if (groups.earlier.isNotEmpty()) item("earlier") {
+                            SpaceFileGroup(stringResource(R.string.im_space_files_earlier)) {
+                                groups.earlier.forEach { entry ->
+                                    SpaceFileEntryRow(entry, name, directions[vm.shared(entry.path)], today = false, busy = state.opening == entry.path,
+                                        onOpen = { if (entry.isDirectory) vm.open(vm.shared(entry.path)) else vm.view(entry) }, onMore = { acting = entry })
+                                }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+    acting?.let { entry ->
+        ModalBottomSheet(onDismissRequest = { acting = null }) {
+            Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 20.dp)) {
+                Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp)) {
+                    Text(entry.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    val direction = directions[vm?.shared(entry.path)]
+                    Text(spaceFileCaption(direction, name, spaceFileDetail(context, entry, System.currentTimeMillis())),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                SpaceSheetAction(if (entry.isDirectory) HugeIcons.FolderOpen else HugeIcons.View, stringResource(R.string.im_space_files_open)) {
+                    acting = null
+                    if (entry.isDirectory) vm?.open(vm.shared(entry.path)) else vm?.view(entry)
+                }
+                if (!entry.isDirectory) {
+                    SpaceSheetAction(HugeIcons.Download04, stringResource(R.string.im_space_files_save)) { acting = null; saving = entry; save.launch(entry.name) }
+                    SpaceSheetAction(HugeIcons.Share08, stringResource(R.string.im_space_files_share)) { acting = null; vm?.share(entry) }
+                }
+                SpaceSheetAction(HugeIcons.Delete02, stringResource(R.string.im_space_files_delete_here), MaterialTheme.colorScheme.error) {
+                    acting = null; deleting = entry
                 }
             }
         }
@@ -169,46 +245,173 @@ fun PartnerSpaceFilesPage(assistantId: Uuid) {
     }
 }
 
-@Composable
-private fun SpaceFileRow(
-    entry: WorkspaceFileEntry,
-    busy: Boolean,
-    onOpen: () -> Unit,
-    onSave: () -> Unit,
-    onShare: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val context = LocalContext.current
-    var menu by remember { mutableStateOf(false) }
-    val time = imChatTime(java.time.Instant.ofEpochMilli(entry.updatedAt))
-    ImListRow(
-        icon = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File01,
-        title = entry.name,
-        onClick = onOpen,
-        supporting = if (entry.isDirectory) time else "${Formatter.formatShortFileSize(context, entry.sizeBytes)} · $time",
-        trailing = {
-            if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            else Box {
-                IconButton(onClick = { menu = true }) {
-                    Icon(HugeIcons.MoreVertical, stringResource(R.string.im_space_files_more), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (!entry.isDirectory) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.im_space_files_save)) }, leadingIcon = { Icon(HugeIcons.Download04, null) },
-                            onClick = { menu = false; onSave() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.im_space_files_share)) }, leadingIcon = { Icon(HugeIcons.Share08, null) },
-                            onClick = { menu = false; onShare() })
-                    }
-                    DropdownMenuItem(text = { Text(stringResource(R.string.im_space_files_delete), color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = { Icon(HugeIcons.Delete02, null, tint = MaterialTheme.colorScheme.error) },
-                        onClick = { menu = false; onDelete() })
-                }
-            }
-        },
-    )
+/** What goes today and what is older; newest first. */
+internal data class SpaceFileGroups(val today: List<WorkspaceFileEntry>, val earlier: List<WorkspaceFileEntry>)
+
+internal fun groupSpaceFiles(entries: List<WorkspaceFileEntry>, now: Long, zone: ZoneId = ZoneId.systemDefault()): SpaceFileGroups {
+    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    val (here, before) = entries.sortedByDescending { it.updatedAt }.partition { Instant.ofEpochMilli(it.updatedAt).atZone(zone).toLocalDate() >= today }
+    return SpaceFileGroups(here, before)
 }
 
-internal enum class SpaceFilesMessage { FAILED, TOO_LARGE }
+/** "27 minutes ago"; "Just now" within the first minute. */
+@Composable
+internal fun spaceTimeAgo(at: Long): String {
+    val now = System.currentTimeMillis()
+    return if (now - at < DateUtils.MINUTE_IN_MILLIS) stringResource(R.string.im_space_time_now)
+        else DateUtils.getRelativeTimeSpanString(at, now, DateUtils.MINUTE_IN_MILLIS).toString()
+}
+
+/** Who a file came from (when known), in the partner's or the owner's colour, then [detail]. */
+@Composable
+internal fun spaceFileCaption(direction: SpaceFileDirection?, partner: String, detail: String): AnnotatedString {
+    direction ?: return AnnotatedString(detail)
+    val colors = MaterialTheme.colorScheme
+    return buildAnnotatedString {
+        withStyle(SpanStyle(color = if (direction == SpaceFileDirection.FROM_PARTNER) colors.tertiary else colors.primary, fontWeight = FontWeight.Medium)) {
+            append(stringResource(if (direction == SpaceFileDirection.FROM_PARTNER) R.string.im_space_from_partner else R.string.im_space_to_partner, partner))
+        }
+        if (detail.isNotEmpty()) append(" · $detail")
+    }
+}
+
+/** A file's type as a tile: its extension, or a folder mark. */
+@Composable
+internal fun SpaceFileTile(name: String, directory: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val ext = if (directory) "" else name.substringAfterLast('.', "").take(4).uppercase()
+    Surface(color = if (directory) colors.tertiaryContainer else colors.secondaryContainer,
+        contentColor = if (directory) colors.onTertiaryContainer else colors.onSecondaryContainer,
+        shape = RoundedCornerShape(10.dp), modifier = Modifier.size(44.dp)) {
+        Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+            if (ext.isNotEmpty()) Text(ext, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+            else Icon(if (directory) HugeIcons.Folder01 else HugeIcons.File01, null, Modifier.size(22.dp))
+        }
+    }
+}
+
+private fun spaceFileDetail(context: android.content.Context, entry: WorkspaceFileEntry, now: Long): String {
+    val time = DateUtils.getRelativeTimeSpanString(entry.updatedAt, now, DateUtils.MINUTE_IN_MILLIS).toString()
+    return if (entry.isDirectory) time else "${Formatter.formatShortFileSize(context, entry.sizeBytes)} · $time"
+}
+
+@Composable
+private fun SpaceFilesIntro(partner: String, avatar: Avatar?, host: String?, handoff: String?, onCopy: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(color = colors.surfaceContainerLow, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(color = colors.primaryContainer, contentColor = colors.onPrimaryContainer, shape = RoundedCornerShape(10.dp), modifier = Modifier.size(34.dp)) {
+                        Box(contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(HugeIcons.SmartPhone01, null, Modifier.size(18.dp)) }
+                    }
+                    Icon(HugeIcons.Exchange01, null, Modifier.size(18.dp), tint = colors.onSurfaceVariant)
+                    avatar?.let { AssistantAvatar(partner, it, Modifier.size(34.dp)) }
+                }
+                Text(stringResource(R.string.im_space_files_intro, partner), style = MaterialTheme.typography.bodyMedium)
+            }
+            if (host != null && handoff != null) Row(
+                Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(colors.surfaceContainerHigh)
+                    .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(HugeIcons.Folder01, null, Modifier.size(18.dp), tint = colors.onSurfaceVariant)
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.im_space_files_on_host, host), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("~/$handoff", style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(onClick = { onCopy("~/$handoff") }) {
+                    Icon(HugeIcons.Copy01, stringResource(R.string.im_space_files_copy_path), Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpaceFilesEmpty(partner: String) {
+    Column(Modifier.fillMaxWidth().padding(start = 28.dp, end = 28.dp, top = 40.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(22.dp), modifier = Modifier.size(72.dp)) {
+            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                Icon(HugeIcons.FolderAdd, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(stringResource(R.string.im_space_files_empty), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.im_space_files_empty_hint, partner), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun SpaceFileGroup(title: String, rows: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(vertical = 4.dp), content = rows)
+        }
+    }
+}
+
+@Composable
+private fun SpaceFileEntryRow(
+    entry: WorkspaceFileEntry,
+    partner: String,
+    direction: SpaceFileDirection?,
+    today: Boolean,
+    busy: Boolean,
+    onOpen: () -> Unit,
+    onMore: () -> Unit,
+) {
+    val context = LocalContext.current
+    val time = if (today) spaceTimeAgo(entry.updatedAt) else imChatTime(Instant.ofEpochMilli(entry.updatedAt))
+    val detail = if (entry.isDirectory) time else "${Formatter.formatShortFileSize(context, entry.sizeBytes)} · $time"
+    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).heightIn(min = 52.dp).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        SpaceFileTile(entry.name, entry.isDirectory)
+        Column(Modifier.weight(1f)) {
+            Text(entry.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(spaceFileCaption(direction, partner, detail), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (busy) Box(Modifier.size(48.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else IconButton(onClick = onMore) {
+            Icon(HugeIcons.MoreVertical, stringResource(R.string.im_space_files_actions, entry.name), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A file on its way up: its true share when the phone said how big it is, else just that it is going. */
+@Composable
+private fun SpaceUploadRow(upload: SpaceFilesState.Upload) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        SpaceFileTile(upload.name, directory = false)
+        Column(Modifier.weight(1f)) {
+            Text(upload.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val percent = upload.percent
+                if (percent != null) LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.weight(1f))
+                else LinearProgressIndicator(Modifier.weight(1f))
+                Text(listOfNotNull(percent?.let { "$it%" }, upload.count.takeIf { it > 1 }?.let { "${upload.index}/$it" }).joinToString(" · "),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpaceSheetAction(icon: ImageVector, text: String, color: Color = Color.Unspecified, onClick: () -> Unit) {
+    val tint = color.takeOrElse { MaterialTheme.colorScheme.onSurface }
+    Row(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 10.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Icon(icon, null, Modifier.size(20.dp), tint = tint)
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = tint)
+    }
+}
+
+internal enum class SpaceFilesMessage { FAILED, TOO_LARGE, UPLOADED, SAVED, DELETED }
 
 internal data class SpaceFilesState(
     /** Relative to the Shared folder; empty at its top. */
@@ -220,7 +423,10 @@ internal data class SpaceFilesState(
     /** The file being fetched to open or share. */
     val opening: String? = null,
 ) {
-    data class Upload(val name: String, val index: Int, val count: Int)
+    /** [bytes] of [total] read from the phone so far; [total] is null when the phone did not say how big the file is. */
+    data class Upload(val name: String, val index: Int, val count: Int, val bytes: Long = 0, val total: Long? = null) {
+        val percent: Int? get() = total?.takeIf { it > 0 }?.let { (bytes * 100 / it).toInt().coerceIn(0, 100) }
+    }
 }
 
 internal class SpaceFilesVM(
@@ -237,7 +443,7 @@ internal class SpaceFilesVM(
 
     /** [folder] relative to the Shared folder. */
     fun open(folder: String) {
-        _state.value = _state.value.copy(folder = folder, entries = null, error = null)
+        _state.update { it.copy(folder = folder, entries = null, error = null) }
         viewModelScope.launch { load(folder) }
     }
 
@@ -249,8 +455,8 @@ internal class SpaceFilesVM(
             list(folder)
         }
         if (_state.value.folder != folder) return
-        result.onSuccess { _state.value = _state.value.copy(entries = it, error = null) }
-            .onFailure { if (it is CancellationException) throw it; _state.value = _state.value.copy(error = it) }
+        result.onSuccess { list -> _state.update { it.copy(entries = list, error = null) } }
+            .onFailure { error -> if (error is CancellationException) throw error; _state.update { it.copy(error = error) } }
     }
 
     private suspend fun list(folder: String) =
@@ -276,23 +482,29 @@ internal class SpaceFilesVM(
                         return@forEachIndexed
                     }
                     val name = uniqueName(displayName, taken)
-                    _state.value = _state.value.copy(upload = SpaceFilesState.Upload(name, index + 1, uris.size))
+                    _state.update { it.copy(upload = SpaceFilesState.Upload(name, index + 1, uris.size, total = size)) }
                     val entry = withContext(Dispatchers.IO) {
                         requireNotNull(app.contentResolver.openInputStream(uri)) { "Cannot read $uri" }.use { input ->
-                            repository.importFile(workspaceId, WorkspaceStorageArea.FILES, absolute(folder), name, input,
-                                maxBytes = PartnerSpaces.PHONE_UPLOAD_MAX_BYTES)
+                            repository.importFile(workspaceId, WorkspaceStorageArea.FILES, absolute(folder), name, CountingInputStream(input) { read ->
+                                // Only a whole percent changes what is shown.
+                                _state.update { state ->
+                                    val upload = state.upload?.copy(bytes = read)
+                                    if (upload == null || upload.percent == state.upload.percent) state else state.copy(upload = upload)
+                                }
+                            }, maxBytes = PartnerSpaces.PHONE_UPLOAD_MAX_BYTES)
                         }
                     }
                     taken += name
                     added += shared(entry.path)
                 }
+                if (added.isNotEmpty()) messages.tryEmit(SpaceFilesMessage.UPLOADED)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
                 messages.tryEmit(SpaceFilesMessage.FAILED)
             } finally {
                 spaces.noteArrivals(workspaceId, added)
-                _state.value = _state.value.copy(upload = null)
+                _state.update { it.copy(upload = null) }
                 if (_state.value.folder == folder) load(folder)
             }
         }
@@ -306,7 +518,8 @@ internal class SpaceFilesVM(
                         repository.exportFile(workspaceId, WorkspaceStorageArea.FILES, entry.path, output)
                     }
                 }
-            }.onFailure { if (it is CancellationException) throw it; messages.tryEmit(SpaceFilesMessage.FAILED) }
+            }.onSuccess { messages.tryEmit(SpaceFilesMessage.SAVED) }
+                .onFailure { if (it is CancellationException) throw it; messages.tryEmit(SpaceFilesMessage.FAILED) }
         }
     }
 
@@ -320,7 +533,7 @@ internal class SpaceFilesVM(
 
     private fun fetch(entry: WorkspaceFileEntry, share: Boolean) {
         if (_state.value.opening != null) return
-        _state.value = _state.value.copy(opening = entry.path)
+        _state.update { it.copy(opening = entry.path) }
         viewModelScope.launch {
             val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(entry.name.substringAfterLast('.', "").lowercase())
                 ?: "application/octet-stream"
@@ -333,13 +546,14 @@ internal class SpaceFilesVM(
                 }
                 fetched.emit(Fetched(file, mime, share))
             }.onFailure { if (it is CancellationException) throw it; messages.tryEmit(SpaceFilesMessage.FAILED) }
-            _state.value = _state.value.copy(opening = null)
+            _state.update { it.copy(opening = null) }
         }
     }
 
     fun delete(entry: WorkspaceFileEntry) {
         viewModelScope.launch {
             runCatching { repository.deleteFile(workspaceId, WorkspaceStorageArea.FILES, entry.path, recursive = true) }
+                .onSuccess { spaces.forgetFile(workspaceId, shared(entry.path)); messages.tryEmit(SpaceFilesMessage.DELETED) }
                 .onFailure { if (it is CancellationException) throw it; messages.tryEmit(SpaceFilesMessage.FAILED) }
             load(_state.value.folder)
         }
@@ -372,4 +586,18 @@ internal fun uniqueName(name: String, taken: Set<String>): String {
         else -> name to ""
     }
     return generateSequence(2) { it + 1 }.map { "$stem ($it)$ext" }.first { it !in taken }
+}
+
+/** Reports how many bytes have been read so far, to show an upload's true progress. */
+private class CountingInputStream(input: InputStream, private val onRead: (Long) -> Unit) : FilterInputStream(input) {
+    private var total = 0L
+
+    override fun read(): Int = super.read().also { if (it >= 0) count(1) }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int = super.read(b, off, len).also { if (it > 0) count(it.toLong()) }
+
+    private fun count(n: Long) {
+        total += n
+        onRead(total)
+    }
 }
