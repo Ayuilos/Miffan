@@ -1,7 +1,10 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -11,12 +14,14 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.SpaceCapacity
 import me.ayuilos.miffan.data.ai.computer.SpaceTier
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.InformationCircle
+import me.rerere.hugeicons.stroke.Tick01
 
 @Composable
 internal fun SpaceTier.label(): String = stringResource(when (this) {
@@ -50,6 +55,8 @@ internal fun SpaceTierSheet(
     usedMemoryMb: Int,
     count: Int,
     note: String? = null,
+    /** What the computer has, such as "CachyOS has 16 cores and 32 GB of memory; about 21 GB is free now." */
+    hostLine: String? = null,
     enabled: Boolean = true,
     onPick: (SpaceTier) -> Unit,
     onDismiss: () -> Unit,
@@ -66,27 +73,34 @@ internal fun SpaceTierSheet(
                 val selected = tier == current
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceContainerLow,
+                    border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).alpha(if (fits) 1f else 0.5f)
                         .selectable(selected, enabled = selectable, role = Role.RadioButton) { onPick(tier) },
                 ) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(tier.label(), style = MaterialTheme.typography.titleMedium)
+                                Text(tier.label(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(stringResource(R.string.im_space_tier_spec, tier.cpus, tier.memoryMb / 1024),
                                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (tier == recommended) Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                                    Text(stringResource(R.string.im_space_tier_recommended), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    Text(stringResource(R.string.im_space_tier_recommended), Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
                                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                 }
                             }
                             Text(if (fits) tier.hint() else stringResource(R.string.im_space_tier_too_big),
                                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        RadioButton(selected = selected, onClick = null, enabled = selectable)
+                        if (selected) Box(Modifier.size(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+                            Icon(HugeIcons.Tick01, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
                 }
+            }
+            hostLine?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
