@@ -79,7 +79,7 @@ fun PartnerScreenPage(assistantId: Uuid) {
     if (current.space) {
         // Someone about to look at the Space should see their language, not boxes.
         val spaces: PartnerSpaces = koinInject()
-        LaunchedEffect(current.workspaceId) { spaces.ensureFont(current.workspaceId) }
+        LaunchedEffect(current.workspaceId) { spaces.ensureDesktop(current.workspaceId) }
     }
     key(current.workspaceId) {
         val vm: RemoteScreenVM = koinViewModel(key = current.workspaceId, parameters = { parametersOf(RemoteScreenArgs(current.workspaceId)) })

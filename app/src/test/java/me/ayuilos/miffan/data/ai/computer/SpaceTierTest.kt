@@ -68,6 +68,11 @@ class SpaceTierTest {
         // Latin and Cyrillic are in the image already.
         assertNull(spaceFontPackage(java.util.Locale.ENGLISH))
         assertNull(spaceFontPackage(java.util.Locale.forLanguageTag("ru")))
-        assertTrue(spaceFontCommand("fonts-nanum").startsWith("dpkg -s fonts-nanum >/dev/null 2>&1 ||"))
+        val withFont = spaceDesktopCommand("fonts-nanum")
+        assertTrue("dpkg -s fonts-nanum >/dev/null 2>&1 || inst fonts-nanum" in withFont)
+        assertTrue("libavcodec-extra" in withFont && "xfwm4 --replace" in withFont)
+        // Without a font to add, only the codecs, and the desktop is left alone.
+        val codecsOnly = spaceDesktopCommand(null)
+        assertTrue("libavcodec-extra" in codecsOnly && "xfwm4" !in codecsOnly && "exit 1" !in codecsOnly)
     }
 }

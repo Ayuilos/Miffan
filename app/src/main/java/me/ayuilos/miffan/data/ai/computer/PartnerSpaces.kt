@@ -124,8 +124,8 @@ class PartnerSpaces(
     private val arrivals = ConcurrentHashMap<String, SpaceArrivals>()
 
     private class Sync(val started: Long, val job: Deferred<Result<Unit>>)
-    /** Spaces whose font for the app's language is in place, in this run of the app. */
-    private val fontsReady = ConcurrentHashMap.newKeySet<String>()
+    /** Spaces whose desktop extras (font, video codecs) are in place, in this run of the app. */
+    private val desktopsReady = ConcurrentHashMap.newKeySet<String>()
 
     suspend fun probe(hostId: String): CuaSpaceProbe =
         parse<CuaSpaceProbe>(workspaces.runSpaceHelper(hostId, listOf("probe"), timeoutMillis = 60_000))
@@ -169,24 +169,23 @@ class PartnerSpaces(
         lastChecks[workspaceId] = check
         // Processes started from now on get the share's proxy.
         if (check.via == "share") workspaces.useSpaceProxy(workspaceId, check.proxy)
-        if (check.online) ensureFont(workspaceId)
+        if (check.online) ensureDesktop(workspaceId)
         return check
     }
 
     /**
-     * Installs, in the background, a light font for the app's language: the Space's image only covers
-     * Latin and Cyrillic, so Chinese, Japanese or Korean would show as boxes on its screen and in its
-     * browser. Quick when the font is there; a failure (apt busy, offline) is tried again next time.
-     * Runs after a successful network check and when the Space's screen opens, whichever comes first.
+     * Installs, in the background, what the Space's image lacks for everyday use: a light font for the app's language
+     * (it only covers Latin and Cyrillic, so Chinese, Japanese or Korean show as boxes) and the browser's video codecs
+     * (without them sites like Bilibili refuse to play). Quick when both are there; a failure (apt busy, offline) is
+     * tried again next time. Runs after a successful network check and when the Space's screen opens.
      */
-    fun ensureFont(workspaceId: String) {
-        val font = spaceFontPackage(Locale.getDefault()) ?: return
-        if (!fontsReady.add(workspaceId)) return
+    fun ensureDesktop(workspaceId: String) {
+        if (!desktopsReady.add(workspaceId)) return
         scope.launch {
             val installed = runCatching {
-                workspaces.runInSpace(workspaceId, spaceFontCommand(font), FONT_TIMEOUT_MILLIS).exitCode == 0
+                workspaces.runInSpace(workspaceId, spaceDesktopCommand(spaceFontPackage(Locale.getDefault())), DESKTOP_TIMEOUT_MILLIS).exitCode == 0
             }.getOrDefault(false)
-            if (!installed) fontsReady.remove(workspaceId)
+            if (!installed) desktopsReady.remove(workspaceId)
         }
     }
 
@@ -424,13 +423,33 @@ internal fun spaceFontPackage(locale: Locale): String? = when (locale.language) 
 }
 
 /**
- * Installs [font] unless it is there. Package lists are refreshed first with short timeouts: the image
- * carries third-party sources that may be unreachable, which would otherwise hold `update` for minutes.
- * Waits for an apt the partner may be running instead of failing.
+ * Installs [font] (if any) and the browser's video codecs unless they are there. Both live in Ubuntu's own archive, so
+ * the image's package lists usually do: it installs straight away and refreshes the lists only when that fails, and
+ * then only Ubuntu's sources, not the image's third-party ones (Mozilla, Docker, a PPA), which are slow or unreachable.
+ * Downloads go through the Space's proxy like everything else. Waits for an apt the partner may be running instead of
+ * failing. The exit status is the font's; codecs are best effort.
+ *
+ * The window manager and panel load their fonts once, at start, so a font that arrived after them leaves window titles
+ * and taskbar buttons as boxes while pages look right; they are restarted when that is the case.
  */
-internal fun spaceFontCommand(font: String): String =
-    "dpkg -s $font >/dev/null 2>&1 || { sudo -n apt-get -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 " +
-        "-o Acquire::Retries=0 -o DPkg::Lock::Timeout=120 update -qq >/dev/null 2>&1; " +
-        "sudo -n env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq --no-install-recommends $font; }"
+internal fun spaceDesktopCommand(font: String?): String = buildString {
+    append("U=/etc/apt/sources.list.d/ubuntu.sources; O='-o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 -o Acquire::Retries=0'; ")
+    append("D=/tmp/miffan-apt-\$(id -u); if [ -e \$U ]; then mkdir -p \$D && ln -sf \$U \$D/ && ")
+    append("O=\"\$O -o Dir::Etc::sourcelist=/dev/null -o Dir::Etc::sourceparts=\$D -o APT::Get::List-Cleanup=0\"; fi; ")
+    append("inst() { sudo -n env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq --no-install-recommends \"\$@\"; }; ")
+    append("lists() { [ -n \"\$fresh\" ] || sudo -n apt-get \$O -o DPkg::Lock::Timeout=120 update -qq >/dev/null 2>&1; fresh=1; }; ")
+    if (font != null) append("dpkg -s $font >/dev/null 2>&1 || inst $font >/dev/null 2>&1 || { lists; inst $font; } || exit 1; ")
+    append("dpkg -s $SPACE_CODECS >/dev/null 2>&1 || inst $SPACE_CODECS >/dev/null 2>&1 || { lists; inst $SPACE_CODECS >/dev/null 2>&1; }; ")
+    if (font != null) {
+        append("wm=\$(pgrep -x xfwm4 | head -1); ")
+        append("if [ -n \"\$wm\" ] && [ \$(stat -c %Y /var/lib/dpkg/info/$font.list) -gt \$((\$(date +%s) - \$(ps -o etimes= -p \$wm))) ]; then ")
+        append("export DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/cua-desktop/bus; ")
+        append("setsid -f xfwm4 --replace </dev/null >/dev/null 2>&1; sleep 2; timeout 10 xfce4-panel -r </dev/null >/dev/null 2>&1; fi; ")
+    }
+    append("true")
+}
 
-private const val FONT_TIMEOUT_MILLIS = 600_000L
+/** H.264 and friends for Firefox, which only plays what the system's libavcodec decodes. */
+private const val SPACE_CODECS = "libavcodec-extra"
+
+private const val DESKTOP_TIMEOUT_MILLIS = 600_000L
