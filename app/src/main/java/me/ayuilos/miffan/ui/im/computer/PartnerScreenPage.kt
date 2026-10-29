@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
 import org.koin.compose.koinInject
+import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -250,8 +251,8 @@ private enum class StepState { DONE, LIVE, PAUSED, WAIT, DENIED, FAILED, QUEUED 
 private fun PartnerScreenBubble(text: String) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(4.dp, 14.dp, 14.dp, 14.dp),
         modifier = Modifier.padding(end = 8.dp)) {
-        Text(text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium,
-            maxLines = 6, overflow = TextOverflow.Ellipsis)
+        // The partner writes Markdown, as in the chat; the feed scrolls, so nothing is cut short.
+        MarkdownBlock(text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
