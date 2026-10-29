@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import androidx.compose.ui.graphics.luminance
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.text.format.Formatter
@@ -301,7 +302,8 @@ fun ComputerDetailPage(hostId: String) {
                     partners.forEach { partner ->
                         // A partner with its own Space here works in that, not on this computer itself.
                         PartnerRow(partner, trailing = stringResource(partner.computerUse.label()), enabled = !busy,
-                            supporting = if (partner.id in current.spacePartnerIds) stringResource(R.string.im_computer_detail_user_space) else null) {
+                            supporting = if (partner.id in current.spacePartnerIds) stringResource(R.string.im_computer_detail_user_space) else null,
+                            space = partner.id in current.spacePartnerIds) {
                             nav.navigate(Screen.PartnerProfile(partner.id.toString()))
                         }
                         HorizontalDivider(Modifier.padding(start = 68.dp))
@@ -560,14 +562,20 @@ private fun DetailRow(title: String, supporting: String?, enabled: Boolean, onCl
 }
 
 @Composable
-private fun PartnerRow(partner: Assistant, trailing: String?, enabled: Boolean, supporting: String? = null, onClick: () -> Unit) {
+private fun PartnerRow(partner: Assistant, trailing: String?, enabled: Boolean, supporting: String? = null, space: Boolean = false, onClick: () -> Unit) {
     Surface(onClick = onClick, enabled = enabled, color = Color.Transparent) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             AssistantAvatar(partner.name, partner.avatar, Modifier.size(36.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(threadAssistantName(partner), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                supporting?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                supporting?.let {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // A partner's own computer carries Cua's mark, in the only colours its brand allows.
+                        if (space) Icon(CuaMark, null, Modifier.size(14.dp), tint = cuaMarkColor(MaterialTheme.colorScheme.surface.luminance() < 0.5f))
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
             trailing?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

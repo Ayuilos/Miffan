@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.ui.graphics.luminance
+import me.ayuilos.miffan.ui.im.computer.cuaMarkColor
+import me.ayuilos.miffan.ui.im.computer.CuaMark
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -151,6 +154,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
                             ImListRow(HugeIcons.Computer, stringResource(R.string.im_profile_computer), tone = ImIconTone.TERTIARY,
                                 supporting = if (bound.space) listOf(stringResource(R.string.im_space_profile_detail, bound.name), mode).joinToString(" · ")
                                     else listOfNotNull(bound.name, mode, tasks).joinToString(" · "),
+                                supportingIcon = if (bound.space) CuaMark to cuaMarkColor(MaterialTheme.colorScheme.surface.luminance() < 0.5f) else null,
                                 onClick = { nav.navigate(Screen.PartnerComputer(assistantId)) })
                         }
                         usesPhone -> ImListRow(HugeIcons.SmartPhone01, stringResource(R.string.im_computer_phone_title), tone = ImIconTone.TERTIARY,
