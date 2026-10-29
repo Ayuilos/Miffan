@@ -70,8 +70,10 @@ internal fun latestComputerAction(parts: List<UIMessagePart>): UIMessagePart.Too
     (parts.lastOrNull { it is UIMessagePart.Tool || it is UIMessagePart.ServerTool } as? UIMessagePart.Tool)
         ?.takeIf { it.isComputerTool() }
 
-internal fun computerTargetName(tool: UIMessagePart.Tool, computer: PartnerComputer?, fallback: String): String =
-    tool.workspaceTarget?.remoteHostName?.takeIf { it.isNotBlank() } ?: computer?.name ?: fallback
+/** The machine a computer tool acts on: [spaceName] for a partner's own computer, else its host's name. */
+internal fun computerTargetName(tool: UIMessagePart.Tool, computer: PartnerComputer?, fallback: String, spaceName: String): String =
+    if (tool.workspaceTarget?.kind == me.ayuilos.miffan.data.db.entity.WorkspaceEntity.KIND_SPACE) spaceName
+    else tool.workspaceTarget?.remoteHostName?.takeIf { it.isNotBlank() } ?: computer?.name ?: fallback
 
 internal fun canOpenComputer(tool: UIMessagePart.Tool, computer: PartnerComputer?): Boolean =
     computer?.showsEntry == true &&
@@ -110,7 +112,8 @@ internal fun ThreadComputerResultStatus(status: ComputerToolStatus?) {
 @Composable
 internal fun ThreadComputerBlock(tools: List<UIMessagePart.Tool>, live: Boolean, computer: PartnerComputer?, onScreen: () -> Unit) {
     val evidence = remember(tools) { threadComputerEvidence(tools) } ?: return
-    val name = computerTargetName(evidence.latest, computer, stringResource(R.string.im_computer_computer))
+    val name = computerTargetName(evidence.latest, computer, stringResource(R.string.im_computer_computer),
+        stringResource(R.string.im_computer_detail_user_space))
     val canOpen = canOpenComputer(evidence.latest, computer)
     if (live) ThreadComputerLiveCard(evidence, name, canOpen, onScreen)
     else ThreadComputerSummary(evidence, name, canOpen, onScreen)

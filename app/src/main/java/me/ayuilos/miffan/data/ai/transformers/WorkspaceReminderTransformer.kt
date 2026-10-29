@@ -198,6 +198,7 @@ private fun StringBuilder.appendSpaceWorkspacePrompt(
     appendLine("- `workspace_shell` and `workspace_terminal` run commands in it, starting in `$root`. File tools map `/workspace` to `$root`.")
     appendLine("- You have passwordless sudo there: install what a task needs (for example `sudo apt-get install -y ...`) instead of asking the owner to. Use `sudo -n`; never ask for a password.")
     appendLine("- It is not the owner's computer: do not tell the owner a file is on their computer, and do not try to reach or change $host itself.")
+    appendLine("- It has a graphical desktop (XFCE, with Firefox) that the owner can watch from their phone. For work that needs apps or a browser, use the computer tools on it; the owner may take over the screen at any time.")
     if (networkFix) {
         appendLine("- If it cannot reach the internet (DNS lookups or downloads fail), call `request_network_fix` once with a short reason. The owner can fix it from their phone; continue after it reports `online: true`. Do not retry the same failing download in a loop.")
     } else {

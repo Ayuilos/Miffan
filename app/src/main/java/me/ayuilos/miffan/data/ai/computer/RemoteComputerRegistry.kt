@@ -2,6 +2,10 @@ package me.ayuilos.miffan.data.ai.computer
 
 import android.util.Base64
 import android.util.Log
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.sse.SSE
+import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.StdioClientTransport
 import io.modelcontextprotocol.kotlin.sdk.shared.RequestOptions
@@ -39,7 +43,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.ayuilos.miffan.data.repository.LeasedRemote
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
-import me.rerere.workspace.RemoteChannelStream
 
 private const val TAG = "RemoteComputer"
 private const val START_SESSION = "start_session"
@@ -67,18 +70,23 @@ class RemoteComputerRegistry(
         val guide: String?,
         val resources: List<String>,
         val windows: Boolean = false,
+        /** Who drives this desktop is arbitrated under this key: [hostId], or a Space's own key. */
+        val controlKey: String = hostId,
     )
 
     private class Connection(
         val workspaceId: String,
-        val handle: LeasedRemote<RemoteChannelStream>,
+        val handle: java.io.Closeable,
+        /** Whether the transport underneath still stands; a Space's HTTP endpoint only finds out by failing. */
+        private val transportAlive: () -> Boolean,
         val client: Client,
         /** A cua-driver session label unique to this connection (labels are daemon-global on macOS). */
         val label: String,
         val capabilities: Capabilities,
     ) {
         @Volatile var lastUsed = System.currentTimeMillis()
-        val alive: Boolean get() = handle.value.isConnected
+        @Volatile var failed = false
+        val alive: Boolean get() = !failed && transportAlive()
         /** Older drivers have no start_session; their sessions never end on their own. */
         val canStartSession: Boolean get() = capabilities.tools.any { it.name == START_SESSION }
     }
@@ -136,10 +144,16 @@ class RemoteComputerRegistry(
         val supportsSession = current.capabilities.tools.firstOrNull { it.name == name }
             ?.inputSchema?.properties?.containsKey("session") == true
         val withSession = if (supportsSession) JsonObject(arguments + ("session" to JsonPrimitive(current.label))) else arguments
-        return current.client.callTool(
-            request = CallToolRequest(params = CallToolRequestParams(name = name, arguments = withSession)),
-            options = RequestOptions(timeout = 120.seconds),
-        ).also {
+        return try {
+            current.client.callTool(
+                request = CallToolRequest(params = CallToolRequestParams(name = name, arguments = withSession)),
+                options = RequestOptions(timeout = 120.seconds),
+            )
+        } catch (error: java.io.IOException) {
+            // The next call connects again; this one may have reached the driver, so it is not replayed.
+            current.failed = true
+            throw error
+        }.also {
             current.lastUsed = System.currentTimeMillis()
             // Durations per call tell a slow driver apart from a slow model when a task drags.
             Log.i(TAG, "$name took ${current.lastUsed - started} ms${if (it.isError == true) " (error)" else ""}")
@@ -199,6 +213,7 @@ class RemoteComputerRegistry(
 
     private suspend fun open(workspaceId: String): Connection {
         val hostId = requireNotNull(screens.hostIdOf(workspaceId)) { "Not a remote workspace" }
+        if (screens.isSpace(workspaceId)) return openSpace(workspaceId, hostId)
         val handle = screens.openCuaProcess(workspaceId)
         val client = Client(clientInfo = Implementation(name = "miffan", version = "1.0"))
         try {
@@ -214,10 +229,42 @@ class RemoteComputerRegistry(
             val guide = buildGuide(client, resources)
             val label = "miffan-" + UUID.randomUUID().toString().take(8)
             Log.i(TAG, "cua-driver connected for $workspaceId: ${tools.size} tools, guide=${guide?.length}")
-            return Connection(workspaceId, handle, client, label, Capabilities(hostId, tools, guide, resources, stream.platform == me.rerere.workspace.RemotePlatform.WINDOWS))
+            return Connection(workspaceId, handle, { handle.value.isConnected }, client, label,
+                Capabilities(hostId, tools, guide, resources, stream.platform == me.rerere.workspace.RemotePlatform.WINDOWS))
         } catch (error: Throwable) {
             withContext(NonCancellable) {
                 runCatching { client.close() }
+                runCatching { handle.close() }
+            }
+            throw error
+        }
+    }
+
+    /**
+     * A partner's own computer: the cua-driver already running in the Space, over streamable HTTP on its
+     * port, through the host's SSH session. Its desktop is its own, so control is arbitrated per Space.
+     */
+    private suspend fun openSpace(workspaceId: String, hostId: String): Connection {
+        val handle = screens.openSpaceDriver(workspaceId)
+        val http = HttpClient(OkHttp) {
+            engine { preconfigured = handle.value.http }
+            install(SSE)
+        }
+        val client = Client(clientInfo = Implementation(name = "miffan", version = "1.0"))
+        try {
+            withTimeout(30.seconds) { client.connect(StreamableHttpClientTransport(http, handle.value.url)) }
+            val tools = client.listTools().tools
+            val resources = runCatching { client.listResources().resources.map { it.uri } }.getOrDefault(emptyList())
+            val guide = buildGuide(client, resources)
+            val label = "miffan-" + UUID.randomUUID().toString().take(8)
+            Log.i(TAG, "Space cua-driver connected for $workspaceId: ${tools.size} tools, guide=${guide?.length}")
+            val closeable = java.io.Closeable { runCatching { http.close() }; handle.close() }
+            return Connection(workspaceId, closeable, { true }, client, label,
+                Capabilities(hostId, tools, guide, resources, controlKey = me.ayuilos.miffan.data.repository.spaceControlKey(workspaceId)))
+        } catch (error: Throwable) {
+            withContext(NonCancellable) {
+                runCatching { client.close() }
+                runCatching { http.close() }
                 runCatching { handle.close() }
             }
             throw error

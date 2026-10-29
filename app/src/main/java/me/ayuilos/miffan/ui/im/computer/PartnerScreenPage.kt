@@ -141,7 +141,7 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
             pending.forEach { (item, tool) ->
                 if (tool.isComputerTool()) {
                     // Already on the screen; the card's own "view screen" link has nowhere to go.
-                    ThreadComputerApprovalCard(tool, computerTargetName(tool, computer, name), canOpen = false,
+                    ThreadComputerApprovalCard(tool, computerTargetName(tool, computer, name, stringResource(R.string.im_computer_detail_user_space)), canOpen = false,
                         onScreen = {},
                         onApproval = { id, approved ->
                             // Allowing an action hands the desktop back to the partner.

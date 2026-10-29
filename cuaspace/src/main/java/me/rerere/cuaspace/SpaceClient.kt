@@ -50,6 +50,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import okhttp3.Protocol
 import okhttp3.OkHttpClient
 import okio.ByteString.Companion.toByteString
 
@@ -79,7 +80,7 @@ data class SpaceRunResult(
 class SpaceClient(
     opener: SpaceStreamOpener,
     port: Int,
-    token: String,
+    private val token: String,
     baseClient: OkHttpClient = OkHttpClient(),
     /** Added to every process this client starts, e.g. the proxy the Space reaches the internet through. */
     private val env: Map<String, String> = emptyMap(),
@@ -103,6 +104,15 @@ class SpaceClient(
      */
     suspend fun openMedia(maxDimension: Int = 1920, maxFps: Int = 30, bitrateKbps: Int = 0): SpaceMedia =
         SpaceMedia.open(this, maxDimension, maxFps, bitrateKbps)
+
+    /** cua-driver's MCP endpoint inside the Space (streamable HTTP on the same port). */
+    val mcpUrl: String get() = "$baseUrl/mcp"
+
+    /** An HTTP/1.1 client over the same tunnel that sends the Space's token, for [mcpUrl]. */
+    fun mcpHttpClient(): OkHttpClient = http.newBuilder()
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("Authorization", "Bearer $token").build()) }
+        .build()
 
     /** The Space's clipboard: its generation (changes on every copy) and its text, null when it holds none. */
     suspend fun clipboard(): Pair<Long, String?> =

@@ -1525,12 +1525,12 @@ class ChatService(
         )
     }
 
-    /** Workspaces of [chat]'s members whose computer they may operate: remote, with a screen set up. */
+    /** Workspaces of [chat]'s members whose computer they may operate: their own Space, or a host with a screen set up. */
     private suspend fun computerWorkspaces(chat: me.ayuilos.miffan.data.model.PartnerChat, settings: Settings): Set<Uuid> =
         chat.memberIds.mapNotNull { settings.getAssistantById(it)?.workspaceId }.toSet().filterTo(mutableSetOf()) { id ->
             val workspace = workspaceRepository.getById(id.toString())
-            workspace?.isRemote == true && !workspace.isSpace &&
-                workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled == true
+            workspace?.isRemote == true && (workspace.isSpace ||
+                workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled == true)
         }
 
     /**
@@ -1547,10 +1547,8 @@ class ChatService(
         val workspaceId = assistant.workspaceId?.toString() ?: return null
         val workspace = workspaceRepository.getById(workspaceId) ?: return null
         if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
-        // The host's desktop is out of reach from inside a partner's own Space.
-        if (workspace.isSpace) return null
-        // A host without a screen is a server, not a computer to operate.
-        if (workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled != true) return null
+        // A partner's own Space always has its desktop; a host without a screen is a server, not a computer to operate.
+        if (!workspace.isSpace && workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled != true) return null
         val snapshot = workspaceRepository.currentWorkspaceToolTarget(
             assistant.id.toString(), workspaceId, assistant.workspaceScopeId?.toString(),
         )?.copy(conversationId = conversationId) ?: return null
