@@ -27,9 +27,17 @@ private fun ComputerSetupStep.dot(): Int? = when (this) {
     ComputerSetupStep.FIND, ComputerSetupStep.MANUAL -> 0
     ComputerSetupStep.SIGN_IN, ComputerSetupStep.PASSWORD, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
     ComputerSetupStep.READY -> 2
-    ComputerSetupStep.SHARE, ComputerSetupStep.HOW -> 3
-    ComputerSetupStep.SPACE_INSTALL, ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK,
+    ComputerSetupStep.SHARE -> 3
+    ComputerSetupStep.HOW, ComputerSetupStep.SPACE_INSTALL, ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK,
     ComputerSetupStep.SPACE_DONE, ComputerSetupStep.DONE -> null
+}
+
+/** Giving a partner a mini box is its own three steps: choose, make, done. */
+private fun ComputerSetupStep.spaceDot(): Int? = when (this) {
+    ComputerSetupStep.HOW, ComputerSetupStep.SPACE_INSTALL -> 0
+    ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK -> 1
+    ComputerSetupStep.SPACE_DONE -> 2
+    else -> null
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +66,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 when {
                     state.editing && state.step == ComputerSetupStep.MANUAL -> Text(host?.name.orEmpty())
                     statusPage -> Text(stringResource(R.string.im_computer_status_title))
-                    else -> state.step.dot()?.let { StepDots(it) }
+                    else -> state.step.dot()?.let { StepDots(it) } ?: state.step.spaceDot()?.let { StepDots(it, count = 3) }
                 }
             },
             actions = {
@@ -101,15 +109,20 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 }
                 ComputerSetupStep.SPACE_NETWORK -> ComputerSpaceNetworkStep(vm, state)
                 ComputerSetupStep.SPACE_DONE -> ComputerSpaceDoneStep(vm, state,
-                    onChat = { partner ->
+                    // A tapped suggestion opens the chat with it in the composer, not sent.
+                    onChat = { partner, text ->
                         val id = partner.id.toString()
                         nav.removeAll(Screen.Home) { it is Screen.ComputerSetup || it == Screen.PartnerScreen(id) || it is Screen.Thread && it.assistantId == id }
-                        nav.navigate(Screen.Thread(id))
+                        nav.navigate(Screen.Thread(id, text = text))
                     },
                     onChangeMode = { partner ->
                         // Setup can sit on the stack twice (picking a saved computer opens its own entry).
                         nav.removeAll(Screen.Home) { it is Screen.ComputerSetup }
                         nav.navigate(Screen.PartnerComputer(partner.id.toString()))
+                    },
+                    onScreen = { partner ->
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup }
+                        nav.navigate(Screen.PartnerScreen(partner.id.toString()))
                     })
                 ComputerSetupStep.DONE -> {
                     val bound by vm.boundPartnerIds.collectAsStateWithLifecycle()
