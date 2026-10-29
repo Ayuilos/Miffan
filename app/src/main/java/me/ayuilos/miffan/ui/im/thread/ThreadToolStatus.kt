@@ -58,10 +58,11 @@ internal const val UPDATE_MY_PROFILE = "update_my_profile"
 
 /**
  * What a streaming reply is doing right now, or null once its own text (or a prompt card) is the feedback.
+ * Before anything arrives it reads as connecting (or offline) until the provider has answered, see [waitingStatus].
  * Easy mode keeps only a plain step record ([ThreadStepRecord]); process details belong to professional mode.
  */
 @StringRes
-internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): Int? {
+internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean, connected: Boolean, online: Boolean): Int? {
     if (!streaming) return null
     for (part in parts.asReversed()) {
         when (part) {
@@ -75,7 +76,7 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): I
             else -> Unit
         }
     }
-    return R.string.im_thread_status_thinking
+    return waitingStatus(connected, online).label
 }
 
 private fun toolStatus(name: String): Int =
@@ -147,7 +148,7 @@ internal fun ThreadToolPrompt(
 
 @Composable
 internal fun ThreadLiveStatus(@StringRes label: Int) {
-    Text(stringResource(label), Modifier.shimmer(isLoading = true), style = MaterialTheme.typography.bodyLarge,
+    Text(stringResource(slowAwareLabel(label)), Modifier.shimmer(isLoading = true), style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 

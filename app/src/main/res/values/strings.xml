@@ -3683,4 +3683,7 @@
   <string name="im_think_harder_cancel">Don\'t think hard this time</string>
   <string name="im_thread_status_thinking_more">Thinking it over… %1$ds</string>
   <string name="im_thread_status_thinking_deep">Thinking hard… %1$ds</string>
+  <string name="im_thread_status_offline">No internet connection</string>
+  <string name="im_thread_status_connecting">Connecting…</string>
+  <string name="im_thread_status_connecting_slow">Slow connection…</string>
 </resources>

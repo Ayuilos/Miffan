@@ -555,6 +555,10 @@ class ChatService(
         return getOrCreateSession(conversationId).processingStatus
     }
 
+    fun getConnectedFlow(conversationId: Uuid): StateFlow<Boolean> {
+        return getOrCreateSession(conversationId).connected
+    }
+
     fun getMessageQueueFlow(conversationId: Uuid): StateFlow<MessageQueueState> {
         return getOrCreateSession(conversationId).messageQueue
     }
@@ -1263,6 +1267,7 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
+                connected = session.connected,
                 messages = generationMessages,
                 assistant = assistant,
                 conversationId = conversationId,

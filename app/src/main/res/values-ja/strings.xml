@@ -3683,4 +3683,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_think_harder_cancel">「今回はしっかり考える」を取り消す</string>
   <string name="im_thread_status_thinking_more">じっくり考え中… %1$d秒</string>
   <string name="im_thread_status_thinking_deep">深く考え中… %1$d秒</string>
+  <string name="im_thread_status_offline">ネットワーク未接続</string>
+  <string name="im_thread_status_connecting">接続中…</string>
+  <string name="im_thread_status_connecting_slow">接続が遅い…</string>
 </resources>

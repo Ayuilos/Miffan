@@ -3683,4 +3683,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_think_harder_cancel">이번 깊이 생각하기 취소</string>
   <string name="im_thread_status_thinking_more">더 생각하는 중… %1$d초</string>
   <string name="im_thread_status_thinking_deep">깊이 생각하는 중… %1$d초</string>
+  <string name="im_thread_status_offline">네트워크 연결 없음</string>
+  <string name="im_thread_status_connecting">연결 중…</string>
+  <string name="im_thread_status_connecting_slow">연결이 느림…</string>
 </resources>

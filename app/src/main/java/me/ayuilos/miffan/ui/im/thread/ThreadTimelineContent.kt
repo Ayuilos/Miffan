@@ -27,6 +27,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
+import kotlin.uuid.Uuid
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.im.ImPressMenu
@@ -123,6 +124,7 @@ internal fun ThreadMessageBubble(
     computer: PartnerComputer? = null,
     onComputerScreen: () -> Unit = {},
     assistant: Assistant? = null,
+    connection: ThreadConnection = ThreadConnection(),
 ) {
     val menu = rememberPressMenu()
     val clipboard = LocalClipboard.current
@@ -139,7 +141,7 @@ internal fun ThreadMessageBubble(
     val steps = remember(parts) { if (user) emptyList() else threadSteps(parts) }
     val recordSteps = steps.worthRecording()
     val blocks = remember(parts, recordSteps) { threadReplyBlocks(parts, recordSteps) }
-    val liveStatus = threadLiveStatus(parts, item.streaming)
+    val liveStatus = threadLiveStatus(parts, item.streaming, item.segmentId in connection.connected, connection.online)
     // The record and the live computer card already say what is happening.
     val status = if (liveComputer || recordSteps && item.streaming) null else liveStatus
     // Files the partner published (screenshots, reports) are part of its answer, not process.
@@ -248,8 +250,9 @@ internal fun ThreadMessageBubble(
 }
 
 @Composable
-internal fun ThreadTyping(assistant: Assistant?) {
-    ThreadLiveStatusRow(assistant, AssistantGenerationPhase.Waiting, R.string.im_thread_status_thinking)
+internal fun ThreadTyping(assistant: Assistant?, segmentIds: Set<Uuid>, connection: ThreadConnection) {
+    val status = waitingStatus(segmentIds.any { it in connection.connected }, connection.online)
+    ThreadLiveStatusRow(assistant, AssistantGenerationPhase.Waiting, status.label)
 }
 
 @Composable

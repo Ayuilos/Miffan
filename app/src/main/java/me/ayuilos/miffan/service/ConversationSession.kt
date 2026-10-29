@@ -59,6 +59,9 @@ class ConversationSession(
     // 处理状态（如 OCR 识别中）
     val processingStatus = MutableStateFlow<String?>(null)
 
+    // 当前请求已收到响应头（模型已连上），见 GenerationHandler
+    val connected = MutableStateFlow(false)
+
     // 生成任务（内聚在 session 中）
     private val _generationJob = MutableStateFlow<Job?>(null)
     private val unfinishedJobs = mutableSetOf<Job>()

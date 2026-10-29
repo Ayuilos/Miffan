@@ -14,6 +14,14 @@ import me.rerere.ai.core.TokenUsage
  */
 @Serializable
 sealed class StreamChunk {
+    /**
+     * The service accepted the request and its response headers arrived, before any content. Providers raise it from the
+     * event source's `onOpen`; [StreamChunkHandler] ignores it, it only tells a consumer connecting from waiting for the model.
+     */
+    @Serializable
+    @SerialName("connected")
+    data object Connected : StreamChunk()
+
     @Serializable
     @SerialName("text_start")
     data class TextStart(

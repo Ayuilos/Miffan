@@ -3734,4 +3734,7 @@
   <string name="im_think_harder_cancel">Отменить «Подумать как следует»</string>
   <string name="im_thread_status_thinking_more">Думает дольше… %1$d с</string>
   <string name="im_thread_status_thinking_deep">Думает глубоко… %1$d с</string>
+  <string name="im_thread_status_offline">Нет сети</string>
+  <string name="im_thread_status_connecting">Подключение…</string>
+  <string name="im_thread_status_connecting_slow">Медленное подключение…</string>
 </resources>

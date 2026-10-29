@@ -3668,4 +3668,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_think_harder_cancel">取消这次认真想想</string>
   <string name="im_thread_status_thinking_more">正在多想想… %1$d 秒</string>
   <string name="im_thread_status_thinking_deep">正在认真想… %1$d 秒</string>
+  <string name="im_thread_status_offline">没有网络，联网后再试</string>
+  <string name="im_thread_status_connecting">正在连接…</string>
+  <string name="im_thread_status_connecting_slow">连接有点慢…</string>
 </resources>

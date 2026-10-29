@@ -372,6 +372,10 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         }
 
         val listener = object : EventSourceListener() {
+            override fun onOpen(eventSource: EventSource, response: Response) {
+                sendChunks(listOf(StreamChunk.Connected))
+            }
+
             override fun onEvent(
                 eventSource: EventSource,
                 id: String?,

@@ -3658,4 +3658,7 @@
   <string name="im_think_harder_cancel">取消這次認真想想</string>
   <string name="im_thread_status_thinking_more">正在多想想… %1$d 秒</string>
   <string name="im_thread_status_thinking_deep">正在認真想… %1$d 秒</string>
+  <string name="im_thread_status_offline">沒有網路，連上後再試</string>
+  <string name="im_thread_status_connecting">正在連線…</string>
+  <string name="im_thread_status_connecting_slow">連線有點慢…</string>
 </resources>

@@ -14,11 +14,17 @@ import kotlin.uuid.Uuid
 class ThreadHeaderStatusTest {
     private val question = UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("在吗")))
 
-    private fun status(vararg replyParts: UIMessagePart, generating: Boolean = true): ThreadHeaderStatus? {
+    private fun status(
+        vararg replyParts: UIMessagePart,
+        generating: Boolean = true,
+        connected: Boolean = true,
+        online: Boolean = true,
+    ): ThreadHeaderStatus? {
         var segment = Conversation(assistantId = Uuid.random(), messageNodes = emptyList()).appendMessage(question)
         if (replyParts.isNotEmpty()) segment = segment.appendMessage(UIMessage(role = MessageRole.ASSISTANT, parts = replyParts.toList()))
         val generatingIds = if (generating) setOf(segment.id) else emptySet()
-        return threadHeaderStatus(ThreadTimeline.build(listOf(segment), generatingSegmentIds = generatingIds), generatingIds)
+        val connection = ThreadConnection(if (connected) generatingIds else emptySet(), online)
+        return threadHeaderStatus(ThreadTimeline.build(listOf(segment), generatingSegmentIds = generatingIds), generatingIds, connection)
     }
 
     @Test
@@ -27,13 +33,28 @@ class ThreadHeaderStatusTest {
     }
 
     @Test
-    fun aMessageBeingRoutedIsAlreadyThinking() {
-        assertEquals(ThreadHeaderStatus.Thinking, threadHeaderStatus(listOf(TimelineItem.Typing(emptySet())), emptySet()))
+    fun aMessageBeingRoutedIsStillConnecting() {
+        val typing = listOf(TimelineItem.Typing(emptySet()))
+        assertEquals(ThreadHeaderStatus.Connecting, threadHeaderStatus(typing, emptySet(), ThreadConnection()))
+        assertEquals(ThreadHeaderStatus.Offline, threadHeaderStatus(typing, emptySet(), ThreadConnection(online = false)))
     }
 
     @Test
-    fun waitingForTheFirstTokenIsThinking() {
-        assertEquals(ThreadHeaderStatus.Thinking, status())
+    fun waitingForTheProviderIsConnectingUntilItAnswers() {
+        assertEquals(ThreadHeaderStatus.Connecting, status(connected = false))
+        assertEquals(ThreadHeaderStatus.Thinking, status(connected = true))
+    }
+
+    @Test
+    fun noNetworkOnlyMattersBeforeTheProviderAnswers() {
+        assertEquals(ThreadHeaderStatus.Offline, status(connected = false, online = false))
+        assertEquals(ThreadHeaderStatus.Thinking, status(connected = true, online = false))
+        assertEquals(ThreadHeaderStatus.Typing, status(UIMessagePart.Text("在的"), connected = false, online = false))
+    }
+
+    @Test
+    fun reasoningMeansTheProviderAnsweredEvenWithoutTheSignal() {
+        assertEquals(ThreadHeaderStatus.Thinking, status(UIMessagePart.Reasoning("嗯…", finishedAt = null), connected = false))
     }
 
     @Test
