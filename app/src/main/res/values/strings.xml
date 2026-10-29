@@ -3757,6 +3757,16 @@
   <string name="im_space_safer">Safer</string>
   <string name="im_space_own_body">A mini box, a separate small computer, runs inside %1$s. Whatever it installs, runs or opens there never touches your files or desktop.</string>
   <string name="im_space_own_cost">Needs about 5 GB of disk</string>
+  <string name="im_space_own_point_do" tools:ignore="MissingTranslation">Installs software, runs commands, goes online</string>
+  <string name="im_space_own_point_apart" tools:ignore="MissingTranslation">Can\'t touch your files or desktop</string>
+  <string name="im_space_own_point_disk" tools:ignore="MissingTranslation">Takes about 5 GB of disk</string>
+  <string name="im_space_desktop_point_do" tools:ignore="MissingTranslation">Works right on the apps and files you have open</string>
+  <string name="im_space_start_box" tools:ignore="MissingTranslation">Give %1$s a mini box</string>
+  <string name="im_space_start_box_many" tools:ignore="MissingTranslation">Give them mini boxes</string>
+  <string name="im_space_start_desktop" tools:ignore="MissingTranslation">Use my desktop</string>
+  <string name="im_space_cua_note" tools:ignore="MissingTranslation">This installs the open-source tool cua on %1$s, only in your user folder. No account and no administrator password.</string>
+  <string name="im_space_cmd_show" tools:ignore="MissingTranslation">Show command</string>
+  <string name="im_space_cmd_hide" tools:ignore="MissingTranslation">Hide command</string>
   <string name="im_space_continue">Continue</string>
   <string name="im_space_install_title">First, a small tool on %1$s</string>
   <string name="im_space_install_help">The mini box comes from cua, an open-source tool. No account and no administrator password needed.</string>
@@ -3772,6 +3782,14 @@
   <string name="im_space_install_action">Install and continue</string>
   <string name="im_space_check_again">Check again</string>
   <string name="im_space_later">Not now</string>
+  <string name="im_space_fix_title" tools:ignore="MissingTranslation">%1$s needs one more thing</string>
+  <string name="im_space_fix_help" tools:ignore="MissingTranslation">A mini box runs on Docker, which is not ready on this computer yet.</string>
+  <string name="im_space_docker_missing_title" tools:ignore="MissingTranslation">Docker is not installed</string>
+  <string name="im_space_docker_unusable_title" tools:ignore="MissingTranslation">Docker is installed, but this account can\'t use it yet</string>
+  <string name="im_space_docker_run" tools:ignore="MissingTranslation">Run this on %1$s. It needs the computer\'s administrator password:</string>
+  <string name="im_space_docker_unknown" tools:ignore="MissingTranslation">Can\'t tell which Linux %1$s runs, so there is no exact command to give you. Install Docker Engine on it the way its system does (search for \"install Docker Engine\"), then tap Check again.</string>
+  <string name="im_space_check_cua_later" tools:ignore="MissingTranslation">Installed automatically afterwards, only in your user folder</string>
+  <string name="im_space_copy_short" tools:ignore="MissingTranslation">Copy</string>
   <string name="im_space_show_command">Show the command it runs on the computer</string>
   <string name="im_space_prepare_title">Getting %1$s\'s mini box ready</string>
   <string name="im_space_prepare_title_many">Getting their mini boxes ready</string>
@@ -3781,6 +3799,11 @@
   <string name="im_space_stage_create">Prepare the mini box</string>
   <string name="im_space_stage_create_detail">Working · %1$s so far</string>
   <string name="im_space_stage_network">Check the internet</string>
+  <string name="im_space_stage_start" tools:ignore="MissingTranslation">Download and start up</string>
+  <string name="im_space_now_start" tools:ignore="MissingTranslation">Downloading and starting up · about 1.3 GB</string>
+  <string name="im_space_now_network" tools:ignore="MissingTranslation">Trying the internet</string>
+  <string name="im_space_now_failed" tools:ignore="MissingTranslation">It didn\'t work this time</string>
+  <string name="im_space_prepare_elapsed" tools:ignore="MissingTranslation">%1$s so far</string>
   <string name="im_space_go_chat">Chat meanwhile</string>
   <string name="im_space_retry">Try again</string>
   <string name="im_space_network_title">%1$s\'s mini box is offline</string>
@@ -3790,6 +3813,10 @@
   <string name="im_space_network_run">Run this on %1$s, or from this phone, then tap Check again:</string>
   <string name="im_space_network_note">It only lets the mini box go out to the internet; nobody can get into your computer through it. It asks for your computer\'s administrator password.</string>
   <string name="im_space_network_skip">Continue offline</string>
+  <string name="im_space_net_fix_title" tools:ignore="MissingTranslation">Just let it through</string>
+  <string name="im_space_net_fix_body" tools:ignore="MissingTranslation">This only lets the mini box go out to the internet; nobody can get into your computer.</string>
+  <string name="im_space_net_self_run" tools:ignore="MissingTranslation">Run it myself on the computer</string>
+  <string name="im_space_collapse" tools:ignore="MissingTranslation">Hide</string>
   <string name="im_space_copy_command">Copy command</string>
   <string name="im_space_net_checking">Checking…</string>
   <string name="im_space_done_title">%1$s has a mini box</string>
@@ -3802,6 +3829,18 @@
   <string name="im_space_mode_auto">Acts directly, without asking at each step</string>
   <string name="im_space_mode_note">What it sees and runs is sent to the model provider</string>
   <string name="im_space_mode_change">Change</string>
+  <string name="im_space_chip_online" tools:ignore="MissingTranslation">Just started · online</string>
+  <string name="im_space_chip_offline" tools:ignore="MissingTranslation">Just started · no internet yet</string>
+  <string name="im_space_shot_fresh" tools:ignore="MissingTranslation">Just started, no picture yet</string>
+  <string name="im_space_can_short" tools:ignore="MissingTranslation">Install software, run commands, read and write files, go online</string>
+  <string name="im_space_can_short_offline" tools:ignore="MissingTranslation">Install software, run commands, read and write files, and go online once connected</string>
+  <string name="im_space_try_title" tools:ignore="MissingTranslation">Try asking it</string>
+  <string name="im_space_idea_weather" tools:ignore="MissingTranslation">Look up tomorrow\'s weather and screenshot it for me</string>
+  <string name="im_space_idea_papers" tools:ignore="MissingTranslation">Download this week\'s popular papers and sum them up on one page</string>
+  <string name="im_space_idea_python" tools:ignore="MissingTranslation">Install Python and draw me a chart</string>
+  <string name="im_space_idea_sort" tools:ignore="MissingTranslation">Write a small script that sorts a pile of files by date</string>
+  <string name="im_space_idea_tour" tools:ignore="MissingTranslation">Look around in there and tell me what you find</string>
+  <string name="im_space_look_screen" tools:ignore="MissingTranslation">See its screen</string>
   <string name="im_space_ready_event">Its mini box is ready</string>
   <string name="im_space_ready_instruction">Your owner just gave you a mini box: your own isolated Linux machine inside one of their computers. You can install software, run commands and keep files there without touching their own files or desktop. In one or two sentences, in your own way, tell them you have it now and one thing you could do with it. Don\'t mention this note.</string>
   <string name="im_space_profile_detail">Mini box · on %1$s</string>
@@ -3905,6 +3944,10 @@
   <string name="im_space_tier_line">Gets %1$s, recommended for %2$s</string>
   <string name="im_space_tier_line_picked">Gets %1$s</string>
   <string name="im_space_tier_adjust">Adjust</string>
+  <string name="im_space_tier_note_recommended" tools:ignore="MissingTranslation">Recommended for %1$s; you can change it later</string>
+  <string name="im_space_tier_note_default" tools:ignore="MissingTranslation">You can change it later</string>
+  <string name="im_space_tier_note_picked" tools:ignore="MissingTranslation">Your pick</string>
+  <string name="im_space_tier_host" tools:ignore="MissingTranslation">%1$s has %2$d cores and %3$d GB of memory; about %4$d GB is free now.</string>
   <string name="im_space_tier_sheet_title">How big a mini box?</string>
   <string name="im_space_tier_sheet_help">These are limits: it only uses what it needs, and your own work keeps the rest.</string>
   <string name="im_space_tier_recommended">Recommended</string>
