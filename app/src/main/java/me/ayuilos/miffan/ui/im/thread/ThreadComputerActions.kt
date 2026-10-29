@@ -154,18 +154,19 @@ internal fun ThreadComputerBlock(
     val canOpen = canOpenComputer(latest, computer)
     val key = tools.first().toolCallId
     // The owner said no to the last thing it asked: the record ends with that.
-    val declined = tools.last().takeIf { it.approvalState is ToolApprovalState.Denied }
+    val declined = declinedAtEnd(tools)
     when {
         live -> ThreadComputerLiveCard(tools, steps, evidence?.screenshot, name, canOpen, onScreen, onApproval, partner)
-        steps.isNotEmpty() -> ThreadComputerRecordCard(key, steps, declined, evidence?.screenshot, name, miniBox, canOpen, onScreen)
+        steps.isNotEmpty() -> ThreadComputerRecordCard(key, steps, recordFailure(steps, tools), declined, evidence?.screenshot, name, miniBox, canOpen, onScreen)
         evidence != null -> ThreadComputerObserved(evidence.screenshot, name, miniBox, canOpen, onScreen)
     }
 }
 
 @Composable
-private fun ComputerThumb(url: String) {
-    AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop,
-        modifier = Modifier.size(width = 64.dp, height = 40.dp).clip(RoundedCornerShape(8.dp)).background(ScreenDark))
+private fun ComputerThumb(url: String, onClick: (() -> Unit)? = null) {
+    AsyncImage(model = url, contentDescription = onClick?.let { stringResource(R.string.im_computer_view_screen) }, contentScale = ContentScale.Crop,
+        modifier = Modifier.size(width = 64.dp, height = 40.dp).clip(RoundedCornerShape(8.dp)).background(ScreenDark)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier))
 }
 
 @Composable
@@ -212,6 +213,7 @@ private fun ThreadComputerObserved(screenshot: String?, name: String, miniBox: B
 private fun ThreadComputerRecordCard(
     key: String,
     steps: List<ComputerRecordStep>,
+    failure: ComputerRecordStep?,
     declined: UIMessagePart.Tool?,
     screenshot: String?,
     name: String,
@@ -221,7 +223,6 @@ private fun ThreadComputerRecordCard(
 ) {
     var expanded by rememberSaveable(key) { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
-    val failure = steps.unresolvedFailure()
     val count = steps.size
     val title = (if (miniBox) pluralStringResource(R.plurals.im_computer_record_mini_box, count, count)
         else pluralStringResource(R.plurals.im_computer_record_desktop, count, name, count)) +
@@ -232,7 +233,6 @@ private fun ThreadComputerRecordCard(
         else -> stringResource(R.string.im_computer_record_last, steps.last().text())
     }
     val toggle = stringResource(if (expanded) R.string.im_steps_collapse else R.string.im_steps_expand)
-    val link = canOpen && screenshot != null && failure == null
     Surface(onClick = { expanded = !expanded }, shape = RoundedCornerShape(14.dp),
         color = if (failure != null) colors.tertiaryContainer.copy(alpha = .4f) else colors.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 9.dp, bottom = if (expanded) 6.dp else 9.dp)) {
@@ -240,15 +240,14 @@ private fun ThreadComputerRecordCard(
                 when {
                     failure != null -> ComputerTile(HugeIcons.Alert02, colors.tertiaryContainer, colors.onTertiaryContainer)
                     !miniBox -> ComputerTile(HugeIcons.Computer, colors.primaryContainer, colors.onPrimaryContainer)
-                    screenshot != null -> ComputerThumb(screenshot)
+                    screenshot != null -> ComputerThumb(screenshot, if (canOpen) onScreen else null)
                     else -> ComputerTile(HugeIcons.Cube, colors.tertiaryContainer, colors.onTertiaryContainer)
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = if (failure != null) colors.onTertiaryContainer else colors.onSurfaceVariant)
                 }
-                if (link) ViewScreenLink(onScreen)
                 Icon(if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01, toggle, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
             }
             if (expanded) Column(Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp)) {
