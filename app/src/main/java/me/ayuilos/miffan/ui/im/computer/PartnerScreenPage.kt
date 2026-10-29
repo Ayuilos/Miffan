@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import org.koin.compose.koinInject
+import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -47,6 +49,11 @@ fun PartnerScreenPage(assistantId: Uuid) {
             }
         }
         return
+    }
+    if (current.space) {
+        // Someone about to look at the Space should see their language, not boxes.
+        val spaces: PartnerSpaces = koinInject()
+        LaunchedEffect(current.workspaceId) { spaces.ensureFont(current.workspaceId) }
     }
     key(current.workspaceId) {
         val vm: RemoteScreenVM = koinViewModel(key = current.workspaceId, parameters = { parametersOf(RemoteScreenArgs(current.workspaceId)) })

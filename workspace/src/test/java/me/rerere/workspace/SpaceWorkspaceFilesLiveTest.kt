@@ -139,4 +139,22 @@ class SpaceWorkspaceFilesLiveTest {
         assertTrue("the first frame is a keyframe", frames.first().keyframe)
         media.closeSession()
     }
+
+    /** Types [MIFFAN_SPACE_TEST_TEXT] (default Chinese) into whatever has focus, the way the screen page does. */
+    @Test fun typeText() = runBlocking {
+        val text = System.getenv("MIFFAN_SPACE_TEST_TEXT") ?: return@runBlocking
+        val media = client.openMedia(maxDimension = 1280, maxFps = 5)
+        val acks = mutableListOf<SpaceMediaEvent>()
+        val collector = launch { media.events.collect { if (it is SpaceMediaEvent.Other) acks += it } }
+        delay(1500)
+        System.getenv("MIFFAN_SPACE_TEST_CLICK")?.split(",")?.map { it.toDouble() }?.let { (x, y) ->
+            media.send(listOf(SpaceInput.Pointer("move", null, x, y), SpaceInput.Pointer("down", "left", x, y), SpaceInput.Pointer("up", "left", x, y)))
+            delay(800)
+        }
+        media.send(listOf(SpaceInput.Text(text)))
+        delay(2500)
+        collector.cancel()
+        acks.forEach(::println)
+        media.closeSession()
+    }
 }

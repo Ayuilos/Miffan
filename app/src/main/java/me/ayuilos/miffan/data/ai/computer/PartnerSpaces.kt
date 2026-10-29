@@ -140,10 +140,10 @@ class PartnerSpaces(
     /**
      * Installs, in the background, a light font for the app's language: the Space's image only covers
      * Latin and Cyrillic, so Chinese, Japanese or Korean would show as boxes on its screen and in its
-     * browser. Quick when the font is there; a failure (apt busy, offline) is tried again on the next
-     * successful network check.
+     * browser. Quick when the font is there; a failure (apt busy, offline) is tried again next time.
+     * Runs after a successful network check and when the Space's screen opens, whichever comes first.
      */
-    private fun ensureFont(workspaceId: String) {
+    fun ensureFont(workspaceId: String) {
         val font = spaceFontPackage(Locale.getDefault()) ?: return
         if (!fontsReady.add(workspaceId)) return
         scope.launch {
