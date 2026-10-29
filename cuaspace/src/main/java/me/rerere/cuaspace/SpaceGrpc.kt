@@ -19,9 +19,11 @@ import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okio.Buffer
+import okio.BufferedSink
 import okio.BufferedSource
 
 /** A non-OK gRPC status from cua-spacesd, or a transport failure mapped to UNAVAILABLE. */
@@ -66,10 +68,38 @@ class SpaceGrpc(
         method: String,
         requests: List<Req>,
         responseAdapter: ProtoAdapter<Resp>,
-    ): Resp = withContext(Dispatchers.IO) {
+    ): Resp {
         val body = Buffer()
         requests.forEach { writeFrame(body, it.encode()) }
-        newCall(method, body.readByteArray()).await().use { response ->
+        return clientStream(method, body.readByteArray().toRequestBody(GRPC), responseAdapter)
+    }
+
+    /**
+     * A client stream whose requests [next] produces one at a time while the body is sent (null ends it),
+     * so a large upload never sits in memory whole.
+     */
+    suspend fun <Req : Message<Req, *>, Resp> clientStream(
+        method: String,
+        responseAdapter: ProtoAdapter<Resp>,
+        next: () -> Req?,
+    ): Resp = clientStream(method, object : RequestBody() {
+        override fun contentType() = GRPC
+        override fun isOneShot() = true
+        override fun writeTo(sink: BufferedSink) {
+            while (true) {
+                val message = next() ?: break
+                val bytes = message.encode()
+                sink.writeByte(0).writeInt(bytes.size).write(bytes)
+            }
+        }
+    }, responseAdapter)
+
+    private suspend fun <Resp> clientStream(
+        method: String,
+        body: RequestBody,
+        responseAdapter: ProtoAdapter<Resp>,
+    ): Resp = withContext(Dispatchers.IO) {
+        newCall(method, body).await().use { response ->
             requireHttpOk(response)
             val source = response.body.source()
             val message = readFrame(source)
@@ -86,7 +116,7 @@ class SpaceGrpc(
         responseAdapter: ProtoAdapter<Resp>,
     ): Flow<Resp> = flow {
         val bytes = Buffer().also { writeFrame(it, request.encode()) }.readByteArray()
-        val call = newCall(method, bytes)
+        val call = newCall(method, bytes.toRequestBody(GRPC))
         val cancelOnCompletion = currentCoroutineContext()[Job]?.invokeOnCompletion { call.cancel() }
         try {
             call.execute().use { response ->
@@ -106,13 +136,13 @@ class SpaceGrpc(
         }
     }.flowOn(Dispatchers.IO)
 
-    private fun newCall(method: String, body: ByteArray): Call = client.newCall(
+    private fun newCall(method: String, body: RequestBody): Call = client.newCall(
         Request.Builder()
             .url("$baseUrl/$method")
             .header("authorization", "Bearer $token")
             .header("te", "trailers")
             .header("grpc-accept-encoding", "identity")
-            .post(body.toRequestBody(GRPC))
+            .post(body)
             .build(),
     )
 

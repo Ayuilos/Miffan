@@ -385,7 +385,7 @@ private fun ImChatsEmpty(onFindPartner: () -> Unit) {
 
 /** IM list time: time of day today, "Yesterday", month and day this year, otherwise a full date. */
 @Composable
-private fun imChatTime(instant: Instant): String {
+internal fun imChatTime(instant: Instant): String {
     val date = instant.atZone(ZoneId.systemDefault())
     val today = LocalDate.now()
     val locale = LocalConfiguration.current.locales[0]

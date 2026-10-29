@@ -1578,13 +1578,15 @@ class WorkspaceRepository(
         fileName: String,
         inputStream: InputStream,
         scopeId: String? = null,
+        /** Remote workspaces only; a partner's own computer streams uploads, so it can take far more. */
+        maxBytes: Long = REMOTE_IMPORT_MAX_BYTES,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) {
             requireRemoteFilesArea(area)
             val target = if (destinationPath.isBlank()) fileName else "${destinationPath.trimEnd('/')}/$fileName"
             return@withContext withRemoteWorkspace(workspace) {
-                it.importFile(target, inputStream, overwrite = false)
+                it.importFile(target, inputStream, overwrite = false, maxBytes = maxBytes)
             }
         }
         val scope = WorkspaceScope.fromNullableId(scopeId)
@@ -1886,5 +1888,7 @@ class WorkspaceRepository(
         private const val MAX_PREVIEW_BYTES = 512L * 1024
         private const val AUTH_MANAGED_KEY = "MANAGED_KEY"
         private val SPACE_HELPER_ARG = Regex("[a-z0-9][a-z0-9-]{0,31}")
+        /** The remote files' own default import limit. */
+        const val REMOTE_IMPORT_MAX_BYTES = 32L * 1024 * 1024
     }
 }

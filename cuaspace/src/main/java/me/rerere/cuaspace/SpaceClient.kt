@@ -288,6 +288,35 @@ class SpaceClient(
         return response.entry?.toEntry() ?: requireNotNull(stat(path)) { "$path was not written" }
     }
 
+    /**
+     * Writes what [input] holds, read as it is sent. [size] is checked by the Space when known (else 0);
+     * more than [maxBytes] fails the upload before the Space keeps anything.
+     */
+    suspend fun write(path: String, input: java.io.InputStream, size: Long, maxBytes: Long, overwrite: Boolean,
+                      createParents: Boolean = true): SpaceEntry {
+        val header = WriteFileHeader(
+            path = path,
+            mode = if (overwrite) WriteMode.WRITE_MODE_OVERWRITE else WriteMode.WRITE_MODE_CREATE_NEW,
+            create_parents = createParents,
+            expected_size = size.coerceAtLeast(0),
+        )
+        var headerSent = false
+        var sent = 0L
+        val buffer = ByteArray(WRITE_CHUNK_BYTES)
+        val response = grpc.clientStream("cua.env.v1.FilesystemService/WriteFile", WriteFileResponse.ADAPTER) {
+            if (!headerSent) {
+                headerSent = true
+                return@clientStream WriteFileRequest(header_ = header)
+            }
+            val read = input.read(buffer)
+            if (read < 0) return@clientStream null
+            sent += read
+            if (sent > maxBytes) throw java.io.IOException("$path is larger than $maxBytes bytes")
+            WriteFileRequest(data_ = buffer.toByteString(0, read))
+        }
+        return response.entry?.toEntry() ?: requireNotNull(stat(path)) { "$path was not written" }
+    }
+
     suspend fun mkdir(path: String, parents: Boolean = true): SpaceEntry? =
         grpc.unary("cua.env.v1.FilesystemService/MakeDir", MakeDirRequest(path = path, parents = parents),
             MakeDirResponse.ADAPTER).entry?.toEntry()

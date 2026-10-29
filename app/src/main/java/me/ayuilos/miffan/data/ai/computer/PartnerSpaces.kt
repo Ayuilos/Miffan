@@ -248,6 +248,15 @@ class PartnerSpaces(
         return arrivals[workspaceId]?.takeIf { System.currentTimeMillis() - it.at < ARRIVALS_SHOWN_MILLIS }
     }
 
+    /** The owner put [names] in the Shared folder from the phone; the partner hears about them like host drops. */
+    fun noteArrivals(workspaceId: String, names: List<String>) {
+        if (names.isEmpty()) return
+        val now = System.currentTimeMillis()
+        arrivals.merge(workspaceId, SpaceArrivals(names, now)) { old, new ->
+            if (now - old.at < ARRIVALS_SHOWN_MILLIS) SpaceArrivals((old.names + new.names).distinct(), now) else new
+        }
+    }
+
     private suspend fun copyIn(workspaceId: String) {
         val workspace = space(workspaceId)
         val folder = workspace.spaceHandoff ?: return
@@ -255,7 +264,7 @@ class PartnerSpaces(
             listOf("handoff", "in", requireNotNull(workspace.spaceName)),
             stdin = JsonInstant.encodeToString(HandoffRequest(folder)).encodeToByteArray(), timeoutMillis = HANDOFF_TIMEOUT_MILLIS))
         result.error?.let { throw CuaSpaceException(it, result.detail) }
-        if (result.copied.isNotEmpty()) arrivals[workspaceId] = SpaceArrivals(result.copied, System.currentTimeMillis())
+        noteArrivals(workspaceId, result.copied)
     }
 
     /** What the Space uses now, read from its cgroup; null when it cannot be read. */
@@ -309,6 +318,10 @@ class PartnerSpaces(
 
         /** Where the owner's and the partner's files meet inside the Space, on its desktop (helper's SPACE_HANDOFF_DIR). */
         const val SHARED_DIR = "/home/cua/Desktop/Shared"
+        /** [SHARED_DIR] relative to a Space workspace's root, for the workspace file APIs. */
+        const val SHARED_RELATIVE = "Desktop/Shared"
+        /** What the phone may upload into a Space at once; uploads stream, so this guards the Space's disk. */
+        const val PHONE_UPLOAD_MAX_BYTES = 2L * 1024 * 1024 * 1024
 
         private const val INSTALL_TIMEOUT_MILLIS = 10 * 60_000L
         private const val HANDOFF_TIMEOUT_MILLIS = 5 * 60_000L

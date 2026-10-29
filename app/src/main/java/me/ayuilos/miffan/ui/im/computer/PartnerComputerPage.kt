@@ -33,6 +33,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Cube
 import me.rerere.hugeicons.stroke.Exchange01
 import me.rerere.hugeicons.stroke.View
@@ -105,6 +106,10 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
                     ImSectionLabel(stringResource(R.string.im_space_handoff_title))
                     Spacer(Modifier.height(8.dp))
                     ImCardGroup {
+                        ImListRow(HugeIcons.SmartPhone01, stringResource(R.string.im_space_files_entry),
+                            { nav.navigate(Screen.PartnerSpaceFiles(assistantId.toString())) },
+                            supporting = stringResource(R.string.im_space_files_entry_detail, name))
+                        ImCardDivider()
                         ImListRow(HugeIcons.Folder01, "~/$folder", {
                             context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Miffan", "~/$folder"))
                             scope.launch { snackbar.showSnackbar(copied) }

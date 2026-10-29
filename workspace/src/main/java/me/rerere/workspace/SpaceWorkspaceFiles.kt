@@ -64,13 +64,13 @@ class SpaceWorkspaceFiles(
         require(maxBytes >= 0)
         val relative = paths.relative(path)
         val absolute = paths.absolute(path)
-        val bytes = readBounded(input, maxBytes)
         return call {
             client.stat(absolute)?.let { existing ->
                 require(overwrite) { "Remote destination exists: $path" }
                 require(existing.isFile && !existing.isSymlink) { "Remote path is not a regular file: $path" }
             }
-            client.write(absolute, bytes, overwrite).toWorkspaceEntry(relative)
+            // Streamed: a large file from the phone never sits in memory whole.
+            client.write(absolute, input, size = 0, maxBytes = maxBytes, overwrite = overwrite).toWorkspaceEntry(relative)
         }
     }
 

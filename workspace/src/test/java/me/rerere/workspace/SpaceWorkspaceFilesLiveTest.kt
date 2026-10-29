@@ -117,6 +117,31 @@ class SpaceWorkspaceFilesLiveTest {
         assertFalse(files.delete("done", recursive = true))
     }
 
+    /** A phone upload streams: larger than the old in-memory limit, and the size limit still holds. */
+    @Test fun streamedUpload() {
+        val size = 40L * 1024 * 1024
+        val pattern = ByteArray(64 * 1024) { (it % 251).toByte() }
+        fun source() = object : java.io.InputStream() {
+            var left = size
+            override fun read(): Int = throw UnsupportedOperationException()
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (left == 0L) return -1
+                val n = minOf(len.toLong(), left, pattern.size.toLong()).toInt()
+                System.arraycopy(pattern, 0, b, off, n)
+                left -= n
+                return n
+            }
+        }
+        try {
+            files.importFile("big/upload.bin", source(), overwrite = false, maxBytes = size)
+            assertEquals(size, files.fileSize("big/upload.bin"))
+            assertTrue(runCatching { files.importFile("big/too-big.bin", source(), overwrite = false, maxBytes = size - 1) }.isFailure)
+            assertTrue(runCatching { files.fileSize("big/too-big.bin") }.isFailure)
+        } finally {
+            files.delete("big", recursive = true)
+        }
+    }
+
     /** The desktop as video: the session opens, a keyframe arrives first, and input is accepted. */
     @Test fun desktopMedia() = runBlocking {
         val media = client.openMedia(maxDimension = 1280, maxFps = 15)
