@@ -64,6 +64,23 @@ class ThreadComputerRecordTest {
     }
 
     @Test
+    fun anOwnerDecliningTheLastActionIsNoFailureEvenAfterAnEarlierOne() {
+        val tools = listOf(
+            computer("click", "a", failed),
+            computer("click", "no", output = null, state = ToolApprovalState.Denied("no")),
+        )
+        val steps = computerRecordSteps(tools, live = false)
+        assertEquals(listOf("a"), steps.ids())
+        // On its own the failed step is unresolved, but the record ends with the owner's no.
+        assertEquals("a", steps.unresolvedFailure()?.tool?.toolCallId)
+        assertNull(recordFailure(steps, tools))
+        assertEquals("no", declinedAtEnd(tools)?.toolCallId)
+        // Declined in the middle and a failure after it is still a failure.
+        val later = listOf(tools[1], computer("click", "b", failed))
+        assertEquals("b", recordFailure(computerRecordSteps(later, live = false), later)?.tool?.toolCallId)
+    }
+
+    @Test
     fun aLaterStepStillRunningHasNotWorkedAroundYet() {
         val steps = computerRecordSteps(listOf(
             computer("click", "a", failed),

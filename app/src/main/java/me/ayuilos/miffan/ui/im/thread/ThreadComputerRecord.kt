@@ -77,6 +77,14 @@ internal fun List<ComputerRecordStep>.markWorkedAround(): List<ComputerRecordSte
 internal fun List<ComputerRecordStep>.unresolvedFailure(): ComputerRecordStep? =
     lastOrNull()?.takeIf { it.failed && !it.workedAround }
 
+/** The last thing the reply asked to do was turned down by the owner; the record ends with that, not with a failure. */
+internal fun declinedAtEnd(tools: List<UIMessagePart.Tool>): UIMessagePart.Tool? =
+    tools.lastOrNull()?.takeIf { it.approvalState is ToolApprovalState.Denied }
+
+/** How the record ends badly: its last step failed, unless the owner said no after that, which is no failure. */
+internal fun recordFailure(steps: List<ComputerRecordStep>, tools: List<UIMessagePart.Tool>): ComputerRecordStep? =
+    if (declinedAtEnd(tools) != null) null else steps.unresolvedFailure()
+
 /** What the live card is on: the step still running, else the latest one. */
 internal fun List<ComputerRecordStep>.currentStep(): ComputerRecordStep? = lastOrNull { it.running } ?: lastOrNull()
 
