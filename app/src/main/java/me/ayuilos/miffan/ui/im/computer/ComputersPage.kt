@@ -1,26 +1,30 @@
 package me.ayuilos.miffan.ui.im.computer
 
-import androidx.compose.ui.graphics.luminance
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.text.format.Formatter
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -37,6 +41,9 @@ import me.ayuilos.miffan.data.ai.computer.ComputerUnreachableException
 import me.ayuilos.miffan.data.ai.computer.ComputerWorkFiles
 import me.ayuilos.miffan.data.ai.computer.KnownComputer
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
+import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
+import me.ayuilos.miffan.data.ai.computer.SpacePower
+import me.ayuilos.miffan.data.ai.computer.SpaceTier
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
@@ -59,6 +66,7 @@ import me.rerere.hugeicons.stroke.ComputerScreenShare
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
+import kotlin.uuid.Uuid
 
 @Composable
 internal fun rememberKnownComputers(): State<List<KnownComputer>?> {
@@ -78,37 +86,47 @@ fun ComputersPage() {
     val nav = LocalNavController.current
     val computers by rememberKnownComputers()
     val assistants = LocalSettings.current.assistants
-    Scaffold(topBar = { ImPageBar(stringResource(R.string.im_computers_title)) }) { padding ->
+    val spaces: PartnerSpaces = koinInject()
+    Scaffold(topBar = {
+        ImPageBar(stringResource(R.string.im_computers_title), actions = {
+            IconButton(onClick = { nav.navigate(Screen.ComputerSetup()) }) {
+                Icon(HugeIcons.Add01, stringResource(R.string.im_computers_connect_new))
+            }
+        })
+    }) { padding ->
         val list = computers ?: return@Scaffold
         if (list.isEmpty()) {
             ComputersEmpty(Modifier.padding(padding)) { nav.navigate(Screen.ComputerSetup()) }
             return@Scaffold
         }
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item("computers") {
-                SetupCard(padding = 0.dp, spacing = 0.dp) {
-                    list.forEachIndexed { index, computer ->
-                        if (index > 0) HorizontalDivider(Modifier.padding(start = 72.dp))
-                        ComputerListRow(computer, computer.partnerIds.mapNotNull { id -> assistants.find { it.id == id } }) {
-                            nav.navigate(Screen.ComputerDetail(computer.hostId))
-                        }
-                    }
-                }
+            items(list, key = { it.hostId }) { computer ->
+                val desktop = computer.partnerIds.filter { it !in computer.spacePartnerIds }.mapNotNull { id -> assistants.find { it.id == id } }
+                val boxes = computer.spacePartnerIds.mapNotNull { id -> assistants.find { it.id == id } }
+                // Only what the app last saw; the list never asks a computer.
+                val awake = boxes.filter { spaces.lastPower(it.workspaceId.toString()) == SpacePower.AWAKE }.map { it.id }.toSet()
+                ComputerCard(computer, desktop, boxes, awake) { nav.navigate(Screen.ComputerDetail(computer.hostId)) }
             }
             item("add") {
-                Surface(onClick = { nav.navigate(Screen.ComputerSetup()) }, color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    shape = MaterialTheme.shapes.large) {
-                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                            Icon(HugeIcons.Add01, null, tint = MaterialTheme.colorScheme.primary)
+                Surface(onClick = { nav.navigate(Screen.ComputerSetup()) }, color = Color.Transparent, shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(46.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                            Icon(HugeIcons.Add01, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
-                        Text(stringResource(R.string.im_computers_connect_new), color = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(stringResource(R.string.im_computers_connect_new), style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.im_computers_connect_new_help), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
             item("agent_tools") {
+                Spacer(Modifier.height(4.dp))
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
                     DetailRow(stringResource(R.string.agent_tools_title), stringResource(R.string.agent_tools_entry_desc), enabled = true) {
                         nav.navigate(Screen.AgentTools)
@@ -135,50 +153,76 @@ private fun ComputersEmpty(modifier: Modifier, onConnect: () -> Unit) {
     }
 }
 
+/** One computer with who uses it, the two ways apart: the desktop itself, and partners' own mini boxes. */
 @Composable
-private fun ComputerListRow(computer: KnownComputer, partners: List<Assistant>, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            ComputerBadge(computer.platform, 40.dp)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(computer.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(computerSummary(computer), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (partners.isNotEmpty()) PartnerStack(partners.take(3))
-                    Text(partnersUsing(partners), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun ComputerCard(computer: KnownComputer, desktop: List<Assistant>, boxes: List<Assistant>, awake: Set<Uuid>, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(onClick = onClick, color = colors.surfaceContainerLow, shape = RoundedCornerShape(22.dp)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ComputerBadge(computer.platform, 46.dp)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(computer.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(computerSummary(computer, unused = desktop.isEmpty() && boxes.isEmpty()), style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(HugeIcons.ArrowRight01, null, tint = colors.onSurfaceVariant)
+            }
+            if (desktop.isNotEmpty() || boxes.isNotEmpty()) {
+                HorizontalDivider(Modifier.padding(top = 12.dp, bottom = 8.dp), color = colors.outlineVariant.copy(alpha = 0.5f))
+                if (desktop.isNotEmpty()) UsageRow(stringResource(R.string.im_computers_row_desktop)) {
+                    PartnerStack(desktop.take(3))
+                    Text(desktop.map { threadAssistantName(it) }.joinToString(stringResource(R.string.im_computers_name_separator)),
+                        Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (boxes.isNotEmpty()) UsageRow(stringResource(R.string.im_computers_row_boxes), Modifier.padding(top = if (desktop.isNotEmpty()) 4.dp else 0.dp)) {
+                    FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        boxes.forEach { BoxChip(it, it.id in awake) }
+                    }
                 }
             }
-            Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-/** Small overlapping avatars of the partners using a computer. */
+@Composable
+private fun UsageRow(label: String, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Row(modifier.fillMaxWidth().heightIn(min = 30.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(label, Modifier.width(72.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        content()
+    }
+}
+
+/** A partner with a mini box on the computer; a dot when it was awake the last time the app looked. */
+@Composable
+private fun BoxChip(partner: Assistant, awake: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    Surface(color = if (awake) colors.tertiaryContainer else colors.surfaceContainerHigh, shape = RoundedCornerShape(13.dp)) {
+        Row(Modifier.padding(start = 3.dp, end = 10.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            AssistantAvatar(partner.name, partner.avatar, Modifier.size(20.dp))
+            Text(threadAssistantName(partner), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (awake) Box(Modifier.size(6.dp).background(colors.tertiary, CircleShape))
+        }
+    }
+}
+
+/** Small overlapping avatars of the partners using a computer's desktop. */
 @Composable
 private fun PartnerStack(partners: List<Assistant>) {
     val ring = MaterialTheme.colorScheme.surfaceContainerLow
-    Box(Modifier.width(20.dp + 14.dp * (partners.size - 1)).height(20.dp)) {
+    Box(Modifier.width(24.dp + 18.dp * (partners.size - 1)).height(24.dp)) {
         partners.forEachIndexed { index, partner ->
-            AssistantAvatar(partner.name, partner.avatar,
-                Modifier.offset(x = 14.dp * index).size(20.dp).border(1.5.dp, ring, CircleShape))
+            AssistantAvatar(partner.name, partner.avatar, Modifier.offset(x = 18.dp * index).size(24.dp).border(2.dp, ring, CircleShape))
         }
     }
 }
 
 @Composable
-private fun partnersUsing(partners: List<Assistant>): String =
-    if (partners.isEmpty()) stringResource(R.string.im_computers_unused)
-    else stringResource(R.string.im_computers_used_by,
-        partners.map { threadAssistantName(it) }.joinToString(stringResource(R.string.im_computers_name_separator)))
-
-@Composable
-private fun computerSummary(computer: KnownComputer): String = listOfNotNull(
+private fun computerSummary(computer: KnownComputer, unused: Boolean): String = listOfNotNull(
     computer.platform.label(),
     stringResource(if (computer.screenEnabled) R.string.im_computers_screen_ready else R.string.im_computers_screen_missing),
+    if (unused) stringResource(R.string.im_computers_unused) else null,
 ).joinToString(" · ")
 
 private fun RemoteScreenPlatform.label(): String? = when (this) {
@@ -197,7 +241,7 @@ private fun RemoteScreenPlatform.icon(): ImageVector = when (this) {
 
 @Composable
 private fun ComputerBadge(platform: RemoteScreenPlatform, size: Dp) {
-    Box(Modifier.size(size).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(size * 0.3f)), contentAlignment = Alignment.Center) {
         Icon(platform.icon(), null, Modifier.size(size * 0.5f), tint = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }
@@ -217,6 +261,8 @@ fun ComputerDetailPage(hostId: String) {
     val snackbar = remember { SnackbarHostState() }
     var busy by remember { mutableStateOf(false) }
     var picking by rememberSaveable { mutableStateOf(false) }
+    var pickingBox by rememberSaveable { mutableStateOf(false) }
+    var tasksOpen by rememberSaveable { mutableStateOf(false) }
     var choosingScreen by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf(false) }
     var forgetting by remember { mutableStateOf(false) }
@@ -228,6 +274,9 @@ fun ComputerDetailPage(hostId: String) {
     val remoteTasks: me.ayuilos.miffan.data.remotetask.RemoteTaskRepository = koinInject()
     val hostTasks by remember(hostId) { remoteTasks.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val taskCount = hostTasks.size
+    val spaces: PartnerSpaces = koinInject()
+    val boxWorkspaces = remember(workspaceList, hostId) { workspaceList.filter { it.isSpace && it.remoteHostId == hostId } }
+    val boxLive by rememberMiniBoxLive(hostId, remember(boxWorkspaces) { boxWorkspaces.map { it.id } }, spaces)
     // Forgetting Miffan removes only the tasks this phone's key made; other phones' tasks keep running.
     val keyFingerprint by produceState<String?>(null, hostId) { value = remoteTasks.keyFingerprint(hostId) }
     val ownTaskCount = keyFingerprint?.let { fp -> hostTasks.count { remoteTasks.removedWithKey(it, fp) } } ?: taskCount
@@ -252,21 +301,31 @@ fun ComputerDetailPage(hostId: String) {
     Scaffold(topBar = { ImPageBar("") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         if (current == null) return@Scaffold
         val partners = current.partnerIds.mapNotNull { id -> assistants.find { it.id == id } }
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
+        // Partners with their own mini box here work in that, not on this computer's desktop.
+        val desktop = partners.filter { it.id !in current.spacePartnerIds }
+        val boxes = boxWorkspaces.mapNotNull { workspace -> assistants.find { it.workspaceId?.toString() == workspace.id }?.let { workspace to it } }
+        val replaces: @Composable (Assistant) -> String? = { partner ->
+            val bound = partner.workspaceId?.toString()?.let { id -> workspaceList.find { it.id == id } }
+            when {
+                bound == null -> null
+                bound.isRemote -> stringResource(R.string.im_computer_replaces_computer)
+                else -> stringResource(R.string.im_computer_replaces_phone)
+            }
+        }
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item("identity") {
-                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ComputerBadge(current.platform, 72.dp)
-                    Text(current.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ComputerBadge(current.platform, 64.dp)
+                    Text(current.name, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(listOfNotNull(current.platform.label(), current.address).joinToString(" · "),
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     if (current.screenEnabled) Button(onClick = {
-                        // Partners with their own Space work on its screen, not this one.
-                        val onScreen = partners.filter { it.id !in current.spacePartnerIds }
-                        when (onScreen.size) {
+                        when (desktop.size) {
                             0 -> nav.navigate(Screen.ComputerScreen(hostId))
-                            1 -> nav.navigate(Screen.PartnerScreen(onScreen.single().id.toString()))
+                            1 -> nav.navigate(Screen.PartnerScreen(desktop.single().id.toString()))
                             else -> choosingScreen = true
                         }
                     }, enabled = !busy, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 52.dp)) {
@@ -284,75 +343,92 @@ fun ComputerDetailPage(hostId: String) {
                         else perform { screens.setScreenEnabled(hostId, false) }
                     }, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp))
                     if (current.screenEnabled) {
-                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         ComputerStatusRow(hostId, enabled = !busy) { nav.navigate(Screen.ComputerSetup(hostId = hostId, status = true)) }
                     }
+                    HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    val windows = current.platform == RemoteScreenPlatform.WINDOWS
+                    DetailRow(stringResource(R.string.remote_task_section), when {
+                        windows -> stringResource(R.string.remote_task_windows_title)
+                        taskCount == 0 -> stringResource(R.string.im_computer_detail_tasks_empty)
+                        else -> pluralStringResource(R.plurals.im_computer_detail_tasks_count, taskCount, taskCount)
+                    }, enabled = true, expanded = tasksOpen) { tasksOpen = !tasksOpen }
                 }
             }
-            item("tasks") {
+            // Opened from the row above: syncing with the computer only starts when the user asks for the tasks.
+            if (tasksOpen) item("tasks") {
                 ComputerTasksSection(hostId, windows = current.platform == RemoteScreenPlatform.WINDOWS,
-                    username = hostList.find { it.id == hostId }?.username.orEmpty())
+                    username = hostList.find { it.id == hostId }?.username.orEmpty(), title = false)
             }
             item("users_title") {
-                Text(stringResource(R.string.im_computer_detail_users), Modifier.padding(start = 4.dp, top = 8.dp),
-                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionHeader(stringResource(R.string.im_computer_detail_users), stringResource(R.string.im_computer_detail_users_help))
             }
             item("users") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
-                    partners.forEach { partner ->
-                        // A partner with its own Space here works in that, not on this computer itself.
-                        PartnerRow(partner, trailing = stringResource(partner.computerUse.label()), enabled = !busy,
-                            supporting = if (partner.id in current.spacePartnerIds) stringResource(R.string.im_computer_detail_user_space) else null,
-                            space = partner.id in current.spacePartnerIds) {
-                            nav.navigate(Screen.PartnerProfile(partner.id.toString()))
-                        }
-                        HorizontalDivider(Modifier.padding(start = 68.dp))
+                    desktop.forEach { partner ->
+                        PartnerRow(partner, partner.computerUse, enabled = !busy) { nav.navigate(Screen.PartnerComputer(partner.id.toString())) }
+                        HorizontalDivider(Modifier.padding(start = 64.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
-                    Surface(onClick = { picking = true }, enabled = !busy && assistants.any { it.id !in current.partnerIds },
-                        color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                                Icon(HugeIcons.Add01, null, tint = MaterialTheme.colorScheme.primary)
-                            }
-                            Text(stringResource(R.string.im_computer_detail_add_partner), color = MaterialTheme.colorScheme.primary)
+                    AddRow(stringResource(R.string.im_computer_detail_add_partner), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { picking = true }
+                }
+            }
+            // Windows has no mini boxes yet; one that was made before still shows.
+            if (current.platform != RemoteScreenPlatform.WINDOWS || boxWorkspaces.isNotEmpty()) {
+                item("boxes_title") {
+                    SectionHeader(stringResource(R.string.im_computer_detail_boxes), stringResource(R.string.im_computer_detail_boxes_help))
+                }
+                item("boxes") {
+                    SetupCard(padding = 0.dp, spacing = 0.dp) {
+                        boxes.forEach { (workspace, partner) ->
+                            MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) { nav.navigate(Screen.PartnerComputer(partner.id.toString())) }
+                            HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
+                        if (boxWorkspaces.isNotEmpty()) {
+                            MiniBoxMemoryBar(MiniBoxMemory(
+                                limitMb = boxWorkspaces.sumOf { it.spaceMemoryMb ?: SpaceTier.DEFAULT.memoryMb },
+                                usedMb = miniBoxesUsedMb(boxWorkspaces.map { boxLive.readings[it.id] }),
+                                totalMb = boxLive.hostMemoryMb,
+                            ))
+                            HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        }
+                        AddRow(stringResource(R.string.im_computer_detail_add_box), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { pickingBox = true }
                     }
                 }
             }
             item("manage") {
+                Spacer(Modifier.height(4.dp))
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
                     DetailRow(stringResource(R.string.im_computer_detail_connection), current.address, enabled = !busy) {
                         nav.navigate(Screen.ComputerSetup(hostId = hostId, edit = true))
                     }
-                }
-            }
-            item("delete") {
-                Surface(onClick = { deleting = true }, enabled = !busy, color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    shape = MaterialTheme.shapes.large) {
-                    Text(stringResource(R.string.im_computer_detail_delete), Modifier.fillMaxWidth().padding(16.dp),
-                        color = MaterialTheme.colorScheme.error)
+                    HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Surface(onClick = { deleting = true }, enabled = !busy, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                        Text(stringResource(R.string.im_computer_detail_delete), Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                            color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
         if (picking) PartnerPickerDialog(
             title = stringResource(R.string.im_computer_pick_partner),
             partners = assistants.filter { it.id !in current.partnerIds },
-            supporting = { partner ->
-                val bound = partner.workspaceId?.toString()?.let { id -> workspaceList.find { it.id == id } }
-                when {
-                    bound == null -> null
-                    bound.isRemote -> stringResource(R.string.im_computer_replaces_computer)
-                    else -> stringResource(R.string.im_computer_replaces_phone)
-                }
-            },
+            supporting = replaces,
             footer = stringResource(if (current.screenEnabled) R.string.im_computer_bind_disclosure else R.string.im_computer_bind_disclosure_no_screen),
             onDismiss = { picking = false },
             onPick = { partner -> picking = false; perform { computers.bind(hostId, setOf(partner.id)) } },
         )
+        // The setup flow takes it from here: it checks the computer, then offers the mini box to the partner.
+        if (pickingBox) PartnerPickerDialog(
+            title = stringResource(R.string.im_computer_pick_box_partner),
+            partners = assistants.filter { it.id !in current.partnerIds },
+            supporting = replaces,
+            footer = null,
+            onDismiss = { pickingBox = false },
+            onPick = { partner -> pickingBox = false; nav.navigate(Screen.ComputerSetup(assistantId = partner.id.toString(), hostId = hostId)) },
+        )
         if (choosingScreen) PartnerPickerDialog(
             title = stringResource(R.string.im_computer_pick_screen_partner),
-            partners = partners.filter { it.id !in current.spacePartnerIds },
+            partners = desktop,
             supporting = { null },
             footer = null,
             onDismiss = { choosingScreen = false },
@@ -484,9 +560,9 @@ private fun DeleteOption(checked: Boolean, onCheckedChange: (Boolean) -> Unit, t
     }
 }
 
-private fun ComputerUseMode.label(): Int = when (this) {
+private fun ComputerUseMode.chipLabel(): Int = when (this) {
     ComputerUseMode.ASK -> R.string.computer_use_mode_ask
-    ComputerUseMode.AUTO -> R.string.computer_use_mode_auto
+    ComputerUseMode.AUTO -> R.string.im_computer_detail_mode_auto
     ComputerUseMode.OFF -> R.string.computer_use_mode_off
 }
 
@@ -549,7 +625,7 @@ private fun checkedText(at: Long): String {
 }
 
 @Composable
-private fun DetailRow(title: String, supporting: String?, enabled: Boolean, onClick: () -> Unit) {
+private fun DetailRow(title: String, supporting: String?, enabled: Boolean, expanded: Boolean? = null, onClick: () -> Unit) {
     Surface(onClick = onClick, enabled = enabled, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -560,29 +636,46 @@ private fun DetailRow(title: String, supporting: String?, enabled: Boolean, onCl
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(HugeIcons.ArrowRight01, null, Modifier.rotate(if (expanded == true) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
+/** A section's name with one line on what it is for. */
 @Composable
-private fun PartnerRow(partner: Assistant, trailing: String?, enabled: Boolean, supporting: String? = null, space: Boolean = false, onClick: () -> Unit) {
+private fun SectionHeader(title: String, help: String) {
+    Column(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 10.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text(help, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun AddRow(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Surface(onClick = onClick, enabled = enabled, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f).padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(HugeIcons.Add01, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** A partner using the desktop, with how far it may go on its own. */
+@Composable
+private fun PartnerRow(partner: Assistant, mode: ComputerUseMode, enabled: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
     Surface(onClick = onClick, enabled = enabled, color = Color.Transparent) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AssistantAvatar(partner.name, partner.avatar, Modifier.size(36.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(threadAssistantName(partner), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                supporting?.let {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        // A partner's own computer carries Cua's mark, in the only colours its brand allows.
-                        if (space) Icon(CuaMark, null, Modifier.size(14.dp), tint = cuaMarkColor(MaterialTheme.colorScheme.surface.luminance() < 0.5f))
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+            Text(threadAssistantName(partner), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Going ahead on its own is what stands out; asking first and being off are the quiet ones.
+            Surface(color = if (mode == ComputerUseMode.AUTO) colors.tertiaryContainer else colors.surfaceContainerHighest,
+                contentColor = if (mode == ComputerUseMode.AUTO) colors.onTertiaryContainer else colors.onSurfaceVariant, shape = RoundedCornerShape(11.dp)) {
+                Text(stringResource(mode.chipLabel()), Modifier.padding(horizontal = 10.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium)
             }
-            trailing?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(HugeIcons.ArrowRight01, null, tint = colors.onSurfaceVariant)
         }
     }
 }
