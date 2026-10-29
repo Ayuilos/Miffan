@@ -147,6 +147,7 @@ internal fun ThreadMessageBubble(
     val imageContext = remember(item.message.id, parts, computer?.workspaceId) {
         item.message.takeIf { !user }?.workspaceImageContext(null, computer?.workspaceId)
     }
+    val handed = remember(parts) { if (user) emptyList() else handedFiles(parts) }
     val published = remember(parts) { !user && parts.any { it is UIMessagePart.Tool && it.workspaceArtifacts().isNotEmpty() } }
     // Edited files are listed once the reply finishes, so they do not count as content while it streams.
     val visible = (published && !item.streaming) || parts.any { part ->
@@ -222,6 +223,7 @@ internal fun ThreadMessageBubble(
                         }
                     } }
                     if (published && !item.streaming) EditedFilesList(parts, assistant = null, imageContext = imageContext)
+                    handed.forEach { file -> key(file.toolCallId) { ThreadHandedFileCard(file, threadAssistantName(assistant)) } }
                 }
             }
             val text = item.message.previewText()

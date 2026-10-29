@@ -2566,6 +2566,15 @@
   <string name="im_computer_wants_to">%1$s wants to operate %2$s</string>
   <string name="im_computer_approval_what">What exactly will it do?</string>
   <string name="im_computer_click_here">Click here</string>
+  <string name="im_computer_handoff_title">From %1$s</string>
+  <string name="im_computer_handoff_title_any">From your partner</string>
+  <string name="im_computer_handoff_where">On %1$s, in %2$s</string>
+  <plurals name="im_computer_handoff_count">
+    <item quantity="one">%d file</item>
+    <item quantity="other">%d files</item>
+  </plurals>
+  <string name="im_computer_handoff_view">View on phone</string>
+  <string name="im_computer_handoff_copy">Copy path</string>
   <string name="im_computer_taken_over" tools:ignore="MissingTranslation">You took over the screen; the partner stopped</string>
   <string name="im_computer_test" tools:ignore="MissingTranslation">Try it</string>
   <string name="im_computer_trust_connect" tools:ignore="MissingTranslation">It\'s my computer, connect</string>

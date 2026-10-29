@@ -2554,6 +2554,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_wants_to">%1$s想操作%2$s</string>
   <string name="im_computer_approval_what">它具体要做什么</string>
   <string name="im_computer_click_here">要点这里</string>
+  <string name="im_computer_handoff_title">%1$s交给你的文件</string>
+  <string name="im_computer_handoff_title_any">伙伴交给你的文件</string>
+  <string name="im_computer_handoff_where">在 %1$s 的 %2$s</string>
+  <plurals name="im_computer_handoff_count">
+    <item quantity="other">%d 个文件</item>
+  </plurals>
+  <string name="im_computer_handoff_view">在手机上看</string>
+  <string name="im_computer_handoff_copy">复制路径</string>
   <string name="im_computer_taken_over">你接管了屏幕，伙伴已停下</string>
   <string name="im_computer_test">试一试</string>
   <string name="im_computer_trust_connect">是我的电脑，继续连接</string>
