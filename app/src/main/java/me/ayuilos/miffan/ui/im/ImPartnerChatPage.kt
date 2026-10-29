@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im
 
+import me.ayuilos.miffan.utils.NetworkMonitor
+import org.koin.compose.koinInject
 import android.content.ClipData
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -91,6 +93,7 @@ import me.ayuilos.miffan.ui.components.ui.GlassSurface
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.im.thread.ThreadDateLabel
 import me.ayuilos.miffan.ui.im.thread.ThreadLiveStatusRow
+import me.ayuilos.miffan.ui.im.thread.waitingStatus
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.ArrowUp02
@@ -105,6 +108,8 @@ data class PartnerChatState(
     val members: List<Assistant>,
     val messages: List<PartnerChatMessage>,
     val typing: Set<Uuid>,
+    /** The typing members whose model has answered; the others are still connecting. */
+    val connected: Set<Uuid>,
     /** Members' tool calls waiting for the owner. */
     val approvals: List<PartnerChatApproval>,
 )
@@ -115,12 +120,14 @@ class PartnerChatVM(
     private val service: PartnerChatService,
     private val listState: ThreadListState,
 ) : ViewModel() {
+    private val running = combine(service.observeTyping(chatId), service.observeConnected(chatId)) { typing, connected -> typing to connected }
+
     val state: StateFlow<PartnerChatState?> = combine(
-        service.observeChat(chatId), service.observeMessages(chatId), service.observeTyping(chatId),
+        service.observeChat(chatId), service.observeMessages(chatId), running,
         service.observeApprovals(chatId), settingsStore.settingsFlow,
-    ) { chat, messages, typing, approvals, settings ->
+    ) { chat, messages, (typing, connected), approvals, settings ->
         chat ?: return@combine null
-        PartnerChatState(chat, chat.memberIds.mapNotNull { settings.getAssistantById(it) }, messages, typing, approvals)
+        PartnerChatState(chat, chat.memberIds.mapNotNull { settings.getAssistantById(it) }, messages, typing, connected, approvals)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun answer(approval: PartnerChatApproval, toolCallId: String, approved: Boolean) {
@@ -151,6 +158,7 @@ internal fun PartnerChatPage(chatId: Uuid, vm: PartnerChatVM = koinViewModel { p
     val members = state?.members.orEmpty()
     val messages = state?.messages.orEmpty()
     val typing = state?.typing.orEmpty()
+    val online by koinInject<NetworkMonitor>().online.collectAsStateWithLifecycle()
     val group = state?.chat?.isGroup == true
     val names = members.map { partnerName(it) }.joinToString(" · ")
     val title = if (group) "${state?.chat?.title?.takeIf { it.isNotBlank() } ?: names} (${members.size})" else names
@@ -183,7 +191,8 @@ internal fun PartnerChatPage(chatId: Uuid, vm: PartnerChatVM = koinViewModel { p
             }
             typing.mapNotNull { id -> members.firstOrNull { it.id == id } }.forEach { partner ->
                 item("typing-${partner.id}") {
-                    ThreadLiveStatusRow(partner, AssistantGenerationPhase.Waiting, R.string.im_thread_status_thinking)
+                    ThreadLiveStatusRow(partner, AssistantGenerationPhase.Waiting,
+                        waitingStatus(partner.id in state?.connected.orEmpty(), online).label)
                 }
             }
             // A member waiting for the owner stops until answered, so its request sits at the end where the owner looks.

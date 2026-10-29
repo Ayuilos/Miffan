@@ -3790,4 +3790,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_run_failed">코드 %1$d(으)로 멈췄어요. 위의 출력을 확인해 주세요.</string>
   <string name="im_space_fix_card_title">컴퓨터를 인터넷에 연결하기</string>
   <string name="im_space_fix_card_online">이제 전용 컴퓨터가 인터넷에 연결되었습니다.</string>
+  <string name="im_thread_status_offline">네트워크 연결 없음</string>
+  <string name="im_thread_status_connecting">연결 중…</string>
+  <string name="im_thread_status_connecting_slow">연결이 느림…</string>
 </resources>

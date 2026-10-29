@@ -174,6 +174,21 @@ class AgentThreadVM(
         .map { live -> live.mapTo(HashSet()) { it.id } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    /** Generating segments whose request the provider has answered; the others are still connecting. */
+    val connectedSegmentIds: StateFlow<Set<Uuid>> = chatService.getConversationJobs()
+        .map { jobs -> jobs.keys }
+        .distinctUntilChanged()
+        .flatMapLatest { ids ->
+            if (ids.isEmpty()) {
+                flowOf(emptySet())
+            } else {
+                combine(ids.map { id -> chatService.getConnectedFlow(id).map { connected -> id to connected } }) { states ->
+                    states.filter { it.second }.mapTo(HashSet()) { it.first }
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
     private val catalog: StateFlow<List<ThreadCatalogEntry>?> = threadRepository.observeCatalog(assistantId)
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 

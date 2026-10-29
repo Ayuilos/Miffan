@@ -24,6 +24,9 @@ interface PartnerChatService {
     /** Partners whose turn in [chatId] is running. */
     fun observeTyping(chatId: Uuid): Flow<Set<Uuid>>
 
+    /** The typing partners of [chatId] whose model has answered the request; the others are still connecting. */
+    fun observeConnected(chatId: Uuid): Flow<Set<Uuid>>
+
     /**
      * The owner speaks in [chatId]. DIRECT mentions answer in order, or the last speaker answers.
      * GROUP mentions answer concurrently, or the host answers when nobody is mentioned.

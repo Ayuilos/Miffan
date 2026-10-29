@@ -3775,4 +3775,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_space_run_failed">命令没有成功（代码 %1$d），看看上面的输出。</string>
   <string name="im_space_fix_card_title">让它的电脑能上网</string>
   <string name="im_space_fix_card_online">它的电脑现在已经能上网了。</string>
+  <string name="im_thread_status_offline">没有网络，联网后再试</string>
+  <string name="im_thread_status_connecting">正在连接…</string>
+  <string name="im_thread_status_connecting_slow">连接有点慢…</string>
 </resources>

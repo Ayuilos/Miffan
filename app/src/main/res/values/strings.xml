@@ -3790,4 +3790,7 @@
   <string name="im_space_run_failed">It stopped with code %1$d. Check the output above.</string>
   <string name="im_space_fix_card_title">Let its computer go online</string>
   <string name="im_space_fix_card_online">Its computer is online now.</string>
+  <string name="im_thread_status_offline">No internet connection</string>
+  <string name="im_thread_status_connecting">Connecting…</string>
+  <string name="im_thread_status_connecting_slow">Slow connection…</string>
 </resources>

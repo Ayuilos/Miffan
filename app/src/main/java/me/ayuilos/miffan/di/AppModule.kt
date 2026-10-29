@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.di
 
+import me.ayuilos.miffan.utils.NetworkMonitor
 import kotlinx.coroutines.launch
 
 import me.ayuilos.miffan.data.revision.RevisionNoticeSource
@@ -77,6 +78,8 @@ val appModule = module {
     single {
         SoundEffectPlayer(get())
     }
+
+    single { NetworkMonitor(get(), get<AppScope>()) }
 
     // 生成通知与业务解耦：ChatService 只发事件，通知由这里消费；
     // createdAtStart 保证进程启动即订阅，否则后台生成的事件会因无订阅者而丢失

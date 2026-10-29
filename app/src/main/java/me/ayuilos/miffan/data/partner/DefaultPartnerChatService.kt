@@ -51,6 +51,8 @@ internal interface PartnerChatRuntime {
     suspend fun keepAliveChat(chatId: Uuid): suspend () -> Unit
     suspend fun stop(segmentId: Uuid)
     fun reportFailure(error: Exception, segmentId: Uuid?)
+    /** Whether the provider has answered the segment's running request. */
+    fun observeConnected(segmentId: Uuid): Flow<Boolean> = flowOf(true)
 }
 
 internal class DefaultPartnerChatService(
@@ -63,6 +65,8 @@ internal class DefaultPartnerChatService(
     private val notifications: PartnerGroupNotifications = PartnerGroupNotifications { _, _, _ -> },
 ) : PartnerChatService {
     private val typing = MutableStateFlow<Map<Uuid, Set<Uuid>>>(emptyMap())
+    // The perspective segment each typing member generates in, keyed by chat and member.
+    private val turnSegments = MutableStateFlow<Map<Pair<Uuid, Uuid>, Uuid>>(emptyMap())
     private val memberLocks = ConcurrentHashMap<Pair<Uuid, Uuid>, Mutex>()
     private val ownerLocks = ConcurrentHashMap<Uuid, Mutex>()
     private val deleted = ConcurrentHashMap.newKeySet<Uuid>()
@@ -86,6 +90,15 @@ internal class DefaultPartnerChatService(
     override fun observeMessages(chatId: Uuid): Flow<List<PartnerChatMessage>> =
         store.observeMessages(chatId).map { messages -> messages.map { it.message } }.distinctUntilChanged()
     override fun observeTyping(chatId: Uuid): Flow<Set<Uuid>> = typing.map { it[chatId].orEmpty() }.distinctUntilChanged()
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun observeConnected(chatId: Uuid): Flow<Set<Uuid>> = combine(typing.map { it[chatId].orEmpty() }, turnSegments) { ids, segments ->
+        ids.mapNotNull { id -> segments[chatId to id]?.let { id to it } }
+    }.distinctUntilChanged().flatMapLatest { running ->
+        if (running.isEmpty()) flowOf(emptySet())
+        else combine(running.map { (id, segmentId) -> runtime.observeConnected(segmentId).map { connected -> id to connected } }) { states ->
+            states.filter { it.second }.mapTo(HashSet()) { it.first }
+        }
+    }
     override fun observeContacts(assistantId: Uuid): Flow<List<Uuid>> = settingsStore.settingsFlow.map { settings ->
         settings.partnerContactGrants.mapNotNull { pair -> when (assistantId) {
             pair.first -> pair.second
@@ -267,6 +280,7 @@ internal class DefaultPartnerChatService(
             val (member, old) = perspective(chat, assistantId)
             val release = runtime.keepAlive(old.id)
             typing.update { it + (chatId to (it[chatId].orEmpty() + assistantId)) }
+            turnSegments.update { it + ((chatId to assistantId) to old.id) }
             try {
                 val messages = store.messages(chatId)
                 val segment = synchronizePerspective(old, messages, member.syncedMessageId, settingsStore.settingsFlow.value, mirrorOutgoing = true)
@@ -288,6 +302,7 @@ internal class DefaultPartnerChatService(
                 reply
             } finally {
                 typing.update { it + (chatId to (it[chatId].orEmpty() - assistantId)) }
+                turnSegments.update { it - (chatId to assistantId) }
                 release()
             }
         }

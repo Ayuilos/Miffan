@@ -3790,4 +3790,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_run_failed">コマンドが終了コード %1$d で止まりました。上の出力を確認してください。</string>
   <string name="im_space_fix_card_title">コンピューターをインターネットにつなぐ</string>
   <string name="im_space_fix_card_online">専用のコンピューターがインターネットに接続できるようになりました。</string>
+  <string name="im_thread_status_offline">ネットワーク未接続</string>
+  <string name="im_thread_status_connecting">接続中…</string>
+  <string name="im_thread_status_connecting_slow">接続が遅い…</string>
 </resources>

@@ -37,6 +37,7 @@ import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.StreamChunkHandler
 import me.rerere.ai.ui.handleTextGenerationResult
 import me.rerere.ai.ui.limitContext
@@ -104,6 +105,8 @@ class GenerationHandler(
         dynamicTools: () -> List<Tool> = { emptyList() },
         maxSteps: Int = 256,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
+        /** True once the provider answered the current request; false again while the next request (or a retry) is on its way. */
+        connected: MutableStateFlow<Boolean> = MutableStateFlow(false),
         conversationSystemPrompt: String? = null,
         conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
@@ -191,6 +194,7 @@ class GenerationHandler(
                     memories = memories ?: emptyList(),
                     stream = assistant.streamOutput,
                     processingStatus = processingStatus,
+                    connected = connected,
                     conversationSystemPrompt = conversationSystemPrompt,
                     conversationId = conversationId,
                     conversationModeInjectionIds = conversationModeInjectionIds,
@@ -418,6 +422,7 @@ class GenerationHandler(
         memories: List<AssistantMemory>,
         stream: Boolean,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
+        connected: MutableStateFlow<Boolean> = MutableStateFlow(false),
         conversationSystemPrompt: String? = null,
         conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
@@ -513,6 +518,7 @@ class GenerationHandler(
                 var retryCount = 0
 
                 while (true) {
+                    connected.value = false
                     targetBinder.beginAttempt()
                     val streamChunkHandler = StreamChunkHandler(model)
                     var attemptMessages = responseBaseMessages
@@ -522,6 +528,10 @@ class GenerationHandler(
                             messages = internalMessages,
                             params = params
                         ).collect { chunk ->
+                            if (chunk is StreamChunk.Connected) {
+                                connected.value = true
+                                return@collect
+                            }
                             try {
                                 if (retryCount > 0) {
                                     processingStatus.value = null
@@ -541,6 +551,7 @@ class GenerationHandler(
                         if (error is StreamChunkHandlingException) {
                             throw error.cause ?: error
                         }
+                        connected.value = false
                         retryCount = awaitNetworkRetryOrThrow(
                             error = error,
                             retryCount = retryCount,
@@ -550,6 +561,8 @@ class GenerationHandler(
                     }
                 }
             } else {
+                // A blocking request has no early answer to wait for, so it reads as the model working.
+                connected.value = true
                 val result = executeProviderRequestWithRetry(
                     processingStatus = processingStatus,
                     enabled = settings.networkSetting.enableAutoRetry,
@@ -565,6 +578,7 @@ class GenerationHandler(
             }
         } finally {
             processingStatus.value = null
+            connected.value = false
         }
     }
 

@@ -15,22 +15,34 @@ import org.junit.Test
 class ThreadLiveStatusTest {
     @Test
     fun finishedRepliesKeepNoProcessStatus() {
-        assertNull(threadLiveStatus(listOf(UIMessagePart.Reasoning("嗯…"), UIMessagePart.Tool("1", "search_web", "{}")), streaming = false))
+        assertNull(threadLiveStatus(listOf(UIMessagePart.Reasoning("嗯…"), UIMessagePart.Tool("1", "search_web", "{}")), streaming = false, connected = true, online = true))
     }
 
     @Test
     fun followsWhatTheStreamingReplyIsDoing() {
-        assertEquals(R.string.im_thread_status_thinking, threadLiveStatus(emptyList(), streaming = true))
-        assertEquals(R.string.im_thread_status_thinking, threadLiveStatus(listOf(UIMessagePart.Reasoning("嗯…", finishedAt = null)), streaming = true))
-        assertEquals(R.string.im_thread_tools_running, threadLiveStatus(listOf(UIMessagePart.Tool("1", "search_web", "{}")), streaming = true))
-        assertEquals(R.string.im_thread_tools_working, threadLiveStatus(listOf(UIMessagePart.Tool("1", "read_file", "{}")), streaming = true))
+        assertEquals(R.string.im_thread_status_thinking, threadLiveStatus(emptyList(), streaming = true, connected = true, online = true))
+        assertEquals(R.string.im_thread_status_thinking, threadLiveStatus(listOf(UIMessagePart.Reasoning("嗯…", finishedAt = null)), streaming = true, connected = true, online = true))
+        assertEquals(R.string.im_thread_tools_running, threadLiveStatus(listOf(UIMessagePart.Tool("1", "search_web", "{}")), streaming = true, connected = true, online = true))
+        assertEquals(R.string.im_thread_tools_working, threadLiveStatus(listOf(UIMessagePart.Tool("1", "read_file", "{}")), streaming = true, connected = true, online = true))
+    }
+
+    @Test
+    fun saysConnectingOrOfflineUntilTheProviderAnswers() {
+        assertEquals(R.string.im_thread_status_connecting, threadLiveStatus(emptyList(), streaming = true, connected = false, online = true))
+        assertEquals(R.string.im_thread_status_offline, threadLiveStatus(emptyList(), streaming = true, connected = false, online = false))
+        assertEquals(R.string.im_thread_status_thinking, threadLiveStatus(emptyList(), streaming = true, connected = true, online = false))
+        assertEquals(R.string.im_thread_status_thinking,
+            threadLiveStatus(listOf(UIMessagePart.Reasoning("嗯…", finishedAt = null)), streaming = true, connected = false, online = false))
+        assertEquals(R.string.im_thread_tools_working,
+            threadLiveStatus(listOf(UIMessagePart.Tool("1", "read_file", "{}")), streaming = true, connected = false, online = false))
+        assertNull(threadLiveStatus(listOf(UIMessagePart.Text("在的")), streaming = true, connected = false, online = false))
     }
 
     @Test
     fun textOrAPromptCardIsItsOwnFeedback() {
-        assertNull(threadLiveStatus(listOf(UIMessagePart.Tool("1", "search_web", "{}"), UIMessagePart.Text("查到了")), streaming = true))
+        assertNull(threadLiveStatus(listOf(UIMessagePart.Tool("1", "search_web", "{}"), UIMessagePart.Text("查到了")), streaming = true, connected = true, online = true))
         val waiting = UIMessagePart.Tool("1", "ask_user", "{}", approvalState = ToolApprovalState.Pending)
-        assertNull(threadLiveStatus(listOf(waiting), streaming = true))
+        assertNull(threadLiveStatus(listOf(waiting), streaming = true, connected = true, online = true))
     }
 
     @Test

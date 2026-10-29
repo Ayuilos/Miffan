@@ -68,6 +68,7 @@ class StreamChunkHandler(private val model: Model? = null) {
      */
     fun handle(messages: List<UIMessage>, chunk: StreamChunk): List<UIMessage> {
         require(messages.isNotEmpty()) { "messages must not be empty" }
+        if (chunk is StreamChunk.Connected) return messages
 
         val targetMessages = if (messages.last().role != MessageRole.ASSISTANT) {
             messages + UIMessage(modelId = model?.id, role = MessageRole.ASSISTANT, parts = emptyList())
@@ -293,6 +294,7 @@ class StreamChunkHandler(private val model: Model? = null) {
             }
 
             is StreamChunk.ImageEnd -> this.also { imagePartIndexes.remove(chunk.id) }
+            is StreamChunk.Connected -> this
             is StreamChunk.Annotations -> copy(annotations = (annotations + chunk.annotations).distinct())
             is StreamChunk.Usage -> copy(usage = usage.merge(chunk.usage))
             is StreamChunk.Finish -> copy(
