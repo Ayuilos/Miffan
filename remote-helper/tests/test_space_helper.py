@@ -447,6 +447,9 @@ def test_network_share(base):
                          "proxy": proxy, "bridge": "docker0", "port": port}, check
         conf = (host.base / "shareconf.txt").read_text()
         assert f"http_proxy={proxy}" in conf and "95miffan-proxy" in conf and "env_keep" in conf
+        # Browsers started by cua-driver get the proxy by policy, not the environment.
+        assert f'"HTTPProxy":"127.0.0.1:{port}"' in conf and "/etc/firefox/policies/policies.json" in conf
+        assert f'"ProxyServer":"127.0.0.1:{port}"' in conf and "SkipTermsOfUse" in conf
         assert (host.home / ".miffan/netshare/spaces" / NAME).read_text().strip() == proxy
         pid = int((host.home / ".miffan/netshare/relay-127.0.0.1.pid").read_text())
         os.kill(pid, 0)

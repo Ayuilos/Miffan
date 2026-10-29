@@ -22,7 +22,7 @@
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=28
+MIFFAN_HELPER_VERSION=29
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2370,9 +2370,12 @@ space_share_start() {
     return 1
 }
 
-# Points Space $1's programs at proxy $2: login sessions, apt and sudo (which would drop the variables).
+# Points Space $1's programs at proxy $2: login sessions, apt, sudo (which would drop the variables), and the
+# browsers by policy (desktop apps started by cua-driver never see /etc/environment). Firefox also skips its
+# first-run and terms pages, which would stand between a partner and the page it opened.
 space_share_configure() {
     p=$2
+    hp=${p#http://}
     script="set -e
 grep -viE '^(http|https|no)_proxy=' /etc/environment > /etc/environment.miffan || true
 printf '%s\n' http_proxy=$p https_proxy=$p HTTP_PROXY=$p HTTPS_PROXY=$p no_proxy=localhost,127.0.0.1,::1 NO_PROXY=localhost,127.0.0.1,::1 >> /etc/environment.miffan
@@ -2381,7 +2384,10 @@ rm -f /etc/environment.miffan
 mkdir -p /etc/apt/apt.conf.d
 printf 'Acquire::http::Proxy \"%s/\";\nAcquire::https::Proxy \"%s/\";\n' $p $p > /etc/apt/apt.conf.d/95miffan-proxy
 printf 'Defaults env_keep += \"http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY\"\n' > /etc/sudoers.d/miffan-proxy
-chmod 0440 /etc/sudoers.d/miffan-proxy"
+chmod 0440 /etc/sudoers.d/miffan-proxy
+mkdir -p /etc/firefox/policies /etc/chromium/policies/managed
+printf '%s\n' '{\"policies\":{\"Proxy\":{\"Mode\":\"manual\",\"HTTPProxy\":\"$hp\",\"UseHTTPProxyForAllProtocols\":true,\"Passthrough\":\"localhost, 127.0.0.1\"},\"DisableTelemetry\":true,\"SkipTermsOfUse\":true,\"OverrideFirstRunPage\":\"\",\"OverridePostUpdatePage\":\"\",\"DontCheckDefaultBrowser\":true}}' > /etc/firefox/policies/policies.json
+printf '%s\n' '{\"ProxyMode\":\"fixed_servers\",\"ProxyServer\":\"$hp\",\"ProxyBypassList\":\"localhost;127.0.0.1\"}' > /etc/chromium/policies/managed/miffan-proxy.json"
     out=$("$SPACE_CUA" sb exec "$1" "sudo -n sh -c $(sh_quote "$script") && echo SHARECONF ok" 2>/dev/null)
     case "$out" in *"SHARECONF ok"*) return 0 ;; esac
     return 1
@@ -2397,7 +2403,7 @@ space_race_script() {
 # Space $1 through the share at $2, in one round: SHARE_CONF (its settings are in place), SHARE_REACH (the
 # share answers) and SHARE_HTTPS, failures in SHARE_FAIL.
 space_share_check() {
-    script="c=0; grep -q '^https_proxy=$2\$' /etc/environment 2>/dev/null && [ -f /etc/apt/apt.conf.d/95miffan-proxy ] && c=1; r=0; h=0; f=''; code=\$(curl -s -o /dev/null -w '%{http_code}' -m 3 --connect-timeout 2 --noproxy '*' $2/ 2>/dev/null); case \"\$code\" in ''|000) f=' share:unreachable' ;; *) r=1 ;; esac; if [ \$r = 1 ]; then $(space_race_script "-x $2") fi; echo \"SHARECHECK conf=\$c reach=\$r https=\$h fail=\$f\""
+    script="c=0; grep -q '^https_proxy=$2\$' /etc/environment 2>/dev/null && [ -f /etc/apt/apt.conf.d/95miffan-proxy ] && grep -q '${2#http://}' /etc/firefox/policies/policies.json 2>/dev/null && c=1; r=0; h=0; f=''; code=\$(curl -s -o /dev/null -w '%{http_code}' -m 3 --connect-timeout 2 --noproxy '*' $2/ 2>/dev/null); case \"\$code\" in ''|000) f=' share:unreachable' ;; *) r=1 ;; esac; if [ \$r = 1 ]; then $(space_race_script "-x $2") fi; echo \"SHARECHECK conf=\$c reach=\$r https=\$h fail=\$f\""
     line=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null | grep '^SHARECHECK ' | tail -n 1)
     [ -n "$line" ] || line="SHARECHECK conf=0 reach=0 https=0 fail= check did not finish"
     SHARE_CONF=false
