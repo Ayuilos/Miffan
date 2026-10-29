@@ -2809,7 +2809,7 @@
   <string name="im_computers_unused">還沒有夥伴使用</string>
   <string name="im_computer_detail_view_screen">查看螢幕</string>
   <string name="im_computer_detail_users">誰在用這台電腦</string>
-  <string name="im_computer_detail_user_space">用的是這裡的獨立電腦</string>
+  <string name="im_computer_detail_user_space">獨立電腦</string>
   <string name="im_computer_detail_add_partner">讓夥伴使用</string>
   <string name="im_computer_detail_check">檢查電腦狀態</string>
   <string name="im_computer_detail_check_help">桌面、螢幕服務和 cua-driver</string>

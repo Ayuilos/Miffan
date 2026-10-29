@@ -435,7 +435,7 @@ def test_netcheck(base):
 
 def test_network_share(base):
     host = Host(base, ufw=True, netcheck="NETCHECK dns=0 https=0 fail= dns:www.baidu.com",
-                share_net="bridge 127.0.0.1 127.0.0.5/8", sharecheck="SHARECHECK reach=0 https=0 fail= share:unreachable")
+                share_net="bridge 127.0.0.1 127.0.0.5/8", sharecheck="SHARECHECK conf=0 reach=0 https=0 fail= share:unreachable")
     host.add_space()
     port = free_port()
     env = {"MIFFAN_SPACE_SHARE_PORT": str(port)}
@@ -452,16 +452,17 @@ def test_network_share(base):
         os.kill(pid, 0)
         with socket.create_connection(("127.0.0.1", port), timeout=5):
             pass
-        # Once it goes through the share, later checks go straight there (settings again, for a reset Space).
-        host.state(sharecheck="SHARECHECK reach=1 https=1 fail=", netcheck=None)
+        # Once it goes through the share, later checks go straight there; settings are written only when missing.
+        host.state(sharecheck="SHARECHECK conf=1 reach=1 https=1 fail=", netcheck=None)
         online = host.json("netcheck", NAME, extra_env=env)
         assert online["https"] is True and online["hint"] is None and online["via"] == "share"
-        assert host.read_state()["share_configured"] == 2
+        assert host.read_state()["share_configured"] == 1
         assert host.json("info", NAME, extra_env=env)["proxy"] == proxy
         # Another firewall than ufw, and a Space whose settings cannot be written.
-        host.state(ufw=False, sharecheck="SHARECHECK reach=0 https=0 fail= share:unreachable")
+        host.state(ufw=False, sharecheck="SHARECHECK conf=1 reach=0 https=0 fail= share:unreachable")
         assert host.json("netcheck", NAME, extra_env=env)["hint"] == "firewall"
-        host.state(share_conf_fail=True)
+        # A reset Space lost its settings; they cannot be written back.
+        host.state(share_conf_fail=True, sharecheck="SHARECHECK conf=0 reach=1 https=0 fail=")
         assert host.json("netcheck", NAME, extra_env=env)["hint"] == "share_failed"
         host.state(share_conf_fail=False)
         # The share survives the helper; deleting the last Space that uses it stops it.

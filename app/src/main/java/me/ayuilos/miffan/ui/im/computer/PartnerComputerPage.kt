@@ -240,8 +240,10 @@ private sealed interface SpaceNetwork {
 @Composable
 private fun SpaceCard(host: String, hostId: String, workspaceId: String, spaces: PartnerSpaces) {
     var round by remember { mutableIntStateOf(0) }
-    val network by produceState<SpaceNetwork>(SpaceNetwork.Checking, workspaceId, round) {
-        value = SpaceNetwork.Checking
+    // The last answer shows at once while the page checks again; checking again on request starts blank.
+    val known = remember(workspaceId) { spaces.lastNetcheck(workspaceId)?.let { SpaceNetwork.Known(it) } }
+    val network by produceState<SpaceNetwork>(known ?: SpaceNetwork.Checking, workspaceId, round) {
+        if (round > 0 || known == null) value = SpaceNetwork.Checking
         value = runCatching { spaces.netcheck(workspaceId) }
             .fold({ SpaceNetwork.Known(it) }, { SpaceNetwork.Unknown })
     }

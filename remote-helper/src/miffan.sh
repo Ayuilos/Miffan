@@ -22,7 +22,7 @@
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=27
+MIFFAN_HELPER_VERSION=28
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2387,32 +2387,42 @@ chmod 0440 /etc/sudoers.d/miffan-proxy"
     return 1
 }
 
-# Space $1 through the share at $2: SHARE_REACH (the share answers) and SHARE_HTTPS, failures in SHARE_FAIL.
+# A script for the Space that fetches the probe sites in parallel (curl options $1) and stops at the first
+# that answers: one slow or blocked site must not hold up the answer. Leaves h=1 on success, else the
+# failures in f.
+space_race_script() {
+    printf '%s' "t=\$(mktemp); p=''; for u in www.baidu.com www.cloudflare.com; do (curl -s -o /dev/null -m 5 --connect-timeout 3 $1 \"https://\$u\" && echo ok >> \"\$t\") >/dev/null 2>&1 & p=\"\$p \$!\"; done; while [ ! -s \"\$t\" ]; do a=0; for i in \$p; do kill -0 \$i 2>/dev/null && a=1; done; [ \$a = 1 ] || break; sleep 0.1; done; h=0; f=''; if [ -s \"\$t\" ]; then h=1; else f=' https:www.baidu.com https:www.cloudflare.com'; fi; kill \$p 2>/dev/null; rm -f \"\$t\";"
+}
+
+# Space $1 through the share at $2, in one round: SHARE_CONF (its settings are in place), SHARE_REACH (the
+# share answers) and SHARE_HTTPS, failures in SHARE_FAIL.
 space_share_check() {
-    script="r=0; h=0; f=''; c=\$(curl -s -o /dev/null -w '%{http_code}' -m 4 --connect-timeout 3 --noproxy '*' $2/ 2>/dev/null); case \"\$c\" in ''|000) f=' share:unreachable' ;; *) r=1 ;; esac; if [ \$r = 1 ]; then for u in www.cloudflare.com www.baidu.com; do if curl -sS -o /dev/null -m 8 --connect-timeout 4 -x $2 \"https://\$u\" >/dev/null 2>&1; then h=1; else f=\"\$f https:\$u\"; fi; done; fi; echo \"SHARECHECK reach=\$r https=\$h fail=\$f\""
+    script="c=0; grep -q '^https_proxy=$2\$' /etc/environment 2>/dev/null && [ -f /etc/apt/apt.conf.d/95miffan-proxy ] && c=1; r=0; h=0; f=''; code=\$(curl -s -o /dev/null -w '%{http_code}' -m 3 --connect-timeout 2 --noproxy '*' $2/ 2>/dev/null); case \"\$code\" in ''|000) f=' share:unreachable' ;; *) r=1 ;; esac; if [ \$r = 1 ]; then $(space_race_script "-x $2") fi; echo \"SHARECHECK conf=\$c reach=\$r https=\$h fail=\$f\""
     line=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null | grep '^SHARECHECK ' | tail -n 1)
-    [ -n "$line" ] || line="SHARECHECK reach=0 https=0 fail= check did not finish"
+    [ -n "$line" ] || line="SHARECHECK conf=0 reach=0 https=0 fail= check did not finish"
+    SHARE_CONF=false
     SHARE_REACH=false
     SHARE_HTTPS=false
+    case "$line" in *" conf=1 "*) SHARE_CONF=true ;; esac
     case "$line" in *" reach=1 "*) SHARE_REACH=true ;; esac
     case "$line" in *" https=1 "*) SHARE_HTTPS=true ;; esac
     SHARE_FAIL=$(printf '%s' "$line" | sed -n 's/.* fail=//p' | sed 's/^ *//')
 }
 
-# Prints netcheck's JSON for Space $1 going out through the share: sets it up (and Space $1's settings,
-# when $2 is "configure"), then checks it.
+# Prints netcheck's JSON for Space $1 going out through the share: starts it, checks it, and (re)writes
+# the Space's proxy settings when they are missing (a new or reset Space).
 space_share_netcheck() {
     if ! space_share_start; then
         printf '{"dns":false,"https":false,"detail":%s,"hint":"share_failed","via":"share"}\n' "$(json_str "$SHARE_ERROR")"
         return
     fi
     proxy=$(space_share_proxy)
-    if [ "$2" = configure ] && ! space_share_configure "$1" "$proxy"; then
+    space_share_check "$1" "$proxy"
+    if [ "$SHARE_CONF" = false ] && ! space_share_configure "$1" "$proxy"; then
         printf '{"dns":false,"https":false,"detail":"could not set the proxy in the Space","hint":"share_failed","via":"share"}\n'
         return
     fi
     printf '%s\n' "$proxy" > "$SPACE_SHARE_DIR/spaces/$1"
-    space_share_check "$1" "$proxy"
     hint=""
     if [ "$SHARE_REACH" = false ]; then
         if [ "$(systemctl is-active ufw 2>/dev/null)" = active ]; then hint=ufw; else hint=firewall; fi
@@ -2442,12 +2452,12 @@ space_netcheck() {
     shared=false
     [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_net "$1" && shared=true
     if [ "$shared" = true ]; then
-        # Settings again: a reset Space starts without them.
-        space_share_netcheck "$1" configure
+        space_share_netcheck "$1"
         return
     fi
-    # A broken resolver makes getent hang for long; bound every probe so the whole check stays short.
-    script='d=0; h=0; f=""; for u in www.cloudflare.com www.baidu.com; do if timeout 5 getent hosts "$u" >/dev/null 2>&1; then d=1; else f="$f dns:$u"; fi; if curl -sS -o /dev/null -m 6 --connect-timeout 4 "https://$u" >/dev/null 2>&1; then h=1; else f="$f https:$u"; fi; done; echo "NETCHECK dns=$d https=$h fail=$f"'
+    # Every probe at once, bounded, and the first success is the answer; the resolver is only asked for
+    # the detail of a failure (a site that answered by name needed no more proof).
+    script="(timeout 3 getent hosts www.baidu.com >/dev/null 2>&1 && echo dns > /tmp/miffan-dns.\$\$) >/dev/null 2>&1 & $(space_race_script "") d=0; [ \$h = 1 ] && d=1; [ -s /tmp/miffan-dns.\$\$ ] && d=1; [ \$d = 1 ] || f=\" dns:www.baidu.com\$f\"; rm -f /tmp/miffan-dns.\$\$; echo \"NETCHECK dns=\$d https=\$h fail=\$f\""
     out=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null)
     line=$(printf '%s\n' "$out" | grep '^NETCHECK ' | tail -n 1)
     # A check that could not finish counts as offline.
@@ -2459,7 +2469,7 @@ space_netcheck() {
     fails=$(printf '%s' "$line" | sed -n 's/.* fail=//p' | sed 's/^ *//')
     # Offline on its own: go out through the host instead, which works whatever the host runs.
     if [ "$https" = false ] && [ "$(os)" = linux ] && command -v python3 >/dev/null 2>&1 && space_share_net "$1"; then
-        space_share_netcheck "$1" configure
+        space_share_netcheck "$1"
         return
     fi
     hint=""

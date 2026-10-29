@@ -2829,7 +2829,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computers_unused">还没有伙伴使用</string>
   <string name="im_computer_detail_view_screen">查看屏幕</string>
   <string name="im_computer_detail_users">谁在用这台电脑</string>
-  <string name="im_computer_detail_user_space">用的是这里的独立电脑</string>
+  <string name="im_computer_detail_user_space">独立电脑</string>
   <string name="im_computer_detail_add_partner">让伙伴使用</string>
   <string name="im_computer_detail_check">检查电脑状态</string>
   <string name="im_computer_detail_check_help">桌面、屏幕服务和 cua-driver</string>

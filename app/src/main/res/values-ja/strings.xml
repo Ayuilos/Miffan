@@ -2803,7 +2803,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computers_unused">まだパートナーは使っていません</string>
   <string name="im_computer_detail_view_screen">画面を表示</string>
   <string name="im_computer_detail_users">このコンピューターを使うパートナー</string>
-  <string name="im_computer_detail_user_space">ここで専用のコンピューターを使用中</string>
+  <string name="im_computer_detail_user_space">専用のコンピューター</string>
   <string name="im_computer_detail_add_partner">パートナーに使わせる</string>
   <string name="im_computer_detail_check">コンピューターの状態を確認</string>
   <string name="im_computer_detail_check_help">デスクトップ、画面サービス、cua-driver</string>
