@@ -154,7 +154,7 @@ private fun List<ThreadStep>.lines(): List<StepLine> = fold(mutableListOf()) { l
 }
 
 @Composable
-private fun ThreadStep.text(): String = stringResource(label, *args.toTypedArray())
+internal fun ThreadStep.text(): String = stringResource(label, *args.toTypedArray())
 
 /**
  * What the partner did behind this reply: while it works, the step it is on and how many it has

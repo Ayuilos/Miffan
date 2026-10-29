@@ -2572,6 +2572,34 @@
     <item quantity="one">Performed %2$d step on %1$s</item>
     <item quantity="other">Performed %2$d steps on %1$s</item>
   </plurals>
+  <plurals name="im_computer_record_mini_box">
+    <item quantity="one">Did %d step in the mini box</item>
+    <item quantity="other">Did %d steps in the mini box</item>
+  </plurals>
+  <plurals name="im_computer_record_desktop">
+    <item quantity="one">Took %2$d step on your %1$s desktop</item>
+    <item quantity="other">Took %2$d steps on your %1$s desktop</item>
+  </plurals>
+  <string name="im_computer_record_not_done">, didn\'t finish</string>
+  <string name="im_computer_record_last">Last: %1$s</string>
+  <string name="im_computer_record_stuck">Stuck at: %1$s</string>
+  <string name="im_computer_record_declined">You said no to: %1$s</string>
+  <string name="im_computer_record_retried">Didn\'t work, tried another way</string>
+  <string name="im_computer_observed_mini_box">Looked at the mini box\'s screen</string>
+  <string name="im_computer_observed_hint">Didn\'t touch anything</string>
+  <string name="im_computer_live_step">Working on %1$s · step %2$d</string>
+  <string name="im_computer_wants_to">%1$s wants to operate %2$s</string>
+  <string name="im_computer_approval_what">What exactly will it do?</string>
+  <string name="im_computer_click_here">Click here</string>
+  <string name="im_computer_handoff_title">From %1$s</string>
+  <string name="im_computer_handoff_title_any">From your partner</string>
+  <string name="im_computer_handoff_where">On %1$s, in %2$s</string>
+  <plurals name="im_computer_handoff_count">
+    <item quantity="one">%d file</item>
+    <item quantity="other">%d files</item>
+  </plurals>
+  <string name="im_computer_handoff_view">View on phone</string>
+  <string name="im_computer_handoff_copy">Copy path</string>
   <string name="im_computer_taken_over" tools:ignore="MissingTranslation">You took over the screen; the partner stopped</string>
   <string name="im_computer_test" tools:ignore="MissingTranslation">Try it</string>
   <string name="im_computer_trust_connect" tools:ignore="MissingTranslation">It\'s my computer, connect</string>
@@ -2916,8 +2944,8 @@
   <string name="im_step_read_file">Read %1$s</string>
   <string name="im_step_read_file_any">Read a file</string>
   <string name="im_step_publish">Send you files</string>
-  <string name="im_step_hand_over">Put %1$s on your computer</string>
-  <string name="im_step_hand_over_any">Put files on your computer</string>
+  <string name="im_step_hand_over">Hand %1$s over to you</string>
+  <string name="im_step_hand_over_any">Hand files over to you</string>
   <string name="im_step_read_web">Read a web page</string>
   <string name="im_step_search">Search the web</string>
   <string name="im_step_chats">Look through chats</string>
@@ -3839,8 +3867,12 @@
   <string name="im_space_run_running">Running. If it asks for a password, type the computer\'s password and press Enter.</string>
   <string name="im_space_run_ok">Done. Checking the internet again.</string>
   <string name="im_space_run_failed">It stopped with code %1$d. Check the output above.</string>
-  <string name="im_space_fix_card_title">Let its mini box go online</string>
+  <string name="im_space_fix_card_title">Get the mini box online</string>
   <string name="im_space_fix_card_online">Its mini box is online now.</string>
+  <string name="im_space_fix_why">%1$s\'s firewall is blocking it. Allowing it only lets the mini box go out to the internet; nobody can get into your computer.</string>
+  <string name="im_space_fix_skip">Not now</string>
+  <string name="im_space_fix_on_phone">Fix it on this phone</string>
+  <string name="im_space_fix_password">You\'ll enter %1$s\'s administrator password</string>
   <string name="im_space_screen_title">%1$s\'s mini box</string>
   <string name="im_space_screen_description">View %1$s\'s mini box</string>
   <string name="im_thread_status_offline">No internet connection</string>
