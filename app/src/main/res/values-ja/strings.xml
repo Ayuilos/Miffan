@@ -2855,6 +2855,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_step_read_file">%1$s を確認</string>
   <string name="im_step_read_file_any">ファイルを確認</string>
   <string name="im_step_publish">ファイルを送信</string>
+  <string name="im_step_hand_over">%1$s をパソコンに置く</string>
+  <string name="im_step_hand_over_any">ファイルをパソコンに置く</string>
   <string name="im_step_read_web">ウェブページを読む</string>
   <string name="im_step_search">ウェブ検索</string>
   <string name="im_step_chats">チャット履歴を確認</string>
@@ -3758,6 +3760,13 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_space_delete_detail">%1$s はコンピューターを持たなくなります。後からまた用意できます。</string>
   <string name="im_space_delete_confirm_title">%1$s のコンピューターを削除しますか？</string>
   <string name="im_space_delete_confirm_body">コンピューターと中のすべてが %1$s から削除されます。チャットはそのまま残ります。</string>
+  <string name="im_space_detail_usage">使用中</string>
+  <string name="im_space_usage_memory_of">%1$s / %2$s</string>
+  <string name="im_space_usage_value">%1$s · CPU %2$d%%</string>
+  <string name="im_space_handoff_title">受け渡しフォルダー</string>
+  <string name="im_space_handoff_detail">%1$s 上にあります。ここに入れたファイルは %2$s に届き、%2$s が返すファイルもここに届きます。</string>
+  <string name="im_space_handoff_copied">パスをコピーしました</string>
+  <string name="im_computer_delete_spaces">%1$s の専用のコンピューターも一緒に削除されます。受け渡しフォルダーはこのコンピューターに残ります。</string>
   <string name="im_space_error_cua_missing">コンピューターに cua がインストールされていません。</string>
   <string name="im_space_error_daemon">コンピューターで cua を起動できませんでした。コンピューターを開いて、もう一度お試しください。</string>
   <string name="im_space_error_docker">コンピューターに Docker がないか、このアカウントでは使えません。</string>

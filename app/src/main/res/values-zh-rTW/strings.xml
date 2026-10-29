@@ -2861,6 +2861,8 @@
   <string name="im_step_read_file">查看檔案 %1$s</string>
   <string name="im_step_read_file_any">查看檔案</string>
   <string name="im_step_publish">把檔案傳給你</string>
+  <string name="im_step_hand_over">把 %1$s 放到你的電腦上</string>
+  <string name="im_step_hand_over_any">把檔案放到你的電腦上</string>
   <string name="im_step_read_web">讀取網頁</string>
   <string name="im_step_search">搜尋網頁</string>
   <string name="im_step_chats">查看聊天紀錄</string>
@@ -3733,6 +3735,13 @@
   <string name="im_space_delete_detail">%1$s 將不再有小電腦；之後可以再幫它準備一台。</string>
   <string name="im_space_delete_confirm_title">刪除%1$s的小電腦？</string>
   <string name="im_space_delete_confirm_body">這台小電腦和裡面的所有內容都會從 %1$s 上刪除，聊天紀錄會保留。</string>
+  <string name="im_space_detail_usage">占用</string>
+  <string name="im_space_usage_memory_of">%1$s / %2$s</string>
+  <string name="im_space_usage_value">%1$s · CPU %2$d%%</string>
+  <string name="im_space_handoff_title">交接資料夾</string>
+  <string name="im_space_handoff_detail">在 %1$s 上。你放進去的檔案 %2$s 拿得到，它給你的檔案也放在這裡。</string>
+  <string name="im_space_handoff_copied">已複製路徑</string>
+  <string name="im_computer_delete_spaces">%1$s 的小電腦會一起刪除，交接資料夾會留在這台電腦上。</string>
   <string name="im_space_error_cua_missing">電腦上沒有安裝 cua。</string>
   <string name="im_space_error_daemon">cua 無法在電腦上啟動。請打開電腦後再試一次。</string>
   <string name="im_space_error_docker">電腦上沒有 Docker，或這個帳號無法使用。</string>

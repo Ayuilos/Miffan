@@ -3,6 +3,8 @@ package me.ayuilos.miffan.data.ai.transformers
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
+import me.ayuilos.miffan.data.ai.computer.SpaceArrivals
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.WorkspaceShellStatus
@@ -16,6 +18,8 @@ import kotlin.uuid.Uuid
  */
 class WorkspaceReminderTransformer(
     private val workspaceRepository: WorkspaceRepository,
+    /** For a partner's own computer: brings in what the owner put in its handoff folder, and what just arrived. */
+    private val spaceArrivals: suspend (workspaceId: String) -> SpaceArrivals? = { null },
 ) : InputMessageTransformer {
     override suspend fun transform(
         ctx: TransformerContext,
@@ -38,6 +42,9 @@ class WorkspaceReminderTransformer(
             shellEnabled = ctx.assistant.workspaceShellEnabled,
             spaceHostName = remoteHost?.name,
             spaceNetworkFix = remoteHost != null && remoteHost.screenPlatform != "macos",
+            spaceArrivals = if (workspace.isSpace && workspace.spaceHandoff != null) {
+                runCatching { spaceArrivals(workspace.id) }.getOrNull()
+            } else null,
         )
 
         // 追加到第一条 system 消息; 若不存在则插入一条
@@ -66,6 +73,8 @@ internal fun buildWorkspacePrompt(
     spaceHostName: String? = null,
     /** The owner can open a Space's network from the phone (request_network_fix is offered). */
     spaceNetworkFix: Boolean = false,
+    /** Files the owner just gave a Space through its handoff folder. */
+    spaceArrivals: SpaceArrivals? = null,
 ): String = buildString {
     if (!shellEnabled) {
         appendLine("<workspace>")
@@ -95,6 +104,7 @@ internal fun buildWorkspacePrompt(
             conversationId = conversationId,
             hostName = spaceHostName,
             networkFix = spaceNetworkFix,
+            arrivals = spaceArrivals,
         )
     }
     if (workspace.isRemote) {
@@ -188,6 +198,7 @@ private fun StringBuilder.appendSpaceWorkspacePrompt(
     conversationId: Uuid?,
     hostName: String?,
     networkFix: Boolean,
+    arrivals: SpaceArrivals?,
 ) {
     val root = requireNotNull(workspace.remotePath) { "Space workspace requires remotePath" }.trimEnd('/').ifBlank { "/" }
     val artifactVirtual = conversationId?.let { "/workspace/.miffan/conversations/$it" }
@@ -203,6 +214,10 @@ private fun StringBuilder.appendSpaceWorkspacePrompt(
         appendLine("- If it cannot reach the internet (DNS lookups or downloads fail), call `request_network_fix` once with a short reason. The owner can fix it from their phone; continue after it reports `online: true`. Do not retry the same failing download in a loop.")
     } else {
         appendLine("- If it cannot reach the internet, tell the owner what failed; the network of $host may need attention.")
+    }
+    workspace.spaceHandoff?.let { folder ->
+        appendLine("- Files pass between you and the owner through the Shared folder on your desktop, `${PartnerSpaces.SHARED_DIR}`. What the owner puts in `~/$folder` on ${hostName?.let { "\"$it\"" } ?: "their computer"} shows up there when a turn starts. To put a file on the owner's computer, put it in the Shared folder and call `give_to_owner` (`workspace_publish_files` shows files in this chat instead).")
+        arrivals?.let { appendLine("- The owner just gave you these files, now in the Shared folder: ${it.names.joinToString(", ") { name -> "`$name`" }}.") }
     }
     if (artifactVirtual != null && artifactReal != null) {
         appendLine("- Conversation artifact directory: `$artifactVirtual/` for file tools, `$artifactReal/` in shell commands. Create it before saving files and reuse it across this conversation.")

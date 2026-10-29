@@ -266,6 +266,43 @@ class PartnerComputersTest {
         coVerify(exactly = 0) { f.repository.delete(any()) }
         coVerify(exactly = 0) { f.repository.remoteHome(any()) }
     }
+    private fun space(number: Int) = workspace(number).copy(kind = WorkspaceEntity.KIND_SPACE, spaceName = "miffan-0000000$number")
+
+    @Test
+    fun `delete host deletes its partners' own computers on it first`() = runTest {
+        val f = Fixture()
+        val spaces = mockk<PartnerSpaces>()
+        val box = space(1)
+        f.workspaceList.value = listOf(box)
+        coEvery { spaces.delete(box.id) } answers { f.workspaceList.value = emptyList() }
+        coEvery { f.repository.getById(box.id) } answers { f.workspaceList.value.find { it.id == box.id } }
+        coEvery { f.repository.deleteHost("host") } returns true
+
+        PartnerComputers(f.store, f.repository, spaces).delete("host")
+
+        coVerifyOrder { spaces.delete(box.id); f.repository.deleteHost("host") }
+        coVerify(exactly = 0) { f.repository.delete(any()) }
+    }
+
+    @Test
+    fun `an unreachable host's own computers only leave the app`() = runTest {
+        val f = Fixture()
+        val spaces = mockk<PartnerSpaces>()
+        val first = space(1)
+        val second = space(2)
+        f.workspaceList.value = listOf(first, second)
+        coEvery { spaces.delete(first.id) } throws java.io.IOException("unreachable")
+        coEvery { f.repository.getById(any()) } answers { f.workspaceList.value.find { it.id == firstArg<String>() } }
+        coEvery { f.repository.delete(any()) } answers { f.workspaceList.value = f.workspaceList.value.filter { it.id != firstArg<String>() }; true }
+        coEvery { f.repository.deleteHost("host") } returns true
+
+        PartnerComputers(f.store, f.repository, spaces).delete("host")
+
+        coVerify(exactly = 0) { spaces.delete(second.id) }
+        coVerify { f.repository.delete(first.id); f.repository.delete(second.id); f.repository.deleteHost("host") }
+        assertTrue(f.workspaceList.value.isEmpty())
+    }
+
     private fun Fixture.prepareForget(): String {
         val keyed = host().copy(sshKeyId = "key", authType = "MANAGED_KEY")
         hosts.value = listOf(keyed)

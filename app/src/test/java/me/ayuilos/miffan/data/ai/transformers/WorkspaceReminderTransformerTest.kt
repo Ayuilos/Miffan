@@ -150,6 +150,22 @@ class WorkspaceReminderTransformerTest {
         val noShell = buildWorkspacePrompt(space, scopeId = scopeId, assistantName = "Assistant", conversationId = conversationId,
             spaceHostName = "cachyos", shellEnabled = false)
         assertTrue(noShell.contains("You have your own computer") && noShell.contains("AI Shell execution is disabled"))
+        assertFalse(prompt.contains("give_to_owner"))
+    }
+
+    @Test
+    fun `a partner's own computer explains its handoff folder and what just arrived`() {
+        val space = workspace.copy(kind = WorkspaceEntity.KIND_SPACE, remoteHostId = "host", remotePath = "/home/cua",
+            spaceName = "miffan-0123abcd", spaceHandoff = "Miffan Partners/小A")
+        val quiet = buildWorkspacePrompt(space, scopeId = scopeId, assistantName = "Assistant", conversationId = conversationId,
+            spaceHostName = "cachyos")
+        assertTrue(quiet.contains("`/home/cua/Desktop/Shared`"))
+        assertTrue(quiet.contains("`~/Miffan Partners/小A` on \"cachyos\""))
+        assertTrue(quiet.contains("`give_to_owner`"))
+        assertFalse(quiet.contains("just gave you"))
+        val arrived = buildWorkspacePrompt(space, scopeId = scopeId, assistantName = "Assistant", conversationId = conversationId,
+            spaceHostName = "cachyos", spaceArrivals = me.ayuilos.miffan.data.ai.computer.SpaceArrivals(listOf("论文.pdf", "sub/x.txt"), 1))
+        assertTrue(arrived.contains("just gave you these files, now in the Shared folder: `论文.pdf`, `sub/x.txt`"))
     }
 
     @Test

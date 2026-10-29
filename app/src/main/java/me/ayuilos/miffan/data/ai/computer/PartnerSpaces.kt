@@ -3,7 +3,10 @@ package me.ayuilos.miffan.data.ai.computer
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
@@ -77,6 +80,18 @@ class CuaSpaceException(val code: String, detail: String?) :
 
 data class CreatedSpace(val workspaceId: String, val netcheck: CuaSpaceNetcheck?)
 
+@Serializable
+private data class HandoffResult(val copied: List<String> = emptyList(), val error: String? = null, val detail: String? = null)
+
+@Serializable
+private data class HandoffRequest(val folder: String, val path: String? = null)
+
+/** Files the owner put in the host's handoff folder that reached the Space's Shared folder at [at]. */
+data class SpaceArrivals(val names: List<String>, val at: Long)
+
+/** What the Space uses now: memory as the kernel counts it for its limit, CPU as a share of its cores. */
+data class SpaceUsage(val memoryMb: Int, val memoryLimitMb: Int?, val cpuPercent: Int?)
+
 /**
  * A partner's own computer: a cua Space on one of the user's computers, bound to the partner as a
  * SPACE workspace. Every step runs the host helper's `space` command over SSH.
@@ -87,6 +102,10 @@ class PartnerSpaces(
     private val scope: CoroutineScope,
 ) {
     private val lastChecks = ConcurrentHashMap<String, CuaSpaceNetcheck>()
+    private val syncs = ConcurrentHashMap<String, Sync>()
+    private val arrivals = ConcurrentHashMap<String, SpaceArrivals>()
+
+    private class Sync(val started: Long, val job: Deferred<Result<Unit>>)
     /** Spaces whose font for the app's language is in place, in this run of the app. */
     private val fontsReady = ConcurrentHashMap.newKeySet<String>()
 
@@ -112,9 +131,8 @@ class PartnerSpaces(
         val label = generateSequence(1) { it + 1 }
             .map { if (it == 1) "${assistant.name} · ${host.name}" else "${assistant.name} · ${host.name} $it" }
             .first { !workspaces.isNameTaken(it, null) }
-        val taken = workspaces.listFlow().first().filter { it.isSpace && it.remoteHostId == hostId }.mapNotNull { it.spaceHandoff }.toSet()
         val workspace = workspaces.createSpaceWorkspace(label, hostId, name, tier.cpus, tier.memoryMb,
-            handoffFolder(assistant.name, taken))
+            handoffFolder(assistant.name, takenHandoffs(hostId)))
         val workspaceId = Uuid.parse(workspace.id)
         settingsStore.update { settings ->
             settings.copy(assistants = settings.assistants.map {
@@ -186,6 +204,68 @@ class PartnerSpaces(
         .filter { it.isSpace && it.remoteHostId == hostId }
         .sumOf { it.spaceMemoryMb ?: SpaceTier.DEFAULT.memoryMb }
 
+    /**
+     * The Space's handoff folder on its host, relative to the host account's home. A Space made before
+     * handoff folders existed gets one now, named after [partnerName].
+     */
+    suspend fun handoffFolder(workspaceId: String, partnerName: String): String? {
+        val workspace = workspaces.getById(workspaceId)?.takeIf { it.isSpace } ?: return null
+        workspace.spaceHandoff?.let { return it }
+        val hostId = workspace.remoteHostId ?: return null
+        return workspaces.setSpaceHandoffIfMissing(workspaceId, handoffFolder(partnerName, takenHandoffs(hostId)))
+    }
+
+    private suspend fun takenHandoffs(hostId: String): Set<String> = workspaces.listFlow().first()
+        .filter { it.isSpace && it.remoteHostId == hostId }.mapNotNull { it.spaceHandoff }.toSet()
+
+    /**
+     * Copies [path] (a file or folder in the Space's Shared folder) into the Space's handoff folder on its
+     * host; returns where each file landed, relative to the host account's home. Names already there get
+     * a " (2)" suffix instead of being overwritten.
+     */
+    suspend fun handOut(workspaceId: String, path: String): List<String> {
+        val workspace = space(workspaceId)
+        val folder = requireNotNull(workspace.spaceHandoff) { "No handoff folder" }
+        val result = parse<HandoffResult>(workspaces.runSpaceHelper(requireNotNull(workspace.remoteHostId),
+            listOf("handoff", "out", requireNotNull(workspace.spaceName)),
+            stdin = JsonInstant.encodeToString(HandoffRequest(folder, path)).encodeToByteArray(), timeoutMillis = HANDOFF_TIMEOUT_MILLIS))
+        result.error?.let { throw CuaSpaceException(it, result.detail) }
+        return result.copied.map { "$folder/$it" }
+    }
+
+    /**
+     * Brings what the owner newly put in the host's handoff folder into the Space's Shared folder, at most
+     * every [SYNC_INTERVAL_MILLIS]; waits up to [waitMillis] for it and lets a slower copy finish on its own.
+     * Returns the files that arrived in the last [ARRIVALS_SHOWN_MILLIS], for the partner to hear about.
+     */
+    suspend fun syncIn(workspaceId: String, waitMillis: Long = SYNC_WAIT_MILLIS): SpaceArrivals? {
+        val now = System.currentTimeMillis()
+        val sync = syncs.compute(workspaceId) { _, last ->
+            if (last != null && (!last.job.isCompleted || now - last.started < SYNC_INTERVAL_MILLIS)) last
+            else Sync(now, scope.async { runCatching { copyIn(workspaceId) } })
+        }!!
+        withTimeoutOrNull(waitMillis) { sync.job.await() }
+        return arrivals[workspaceId]?.takeIf { System.currentTimeMillis() - it.at < ARRIVALS_SHOWN_MILLIS }
+    }
+
+    private suspend fun copyIn(workspaceId: String) {
+        val workspace = space(workspaceId)
+        val folder = workspace.spaceHandoff ?: return
+        val result = parse<HandoffResult>(workspaces.runSpaceHelper(requireNotNull(workspace.remoteHostId),
+            listOf("handoff", "in", requireNotNull(workspace.spaceName)),
+            stdin = JsonInstant.encodeToString(HandoffRequest(folder)).encodeToByteArray(), timeoutMillis = HANDOFF_TIMEOUT_MILLIS))
+        result.error?.let { throw CuaSpaceException(it, result.detail) }
+        if (result.copied.isNotEmpty()) arrivals[workspaceId] = SpaceArrivals(result.copied, System.currentTimeMillis())
+    }
+
+    /** What the Space uses now, read from its cgroup; null when it cannot be read. */
+    suspend fun usage(workspaceId: String): SpaceUsage? {
+        val workspace = space(workspaceId)
+        val result = workspaces.runInSpace(workspaceId, USAGE_COMMAND, 15_000)
+        if (result.exitCode != 0) return null
+        return parseSpaceUsage(result.stdout, workspace.spaceCpus)
+    }
+
     /** Deletes the Space on the host, then its workspace (unbinding the partner). */
     suspend fun delete(workspaceId: String) {
         val workspace = space(workspaceId)
@@ -227,10 +307,42 @@ class PartnerSpaces(
                 .first { it !in taken }
         }
 
+        /** Where the owner's and the partner's files meet inside the Space, on its desktop (helper's SPACE_HANDOFF_DIR). */
+        const val SHARED_DIR = "/home/cua/Desktop/Shared"
+
         private const val INSTALL_TIMEOUT_MILLIS = 10 * 60_000L
+        private const val HANDOFF_TIMEOUT_MILLIS = 5 * 60_000L
+        private const val SYNC_WAIT_MILLIS = 4_000L
+        private const val SYNC_INTERVAL_MILLIS = 20_000L
+        private const val ARRIVALS_SHOWN_MILLIS = 10 * 60_000L
+
+        /**
+         * Memory as docker counts it (current minus inactive file cache), the limit, and CPU time over half
+         * a second. cgroup v2, which both a Linux host's Spaces and cua's VM on a Mac use.
+         */
+        private const val USAGE_COMMAND = "c=/sys/fs/cgroup; u1=\$(awk '/^usage_usec/{print \$2}' \$c/cpu.stat); sleep 0.5; " +
+            "u2=\$(awk '/^usage_usec/{print \$2}' \$c/cpu.stat); " +
+            "echo \"\$(cat \$c/memory.current) \$(cat \$c/memory.max) \$(awk '/^inactive_file /{print \$2}' \$c/memory.stat) \$u1 \$u2\""
         // First create on a host downloads the runtime and a 1.3 GB image.
         private const val CREATE_TIMEOUT_MILLIS = 30 * 60_000L
     }
+}
+
+/** Parses the usage command's "current max inactive_file usec1 usec2" line ([cpus]: the Space's cores). */
+internal fun parseSpaceUsage(output: String, cpus: Int?): SpaceUsage? {
+    val fields = output.trim().lineSequence().lastOrNull()?.trim()?.split(Regex("\\s+")) ?: return null
+    if (fields.size < 5) return null
+    val current = fields[0].toLongOrNull() ?: return null
+    val inactive = fields[2].toLongOrNull() ?: 0
+    val limit = fields[1].toLongOrNull()
+    val cpu = fields[3].toLongOrNull()?.let { a -> fields[4].toLongOrNull()?.let { b -> b - a } }
+    val mb = 1024L * 1024
+    return SpaceUsage(
+        memoryMb = ((current - inactive).coerceAtLeast(0) / mb).toInt(),
+        memoryLimitMb = limit?.let { (it / mb).toInt() },
+        // usec over 0.5 s on one core is 500 000.
+        cpuPercent = cpu?.let { (it * 100 / (500_000L * (cpus ?: 1).coerceAtLeast(1))).toInt().coerceIn(0, 100) },
+    )
 }
 
 /** The light font package that shows [locale]'s script in a Space; null when its image already does. */

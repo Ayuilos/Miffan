@@ -214,11 +214,11 @@ POSIX sh 与系统自带工具（含 curl、awk），不需要 python3。
 | `space handoff out\|in <名>` | `{"folder":"<宿主绝对路径>","path":"<相对路径，仅 out>"}` / `{copied:[…]}` | Space 里的交接文件夹为桌面上的 `/home/cua/Desktop/Shared`（helper 26 起；名字固定为英文），两侧缺失时创建（宿主 `<folder>` 为 700）。冲突不覆盖：在扩展名前加 ` (2)`、` (3)`…（`.tar.*` 算一个扩展名，点开头的文件无扩展名）。`copied` 是写到宿主（out）或 Space 交接文件夹（in）里的相对名 |
 
 handoff 细节：stdin 是单个 JSON 对象，字符串里只接受 `\"`、`\\`、`\/` 三种转义，非 ASCII 字符须原样 UTF-8（App 的
-JSON 编码默认如此），其他转义（含 `\n`、`\u`）为 `bad_input`。`folder` 必须是不含 `..`、`.`、空段的绝对路径，
+JSON 编码默认如此），其他转义（含 `\n`、`\u`）为 `bad_input`。`folder` 必须是不含 `..`、`.`、空段的路径：绝对路径，或（helper 30 起）相对 SSH 账号家目录的路径（App 存的就是这种），
 `path` 必须是不含 `..`、`.`、空段、不以 `/` 开头的相对路径，否则 `bad_input`。
 
 - `out`：`path` 指向文件或目录；目录递归拷贝其中的普通文件，保持相对路径，宿主已有的子目录合并，冲突按文件重命名。符号链接或不存在为 `not_found`。
-- `in`：拷贝 `<folder>` 里（递归）比上一次 `in` 更新的普通文件；跳过符号链接与 `.DS_Store`。上一次的时间戳是 `~/.miffan/space/<名>.handoff` 的 mtime（本次开始时刻写入，成功后才替换；中途失败下次会重来，已拷贝的文件会以 ` (2)` 再出现一份）。
+- `in`：拷贝 `<folder>` 里（递归）比上一次 `in` 更新的普通文件；跳过符号链接与 `.DS_Store`。App 在伙伴每轮开始时调用（同一 Space 至多每 20 秒一次）；没有新文件时不启动、不进入 Space，直接返回 `{"copied":[]}`（helper 30 起）。上一次的时间戳是 `~/.miffan/space/<名>.handoff` 的 mtime（本次开始时刻写入，成功后才替换；中途失败下次会重来，已拷贝的文件会以 ` (2)` 再出现一份）。
 
 ## Windows 子命令（Windows PowerShell 5.1）
 

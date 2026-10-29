@@ -22,7 +22,7 @@
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=29
+MIFFAN_HELPER_VERSION=30
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2513,7 +2513,8 @@ space_bad_input() {
 space_handoff_input() {
     raw=$(cat | tr -d '\n\r')
     SPACE_FOLDER=$(space_json_string "$raw" folder) || space_bad_input "folder"
-    case "$SPACE_FOLDER" in /*) ;; *) space_bad_input "folder must be absolute" ;; esac
+    # A relative folder is under the host account's home (the app stores it that way).
+    case "$SPACE_FOLDER" in /*) ;; ?*) SPACE_FOLDER="$HOME/$SPACE_FOLDER" ;; esac
     while :; do case "$SPACE_FOLDER" in */) SPACE_FOLDER=${SPACE_FOLDER%/} ;; *) break ;; esac; done
     [ -n "$SPACE_FOLDER" ] || space_bad_input "folder"
     case "$SPACE_FOLDER/" in */../*|*/./*|*//*) space_bad_input "folder must be a clean absolute path" ;; esac
@@ -2588,10 +2589,8 @@ EOF
 
 space_handoff_in() {
     space_handoff_input in
-    space_start_do "$SPACE_NAME"
     mkdir -p "$SPACE_FOLDER" && chmod 700 "$SPACE_FOLDER" 2>/dev/null
     [ -d "$SPACE_FOLDER" ] || space_fail exec_failed "cannot create the host folder"
-    "$SPACE_CUA" sb exec "$SPACE_NAME" "mkdir -p $(sh_quote "$SPACE_HANDOFF_DIR")" >/dev/null 2>&1 || space_fail exec_failed "cannot create the handoff folder in the Space"
     state_dir="$HOME/.miffan/space"
     mkdir -p "$state_dir"
     state="$state_dir/$SPACE_NAME.handoff"
@@ -2601,6 +2600,11 @@ space_handoff_in() {
         list=$(cd "$SPACE_FOLDER" && find . -type f ! -name .DS_Store -newer "$state" | sort)
     else
         list=$(cd "$SPACE_FOLDER" && find . -type f ! -name .DS_Store | sort)
+    fi
+    # Runs every turn: with nothing new, the Space is left alone and this answers at once.
+    if [ -n "$list" ]; then
+        space_start_do "$SPACE_NAME"
+        "$SPACE_CUA" sb exec "$SPACE_NAME" "mkdir -p $(sh_quote "$SPACE_HANDOFF_DIR")" >/dev/null 2>&1 || space_fail exec_failed "cannot create the handoff folder in the Space"
     fi
     copied=""
     sep=""

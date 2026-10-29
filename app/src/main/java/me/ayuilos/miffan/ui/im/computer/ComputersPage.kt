@@ -386,6 +386,10 @@ fun ComputerDetailPage(hostId: String) {
                         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             val names = partners.map { threadAssistantName(it) }.joinToString(stringResource(R.string.im_computers_name_separator))
                             if (partners.isNotEmpty()) Text(stringResource(R.string.im_computer_delete_partners, names))
+                            // Their own computers live on this one and go with it.
+                            val spaceOwners = partners.filter { it.id in current.spacePartnerIds }
+                            if (spaceOwners.isNotEmpty()) Text(stringResource(R.string.im_computer_delete_spaces,
+                                spaceOwners.map { threadAssistantName(it) }.joinToString(stringResource(R.string.im_computers_name_separator))))
                             when {
                                 canForget -> {
                                     DeleteOption(forget, { forget = it }, stringResource(R.string.im_computer_delete_forget),

@@ -2891,6 +2891,8 @@
   <string name="im_step_read_file">Read %1$s</string>
   <string name="im_step_read_file_any">Read a file</string>
   <string name="im_step_publish">Send you files</string>
+  <string name="im_step_hand_over">Put %1$s on your computer</string>
+  <string name="im_step_hand_over_any">Put files on your computer</string>
   <string name="im_step_read_web">Read a web page</string>
   <string name="im_step_search">Search the web</string>
   <string name="im_step_chats">Look through chats</string>
@@ -3758,6 +3760,13 @@
   <string name="im_space_delete_detail">%1$s will no longer have a mini box; you can give it one again.</string>
   <string name="im_space_delete_confirm_title">Delete %1$s\'s mini box?</string>
   <string name="im_space_delete_confirm_body">The mini box and everything in it are deleted from %1$s. Its chats stay.</string>
+  <string name="im_space_detail_usage">In use</string>
+  <string name="im_space_usage_memory_of">%1$s of %2$s</string>
+  <string name="im_space_usage_value">%1$s · CPU %2$d%%</string>
+  <string name="im_space_handoff_title">Handoff folder</string>
+  <string name="im_space_handoff_detail">On %1$s. Files you put here reach %2$s, and what it gives you lands here.</string>
+  <string name="im_space_handoff_copied">Path copied</string>
+  <string name="im_computer_delete_spaces">%1$s\'s mini box is deleted with it. The handoff folders stay on this computer.</string>
   <string name="im_space_error_cua_missing">cua is not installed on the computer.</string>
   <string name="im_space_error_daemon">cua could not start on the computer. Open the computer and try again.</string>
   <string name="im_space_error_docker">Docker is missing on the computer, or this account cannot use it.</string>

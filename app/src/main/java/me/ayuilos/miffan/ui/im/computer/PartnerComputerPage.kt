@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -8,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,12 +31,15 @@ import me.ayuilos.miffan.ui.im.ImSectionLabel
 import me.ayuilos.miffan.ui.im.thread.threadAssistantName
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Computer
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Cube
 import me.rerere.hugeicons.stroke.Exchange01
 import me.rerere.hugeicons.stroke.View
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
+import me.ayuilos.miffan.data.ai.computer.SpaceUsage
 import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
@@ -81,12 +87,30 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
         }
         else if (bound.space) LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item("space") { SpaceCard(bound.name, bound.hostId, bound.workspaceId, spaces) }
+            if (bound.spaceHandoff == null) item("handoff-backfill") {
+                LaunchedEffect(bound.workspaceId) { runCatching { spaces.handoffFolder(bound.workspaceId, owner.name) } }
+            }
+            item("space") { SpaceCard(bound.name, bound.hostId, bound.workspaceId, bound.spaceTier?.memoryMb, spaces) }
             item("size") {
                 Spacer(Modifier.height(8.dp))
                 ImCardGroup {
                     ImListRow(null, stringResource(R.string.im_space_tier_row), { resizing = true }, enabled = !busy,
                         supporting = bound.spaceTier?.summary())
+                }
+            }
+            bound.spaceHandoff?.let { folder ->
+                item("handoff") {
+                    val context = LocalContext.current
+                    val copied = stringResource(R.string.im_space_handoff_copied)
+                    ImSectionLabel(stringResource(R.string.im_space_handoff_title))
+                    Spacer(Modifier.height(8.dp))
+                    ImCardGroup {
+                        ImListRow(HugeIcons.Folder01, "~/$folder", {
+                            context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Miffan", "~/$folder"))
+                            scope.launch { snackbar.showSnackbar(copied) }
+                        }, supporting = stringResource(R.string.im_space_handoff_detail, bound.name, name),
+                            trailing = { Icon(HugeIcons.Copy01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) })
+                    }
                 }
             }
             item("mode") {
@@ -238,7 +262,7 @@ private sealed interface SpaceNetwork {
  * the fix stays right here, so a setup left halfway can be finished any time.
  */
 @Composable
-private fun SpaceCard(host: String, hostId: String, workspaceId: String, spaces: PartnerSpaces) {
+private fun SpaceCard(host: String, hostId: String, workspaceId: String, memoryMb: Int?, spaces: PartnerSpaces) {
     var round by remember { mutableIntStateOf(0) }
     // The last answer shows at once while the page checks again; checking again on request starts blank.
     val known = remember(workspaceId) { spaces.lastNetcheck(workspaceId)?.let { SpaceNetwork.Known(it) } }
@@ -266,6 +290,17 @@ private fun SpaceCard(host: String, hostId: String, workspaceId: String, spaces:
                         color = if (state.check.online) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                 }
             }
+            // It is not paused when idle, so what it holds now is worth seeing.
+            val usage by produceState<SpaceUsage?>(null, workspaceId) { value = runCatching { spaces.usage(workspaceId) }.getOrNull() }
+            usage?.let { now ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.im_space_detail_usage), Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val limit = now.memoryLimitMb ?: memoryMb
+                    val memory = if (limit != null) stringResource(R.string.im_space_usage_memory_of, spaceMemoryText(now.memoryMb), spaceMemoryText(limit))
+                        else spaceMemoryText(now.memoryMb)
+                    Text(now.cpuPercent?.let { stringResource(R.string.im_space_usage_value, memory, it) } ?: memory)
+                }
+            }
             val offline = (network as? SpaceNetwork.Known)?.check?.takeIf { !it.online }
             if (offline != null || network == SpaceNetwork.Unknown) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -274,4 +309,11 @@ private fun SpaceCard(host: String, hostId: String, workspaceId: String, spaces:
             }
         }
     }
+}
+
+/** Memory in the units people read: "486 MB", "4 GB", "1.5 GB". */
+internal fun spaceMemoryText(mb: Int): String = when {
+    mb < 1024 -> "$mb MB"
+    mb % 1024 == 0 -> "${mb / 1024} GB"
+    else -> String.format(java.util.Locale.ROOT, "%.1f GB", mb / 1024.0)
 }

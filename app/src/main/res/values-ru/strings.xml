@@ -2858,6 +2858,8 @@
   <string name="im_step_read_file">Чтение %1$s</string>
   <string name="im_step_read_file_any">Чтение файла</string>
   <string name="im_step_publish">Отправка файлов</string>
+  <string name="im_step_hand_over">Передача %1$s на компьютер</string>
+  <string name="im_step_hand_over_any">Передача файлов на компьютер</string>
   <string name="im_step_read_web">Чтение веб-страницы</string>
   <string name="im_step_search">Поиск в интернете</string>
   <string name="im_step_chats">Просмотр чатов</string>
@@ -3809,6 +3811,13 @@
   <string name="im_space_delete_detail">У %1$s больше не будет компьютера; его можно будет выдать снова.</string>
   <string name="im_space_delete_confirm_title">Удалить компьютер %1$s?</string>
   <string name="im_space_delete_confirm_body">Компьютер и всё, что в нём есть, будут удалены с %1$s. Чаты останутся.</string>
+  <string name="im_space_detail_usage">Используется</string>
+  <string name="im_space_usage_memory_of">%1$s из %2$s</string>
+  <string name="im_space_usage_value">%1$s · ЦП %2$d%%</string>
+  <string name="im_space_handoff_title">Папка передачи</string>
+  <string name="im_space_handoff_detail">На %1$s. Файлы, которые вы сюда положите, попадут к %2$s, а то, что %2$s передаст, появится здесь.</string>
+  <string name="im_space_handoff_copied">Путь скопирован</string>
+  <string name="im_computer_delete_spaces">Собственный компьютер (%1$s) будет удалён вместе с ним. Папки передачи останутся на этом компьютере.</string>
   <string name="im_space_error_cua_missing">На компьютере не установлен cua.</string>
   <string name="im_space_error_daemon">Не удалось запустить cua на компьютере. Откройте компьютер и попробуйте ещё раз.</string>
   <string name="im_space_error_docker">На компьютере нет Docker, или этот аккаунт не может им пользоваться.</string>

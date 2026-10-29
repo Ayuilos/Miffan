@@ -944,6 +944,14 @@ class WorkspaceRepository(
         ).also { dao.upsert(it) }
     }
 
+    /** Gives a Space made before handoff folders existed its folder; keeps one it already has. */
+    suspend fun setSpaceHandoffIfMissing(id: String, handoff: String): String? {
+        val workspace = dao.getById(id)?.takeIf { it.isSpace } ?: return null
+        workspace.spaceHandoff?.let { return it }
+        dao.upsert(workspace.copy(spaceHandoff = handoff, updatedAt = System.currentTimeMillis()))
+        return handoff
+    }
+
     suspend fun updateSpaceSize(id: String, cpus: Int, memoryMb: Int) {
         val workspace = dao.getById(id)?.takeIf { it.isSpace } ?: return
         dao.upsert(workspace.copy(spaceCpus = cpus, spaceMemoryMb = memoryMb, updatedAt = System.currentTimeMillis()))

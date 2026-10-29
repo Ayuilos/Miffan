@@ -2855,6 +2855,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_step_read_file">%1$s 확인</string>
   <string name="im_step_read_file_any">파일 확인</string>
   <string name="im_step_publish">파일 보내기</string>
+  <string name="im_step_hand_over">%1$s를 내 컴퓨터에 넣기</string>
+  <string name="im_step_hand_over_any">파일을 내 컴퓨터에 넣기</string>
   <string name="im_step_read_web">웹페이지 읽기</string>
   <string name="im_step_search">웹 검색</string>
   <string name="im_step_chats">채팅 기록 확인</string>
@@ -3758,6 +3760,13 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_space_delete_detail">%1$s은(는) 더 이상 컴퓨터가 없어요. 나중에 다시 줄 수 있어요.</string>
   <string name="im_space_delete_confirm_title">%1$s의 컴퓨터를 삭제할까요?</string>
   <string name="im_space_delete_confirm_body">컴퓨터와 그 안의 모든 것이 %1$s에서 삭제돼요. 채팅은 그대로 남아요.</string>
+  <string name="im_space_detail_usage">사용 중</string>
+  <string name="im_space_usage_memory_of">%1$s / %2$s</string>
+  <string name="im_space_usage_value">%1$s · CPU %2$d%%</string>
+  <string name="im_space_handoff_title">전달 폴더</string>
+  <string name="im_space_handoff_detail">%1$s에 있어요. 여기 넣은 파일은 %2$s에게 전해지고, %2$s가 주는 파일도 여기에 놓여요.</string>
+  <string name="im_space_handoff_copied">경로를 복사했어요</string>
+  <string name="im_computer_delete_spaces">%1$s의 전용 컴퓨터도 함께 삭제돼요. 전달 폴더는 이 컴퓨터에 남아요.</string>
   <string name="im_space_error_cua_missing">컴퓨터에 cua가 설치되어 있지 않아요.</string>
   <string name="im_space_error_daemon">컴퓨터에서 cua를 시작할 수 없어요. 컴퓨터를 열고 다시 시도해 주세요.</string>
   <string name="im_space_error_docker">컴퓨터에 Docker가 없거나, 이 계정으로 쓸 수 없어요.</string>

@@ -436,7 +436,9 @@ class ChatService(
     private val computerControl: RemoteComputerControl? = null,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
-    private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
+    private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository) { workspaceId ->
+        getKoin().get<me.ayuilos.miffan.data.ai.computer.PartnerSpaces>().syncIn(workspaceId)
+    }
     private val miffanHelpClient = MiffanHelpClient(
         httpClient = httpClient,
         cacheFile = File(context.cacheDir, "miffan_help/resources.json"),
@@ -1378,6 +1380,7 @@ class ChatService(
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
                     createSpaceNetworkToolIfReady(assistant, conversation.id.toString())?.let { add(it) }
+                    createSpaceHandoffToolIfReady(assistant, conversation.id.toString())?.let { add(it) }
                     createScheduleTaskToolIfReady(assistant, conversation.id)?.let { scheduleTool ->
                         add(scheduleTool)
                         createAgentToolsToolIfReady(assistant)?.let { add(it) }
@@ -1617,6 +1620,25 @@ class ChatService(
                 assistant.id.toString(), workspace.id, assistant.workspaceScopeId?.toString(),
             )?.copy(conversationId = conversationId),
             spaces = getKoin().get(),
+        )
+    }
+
+    /** A partner's own computer hands files to the owner through its handoff folder on the host. */
+    private suspend fun createSpaceHandoffToolIfReady(assistant: Assistant, conversationId: String): Tool? {
+        val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        if (!workspace.isSpace || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        val spaces = getKoin().get<me.ayuilos.miffan.data.ai.computer.PartnerSpaces>()
+        // Before the reminder reads it: a Space made before handoff folders gets its folder here.
+        val folder = runCatching { spaces.handoffFolder(workspace.id, assistant.name) }.getOrNull() ?: return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        return me.ayuilos.miffan.data.ai.tools.createSpaceHandoffTool(
+            workspaceId = workspace.id,
+            computerName = host.name,
+            handoffFolder = folder,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspace.id, assistant.workspaceScopeId?.toString(),
+            )?.copy(conversationId = conversationId),
+            spaces = spaces,
         )
     }
 

@@ -576,7 +576,7 @@ def test_handoff_out(base):
         err = host.handoff("out", {"folder": str(folder), "path": bad}, rc=1)
         assert err["error"] == "bad_input", bad
     assert host.handoff("out", {"folder": str(folder), "path": "missing.txt"}, rc=1)["error"] == "not_found"
-    for payload in [{"path": "a"}, {"folder": "relative/dir", "path": "a"}, {"folder": str(folder) + "/../x", "path": "a"},
+    for payload in [{"path": "a"}, {"folder": "rel/../dir", "path": "a"}, {"folder": str(folder) + "/../x", "path": "a"},
                     {"folder": str(folder)}, {"folder": str(folder), "path": 5}]:
         assert host.handoff("out", payload, rc=1)["error"] == "bad_input", payload
     assert host.run("handoff", "out", NAME, stdin="not json").returncode == 1
@@ -639,7 +639,12 @@ def test_handoff_in(base):
     fresh = host.base / "brand/new"
     assert host.handoff("in", {"folder": str(fresh)}) == {"copied": []}
     assert oct(fresh.stat().st_mode & 0o777) == "0o700"
-    assert host.handoff("in", {"folder": "relative"}, rc=1)["error"] == "bad_input"
+    # A relative folder is under the host account's home, as the app stores it.
+    (host.home / "Miffan Partners/小A").mkdir(parents=True)
+    (host.home / "Miffan Partners/小A/给你.txt").write_text("g")
+    assert host.handoff("in", {"folder": "Miffan Partners/小A"}) == {"copied": ["给你.txt"]}
+    assert (box / "给你.txt").read_text() == "g"
+    assert host.handoff("in", {"folder": "Miffan Partners/../x"}, rc=1)["error"] == "bad_input"
     assert host.handoff("in", {"folder": str(folder) + "/../elsewhere"}, rc=1)["error"] == "bad_input"
     check_no_token(host)
 

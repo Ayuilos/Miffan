@@ -2881,6 +2881,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_step_read_file">查看文件 %1$s</string>
   <string name="im_step_read_file_any">查看文件</string>
   <string name="im_step_publish">把文件发给你</string>
+  <string name="im_step_hand_over">把 %1$s 放到你的电脑上</string>
+  <string name="im_step_hand_over_any">把文件放到你的电脑上</string>
   <string name="im_step_read_web">读取网页</string>
   <string name="im_step_search">搜索网页</string>
   <string name="im_step_chats">查看聊天记录</string>
@@ -3743,6 +3745,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_space_delete_detail">删除后%1$s就没有小电脑了，可以再给它一台。</string>
   <string name="im_space_delete_confirm_title">删除%1$s的小电脑？</string>
   <string name="im_space_delete_confirm_body">这台小电脑和里面的所有东西都会从 %1$s 上删除，聊天记录不受影响。</string>
+  <string name="im_space_detail_usage">占用</string>
+  <string name="im_space_usage_memory_of">%1$s / %2$s</string>
+  <string name="im_space_usage_value">%1$s · CPU %2$d%%</string>
+  <string name="im_space_handoff_title">交接文件夹</string>
+  <string name="im_space_handoff_detail">在 %1$s 上。你放进去的文件 %2$s 能拿到，它给你的文件也放在这里。</string>
+  <string name="im_space_handoff_copied">已复制路径</string>
+  <string name="im_computer_delete_spaces">%1$s 的小电脑会一起删除，交接文件夹会留在这台电脑上。</string>
   <string name="im_space_error_cua_missing">电脑上还没装 cua。</string>
   <string name="im_space_error_daemon">cua 在电脑上启动不了。打开电脑后再试一次。</string>
   <string name="im_space_error_docker">电脑上没有 Docker，或者这个账户用不了。</string>

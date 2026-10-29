@@ -37,6 +37,8 @@ data class PartnerComputer(
     val space: Boolean = false,
     /** The Space's size; null when it is not a Space or was sized outside the app. */
     val spaceTier: SpaceTier? = null,
+    /** The Space's handoff folder on the host, relative to the host account's home. */
+    val spaceHandoff: String? = null,
 ) {
     /** Easy mode shows the computer entry only when there is a screen to open. */
     val showsEntry: Boolean get() = screenEnabled
@@ -58,7 +60,7 @@ data class KnownComputer(
     val otherWorkspaceCount: Int,
     /** Partners bound to any workspace of this host, in the order of the partner list. */
     val partnerIds: List<Uuid>,
-    /** Partners' own Spaces on this host; deleting the host waits until they are gone. */
+    /** Partners' own Spaces on this host; deleting the host deletes them too. */
     val spaceCount: Int = 0,
     /** Those of [partnerIds] that work in their own Space here, not on the host itself; the host's screen is not theirs. */
     val spacePartnerIds: List<Uuid> = emptyList(),
@@ -82,6 +84,7 @@ class ComputerUnreachableException(val manualCommand: String, cause: Throwable? 
 class PartnerComputers(
     private val settingsStore: SettingsStore,
     private val workspaces: WorkspaceRepository,
+    private val spaces: PartnerSpaces? = null,
 ) {
     /** Every remote host, sorted by name. */
     fun observeAll(): Flow<List<KnownComputer>> = combine(
@@ -179,9 +182,22 @@ class PartnerComputers(
     suspend fun delete(hostId: String, forgetOnComputer: Boolean, deleteWorkFiles: Boolean = false): ForgetOutcome {
         val workspaceList = workspaces.listFlow().first()
         val workspace = computerWorkspace(hostId, workspaceList, settingsStore.settingsFlow.value.assistants)
-        // Spaces count too: they live on this host and would be orphaned with it.
-        val otherCount = workspaceList.count { it.isRemote && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
+        val otherCount = workspaceList.count { it.isRemote && !it.isSpace && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
         if (otherCount > 0) throw ComputerHasWorkspacesException(otherCount)
+        // Partners' own computers go with their host: deleted there while Miffan can still reach it. One that
+        // cannot be reached is left there (its handoff folder always is) and only leaves the app.
+        val spaceIds = workspaceList.filter { it.isSpace && it.remoteHostId == hostId }.map { it.id }
+        var reachable = spaces != null
+        for (id in spaceIds) {
+            if (!reachable) break
+            try {
+                spaces?.delete(id)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                reachable = false
+            }
+        }
         val host = if (forgetOnComputer) workspaces.getHostById(hostId) else null
         val outcome = when {
             host?.sshKeyId == null -> ForgetOutcome.NOT_NEEDED
@@ -204,6 +220,7 @@ class PartnerComputers(
             throw WorkspaceToolTargetChangedException()
         }
         workspace?.let { workspaces.delete(it.id) }
+        spaceIds.filter { workspaces.getById(it) != null }.forEach { workspaces.delete(it) }
         workspaces.deleteHost(hostId)
         return outcome
     }
@@ -268,6 +285,7 @@ class PartnerComputers(
             computerUse = assistant.computerUse,
             space = workspace.isSpace,
             spaceTier = if (workspace.isSpace) SpaceTier.of(workspace.spaceCpus, workspace.spaceMemoryMb) else null,
+            spaceHandoff = workspace.spaceHandoff?.takeIf { workspace.isSpace },
         )
     }.distinctUntilChanged()
 

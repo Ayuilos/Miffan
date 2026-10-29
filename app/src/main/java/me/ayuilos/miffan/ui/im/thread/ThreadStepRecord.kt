@@ -91,6 +91,8 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
         "workspace_edit_file" -> fileStep(R.string.im_step_edit_file, R.string.im_step_edit_file_any, changes = true)
         "workspace_read_file" -> fileStep(R.string.im_step_read_file, R.string.im_step_read_file_any, changes = false)
         "workspace_publish_files" -> step(R.string.im_step_publish, changes = true)
+        me.ayuilos.miffan.data.ai.tools.SPACE_HANDOFF_TOOL ->
+            fileStep(R.string.im_step_hand_over, R.string.im_step_hand_over_any, changes = true)
         "workspace_fetch_url", "scrape_web" -> step(R.string.im_step_read_web)
         "search_web" -> step(R.string.im_step_search)
         "conversation_search", "recent_chats", "read_partner_chat" -> step(R.string.im_step_chats)
