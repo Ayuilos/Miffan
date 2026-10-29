@@ -3842,8 +3842,12 @@
   <string name="im_space_run_running">Running. If it asks for a password, type the computer\'s password and press Enter.</string>
   <string name="im_space_run_ok">Done. Checking the internet again.</string>
   <string name="im_space_run_failed">It stopped with code %1$d. Check the output above.</string>
-  <string name="im_space_fix_card_title">Let its mini box go online</string>
+  <string name="im_space_fix_card_title">Get the mini box online</string>
   <string name="im_space_fix_card_online">Its mini box is online now.</string>
+  <string name="im_space_fix_why">%1$s\'s firewall is blocking it. Allowing it only lets the mini box go out to the internet; nobody can get into your computer.</string>
+  <string name="im_space_fix_skip">Not now</string>
+  <string name="im_space_fix_on_phone">Fix it on this phone</string>
+  <string name="im_space_fix_password">You\'ll enter %1$s\'s administrator password</string>
   <string name="im_space_screen_title">%1$s\'s mini box</string>
   <string name="im_space_screen_description">View %1$s\'s mini box</string>
   <string name="im_thread_status_offline">No internet connection</string>

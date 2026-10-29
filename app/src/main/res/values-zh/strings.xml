@@ -3824,8 +3824,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_space_run_running">正在运行。要密码时，输入电脑的密码再按回车。</string>
   <string name="im_space_run_ok">完成了，正在重新检查网络。</string>
   <string name="im_space_run_failed">命令没有成功（代码 %1$d），看看上面的输出。</string>
-  <string name="im_space_fix_card_title">让它的小电脑能上网</string>
+  <string name="im_space_fix_card_title">让小电脑能上网</string>
   <string name="im_space_fix_card_online">它的小电脑现在已经能上网了。</string>
+  <string name="im_space_fix_why">%1$s 的防火墙挡住了它。放行后只让它出去上网，不会让别人连进你的电脑。</string>
+  <string name="im_space_fix_skip">不用了</string>
+  <string name="im_space_fix_on_phone">在手机上修好</string>
+  <string name="im_space_fix_password">要输入 %1$s 的管理员密码</string>
   <string name="im_space_screen_title">%1$s的小电脑</string>
   <string name="im_space_screen_description">查看%1$s的小电脑</string>
   <string name="im_thread_status_offline">没有网络，联网后再试</string>
