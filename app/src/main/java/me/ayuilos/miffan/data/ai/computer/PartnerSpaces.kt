@@ -1,6 +1,9 @@
 package me.ayuilos.miffan.data.ai.computer
 
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
@@ -81,8 +84,11 @@ data class CreatedSpace(val workspaceId: String, val netcheck: CuaSpaceNetcheck?
 class PartnerSpaces(
     private val settingsStore: SettingsStore,
     private val workspaces: WorkspaceRepository,
+    private val scope: CoroutineScope,
 ) {
     private val lastChecks = ConcurrentHashMap<String, CuaSpaceNetcheck>()
+    /** Spaces whose font for the app's language is in place, in this run of the app. */
+    private val fontsReady = ConcurrentHashMap.newKeySet<String>()
 
     suspend fun probe(hostId: String): CuaSpaceProbe =
         parse<CuaSpaceProbe>(workspaces.runSpaceHelper(hostId, listOf("probe"), timeoutMillis = 60_000))
@@ -127,7 +133,25 @@ class PartnerSpaces(
         lastChecks[workspaceId] = check
         // Processes started from now on get the share's proxy.
         if (check.via == "share") workspaces.useSpaceProxy(workspaceId, check.proxy)
+        if (check.online) ensureFont(workspaceId)
         return check
+    }
+
+    /**
+     * Installs, in the background, a light font for the app's language: the Space's image only covers
+     * Latin and Cyrillic, so Chinese, Japanese or Korean would show as boxes on its screen and in its
+     * browser. Quick when the font is there; a failure (apt busy, offline) is tried again on the next
+     * successful network check.
+     */
+    private fun ensureFont(workspaceId: String) {
+        val font = spaceFontPackage(Locale.getDefault()) ?: return
+        if (!fontsReady.add(workspaceId)) return
+        scope.launch {
+            val installed = runCatching {
+                workspaces.runInSpace(workspaceId, spaceFontCommand(font), FONT_TIMEOUT_MILLIS).exitCode == 0
+            }.getOrDefault(false)
+            if (!installed) fontsReady.remove(workspaceId)
+        }
     }
 
     /** The last network check of this Space in this run of the app. */
@@ -208,3 +232,23 @@ class PartnerSpaces(
         private const val CREATE_TIMEOUT_MILLIS = 30 * 60_000L
     }
 }
+
+/** The light font package that shows [locale]'s script in a Space; null when its image already does. */
+internal fun spaceFontPackage(locale: Locale): String? = when (locale.language) {
+    "zh" -> "fonts-wqy-microhei" // Simplified and Traditional
+    "ja" -> "fonts-ipafont-gothic"
+    "ko" -> "fonts-nanum"
+    else -> null
+}
+
+/**
+ * Installs [font] unless it is there. Package lists are refreshed first with short timeouts: the image
+ * carries third-party sources that may be unreachable, which would otherwise hold `update` for minutes.
+ * Waits for an apt the partner may be running instead of failing.
+ */
+internal fun spaceFontCommand(font: String): String =
+    "dpkg -s $font >/dev/null 2>&1 || { sudo -n apt-get -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 " +
+        "-o Acquire::Retries=0 -o DPkg::Lock::Timeout=120 update -qq >/dev/null 2>&1; " +
+        "sudo -n env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq --no-install-recommends $font; }"
+
+private const val FONT_TIMEOUT_MILLIS = 600_000L

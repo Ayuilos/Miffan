@@ -59,4 +59,15 @@ class SpaceTierTest {
         assertEquals("Miffan Partners/Partner", PartnerSpaces.handoffFolder(" ..", emptySet()))
         assertEquals("Miffan Partners/x", PartnerSpaces.handoffFolder("..x..", emptySet()))
     }
+
+    @Test fun spacesGetTheFontOfTheAppLanguage() {
+        assertEquals("fonts-wqy-microhei", spaceFontPackage(java.util.Locale.SIMPLIFIED_CHINESE))
+        assertEquals("fonts-wqy-microhei", spaceFontPackage(java.util.Locale.forLanguageTag("zh-TW")))
+        assertEquals("fonts-ipafont-gothic", spaceFontPackage(java.util.Locale.JAPANESE))
+        assertEquals("fonts-nanum", spaceFontPackage(java.util.Locale.KOREA))
+        // Latin and Cyrillic are in the image already.
+        assertNull(spaceFontPackage(java.util.Locale.ENGLISH))
+        assertNull(spaceFontPackage(java.util.Locale.forLanguageTag("ru")))
+        assertTrue(spaceFontCommand("fonts-nanum").startsWith("dpkg -s fonts-nanum >/dev/null 2>&1 ||"))
+    }
 }

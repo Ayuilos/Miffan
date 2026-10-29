@@ -901,6 +901,12 @@ class WorkspaceRepository(
         cuaSpaces?.forget(id)
     }
 
+    /** Runs [command] in a partner's own computer for the app itself (not a partner's tool call). */
+    suspend fun runInSpace(id: String, command: String, timeoutMillis: Long): WorkspaceCommandResult = withContext(Dispatchers.IO) {
+        val workspace = requireNotNull(dao.getById(id)?.takeIf { it.isSpace }) { "Not a partner's own computer" }
+        withRemoteWorkspace(workspace, recordOperation = false) { it.execute(command, "", timeoutMillis) }
+    }
+
     /** The Space now goes online through [proxy]: a connection made without it is rebuilt on next use. */
     fun useSpaceProxy(id: String, proxy: String?) {
         cuaSpaces?.forgetUnlessProxy(id, proxy)
