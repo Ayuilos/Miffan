@@ -2839,6 +2839,7 @@
   <string name="im_computers_unused" tools:ignore="MissingTranslation">No partner uses it yet</string>
   <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">View screen</string>
   <string name="im_computer_detail_users" tools:ignore="MissingTranslation">Who uses this computer</string>
+  <string name="im_computer_detail_user_space">Uses its own computer here</string>
   <string name="im_computer_detail_add_partner" tools:ignore="MissingTranslation">Let a partner use it</string>
   <string name="im_computer_detail_check" tools:ignore="MissingTranslation">Check this computer</string>
   <string name="im_computer_detail_check_help" tools:ignore="MissingTranslation">Desktop, screen service and cua-driver</string>
@@ -3788,4 +3789,5 @@
   <string name="im_space_run_ok">Done. Checking the internet again.</string>
   <string name="im_space_run_failed">It stopped with code %1$d. Check the output above.</string>
   <string name="im_space_fix_card_title">Let its computer go online</string>
+  <string name="im_space_fix_card_online">Its computer is online now.</string>
 </resources>

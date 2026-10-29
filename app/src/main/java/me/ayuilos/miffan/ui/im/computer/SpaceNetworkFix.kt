@@ -13,44 +13,47 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.data.ai.tools.SPACE_NETWORK_FIX_COMMAND
+import me.ayuilos.miffan.data.ai.computer.CuaSpaceNetcheck
+import me.ayuilos.miffan.data.ai.tools.spaceNetworkFixCommand
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Copy01
 
-/** The fix command in a box, with a button that copies it. */
+/** The fix [command] in a box, with a button that copies it. */
 @Composable
-internal fun SpaceFixCommand() {
+internal fun SpaceFixCommand(command: String) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) { CommandPreview(SPACE_NETWORK_FIX_COMMAND) }
+        Box(Modifier.weight(1f)) { CommandPreview(command) }
         IconButton(onClick = {
-            scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("command", SPACE_NETWORK_FIX_COMMAND))) }
+            scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("command", command))) }
         }) { Icon(HugeIcons.Copy01, stringResource(R.string.im_space_copy_command)) }
     }
 }
 
 /**
  * What to do about an offline Space, wherever it shows: the firewall fix (run from the phone, or copied)
- * when the check pointed at ufw on [computerName], else a hint to look at its network; and checking again.
+ * when [check] pointed at ufw on [computerName], else a hint to look at its network; and checking again.
  */
 @Composable
 internal fun SpaceNetworkFixPanel(
     hostId: String,
     computerName: String,
-    firewall: Boolean,
+    check: CuaSpaceNetcheck?,
     checking: Boolean,
     onRecheck: () -> Unit,
 ) {
+    val firewall = check?.firewallFix == true
+    val command = spaceNetworkFixCommand(check)
     var running by rememberSaveable { mutableStateOf(false) }
-    if (running) HostCommandTerminal(hostId, SPACE_NETWORK_FIX_COMMAND,
+    if (running) HostCommandTerminal(hostId, command,
         onFinished = { ok -> if (ok) onRecheck() },
         onDismiss = { running = false })
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(stringResource(if (firewall) R.string.im_space_network_help_ufw else R.string.im_space_network_help, computerName),
             style = MaterialTheme.typography.bodyMedium)
         if (firewall) {
-            SpaceFixCommand()
+            SpaceFixCommand(command)
             Text(stringResource(R.string.im_space_network_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

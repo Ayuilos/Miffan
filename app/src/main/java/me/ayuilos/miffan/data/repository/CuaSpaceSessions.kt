@@ -23,6 +23,8 @@ internal data class CuaSpaceInfo(
     val state: String? = null,
     val port: Int? = null,
     val token: String? = null,
+    /** The host's network share the Space goes online through, when it has one (`miffan space netcheck`). */
+    val proxy: String? = null,
     val error: String? = null,
     val detail: String? = null,
 ) {
@@ -40,7 +42,7 @@ class CuaSpaceUnavailableException(val code: String, detail: String?) :
 class CuaSpaceSessions internal constructor(assets: AssetManager) {
     private val helper = RemoteMiffanHelper(assets)
 
-    private class Cached(val ssh: RemoteWorkspaceSession, val client: SpaceClient) {
+    private class Cached(val ssh: RemoteWorkspaceSession, val client: SpaceClient, val proxy: String?) {
         @Volatile var verifiedAt: Long = System.currentTimeMillis()
     }
 
@@ -65,8 +67,8 @@ class CuaSpaceSessions internal constructor(assets: AssetManager) {
             cached.client.close()
         }
         val info = info(ssh, name)
-        val client = SpaceClient(opener(ssh), requireNotNull(info.port), requireNotNull(info.token))
-        cache[workspace.id] = Cached(ssh, client)
+        val client = SpaceClient(opener(ssh), requireNotNull(info.port), requireNotNull(info.token), env = proxyEnv(info.proxy))
+        cache[workspace.id] = Cached(ssh, client, info.proxy)
         return client
     }
 
@@ -74,6 +76,13 @@ class CuaSpaceSessions internal constructor(assets: AssetManager) {
 
     fun forget(workspaceId: String) {
         cache.remove(workspaceId)?.client?.close()
+    }
+
+    /** Drops the cached client unless it already starts processes with [proxy]; running ones keep going. */
+    fun forgetUnlessProxy(workspaceId: String, proxy: String?) {
+        val cached = cache[workspaceId] ?: return
+        // Not closed: commands still running on it finish, new ones get a client with the proxy.
+        if (cached.proxy != proxy) cache.remove(workspaceId, cached)
     }
 
     private fun info(ssh: RemoteWorkspaceSession, name: String): CuaSpaceInfo {
@@ -87,6 +96,14 @@ class CuaSpaceSessions internal constructor(assets: AssetManager) {
                 info?.detail ?: result.stderr.trim().take(300))
         }
         return info
+    }
+
+    // Processes the app starts do not read the Space's /etc/environment, so they get the proxy here.
+    private fun proxyEnv(proxy: String?): Map<String, String> {
+        if (proxy == null || !PROXY.matches(proxy)) return emptyMap()
+        val local = "localhost,127.0.0.1,::1"
+        return mapOf("http_proxy" to proxy, "https_proxy" to proxy, "HTTP_PROXY" to proxy, "HTTPS_PROXY" to proxy,
+            "no_proxy" to local, "NO_PROXY" to local)
     }
 
     private fun opener(ssh: RemoteWorkspaceSession) = SpaceStreamOpener { port, timeoutMillis ->
@@ -105,5 +122,6 @@ class CuaSpaceSessions internal constructor(assets: AssetManager) {
         // Starting a stopped Space boots the runtime VM on macOS first.
         private const val INFO_TIMEOUT_MILLIS = 180_000L
         val SPACE_NAME = Regex("miffan-[0-9a-f]{8}")
+        private val PROXY = Regex("http://\\d{1,3}(\\.\\d{1,3}){3}:\\d{1,5}")
     }
 }

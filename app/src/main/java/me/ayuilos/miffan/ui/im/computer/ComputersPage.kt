@@ -261,9 +261,11 @@ fun ComputerDetailPage(hostId: String) {
                     Text(listOfNotNull(current.platform.label(), current.address).joinToString(" · "),
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     if (current.screenEnabled) Button(onClick = {
-                        when (partners.size) {
+                        // Partners with their own Space work on its screen, not this one.
+                        val onScreen = partners.filter { it.id !in current.spacePartnerIds }
+                        when (onScreen.size) {
                             0 -> nav.navigate(Screen.ComputerScreen(hostId))
-                            1 -> nav.navigate(Screen.PartnerScreen(partners.single().id.toString()))
+                            1 -> nav.navigate(Screen.PartnerScreen(onScreen.single().id.toString()))
                             else -> choosingScreen = true
                         }
                     }, enabled = !busy, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 52.dp)) {
@@ -297,7 +299,9 @@ fun ComputerDetailPage(hostId: String) {
             item("users") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
                     partners.forEach { partner ->
-                        PartnerRow(partner, trailing = stringResource(partner.computerUse.label()), enabled = !busy) {
+                        // A partner with its own Space here works in that, not on this computer itself.
+                        PartnerRow(partner, trailing = stringResource(partner.computerUse.label()), enabled = !busy,
+                            supporting = if (partner.id in current.spacePartnerIds) stringResource(R.string.im_computer_detail_user_space) else null) {
                             nav.navigate(Screen.PartnerProfile(partner.id.toString()))
                         }
                         HorizontalDivider(Modifier.padding(start = 68.dp))
@@ -346,7 +350,7 @@ fun ComputerDetailPage(hostId: String) {
         )
         if (choosingScreen) PartnerPickerDialog(
             title = stringResource(R.string.im_computer_pick_screen_partner),
-            partners = partners,
+            partners = partners.filter { it.id !in current.spacePartnerIds },
             supporting = { null },
             footer = null,
             onDismiss = { choosingScreen = false },

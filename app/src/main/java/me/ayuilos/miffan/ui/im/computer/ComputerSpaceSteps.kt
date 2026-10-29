@@ -25,7 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.SpaceSetupJob
-import me.ayuilos.miffan.data.ai.tools.SPACE_NETWORK_FIX_COMMAND
+import me.ayuilos.miffan.data.ai.tools.spaceNetworkFixCommand
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalSettings
@@ -246,7 +246,9 @@ internal fun ComputerSpaceNetworkStep(vm: ComputerSetupVM, state: ComputerSetupS
     val checking = job?.stage == SpaceSetupJob.Stage.CHECKING_NETWORK
     var running by rememberSaveable { mutableStateOf(false) }
     val hostId = state.hostId
-    if (running && hostId != null) HostCommandTerminal(hostId, SPACE_NETWORK_FIX_COMMAND,
+    // The Spaces of one run share a host, so one command fits them all.
+    val command = spaceNetworkFixCommand(job?.network?.values?.firstOrNull { it?.firewallFix == true })
+    if (running && hostId != null) HostCommandTerminal(hostId, command,
         // A fixed firewall checks again by itself; the terminal stays open to show what happened.
         onFinished = { ok -> if (ok) vm.recheckNetwork() },
         onDismiss = { running = false })
@@ -263,9 +265,9 @@ internal fun ComputerSpaceNetworkStep(vm: ComputerSetupVM, state: ComputerSetupS
         if (job?.firewallHint == true) SetupCard {
             Text(stringResource(R.string.im_space_network_run, computer), style = MaterialTheme.typography.bodyLarge)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { CommandPreview(SPACE_NETWORK_FIX_COMMAND) }
+                Box(Modifier.weight(1f)) { CommandPreview(command) }
                 IconButton(onClick = {
-                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("command", SPACE_NETWORK_FIX_COMMAND))) }
+                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("command", command))) }
                 }) { Icon(HugeIcons.Copy01, stringResource(R.string.im_space_copy_command)) }
             }
             Text(stringResource(R.string.im_space_network_note), style = MaterialTheme.typography.bodyMedium,

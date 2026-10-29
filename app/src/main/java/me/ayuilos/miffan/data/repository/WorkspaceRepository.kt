@@ -900,6 +900,11 @@ class WorkspaceRepository(
         cuaSpaces?.forget(id)
     }
 
+    /** The Space now goes online through [proxy]: a connection made without it is rebuilt on next use. */
+    fun useSpaceProxy(id: String, proxy: String?) {
+        cuaSpaces?.forgetUnlessProxy(id, proxy)
+    }
+
     /**
      * Records a partner's own computer: the cua Space [spaceName] already created on [hostId] by the
      * helper. Its files live in the Space under [SpaceWorkspaceFiles.DEFAULT_ROOT].

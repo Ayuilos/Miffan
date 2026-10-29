@@ -22,7 +22,7 @@
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=26
+MIFFAN_HELPER_VERSION=27
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2110,8 +2110,9 @@ space_info() {
     space_start_do "$1"
     tok=$(space_token "$1") || space_fail not_found "no credentials for the Space"
     port=$(space_port "$1")
-    printf '{"id":"local:%s","state":"running","port":%s,"token":%s,"driver_version":%s}\n' \
-        "$1" "$port" "$(json_str "$tok")" "$(json_or_null "$(space_driver_version "$1")")"
+    proxy=$(space_share_ensure "$1")
+    printf '{"id":"local:%s","state":"running","port":%s,"token":%s,"driver_version":%s,"proxy":%s}\n' \
+        "$1" "$port" "$(json_str "$tok")" "$(json_or_null "$(space_driver_version "$1")")" "$(json_or_null "$proxy")"
 }
 
 space_start() {
@@ -2135,12 +2136,18 @@ space_delete_do() {
 
 space_delete() {
     space_delete_do "$1"
+    space_share_forget "$1"
     printf '{"id":"local:%s","deleted":true}\n' "$1"
 }
 
 space_reset() {
     space_delete_do "$1"
-    space_create "$1"
+    space_create_do "$1"
+    # The new Space goes out the way the old one did.
+    if [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_net "$1"; then
+        space_share_start && space_share_configure "$1" "$(space_share_proxy)"
+    fi
+    printf '{"id":"local:%s","state":"running"}\n' "$1"
 }
 
 # Changes a running Space's CPUs and memory in place (files stay). Linux only: on macOS the Spaces live in
@@ -2153,25 +2160,314 @@ space_resize() {
     printf '{"id":"local:%s","cpus":%s,"memory_mb":%s}\n' "$1" "$SPACE_CPUS" "$SPACE_MEMORY"
 }
 
+# --- Network share (Linux) ---
+# A proxy on the host, listening only on a Space bridge's gateway, through which Spaces reach the internet
+# as the host does. Programs on the host (VPNs, transparent proxies such as v2rayA) often take over traffic
+# forwarded from containers in ways that never get out, while the host's own connections work; the share
+# makes the Space's connections the host's own. It refuses the host itself, loopback, link-local and other
+# containers on the bridge, so a Space reaches nothing on the host through it.
+
+SPACE_SHARE_DIR="$HOME/.miffan/netshare"
+SPACE_SHARE_PORT=${MIFFAN_SPACE_SHARE_PORT:-32190}
+
+space_share_relay_source() {
+    cat <<'PYEOF'
+import ipaddress, select, socket, subprocess, sys, threading, time, urllib.parse
+
+LISTEN, PORT = sys.argv[1], int(sys.argv[2])
+SUBNET = ipaddress.ip_network(sys.argv[3], strict=False)
+slots = threading.BoundedSemaphore(256)
+own, own_at = set(), 0.0
+
+def own_addresses():
+    global own, own_at
+    if time.time() - own_at > 30:
+        found = set()
+        try:
+            out = subprocess.run(['ip', '-o', 'addr'], capture_output=True, text=True, timeout=5).stdout
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) > 3:
+                    found.add(ipaddress.ip_interface(parts[3]).ip)
+        except Exception:
+            pass
+        own, own_at = found, time.time()
+    return own
+
+def allowed(text):
+    ip = ipaddress.ip_address(text.split('%')[0])
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return not (ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast
+                or ip in SUBNET or ip in own_addresses())
+
+def connect(host, port):
+    error = OSError('no address')
+    for family, kind, proto, _, address in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+        if not allowed(address[0]):
+            error = PermissionError('refused')
+            continue
+        upstream = socket.socket(family, kind, proto)
+        upstream.settimeout(15)
+        try:
+            upstream.connect(address)
+            upstream.settimeout(None)
+            return upstream
+        except OSError as failure:
+            error = failure
+            upstream.close()
+    raise error
+
+def pipe(a, b):
+    try:
+        while True:
+            ready, _, _ = select.select([a, b], [], [], 600)
+            if not ready:
+                return
+            for side in ready:
+                data = side.recv(65536)
+                if not data:
+                    return
+                (b if side is a else a).sendall(data)
+    except OSError:
+        pass
+
+def head(client):
+    data = b''
+    while b'\r\n\r\n' not in data:
+        chunk = client.recv(8192)
+        if not chunk or len(data) > 65536:
+            return None, b''
+        data += chunk
+    top, rest = data.split(b'\r\n\r\n', 1)
+    return top.decode('latin-1').split('\r\n'), rest
+
+def reply(client, status):
+    try:
+        client.sendall(('HTTP/1.1 %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n' % status).encode())
+    except OSError:
+        pass
+
+def serve(client, peer):
+    upstream = None
+    try:
+        if ipaddress.ip_address(peer[0].split('%')[0]) not in SUBNET:
+            return
+        client.settimeout(30)
+        lines, rest = head(client)
+        if not lines:
+            return
+        method, target, version = lines[0].split(' ', 2)
+        if method == 'CONNECT':
+            host, _, port = target.rpartition(':')
+            upstream = connect(host.strip('[]'), int(port))
+            client.sendall(b'HTTP/1.1 200 Connection established\r\n\r\n')
+        else:
+            url = urllib.parse.urlsplit(target)
+            if url.scheme != 'http' or not url.hostname:
+                return reply(client, '400 Bad Request')
+            upstream = connect(url.hostname, url.port or 80)
+            path = (url.path or '/') + ('?' + url.query if url.query else '')
+            kept = [line for line in lines[1:] if line.split(':', 1)[0].strip().lower()
+                    not in ('proxy-connection', 'proxy-authorization', 'connection', 'keep-alive')]
+            upstream.sendall(('%s %s %s\r\n' % (method, path, version) + ''.join(line + '\r\n' for line in kept)
+                              + 'Connection: close\r\n\r\n').encode('latin-1'))
+        if rest:
+            upstream.sendall(rest)
+        client.settimeout(None)
+        pipe(client, upstream)
+    except PermissionError:
+        reply(client, '403 Forbidden')
+    except (OSError, ValueError):
+        reply(client, '502 Bad Gateway')
+    finally:
+        client.close()
+        if upstream is not None:
+            upstream.close()
+        slots.release()
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind((LISTEN, PORT))
+server.listen(128)
+print('listening', flush=True)
+while True:
+    client, peer = server.accept()
+    if not slots.acquire(blocking=False):
+        client.close()
+        continue
+    threading.Thread(target=serve, args=(client, peer), daemon=True).start()
+PYEOF
+}
+
+# Sets SHARE_GW, SHARE_SUBNET and SHARE_IF (the bridge interface) for Space $1. Status 1 when unknown.
+space_share_net() {
+    line=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{$v.Gateway}} {{$v.IPAddress}}/{{$v.IPPrefixLen}}{{"\n"}}{{end}}' "$1" 2>/dev/null |
+        grep . | head -n 1)
+    net=${line%% *}
+    rest=${line#* }
+    SHARE_GW=${rest%% *}
+    SHARE_SUBNET=${rest#* }
+    printf '%s' "$SHARE_GW" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || return 1
+    printf '%s' "$SHARE_SUBNET" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$' || return 1
+    SHARE_IF=$(docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "$net" 2>/dev/null)
+    [ -n "$SHARE_IF" ] || SHARE_IF="br-$(docker network inspect -f '{{.Id}}' "$net" 2>/dev/null | cut -c1-12)"
+    printf '%s' "$SHARE_IF" | grep -Eq '^[A-Za-z0-9_.-]{1,15}$'
+}
+
+space_share_proxy() {
+    printf 'http://%s:%s' "$SHARE_GW" "$SPACE_SHARE_PORT"
+}
+
+space_share_running() {
+    pid=$(cat "$SPACE_SHARE_DIR/relay-$1.pid" 2>/dev/null) || return 1
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null || return 1
+    [ ! -r "/proc/$pid/cmdline" ] || tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q 'netshare/relay.py'
+}
+
+space_share_stop_all() {
+    for pidfile in "$SPACE_SHARE_DIR"/relay-*.pid; do
+        [ -f "$pidfile" ] || continue
+        gw=${pidfile##*/relay-}
+        gw=${gw%.pid}
+        space_share_running "$gw" && kill "$(cat "$pidfile")" 2>/dev/null
+        rm -f "$pidfile"
+    done
+}
+
+# Makes sure the share for SHARE_GW runs (a new helper's relay replaces the old one). Status 1, with the
+# reason in SHARE_ERROR, when it cannot.
+space_share_start() {
+    SHARE_ERROR=""
+    command -v python3 >/dev/null 2>&1 || { SHARE_ERROR="python3 is not installed"; return 1; }
+    mkdir -p "$SPACE_SHARE_DIR/spaces"
+    space_share_relay_source > "$SPACE_SHARE_DIR/relay.py.new"
+    if cmp -s "$SPACE_SHARE_DIR/relay.py.new" "$SPACE_SHARE_DIR/relay.py"; then
+        rm -f "$SPACE_SHARE_DIR/relay.py.new"
+    else
+        space_share_stop_all
+        mv "$SPACE_SHARE_DIR/relay.py.new" "$SPACE_SHARE_DIR/relay.py"
+    fi
+    space_share_running "$SHARE_GW" && return 0
+    log="$SPACE_SHARE_DIR/relay-$SHARE_GW.log"
+    : > "$log"
+    if command -v setsid >/dev/null 2>&1; then
+        setsid nohup python3 "$SPACE_SHARE_DIR/relay.py" "$SHARE_GW" "$SPACE_SHARE_PORT" "$SHARE_SUBNET" >"$log" 2>&1 </dev/null &
+    else
+        nohup python3 "$SPACE_SHARE_DIR/relay.py" "$SHARE_GW" "$SPACE_SHARE_PORT" "$SHARE_SUBNET" >"$log" 2>&1 </dev/null &
+    fi
+    echo "$!" > "$SPACE_SHARE_DIR/relay-$SHARE_GW.pid"
+    tries=0
+    while [ "$tries" -lt 30 ]; do
+        grep -q '^listening' "$log" 2>/dev/null && return 0
+        space_share_running "$SHARE_GW" || break
+        sleep 0.1
+        tries=$((tries + 1))
+    done
+    SHARE_ERROR=$(space_last_line "$(cat "$log" 2>/dev/null)")
+    [ -n "$SHARE_ERROR" ] || SHARE_ERROR="the network share did not start"
+    return 1
+}
+
+# Points Space $1's programs at proxy $2: login sessions, apt and sudo (which would drop the variables).
+space_share_configure() {
+    p=$2
+    script="set -e
+grep -viE '^(http|https|no)_proxy=' /etc/environment > /etc/environment.miffan || true
+printf '%s\n' http_proxy=$p https_proxy=$p HTTP_PROXY=$p HTTPS_PROXY=$p no_proxy=localhost,127.0.0.1,::1 NO_PROXY=localhost,127.0.0.1,::1 >> /etc/environment.miffan
+cat /etc/environment.miffan > /etc/environment
+rm -f /etc/environment.miffan
+mkdir -p /etc/apt/apt.conf.d
+printf 'Acquire::http::Proxy \"%s/\";\nAcquire::https::Proxy \"%s/\";\n' $p $p > /etc/apt/apt.conf.d/95miffan-proxy
+printf 'Defaults env_keep += \"http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY\"\n' > /etc/sudoers.d/miffan-proxy
+chmod 0440 /etc/sudoers.d/miffan-proxy"
+    out=$("$SPACE_CUA" sb exec "$1" "sudo -n sh -c $(sh_quote "$script") && echo SHARECONF ok" 2>/dev/null)
+    case "$out" in *"SHARECONF ok"*) return 0 ;; esac
+    return 1
+}
+
+# Space $1 through the share at $2: SHARE_REACH (the share answers) and SHARE_HTTPS, failures in SHARE_FAIL.
+space_share_check() {
+    script="r=0; h=0; f=''; c=\$(curl -s -o /dev/null -w '%{http_code}' -m 4 --connect-timeout 3 --noproxy '*' $2/ 2>/dev/null); case \"\$c\" in ''|000) f=' share:unreachable' ;; *) r=1 ;; esac; if [ \$r = 1 ]; then for u in www.cloudflare.com www.baidu.com; do if curl -sS -o /dev/null -m 8 --connect-timeout 4 -x $2 \"https://\$u\" >/dev/null 2>&1; then h=1; else f=\"\$f https:\$u\"; fi; done; fi; echo \"SHARECHECK reach=\$r https=\$h fail=\$f\""
+    line=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null | grep '^SHARECHECK ' | tail -n 1)
+    [ -n "$line" ] || line="SHARECHECK reach=0 https=0 fail= check did not finish"
+    SHARE_REACH=false
+    SHARE_HTTPS=false
+    case "$line" in *" reach=1 "*) SHARE_REACH=true ;; esac
+    case "$line" in *" https=1 "*) SHARE_HTTPS=true ;; esac
+    SHARE_FAIL=$(printf '%s' "$line" | sed -n 's/.* fail=//p' | sed 's/^ *//')
+}
+
+# Prints netcheck's JSON for Space $1 going out through the share: sets it up (and Space $1's settings,
+# when $2 is "configure"), then checks it.
+space_share_netcheck() {
+    if ! space_share_start; then
+        printf '{"dns":false,"https":false,"detail":%s,"hint":"share_failed","via":"share"}\n' "$(json_str "$SHARE_ERROR")"
+        return
+    fi
+    proxy=$(space_share_proxy)
+    if [ "$2" = configure ] && ! space_share_configure "$1" "$proxy"; then
+        printf '{"dns":false,"https":false,"detail":"could not set the proxy in the Space","hint":"share_failed","via":"share"}\n'
+        return
+    fi
+    printf '%s\n' "$proxy" > "$SPACE_SHARE_DIR/spaces/$1"
+    space_share_check "$1" "$proxy"
+    hint=""
+    if [ "$SHARE_REACH" = false ]; then
+        if [ "$(systemctl is-active ufw 2>/dev/null)" = active ]; then hint=ufw; else hint=firewall; fi
+    fi
+    printf '{"dns":%s,"https":%s,"detail":%s,"hint":%s,"via":"share","proxy":%s,"bridge":%s,"port":%s}\n' \
+        "$SHARE_HTTPS" "$SHARE_HTTPS" "$(json_or_null "$SHARE_FAIL")" "$(json_or_null "$hint")" "$(json_str "$proxy")" \
+        "$(json_str "$SHARE_IF")" "$SPACE_SHARE_PORT"
+}
+
+# The proxy Space $1 uses, its share running; empty when it has none.
+space_share_ensure() {
+    [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] || return 0
+    space_share_net "$1" || return 0
+    space_share_start || return 0
+    space_share_proxy
+}
+
+# Forgets Space $1's share; the last Space gone stops it.
+space_share_forget() {
+    rm -f "$SPACE_SHARE_DIR/spaces/$1"
+    for marker in "$SPACE_SHARE_DIR"/spaces/*; do [ -e "$marker" ] && return 0; done
+    space_share_stop_all
+}
+
 space_netcheck() {
     space_start_do "$1"
+    shared=false
+    [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_net "$1" && shared=true
+    if [ "$shared" = true ]; then
+        # Settings again: a reset Space starts without them.
+        space_share_netcheck "$1" configure
+        return
+    fi
     # A broken resolver makes getent hang for long; bound every probe so the whole check stays short.
     script='d=0; h=0; f=""; for u in www.cloudflare.com www.baidu.com; do if timeout 5 getent hosts "$u" >/dev/null 2>&1; then d=1; else f="$f dns:$u"; fi; if curl -sS -o /dev/null -m 6 --connect-timeout 4 "https://$u" >/dev/null 2>&1; then h=1; else f="$f https:$u"; fi; done; echo "NETCHECK dns=$d https=$h fail=$f"'
     out=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null)
     line=$(printf '%s\n' "$out" | grep '^NETCHECK ' | tail -n 1)
-    # A check that could not finish counts as offline; the firewall hint below still applies.
+    # A check that could not finish counts as offline.
     [ -n "$line" ] || line="NETCHECK dns=0 https=0 fail= check did not finish"
     dns=false
     https=false
     case "$line" in *" dns=1 "*) dns=true ;; esac
     case "$line" in *" https=1 "*|*" https=1") https=true ;; esac
     fails=$(printf '%s' "$line" | sed -n 's/.* fail=//p' | sed 's/^ *//')
+    # Offline on its own: go out through the host instead, which works whatever the host runs.
+    if [ "$https" = false ] && [ "$(os)" = linux ] && command -v python3 >/dev/null 2>&1 && space_share_net "$1"; then
+        space_share_netcheck "$1" configure
+        return
+    fi
     hint=""
     if { [ "$dns" = false ] || [ "$https" = false ]; } && [ "$(os)" = linux ] &&
         [ "$(systemctl is-active ufw 2>/dev/null)" = active ]; then
         hint=ufw
     fi
-    printf '{"dns":%s,"https":%s,"detail":%s,"hint":%s}\n' "$dns" "$https" "$(json_or_null "$fails")" "$(json_or_null "$hint")"
+    printf '{"dns":%s,"https":%s,"detail":%s,"hint":%s,"via":"direct"}\n' "$dns" "$https" "$(json_or_null "$fails")" "$(json_or_null "$hint")"
 }
 
 # --- Handoff folders ---

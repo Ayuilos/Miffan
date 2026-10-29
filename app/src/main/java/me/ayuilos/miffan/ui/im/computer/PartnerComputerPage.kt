@@ -267,7 +267,7 @@ private fun SpaceCard(host: String, hostId: String, workspaceId: String, spaces:
             val offline = (network as? SpaceNetwork.Known)?.check?.takeIf { !it.online }
             if (offline != null || network == SpaceNetwork.Unknown) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                SpaceNetworkFixPanel(hostId, host, firewall = offline?.hint == "ufw", checking = network == SpaceNetwork.Checking,
+                SpaceNetworkFixPanel(hostId, host, offline, checking = network == SpaceNetwork.Checking,
                     onRecheck = { round++ })
             }
         }

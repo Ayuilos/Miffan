@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.ai.computer
 
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
@@ -48,11 +49,20 @@ data class CuaSpaceNetcheck(
     val dns: Boolean = false,
     val https: Boolean = false,
     val detail: String? = null,
-    /** "ufw" when the host firewall likely blocks the container bridge. */
+    /**
+     * "ufw" when the host firewall blocks the Space (the fix is [me.ayuilos.miffan.data.ai.tools.spaceNetworkFixCommand]),
+     * "firewall" for another firewall, "share_failed" when the host's network share could not be set up.
+     */
     val hint: String? = null,
+    /** "direct" (the Space's own network) or "share" (through the host, see remote-helper/PROTOCOL.md). */
+    val via: String? = null,
+    /** With [via] "share": the proxy the Space uses and the host's bridge interface it comes in on. */
+    val proxy: String? = null,
+    val bridge: String? = null,
     val error: String? = null,
 ) {
     val online: Boolean get() = error == null && dns && https
+    val firewallFix: Boolean get() = hint == "ufw"
 }
 
 @Serializable
@@ -72,6 +82,8 @@ class PartnerSpaces(
     private val settingsStore: SettingsStore,
     private val workspaces: WorkspaceRepository,
 ) {
+    private val lastChecks = ConcurrentHashMap<String, CuaSpaceNetcheck>()
+
     suspend fun probe(hostId: String): CuaSpaceProbe =
         parse<CuaSpaceProbe>(workspaces.runSpaceHelper(hostId, listOf("probe"), timeoutMillis = 60_000))
             .also { it.error?.let { code -> throw CuaSpaceException(code, it.detail) } }
@@ -107,11 +119,19 @@ class PartnerSpaces(
         return CreatedSpace(workspace.id, runCatching { netcheck(workspace.id) }.getOrNull())
     }
 
+    /** Checks the Space's network; offline on its own, the helper moves it onto the host's network share. */
     suspend fun netcheck(workspaceId: String): CuaSpaceNetcheck {
         val workspace = space(workspaceId)
-        return parse(workspaces.runSpaceHelper(requireNotNull(workspace.remoteHostId),
-            listOf("netcheck", requireNotNull(workspace.spaceName)), timeoutMillis = 60_000))
+        val check = parse<CuaSpaceNetcheck>(workspaces.runSpaceHelper(requireNotNull(workspace.remoteHostId),
+            listOf("netcheck", requireNotNull(workspace.spaceName)), timeoutMillis = 90_000))
+        lastChecks[workspaceId] = check
+        // Processes started from now on get the share's proxy.
+        if (check.via == "share") workspaces.useSpaceProxy(workspaceId, check.proxy)
+        return check
     }
+
+    /** The last network check of this Space in this run of the app. */
+    fun lastNetcheck(workspaceId: String): CuaSpaceNetcheck? = lastChecks[workspaceId]
 
     /** Deletes everything in the Space and starts it again from the image; the partner stays bound. */
     suspend fun reset(workspaceId: String) {

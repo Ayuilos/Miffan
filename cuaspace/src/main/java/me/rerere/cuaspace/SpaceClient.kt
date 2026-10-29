@@ -76,6 +76,8 @@ class SpaceClient(
     port: Int,
     token: String,
     baseClient: OkHttpClient = OkHttpClient(),
+    /** Added to every process this client starts, e.g. the proxy the Space reaches the internet through. */
+    private val env: Map<String, String> = emptyMap(),
 ) {
     internal val http: OkHttpClient = baseClient.newBuilder()
         .socketFactory(ChannelSocketFactory(opener))
@@ -107,6 +109,7 @@ class SpaceClient(
             config = ProcessConfig(
                 command = "/bin/sh",
                 args = listOf("-c", command),
+                env = env,
                 cwd = cwd,
                 timeout = Duration.ofMillis(timeoutMillis),
             ),
@@ -157,7 +160,7 @@ class SpaceClient(
     fun openPty(command: String, args: List<String>, cwd: String, columns: Int, rows: Int): SpacePty {
         val tag = "miffan-pty-" + UUID.randomUUID()
         val request = StartProcessRequest(
-            config = ProcessConfig(command = command, args = args, cwd = cwd),
+            config = ProcessConfig(command = command, args = args, env = env, cwd = cwd),
             pty = PtyConfig(size = PtySize(cols = columns, rows = rows), term = "xterm-256color"),
             tag = tag,
             stdin = true,

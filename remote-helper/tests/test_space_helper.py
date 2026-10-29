@@ -2,6 +2,7 @@
 """Hermetic checks for `miffan space`; a temporary HOME and stub cua/docker/curl/systemctl, no real Spaces."""
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -45,7 +46,11 @@ elif name == 'systemctl':
     else: sys.exit(1)
 elif name == 'docker':
     if s.get('docker') == 'permission': fail('permission denied while trying to connect to the Docker daemon socket')
-    print('27.0.1')
+    if args[:1] == ['inspect']:
+        if not s.get('share_net'): fail('no such object')
+        print(s['share_net'])
+    elif args[:2] == ['network', 'inspect']: print(s.get('share_if', 'docker0'))
+    else: print('27.0.1')
 elif name == 'curl':
     if '-K' in args:
         if 'Authorization: Bearer' not in sys.stdin.read() and 'authorization: Bearer' not in open(os.devnull).read():
@@ -98,6 +103,14 @@ elif name == 'cua':
         if 'NETCHECK' in cmd:
             if s.get('netcheck') is None: sys.exit(7)
             print(s['netcheck']); sys.exit(0)
+        if 'SHARECHECK' in cmd:
+            if s.get('sharecheck') is None: sys.exit(7)
+            print(s['sharecheck']); sys.exit(0)
+        if 'SHARECONF' in cmd:
+            s['share_configured'] = s.get('share_configured', 0) + 1; save()
+            (root / 'shareconf.txt').write_text(cmd)
+            if s.get('share_conf_fail'): sys.exit(1)
+            print('SHARECONF ok'); sys.exit(0)
         r = subprocess.run(['/bin/sh', '-c', space_path(cmd)])
         sys.exit(r.returncode)
     elif args[:2] == ['sb', 'cp']:
@@ -386,14 +399,21 @@ def test_lifecycle(base):
     check_no_token(host)
 
 
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 def test_netcheck(base):
     host = Host(base, netcheck="NETCHECK dns=1 https=1 fail=")
     host.add_space()
-    assert host.json("netcheck", NAME) == {"dns": True, "https": True, "detail": None, "hint": None}
+    assert host.json("netcheck", NAME) == {"dns": True, "https": True, "detail": None, "hint": None, "via": "direct"}
 
+    # Offline, and the host cannot share its network (no docker answer): the firewall hint as before.
     host.state(netcheck="NETCHECK dns=0 https=0 fail= dns:www.cloudflare.com https:www.cloudflare.com dns:www.baidu.com https:www.baidu.com")
     blocked = host.json("netcheck", NAME)
-    assert blocked["dns"] is False and blocked["https"] is False and blocked["hint"] is None
+    assert blocked["dns"] is False and blocked["https"] is False and blocked["hint"] is None and blocked["via"] == "direct"
     assert "dns:www.baidu.com" in blocked["detail"]
     host.state(ufw=True)
     assert host.json("netcheck", NAME)["hint"] == "ufw"
@@ -401,18 +421,118 @@ def test_netcheck(base):
     host.state(netcheck="NETCHECK dns=1 https=1 fail= https:www.cloudflare.com")
     healthy = host.json("netcheck", NAME)
     assert healthy["https"] is True and healthy["hint"] is None and healthy["detail"] == "https:www.cloudflare.com"
-    assert not any(c[0] == "systemctl" for c in []), "ufw is never changed"
     assert all(a[:1] != ["enable"] for a in host.calls("systemctl"))
     mac = sub(base, "m", os_name="Darwin", with_docker=False, ufw=True,
                netcheck="NETCHECK dns=0 https=0 fail= dns:www.baidu.com")
     mac.add_space()
     assert mac.json("netcheck", NAME)["hint"] is None
-
     # A check that cannot finish in the Space (a hanging resolver) reads as offline, firewall hint included.
     host.state(netcheck=None)
     unfinished = host.json("netcheck", NAME)
     assert unfinished["dns"] is False and unfinished["https"] is False and unfinished["hint"] == "ufw"
     check_no_token(host)
+
+
+def test_network_share(base):
+    host = Host(base, ufw=True, netcheck="NETCHECK dns=0 https=0 fail= dns:www.baidu.com",
+                share_net="bridge 127.0.0.1 127.0.0.5/8", sharecheck="SHARECHECK reach=0 https=0 fail= share:unreachable")
+    host.add_space()
+    port = free_port()
+    env = {"MIFFAN_SPACE_SHARE_PORT": str(port)}
+    proxy = f"http://127.0.0.1:{port}"
+    try:
+        # Offline on its own: the Space is pointed at the host's share, which the firewall still blocks.
+        check = host.json("netcheck", NAME, extra_env=env)
+        assert check == {"dns": False, "https": False, "detail": "share:unreachable", "hint": "ufw", "via": "share",
+                         "proxy": proxy, "bridge": "docker0", "port": port}, check
+        conf = (host.base / "shareconf.txt").read_text()
+        assert f"http_proxy={proxy}" in conf and "95miffan-proxy" in conf and "env_keep" in conf
+        assert (host.home / ".miffan/netshare/spaces" / NAME).read_text().strip() == proxy
+        pid = int((host.home / ".miffan/netshare/relay-127.0.0.1.pid").read_text())
+        os.kill(pid, 0)
+        with socket.create_connection(("127.0.0.1", port), timeout=5):
+            pass
+        # Once it goes through the share, later checks go straight there (settings again, for a reset Space).
+        host.state(sharecheck="SHARECHECK reach=1 https=1 fail=", netcheck=None)
+        online = host.json("netcheck", NAME, extra_env=env)
+        assert online["https"] is True and online["hint"] is None and online["via"] == "share"
+        assert host.read_state()["share_configured"] == 2
+        assert host.json("info", NAME, extra_env=env)["proxy"] == proxy
+        # Another firewall than ufw, and a Space whose settings cannot be written.
+        host.state(ufw=False, sharecheck="SHARECHECK reach=0 https=0 fail= share:unreachable")
+        assert host.json("netcheck", NAME, extra_env=env)["hint"] == "firewall"
+        host.state(share_conf_fail=True)
+        assert host.json("netcheck", NAME, extra_env=env)["hint"] == "share_failed"
+        host.state(share_conf_fail=False)
+        # The share survives the helper; deleting the last Space that uses it stops it.
+        assert host.json("delete", NAME, extra_env=env)["deleted"] is True
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("the share kept running after its last Space was deleted")
+        assert not (host.home / ".miffan/netshare/spaces" / NAME).exists()
+    finally:
+        pidfile = host.home / ".miffan/netshare/relay-127.0.0.1.pid"
+        if pidfile.exists():
+            try:
+                os.kill(int(pidfile.read_text()), 15)
+            except (ProcessLookupError, ValueError):
+                pass
+    # A Space without a share has none in its info.
+    other = sub(base, "o")
+    other.add_space()
+    assert other.json("info", NAME)["proxy"] is None
+
+
+def proxy_request(port, request):
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as conn:
+        conn.sendall(request)
+        data = b""
+        while b"\r\n" not in data:
+            try:
+                chunk = conn.recv(1024)
+            except ConnectionResetError:
+                break
+            if not chunk:
+                break
+            data += chunk
+        return data.split(b"\r\n", 1)[0].decode()
+
+
+def test_share_relay(base):
+    """The relay itself: it never leads a Space to the host, and serves only its bridge."""
+    # The relay is the helper's quoted heredoc, written out byte for byte.
+    source = HELPER.read_text().split("cat <<'PYEOF'\n", 1)[1].split("\nPYEOF\n", 1)[0] + "\n"
+    relay = Path(base) / "relay.py"
+    relay.write_text(source)
+    procs = []
+    try:
+        port = free_port()
+        procs.append(subprocess.Popen([sys.executable, str(relay), "127.0.0.1", str(port), "127.0.0.0/8"],
+                                      stdout=subprocess.PIPE, text=True))
+        assert procs[-1].stdout.readline().strip() == "listening"
+        # Loopback and the host's own addresses are refused, by name or by number.
+        assert proxy_request(port, b"CONNECT 127.0.0.1:22 HTTP/1.1\r\nHost: x\r\n\r\n").endswith("403 Forbidden")
+        assert proxy_request(port, b"CONNECT localhost:22 HTTP/1.1\r\n\r\n").endswith("403 Forbidden")
+        assert proxy_request(port, b"CONNECT [::1]:22 HTTP/1.1\r\n\r\n").endswith("403 Forbidden")
+        assert proxy_request(port, b"GET http://169.254.169.254/ HTTP/1.1\r\n\r\n").endswith("403 Forbidden")
+        # A plain request (how the netcheck sees that the share answers) is a 400.
+        assert proxy_request(port, b"GET / HTTP/1.1\r\nHost: x\r\n\r\n").endswith("400 Bad Request")
+        # Clients outside the bridge get nothing.
+        other = free_port()
+        procs.append(subprocess.Popen([sys.executable, str(relay), "127.0.0.1", str(other), "10.0.0.0/8"],
+                                      stdout=subprocess.PIPE, text=True))
+        assert procs[-1].stdout.readline().strip() == "listening"
+        assert proxy_request(other, b"GET / HTTP/1.1\r\n\r\n") == ""
+    finally:
+        for proc in procs:
+            proc.kill()
+            proc.wait()
 
 
 def test_handoff_out(base):
@@ -533,7 +653,7 @@ def test_exec_failures(base):
 
 def main():
     tests = [test_probe, test_install, test_create, test_create_errors, test_name_validation, test_info,
-             test_lifecycle, test_sizes, test_netcheck, test_handoff_out, test_handoff_json_strings, test_handoff_in,
+             test_lifecycle, test_sizes, test_netcheck, test_network_share, test_share_relay, test_handoff_out, test_handoff_json_strings, test_handoff_in,
              test_exec_failures]
     for test in tests:
         with tempfile.TemporaryDirectory() as base:

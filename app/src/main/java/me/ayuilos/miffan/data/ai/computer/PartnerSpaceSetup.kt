@@ -37,7 +37,7 @@ data class SpaceSetupJob(
     val online: Boolean get() = network.isNotEmpty() && network.values.all { it?.online == true }
 
     /** The host firewall likely blocks the Spaces (Linux ufw); the fix is a command the user runs. */
-    val firewallHint: Boolean get() = network.values.any { it?.hint == "ufw" }
+    val firewallHint: Boolean get() = network.values.any { it?.firewallFix == true }
 }
 
 /**

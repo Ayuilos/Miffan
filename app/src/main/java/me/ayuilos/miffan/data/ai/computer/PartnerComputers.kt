@@ -60,6 +60,8 @@ data class KnownComputer(
     val partnerIds: List<Uuid>,
     /** Partners' own Spaces on this host; deleting the host waits until they are gone. */
     val spaceCount: Int = 0,
+    /** Those of [partnerIds] that work in their own Space here, not on the host itself; the host's screen is not theirs. */
+    val spacePartnerIds: List<Uuid> = emptyList(),
 )
 
 /** Deleting a computer that still has professional-interface workspaces is refused. */
@@ -239,6 +241,9 @@ class PartnerComputers(
             otherWorkspaceCount = hostWorkspaces.size - if (workspace != null) 1 else 0,
             spaceCount = allHostWorkspaces.size - hostWorkspaces.size,
             partnerIds = assistants.filter { it.workspaceId?.toString() in workspaceIds }.map { it.id },
+            spacePartnerIds = (allHostWorkspaces - hostWorkspaces.toSet()).map { it.id }.toSet().let { spaces ->
+                assistants.filter { it.workspaceId?.toString() in spaces }.map { it.id }
+            },
         )
     }
 

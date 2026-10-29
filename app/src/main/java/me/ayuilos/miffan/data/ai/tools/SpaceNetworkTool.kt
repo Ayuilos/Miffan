@@ -3,6 +3,7 @@ package me.ayuilos.miffan.data.ai.tools
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import me.ayuilos.miffan.data.ai.computer.CuaSpaceNetcheck
 import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
@@ -11,12 +12,27 @@ import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 
 const val SPACE_NETWORK_FIX_TOOL = "request_network_fix"
 
-/** The only command the network card runs on the host; the partner never chooses what runs there. */
+/** The fix for a Space on its own network (older helpers): let ufw forward the container bridge. */
 const val SPACE_NETWORK_FIX_COMMAND = "sudo ufw route allow in on docker0"
+
+private val BRIDGE = Regex("[A-Za-z0-9_.-]{1,15}")
+private val SHARE_PROXY = Regex("http://(\\d{1,3}(?:\\.\\d{1,3}){3}):(\\d{1,5})")
+
+/**
+ * The only command the network fix runs on the host; the partner never chooses what runs there. A Space
+ * going out through the host's network share needs ufw to let it reach the share, one port on its bridge.
+ */
+fun spaceNetworkFixCommand(check: CuaSpaceNetcheck?): String {
+    val bridge = check?.bridge?.takeIf { BRIDGE.matches(it) }
+    val share = check?.proxy?.let { SHARE_PROXY.matchEntire(it) }
+    if (check?.via != "share" || bridge == null || share == null) return SPACE_NETWORK_FIX_COMMAND
+    val (gateway, port) = share.destructured
+    return "sudo ufw allow in on $bridge to $gateway port $port proto tcp"
+}
 
 /**
  * Asks the owner to let the partner's own computer reach the internet. The chat shows a card that runs
- * [SPACE_NETWORK_FIX_COMMAND] on [computerName] from the phone (the owner types sudo's password there);
+ * [spaceNetworkFixCommand] on [computerName] from the phone (the owner types sudo's password there);
  * approving it means the fix ran, after which this checks the network again and reports the result.
  */
 fun createSpaceNetworkTool(
