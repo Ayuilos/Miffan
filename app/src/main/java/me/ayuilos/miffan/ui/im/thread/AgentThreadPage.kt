@@ -435,7 +435,10 @@ fun AgentThreadPage(
                     }
                 }
                 GlassIconButton(hazeState, if (computer?.showsEntry == true) HugeIcons.Computer else HugeIcons.MoreHorizontal,
-                    if (computer?.showsEntry == true) stringResource(R.string.im_computer_screen_description, computer?.name.orEmpty())
+                    if (computer?.showsEntry == true) {
+                        if (computer?.space == true) stringResource(R.string.im_space_screen_description, threadAssistantName(assistant))
+                        else stringResource(R.string.im_computer_screen_description, computer?.name.orEmpty())
+                    }
                     else stringResource(R.string.im_p5_profile),
                     onClick = { nav.navigate(if (computer?.showsEntry == true) Screen.PartnerScreen(assistantId.toString())
                         else Screen.PartnerProfile(assistantId.toString())) }, modifier = Modifier.align(Alignment.CenterEnd))

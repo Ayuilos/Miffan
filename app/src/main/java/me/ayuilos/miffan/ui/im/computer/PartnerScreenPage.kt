@@ -50,7 +50,10 @@ fun PartnerScreenPage(assistantId: Uuid) {
     }
     key(current.workspaceId) {
         val vm: RemoteScreenVM = koinViewModel(key = current.workspaceId, parameters = { parametersOf(RemoteScreenArgs(current.workspaceId)) })
-        PartnerScreenContent(assistantId, current.name, vm)
+        val partner = koinViewModel<AgentThreadVM>(key = "thread:$assistantId", parameters = { parametersOf(assistantId) })
+            .assistant.collectAsStateWithLifecycle().value
+        // A partner's own computer is named after the partner; the host's name would read as the host's screen.
+        PartnerScreenContent(assistantId, if (current.space) stringResource(R.string.im_space_screen_title, threadAssistantName(partner)) else current.name, vm)
     }
 }
 

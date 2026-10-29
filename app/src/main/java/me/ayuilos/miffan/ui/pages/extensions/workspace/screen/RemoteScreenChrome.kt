@@ -132,6 +132,7 @@ internal fun remoteScreenModeLabel(resources: Resources, protocol: RemoteDesktop
     RemoteDesktopProtocol.STREAM -> resources.getString(R.string.workspace_screen_mode_stream)
     RemoteDesktopProtocol.RDP -> "RDP"
     RemoteDesktopProtocol.VNC -> "VNC"
+    RemoteDesktopProtocol.SPACE -> resources.getString(R.string.im_computer_detail_user_space)
 }
 
 /** A picture level's name and what it means for the connection in use. */
@@ -218,6 +219,7 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                     RemoteDesktopProtocol.STREAM -> stringResource(R.string.workspace_screen_details_stream)
                     RemoteDesktopProtocol.RDP -> stringResource(R.string.workspace_screen_details_rdp)
                     RemoteDesktopProtocol.VNC -> "VNC"
+                    RemoteDesktopProtocol.SPACE -> stringResource(R.string.im_computer_detail_user_space)
                 })
                 DetailRow(stringResource(R.string.workspace_screen_details_path),
                     if (info.protocol == RemoteDesktopProtocol.STREAM) stringResource(R.string.workspace_screen_details_path_stream, info.streamAddress ?: "—")

@@ -1,5 +1,10 @@
 package me.rerere.cuaspace
 
+import cua.env.v1.ClipboardContent
+import cua.env.v1.GetClipboardRequest
+import cua.env.v1.GetClipboardResponse
+import cua.env.v1.SetClipboardRequest
+import cua.env.v1.SetClipboardResponse
 import cua.env.v1.CloseStdinRequest
 import cua.env.v1.CloseStdinResponse
 import cua.env.v1.EntryInfo
@@ -87,10 +92,27 @@ class SpaceClient(
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
     internal val baseUrl = "http://127.0.0.1:$port"
-    private val grpc = SpaceGrpc(http, baseUrl, token)
+    internal val grpc = SpaceGrpc(http, baseUrl, token)
 
     suspend fun health(): HealthResponse =
         grpc.unary("cua.env.v1.SystemService/Health", HealthRequest(), HealthResponse.ADAPTER)
+
+    /**
+     * Streams the primary display as H.264, scaled to at most [maxDimension] on the long edge. Input on the
+     * returned media may move the pointer and type in the Space (the session allows activation).
+     */
+    suspend fun openMedia(maxDimension: Int = 1920, maxFps: Int = 30, bitrateKbps: Int = 0): SpaceMedia =
+        SpaceMedia.open(this, maxDimension, maxFps, bitrateKbps)
+
+    /** The Space's clipboard: its generation (changes on every copy) and its text, null when it holds none. */
+    suspend fun clipboard(): Pair<Long, String?> =
+        grpc.unary("cua.env.v1.ComputerService/GetClipboard", GetClipboardRequest(), GetClipboardResponse.ADAPTER)
+            .let { it.generation to it.content?.text?.takeIf(String::isNotEmpty) }
+
+    suspend fun setClipboardText(text: String) {
+        grpc.unary("cua.env.v1.ComputerService/SetClipboard", SetClipboardRequest(content = ClipboardContent(text = text)),
+            SetClipboardResponse.ADAPTER)
+    }
 
     /**
      * Runs [command] through `/bin/sh -c` in [cwd] and waits for it. Output beyond [maxOutputBytes]

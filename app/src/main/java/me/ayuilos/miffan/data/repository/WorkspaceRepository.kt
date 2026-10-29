@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.repository
 
+import me.rerere.cuaspace.SpaceClient
 import android.content.res.Resources
 import me.ayuilos.miffan.R
 import android.os.Build
@@ -1241,11 +1242,28 @@ class WorkspaceRepository(
     suspend fun <T : Closeable> openLeasedRemote(
         id: String,
         open: (RemoteWorkspaceSession) -> T,
+    ): LeasedRemote<T> = openLeased(id, space = false) { _, ssh -> open(ssh) }
+
+    /**
+     * Like [openLeasedRemote], for a resource of a partner's own computer: [open] gets the Space's client
+     * over the host's SSH session (e.g. the Space's own desktop).
+     */
+    suspend fun <T : Closeable> openLeasedSpace(
+        id: String,
+        open: (SpaceClient) -> T,
+    ): LeasedRemote<T> = openLeased(id, space = true) { workspace, ssh ->
+        open(requireNotNull(cuaSpaces) { "cua Spaces are unavailable" }.client(workspace, ssh))
+    }
+
+    private suspend fun <T : Closeable> openLeased(
+        id: String,
+        space: Boolean,
+        open: (WorkspaceEntity, RemoteWorkspaceSession) -> T,
     ): LeasedRemote<T> {
         val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_not_found))
         require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
-        // These resources (desktop streams, cua-driver) belong to the host; a Space must not reach them.
-        require(!workspace.isSpace) { "Host resources are not available to a partner's own computer" }
+        // Host resources (its desktop streams, cua-driver) are not a Space's, and a Space's are not the host's.
+        require(workspace.isSpace == space) { "Host resources are not available to a partner's own computer" }
         val hostId = requireNotNull(workspace.remoteHostId)
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
         val revision = host.connectionRevision
@@ -1271,7 +1289,7 @@ class WorkspaceRepository(
             if (opened.resolvedRoot != workspace.sshRoot ||
                 hostDao.getById(hostId)?.connectionRevision != revision
             ) throw WorkspaceToolTargetChangedException()
-            val value = runRemoteOperation(opened) { open(opened).also { resource = it } }
+            val value = runRemoteOperation(opened) { open(workspace, opened).also { resource = it } }
             currentCoroutineContext().ensureActive()
             if (hostDao.getById(hostId)?.connectionRevision != revision) throw WorkspaceToolTargetChangedException()
             remoteRuntime.connected(hostId, id, revision)

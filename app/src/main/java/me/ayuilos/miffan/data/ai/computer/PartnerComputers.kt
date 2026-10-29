@@ -263,8 +263,8 @@ class PartnerComputers(
             hostId = host.id,
             name = host.name,
             platform = computerPlatform(host),
-            // The host's screen is not the Space's; the Space screen arrives with its own stream.
-            screenEnabled = host.screenEnabled && !workspace.isSpace,
+            // A Space shows its own desktop, which needs no screen setup on the host.
+            screenEnabled = workspace.isSpace || host.screenEnabled,
             computerUse = assistant.computerUse,
             space = workspace.isSpace,
             spaceTier = if (workspace.isSpace) SpaceTier.of(workspace.spaceCpus, workspace.spaceMemoryMb) else null,

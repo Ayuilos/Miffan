@@ -480,7 +480,7 @@ class RemoteScreenVM(
         val session = connection?.session ?: return
         when (session.protocol) {
             RemoteDesktopProtocol.VNC -> session.setMaxFps(vncFps(quality))
-            RemoteDesktopProtocol.STREAM -> reconnect()
+            RemoteDesktopProtocol.STREAM, RemoteDesktopProtocol.SPACE -> reconnect()
             RemoteDesktopProtocol.RDP -> Unit
         }
     }
@@ -658,7 +658,8 @@ class RemoteScreenVM(
                             kotlinx.coroutines.delay(1_000)
                         }
                     }
-                    if (metered && !hints.getBoolean(METERED_STREAM_KEY, false)) {
+                    // The hint quotes high-performance mode's data use; a partner's own computer is not that.
+                    if (metered && opened.session.protocol == RemoteDesktopProtocol.STREAM && !hints.getBoolean(METERED_STREAM_KEY, false)) {
                         hints.edit().putBoolean(METERED_STREAM_KEY, true).apply()
                         _notices.tryEmit(RemoteScreenNotice.StreamOnMeteredNetwork(_quality.value, _custom.value))
                     }

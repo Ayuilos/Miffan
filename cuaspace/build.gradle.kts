@@ -18,6 +18,7 @@ wire {
         "cua.env.v1.ProcessService",
         "cua.env.v1.FilesystemService",
         "cua.env.v1.StreamService",
+        "cua.env.v1.ComputerService",
     )
 }
 
@@ -25,6 +26,7 @@ dependencies {
     api(libs.wire.runtime)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
 }

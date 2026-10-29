@@ -498,10 +498,11 @@ class RemoteScreenRepository(
         options: RemoteScreenOptions = RemoteScreenOptions(),
         stream: RemoteStreamRequest = RemoteStreamRequest(),
     ): RemoteScreenConnection {
-        val workspace = workspaceDao.getById(workspaceId)?.takeIf { it.isRemote && !it.isSpace }
+        val workspace = workspaceDao.getById(workspaceId)?.takeIf { it.isRemote }
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
+        if (workspace.isSpace) return openSpace(workspaceId, host.id, host.name, stream)
         if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
         val configuredEndpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
         var detected: RemoteScreenPlatform? = null
@@ -629,6 +630,30 @@ class RemoteScreenRepository(
             synchronized(lock) { open.getOrPut(host.id, ::mutableSetOf) += connection }
             connection
         } catch (error: Throwable) { clipboard?.close(); handle.close(); throw error }
+    }
+
+    /**
+     * A partner's own computer: its desktop needs no setup on the host (no VNC, no Sunshine), only the
+     * Space's media socket over the host's SSH session.
+     */
+    private suspend fun openSpace(workspaceId: String, hostId: String, name: String, stream: RemoteStreamRequest): RemoteScreenConnection {
+        val (dimension, fps) = when (stream.quality) {
+            RemoteScreenQuality.SAVER -> 960 to 15
+            RemoteScreenQuality.BALANCED -> 1280 to 30
+            else -> 1920 to 30
+        }
+        val handle = workspaces.openLeasedSpace<RemoteDesktopSession>(workspaceId) { client ->
+            val media = runBlocking { client.openMedia(maxDimension = dimension, maxFps = fps) }
+            CuaSpaceDesktopSession(client, media, name, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default))
+        }
+        val connection = RemoteScreenConnection(hostId, RemoteScreenPlatform.LINUX, workspaceId, handle) { closed ->
+            synchronized(lock) {
+                open[hostId]?.remove(closed)
+                if (open[hostId].isNullOrEmpty()) open.remove(hostId)
+            }
+        }
+        synchronized(lock) { open.getOrPut(hostId, ::mutableSetOf) += connection }
+        return connection
     }
 
     /** Uses cliprdr for an active RDP session; VNC and STREAM use the SSH clipboard helper. */

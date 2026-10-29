@@ -6,7 +6,13 @@ import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import java.io.InputStream
 import java.io.OutputStream
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.runBlocking
+import me.rerere.cuaspace.SpaceInput
+import me.rerere.cuaspace.SpaceMediaEvent
 import me.rerere.cuaspace.SpaceClient
 import me.rerere.cuaspace.SpaceStream
 import me.rerere.cuaspace.SpaceStreamOpener
@@ -109,5 +115,28 @@ class SpaceWorkspaceFilesLiveTest {
 
         assertTrue(files.delete("done", recursive = true))
         assertFalse(files.delete("done", recursive = true))
+    }
+
+    /** The desktop as video: the session opens, a keyframe arrives first, and input is accepted. */
+    @Test fun desktopMedia() = runBlocking {
+        val media = client.openMedia(maxDimension = 1280, maxFps = 15)
+        val seen = mutableListOf<SpaceMediaEvent>()
+        val collector = launch {
+            media.events.takeWhile { seen.add(it); seen.count { e -> e is SpaceMediaEvent.Frame } < 20 && it !is SpaceMediaEvent.Closed }
+                .collect {}
+        }
+        delay(1500)
+        media.send(listOf(SpaceInput.Pointer("move", null, 0.5, 0.5), SpaceInput.Pointer("move", null, 0.25, 0.75)))
+        withTimeoutOrNull(6_000) { collector.join() }
+        collector.cancel()
+        for (event in seen.take(30)) when (event) {
+            is SpaceMediaEvent.Frame -> println("frame seq=${event.sequence} epoch=${event.codecEpoch} ${event.width}x${event.height} key=${event.keyframe} bytes=${event.data.size}")
+            else -> println(event)
+        }
+        val frames = seen.filterIsInstance<SpaceMediaEvent.Frame>()
+        assertTrue("an Opened event", seen.any { it is SpaceMediaEvent.Opened })
+        assertTrue("frames arrive", frames.isNotEmpty())
+        assertTrue("the first frame is a keyframe", frames.first().keyframe)
+        media.closeSession()
     }
 }
