@@ -22,7 +22,7 @@
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=30
+MIFFAN_HELPER_VERSION=31
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2560,6 +2560,16 @@ space_unique() {
     SPACE_UNIQUE="$dir/$stem ($n)$ext"
 }
 
+# "<size>:<mtime>" of a host file, to recognise one the helper wrote that nobody has touched since.
+space_file_sig() {
+    stat -c '%s:%Y' "$1" 2>/dev/null || stat -f '%z:%m' "$1" 2>/dev/null
+}
+
+# Files `out` put on the host; `in` must not bring them back as new (they would return as "x (2)").
+space_handoff_given() {
+    printf '%s\n' "$HOME/.miffan/space/$SPACE_NAME.handoff-out"
+}
+
 space_handoff_out() {
     space_handoff_input out
     space_start_do "$SPACE_NAME"
@@ -2573,12 +2583,16 @@ space_handoff_out() {
     [ "$status" -eq 0 ] || space_fail exec_failed "could not list the handoff folder"
     copied=""
     sep=""
+    given=$(space_handoff_given)
+    mkdir -p "${given%/*}"
+    tab=$(printf '\t')
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
         space_unique space_host_exists "$SPACE_FOLDER/$rel"
         dest=$SPACE_UNIQUE
         mkdir -p "${dest%/*}" || space_fail exec_failed "cannot create a folder on the host"
         "$SPACE_CUA" sb cp "$SPACE_NAME:$SPACE_HANDOFF_DIR/$rel" "$dest" >/dev/null 2>&1 || space_fail exec_failed "copy failed: $rel"
+        printf '%s%s%s\n' "${dest#"$SPACE_FOLDER"/}" "$tab" "$(space_file_sig "$dest")" >> "$given"
         copied="$copied$sep$(json_str "${dest#"$SPACE_FOLDER"/}")"
         sep=","
     done <<EOF
@@ -2601,6 +2615,14 @@ space_handoff_in() {
     else
         list=$(cd "$SPACE_FOLDER" && find . -type f ! -name .DS_Store | sort)
     fi
+    given=$(space_handoff_given)
+    tab=$(printf '\t')
+    # What the partner handed out, untouched since, is already in the Space.
+    if [ -n "$list" ] && [ -f "$given" ]; then
+        list=$(printf '%s\n' "$list" | while IFS= read -r rel; do
+            grep -Fqx -- "${rel#./}$tab$(space_file_sig "$SPACE_FOLDER/${rel#./}")" "$given" || printf '%s\n' "$rel"
+        done)
+    fi
     # Runs every turn: with nothing new, the Space is left alone and this answers at once.
     if [ -n "$list" ]; then
         space_start_do "$SPACE_NAME"
@@ -2621,6 +2643,15 @@ space_handoff_in() {
 $list
 EOF
     mv -f "$marker" "$state"
+    # Keep only handed-out files a later run could still list: unchanged, and not older than this run.
+    if [ -f "$given" ]; then
+        since=$(space_file_sig "$state"); since=${since#*:}
+        while IFS="$tab" read -r rel sig; do
+            [ "$(space_file_sig "$SPACE_FOLDER/$rel")" = "$sig" ] && [ "${sig#*:}" -ge "${since:-0}" ] &&
+                printf '%s%s%s\n' "$rel" "$tab" "$sig"
+        done < "$given" > "$given.new"
+        mv -f "$given.new" "$given"
+    fi
     printf '{"copied":[%s]}\n' "$copied"
 }
 

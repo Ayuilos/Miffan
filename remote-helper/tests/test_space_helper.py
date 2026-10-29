@@ -649,6 +649,30 @@ def test_handoff_in(base):
     check_no_token(host)
 
 
+def test_handoff_no_echo(base):
+    """What the partner hands out is not brought back as new on the next turn (it came back as "x (2)")."""
+    host = Host(base)
+    host.add_space()
+    folder = host.folder
+    box = host.space_home() / "Desktop" / "Shared"
+    box.mkdir(parents=True)
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": []}  # an earlier turn
+    time.sleep(1.1)
+    (box / "早上好.md").write_text("morning")
+    assert host.handoff("out", {"folder": str(folder), "path": "早上好.md"}) == {"copied": ["早上好.md"]}
+    (folder / "mine.txt").write_text("from the owner")
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": ["mine.txt"]}
+    assert not (box / "早上好 (2).md").exists()
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": []}
+    # Changed on the host, it is the owner's version now and goes back in.
+    edited = folder / "早上好.md"
+    edited.write_text("edited by the owner")
+    later = time.time() + 30
+    os.utime(edited, (later, later))
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": ["早上好 (2).md"]}
+    assert (box / "早上好 (2).md").read_text() == "edited by the owner"
+
+
 def test_exec_failures(base):
     host = Host(base)
     host.add_space()
@@ -663,7 +687,7 @@ def test_exec_failures(base):
 def main():
     tests = [test_probe, test_install, test_create, test_create_errors, test_name_validation, test_info,
              test_lifecycle, test_sizes, test_netcheck, test_network_share, test_share_relay, test_handoff_out, test_handoff_json_strings, test_handoff_in,
-             test_exec_failures]
+             test_handoff_no_echo, test_exec_failures]
     for test in tests:
         with tempfile.TemporaryDirectory() as base:
             test(base)
