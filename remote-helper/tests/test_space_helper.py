@@ -36,6 +36,9 @@ def fail(msg, rc=1):
 
 if name == 'uname':
     print(s.get('os', 'Linux') if args == ['-s'] else 'x86_64')
+elif name == 'scutil':
+    if args == ['--proxy']: print(s.get('scutil', '<dictionary> {\n}'))
+    else: sys.exit(1)
 elif name == 'df':
     print('Filesystem 1024-blocks Used Available Capacity Mounted')
     print('/dev/x 999 1 %d 1%% /' % s.get('free_kb', 100 * 1048576))
@@ -106,6 +109,9 @@ elif name == 'cua':
         if 'SHARECHECK' in cmd:
             if s.get('sharecheck') is None: sys.exit(7)
             print(s['sharecheck']); sys.exit(0)
+        if 'SHAREOFF' in cmd:
+            s['share_unconfigured'] = s.get('share_unconfigured', 0) + 1; save()
+            print('SHAREOFF ok'); sys.exit(0)
         if 'SHARECONF' in cmd:
             s['share_configured'] = s.get('share_configured', 0) + 1; save()
             (root / 'shareconf.txt').write_text(cmd)
@@ -137,7 +143,7 @@ class Host:
         mock = self.bin / "mock"
         mock.write_text(MOCK)
         mock.chmod(0o755)
-        names = ["uname", "df", "systemctl", "curl"] + (["docker"] if with_docker else [])
+        names = ["uname", "df", "systemctl", "curl", "scutil"] + (["docker"] if with_docker else [])
         for tool in names:
             (self.bin / tool).symlink_to(mock)
         (self.bin / "cua-stub").symlink_to(mock)
@@ -493,6 +499,42 @@ def test_network_share(base):
     assert other.json("info", NAME)["proxy"] is None
 
 
+def mac_proxy_settings(host="127.0.0.1", port=8889, https=True):
+    kind = "HTTPS" if https else "HTTP"
+    return (f"<dictionary> {{\n  {kind}Enable : 1\n  {kind}Port : {port}\n  {kind}Proxy : {host}\n"
+            "  ProxyAutoConfigEnable : 0\n}")
+
+
+def test_mac_proxy(base):
+    """On a Mac the Space uses the proxy set in macOS, reached through cua's VM."""
+    mac = Host(base, os_name="Darwin", with_docker=False, scutil=mac_proxy_settings(),
+               netcheck="NETCHECK dns=1 https=1 fail=", sharecheck="SHARECHECK conf=0 reach=1 https=1 fail=")
+    mac.add_space()
+    proxy = "http://192.168.5.2:8889"
+    assert mac.json("netcheck", NAME) == {"dns": True, "https": True, "detail": None, "hint": None, "via": "share",
+                                          "proxy": proxy}
+    conf = (mac.base / "shareconf.txt").read_text()
+    assert f"http_proxy={proxy}" in conf and '"HTTPProxy":"192.168.5.2:8889"' in conf
+    assert (mac.home / ".miffan/netshare/spaces" / NAME).read_text().strip() == proxy
+    assert mac.json("info", NAME)["proxy"] == proxy
+    # Settings already there are not written again.
+    mac.state(sharecheck="SHARECHECK conf=1 reach=1 https=1 fail=")
+    assert mac.json("netcheck", NAME)["via"] == "share" and mac.read_state()["share_configured"] == 1
+    # An HTTP-only proxy on another machine is used as it is.
+    mac.state(scutil=mac_proxy_settings("192.168.31.2", 7890, https=False), sharecheck="SHARECHECK conf=0 reach=1 https=1 fail=")
+    assert mac.json("netcheck", NAME)["proxy"] == "http://192.168.31.2:7890"
+    # A proxy the Space cannot reach, then none at all: back to the Space's own network, settings taken off once.
+    mac.state(sharecheck="SHARECHECK conf=1 reach=0 https=0 fail= share:unreachable")
+    assert mac.json("netcheck", NAME)["via"] == "direct"
+    assert mac.read_state()["share_unconfigured"] == 1 and not (mac.home / ".miffan/netshare/spaces" / NAME).exists()
+    mac.state(scutil="<dictionary> {\n  HTTPSEnable : 0\n}")
+    assert mac.json("netcheck", NAME)["via"] == "direct" and mac.read_state()["share_unconfigured"] == 1
+    assert mac.json("info", NAME)["proxy"] is None
+    # Anything but a host name and a port never reaches the Space's scripts.
+    mac.state(scutil=mac_proxy_settings("evil;rm", 1))
+    assert mac.json("netcheck", NAME)["via"] == "direct"
+
+
 def proxy_request(port, request):
     with socket.create_connection(("127.0.0.1", port), timeout=5) as conn:
         conn.sendall(request)
@@ -686,7 +728,7 @@ def test_exec_failures(base):
 
 def main():
     tests = [test_probe, test_install, test_create, test_create_errors, test_name_validation, test_info,
-             test_lifecycle, test_sizes, test_netcheck, test_network_share, test_share_relay, test_handoff_out, test_handoff_json_strings, test_handoff_in,
+             test_lifecycle, test_sizes, test_netcheck, test_network_share, test_mac_proxy, test_share_relay, test_handoff_out, test_handoff_json_strings, test_handoff_in,
              test_handoff_no_echo, test_exec_failures]
     for test in tests:
         with tempfile.TemporaryDirectory() as base:

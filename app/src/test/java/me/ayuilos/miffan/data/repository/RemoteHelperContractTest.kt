@@ -36,7 +36,7 @@ class RemoteHelperContractTest {
             val output = file.readText()
             when {
                 name.startsWith("probe") -> parseHelperProbe(output).let {
-                    assertEquals(file.path, if (windows) 13 else 31, it.helper)
+                    assertEquals(file.path, if (windows) 13 else 32, it.helper)
                     assertEquals(if (windows) "windows" else if (name == "probe-macos") "macos" else "linux", it.os)
                     assertEquals("Fixture Desktop", it.hostname)
                     assertTrue(it.session.present)

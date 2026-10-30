@@ -22,7 +22,7 @@
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=31
+MIFFAN_HELPER_VERSION=32
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2440,7 +2440,12 @@ space_share_netcheck() {
 
 # The proxy Space $1 uses, its share running; empty when it has none.
 space_share_ensure() {
-    [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] || return 0
+    [ -f "$SPACE_SHARE_DIR/spaces/$1" ] || return 0
+    if [ "$(os)" = macos ]; then
+        cat "$SPACE_SHARE_DIR/spaces/$1"
+        return 0
+    fi
+    [ "$(os)" = linux ] || return 0
     space_share_net "$1" || return 0
     space_share_start || return 0
     space_share_proxy
@@ -2453,8 +2458,67 @@ space_share_forget() {
     space_share_stop_all
 }
 
+# --- The Mac's own proxy ---
+# On a Mac, Spaces run in cua's Linux VM and reach the Mac's loopback at SPACE_MAC_HOST, so a proxy set in
+# macOS (often a local one such as Clash) serves them too. Without it, sites the Mac only reaches through
+# that proxy stay out of reach from the Space while others work.
+
+SPACE_MAC_HOST=192.168.5.2
+
+# The Mac's HTTPS (else HTTP) proxy from its system settings as a Space reaches it; empty when there is none.
+space_mac_proxy() {
+    p=$(scutil --proxy 2>/dev/null | awk -v gw="$SPACE_MAC_HOST" '
+        / HTTPSEnable : / {se=$3} / HTTPSProxy : / {sh=$3} / HTTPSPort : / {sp=$3}
+        / HTTPEnable : / {he=$3} / HTTPProxy : / {hh=$3} / HTTPPort : / {hp=$3}
+        END {
+            if (se == 1 && sh != "" && sp != "") { h = sh; port = sp }
+            else if (he == 1 && hh != "" && hp != "") { h = hh; port = hp }
+            else exit
+            if (h == "127.0.0.1" || h == "localhost" || h == "::1") h = gw
+            print "http://" h ":" port
+        }')
+    # It goes into scripts run in the Space: nothing but a host name and a port.
+    printf '%s' "$p" | grep -Eq '^http://[A-Za-z0-9.-]+:[0-9]{1,5}$' && printf '%s' "$p"
+}
+
+# Takes Space $1 off a proxy it no longer has: the variables, apt's and sudo's settings and the browsers' proxy.
+space_share_unconfigure() {
+    script="set -e
+grep -viE '^(http|https|no)_proxy=' /etc/environment > /etc/environment.miffan || true
+cat /etc/environment.miffan > /etc/environment
+rm -f /etc/environment.miffan /etc/apt/apt.conf.d/95miffan-proxy /etc/sudoers.d/miffan-proxy /etc/chromium/policies/managed/miffan-proxy.json
+mkdir -p /etc/firefox/policies
+printf '%s\n' '{\"policies\":{\"DisableTelemetry\":true,\"SkipTermsOfUse\":true,\"OverrideFirstRunPage\":\"\",\"OverridePostUpdatePage\":\"\",\"DontCheckDefaultBrowser\":true}}' > /etc/firefox/policies/policies.json"
+    out=$("$SPACE_CUA" sb exec "$1" "sudo -n sh -c $(sh_quote "$script") && echo SHAREOFF ok" 2>/dev/null)
+    case "$out" in *"SHAREOFF ok"*) return 0 ;; esac
+    return 1
+}
+
+# netcheck for Space $1 on a Mac whose settings name proxy $2: the Space goes out through it, like through a
+# Linux host's share. Status 1, printing nothing, when the proxy does not answer from the Space.
+space_mac_netcheck() {
+    space_share_check "$1" "$2"
+    [ "$SHARE_REACH" = true ] || return 1
+    if [ "$SHARE_CONF" = false ] && ! space_share_configure "$1" "$2"; then
+        printf '{"dns":false,"https":false,"detail":"could not set the proxy in the Space","hint":"share_failed","via":"share"}\n'
+        return 0
+    fi
+    mkdir -p "$SPACE_SHARE_DIR/spaces"
+    printf '%s\n' "$2" > "$SPACE_SHARE_DIR/spaces/$1"
+    printf '{"dns":%s,"https":%s,"detail":%s,"hint":null,"via":"share","proxy":%s}\n' \
+        "$SHARE_HTTPS" "$SHARE_HTTPS" "$(json_or_null "$SHARE_FAIL")" "$(json_str "$2")"
+}
+
 space_netcheck() {
     space_start_do "$1"
+    if [ "$(os)" = macos ]; then
+        mp=$(space_mac_proxy)
+        [ -n "$mp" ] && space_mac_netcheck "$1" "$mp" && return
+        # No proxy any more, or one the Space cannot reach: it goes out on its own again.
+        if [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_unconfigure "$1"; then
+            rm -f "$SPACE_SHARE_DIR/spaces/$1"
+        fi
+    fi
     shared=false
     [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_net "$1" && shared=true
     if [ "$shared" = true ]; then
