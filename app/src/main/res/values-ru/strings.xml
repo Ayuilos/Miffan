@@ -2867,6 +2867,8 @@
   <string name="im_computer_detail_users_help">Работа с приложениями и файлами на этом компьютере</string>
   <string name="im_computer_detail_user_space">Собственный компьютер</string>
   <string name="im_computer_detail_add_box">Выдать партнёру мини-компьютер</string>
+  <string name="im_computer_ready_box_only">Нужен только мини-компьютер для партнёра?</string>
+  <string name="im_computer_ready_box_only_help">Настройка вашего компьютера не нужна. Партнёр работает в своём мини-компьютере отдельно от вашего компьютера и файлов.</string>
   <string name="im_computer_detail_add_partner">Разрешить партнёру пользоваться этим компьютером</string>
   <string name="im_computer_detail_box_name">Мини-компьютер %1$s</string>
   <string name="im_computer_detail_box_used">используется: %1$s</string>

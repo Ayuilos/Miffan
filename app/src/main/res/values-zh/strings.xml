@@ -2903,6 +2903,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_detail_boxes_limit">小电脑最多能用 %1$s 内存</string>
   <string name="im_computer_detail_boxes_total">这台电脑共 %1$s</string>
   <string name="im_computer_detail_add_box">给伙伴一台小电脑</string>
+  <string name="im_computer_ready_box_only">只想给伙伴一台小电脑？</string>
+  <string name="im_computer_ready_box_only_help">不用准备桌面，伙伴在自己的小电脑里做事，碰不到你的桌面和文件。</string>
   <string name="im_computer_detail_check">检查电脑状态</string>
   <string name="im_computer_detail_check_help">桌面、屏幕服务和 cua-driver</string>
   <string name="im_computer_detail_connection">连接设置</string>

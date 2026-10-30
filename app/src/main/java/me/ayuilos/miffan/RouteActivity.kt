@@ -494,7 +494,7 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.PartnerSpaceFiles> { key -> PartnerSpaceFilesPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ComputerSetup> { key ->
-                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen, key.status))
+                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen, key.status, key.space))
                             }
                             entry<Screen.Computers> { ComputersPage() }
                             entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
@@ -886,6 +886,8 @@ sealed interface Screen : NavKey {
         val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false, val screen: Boolean = false,
         /** A saved computer's status page instead of its setup; see ComputerSetupArgs.status. */
         val status: Boolean = false,
+        /** Give the partner a mini box on the saved computer; see ComputerSetupArgs.space. */
+        val space: Boolean = false,
     ) : Screen
 
     /** Easy chat's list of computers. */

@@ -2861,6 +2861,8 @@
   <string name="im_computer_detail_users_help">直接操作這台電腦上的應用程式和檔案</string>
   <string name="im_computer_detail_user_space">小電腦</string>
   <string name="im_computer_detail_add_box">給夥伴一台小電腦</string>
+  <string name="im_computer_ready_box_only">只想給夥伴一台小電腦？</string>
+  <string name="im_computer_ready_box_only_help">不用準備桌面，夥伴在自己的小電腦裡做事，碰不到你的桌面和檔案。</string>
   <string name="im_computer_detail_add_partner">讓夥伴用這台電腦</string>
   <string name="im_computer_detail_box_name">%1$s的小電腦</string>
   <string name="im_computer_detail_box_used">用了 %1$s</string>

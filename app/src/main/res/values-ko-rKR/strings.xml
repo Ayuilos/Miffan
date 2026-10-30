@@ -2852,6 +2852,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_detail_users_help">이 컴퓨터의 앱과 파일을 직접 다뤄요</string>
   <string name="im_computer_detail_user_space">전용 컴퓨터</string>
   <string name="im_computer_detail_add_box">파트너에게 미니 PC 주기</string>
+  <string name="im_computer_ready_box_only">파트너에게 미니 PC만 줄까요?</string>
+  <string name="im_computer_ready_box_only_help">데스크톱 준비는 건너뛰어요. 파트너는 자기 미니 PC에서 작업하므로 내 데스크톱이나 파일에는 접근하지 않아요.</string>
   <string name="im_computer_detail_add_partner">파트너가 이 컴퓨터를 쓰게 하기</string>
   <string name="im_computer_detail_box_name">%1$s의 미니 PC</string>
   <string name="im_computer_detail_box_used">%1$s 사용 중</string>

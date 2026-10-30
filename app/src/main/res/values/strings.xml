@@ -2918,6 +2918,8 @@
   <string name="im_computer_detail_boxes_limit" tools:ignore="MissingTranslation">Mini boxes can use up to %1$s of memory</string>
   <string name="im_computer_detail_boxes_total" tools:ignore="MissingTranslation">This computer has %1$s</string>
   <string name="im_computer_detail_add_box" tools:ignore="MissingTranslation">Give a partner a mini box</string>
+  <string name="im_computer_ready_box_only">Only want a mini box for a partner?</string>
+  <string name="im_computer_ready_box_only_help">Skip the desktop setup. The partner works in its own mini box, away from your desktop and files.</string>
   <string name="im_computer_detail_check" tools:ignore="MissingTranslation">Check this computer</string>
   <string name="im_computer_detail_check_help" tools:ignore="MissingTranslation">Desktop, screen service and cua-driver</string>
   <string name="im_computer_detail_connection" tools:ignore="MissingTranslation">Connection</string>

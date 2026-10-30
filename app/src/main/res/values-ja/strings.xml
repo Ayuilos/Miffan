@@ -2852,6 +2852,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_detail_users_help">このコンピューターのアプリやファイルを直接操作します</string>
   <string name="im_computer_detail_user_space">専用のコンピューター</string>
   <string name="im_computer_detail_add_box">パートナーにミニPCを渡す</string>
+  <string name="im_computer_ready_box_only">パートナーにミニPCだけ渡しますか？</string>
+  <string name="im_computer_ready_box_only_help">デスクトップの準備は不要です。パートナーは自分のミニPCで作業するので、あなたのデスクトップやファイルには触れません。</string>
   <string name="im_computer_detail_add_partner">パートナーにこのコンピューターを使わせる</string>
   <string name="im_computer_detail_box_name">%1$sのミニPC</string>
   <string name="im_computer_detail_box_used">%1$sが使用中</string>

@@ -183,6 +183,8 @@ data class ComputerSetupState(
     val pickedTier: SpaceTier? = null,
     /** The Linux family of the computer, read when Docker needs fixing; null when unknown or not read. */
     val spaceFamily: LinuxFamily? = null,
+    /** Only mini boxes on this computer: its desktop is neither checked nor offered. */
+    val spaceOnly: Boolean = false,
 ) {
     /** What this computer can give the new Spaces; null until the check ran or when it could not tell. */
     val spaceCapacity: SpaceCapacity? get() = SpaceCapacity.from(spaceProbe?.host)
@@ -259,6 +261,11 @@ data class ComputerSetupArgs(
      * already set up, with updates offered, and no way on to sharing.
      */
     val status: Boolean = false,
+    /**
+     * Give [assistantId] a mini box on the saved computer [hostId]: once connected, straight to choosing its
+     * size, past the desktop's checks (a mini box needs none of them).
+     */
+    val space: Boolean = false,
 )
 
 /**
@@ -431,7 +438,12 @@ class ComputerSetupVM(
     fun back(): Boolean {
         val state = _state.value
         if (state.busy || state.history.isEmpty()) return false
-        _state.update { it.copy(step = it.history.last(), history = it.history.dropLast(1), error = null, keyRefused = false, unreachable = false) }
+        _state.update {
+            val step = it.history.last()
+            // Back at the checks, the desktop is on offer again.
+            it.copy(step = step, history = it.history.dropLast(1), error = null, keyRefused = false, unreachable = false,
+                spaceOnly = it.spaceOnly && step != ComputerSetupStep.READY)
+        }
         return true
     }
 
@@ -705,6 +717,13 @@ class ComputerSetupVM(
                 target = host?.target() ?: it.target, wantsScreen = it.wantsScreen ?: true.takeIf { host?.screenEnabled == true })
         }
         probe()
+        val partner = args.assistantId
+        if (args.space && partner != null && hostId == args.hostId && _state.value.probe != null) {
+            _state.update { it.copy(spaceOnly = true, useSpace = true) }
+            showHow(setOf(partner))
+            // Back from choosing leaves the setup: the user came for the mini box only.
+            _state.update { it.copy(history = emptyList()) }
+        }
     }
 
     /**
@@ -832,6 +851,17 @@ class ComputerSetupVM(
         }
     }
 
+    /**
+     * From [ComputerSetupStep.READY] before the desktop is ready: the user wants mini boxes only, which need
+     * none of its checks. On to the partners (or, for one partner, how), leaving the screen settings as they are.
+     */
+    fun onlySpaces() {
+        if (_state.value.busy) return
+        _state.update { it.copy(spaceOnly = true, useSpace = true) }
+        val partner = args.assistantId
+        if (partner != null) showHow(setOf(partner)) else go(ComputerSetupStep.SHARE)
+    }
+
     /** Leaves [ComputerSetupStep.READY] once everything is in place. */
     fun continueToShare() = run(ComputerSetupTask.SAVING) {
         check(_state.value.ready) { "The computer is not ready yet" }
@@ -924,6 +954,10 @@ class ComputerSetupVM(
             bind(assistantIds)
             return
         }
+        showHow(assistantIds)
+    }
+
+    private fun showHow(assistantIds: Set<Uuid>) {
         go(ComputerSetupStep.HOW) { it.copy(sharePartners = assistantIds.toList()) }
         // The size line on the Space option needs the host's size; the choice itself never waits for it.
         viewModelScope.launch {

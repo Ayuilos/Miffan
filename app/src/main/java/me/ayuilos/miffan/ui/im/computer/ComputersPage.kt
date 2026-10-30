@@ -424,7 +424,7 @@ fun ComputerDetailPage(hostId: String) {
             supporting = replaces,
             footer = null,
             onDismiss = { pickingBox = false },
-            onPick = { partner -> pickingBox = false; nav.navigate(Screen.ComputerSetup(assistantId = partner.id.toString(), hostId = hostId)) },
+            onPick = { partner -> pickingBox = false; nav.navigate(Screen.ComputerSetup(assistantId = partner.id.toString(), hostId = hostId, space = true)) },
         )
         if (choosingScreen) PartnerPickerDialog(
             title = stringResource(R.string.im_computer_pick_screen_partner),

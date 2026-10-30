@@ -52,7 +52,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     val nav = LocalNavController.current
     val assistants = LocalSettings.current.assistants
     // This page's own entry on the back stack, to replace it on the way out.
-    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status)
+    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status, args.space)
     val statusPage = args.status && state.step == ComputerSetupStep.READY
     val update by vm.cuaUpdate.collectAsStateWithLifecycle()
     fun back() {

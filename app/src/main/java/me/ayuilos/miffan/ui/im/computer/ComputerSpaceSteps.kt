@@ -102,13 +102,19 @@ internal fun ComputerHowStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     val colors = MaterialTheme.colorScheme
     var adjusting by rememberSaveable { mutableStateOf(false) }
     var showCommand by rememberSaveable { mutableStateOf(false) }
+    val one = partners.size == 1 && first != null
+    // With mini boxes only there is nothing to choose: the screen just confirms the box and its size.
     SetupScreen(
-        title = if (partners.size == 1 && first != null) stringResource(R.string.im_space_how_title, name, computer)
-            else stringResource(R.string.im_space_how_title_many, computer),
-        subtitle = stringResource(R.string.im_space_how_help),
+        title = when {
+            state.spaceOnly -> if (one) stringResource(R.string.im_space_start_box, name) else stringResource(R.string.im_space_start_box_many)
+            one -> stringResource(R.string.im_space_how_title, name, computer)
+            else -> stringResource(R.string.im_space_how_title_many, computer)
+        },
+        subtitle = if (state.spaceOnly) stringResource(R.string.im_space_done_help, computer) else stringResource(R.string.im_space_how_help),
         state = state, onDismissError = vm::dismissError,
         primary = SetupAction(
             when {
+                state.spaceOnly -> stringResource(R.string.im_computer_continue)
                 !state.useSpace -> stringResource(R.string.im_space_start_desktop)
                 partners.size == 1 && first != null -> stringResource(R.string.im_space_start_box, name)
                 else -> stringResource(R.string.im_space_start_box_many)
@@ -150,7 +156,7 @@ internal fun ComputerHowStep(vm: ComputerSetupVM, state: ComputerSetupState) {
                 }
             }
         }
-        HowCard(
+        if (!state.spaceOnly) HowCard(
             selected = !state.useSpace, enabled = !state.busy,
             title = stringResource(R.string.im_space_desktop_title),
             illustration = { HowIllustration(box = false, partner = first) },
