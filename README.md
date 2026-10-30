@@ -48,11 +48,12 @@ Partners can message each other, and you can bring several into one chat.
 
 Connect a Mac, Windows or Linux computer over SSH, including over Tailscale, and your partner can open apps, type and click on it while you watch from your phone. A server or NAS without a screen works too: the partner uses it through commands.
 
-- **One shared screen.** View and control the desktop from your phone, in portrait or full-screen landscape. Touch the screen and you take over right away.
+- **One shared screen.** View and control the desktop from your phone, in portrait or full-screen landscape. While the partner works, the first touch only asks; a second touch takes over.
 - **High-performance mode.** With Sunshine on the computer, the graphics card encodes the picture for lower latency, smoother motion and sound. Miffan sets it up and pairs for you.
 - **You stay in charge.** Choose per computer whether the partner asks first, works on its own or leaves it alone. Each approval is recorded in a permission history that stays even if you delete the chat.
 - **Tasks that run on schedule.** Ask a partner to do something every morning and the computer's own scheduler runs it on time, even while your phone is off (Mac and Linux). A task can be a command or a call to an AI tool already installed there, such as Claude Code, Codex CLI or Gemini CLI. Results come back to the chat when you open Miffan, and "My computers" keeps the output of every run.
 - **See how a computer is doing.** A status page says in one line whether the computer is ready, fixes problems in place and offers updates for the control helper.
+- **A mini box of its own.** Rather keep a partner off your desktop? Give it its own separate mini box on your Mac or Linux computer. It works freely there and hands finished files to a folder on your computer.
 - **Easy to connect.** Easy chat finds computers on your Wi-Fi and on Tailscale. Sign in once with the account password and Miffan switches to its own key; Windows gets a one-step setup script.
 
 <table>
@@ -126,6 +127,7 @@ Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an
 | Oct 2026 | 4.4 | Scheduled tasks that your computer runs on its own, even while your phone is off. |
 | Oct 2026 | 4.5 | A redesigned easy chat: partner, Me and Discover pages, a Change look page, saved messages, and the Magpie gateway. |
 | Oct 2026 | 4.6 | A first run that is a chat with Miffan, choosing how long a partner thinks, and a computer status page. |
+| Oct 2026 | 4.7 | A partner's own mini box, and a redesigned screen view. |
 
 Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 
