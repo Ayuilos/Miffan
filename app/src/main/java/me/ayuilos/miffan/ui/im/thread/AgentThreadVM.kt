@@ -174,6 +174,21 @@ class AgentThreadVM(
         .map { live -> live.mapTo(HashSet()) { it.id } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    /** Generating segments whose request the provider has answered; the others are still connecting. */
+    val connectedSegmentIds: StateFlow<Set<Uuid>> = chatService.getConversationJobs()
+        .map { jobs -> jobs.keys }
+        .distinctUntilChanged()
+        .flatMapLatest { ids ->
+            if (ids.isEmpty()) {
+                flowOf(emptySet())
+            } else {
+                combine(ids.map { id -> chatService.getConnectedFlow(id).map { connected -> id to connected } }) { states ->
+                    states.filter { it.second }.mapTo(HashSet()) { it.first }
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
     private val catalog: StateFlow<List<ThreadCatalogEntry>?> = threadRepository.observeCatalog(assistantId)
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -390,6 +405,11 @@ class AgentThreadVM(
     /** Approves or declines a tool call that waits for the user (for example turning on web search). */
     fun answerToolApproval(item: TimelineItem.Message, toolCallId: String, approved: Boolean, via: me.rerere.ai.ui.ToolDecisionVia = me.rerere.ai.ui.ToolDecisionVia.CARD) {
         viewModelScope.launch { threadService.answerTool(assistantId, item.segmentId, toolCallId, approved, via = via) }
+    }
+
+    /** Answers several pending calls of [item] in one step, e.g. "allow these steps". */
+    fun answerToolApprovals(item: TimelineItem.Message, toolCallIds: List<String>, approved: Boolean) {
+        viewModelScope.launch { threadService.answerTools(assistantId, item.segmentId, toolCallIds, approved) }
     }
 
     /** The extra answers a card in [item] can give: always allow, and allow with corrected arguments. */

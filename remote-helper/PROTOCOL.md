@@ -185,6 +185,41 @@ timeout、skipped_overlap（exit_code 为 null、log_bytes 为 0、无日志）�
 
 Windows helper 不实现 task 命令。
 
+## 伙伴专属电脑（POSIX `space`，helper 24 起）
+
+封装 `cua` CLI，管理伙伴自己的 cua Space（本机上的 Linux 容器，一律 `--runtime runc`：gVisor 重启会丢全部文件）。
+只在 macOS 与 Linux 主机上实现，Windows helper 没有 `space` 命令。所有 `space` 命令以 umask 077 运行，只依赖
+POSIX sh 与系统自带工具（含 curl、awk），不需要 python3。
+
+输出：stdout 最后一行是一行 JSON；诊断写 stderr；Space 的 token 只出现在 `info` 的 stdout，从不写入 stderr、
+文件或任何进程参数。失败为 `{"error":"<code>","detail":<string|null>}` 并退出 1；Space 名不合法时
+`{"error":"bad_name","detail":null}` 并退出 2。名字必须是 `miffan-[0-9a-f]{8}`。
+错误码：`cua_missing`、`daemon_failed`、`needs_docker`（仅 Linux：无 docker 或无权限）、`download_failed`、
+`disk_low`、`create_failed`、`not_found`、`start_failed`、`exec_failed`、`unsupported`、`bad_name`、`bad_input`。
+
+`cua` 在 `~/.local/bin/cua`（非交互 PATH 里没有），helper 按 `PATH`、`~/.local/bin`、`/opt/homebrew/bin`、
+`/usr/local/bin` 查找。除 `probe` 外的命令都会先确认 cua 守护进程在运行，没有则带着电脑的代理变量
+（`cua_proxy`：macOS 系统代理或 systemd 用户环境）启动，并设 `NO_PROXY=127.0.0.1,localhost`、`CUA_TELEMETRY=0`。
+
+| 调用 | stdin / stdout | 说明 |
+|---|---|---|
+| `space probe` | 无 / `{cua:{path,version},daemon:{running},docker,disk_free_gb,host:{cpus,memory_mb,runtime},spaces:[{id,state}]}` | 只读，不启动任何东西。`host` 是本机 CPU 数与内存（MiB，读不到为 null）；`runtime` 在 macOS 为 cua 的 Linux 虚拟机 `{cpus,memory_mb}`（所有 Space 共用，读自 `~/.cua/runtimes/linux/vm/cua/colima.yaml`），Linux 为 null（helper 26 起）。docker 在 Linux 为 `{ok,detail}`，macOS 为 null（用 cua 自带运行时）。守护进程没运行时 `spaces` 为空（列出会拉起运行时）。只列 `miffan-*` 的 Space |
+| `space install` | 无 / `{cua:{path,version},daemon:{running:true}}` | cua 已装则不下载；否则经代理下载 `https://cua.ai/install.sh` 并以 `--cli-only --yes --no-modify-path --no-onboarding` 运行（安装器输出走 stderr），失败为 `download_failed`。然后确保守护进程在运行（`daemon_failed`） |
+| `space create <名> <cpus> <内存 MiB>` | 无 / `{id:"local:<名>",state:"running"}` | cpus 1–64、内存 512–262144，否则 `bad_input`（helper 26 起必填）。Linux 先检查 docker（`needs_docker`）与磁盘（<2 GB 为 `disk_low`）。`cua spaces create linux --on local --kind container --runtime runc --name <名> --cpus <cpus> --memory-mb <内存> --json`，再等 `sb info` 为 running 且发布了回环端口（默认 90 秒，超时 `create_failed`）。cua 失败时 JSON 的 `error` 或退出码非 0 都算失败，按文本分类：磁盘/空间 → `disk_low`；pull/download/proxy/timeout/dial tcp → `download_failed`；docker → `needs_docker`；其余 `create_failed`，detail 为 cua 的原文 |
+| `space info <名>` | 无 / `{id,state:"running",port,token,driver_version,proxy}` | Space 未运行先 `cua spaces start`（`start_failed`）。回环端口每次启动都变，每次现查，不缓存。token 来自 `~/.cua/spaces-credentials.json`。`driver_version` 是 Space 里 cua-driver 的版本，经 `http://127.0.0.1:<port>/mcp` 的 initialize 读取（token 通过 curl 配置走 stdin），读不到为 null。`proxy`（helper 27 起）：这个 Space 经主机网络共享上网时为 `http://<网关>:<端口>`（顺带确保共享在运行），否则为 null；App 把它作为代理环境变量交给自己在 Space 里启动的进程 |
+| `space start\|stop\|delete <名>` | 无 / `{id,state}`；delete 为 `{id,deleted:true}` | 未知的名为 `not_found`。stop 只暂停容器（内存不释放）；delete 用 `--force` |
+| `space reset <名> <cpus> <内存 MiB>` | 无 / 同 create | 先 delete 再用同名、给定配置 create；Space 不存在为 `not_found`。交接文件夹在宿主上，不受影响 |
+| `space resize <名> <cpus> <内存 MiB>` | 无 / `{id,cpus,memory_mb}` | 原地改配置，文件保留（helper 26 起）。只支持 Linux：`docker update --cpus … --memory …m --memory-swap …m <名>`，失败为 `exec_failed`；macOS 的 Space 在 cua 自己的虚拟机里，返回 `unsupported` |
+| `space netcheck <名>` | 无 / `{dns,https,detail,hint,via,…}` | 在 Space 里同时请求 `www.baidu.com` 与 `www.cloudflare.com` 的 HTTPS（连接 3 秒、总计 5 秒），第一个成功即返回（helper 28 起；之前按顺序各等超时）；DNS 只为失败时的说明另查（3 秒）。`detail` 列出失败项（如 `https:www.baidu.com`），全部成功为 null。检查在 Space 里没能跑完时也按离线输出。`via:"direct"` 表示 Space 自己的网络；此时 Linux 上未通过且 ufw 为 active 时 `hint:"ufw"`。**网络共享（helper 27 起，仅 Linux）**：直连 HTTPS 不通、有 `python3` 且 `docker inspect` 读得到 Space 的网桥时，改走主机网络共享，此后该 Space 的检查都走共享（标记在 `~/.miffan/netshare/spaces/<名>`）。共享是 helper 写出的 `~/.miffan/netshare/relay.py`（Python 标准库 HTTP 代理，`setsid nohup` 常驻，pid 在 `relay-<网关>.pid`），只监听网桥网关 `:32190`，只接受网桥子网的客户端，拒绝回环、链路本地、组播、主机自身地址和网桥上其他容器（按解析出的 IP 判断）；它发出的连接是主机自己的连接，所以主机上的 VPN、透明代理（如 v2rayA）照常生效。Space 里缺少设置时（新建或重置后；helper 28 起不再每次都写）以 `sudo -n` 写入 `/etc/environment` 的代理变量、`/etc/apt/apt.conf.d/95miffan-proxy`、`/etc/sudoers.d/miffan-proxy`（env_keep），以及浏览器的代理策略 `/etc/firefox/policies/policies.json`（同时跳过首次运行页与条款确认）和 `/etc/chromium/policies/managed/miffan-proxy.json`（helper 29 起；cua-driver 启动的桌面应用读不到 `/etc/environment`）。输出 `{dns,https,detail,hint,via:"share",proxy,bridge,port}`，`dns` 与 `https` 同为经共享的 HTTPS 结果；Space 连不到共享时 `hint` 为 `ufw`（ufw active，App 给出 `sudo ufw allow in on <bridge> to <网关> port <port> proto tcp`）或 `firewall`；共享起不来或 Space 设置写不进时 `hint:"share_failed"`（只有 `dns,https,detail,hint,via`）。`space delete` 删掉最后一个用共享的 Space 时停止共享；`space reset` 重建后重新写入设置。**Mac 的系统代理（helper 32 起）**：Mac 上 Space 跑在 cua 的 Linux 虚拟机里，经 `192.168.5.2` 访问 Mac 的回环地址。`scutil --proxy` 里开着 HTTPS（否则 HTTP）代理时，netcheck 先经它检查（地址是回环的换成 `192.168.5.2`，只接受主机名加端口），代理有应答就按上面同样的方式写入 Space 的设置并记标记，输出 `{dns,https,detail,hint:null,via:"share",proxy}`；设置写不进时 `hint:"share_failed"`。Mac 不再设代理或 Space 连不到它时，去掉 Space 里的代理设置（保留 Firefox 的首次运行与条款设置）和标记，回到直连检查。`space info` 的 `proxy` 读标记。helper 从不修改防火墙 |
+| `space handoff out\|in <名>` | `{"folder":"<宿主绝对路径>","path":"<相对路径，仅 out>"}` / `{copied:[…]}` | Space 里的交接文件夹为桌面上的 `/home/cua/Desktop/Shared`（helper 26 起；名字固定为英文），两侧缺失时创建（宿主 `<folder>` 为 700）。冲突不覆盖：在扩展名前加 ` (2)`、` (3)`…（`.tar.*` 算一个扩展名，点开头的文件无扩展名）。`copied` 是写到宿主（out）或 Space 交接文件夹（in）里的相对名 |
+
+handoff 细节：stdin 是单个 JSON 对象，字符串里只接受 `\"`、`\\`、`\/` 三种转义，非 ASCII 字符须原样 UTF-8（App 的
+JSON 编码默认如此），其他转义（含 `\n`、`\u`）为 `bad_input`。`folder` 必须是不含 `..`、`.`、空段的路径：绝对路径，或（helper 30 起）相对 SSH 账号家目录的路径（App 存的就是这种），
+`path` 必须是不含 `..`、`.`、空段、不以 `/` 开头的相对路径，否则 `bad_input`。
+
+- `out`：`path` 指向文件或目录；目录递归拷贝其中的普通文件，保持相对路径，宿主已有的子目录合并，冲突按文件重命名。符号链接或不存在为 `not_found`。
+- `in`：拷贝 `<folder>` 里（递归）比上一次 `in` 更新的普通文件；跳过符号链接与 `.DS_Store`。App 在伙伴每轮开始时调用（同一 Space 至多每 20 秒一次）；没有新文件时不启动、不进入 Space，直接返回 `{"copied":[]}`（helper 30 起）。`out` 写到宿主的文件记在 `~/.miffan/space/<名>.handoff-out`（相对路径、大小与修改时间）；`in` 跳过其中未被改动的文件，否则伙伴交出的文件会在下一轮以 ` (2)` 回到 Space（helper 31 起）。宿主上改过的文件照常拷入。记录只保留之后的 `in` 仍可能列出的条目。上一次的时间戳是 `~/.miffan/space/<名>.handoff` 的 mtime（本次开始时刻写入，成功后才替换；中途失败下次会重来，已拷贝的文件会以 ` (2)` 再出现一份）。
+
 ## Windows 子命令（Windows PowerShell 5.1）
 
 以当前 SSH 用户运行；交互桌面要求 SSH 用户 SID 与 console 用户一致，session 非 0，
@@ -245,7 +280,7 @@ applied_changes，其他保留诊断不进入强类型模型。
 
 ## 版本与安装
 
-当前 POSIX helper 为 21，Windows 为 11。POSIX 21 新增 `task` 命令；Windows 版本和摘要保持不变。
+当前 POSIX helper 为 24，Windows 为 13。POSIX 21 新增 `task` 命令，24 新增 `space` 命令；Windows 版本和摘要保持不变。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

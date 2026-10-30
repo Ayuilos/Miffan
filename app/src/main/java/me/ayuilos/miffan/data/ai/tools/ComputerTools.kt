@@ -55,9 +55,9 @@ private val FOREGROUND_TOOLS = setOf("bring_to_front")
 /** Every cua-driver tool the partner gets; each needs a readable title in the chat. */
 internal val COMPUTER_DRIVER_TOOL_NAMES = OBSERVE_TOOLS + ACTION_TOOLS + FOREGROUND_TOOLS
 
-internal fun computerAutoApprovedBy(name: String, args: JsonElement, approvalRequired: Boolean): ToolDecisionVia? =
-    if (name in ACTION_TOOLS && !approvalRequired &&
-        (args as? JsonObject)?.get("delivery_mode")?.jsonPrimitive?.contentOrNull != "foreground"
+internal fun computerAutoApprovedBy(name: String, args: JsonElement, approvalRequired: Boolean, space: Boolean = false): ToolDecisionVia? =
+    if ((name in ACTION_TOOLS || space && name in FOREGROUND_TOOLS) && !approvalRequired &&
+        (space || (args as? JsonObject)?.get("delivery_mode")?.jsonPrimitive?.contentOrNull != "foreground")
     ) ToolDecisionVia.NO_ASK_SETTING else null
 
 /** Arguments the app supplies or that would make the driver write files on the remote side. */
@@ -85,7 +85,7 @@ class ComputerToolbox(
     private val ensureSession: suspend () -> String,
     private val load: suspend () -> List<Tool>,
 ) {
-    private val target = snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
+    private val target = computerTarget(snapshot)
     @Volatile private var loaded: List<Tool>? = null
 
     fun tools(): List<Tool> = listOf(startTool) + loaded.orEmpty()
@@ -169,18 +169,21 @@ suspend fun createComputerTools(
     filesManager: FilesManager,
     /** The partner's display name, shown to other partners refused while this one holds the desktop. */
     partnerName: String = "",
+    snapshots: me.ayuilos.miffan.data.ai.computer.ComputerSnapshots? = null,
 ): List<Tool> {
     val workspaceId = snapshot.workspaceId
     val holder = ComputerHolder(snapshot.assistantId, snapshot.conversationId.orEmpty(), partnerName)
     val capabilities = registry.capabilities(workspaceId)
-    val hostId = capabilities.hostId
-    val target = snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
+    val controlKey = capabilities.controlKey
+    val target = computerTarget(snapshot)
     val tools = capabilities.tools.filter { it.name in OBSERVE_TOOLS || it.name in ACTION_TOOLS || it.name in FOREGROUND_TOOLS }
     val clickTool = tools.firstOrNull { it.name == "click" }
 
+    // Raising windows only interrupts the owner on their own desktop; a partner's own computer is not that.
+    val space = snapshot.kind == me.ayuilos.miffan.data.db.entity.WorkspaceEntity.KIND_SPACE
     fun requiresApproval(name: String, args: JsonElement): Boolean = when {
-        name in FOREGROUND_TOOLS -> true
-        (args as? JsonObject)?.get("delivery_mode")?.jsonPrimitive?.contentOrNull == "foreground" -> true
+        name in FOREGROUND_TOOLS && !space -> true
+        !space && (args as? JsonObject)?.get("delivery_mode")?.jsonPrimitive?.contentOrNull == "foreground" -> true
         name in OBSERVE_TOOLS -> false
         else -> approvalRequired
     }
@@ -194,15 +197,15 @@ suspend fun createComputerTools(
                 workspaceTarget = snapshot,
                 needsApproval = { args -> requiresApproval(tool.name, args) },
                 autoApprovedBy = { args ->
-                    computerAutoApprovedBy(tool.name, args, approvalRequired)
+                    computerAutoApprovedBy(tool.name, args, approvalRequired, space)
                 },
                 execute = { args ->
                     val arguments = withScreenshotCap(tool, args.jsonObject)
                     val focusClick = desktopTypeFocusClick(tool, arguments, clickTool)
-                    if (tool.name in OBSERVE_TOOLS) {
+                    val output = if (tool.name in OBSERVE_TOOLS) {
                         convert(registry.call(workspaceId, tool.name, arguments), filesManager)
                     } else {
-                        when (val result = control.partnerActs(hostId, holder) {
+                        when (val result = control.partnerActs(controlKey, holder) {
                             if (focusClick != null) typeAfterFocusClick(workspaceId, registry, focusClick, arguments, filesManager)
                             else convert(registry.call(workspaceId, tool.name, arguments), filesManager)
                         }) {
@@ -215,14 +218,21 @@ suspend fun createComputerTools(
                             PartnerActResult.Updating -> listOf(UIMessagePart.Text(updatingRefusal(target)))
                         }
                     }
+                    snapshots?.record(workspaceId, output)
+                    output
                 },
             ))
         }
-        add(createReadGuideTool(workspaceId, target, capabilities, registry))
+        add(createReadGuideTool(workspaceId, target, capabilities, registry, space))
     }
 }
 
 /** Why another turn holds the desktop and what to do instead of retrying the action. */
+/** How the tools name the machine they operate: a partner's own computer is not its host. */
+internal fun computerTarget(snapshot: WorkspaceToolTargetSnapshot): String =
+    if (snapshot.kind == me.ayuilos.miffan.data.db.entity.WorkspaceEntity.KIND_SPACE) "your mini box (your own Linux desktop)"
+    else snapshot.remoteHostName ?: snapshot.remoteHostLabel ?: "the remote computer"
+
 internal fun busyRefusal(holder: ComputerHolder, me: ComputerHolder, target: String): String = buildJsonObject {
     put("status", "busy")
     put("reason", when {
@@ -277,11 +287,25 @@ private suspend fun typeAfterFocusClick(
     )) + convert(typed, filesManager)
 }
 
+/**
+ * How to work on a partner's own computer: its desktop is the partner's alone, and its browser is
+ * driven like a person drives it (cua-driver's typed browser tools need a Chromium it cannot reach there).
+ */
+private val SPACE_COMPUTER_GUIDANCE = """
+- This desktop is yours alone; nobody else is using it. When a background action does not take effect, call computer_bring_to_front on that window, then repeat the action with delivery_mode "foreground"; neither asks anyone.
+- Start every task with computer_list_windows: windows and processes from an earlier task may be gone (pid, window_id and capture_id go stale), so never reuse them.
+- The browser is Firefox. Use it the way a person does: launch or bring it to the front, press ctrl+l (computer_hotkey) to select the address bar, type the address with computer_type_text, press Return, then confirm on a fresh observation that the page loaded before reading it.
+- When you only need a page's text or a file, `curl` in the shell is faster than the browser; use the browser when the task is about using the site itself.
+- Report only what a fresh observation shows. If the page did not load (an error page, a blank tab), say so and say what you saw; never answer from memory or from another tool as if you had seen it in the browser.
+""".trimEnd()
+
 private fun createReadGuideTool(
     workspaceId: String,
     target: String,
     capabilities: RemoteComputerRegistry.Capabilities,
     registry: RemoteComputerRegistry,
+    /** A partner's own computer: nobody else works on that desktop. */
+    space: Boolean = false,
 ) = Tool(
     name = COMPUTER_TOOL_PREFIX + "read_guide",
     description = "Read one of cua-driver's guides for operating the remote computer. Available: " +
@@ -305,7 +329,8 @@ private fun createReadGuideTool(
             appendLine("- If a tool says the session ended or is not ready, call $COMPUTER_START_TOOL once to reconnect, then observe again. Do not repeat the failing call or look for the driver over the shell.")
             appendLine("- launch_app only opens GUI apps; never use it to run commands such as kill. To close an app or window use kill_app (or the app's own close shortcut via hotkey). For other commands use the shell tool if you have one.")
             appendLine("- An element_token is `<snapshot_id>:<element index>`, using snapshot_id from the latest state of that window; the tree shows indices as [n].")
-            appendLine("- Prefer background actions. delivery_mode \"foreground\" and computer_bring_to_front interrupt the user and always ask for their approval.")
+            if (space) appendLine(SPACE_COMPUTER_GUIDANCE)
+            else appendLine("- Prefer background actions. delivery_mode \"foreground\" and computer_bring_to_front interrupt the user and always ask for their approval.")
             appendLine("- Never type passwords or other secrets. Ask the user to enter them on their screen themselves.")
             appendLine("- Screenshots are resized for you; pixel coordinates refer to the screenshot you were given, together with its capture_id.")
             if (capabilities.windows) appendLine(WINDOWS_COMPUTER_GUIDANCE)

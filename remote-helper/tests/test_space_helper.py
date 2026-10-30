@@ -1,0 +1,740 @@
+#!/usr/bin/env python3
+"""Hermetic checks for `miffan space`; a temporary HOME and stub cua/docker/curl/systemctl, no real Spaces."""
+import json
+import os
+import socket
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+
+HELPER = Path(__file__).resolve().parents[1] / "src/miffan.sh"
+SH = os.environ.get("HELPER_SH", "/bin/sh")  # CI runs dash; set HELPER_SH=/bin/dash to match it elsewhere.
+NAME = "miffan-0123abcd"
+TOKEN = "t0k3n" + "0123456789abcdef0123456789a"  # 32 characters
+MOCK = r'''#!/usr/bin/env python3
+import json, os, shutil, subprocess, sys
+from pathlib import Path
+name = Path(sys.argv[0]).name
+args = sys.argv[1:]
+root = Path(os.environ['FIXTURE'])
+sf = root / 'state.json'
+s = json.loads(sf.read_text())
+with (root / 'argv.jsonl').open('a') as log:
+    log.write(json.dumps([name] + args) + '\n')
+def save(): sf.write_text(json.dumps(s))
+def space_path(text): return text.replace('/home/cua', str(root / 'space_home'))
+def info(n):
+    sp = s['spaces'][n]
+    out = {'id': 'local:' + n, 'name': n, 'runtime': 'runc', 'state': sp['state'], 'status': 'ready',
+           'endpoints': {'env': 'http://127.0.0.1:%d' % sp['port']} if sp['state'] == 'running' else {},
+           'services': {'env': 3211} if sp['state'] == 'running' else {}}
+    return json.dumps(out, indent=2)
+def fail(msg, rc=1):
+    sys.stderr.write(msg + '\n'); sys.exit(rc)
+
+if name == 'uname':
+    print(s.get('os', 'Linux') if args == ['-s'] else 'x86_64')
+elif name == 'scutil':
+    if args == ['--proxy']: print(s.get('scutil', '<dictionary> {\n}'))
+    else: sys.exit(1)
+elif name == 'df':
+    print('Filesystem 1024-blocks Used Available Capacity Mounted')
+    print('/dev/x 999 1 %d 1%% /' % s.get('free_kb', 100 * 1048576))
+elif name == 'systemctl':
+    if 'is-active' in args:
+        if s.get('ufw'): print('active')
+        else: print('inactive'); sys.exit(3)
+    else: sys.exit(1)
+elif name == 'docker':
+    if s.get('docker') == 'permission': fail('permission denied while trying to connect to the Docker daemon socket')
+    if args[:1] == ['inspect']:
+        if not s.get('share_net'): fail('no such object')
+        print(s['share_net'])
+    elif args[:2] == ['network', 'inspect']: print(s.get('share_if', 'docker0'))
+    else: print('27.0.1')
+elif name == 'curl':
+    if '-K' in args:
+        if 'Authorization: Bearer' not in sys.stdin.read() and 'authorization: Bearer' not in open(os.devnull).read():
+            pass
+        print(json.dumps({'jsonrpc': '2.0', 'id': 1, 'result': {'serverInfo': {'name': 'cua-driver', 'version': s.get('driver', '0.38.0')}}}))
+    elif '-o' in args:
+        if s.get('install_fail'): fail('curl: (22) The requested URL returned error: 404', 22)
+        Path(args[args.index('-o') + 1]).write_text(
+            '#!/bin/sh\necho "installer: $*" >&2\necho "installer stdout noise"\n'
+            'mkdir -p "$HOME/.local/bin" && ln -sf "%s/cua" "$HOME/.local/bin/cua"\n' % os.environ['STUBBIN'])
+    else: fail('unexpected curl')
+elif name == 'cua':
+    if args == ['--version']: print('cua 0.4.4'); sys.exit(0)
+    if args and args[0] == '--json': args = args[1:]
+    if args[:2] == ['daemon', 'status']:
+        if s.get('daemon'): print('cua daemon 0.9.0 (pid 4242) socket=/x loopback=http://127.0.0.1:1')
+        else: print('cua daemon is not running'); sys.exit(1)
+    elif args[:2] == ['daemon', 'start']:
+        (root / 'daemon_env.json').write_text(json.dumps({k: os.environ.get(k) for k in ('HTTPS_PROXY', 'NO_PROXY', 'CUA_TELEMETRY')}))
+        if s.get('daemon_fail'): fail('cannot bind the control socket')
+        s['daemon'] = True; save()
+    elif args[:2] == ['sb', 'ls']:
+        items = [{'id': 'local:' + n, 'name': n, 'state': sp['state'], 'endpoints': {}} for n, sp in s['spaces'].items()]
+        items += [{'id': 'direct:100.64.0.5:3213', 'name': 'Omarchy', 'state': 'running'}]
+        print(json.dumps(items))
+    elif args[:2] == ['sb', 'info']:
+        if args[2] not in s['spaces']: fail('no such sandbox')
+        print(info(args[2]))
+    elif args[:2] == ['spaces', 'create']:
+        n = args[args.index('--name') + 1]
+        if s.get('create_error'): print(json.dumps({'spaces': [{'error': s['create_error']}]})); sys.exit(0)
+        if s.get('create_stderr'): fail(s['create_stderr'])
+        s['seq'] = s.get('seq', 40000) + 1
+        s['spaces'][n] = {'state': 'stopped' if s.get('never_running') else 'running', 'port': s['seq']}
+        save()
+        print(json.dumps({'spaces': [{'id': 'local:' + n, 'name': n}]}))
+    elif args[:2] == ['spaces', 'start']:
+        n = args[2].split(':', 1)[1]
+        if s.get('start_fail'): fail('runtime vm failed to boot')
+        s['seq'] = s.get('seq', 40000) + 1
+        s['spaces'][n].update(state='running', port=s['seq']); save()
+        print('Resumed local:' + n + '.')
+    elif args[:2] == ['spaces', 'stop']:
+        s['spaces'][args[2].split(':', 1)[1]]['state'] = 'stopped'; save()
+    elif args[:2] == ['spaces', 'delete']:
+        if s.get('delete_fail'): fail('delete refused')
+        s['spaces'].pop(args[2].split(':', 1)[1], None); save()
+    elif args[:2] == ['sb', 'exec']:
+        cmd = args[3]
+        if 'NETCHECK' in cmd:
+            if s.get('netcheck') is None: sys.exit(7)
+            print(s['netcheck']); sys.exit(0)
+        if 'SHARECHECK' in cmd:
+            if s.get('sharecheck') is None: sys.exit(7)
+            print(s['sharecheck']); sys.exit(0)
+        if 'SHAREOFF' in cmd:
+            s['share_unconfigured'] = s.get('share_unconfigured', 0) + 1; save()
+            print('SHAREOFF ok'); sys.exit(0)
+        if 'SHARECONF' in cmd:
+            s['share_configured'] = s.get('share_configured', 0) + 1; save()
+            (root / 'shareconf.txt').write_text(cmd)
+            if s.get('share_conf_fail'): sys.exit(1)
+            print('SHARECONF ok'); sys.exit(0)
+        r = subprocess.run(['/bin/sh', '-c', space_path(cmd)])
+        sys.exit(r.returncode)
+    elif args[:2] == ['sb', 'cp']:
+        n = args[2 if ':' in args[2] and args[2].startswith('miffan-') else 3].split(':', 1)[0]
+        src, dst = args[2], args[3]
+        src = space_path(src.split(':', 1)[1]) if src.startswith(n + ':') else src
+        dst = space_path(dst.split(':', 1)[1]) if dst.startswith(n + ':') else dst
+        if not Path(dst).parent.is_dir(): fail('destination directory is missing')
+        shutil.copyfile(src, dst)
+    else: fail('unexpected cua ' + ' '.join(args))
+else: fail('unexpected ' + name)
+'''
+
+
+class Host:
+    def __init__(self, base, os_name="Linux", cua=True, with_docker=True, **state):
+        self.base = Path(base)
+        self.home = self.base / "home"
+        self.bin = self.base / "bin"
+        self.folder = self.base / "hostfolder"
+        self.home.mkdir()
+        self.bin.mkdir()
+        self.stderr = []
+        mock = self.bin / "mock"
+        mock.write_text(MOCK)
+        mock.chmod(0o755)
+        names = ["uname", "df", "systemctl", "curl", "scutil"] + (["docker"] if with_docker else [])
+        for tool in names:
+            (self.bin / tool).symlink_to(mock)
+        (self.bin / "cua-stub").symlink_to(mock)
+        self.stubbin = self.base / "stubbin"
+        self.stubbin.mkdir()
+        (self.stubbin / "cua").symlink_to(mock)
+        if cua:
+            (self.home / ".local/bin").mkdir(parents=True)
+            (self.home / ".local/bin/cua").symlink_to(mock)
+        self.state(**{"os": os_name, "daemon": True, "spaces": {}, **state})
+        creds = self.home / ".cua"
+        creds.mkdir()
+        (creds / "spaces-credentials.json").write_text(json.dumps({
+            f"local:{NAME}": {"token": TOKEN},
+            "direct:100.64.0.5:3213": {"url": "http://100.64.0.5:3213", "token": "x" * 32}}, indent=2))
+
+    def state(self, **values):
+        path = self.base / "state.json"
+        current = json.loads(path.read_text()) if path.exists() else {}
+        current.update(values)
+        path.write_text(json.dumps(current))
+
+    def read_state(self):
+        return json.loads((self.base / "state.json").read_text())
+
+    def add_space(self, name=NAME, state="running", port=41000):
+        spaces = self.read_state()["spaces"]
+        spaces[name] = {"state": state, "port": port}
+        self.state(spaces=spaces)
+
+    def calls(self, name="cua"):
+        path = self.base / "argv.jsonl"
+        lines = path.read_text().splitlines() if path.exists() else []
+        return [call[1:] for call in map(json.loads, lines) if call[0] == name]
+
+    def space_home(self):
+        return self.base / "space_home"
+
+    def run(self, *args, stdin="", extra_env=None):
+        env = {
+            "HOME": str(self.home),
+            "PATH": f"{self.bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+            "FIXTURE": str(self.base),
+            "STUBBIN": str(self.stubbin),
+            "MIFFAN_SPACE_WAIT": "2",
+        }
+        env.update(extra_env or {})
+        result = subprocess.run([SH, str(HELPER), "space", *args], input=stdin, text=True,
+                                capture_output=True, env=env, timeout=120)
+        self.stderr.append(result.stderr)
+        return result
+
+    def json(self, *args, stdin="", extra_env=None, rc=0):
+        result = self.run(*args, stdin=stdin, extra_env=extra_env)
+        assert result.stdout.strip(), (args, result.stderr)
+        data = json.loads(result.stdout.strip().splitlines()[-1])
+        assert result.returncode == rc, (args, result.returncode, result.stdout, result.stderr)
+        return data
+
+    def error(self, *args, stdin="", extra_env=None, rc=1):
+        data = self.json(*args, stdin=stdin, extra_env=extra_env, rc=rc)
+        assert set(data) == {"error", "detail"}, data
+        return data
+
+    def handoff(self, direction, payload, rc=0):
+        return self.json("handoff", direction, NAME, stdin=json.dumps(payload, ensure_ascii=False), rc=rc)
+
+    def all_logs(self):
+        path = self.base / "argv.jsonl"
+        return (path.read_text() if path.exists() else "") + "".join(self.stderr)
+
+
+def sub(base, name, **kwargs):
+    path = Path(base) / name
+    path.mkdir()
+    return Host(path, **kwargs)
+
+
+def check_no_token(host):
+    assert TOKEN not in host.all_logs(), "the Space token leaked into stderr or an argument list"
+
+
+def test_probe(base):
+    host = Host(base, cua=False)
+    data = host.json("probe")
+    assert data["cua"] == {"path": None, "version": None} and data["daemon"] == {"running": False}
+    assert data["spaces"] == [] and data["docker"] == {"ok": True, "detail": None} and data["disk_free_gb"] == 100
+
+    host = sub(base, "b", os_name="Darwin")
+    host.add_space(NAME, "running")
+    host.add_space("miffan-ffffffff", "stopped")
+    data = host.json("probe")
+    assert data["cua"]["version"] == "0.4.4" and data["cua"]["path"].endswith(".local/bin/cua")
+    assert data["daemon"] == {"running": True} and data["docker"] is None
+    # Only the miffan-* Spaces; the stub's direct: machine and anything else is left out.
+    assert data["spaces"] == [{"id": f"local:{NAME}", "state": "running"}, {"id": "local:miffan-ffffffff", "state": "stopped"}]
+    host.state(daemon=False)
+    assert host.json("probe")["spaces"] == []  # not asked: a stopped daemon would be started by listing
+    # The host's size, for the app's recommendation; on macOS also cua's VM, which every Space shares.
+    conf = host.home / ".cua/runtimes/linux/vm/cua"
+    conf.mkdir(parents=True)
+    (conf / "colima.yaml").write_text("cpu: 4\ndisk: 60\nmemory: 12\n")
+    assert host.json("probe")["host"]["runtime"] == {"cpus": 4, "memory_mb": 12288}
+    linux = sub(base, "c")
+    assert set(linux.json("probe")["host"]) == {"cpus", "memory_mb", "runtime"}
+    assert linux.json("probe")["host"]["runtime"] is None
+
+
+def test_sizes(base):
+    host = Host(base)
+    host.json("create", NAME, "4", "8192")
+    create = [c for c in host.calls() if c[:2] == ["spaces", "create"]][-1]
+    assert create[create.index("--cpus") + 1] == "4" and create[create.index("--memory-mb") + 1] == "8192"
+    for bad in [("0", "4096"), ("2", "100"), ("x", "4096"), ("2", "4g"), ("2",), ()]:
+        assert host.error("create", NAME, *bad)["error"] == "bad_input", bad
+    # Resizing works in place on Linux through docker, and is refused on macOS.
+    assert host.json("resize", NAME, "4", "8192") == {"id": f"local:{NAME}", "cpus": 4, "memory_mb": 8192}
+    assert ["update", "--cpus", "4", "--memory", "8192m", "--memory-swap", "8192m", NAME] in host.calls("docker")
+    mac = sub(base, "m", os_name="Darwin")
+    mac.add_space()
+    assert mac.error("resize", NAME, "4", "8192")["error"] == "unsupported"
+    assert mac.error("resize", "miffan-0000ffff", "4", "8192")["error"] == "not_found"
+
+    perm = sub(base, "c", docker="permission")
+    docker = perm.json("probe")["docker"]
+    assert docker["ok"] is False and "permission denied" in docker["detail"]
+    nodocker = sub(base, "d", with_docker=False)
+    assert nodocker.json("probe")["docker"] == {"ok": False, "detail": "docker not installed"}
+
+
+def test_install(base):
+    host = Host(base, cua=False, daemon=False)
+    result = host.run("install", extra_env={"HTTPS_PROXY": "http://proxy.local:8080"})
+    assert result.returncode == 0, result.stderr
+    data = json.loads(result.stdout.strip().splitlines()[-1])
+    assert data["cua"]["version"] == "0.4.4" and data["daemon"] == {"running": True}
+    # The installer ran with the three flags and its stdout noise stayed off our stdout.
+    assert "--cli-only --yes --no-modify-path --no-onboarding" in result.stderr
+    assert result.stdout.strip().count("\n") == 0 and "noise" not in result.stdout
+    env = json.loads((host.base / "daemon_env.json").read_text())
+    assert env == {"HTTPS_PROXY": "http://proxy.local:8080", "NO_PROXY": "127.0.0.1,localhost", "CUA_TELEMETRY": "0"}
+
+    # Already installed: no download, just the daemon.
+    before = len(host.calls("curl"))
+    assert host.json("install")["cua"]["version"] == "0.4.4"
+    assert len(host.calls("curl")) == before
+    failing = sub(base, "x", cua=False, install_fail=True)
+    assert failing.error("install")["error"] == "download_failed"
+    broken = sub(base, "y", daemon=False, daemon_fail=True)
+    assert broken.error("install")["error"] == "daemon_failed"
+
+
+def test_create(base):
+    host = Host(base, daemon=False)
+    created = host.json("create", NAME, "2", "4096", extra_env={"HTTPS_PROXY": "http://proxy.local:8080"})
+    assert created == {"id": f"local:{NAME}", "state": "running"}
+    # The daemon was started first, with the proxy, and every create asked for runc.
+    assert json.loads((host.base / "daemon_env.json").read_text())["HTTPS_PROXY"] == "http://proxy.local:8080"
+    creates = [c for c in host.calls() if c[:2] == ["spaces", "create"]]
+    assert len(creates) == 1 and "--runtime" in creates[0] and creates[0][creates[0].index("--runtime") + 1] == "runc"
+    assert "--name" in creates[0] and "--on" in creates[0] and creates[0][creates[0].index("--on") + 1] == "local"
+    check_no_token(host)
+
+
+def test_create_errors(base):
+    cases = [
+        ({"create_error": "pull ghcr.io/trycua/linux:24.04: i/o timeout"}, "download_failed"),
+        ({"create_error": "Docker responded with status code 404: pull access denied"}, "download_failed"),
+        ({"create_error": "write /var/lib/x: no space left on device"}, "disk_low"),
+        ({"create_error": "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"}, "needs_docker"),
+        ({"create_error": "name already in use"}, "create_failed"),
+        ({"create_stderr": "something odd happened"}, "create_failed"),
+        ({"create_stderr": "failed to download the Linux runtime: dial tcp 1.2.3.4:443"}, "download_failed"),
+    ]
+    for i, (state, code) in enumerate(cases):
+        host = sub(base, str(i), **state)
+        err = host.error("create", NAME, "2", "4096")
+        assert err["error"] == code and err["detail"], (state, err)
+        assert host.read_state()["spaces"] == {}
+    host = sub(base, "p", docker="ok")
+    host.state(docker="permission")
+    err = host.error("create", NAME, "2", "4096")
+    assert err["error"] == "needs_docker" and "permission denied" in err["detail"]
+    assert not [c for c in host.calls() if c[:2] == ["spaces", "create"]]
+    mac = sub(base, "m", os_name="Darwin", with_docker=False)  # macOS has no docker precheck
+    assert mac.json("create", NAME, "2", "4096")["state"] == "running"
+    low = sub(base, "l", free_kb=1024 * 1024)
+    assert low.error("create", NAME, "2", "4096")["error"] == "disk_low"
+    stuck = sub(base, "w", never_running=True)
+    assert stuck.error("create", NAME, "2", "4096")["error"] == "create_failed"
+    assert sub(base, "n", cua=False).error("create", NAME, "2", "4096") == {"error": "cua_missing", "detail": None}
+    assert sub(base, "k", daemon=False, daemon_fail=True).error("create", NAME, "2", "4096")["error"] == "daemon_failed"
+
+
+def test_name_validation(base):
+    host = Host(base)
+    for command in ["create", "info", "start", "stop", "delete", "reset", "netcheck"]:
+        for bad in ["", "miffan-ABCDEF01", "miffan-123", "miffan-0123abcdef", "../x", "other-0123abcd", "miffan-0123abcd;x", "local:miffan-0123abcd"]:
+            args = [command] + ([bad] if bad else [])
+            result = host.run(*args)
+            assert result.returncode == 2, (args, result.stdout)
+            assert json.loads(result.stdout) == {"error": "bad_name", "detail": None}
+    for direction in ["in", "out"]:
+        result = host.run("handoff", direction, "../x", stdin="{}")
+        assert result.returncode == 2 and json.loads(result.stdout)["error"] == "bad_name"
+    assert not host.calls(), "invalid names must not reach cua"
+    assert host.run("bogus").returncode == 2
+
+
+def test_info(base):
+    host = Host(base)
+    host.add_space(NAME, "stopped", port=41000)
+    info = host.json("info", NAME)
+    assert info["id"] == f"local:{NAME}" and info["state"] == "running" and info["token"] == TOKEN
+    assert info["port"] == 40001 and info["driver_version"] == "0.38.0"  # started first: a fresh port
+    assert [c for c in host.calls() if c[:2] == ["spaces", "start"]] == [["spaces", "start", f"local:{NAME}"]]
+    # A running Space is not started again, and the port is read every time.
+    host.add_space(NAME, "running", port=42222)
+    again = host.json("info", NAME)
+    assert again["port"] == 42222
+    assert len([c for c in host.calls() if c[:2] == ["spaces", "start"]]) == 1
+    # Only the JSON line on stdout has the token.
+    result = host.run("info", NAME)
+    assert TOKEN in result.stdout
+    check_no_token(host)
+
+    host.state(driver="0.33.1")
+    assert host.json("info", NAME)["driver_version"] == "0.33.1"
+    assert host.error("info", "miffan-ffffffff")["error"] == "not_found"
+
+    host.add_space(NAME, "stopped")
+    host.state(start_fail=True)
+    assert host.error("info", NAME)["error"] == "start_failed"
+
+
+def test_lifecycle(base):
+    host = Host(base)
+    host.add_space(NAME)
+    assert host.json("stop", NAME) == {"id": f"local:{NAME}", "state": "stopped"}
+    assert host.json("start", NAME) == {"id": f"local:{NAME}", "state": "running"}
+    assert host.json("delete", NAME) == {"id": f"local:{NAME}", "deleted": True}
+    assert [c for c in host.calls() if c[:2] == ["spaces", "delete"]] == [["spaces", "delete", f"local:{NAME}", "--force"]]
+    for command in ["stop", "start", "delete", "reset", "info", "netcheck"]:
+        sizes = ["2", "4096"] if command == "reset" else []
+        assert host.error(command, NAME, *sizes)["error"] == "not_found", command
+
+    host.add_space(NAME)
+    host.state(delete_fail=True)
+    assert host.error("delete", NAME)["error"] == "exec_failed"
+    host.state(delete_fail=False)
+
+    # reset: delete, then create under the same name with runc.
+    mark = len(host.calls())
+    assert host.json("reset", NAME, "2", "4096") == {"id": f"local:{NAME}", "state": "running"}
+    steps = [c[:2] for c in host.calls()[mark:] if c[:1] == ["spaces"]]
+    assert steps == [["spaces", "delete"], ["spaces", "create"]]
+    create = [c for c in host.calls() if c[:2] == ["spaces", "create"]][-1]
+    assert create[create.index("--runtime") + 1] == "runc" and create[create.index("--name") + 1] == NAME
+    check_no_token(host)
+
+
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def test_netcheck(base):
+    host = Host(base, netcheck="NETCHECK dns=1 https=1 fail=")
+    host.add_space()
+    assert host.json("netcheck", NAME) == {"dns": True, "https": True, "detail": None, "hint": None, "via": "direct"}
+
+    # Offline, and the host cannot share its network (no docker answer): the firewall hint as before.
+    host.state(netcheck="NETCHECK dns=0 https=0 fail= dns:www.cloudflare.com https:www.cloudflare.com dns:www.baidu.com https:www.baidu.com")
+    blocked = host.json("netcheck", NAME)
+    assert blocked["dns"] is False and blocked["https"] is False and blocked["hint"] is None and blocked["via"] == "direct"
+    assert "dns:www.baidu.com" in blocked["detail"]
+    host.state(ufw=True)
+    assert host.json("netcheck", NAME)["hint"] == "ufw"
+    # Half-working networks are not blamed on the firewall's absence, and a healthy one never gets a hint.
+    host.state(netcheck="NETCHECK dns=1 https=1 fail= https:www.cloudflare.com")
+    healthy = host.json("netcheck", NAME)
+    assert healthy["https"] is True and healthy["hint"] is None and healthy["detail"] == "https:www.cloudflare.com"
+    assert all(a[:1] != ["enable"] for a in host.calls("systemctl"))
+    mac = sub(base, "m", os_name="Darwin", with_docker=False, ufw=True,
+               netcheck="NETCHECK dns=0 https=0 fail= dns:www.baidu.com")
+    mac.add_space()
+    assert mac.json("netcheck", NAME)["hint"] is None
+    # A check that cannot finish in the Space (a hanging resolver) reads as offline, firewall hint included.
+    host.state(netcheck=None)
+    unfinished = host.json("netcheck", NAME)
+    assert unfinished["dns"] is False and unfinished["https"] is False and unfinished["hint"] == "ufw"
+    check_no_token(host)
+
+
+def test_network_share(base):
+    host = Host(base, ufw=True, netcheck="NETCHECK dns=0 https=0 fail= dns:www.baidu.com",
+                share_net="bridge 127.0.0.1 127.0.0.5/8", sharecheck="SHARECHECK conf=0 reach=0 https=0 fail= share:unreachable")
+    host.add_space()
+    port = free_port()
+    env = {"MIFFAN_SPACE_SHARE_PORT": str(port)}
+    proxy = f"http://127.0.0.1:{port}"
+    try:
+        # Offline on its own: the Space is pointed at the host's share, which the firewall still blocks.
+        check = host.json("netcheck", NAME, extra_env=env)
+        assert check == {"dns": False, "https": False, "detail": "share:unreachable", "hint": "ufw", "via": "share",
+                         "proxy": proxy, "bridge": "docker0", "port": port}, check
+        conf = (host.base / "shareconf.txt").read_text()
+        assert f"http_proxy={proxy}" in conf and "95miffan-proxy" in conf and "env_keep" in conf
+        # Browsers started by cua-driver get the proxy by policy, not the environment.
+        assert f'"HTTPProxy":"127.0.0.1:{port}"' in conf and "/etc/firefox/policies/policies.json" in conf
+        assert f'"ProxyServer":"127.0.0.1:{port}"' in conf and "SkipTermsOfUse" in conf
+        assert (host.home / ".miffan/netshare/spaces" / NAME).read_text().strip() == proxy
+        pid = int((host.home / ".miffan/netshare/relay-127.0.0.1.pid").read_text())
+        os.kill(pid, 0)
+        with socket.create_connection(("127.0.0.1", port), timeout=5):
+            pass
+        # Once it goes through the share, later checks go straight there; settings are written only when missing.
+        host.state(sharecheck="SHARECHECK conf=1 reach=1 https=1 fail=", netcheck=None)
+        online = host.json("netcheck", NAME, extra_env=env)
+        assert online["https"] is True and online["hint"] is None and online["via"] == "share"
+        assert host.read_state()["share_configured"] == 1
+        assert host.json("info", NAME, extra_env=env)["proxy"] == proxy
+        # Another firewall than ufw, and a Space whose settings cannot be written.
+        host.state(ufw=False, sharecheck="SHARECHECK conf=1 reach=0 https=0 fail= share:unreachable")
+        assert host.json("netcheck", NAME, extra_env=env)["hint"] == "firewall"
+        # A reset Space lost its settings; they cannot be written back.
+        host.state(share_conf_fail=True, sharecheck="SHARECHECK conf=0 reach=1 https=0 fail=")
+        assert host.json("netcheck", NAME, extra_env=env)["hint"] == "share_failed"
+        host.state(share_conf_fail=False)
+        # The share survives the helper; deleting the last Space that uses it stops it.
+        assert host.json("delete", NAME, extra_env=env)["deleted"] is True
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("the share kept running after its last Space was deleted")
+        assert not (host.home / ".miffan/netshare/spaces" / NAME).exists()
+    finally:
+        pidfile = host.home / ".miffan/netshare/relay-127.0.0.1.pid"
+        if pidfile.exists():
+            try:
+                os.kill(int(pidfile.read_text()), 15)
+            except (ProcessLookupError, ValueError):
+                pass
+    # A Space without a share has none in its info.
+    other = sub(base, "o")
+    other.add_space()
+    assert other.json("info", NAME)["proxy"] is None
+
+
+def mac_proxy_settings(host="127.0.0.1", port=8889, https=True):
+    kind = "HTTPS" if https else "HTTP"
+    return (f"<dictionary> {{\n  {kind}Enable : 1\n  {kind}Port : {port}\n  {kind}Proxy : {host}\n"
+            "  ProxyAutoConfigEnable : 0\n}")
+
+
+def test_mac_proxy(base):
+    """On a Mac the Space uses the proxy set in macOS, reached through cua's VM."""
+    mac = Host(base, os_name="Darwin", with_docker=False, scutil=mac_proxy_settings(),
+               netcheck="NETCHECK dns=1 https=1 fail=", sharecheck="SHARECHECK conf=0 reach=1 https=1 fail=")
+    mac.add_space()
+    proxy = "http://192.168.5.2:8889"
+    assert mac.json("netcheck", NAME) == {"dns": True, "https": True, "detail": None, "hint": None, "via": "share",
+                                          "proxy": proxy}
+    conf = (mac.base / "shareconf.txt").read_text()
+    assert f"http_proxy={proxy}" in conf and '"HTTPProxy":"192.168.5.2:8889"' in conf
+    assert (mac.home / ".miffan/netshare/spaces" / NAME).read_text().strip() == proxy
+    assert mac.json("info", NAME)["proxy"] == proxy
+    # Settings already there are not written again.
+    mac.state(sharecheck="SHARECHECK conf=1 reach=1 https=1 fail=")
+    assert mac.json("netcheck", NAME)["via"] == "share" and mac.read_state()["share_configured"] == 1
+    # An HTTP-only proxy on another machine is used as it is.
+    mac.state(scutil=mac_proxy_settings("192.168.31.2", 7890, https=False), sharecheck="SHARECHECK conf=0 reach=1 https=1 fail=")
+    assert mac.json("netcheck", NAME)["proxy"] == "http://192.168.31.2:7890"
+    # A proxy the Space cannot reach, then none at all: back to the Space's own network, settings taken off once.
+    mac.state(sharecheck="SHARECHECK conf=1 reach=0 https=0 fail= share:unreachable")
+    assert mac.json("netcheck", NAME)["via"] == "direct"
+    assert mac.read_state()["share_unconfigured"] == 1 and not (mac.home / ".miffan/netshare/spaces" / NAME).exists()
+    mac.state(scutil="<dictionary> {\n  HTTPSEnable : 0\n}")
+    assert mac.json("netcheck", NAME)["via"] == "direct" and mac.read_state()["share_unconfigured"] == 1
+    assert mac.json("info", NAME)["proxy"] is None
+    # Anything but a host name and a port never reaches the Space's scripts.
+    mac.state(scutil=mac_proxy_settings("evil;rm", 1))
+    assert mac.json("netcheck", NAME)["via"] == "direct"
+
+
+def proxy_request(port, request):
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as conn:
+        conn.sendall(request)
+        data = b""
+        while b"\r\n" not in data:
+            try:
+                chunk = conn.recv(1024)
+            except ConnectionResetError:
+                break
+            if not chunk:
+                break
+            data += chunk
+        return data.split(b"\r\n", 1)[0].decode()
+
+
+def test_share_relay(base):
+    """The relay itself: it never leads a Space to the host, and serves only its bridge."""
+    # The relay is the helper's quoted heredoc, written out byte for byte.
+    source = HELPER.read_text().split("cat <<'PYEOF'\n", 1)[1].split("\nPYEOF\n", 1)[0] + "\n"
+    relay = Path(base) / "relay.py"
+    relay.write_text(source)
+    procs = []
+    try:
+        port = free_port()
+        procs.append(subprocess.Popen([sys.executable, str(relay), "127.0.0.1", str(port), "127.0.0.0/8"],
+                                      stdout=subprocess.PIPE, text=True))
+        assert procs[-1].stdout.readline().strip() == "listening"
+        # Loopback and the host's own addresses are refused, by name or by number.
+        assert proxy_request(port, b"CONNECT 127.0.0.1:22 HTTP/1.1\r\nHost: x\r\n\r\n").endswith("403 Forbidden")
+        assert proxy_request(port, b"CONNECT localhost:22 HTTP/1.1\r\n\r\n").endswith("403 Forbidden")
+        assert proxy_request(port, b"CONNECT [::1]:22 HTTP/1.1\r\n\r\n").endswith("403 Forbidden")
+        assert proxy_request(port, b"GET http://169.254.169.254/ HTTP/1.1\r\n\r\n").endswith("403 Forbidden")
+        # A plain request (how the netcheck sees that the share answers) is a 400.
+        assert proxy_request(port, b"GET / HTTP/1.1\r\nHost: x\r\n\r\n").endswith("400 Bad Request")
+        # Clients outside the bridge get nothing.
+        other = free_port()
+        procs.append(subprocess.Popen([sys.executable, str(relay), "127.0.0.1", str(other), "10.0.0.0/8"],
+                                      stdout=subprocess.PIPE, text=True))
+        assert procs[-1].stdout.readline().strip() == "listening"
+        assert proxy_request(other, b"GET / HTTP/1.1\r\n\r\n") == ""
+    finally:
+        for proc in procs:
+            proc.kill()
+            proc.wait()
+
+
+def test_handoff_out(base):
+    host = Host(base)
+    host.add_space()
+    box = host.space_home() / "Desktop" / "Shared"
+    (box / "dir/sub").mkdir(parents=True)
+    (box / "报告.txt").write_text("one")
+    (box / "notes").write_text("n1")
+    (box / ".env").write_text("dot")
+    (box / "dir/a.tar.gz").write_text("a")
+    (box / "dir/sub/b.txt").write_text("b")
+    (box / "it's here.txt").write_text("quote")
+    folder = host.folder
+
+    assert host.handoff("out", {"folder": str(folder), "path": "报告.txt"}) == {"copied": ["报告.txt"]}
+    assert (folder / "报告.txt").read_text() == "one"
+    assert oct(folder.stat().st_mode & 0o777) == "0o700"
+    # Never overwritten: the extension stays last.
+    assert host.handoff("out", {"folder": str(folder), "path": "报告.txt"}) == {"copied": ["报告 (2).txt"]}
+    assert host.handoff("out", {"folder": str(folder), "path": "报告.txt"}) == {"copied": ["报告 (3).txt"]}
+    assert (folder / "报告.txt").read_text() == "one"
+    host.handoff("out", {"folder": str(folder), "path": "notes"})
+    assert host.handoff("out", {"folder": str(folder), "path": "notes"}) == {"copied": ["notes (2)"]}
+    host.handoff("out", {"folder": str(folder), "path": ".env"})
+    assert host.handoff("out", {"folder": str(folder), "path": ".env"}) == {"copied": [".env (2)"]}
+    assert host.handoff("out", {"folder": str(folder), "path": "it's here.txt"}) == {"copied": ["it's here.txt"]}
+
+    # A directory copies every file below it, merging into folders that exist.
+    result = host.handoff("out", {"folder": str(folder), "path": "dir/"})
+    assert sorted(result["copied"]) == ["dir/a.tar.gz", "dir/sub/b.txt"]
+    again = host.handoff("out", {"folder": str(folder), "path": "dir"})
+    assert sorted(again["copied"]) == ["dir/a (2).tar.gz", "dir/sub/b (2).txt"]
+    assert (folder / "dir/sub/b.txt").read_text() == "b"
+
+    for bad in ["../x", "dir/../../x", "/etc/passwd", "a//b", "./a", ".."]:
+        err = host.handoff("out", {"folder": str(folder), "path": bad}, rc=1)
+        assert err["error"] == "bad_input", bad
+    assert host.handoff("out", {"folder": str(folder), "path": "missing.txt"}, rc=1)["error"] == "not_found"
+    for payload in [{"path": "a"}, {"folder": "rel/../dir", "path": "a"}, {"folder": str(folder) + "/../x", "path": "a"},
+                    {"folder": str(folder)}, {"folder": str(folder), "path": 5}]:
+        assert host.handoff("out", payload, rc=1)["error"] == "bad_input", payload
+    assert host.run("handoff", "out", NAME, stdin="not json").returncode == 1
+    assert json.loads(host.run("handoff", "out", NAME, stdin="not json").stdout)["error"] == "bad_input"
+    assert not (host.base / "x").exists()
+    check_no_token(host)
+
+
+def test_handoff_json_strings(base):
+    host = Host(base)
+    host.add_space()
+    box = host.space_home() / "Desktop" / "Shared"
+    box.mkdir(parents=True)
+    (box / 'say "hi".txt').write_text("q")
+    odd = host.base / 'odd "q" \\ folder'
+    assert host.handoff("out", {"folder": str(odd), "path": 'say "hi".txt'}) == {"copied": ['say "hi".txt']}
+    assert (odd / 'say "hi".txt').read_text() == "q"
+    # Raw JSON with escaped slash and spacing around colons; other escapes are refused.
+    raw = '{ "path" : "say \\"hi\\".txt" , "folder" : "' + str(host.base).replace("/", "\\/") + '\\/esc" }'
+    assert json.loads(host.run("handoff", "out", NAME, stdin=raw).stdout) == {"copied": ['say "hi".txt']}
+    assert (host.base / "esc" / 'say "hi".txt').exists()
+    err = json.loads(host.run("handoff", "out", NAME, stdin='{"folder":"/tmp/a\\nb","path":"x"}').stdout)
+    assert err["error"] == "bad_input"
+
+
+def test_handoff_in(base):
+    host = Host(base)
+    host.add_space()
+    folder = host.folder
+    folder.mkdir()
+    (folder / "论文.pdf").write_text("p1")
+    (folder / "sub").mkdir()
+    (folder / "sub/x.txt").write_text("x1")
+    (folder / ".DS_Store").write_text("junk")
+    (folder / "link").symlink_to(folder / "论文.pdf")
+    box = host.space_home() / "Desktop" / "Shared"
+
+    first = host.handoff("in", {"folder": str(folder)})
+    assert sorted(first["copied"]) == ["sub/x.txt", "论文.pdf"]
+    assert (box / "论文.pdf").read_text() == "p1" and (box / "sub/x.txt").read_text() == "x1"
+    assert not (box / ".DS_Store").exists() and not (box / "link").exists()
+    state = host.home / ".miffan/space" / f"{NAME}.handoff"
+    assert state.exists() and not state.with_suffix(".handoff.new").exists()
+    assert oct(folder.stat().st_mode & 0o777) == oct(folder.stat().st_mode & 0o777)
+
+    # Nothing new since the last run.
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": []}
+    # A newer file with the name of one already in the Space is renamed, never overwritten.
+    changed = folder / "论文.pdf"
+    changed.write_text("p2")
+    later = time.time() + 30
+    os.utime(changed, (later, later))
+    (folder / "fresh").write_text("f")
+    os.utime(folder / "fresh", (later, later))
+    again = host.handoff("in", {"folder": str(folder)})
+    assert sorted(again["copied"]) == ["fresh", "论文 (2).pdf"]
+    assert (box / "论文.pdf").read_text() == "p1" and (box / "论文 (2).pdf").read_text() == "p2"
+
+    # A missing host folder is created with mode 700.
+    fresh = host.base / "brand/new"
+    assert host.handoff("in", {"folder": str(fresh)}) == {"copied": []}
+    assert oct(fresh.stat().st_mode & 0o777) == "0o700"
+    # A relative folder is under the host account's home, as the app stores it.
+    (host.home / "Miffan Partners/小A").mkdir(parents=True)
+    (host.home / "Miffan Partners/小A/给你.txt").write_text("g")
+    assert host.handoff("in", {"folder": "Miffan Partners/小A"}) == {"copied": ["给你.txt"]}
+    assert (box / "给你.txt").read_text() == "g"
+    assert host.handoff("in", {"folder": "Miffan Partners/../x"}, rc=1)["error"] == "bad_input"
+    assert host.handoff("in", {"folder": str(folder) + "/../elsewhere"}, rc=1)["error"] == "bad_input"
+    check_no_token(host)
+
+
+def test_handoff_no_echo(base):
+    """What the partner hands out is not brought back as new on the next turn (it came back as "x (2)")."""
+    host = Host(base)
+    host.add_space()
+    folder = host.folder
+    box = host.space_home() / "Desktop" / "Shared"
+    box.mkdir(parents=True)
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": []}  # an earlier turn
+    time.sleep(1.1)
+    (box / "早上好.md").write_text("morning")
+    assert host.handoff("out", {"folder": str(folder), "path": "早上好.md"}) == {"copied": ["早上好.md"]}
+    (folder / "mine.txt").write_text("from the owner")
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": ["mine.txt"]}
+    assert not (box / "早上好 (2).md").exists()
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": []}
+    # Changed on the host, it is the owner's version now and goes back in.
+    edited = folder / "早上好.md"
+    edited.write_text("edited by the owner")
+    later = time.time() + 30
+    os.utime(edited, (later, later))
+    assert host.handoff("in", {"folder": str(folder)}) == {"copied": ["早上好 (2).md"]}
+    assert (box / "早上好 (2).md").read_text() == "edited by the owner"
+
+
+def test_exec_failures(base):
+    host = Host(base)
+    host.add_space()
+    host.state(spaces={NAME: {"state": "running", "port": 1}})
+    # A host folder that cannot be created is an exec failure, not a crash.
+    blocker = host.base / "blocker"
+    blocker.write_text("file")
+    err = host.handoff("in", {"folder": str(blocker / "inside")}, rc=1)
+    assert err["error"] == "exec_failed"
+
+
+def main():
+    tests = [test_probe, test_install, test_create, test_create_errors, test_name_validation, test_info,
+             test_lifecycle, test_sizes, test_netcheck, test_network_share, test_mac_proxy, test_share_relay, test_handoff_out, test_handoff_json_strings, test_handoff_in,
+             test_handoff_no_echo, test_exec_failures]
+    for test in tests:
+        with tempfile.TemporaryDirectory() as base:
+            test(base)
+        print(f"PASS: {test.__name__}")
+
+
+if __name__ == "__main__":
+    main()

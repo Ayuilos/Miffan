@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import me.ayuilos.miffan.utils.NetworkMonitor
+import org.koin.compose.koinInject
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -136,7 +138,10 @@ fun AgentThreadPage(
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
     val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
-    val status = threadHeaderStatus(timeline, generating)
+    val connectedSegments by vm.connectedSegmentIds.collectAsStateWithLifecycle()
+    val online by koinInject<NetworkMonitor>().online.collectAsStateWithLifecycle()
+    val connection = ThreadConnection(connectedSegments, online)
+    val status = threadHeaderStatus(timeline, generating, connection)
     val thinkHarder by vm.thinkHarder.collectAsStateWithLifecycle()
     val deepMessageIds by vm.deepMessageIds.collectAsStateWithLifecycle()
     val settings = LocalSettings.current
@@ -333,15 +338,16 @@ fun AgentThreadPage(
                 favorited = item.node.id in favoriteNodes, onFavorite = { vm.toggleFavorite(item, assistantName) },
                 onQuote = { ref -> scope.launch { jumpTo(ref.messageId.toString()) } },
                 onToolApproval = { id, approved -> vm.answerToolApproval(item, id, approved) },
+                onToolApprovals = { ids, approved -> vm.answerToolApprovals(item, ids, approved) },
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
-                assistant = assistant)
+                assistant = assistant, connection = connection)
                 if (starter?.greetingId == item.message.id) ThreadStarterQuiz(assistant, starter, enabled = generating.isEmpty()) {
                     followLatest = true
                     vm.sendText(it)
                 }
             }
-            is TimelineItem.Typing -> ThreadTyping(assistant)
+            is TimelineItem.Typing -> ThreadTyping(assistant, item.segmentIds, connection)
             is TimelineItem.Event -> if (item.origin.kind == SCHEDULED_RUN || item.origin.kind == SCHEDULED_RUN_FAILED) {
                 val target = item.origin.link?.removePrefix("remote-task:")?.split('/')?.takeIf { it.size == 2 }
                 ThreadTaskRunLine(item.origin.summary, failed = item.origin.kind == SCHEDULED_RUN_FAILED,
@@ -430,7 +436,10 @@ fun AgentThreadPage(
                     }
                 }
                 GlassIconButton(hazeState, if (computer?.showsEntry == true) HugeIcons.Computer else HugeIcons.MoreHorizontal,
-                    if (computer?.showsEntry == true) stringResource(R.string.im_computer_screen_description, computer?.name.orEmpty())
+                    if (computer?.showsEntry == true) {
+                        if (computer?.space == true) stringResource(R.string.im_space_screen_description, threadAssistantName(assistant))
+                        else stringResource(R.string.im_computer_screen_description, computer?.name.orEmpty())
+                    }
                     else stringResource(R.string.im_p5_profile),
                     onClick = { nav.navigate(if (computer?.showsEntry == true) Screen.PartnerScreen(assistantId.toString())
                         else Screen.PartnerProfile(assistantId.toString())) }, modifier = Modifier.align(Alignment.CenterEnd))

@@ -7,8 +7,11 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
 
-/** Scheduled tasks and agent tools act on the partner's computer, like its workspace and desktop tools. */
-private val COMPUTER_BOUND_TOOLS = setOf(SCHEDULE_TASK_TOOL, AGENT_TOOLS_TOOL)
+/**
+ * Scheduled tasks and agent tools act on the partner's computer, like its workspace and desktop tools; the
+ * network fix card needs the computer its Space runs on.
+ */
+private val COMPUTER_BOUND_TOOLS = setOf(SCHEDULE_TASK_TOOL, AGENT_TOOLS_TOOL, SPACE_NETWORK_FIX_TOOL)
 
 /** A model supplies only tool name/input. The app attaches this target after receiving the call. */
 internal fun captureWorkspaceToolTarget(call: UIMessagePart.Tool, definition: Tool?): UIMessagePart.Tool =

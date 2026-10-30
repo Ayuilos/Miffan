@@ -58,10 +58,11 @@ internal const val UPDATE_MY_PROFILE = "update_my_profile"
 
 /**
  * What a streaming reply is doing right now, or null once its own text (or a prompt card) is the feedback.
+ * Before anything arrives it reads as connecting (or offline) until the provider has answered, see [waitingStatus].
  * Easy mode keeps only a plain step record ([ThreadStepRecord]); process details belong to professional mode.
  */
 @StringRes
-internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): Int? {
+internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean, connected: Boolean, online: Boolean): Int? {
     if (!streaming) return null
     for (part in parts.asReversed()) {
         when (part) {
@@ -75,7 +76,7 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean): I
             else -> Unit
         }
     }
-    return R.string.im_thread_status_thinking
+    return waitingStatus(connected, online).label
 }
 
 private fun toolStatus(name: String): Int =
@@ -135,6 +136,8 @@ internal fun ThreadToolPrompt(
             ThreadScheduleTaskCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == AGENT_TOOLS ->
             ThreadAgentToolCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == me.ayuilos.miffan.data.ai.tools.SPACE_NETWORK_FIX_TOOL ->
+            ThreadSpaceNetworkCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending -> ThreadGenericApprovalCard(tool, assistant, onApproval)
         tool.isQuestionRepliedInChat() -> ThreadSkippedQuestions(tool)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
@@ -147,7 +150,7 @@ internal fun ThreadToolPrompt(
 
 @Composable
 internal fun ThreadLiveStatus(@StringRes label: Int) {
-    Text(stringResource(label), Modifier.shimmer(isLoading = true), style = MaterialTheme.typography.bodyLarge,
+    Text(stringResource(slowAwareLabel(label)), Modifier.shimmer(isLoading = true), style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
@@ -331,6 +334,7 @@ internal fun toolRecordTitle(tool: UIMessagePart.Tool): String {
             ?.let { stringResource(R.string.notification_approval_ability, stringResource(it.title)) } ?: tool.toolName
         tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))
         tool.toolName == DRAFT_BUG_REPORT -> toolArg(tool, "title")?.let { "bug: $it" } ?: stringResource(R.string.im_bug_report_title)
+        tool.toolName == me.ayuilos.miffan.data.ai.tools.SPACE_NETWORK_FIX_TOOL -> stringResource(R.string.im_space_fix_card_title)
         tool.isComputerTool() -> computerActionText(tool)
         tool.toolName.startsWith("mcp__") -> mcpToolParts(tool.toolName).let { (service, step) ->
             stringResource(R.string.im_record_mcp, service, step) }

@@ -33,6 +33,12 @@ data class PartnerComputer(
     val screenEnabled: Boolean,
     /** How the partner may operate it. */
     val computerUse: ComputerUseMode,
+    /** The partner's own cua Space on this host, not the host's desktop. */
+    val space: Boolean = false,
+    /** The Space's size; null when it is not a Space or was sized outside the app. */
+    val spaceTier: SpaceTier? = null,
+    /** The Space's handoff folder on the host, relative to the host account's home. */
+    val spaceHandoff: String? = null,
 ) {
     /** Easy mode shows the computer entry only when there is a screen to open. */
     val showsEntry: Boolean get() = screenEnabled
@@ -54,6 +60,10 @@ data class KnownComputer(
     val otherWorkspaceCount: Int,
     /** Partners bound to any workspace of this host, in the order of the partner list. */
     val partnerIds: List<Uuid>,
+    /** Partners' own Spaces on this host; deleting the host deletes them too. */
+    val spaceCount: Int = 0,
+    /** Those of [partnerIds] that work in their own Space here, not on the host itself; the host's screen is not theirs. */
+    val spacePartnerIds: List<Uuid> = emptyList(),
 )
 
 /** Deleting a computer that still has professional-interface workspaces is refused. */
@@ -74,6 +84,7 @@ class ComputerUnreachableException(val manualCommand: String, cause: Throwable? 
 class PartnerComputers(
     private val settingsStore: SettingsStore,
     private val workspaces: WorkspaceRepository,
+    private val spaces: PartnerSpaces? = null,
 ) {
     /** Every remote host, sorted by name. */
     fun observeAll(): Flow<List<KnownComputer>> = combine(
@@ -171,8 +182,22 @@ class PartnerComputers(
     suspend fun delete(hostId: String, forgetOnComputer: Boolean, deleteWorkFiles: Boolean = false): ForgetOutcome {
         val workspaceList = workspaces.listFlow().first()
         val workspace = computerWorkspace(hostId, workspaceList, settingsStore.settingsFlow.value.assistants)
-        val otherCount = workspaceList.count { it.isRemote && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
+        val otherCount = workspaceList.count { it.isRemote && !it.isSpace && it.remoteHostId == hostId } - if (workspace != null) 1 else 0
         if (otherCount > 0) throw ComputerHasWorkspacesException(otherCount)
+        // Partners' own computers go with their host: deleted there while Miffan can still reach it. One that
+        // cannot be reached is left there (its handoff folder always is) and only leaves the app.
+        val spaceIds = workspaceList.filter { it.isSpace && it.remoteHostId == hostId }.map { it.id }
+        var reachable = spaces != null
+        for (id in spaceIds) {
+            if (!reachable) break
+            try {
+                spaces?.delete(id)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                reachable = false
+            }
+        }
         val host = if (forgetOnComputer) workspaces.getHostById(hostId) else null
         val outcome = when {
             host?.sshKeyId == null -> ForgetOutcome.NOT_NEEDED
@@ -195,6 +220,7 @@ class PartnerComputers(
             throw WorkspaceToolTargetChangedException()
         }
         workspace?.let { workspaces.delete(it.id) }
+        spaceIds.filter { workspaces.getById(it) != null }.forEach { workspaces.delete(it) }
         workspaces.deleteHost(hostId)
         return outcome
     }
@@ -205,7 +231,7 @@ class PartnerComputers(
         assistants: List<Assistant>,
     ): WorkspaceEntity? {
         val partnerCounts = assistants.mapNotNull { it.workspaceId?.toString() }.groupingBy { it }.eachCount()
-        return workspaceList.filter { it.isRemote && it.remoteHostId == hostId }.minWithOrNull(
+        return workspaceList.filter { it.isRemote && !it.isSpace && it.remoteHostId == hostId }.minWithOrNull(
             compareByDescending<WorkspaceEntity> { partnerCounts[it.id] ?: 0 }
                 .thenBy { it.createdAt }.thenBy { it.id },
         )
@@ -216,9 +242,10 @@ class PartnerComputers(
         workspaceList: List<WorkspaceEntity>,
         assistants: List<Assistant>,
     ): KnownComputer {
-        val hostWorkspaces = workspaceList.filter { it.isRemote && it.remoteHostId == host.id }
+        val allHostWorkspaces = workspaceList.filter { it.isRemote && it.remoteHostId == host.id }
+        val hostWorkspaces = allHostWorkspaces.filterNot { it.isSpace }
         val workspace = computerWorkspace(host.id, hostWorkspaces, assistants)
-        val workspaceIds = hostWorkspaces.map { it.id }.toSet()
+        val workspaceIds = allHostWorkspaces.map { it.id }.toSet()
         val address = host.lastAddress ?: host.addresses.first()
         return KnownComputer(
             hostId = host.id,
@@ -229,7 +256,11 @@ class PartnerComputers(
             screenEnabled = host.screenEnabled,
             workspaceId = workspace?.id,
             otherWorkspaceCount = hostWorkspaces.size - if (workspace != null) 1 else 0,
+            spaceCount = allHostWorkspaces.size - hostWorkspaces.size,
             partnerIds = assistants.filter { it.workspaceId?.toString() in workspaceIds }.map { it.id },
+            spacePartnerIds = (allHostWorkspaces - hostWorkspaces.toSet()).map { it.id }.toSet().let { spaces ->
+                assistants.filter { it.workspaceId?.toString() in spaces }.map { it.id }
+            },
         )
     }
 
@@ -249,8 +280,12 @@ class PartnerComputers(
             hostId = host.id,
             name = host.name,
             platform = computerPlatform(host),
-            screenEnabled = host.screenEnabled,
+            // A Space shows its own desktop, which needs no screen setup on the host.
+            screenEnabled = workspace.isSpace || host.screenEnabled,
             computerUse = assistant.computerUse,
+            space = workspace.isSpace,
+            spaceTier = if (workspace.isSpace) SpaceTier.of(workspace.spaceCpus, workspace.spaceMemoryMb) else null,
+            spaceHandoff = workspace.spaceHandoff?.takeIf { workspace.isSpace },
         )
     }.distinctUntilChanged()
 

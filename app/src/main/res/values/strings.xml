@@ -2420,6 +2420,18 @@
   <string name="workspace_screen_named_partner_operating" tools:ignore="MissingTranslation">%1$s is operating this computer</string>
   <string name="workspace_screen_user_operating" tools:ignore="MissingTranslation">You are operating; the partner is paused</string>
   <string name="workspace_screen_hand_back" tools:ignore="MissingTranslation">Hand back to partner</string>
+  <string name="workspace_screen_touch_direct" tools:ignore="MissingTranslation">Tap</string>
+  <string name="workspace_screen_touch_trackpad" tools:ignore="MissingTranslation">Touchpad</string>
+  <string name="workspace_screen_status_partner" tools:ignore="MissingTranslation">%1$s is using it</string>
+  <string name="workspace_screen_status_approval" tools:ignore="MissingTranslation">%1$s is waiting for your OK</string>
+  <string name="workspace_screen_status_user" tools:ignore="MissingTranslation">You\'re using it · %1$s is waiting</string>
+  <string name="workspace_screen_takeover_again" tools:ignore="MissingTranslation">Tap again to take over from %1$s</string>
+  <string name="workspace_screen_takeover_detail" tools:ignore="MissingTranslation">%1$s pauses until you hand it back</string>
+  <string name="workspace_screen_you_operate" tools:ignore="MissingTranslation">You\'re in control</string>
+  <string name="workspace_screen_hand_back_to" tools:ignore="MissingTranslation">Hand back to %1$s</string>
+  <string name="workspace_screen_partner_generic" tools:ignore="MissingTranslation">the partner</string>
+  <string name="workspace_screen_open_chat" tools:ignore="MissingTranslation">Talk to the partner</string>
+  <string name="workspace_screen_close_chat" tools:ignore="MissingTranslation">Fold away</string>
   <string name="computer_use_view_screen" tools:ignore="MissingTranslation">View screen</string>
   <string name="computer_use_view_window" tools:ignore="MissingTranslation">View window</string>
   <string name="computer_use_list_windows" tools:ignore="MissingTranslation">List windows</string>
@@ -2461,6 +2473,19 @@
   <string name="im_computer_bind_disclosure_no_screen">The partner acts with the permissions of this computer account. It asks you before each action; you can change this on the partner profile.</string>
   <string name="im_computer_chat_help" tools:ignore="MissingTranslation">Talk to your partner while watching the screen</string>
   <string name="im_computer_waiting_for_you" tools:ignore="MissingTranslation">Your partner is waiting for you to confirm</string>
+  <string name="im_screen_feed_working" tools:ignore="MissingTranslation">%1$s is on it</string>
+  <string name="im_screen_feed_done" tools:ignore="MissingTranslation">Just now</string>
+  <string name="im_screen_feed_chat" tools:ignore="MissingTranslation">Full chat</string>
+  <string name="im_screen_feed_empty" tools:ignore="MissingTranslation">Every step %1$s takes on this computer shows up here.</string>
+  <string name="im_screen_paused_notice" tools:ignore="MissingTranslation">%1$s has paused. Tap “Hand back” when you\'re done and it carries on.</string>
+  <string name="im_screen_step_wait" tools:ignore="MissingTranslation">Wants to: %1$s — waiting for you</string>
+  <string name="im_screen_step_denied" tools:ignore="MissingTranslation">You said no to: %1$s</string>
+  <string name="im_screen_step_held" tools:ignore="MissingTranslation">Didn\'t: %1$s — you had the screen</string>
+  <string name="im_screen_step_failed" tools:ignore="MissingTranslation">%1$s (didn\'t work)</string>
+  <string name="im_screen_wants" tools:ignore="MissingTranslation">%1$s wants to: %2$s</string>
+  <string name="im_screen_wants_marked" tools:ignore="MissingTranslation">The circled spot on the screen is where it wants to act.</string>
+  <string name="im_screen_wants_plain" tools:ignore="MissingTranslation">Allow it and it carries on; say no and it tries another way.</string>
+  <string name="im_screen_marker_here" tools:ignore="MissingTranslation">Here</string>
   <string name="im_computer_choose" tools:ignore="MissingTranslation">Choose a computer</string>
   <string name="im_computer_clipboard" tools:ignore="MissingTranslation">Clipboard (optional)</string>
   <string name="im_computer_clipboard_optional" tools:ignore="MissingTranslation">Optional; install a clipboard tool to type Chinese and other non-Latin text.</string>
@@ -2547,6 +2572,41 @@
     <item quantity="one">Performed %2$d step on %1$s</item>
     <item quantity="other">Performed %2$d steps on %1$s</item>
   </plurals>
+  <plurals name="im_computer_record_mini_box">
+    <item quantity="one">Did %d step in the mini box</item>
+    <item quantity="other">Did %d steps in the mini box</item>
+  </plurals>
+  <plurals name="im_computer_record_desktop">
+    <item quantity="one">Took %2$d step on your %1$s desktop</item>
+    <item quantity="other">Took %2$d steps on your %1$s desktop</item>
+  </plurals>
+  <string name="im_computer_record_not_done">, didn\'t finish</string>
+  <string name="im_computer_record_last">Last: %1$s</string>
+  <string name="im_computer_record_stuck">Stuck at: %1$s</string>
+  <string name="im_computer_record_declined">You said no to: %1$s</string>
+  <string name="im_computer_record_retried">Didn\'t work, tried another way</string>
+  <string name="im_computer_observed_mini_box">Looked at the mini box\'s screen</string>
+  <string name="im_computer_observed_hint">Didn\'t touch anything</string>
+  <string name="im_computer_live_step">Working on %1$s · step %2$d</string>
+  <string name="im_computer_approval_what">What exactly will it do?</string>
+  <string name="im_computer_partner">The partner</string>
+  <string name="im_computer_asks_mini_box">%1$s wants to use the mini box: %2$s</string>
+  <string name="im_computer_asks_desktop">%1$s wants to use your %2$s: %3$s</string>
+  <plurals name="im_computer_more_waiting">
+    <item quantity="one">%d more step is waiting for your OK</item>
+    <item quantity="other">%d more steps are waiting for your OK</item>
+  </plurals>
+  <string name="im_computer_allow_all">Allow all of these</string>
+  <string name="im_computer_click_here">Click here</string>
+  <string name="im_computer_handoff_title">From %1$s</string>
+  <string name="im_computer_handoff_title_any">From your partner</string>
+  <string name="im_computer_handoff_where">On %1$s, in %2$s</string>
+  <plurals name="im_computer_handoff_count">
+    <item quantity="one">%d file</item>
+    <item quantity="other">%d files</item>
+  </plurals>
+  <string name="im_computer_handoff_view">View on phone</string>
+  <string name="im_computer_handoff_copy">Copy path</string>
   <string name="im_computer_taken_over" tools:ignore="MissingTranslation">You took over the screen; the partner stopped</string>
   <string name="im_computer_test" tools:ignore="MissingTranslation">Try it</string>
   <string name="im_computer_trust_connect" tools:ignore="MissingTranslation">It\'s my computer, connect</string>
@@ -2831,15 +2891,35 @@
   <string name="im_computers_empty_title" tools:ignore="MissingTranslation">No computers yet</string>
   <string name="im_computers_empty_help" tools:ignore="MissingTranslation">Connect a computer and your partners can see its screen and work on it for you.</string>
   <string name="im_computers_connect_first" tools:ignore="MissingTranslation">Connect a computer</string>
-  <string name="im_computers_connect_new" tools:ignore="MissingTranslation">Connect another computer</string>
+  <string name="im_computers_connect_new" tools:ignore="MissingTranslation">Connect a new computer</string>
+  <string name="im_computers_connect_new_help" tools:ignore="MissingTranslation">A Mac, Linux or Windows computer at home or work</string>
   <string name="im_computers_screen_ready" tools:ignore="MissingTranslation">Screen ready</string>
-  <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">No screen</string>
+  <string name="im_computers_screen_missing" tools:ignore="MissingTranslation">Screen off</string>
+  <string name="im_computers_row_desktop" tools:ignore="MissingTranslation">Desktop</string>
+  <string name="im_computers_row_boxes" tools:ignore="MissingTranslation">Mini boxes</string>
   <string name="im_computers_used_by" tools:ignore="MissingTranslation">Used by %1$s</string>
   <string name="im_computers_name_separator" tools:ignore="MissingTranslation">", "</string>
   <string name="im_computers_unused" tools:ignore="MissingTranslation">No partner uses it yet</string>
-  <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">View screen</string>
-  <string name="im_computer_detail_users" tools:ignore="MissingTranslation">Who uses this computer</string>
-  <string name="im_computer_detail_add_partner" tools:ignore="MissingTranslation">Let a partner use it</string>
+  <string name="im_computer_detail_view_screen" tools:ignore="MissingTranslation">See this computer\'s desktop</string>
+  <string name="im_computer_detail_tasks_empty" tools:ignore="MissingTranslation">None yet. Ask a partner in chat to add one</string>
+  <plurals name="im_computer_detail_tasks_count" tools:ignore="MissingTranslation">
+    <item quantity="one">%d task</item>
+    <item quantity="other">%d tasks</item>
+  </plurals>
+  <string name="im_computer_detail_users" tools:ignore="MissingTranslation">Your desktop</string>
+  <string name="im_computer_detail_users_help" tools:ignore="MissingTranslation">Work with the apps and files on this computer</string>
+  <string name="im_computer_detail_mode_auto" tools:ignore="MissingTranslation">Just do it</string>
+  <string name="im_computer_detail_user_space">Mini box</string>
+  <string name="im_computer_detail_add_partner" tools:ignore="MissingTranslation">Let a partner use this computer</string>
+  <string name="im_computer_detail_boxes" tools:ignore="MissingTranslation">Mini boxes on this computer</string>
+  <string name="im_computer_detail_boxes_help" tools:ignore="MissingTranslation">One for each partner. They can\'t touch your desktop or files</string>
+  <string name="im_computer_detail_box_name" tools:ignore="MissingTranslation">%1$s\'s mini box</string>
+  <string name="im_computer_detail_box_used" tools:ignore="MissingTranslation">using %1$s</string>
+  <string name="im_computer_detail_boxes_limit" tools:ignore="MissingTranslation">Mini boxes can use up to %1$s of memory</string>
+  <string name="im_computer_detail_boxes_total" tools:ignore="MissingTranslation">This computer has %1$s</string>
+  <string name="im_computer_detail_add_box" tools:ignore="MissingTranslation">Give a partner a mini box</string>
+  <string name="im_computer_ready_box_only">Only want a mini box for a partner?</string>
+  <string name="im_computer_ready_box_only_help">Skip the desktop setup. The partner works in its own mini box, away from your desktop and files.</string>
   <string name="im_computer_detail_check" tools:ignore="MissingTranslation">Check this computer</string>
   <string name="im_computer_detail_check_help" tools:ignore="MissingTranslation">Desktop, screen service and cua-driver</string>
   <string name="im_computer_detail_connection" tools:ignore="MissingTranslation">Connection</string>
@@ -2851,6 +2931,7 @@
   <string name="im_computer_delete_blocked_title" tools:ignore="MissingTranslation">Can\'t delete it here</string>
   <string name="im_computer_delete_blocked" tools:ignore="MissingTranslation">%1$d more workspaces on this computer were set up in professional mode. Remove them there first.</string>
   <string name="im_computer_pick_partner" tools:ignore="MissingTranslation">Which partner may use it?</string>
+  <string name="im_computer_pick_box_partner" tools:ignore="MissingTranslation">Which partner gets a mini box?</string>
   <string name="im_computer_pick_screen_partner" tools:ignore="MissingTranslation">Watch with which partner?</string>
   <string name="im_computer_screen_only" tools:ignore="MissingTranslation">Just the screen</string>
   <string name="im_computer_replaces_computer" tools:ignore="MissingTranslation">Replaces the computer it uses now</string>
@@ -2890,6 +2971,8 @@
   <string name="im_step_read_file">Read %1$s</string>
   <string name="im_step_read_file_any">Read a file</string>
   <string name="im_step_publish">Send you files</string>
+  <string name="im_step_hand_over">Hand %1$s over to you</string>
+  <string name="im_step_hand_over_any">Hand files over to you</string>
   <string name="im_step_read_web">Read a web page</string>
   <string name="im_step_search">Search the web</string>
   <string name="im_step_chats">Look through chats</string>
@@ -3683,4 +3766,230 @@
   <string name="im_think_harder_cancel">Don\'t think hard this time</string>
   <string name="im_thread_status_thinking_more">Thinking it over… %1$ds</string>
   <string name="im_thread_status_thinking_deep">Thinking hard… %1$ds</string>
+  <string name="im_space_how_title">How should %1$s use %2$s?</string>
+  <string name="im_space_how_title_many">How should they use %1$s?</string>
+  <string name="im_space_how_help">Pick one; you can change it later.</string>
+  <string name="im_space_desktop_title">Use your desktop</string>
+  <string name="im_space_desktop_body">It works with the apps and files on your computer, so it can help with what you are doing.</string>
+  <string name="im_space_desktop_note">It asks before each step.</string>
+  <string name="im_space_own_title">Give it a mini box</string>
+  <string name="im_space_own_title_many">Give each a mini box</string>
+  <string name="im_space_safer">Safer</string>
+  <string name="im_space_own_body">A mini box, a separate small computer, runs inside %1$s. Whatever it installs, runs or opens there never touches your files or desktop.</string>
+  <string name="im_space_own_cost">Needs about 5 GB of disk</string>
+  <string name="im_space_own_point_do" tools:ignore="MissingTranslation">Installs software, runs commands, goes online</string>
+  <string name="im_space_own_point_apart" tools:ignore="MissingTranslation">Can\'t touch your files or desktop</string>
+  <string name="im_space_own_point_disk" tools:ignore="MissingTranslation">Takes about 5 GB of disk</string>
+  <string name="im_space_desktop_point_do" tools:ignore="MissingTranslation">Works right on the apps and files you have open</string>
+  <string name="im_space_start_box" tools:ignore="MissingTranslation">Give %1$s a mini box</string>
+  <string name="im_space_start_box_many" tools:ignore="MissingTranslation">Give them mini boxes</string>
+  <string name="im_space_start_desktop" tools:ignore="MissingTranslation">Use my desktop</string>
+  <string name="im_space_cua_note" tools:ignore="MissingTranslation">This installs the open-source tool cua on %1$s, only in your user folder. No account and no administrator password.</string>
+  <string name="im_space_cmd_show" tools:ignore="MissingTranslation">Show command</string>
+  <string name="im_space_cmd_hide" tools:ignore="MissingTranslation">Hide command</string>
+  <string name="im_space_continue">Continue</string>
+  <string name="im_space_install_title">First, a small tool on %1$s</string>
+  <string name="im_space_install_help">The mini box comes from cua, an open-source tool. No account and no administrator password needed.</string>
+  <string name="im_space_check_connected">Connected to %1$s</string>
+  <string name="im_space_check_disk">%1$d GB free on disk</string>
+  <string name="im_space_check_disk_low">Only %1$d GB free; it needs about %2$d GB</string>
+  <string name="im_space_check_docker">Docker is ready</string>
+  <string name="im_space_check_docker_missing">Docker is missing or this account cannot use it</string>
+  <string name="im_space_check_docker_fix">Install Docker on the computer and add this account to the docker group, then check again.</string>
+  <string name="im_space_check_cua">cua is installed</string>
+  <string name="im_space_check_cua_missing">cua is not installed yet</string>
+  <string name="im_space_check_cua_detail">Installed only in your user folder</string>
+  <string name="im_space_install_action">Install and continue</string>
+  <string name="im_space_check_again">Check again</string>
+  <string name="im_space_later">Not now</string>
+  <string name="im_space_fix_title" tools:ignore="MissingTranslation">%1$s needs one more thing</string>
+  <string name="im_space_fix_help" tools:ignore="MissingTranslation">A mini box runs on Docker, which is not ready on this computer yet.</string>
+  <string name="im_space_docker_missing_title" tools:ignore="MissingTranslation">Docker is not installed</string>
+  <string name="im_space_docker_unusable_title" tools:ignore="MissingTranslation">Docker is installed, but this account can\'t use it yet</string>
+  <string name="im_space_docker_run" tools:ignore="MissingTranslation">Run this on %1$s. It needs the computer\'s administrator password:</string>
+  <string name="im_space_docker_unknown" tools:ignore="MissingTranslation">Can\'t tell which Linux %1$s runs, so there is no exact command to give you. Install Docker Engine on it the way its system does (search for \"install Docker Engine\"), then tap Check again.</string>
+  <string name="im_space_check_cua_later" tools:ignore="MissingTranslation">Installed automatically afterwards, only in your user folder</string>
+  <string name="im_space_copy_short" tools:ignore="MissingTranslation">Copy</string>
+  <string name="im_space_show_command">Show the command it runs on the computer</string>
+  <string name="im_space_prepare_title">Getting %1$s\'s mini box ready</string>
+  <string name="im_space_prepare_title_many">Getting their mini boxes ready</string>
+  <string name="im_space_prepare_help">The first time downloads about 1.3 GB and can take several minutes. You can do something else; you will hear in the chat when it is ready.</string>
+  <string name="im_space_stage_check">Check %1$s</string>
+  <string name="im_space_stage_install">Install cua</string>
+  <string name="im_space_stage_create">Prepare the mini box</string>
+  <string name="im_space_stage_create_detail">Working · %1$s so far</string>
+  <string name="im_space_stage_network">Check the internet</string>
+  <string name="im_space_stage_start" tools:ignore="MissingTranslation">Download and start up</string>
+  <string name="im_space_now_start" tools:ignore="MissingTranslation">Downloading and starting up · about 1.3 GB</string>
+  <string name="im_space_now_network" tools:ignore="MissingTranslation">Trying the internet</string>
+  <string name="im_space_now_failed" tools:ignore="MissingTranslation">It didn\'t work this time</string>
+  <string name="im_space_prepare_elapsed" tools:ignore="MissingTranslation">%1$s so far</string>
+  <string name="im_space_go_chat">Chat meanwhile</string>
+  <string name="im_space_retry">Try again</string>
+  <string name="im_space_network_title">%1$s\'s mini box is offline</string>
+  <string name="im_space_network_title_many">Their mini boxes are offline</string>
+  <string name="im_space_network_help_ufw">The mini box is ready but cannot reach the internet: the firewall on %1$s blocks it.</string>
+  <string name="im_space_network_help">The mini box is ready but cannot reach the internet. Check the network or proxy settings on %1$s.</string>
+  <string name="im_space_network_run">Run this on %1$s, or from this phone, then tap Check again:</string>
+  <string name="im_space_network_note">It only lets the mini box go out to the internet; nobody can get into your computer through it. It asks for your computer\'s administrator password.</string>
+  <string name="im_space_network_skip">Continue offline</string>
+  <string name="im_space_net_fix_title" tools:ignore="MissingTranslation">Just let it through</string>
+  <string name="im_space_net_fix_body" tools:ignore="MissingTranslation">This only lets the mini box go out to the internet; nobody can get into your computer.</string>
+  <string name="im_space_net_self_run" tools:ignore="MissingTranslation">Run it myself on the computer</string>
+  <string name="im_space_collapse" tools:ignore="MissingTranslation">Hide</string>
+  <string name="im_space_copy_command">Copy command</string>
+  <string name="im_space_net_checking">Checking…</string>
+  <string name="im_space_done_title">%1$s has a mini box</string>
+  <string name="im_space_done_title_many">They have mini boxes</string>
+  <string name="im_space_done_help">It runs inside %1$s, kept apart from your desktop.</string>
+  <string name="im_space_can">It can</string>
+  <string name="im_space_can_body">Install software, run commands, read and write files, and go online in there</string>
+  <string name="im_space_cannot">It can\'t touch</string>
+  <string name="im_space_cannot_body">Your files and desktop on %1$s</string>
+  <string name="im_space_mode_auto">Acts directly, without asking at each step</string>
+  <string name="im_space_mode_note">What it sees and runs is sent to the model provider</string>
+  <string name="im_space_mode_change">Change</string>
+  <string name="im_space_chip_online" tools:ignore="MissingTranslation">Just started · online</string>
+  <string name="im_space_chip_offline" tools:ignore="MissingTranslation">Just started · no internet yet</string>
+  <string name="im_space_shot_fresh" tools:ignore="MissingTranslation">Just started, no picture yet</string>
+  <string name="im_space_can_short" tools:ignore="MissingTranslation">Install software, run commands, read and write files, go online</string>
+  <string name="im_space_can_short_offline" tools:ignore="MissingTranslation">Install software, run commands, read and write files, and go online once connected</string>
+  <string name="im_space_try_title" tools:ignore="MissingTranslation">Try asking it</string>
+  <string name="im_space_idea_weather" tools:ignore="MissingTranslation">Look up tomorrow\'s weather and screenshot it for me</string>
+  <string name="im_space_idea_papers" tools:ignore="MissingTranslation">Download this week\'s popular papers and sum them up on one page</string>
+  <string name="im_space_idea_python" tools:ignore="MissingTranslation">Install Python and draw me a chart</string>
+  <string name="im_space_idea_sort" tools:ignore="MissingTranslation">Write a small script that sorts a pile of files by date</string>
+  <string name="im_space_idea_tour" tools:ignore="MissingTranslation">Look around in there and tell me what you find</string>
+  <string name="im_space_look_screen" tools:ignore="MissingTranslation">See its screen</string>
+  <string name="im_space_ready_event">Its mini box is ready</string>
+  <string name="im_space_ready_instruction">Your owner just gave you a mini box: your own isolated Linux machine inside one of their computers. You can install software, run commands and keep files there without touching their own files or desktop. In one or two sentences, in your own way, tell them you have it now and one thing you could do with it. Don\'t mention this note.</string>
+  <string name="im_space_profile_detail">Mini box · on %1$s</string>
+  <string name="im_space_detail_host">On computer</string>
+  <string name="im_space_detail_network">Internet</string>
+  <string name="im_space_net_ok">Online</string>
+  <string name="im_space_net_off">Offline</string>
+  <string name="im_space_net_unknown">Could not check</string>
+  <string name="im_space_reset">Reset this mini box</string>
+  <string name="im_space_reset_detail">Clears the software and files it added and starts fresh.</string>
+  <string name="im_space_reset_confirm_title">Reset %1$s\'s mini box?</string>
+  <string name="im_space_reset_confirm_body">Everything it installed or saved in there is deleted. Its chats stay.</string>
+  <string name="im_space_reset_done">Reset. It is a fresh mini box now.</string>
+  <string name="im_space_resetting">Resetting…</string>
+  <string name="im_space_delete">Delete this mini box</string>
+  <string name="im_space_delete_detail">%1$s will no longer have a mini box; you can give it one again.</string>
+  <string name="im_space_delete_confirm_title">Delete %1$s\'s mini box?</string>
+  <string name="im_space_delete_confirm_body">The mini box and everything in it are deleted from %1$s. Its chats stay.</string>
+  <string name="im_space_detail_usage">In use</string>
+  <string name="im_space_usage_memory_of">%1$s of %2$s</string>
+  <string name="im_space_usage_value">%1$s · CPU %2$d%%</string>
+  <string name="im_space_time_now">Just now</string>
+  <string name="im_space_state_awake">Awake</string>
+  <string name="im_space_state_asleep">Asleep</string>
+  <string name="im_space_state_checking">Checking…</string>
+  <string name="im_space_state_unknown">Can\'t tell if it\'s awake</string>
+  <string name="im_space_state_unreachable">Can\'t reach the computer</string>
+  <string name="im_space_asleep_hint">Viewing the screen, sending files or %1$s using it wakes it up.</string>
+  <string name="im_space_shot_now">Latest picture</string>
+  <string name="im_space_shot_age">Picture from %1$s</string>
+  <string name="im_space_shot_none_title">No picture yet</string>
+  <string name="im_space_shot_none_hint">View the screen once and its latest picture shows up here.</string>
+  <string name="im_space_owner_title">%1$s\'s very own computer</string>
+  <string name="im_space_owner_detail">On %1$s · Linux</string>
+  <string name="im_space_send_files">Send &amp; receive files</string>
+  <string name="im_space_tile_memory">Memory</string>
+  <string name="im_space_tile_cpu">CPU</string>
+  <string name="im_space_tile_of">of %1$s</string>
+  <string name="im_space_tile_cores">%1$d cores in all</string>
+  <string name="im_space_tile_via_share">Through the computer\'s network</string>
+  <string name="im_space_recent_title">Recent files</string>
+  <string name="im_space_recent_all">All</string>
+  <string name="im_space_recent_empty">Files you swap with %1$s show up here.</string>
+  <string name="im_space_from_partner">From %1$s</string>
+  <string name="im_space_to_partner">To %1$s</string>
+  <string name="im_space_mode_title">Before %1$s acts</string>
+  <string name="im_space_mode_pick_ask">Ask first</string>
+  <string name="im_space_mode_pick_auto">Go ahead</string>
+  <string name="im_space_mode_pick_off">Not allowed</string>
+  <string name="im_space_mode_ask_detail">Asks you before every step, and acts only after you agree.</string>
+  <string name="im_space_mode_auto_detail">Runs commands and changes files in its own mini box directly, without asking each time.</string>
+  <string name="im_space_mode_off_detail">%1$s leaves the mini box alone. You can still view its screen yourself.</string>
+  <string name="im_space_handoff_title">Files</string>
+  <string name="im_space_handoff_detail">On %1$s. Files you put here reach %2$s, and what it gives you lands here.</string>
+  <string name="im_space_handoff_copied">Path copied</string>
+  <string name="im_space_files_entry">From this phone</string>
+  <string name="im_space_files_entry_detail">See what %1$s left you, or give it files from this phone</string>
+  <string name="im_space_files_title">%1$s\'s Shared folder</string>
+  <string name="im_space_files_about">The Shared folder on %1$s\'s desktop. It hears about files you add here on its next reply.</string>
+  <string name="im_space_files_empty">No files yet</string>
+  <string name="im_space_files_add">Add from phone</string>
+  <string name="im_space_files_uploading">Uploading %1$s (%2$d of %3$d)</string>
+  <string name="im_space_files_unreachable">Can\'t reach the mini box. Make sure the computer it runs on is on, then try again.</string>
+  <string name="im_space_files_retry">Try again</string>
+  <string name="im_space_files_failed">That didn\'t work. Try again.</string>
+  <string name="im_space_files_too_large">That file is too large (2 GB at most).</string>
+  <string name="im_space_files_more">More</string>
+  <string name="im_space_files_save">Save to phone</string>
+  <string name="im_space_files_share">Share</string>
+  <string name="im_space_files_delete">Delete</string>
+  <string name="im_space_files_delete_title">Delete “%1$s”?</string>
+  <string name="im_space_files_delete_body">It is deleted from %1$s\'s mini box and can\'t be restored.</string>
+  <string name="im_space_files_page_title">Send &amp; receive files</string>
+  <string name="im_space_files_intro">Files you add are ready for %1$s right away, and what it gives you is here too.</string>
+  <string name="im_space_files_on_host">Also send and receive on %1$s</string>
+  <string name="im_space_files_copy_path">Copy path</string>
+  <string name="im_space_files_today">Today</string>
+  <string name="im_space_files_earlier">Earlier</string>
+  <string name="im_space_files_empty_hint">Pick one from your phone for %1$s, or let it hand you what it makes.</string>
+  <string name="im_space_files_open">Open</string>
+  <string name="im_space_files_delete_here">Delete from the mini box</string>
+  <string name="im_space_files_actions">Actions for %1$s</string>
+  <string name="im_space_files_uploaded">Done. %1$s sees it on its next reply.</string>
+  <string name="im_space_files_saved">Saved to your phone</string>
+  <string name="im_space_files_deleted">Deleted from the mini box</string>
+  <string name="im_computer_delete_spaces">%1$s\'s mini box is deleted with it. The handoff folders stay on this computer.</string>
+  <string name="im_space_error_cua_missing">cua is not installed on the computer.</string>
+  <string name="im_space_error_daemon">cua could not start on the computer. Open the computer and try again.</string>
+  <string name="im_space_error_docker">Docker is missing on the computer, or this account cannot use it.</string>
+  <string name="im_space_error_download">The download failed. Check the computer\'s internet or proxy and try again.</string>
+  <string name="im_space_error_disk">Not enough free disk on the computer.</string>
+  <string name="im_space_error_timeout">This took too long. Try again.</string>
+  <string name="im_space_error_failed">Its mini box could not be made: %1$s</string>
+  <string name="im_space_tier_light">Light</string>
+  <string name="im_space_tier_standard">Standard</string>
+  <string name="im_space_tier_performance">Performance</string>
+  <string name="im_space_tier_spec">%1$d cores · %2$d GB</string>
+  <string name="im_space_tier_light_hint">Browsing and documents</string>
+  <string name="im_space_tier_standard_hint">Installing software, scripts and a browser</string>
+  <string name="im_space_tier_performance_hint">Building code and many programs at once</string>
+  <string name="im_space_tier_line">Gets %1$s, recommended for %2$s</string>
+  <string name="im_space_tier_line_picked">Gets %1$s</string>
+  <string name="im_space_tier_adjust">Adjust</string>
+  <string name="im_space_tier_note_recommended" tools:ignore="MissingTranslation">Recommended for %1$s; you can change it later</string>
+  <string name="im_space_tier_note_default" tools:ignore="MissingTranslation">You can change it later</string>
+  <string name="im_space_tier_note_picked" tools:ignore="MissingTranslation">Your pick</string>
+  <string name="im_space_tier_host" tools:ignore="MissingTranslation">%1$s has %2$d cores and %3$d GB of memory; about %4$d GB is free now.</string>
+  <string name="im_space_tier_sheet_title">How big a mini box?</string>
+  <string name="im_space_tier_sheet_help">These are limits: it only uses what it needs, and your own work keeps the rest.</string>
+  <string name="im_space_tier_recommended">Recommended</string>
+  <string name="im_space_tier_too_big">More than this computer can spare</string>
+  <string name="im_space_tier_row">Size</string>
+  <string name="im_space_tier_mac_fixed">On a Mac the size cannot be changed in place yet.</string>
+  <string name="im_space_resized">Now %1$s</string>
+  <string name="im_space_run_here">Run it from this phone</string>
+  <string name="im_space_run_title">Run on the computer</string>
+  <string name="im_space_run_connecting">Connecting to the computer…</string>
+  <string name="im_space_run_running">Running. If it asks for a password, type the computer\'s password and press Enter.</string>
+  <string name="im_space_run_ok">Done. Checking the internet again.</string>
+  <string name="im_space_run_failed">It stopped with code %1$d. Check the output above.</string>
+  <string name="im_space_fix_card_title">Get the mini box online</string>
+  <string name="im_space_fix_card_online">Its mini box is online now.</string>
+  <string name="im_space_fix_why">%1$s\'s firewall is blocking it. Allowing it only lets the mini box go out to the internet; nobody can get into your computer.</string>
+  <string name="im_space_fix_skip">Not now</string>
+  <string name="im_space_fix_on_phone">Fix it on this phone</string>
+  <string name="im_space_fix_password">You\'ll enter %1$s\'s administrator password</string>
+  <string name="im_space_screen_title">%1$s\'s mini box</string>
+  <string name="im_space_screen_description">View %1$s\'s mini box</string>
+  <string name="im_thread_status_offline">No internet connection</string>
+  <string name="im_thread_status_connecting">Connecting…</string>
+  <string name="im_thread_status_connecting_slow">Slow connection…</string>
 </resources>

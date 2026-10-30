@@ -38,7 +38,8 @@ internal fun rememberPartnerUsesPhone(assistantId: Uuid): State<Boolean> {
 }
 
 internal fun computerErrorMessage(resources: Resources, error: Throwable): String =
-    when ((error as? RemoteScreenUnavailableException)?.problem) {
+    (error as? me.ayuilos.miffan.data.ai.computer.CuaSpaceException)?.let { spaceErrorMessage(resources, it) }
+        ?: when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.im_computer_no_desktop)
         RemoteScreenProblem.NO_VNC_SERVER -> resources.getString(R.string.im_computer_no_screen_service)
         RemoteScreenProblem.VNC_START_FAILED, RemoteScreenProblem.RDP_START_FAILED -> resources.getString(R.string.im_computer_screen_start_failed)
@@ -100,3 +101,15 @@ internal fun ComputerUseModeSelector(
         confirmButton = { TextButton(onClick = { confirmAuto = false; onMode(ComputerUseMode.AUTO) }) { Text(stringResource(R.string.common_confirm)) } },
         dismissButton = { TextButton(onClick = { confirmAuto = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
+
+/** The helper's error codes for a partner's own computer (remote-helper/PROTOCOL.md), in plain words. */
+private fun spaceErrorMessage(resources: Resources, error: me.ayuilos.miffan.data.ai.computer.CuaSpaceException): String =
+    when (error.code) {
+        "cua_missing" -> resources.getString(R.string.im_space_error_cua_missing)
+        "daemon_failed", "start_failed" -> resources.getString(R.string.im_space_error_daemon)
+        "needs_docker" -> resources.getString(R.string.im_space_error_docker)
+        "download_failed" -> resources.getString(R.string.im_space_error_download)
+        "disk_low" -> resources.getString(R.string.im_space_error_disk)
+        "timeout" -> resources.getString(R.string.im_space_error_timeout)
+        else -> resources.getString(R.string.im_space_error_failed, error.message.orEmpty())
+    }

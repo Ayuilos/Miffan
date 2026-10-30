@@ -18,13 +18,26 @@ import me.rerere.hugeicons.stroke.ArrowLeft01
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
+/** Screens past the point of no return (a run under way, or finished) have no back arrow. */
+private val ComputerSetupStep.canGoBack: Boolean get() = this !in setOf(ComputerSetupStep.DONE, ComputerSetupStep.SPACE_PREPARE,
+    ComputerSetupStep.SPACE_NETWORK, ComputerSetupStep.SPACE_DONE)
+
 /** Which of the four dots a screen lights: find, sign in, get ready, share. */
 private fun ComputerSetupStep.dot(): Int? = when (this) {
     ComputerSetupStep.FIND, ComputerSetupStep.MANUAL -> 0
     ComputerSetupStep.SIGN_IN, ComputerSetupStep.PASSWORD, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
     ComputerSetupStep.READY -> 2
     ComputerSetupStep.SHARE -> 3
-    ComputerSetupStep.DONE -> null
+    ComputerSetupStep.HOW, ComputerSetupStep.SPACE_INSTALL, ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK,
+    ComputerSetupStep.SPACE_DONE, ComputerSetupStep.DONE -> null
+}
+
+/** Giving a partner a mini box is its own three steps: choose, make, done. */
+private fun ComputerSetupStep.spaceDot(): Int? = when (this) {
+    ComputerSetupStep.HOW, ComputerSetupStep.SPACE_INSTALL -> 0
+    ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK -> 1
+    ComputerSetupStep.SPACE_DONE -> 2
+    else -> null
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,7 +52,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     val nav = LocalNavController.current
     val assistants = LocalSettings.current.assistants
     // This page's own entry on the back stack, to replace it on the way out.
-    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status)
+    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status, args.space)
     val statusPage = args.status && state.step == ComputerSetupStep.READY
     val update by vm.cuaUpdate.collectAsStateWithLifecycle()
     fun back() {
@@ -53,7 +66,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 when {
                     state.editing && state.step == ComputerSetupStep.MANUAL -> Text(host?.name.orEmpty())
                     statusPage -> Text(stringResource(R.string.im_computer_status_title))
-                    else -> state.step.dot()?.let { StepDots(it) }
+                    else -> state.step.dot()?.let { StepDots(it) } ?: state.step.spaceDot()?.let { StepDots(it, count = 3) }
                 }
             },
             actions = {
@@ -63,7 +76,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 }
             },
             navigationIcon = {
-                if (state.step != ComputerSetupStep.DONE) IconButton(onClick = ::back, enabled = !state.busy) {
+                if (state.step.canGoBack) IconButton(onClick = ::back, enabled = !state.busy) {
                     Icon(HugeIcons.ArrowLeft01, stringResource(R.string.back))
                 }
             },
@@ -83,6 +96,34 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 ComputerSetupStep.VERIFY -> ComputerVerifyStep(vm, state)
                 ComputerSetupStep.READY -> ComputerReadyStep(vm, state)
                 ComputerSetupStep.SHARE -> ComputerShareStep(vm, state, forPartner)
+                ComputerSetupStep.HOW -> ComputerHowStep(vm, state)
+                ComputerSetupStep.SPACE_INSTALL -> ComputerSpaceInstallStep(vm, state)
+                ComputerSetupStep.SPACE_PREPARE -> ComputerSpacePrepareStep(vm, state) {
+                    // The run goes on without this page; the partner says so in its chat when it is done.
+                    val id = state.sharePartners.firstOrNull()?.toString()
+                    if (id == null) nav.popBackStack()
+                    else {
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup || it == Screen.PartnerScreen(id) || it is Screen.Thread && it.assistantId == id }
+                        nav.navigate(Screen.Thread(id))
+                    }
+                }
+                ComputerSetupStep.SPACE_NETWORK -> ComputerSpaceNetworkStep(vm, state)
+                ComputerSetupStep.SPACE_DONE -> ComputerSpaceDoneStep(vm, state,
+                    // A tapped suggestion opens the chat with it in the composer, not sent.
+                    onChat = { partner, text ->
+                        val id = partner.id.toString()
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup || it == Screen.PartnerScreen(id) || it is Screen.Thread && it.assistantId == id }
+                        nav.navigate(Screen.Thread(id, text = text))
+                    },
+                    onChangeMode = { partner ->
+                        // Setup can sit on the stack twice (picking a saved computer opens its own entry).
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup }
+                        nav.navigate(Screen.PartnerComputer(partner.id.toString()))
+                    },
+                    onScreen = { partner ->
+                        nav.removeAll(Screen.Home) { it is Screen.ComputerSetup }
+                        nav.navigate(Screen.PartnerScreen(partner.id.toString()))
+                    })
                 ComputerSetupStep.DONE -> {
                     val bound by vm.boundPartnerIds.collectAsStateWithLifecycle()
                     val partner = assistants.find { it.id == forPartner && it.id in bound } ?: assistants.firstOrNull { it.id in bound }

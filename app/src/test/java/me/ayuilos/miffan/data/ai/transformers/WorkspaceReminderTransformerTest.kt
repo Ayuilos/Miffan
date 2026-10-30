@@ -125,6 +125,50 @@ class WorkspaceReminderTransformerTest {
     }
 
     @Test
+    fun `a partner's own computer is described as its isolated machine`() {
+        val space = workspace.copy(kind = WorkspaceEntity.KIND_SPACE, remoteHostId = "host", remotePath = "/home/cua", spaceName = "miffan-0123abcd")
+        val prompt = buildWorkspacePrompt(
+            workspace = space,
+            scopeId = scopeId,
+            assistantName = "Assistant",
+            conversationId = conversationId,
+            remoteHostLabel = "me@cachyos:22",
+            spaceHostName = "cachyos",
+            spaceNetworkFix = true,
+        )
+        assertTrue(prompt.contains("You have your own computer"))
+        assertTrue(prompt.contains("the owner's computer \"cachyos\""))
+        assertTrue(prompt.contains("passwordless sudo"))
+        assertTrue(prompt.contains("`request_network_fix`"))
+        assertTrue(prompt.contains("/home/cua/.miffan/conversations/$conversationId/"))
+        // Not an SSH session on the owner's machine.
+        assertFalse(prompt.contains("remote SSH workspace"))
+        assertFalse(prompt.contains("me@cachyos"))
+        val noFix = buildWorkspacePrompt(space, scopeId = scopeId, assistantName = "Assistant", conversationId = conversationId,
+            spaceHostName = "mac", spaceNetworkFix = false)
+        assertFalse(noFix.contains("request_network_fix"))
+        val noShell = buildWorkspacePrompt(space, scopeId = scopeId, assistantName = "Assistant", conversationId = conversationId,
+            spaceHostName = "cachyos", shellEnabled = false)
+        assertTrue(noShell.contains("You have your own computer") && noShell.contains("AI Shell execution is disabled"))
+        assertFalse(prompt.contains("give_to_owner"))
+    }
+
+    @Test
+    fun `a partner's own computer explains its handoff folder and what just arrived`() {
+        val space = workspace.copy(kind = WorkspaceEntity.KIND_SPACE, remoteHostId = "host", remotePath = "/home/cua",
+            spaceName = "miffan-0123abcd", spaceHandoff = "Miffan Partners/小A")
+        val quiet = buildWorkspacePrompt(space, scopeId = scopeId, assistantName = "Assistant", conversationId = conversationId,
+            spaceHostName = "cachyos")
+        assertTrue(quiet.contains("`/home/cua/Desktop/Shared`"))
+        assertTrue(quiet.contains("`~/Miffan Partners/小A` on \"cachyos\""))
+        assertTrue(quiet.contains("`give_to_owner`"))
+        assertFalse(quiet.contains("just gave you"))
+        val arrived = buildWorkspacePrompt(space, scopeId = scopeId, assistantName = "Assistant", conversationId = conversationId,
+            spaceHostName = "cachyos", spaceArrivals = me.ayuilos.miffan.data.ai.computer.SpaceArrivals(listOf("论文.pdf", "sub/x.txt"), 1))
+        assertTrue(arrived.contains("just gave you these files, now in the Shared folder: `论文.pdf`, `sub/x.txt`"))
+    }
+
+    @Test
     fun `disabled shell prompt retains remote file identity without advertising commands`() {
         val prompt = buildWorkspacePrompt(
             workspace = workspace.copy(kind = WorkspaceEntity.KIND_REMOTE, remoteHostId = "host", remotePath = "/srv/project"),

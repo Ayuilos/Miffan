@@ -8,6 +8,7 @@ import me.ayuilos.miffan.data.files.SkillManager
 import me.ayuilos.miffan.data.extensions.ExtensionManagementService
 import me.ayuilos.miffan.data.repository.AssistantRemover
 import me.ayuilos.miffan.data.repository.ConversationRepository
+import me.ayuilos.miffan.data.repository.CuaSpaceSessions
 import me.ayuilos.miffan.data.repository.FavoriteRepository
 import me.ayuilos.miffan.data.repository.FolderRepository
 import me.ayuilos.miffan.data.repository.FilesRepository
@@ -135,7 +136,8 @@ val repositoryModule = module {
     single { NativeSshWorkspaceTransport }
 
     single {
-        WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources, RemoteSunshineUnpair(get()))
+        WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources, RemoteSunshineUnpair(get()),
+            CuaSpaceSessions(get<android.content.Context>().assets))
     }
 
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets, get()) }
@@ -148,8 +150,12 @@ val repositoryModule = module {
     }
 
     single { me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry(get(), get<AppScope>()) }
-    single { me.ayuilos.miffan.data.ai.computer.PartnerComputers(get(), get()) }
+    single { me.ayuilos.miffan.data.ai.computer.PartnerComputers(get(), get(), get()) }
+    single { me.ayuilos.miffan.data.ai.computer.PartnerSpaces(get(), get(), get<AppScope>(),
+        me.ayuilos.miffan.data.ai.computer.SpaceFileLog(File(get<Context>().filesDir, "space-file-log"))) }
+    single { me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup(get(), get(), get(), get<android.content.Context>().resources) }
     single { me.ayuilos.miffan.data.ai.computer.ComputerStatusStore(get()) }
+    single { me.ayuilos.miffan.data.ai.computer.ComputerSnapshots(get()) }
     single {
         me.ayuilos.miffan.data.ai.computer.CuaUpdates(get(), get<AppScope>(), get(), get(), get(), get(), get())
     }

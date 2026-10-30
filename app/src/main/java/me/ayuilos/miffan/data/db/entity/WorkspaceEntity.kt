@@ -39,9 +39,27 @@ data class WorkspaceEntity(
     val remoteHostId: String? = null,
     @ColumnInfo("remote_path")
     val remotePath: String? = null,
+    // A SPACE workspace lives in this cua Space on the remote host; remote_path is then the root
+    // inside the Space, and the SSH connection to the host is rooted at "/" (see sshRoot).
+    @ColumnInfo("space_name")
+    val spaceName: String? = null,
+    /** The Space's CPU and memory (MiB) limits, as last set by the app. */
+    @ColumnInfo("space_cpus")
+    val spaceCpus: Int? = null,
+    @ColumnInfo("space_memory_mb")
+    val spaceMemoryMb: Int? = null,
+    /** The host's handoff folder for this Space, relative to the host account's home. */
+    @ColumnInfo("space_handoff")
+    val spaceHandoff: String? = null,
 ) {
     // Fail closed for unknown future kinds: never send them to the local PRoot manager.
     val isRemote: Boolean get() = kind != KIND_LOCAL
+
+    /** A partner's own isolated computer: host-level abilities (desktop, scheduled tasks) stay off. */
+    val isSpace: Boolean get() = kind == KIND_SPACE
+
+    /** The directory the SSH session to the host is rooted at: for a Space only the helper and tunnels use it. */
+    val sshRoot: String? get() = if (isSpace) "/" else remotePath
 
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)
@@ -61,5 +79,6 @@ data class WorkspaceEntity(
     companion object {
         const val KIND_LOCAL = "LOCAL"
         const val KIND_REMOTE = "REMOTE"
+        const val KIND_SPACE = "SPACE"
     }
 }

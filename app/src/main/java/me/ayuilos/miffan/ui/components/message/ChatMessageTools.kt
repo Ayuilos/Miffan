@@ -506,7 +506,8 @@ private fun ProfessionalApprovalCard(
             LocalToolCardAllowEnabled provides allowEnabled,
         ) {
             if (tool.toolName.startsWith(COMPUTER_TOOL_PREFIX)) ThreadComputerApprovalCard(tool,
-                computerTargetName(tool, null, stringResource(R.string.im_computer_computer)), canOpen = false,
+                computerTargetName(tool, null, stringResource(R.string.im_computer_computer),
+                    stringResource(R.string.im_computer_detail_user_space)), canOpen = false,
                 onScreen = {}, onApproval = onApproval)
             else ThreadToolPrompt(tool, onApproval, onAnswer = { _, _ -> }, assistant = assistant)
         }

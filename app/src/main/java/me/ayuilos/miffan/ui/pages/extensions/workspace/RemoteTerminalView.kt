@@ -249,11 +249,23 @@ internal class RemoteTerminalView(context: Context) : View(context) {
 
     override fun onCheckIsTextEditor(): Boolean = true
 
+    /**
+     * For a terminal that only ever takes a password (sudo): ask for the IME's password keyboard, which is
+     * ASCII, skips composing and keeps the typed text out of the suggestion bar.
+     */
+    var passwordInput: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.restartInput(this)
+        }
+
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
         // A password variation makes many IMEs (ColorOS included) switch to an ASCII-only secure
         // keyboard, so CJK input would be impossible. Plain text without suggestions keeps the
         // user's own keyboard; composing text is tracked below and committed to the shell.
-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        outAttrs.inputType = if (passwordInput) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN or
             EditorInfo.IME_ACTION_NONE
         composingText = null

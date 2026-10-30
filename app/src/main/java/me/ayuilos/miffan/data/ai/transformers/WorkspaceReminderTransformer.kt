@@ -3,6 +3,8 @@ package me.ayuilos.miffan.data.ai.transformers
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
+import me.ayuilos.miffan.data.ai.computer.SpaceArrivals
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.rerere.workspace.WorkspaceShellStatus
@@ -16,6 +18,8 @@ import kotlin.uuid.Uuid
  */
 class WorkspaceReminderTransformer(
     private val workspaceRepository: WorkspaceRepository,
+    /** For a partner's own computer: brings in what the owner put in its handoff folder, and what just arrived. */
+    private val spaceArrivals: suspend (workspaceId: String) -> SpaceArrivals? = { null },
 ) : InputMessageTransformer {
     override suspend fun transform(
         ctx: TransformerContext,
@@ -36,6 +40,11 @@ class WorkspaceReminderTransformer(
             conversationId = ctx.conversationId,
             remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" },
             shellEnabled = ctx.assistant.workspaceShellEnabled,
+            spaceHostName = remoteHost?.name,
+            spaceNetworkFix = remoteHost != null && remoteHost.screenPlatform != "macos",
+            spaceArrivals = if (workspace.isSpace && workspace.spaceHandoff != null) {
+                runCatching { spaceArrivals(workspace.id) }.getOrNull()
+            } else null,
         )
 
         // 追加到第一条 system 消息; 若不存在则插入一条
@@ -60,10 +69,19 @@ internal fun buildWorkspacePrompt(
     conversationId: Uuid?,
     remoteHostLabel: String? = null,
     shellEnabled: Boolean = true,
+    /** For a partner's own computer (a cua Space): the display name of the computer it runs inside. */
+    spaceHostName: String? = null,
+    /** The owner can open a Space's network from the phone (request_network_fix is offered). */
+    spaceNetworkFix: Boolean = false,
+    /** Files the owner just gave a Space through its handoff folder. */
+    spaceArrivals: SpaceArrivals? = null,
 ): String = buildString {
     if (!shellEnabled) {
         appendLine("<workspace>")
-        if (workspace.isRemote) {
+        if (workspace.isSpace) {
+            appendLine("You have your own computer, an isolated Linux machine inside ${spaceHostName?.let { "the owner's computer \"$it\"" } ?: "one of the owner's computers"}; it cannot reach the owner's own files or desktop.")
+            appendLine("File tools map `/workspace` to `${workspace.remotePath}` on it.")
+        } else if (workspace.isRemote) {
             appendLine("You are bound to remote workspace \"${workspace.name}\" on ${remoteHostLabel ?: "the configured remote host"}.")
             appendLine("File tools map `/workspace` to `${workspace.remotePath}` on that host. Other assistants using that directory share its contents.")
         } else {
@@ -78,6 +96,16 @@ internal fun buildWorkspacePrompt(
         if (!cwd.isNullOrBlank()) appendLine("Current file-tool working directory: `$cwd`.")
         append("</workspace>")
         return@buildString
+    }
+    if (workspace.isSpace) {
+        return@buildString appendSpaceWorkspacePrompt(
+            workspace = workspace,
+            cwd = cwd,
+            conversationId = conversationId,
+            hostName = spaceHostName,
+            networkFix = spaceNetworkFix,
+            arrivals = spaceArrivals,
+        )
     }
     if (workspace.isRemote) {
         return@buildString appendRemoteWorkspacePrompt(
@@ -159,6 +187,46 @@ private fun StringBuilder.appendRemoteWorkspacePrompt(
     appendLine("- Use `workspace_read_file`, `workspace_write_file`, and `workspace_edit_file` for remote files; use `workspace_shell` for remote commands. They all target the bound remote workspace.")
     appendLine("- Remote workspace_shell and workspace_terminal share a persistent shell/PTY scoped to this conversation. Omit cwd to keep the current directory; cd and exported variables persist. To authorize sudo, use workspace_terminal with sudo -v, then use sudo -n in workspace_shell. Authentication expires under the host policy; it does not turn the shell into root. Closing the session, disconnection, or app restart requires a new session. Never automatically refresh sudo credentials or request passwords in chat. Do not run nested interactive shells (sudo -i, su, exec).")
     appendLine("- When a command needs sudo authentication or interactive user input, call `workspace_terminal` with command, reason, and optional cwd instead of asking the user to copy commands. The user opens the terminal and presses Enter to execute. Never ask for passwords in chat or include credentials in tool arguments. Wait for its output and exit status, then continue automatically. If interrupted or disconnected, verify remote state before proposing another execution.")
+    appendLine("- After shell commands create user-facing files, call `workspace_publish_files` with absolute virtual `/workspace/...` paths or real absolute paths under `$root`.")
+    append("</workspace>")
+}
+
+/** A partner's own computer: an isolated Linux machine (a cua Space) inside one of the owner's computers. */
+private fun StringBuilder.appendSpaceWorkspacePrompt(
+    workspace: WorkspaceEntity,
+    cwd: String?,
+    conversationId: Uuid?,
+    hostName: String?,
+    networkFix: Boolean,
+    arrivals: SpaceArrivals?,
+) {
+    val root = requireNotNull(workspace.remotePath) { "Space workspace requires remotePath" }.trimEnd('/').ifBlank { "/" }
+    val artifactVirtual = conversationId?.let { "/workspace/.miffan/conversations/$it" }
+    val artifactReal = conversationId?.let { "$root/.miffan/conversations/$it" }
+    val host = hostName?.let { "the owner's computer \"$it\"" } ?: "one of the owner's computers"
+    appendLine("<workspace>")
+    appendLine("You have your own computer, which the app calls your mini box: an isolated Linux machine (Ubuntu, user `cua`) that runs inside $host. It is yours alone. Nothing you do there can reach the owner's own files, apps or desktop, and the owner can reset it to a fresh state.")
+    appendLine("- `workspace_shell` and `workspace_terminal` run commands in it, starting in `$root`. File tools map `/workspace` to `$root`.")
+    appendLine("- You have passwordless sudo there: install what a task needs (for example `sudo apt-get install -y ...`) instead of asking the owner to. Use `sudo -n`; never ask for a password.")
+    appendLine("- It is not the owner's computer: do not tell the owner a file is on their computer, and do not try to reach or change $host itself.")
+    appendLine("- It has a graphical desktop (XFCE, with Firefox) that the owner can watch from their phone. For work that needs apps or a browser, use the computer tools on it; the owner may take over the screen at any time.")
+    if (networkFix) {
+        appendLine("- If it cannot reach the internet (DNS lookups or downloads fail), call `request_network_fix` once with a short reason. The owner can fix it from their phone; continue after it reports `online: true`. Do not retry the same failing download in a loop.")
+    } else {
+        appendLine("- If it cannot reach the internet, tell the owner what failed; the network of $host may need attention.")
+    }
+    workspace.spaceHandoff?.let { folder ->
+        appendLine("- Files pass between you and the owner through the Shared folder on your desktop, `${PartnerSpaces.SHARED_DIR}`. What the owner puts in `~/$folder` on ${hostName?.let { "\"$it\"" } ?: "their computer"} shows up there when a turn starts. To put a file on the owner's computer, put it in the Shared folder and call `give_to_owner` (`workspace_publish_files` shows files in this chat instead).")
+        arrivals?.let { appendLine("- The owner just gave you these files, now in the Shared folder: ${it.names.joinToString(", ") { name -> "`$name`" }}.") }
+    }
+    if (artifactVirtual != null && artifactReal != null) {
+        appendLine("- Conversation artifact directory: `$artifactVirtual/` for file tools, `$artifactReal/` in shell commands. Create it before saving files and reuse it across this conversation.")
+    }
+    if (!cwd.isNullOrBlank()) {
+        appendLine("- Current working directory: `$cwd` in file-tool paths.")
+    }
+    appendLine("- `workspace_shell` and `workspace_terminal` share a persistent shell scoped to this conversation: cd and exported variables persist. Do not run nested interactive shells.")
+    appendLine("- A timeout does not guarantee that a started process stopped. Check state before retrying a mutating command.")
     appendLine("- After shell commands create user-facing files, call `workspace_publish_files` with absolute virtual `/workspace/...` paths or real absolute paths under `$root`.")
     append("</workspace>")
 }

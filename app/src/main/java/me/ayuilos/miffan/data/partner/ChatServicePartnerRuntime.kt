@@ -39,5 +39,6 @@ internal class ChatServicePartnerRuntime(
         return { ChatGenerationForegroundService.release(context, token) }
     }
     override suspend fun stop(segmentId: Uuid) = chatService().discardPartnerSegment(segmentId)
+    override fun observeConnected(segmentId: Uuid) = chatService().getConnectedFlow(segmentId)
     override fun reportFailure(error: Exception, segmentId: Uuid?) = chatService().addError(error, segmentId)
 }

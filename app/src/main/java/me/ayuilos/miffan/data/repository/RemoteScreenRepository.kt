@@ -165,6 +165,8 @@ class RemoteScreenConnection internal constructor(
     val streamFallback: RemoteStreamFallback? = null,
     val streamRequested: Boolean = false,
     val streamAddress: String? = null,
+    /** Who drives this desktop is arbitrated under this key: the host's id, or a Space's own key. */
+    val controlKey: String = hostId,
     private val onClose: (RemoteScreenConnection) -> Unit,
 ) : Closeable {
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -502,6 +504,7 @@ class RemoteScreenRepository(
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
+        if (workspace.isSpace) return openSpace(workspaceId, host.id, host.name, stream)
         if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
         val configuredEndpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
         var detected: RemoteScreenPlatform? = null
@@ -631,6 +634,31 @@ class RemoteScreenRepository(
         } catch (error: Throwable) { clipboard?.close(); handle.close(); throw error }
     }
 
+    /**
+     * A partner's own computer: its desktop needs no setup on the host (no VNC, no Sunshine), only the
+     * Space's media socket over the host's SSH session.
+     */
+    private suspend fun openSpace(workspaceId: String, hostId: String, name: String, stream: RemoteStreamRequest): RemoteScreenConnection {
+        val (dimension, fps) = when (stream.quality) {
+            RemoteScreenQuality.SAVER -> 960 to 15
+            RemoteScreenQuality.BALANCED -> 1280 to 30
+            else -> 1920 to 30
+        }
+        val handle = workspaces.openLeasedSpace<RemoteDesktopSession>(workspaceId) { client ->
+            val media = runBlocking { client.openMedia(maxDimension = dimension, maxFps = fps) }
+            CuaSpaceDesktopSession(client, media, name, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default))
+        }
+        val connection = RemoteScreenConnection(hostId, RemoteScreenPlatform.LINUX, workspaceId, handle,
+            controlKey = spaceControlKey(workspaceId)) { closed ->
+            synchronized(lock) {
+                open[hostId]?.remove(closed)
+                if (open[hostId].isNullOrEmpty()) open.remove(hostId)
+            }
+        }
+        synchronized(lock) { open.getOrPut(hostId, ::mutableSetOf) += connection }
+        return connection
+    }
+
     /** Uses cliprdr for an active RDP session; VNC and STREAM use the SSH clipboard helper. */
     /**
      * Starts the Windows cua bridge ahead of typing so the first clipboard write is fast too.
@@ -712,6 +740,13 @@ class RemoteScreenRepository(
 
     /** The host behind a remote workspace, for control arbitration keyed by machine. */
     suspend fun hostIdOf(workspaceId: String): String? = workspaceDao.getById(workspaceId)?.remoteHostId
+
+    /** Whether the workspace is a partner's own computer, whose desktop is not its host's. */
+    suspend fun isSpace(workspaceId: String): Boolean = workspaceDao.getById(workspaceId)?.isSpace == true
+
+    /** The cua-driver of a partner's own computer: its MCP endpoint, held over the host's SSH session. */
+    suspend fun openSpaceDriver(workspaceId: String): LeasedRemote<SpaceDriverEndpoint> =
+        workspaces.openLeasedSpace(workspaceId) { client -> SpaceDriverEndpoint(client.mcpUrl, client.mcpHttpClient()) }
 
     /** Installs or refreshes the helper and describes the machine behind [workspaceId]. */
     suspend fun probe(workspaceId: String): RemoteMachineProbe {
@@ -814,4 +849,12 @@ class RemoteScreenRepository(
         rdpCertificateSha256 = rdpCertificateSha256,
         streamEnabled = streamEnabled, streamCertificateSha256 = streamCertificateSha256,
     )
+}
+
+/** A partner's own computer's desktop is not its host's: user and partner arbitrate it on its own. */
+fun spaceControlKey(workspaceId: String): String = "space:$workspaceId"
+
+/** Where a Space's cua-driver answers MCP; nothing to release beyond the SSH lease that holds it. */
+class SpaceDriverEndpoint(val url: String, val http: okhttp3.OkHttpClient) : java.io.Closeable {
+    override fun close() {}
 }

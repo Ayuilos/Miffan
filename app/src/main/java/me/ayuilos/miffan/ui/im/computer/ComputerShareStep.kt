@@ -47,10 +47,12 @@ internal fun ComputerShareStep(vm: ComputerSetupVM, state: ComputerSetupState, f
     val workspaceList by remember(workspaces) { workspaces.listFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
     var selected by rememberSaveable { mutableStateOf(listOfNotNull(forPartner?.toString())) }
     val picked = selected.mapNotNull { id -> assistants.find { it.id.toString() == id && it.id !in bound } }
+    // Mini boxes alone never look at the desktop, which may not be set up.
+    val desktop = state.usesScreen && !state.spaceOnly
     // The look is read-only, so it runs once by itself.
     var autoChecked by rememberSaveable(state.workspaceId) { mutableStateOf(false) }
-    LaunchedEffect(state.busy, autoChecked, state.usesScreen) {
-        if (state.usesScreen && !autoChecked && !state.busy && !state.partnerChecked) {
+    LaunchedEffect(state.busy, autoChecked, desktop) {
+        if (desktop && !autoChecked && !state.busy && !state.partnerChecked) {
             autoChecked = true
             vm.checkPartner()
         }
@@ -62,14 +64,14 @@ internal fun ComputerShareStep(vm: ComputerSetupVM, state: ComputerSetupState, f
         state = state, onDismissError = vm::dismissError,
         hero = {
             val workspaceId = state.workspaceId
-            if (state.usesScreen && workspaceId != null) key(workspaceId) { LivePreview(workspaceId, state.busy, state.partnerChecked) }
+            if (desktop && workspaceId != null) key(workspaceId) { LivePreview(workspaceId, state.busy, state.partnerChecked) }
             else DeviceTile(state.system.icon(), size = 72.dp)
         },
         primary = SetupAction(when {
             picked.isEmpty() -> stringResource(R.string.im_computer_pick_someone)
             picked.size == 1 -> stringResource(R.string.im_computer_give_to, threadAssistantName(first))
             else -> stringResource(R.string.im_computer_bind_many_confirm, picked.size)
-        }, enabled = picked.isNotEmpty()) { vm.bind(picked.map { it.id }.toSet()) },
+        }, enabled = picked.isNotEmpty()) { vm.share(picked.map { it.id }.toSet()) },
         // A computer someone already uses is not "kept from partners": it is just done.
         secondary = SetupAction(stringResource(if (bound.isEmpty()) R.string.im_computer_bind_none else R.string.im_computer_done)) {
             vm.bind(emptySet())
@@ -83,7 +85,9 @@ internal fun ComputerShareStep(vm: ComputerSetupVM, state: ComputerSetupState, f
             SetupNote(HugeIcons.Shield01, stringResource(if (boundTo.isRemote) R.string.im_computer_switches_computer
                 else R.string.im_computer_switches_phone, threadAssistantName(partner)))
         }
-        SetupNote(HugeIcons.Shield01, stringResource(if (state.usesScreen) R.string.im_computer_share_note else R.string.im_computer_share_note_no_screen))
+        // How a mini box is used is said on the next screen.
+        if (!state.spaceOnly) SetupNote(HugeIcons.Shield01,
+            stringResource(if (state.usesScreen) R.string.im_computer_share_note else R.string.im_computer_share_note_no_screen))
     }
 }
 

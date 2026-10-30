@@ -116,6 +116,7 @@ import me.ayuilos.miffan.ui.im.navigateHome
 import me.ayuilos.miffan.ui.im.openFreshChat
 import me.ayuilos.miffan.ui.im.thread.AgentThreadPage
 import me.ayuilos.miffan.ui.im.computer.PartnerScreenPage
+import me.ayuilos.miffan.ui.im.computer.PartnerSpaceFilesPage
 import me.ayuilos.miffan.ui.im.computer.ComputerDetailPage
 import me.ayuilos.miffan.ui.im.computer.ComputerScreenPage
 import me.ayuilos.miffan.ui.im.computer.ComputerSetupArgs
@@ -491,8 +492,9 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.PartnerProfile> { key -> ImPartnerProfilePage(key.assistantId) }
 
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
+                            entry<Screen.PartnerSpaceFiles> { key -> PartnerSpaceFilesPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ComputerSetup> { key ->
-                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen, key.status))
+                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen, key.status, key.space))
                             }
                             entry<Screen.Computers> { ComputersPage() }
                             entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
@@ -874,12 +876,18 @@ sealed interface Screen : NavKey {
     @Serializable
     data class PartnerScreen(val assistantId: String) : Screen
 
+    /** The Shared folder on a partner's own computer, to take files from and give files to. */
+    @Serializable
+    data class PartnerSpaceFiles(val assistantId: String) : Screen
+
     /** Connect a computer: for one partner, or with no partner from "my computers"; see ComputerSetupArgs. */
     @Serializable
     data class ComputerSetup(
         val assistantId: String? = null, val hostId: String? = null, val edit: Boolean = false, val screen: Boolean = false,
         /** A saved computer's status page instead of its setup; see ComputerSetupArgs.status. */
         val status: Boolean = false,
+        /** Give the partner a mini box on the saved computer; see ComputerSetupArgs.space. */
+        val space: Boolean = false,
     ) : Screen
 
     /** Easy chat's list of computers. */

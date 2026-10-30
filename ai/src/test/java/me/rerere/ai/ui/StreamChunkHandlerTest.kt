@@ -16,6 +16,14 @@ class StreamChunkHandlerTest {
     private val model = Model(modelId = "test-model")
 
     @Test
+    fun `connected signal should not change messages`() {
+        val handler = StreamChunkHandler(model)
+        val messages = listOf(UIMessage.user("hello"))
+
+        assertEquals(messages, handler.handle(messages, StreamChunk.Connected))
+    }
+
+    @Test
     fun `text lifecycle should create and update assistant message`() {
         var messages = listOf(UIMessage.user("hello"))
         val handler = StreamChunkHandler(model)

@@ -216,32 +216,34 @@ class RemoteScreenVM(
     val framesDrawn = java.util.concurrent.atomic.AtomicLong()
 
     private val _hostId = MutableStateFlow<String?>(null)
+    /** The key control is arbitrated under: the host's id, or a partner's own computer's (see spaceControlKey). */
+    private val _controlKey = MutableStateFlow<String?>(null)
 
     /**
      * Who drives this machine's desktop. Any input from this page makes the user the controller,
      * which stops the partner's computer actions until [handBackToPartner] or the page closes.
      */
-    val controller: StateFlow<RemoteController> = combine(_hostId, control.states) { hostId, states ->
-        hostId?.let { states[it] } ?: RemoteController.IDLE
+    val controller: StateFlow<RemoteController> = combine(_controlKey, control.states) { key, states ->
+        key?.let { states[it] } ?: RemoteController.IDLE
     }.stateIn(viewModelScope, SharingStarted.Eagerly, RemoteController.IDLE)
 
     /** The partner turn holding this desktop, from its first action until its reply ends; null when none. */
-    val holder: StateFlow<ComputerHolder?> = combine(_hostId, control.holders) { hostId, holders -> hostId?.let { holders[it] } }
+    val holder: StateFlow<ComputerHolder?> = combine(_controlKey, control.holders) { key, holders -> key?.let { holders[it] } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** The partner tried to act while the user held this desktop and is waiting for it back. */
-    val partnerWaiting: StateFlow<Boolean> = combine(_hostId, control.waiting) { hostId, waiting -> hostId in waiting }
+    val partnerWaiting: StateFlow<Boolean> = combine(_controlKey, control.waiting) { key, waiting -> key in waiting }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun handBackToPartner() {
-        _hostId.value?.let(control::userHandsBack)
+        _controlKey.value?.let(control::userHandsBack)
     }
 
     /** The user touched the screen: take the desktop now, before a tap or drag sends any input. */
     fun takeControl() = userInput()
 
     private fun userInput() {
-        _hostId.value?.let { if (control.controller(it) != RemoteController.USER) control.userTakesOver(it) }
+        _controlKey.value?.let { if (control.controller(it) != RemoteController.USER) control.userTakesOver(it) }
     }
 
     private val _platform = MutableStateFlow(RemoteScreenPlatform.UNKNOWN)
@@ -480,7 +482,7 @@ class RemoteScreenVM(
         val session = connection?.session ?: return
         when (session.protocol) {
             RemoteDesktopProtocol.VNC -> session.setMaxFps(vncFps(quality))
-            RemoteDesktopProtocol.STREAM -> reconnect()
+            RemoteDesktopProtocol.STREAM, RemoteDesktopProtocol.SPACE -> reconnect()
             RemoteDesktopProtocol.RDP -> Unit
         }
     }
@@ -637,6 +639,7 @@ class RemoteScreenVM(
                 )
                 connection = opened
                 _hostId.value = opened.hostId
+                _controlKey.value = opened.controlKey
                 _platform.value = opened.platform
                 prepareTyping()
                 opened.streamFallback?.let { _notices.tryEmit(RemoteScreenNotice.StreamFallback(it)) }
@@ -658,7 +661,8 @@ class RemoteScreenVM(
                             kotlinx.coroutines.delay(1_000)
                         }
                     }
-                    if (metered && !hints.getBoolean(METERED_STREAM_KEY, false)) {
+                    // The hint quotes high-performance mode's data use; a partner's own computer is not that.
+                    if (metered && opened.session.protocol == RemoteDesktopProtocol.STREAM && !hints.getBoolean(METERED_STREAM_KEY, false)) {
                         hints.edit().putBoolean(METERED_STREAM_KEY, true).apply()
                         _notices.tryEmit(RemoteScreenNotice.StreamOnMeteredNetwork(_quality.value, _custom.value))
                     }

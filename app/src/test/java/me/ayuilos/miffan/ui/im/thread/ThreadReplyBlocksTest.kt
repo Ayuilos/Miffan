@@ -1,7 +1,13 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import me.rerere.ai.ui.ToolApprovalRecord
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolDecision
+import me.rerere.ai.ui.ToolDecisionVia
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
+import me.ayuilos.miffan.data.ai.tools.SPACE_HANDOFF_TOOL
+import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -34,19 +40,43 @@ class ThreadReplyBlocksTest {
     }
 
     @Test
-    fun hiddenStepsDoNotSplitAComputerRun() {
+    fun aReplyHasOneComputerCardWhereverItsActionsHappened() {
         val parts = listOf(tool("computer_click", "a"), tool("search_web", "s"), tool("computer_click", "b"))
         assertEquals(listOf("computer:a,b"), threadReplyBlocks(parts, recordSteps = false).shape())
-        assertEquals(listOf("computer:a", "steps:s", "computer:b"), threadReplyBlocks(parts, recordSteps = true).shape())
+        assertEquals(listOf("computer:a,b", "steps:s"), threadReplyBlocks(parts, recordSteps = true).shape())
+        val spoken = listOf(tool("computer_click", "a"), UIMessagePart.Text("再试一次"), tool("computer_click", "b"))
+        assertEquals(listOf("computer:a,b", "再试一次"), threadReplyBlocks(spoken, recordSteps = false).shape())
     }
 
     @Test
-    fun promptsStayInPlaceAndDeclinedActionsLeaveNoCard() {
+    fun theOwnersQuestionsAndAnswersAllJoinTheComputerCard() {
+        val allowed = tool("computer_click", "allowed").copy(
+            approvalState = ToolApprovalState.Approved,
+            approvalRecord = ToolApprovalRecord(decidedAt = 1, decision = ToolDecision.ALLOWED, via = ToolDecisionVia.CARD))
+        val declined = tool("computer_click", "denied", ToolApprovalState.Denied("no")).copy(
+            approvalRecord = ToolApprovalRecord(decidedAt = 2, decision = ToolDecision.DECLINED, via = ToolDecisionVia.CARD))
         val blocks = threadReplyBlocks(listOf(
             tool("computer_click", "a"),
             tool("computer_type_text", "pending", ToolApprovalState.Pending),
-            tool("computer_click", "denied", ToolApprovalState.Denied("no")),
+            allowed,
+            declined,
         ), recordSteps = false)
-        assertEquals(listOf("computer:a", "computer_type_text"), blocks.shape())
+        assertEquals(listOf("computer:a,pending,allowed,denied"), blocks.shape())
+    }
+
+    @Test
+    fun aDeclinedActionAloneLeavesNoCardOfItsOwn() {
+        val blocks = threadReplyBlocks(listOf(tool("computer_click", "denied", ToolApprovalState.Denied("no"))), recordSteps = false)
+        assertEquals(emptyList<String>(), blocks.shape())
+    }
+
+    @Test
+    fun handingAFileOverJoinsTheMiniBoxRecord() {
+        val space = WorkspaceToolTargetSnapshot("a", "r", "ws", null, WorkspaceEntity.KIND_SPACE, workspaceName = "box", remoteHostId = "h")
+        val handoff = UIMessagePart.Tool("give", SPACE_HANDOFF_TOOL, """{"path":"title.txt"}""",
+            listOf(UIMessagePart.Text("""{"computer":"Mac","copied":["~/Miffan Partners/x/title.txt"]}""")))
+        val blocks = threadReplyBlocks(listOf(tool("workspace_shell", "run").copy(workspaceTarget = space), handoff,
+            UIMessagePart.Text("好了")), recordSteps = true)
+        assertEquals(listOf("computer:run,give", "好了"), blocks.shape())
     }
 }

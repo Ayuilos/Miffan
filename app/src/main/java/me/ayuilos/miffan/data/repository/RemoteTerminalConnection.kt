@@ -4,11 +4,11 @@ import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
-import me.rerere.workspace.RemoteTerminalSession
+import me.rerere.workspace.RemoteTerminal
 
 /** One manually opened terminal, permanently bound to the SSH identity used at connection time. */
 class RemoteTerminalConnection internal constructor(
-    private val terminal: RemoteTerminalSession,
+    private val terminal: RemoteTerminal,
     private val onClose: () -> Unit,
 ) : Closeable {
     private val closed = AtomicBoolean(false)

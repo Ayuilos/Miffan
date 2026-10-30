@@ -98,6 +98,8 @@ internal fun ImListRow(
     supportingColor: Color = Color.Unspecified,
     /** Lines an icon-less row up with the text of rows that have one, e.g. a sub-item. */
     indent: Boolean = false,
+    /** A small mark in front of [supporting], in its own colour (e.g. a brand mark). */
+    supportingIcon: Pair<ImageVector, Color>? = null,
     trailing: (@Composable () -> Unit)? = if (onClick != null) {
         { Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     } else null,
@@ -123,8 +125,11 @@ internal fun ImListRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
             supporting?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    color = supportingColor.takeOrElse { colors.onSurfaceVariant })
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    supportingIcon?.let { (mark, tint) -> Icon(mark, null, Modifier.size(14.dp), tint = tint) }
+                    Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = supportingColor.takeOrElse { colors.onSurfaceVariant })
+                }
             }
         }
         trailing?.invoke()

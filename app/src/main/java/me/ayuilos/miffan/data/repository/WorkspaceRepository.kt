@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.repository
 
+import me.rerere.cuaspace.SpaceClient
 import android.content.res.Resources
 import me.ayuilos.miffan.R
 import android.os.Build
@@ -43,7 +44,9 @@ import me.rerere.workspace.tryRemoteAddresses
 import me.rerere.workspace.isRemoteKeyAuthenticationRefused
 import me.rerere.workspace.RemoteHostConfig
 import me.rerere.workspace.RemoteHostKey
-import me.rerere.workspace.RemoteTerminalSession
+import me.rerere.workspace.RemoteTerminal
+import me.rerere.workspace.RemoteWorkspaceFiles
+import me.rerere.workspace.SpaceWorkspaceFiles
 import me.rerere.workspace.RemoteWorkspaceSession
 import me.rerere.workspace.RemoteWorkspaceDirectoryException
 import me.rerere.workspace.RemoteFileTimeoutException
@@ -87,6 +90,7 @@ class WorkspaceRepository(
     private val sshKeyCredentialStore: SshKeyCredentialStore,
     private val workspaceStrings: Resources,
     private val sunshineUnpair: RemoteSunshineUnpair? = null,
+    private val cuaSpaces: CuaSpaceSessions? = null,
 ) {
     private val localWorkspaceCreator = LocalWorkspaceCreator(dao, manager)
     private val remoteRuntime = RemoteWorkspaceRuntimeTracker()
@@ -139,7 +143,7 @@ class WorkspaceRepository(
 
     private fun remoteIdentity(workspace: WorkspaceEntity, host: RemoteHostEntity) =
         RemoteConnectionIdentity(workspace.id, host.id, host.connectionRevision,
-            requireNotNull(workspace.remotePath))
+            requireNotNull(workspace.sshRoot))
 
     private suspend fun openLeasedConnection(
         identity: RemoteConnectionIdentity,
@@ -265,7 +269,7 @@ class WorkspaceRepository(
         if (!remoteConnections.mayPreconnect(id)) return null
         val workspace = dao.getById(id)?.takeIf { it.isRemote } ?: return null
         val host = hostDao.getById(workspace.remoteHostId ?: return null) ?: return null
-        val config = host.config(requireNotNull(workspace.remotePath))
+        val config = host.config(requireNotNull(workspace.sshRoot))
         return openLeasedConnection(remoteIdentity(workspace, host), config, explicit = false)
     }
 
@@ -275,7 +279,7 @@ class WorkspaceRepository(
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
             ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
         openLeasedConnection(remoteIdentity(workspace, host),
-            host.config(requireNotNull(workspace.remotePath))).close()
+            host.config(requireNotNull(workspace.sshRoot))).close()
     }
 
     fun disconnectRemoteWorkspace(id: String) {
@@ -677,6 +681,44 @@ class WorkspaceRepository(
         return home
     }
 
+    /**
+     * Runs the host helper's `space` command ([args] are fixed words and app-made Space names; any
+     * user text goes in [stdin]) on a fresh connection to the saved host [hostId].
+     */
+    suspend fun runSpaceHelper(
+        hostId: String,
+        args: List<String>,
+        stdin: ByteArray? = null,
+        timeoutMillis: Long = 60_000,
+    ): WorkspaceCommandResult {
+        require(args.isNotEmpty() && args.all { SPACE_HELPER_ARG.matches(it) }) { "Invalid Space helper arguments" }
+        val spaces = requireNotNull(cuaSpaces) { "cua Spaces are unavailable" }
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
+        return withSavedHostConnection(host, host.config()) { session ->
+            spaces.ensureHelper(session)
+            session.execute("\"\$HOME/.miffan/bin/miffan\" space ${args.joinToString(" ")}",
+                timeoutMillis = timeoutMillis, stdin = stdin?.inputStream())
+        }
+    }
+
+    /**
+     * Runs one fixed [command] on the saved host [hostId] in its own PTY, so the user can watch it and
+     * answer prompts such as sudo's password on the phone. Closing the terminal ends its SSH session.
+     */
+    suspend fun openHostCommandTerminal(hostId: String, command: String, columns: Int, rows: Int): RemoteTerminalConnection {
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
+        val session = connectSavedHost(host.id, host.config(), host.connectionRevision)
+        try {
+            val pty = runRemoteInterruptible {
+                session.openTerminal(columns, rows, me.rerere.workspace.RemoteTerminalCommandSpec(command, ""), false)
+            }
+            return RemoteTerminalConnection(pty) { session.close() }
+        } catch (error: Throwable) {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+            throw error
+        }
+    }
+
     /** Probe only: never records an address, platform, or trusted fingerprint. */
     suspend fun checkKeySignIn(host: String, port: Int, username: String, sshKeyId: String): KeySignInCheck {
         val authentication = loadVerifiedSshKey(sshKeyId)
@@ -848,6 +890,73 @@ class WorkspaceRepository(
         }
     }
 
+    /** SPACE workspaces run their files and commands inside the cua Space, never on the host. */
+    private fun remoteFiles(workspace: WorkspaceEntity, session: RemoteWorkspaceSession): RemoteWorkspaceFiles =
+        if (workspace.isSpace) requireNotNull(cuaSpaces) { "cua Spaces are unavailable" }.files(workspace, session)
+        else session
+
+    /** Drops the Space's terminals and cached client, e.g. before the Space is reset. */
+    fun forgetSpaceConnection(id: String) {
+        closeRemoteTerminals(id)
+        cuaSpaces?.forget(id)
+    }
+
+    /** Runs [command] in a partner's own computer for the app itself (not a partner's tool call). */
+    suspend fun runInSpace(id: String, command: String, timeoutMillis: Long): WorkspaceCommandResult = withContext(Dispatchers.IO) {
+        val workspace = requireNotNull(dao.getById(id)?.takeIf { it.isSpace }) { "Not a partner's own computer" }
+        withRemoteWorkspace(workspace, recordOperation = false) { it.execute(command, "", timeoutMillis) }
+    }
+
+    /** The Space now goes online through [proxy]: a connection made without it is rebuilt on next use. */
+    fun useSpaceProxy(id: String, proxy: String?) {
+        cuaSpaces?.forgetUnlessProxy(id, proxy)
+    }
+
+    /**
+     * Records a partner's own computer: the cua Space [spaceName] already created on [hostId] by the
+     * helper. Its files live in the Space under [SpaceWorkspaceFiles.DEFAULT_ROOT].
+     */
+    suspend fun createSpaceWorkspace(
+        name: String,
+        hostId: String,
+        spaceName: String,
+        cpus: Int,
+        memoryMb: Int,
+        handoff: String,
+    ): WorkspaceEntity {
+        require(CuaSpaceSessions.SPACE_NAME.matches(spaceName)) { "Invalid Space name" }
+        requireNotNull(hostDao.getById(hostId)) { workspaceStrings.getString(R.string.workspace_remote_host_not_found) }
+        val now = System.currentTimeMillis()
+        return WorkspaceEntity(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            root = UUID.randomUUID().toString(), // local storage identity, never a remote path
+            shellStatus = WorkspaceShellStatus.READY.name,
+            createdAt = now,
+            updatedAt = now,
+            kind = WorkspaceEntity.KIND_SPACE,
+            remoteHostId = hostId,
+            remotePath = SpaceWorkspaceFiles.DEFAULT_ROOT,
+            spaceName = spaceName,
+            spaceCpus = cpus,
+            spaceMemoryMb = memoryMb,
+            spaceHandoff = handoff,
+        ).also { dao.upsert(it) }
+    }
+
+    /** Gives a Space made before handoff folders existed its folder; keeps one it already has. */
+    suspend fun setSpaceHandoffIfMissing(id: String, handoff: String): String? {
+        val workspace = dao.getById(id)?.takeIf { it.isSpace } ?: return null
+        workspace.spaceHandoff?.let { return it }
+        dao.upsert(workspace.copy(spaceHandoff = handoff, updatedAt = System.currentTimeMillis()))
+        return handoff
+    }
+
+    suspend fun updateSpaceSize(id: String, cpus: Int, memoryMb: Int) {
+        val workspace = dao.getById(id)?.takeIf { it.isSpace } ?: return
+        dao.upsert(workspace.copy(spaceCpus = cpus, spaceMemoryMb = memoryMb, updatedAt = System.currentTimeMillis()))
+    }
+
     private fun authType(authentication: RemoteAuthentication): String = when (authentication) {
         is RemoteAuthentication.Password -> "PASSWORD"
         is RemoteAuthentication.PrivateKey -> "PRIVATE_KEY"
@@ -924,7 +1033,7 @@ class WorkspaceRepository(
         workspace: WorkspaceEntity,
         expectedTarget: WorkspaceToolTargetSnapshot? = null,
         recordOperation: Boolean = true,
-        block: (RemoteWorkspaceSession) -> T,
+        block: (RemoteWorkspaceFiles) -> T,
     ): T {
         validateLoadedWorkspace(expectedTarget, workspace)
         val hostId = requireNotNull(workspace.remoteHostId)
@@ -940,7 +1049,7 @@ class WorkspaceRepository(
             }
             validateWorkspaceToolTarget(expectedTarget, workspace.id)
             val config = try {
-                host.config(requireNotNull(workspace.remotePath))
+                host.config(requireNotNull(workspace.sshRoot))
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -958,7 +1067,7 @@ class WorkspaceRepository(
             val opened = openLeasedConnection(remoteIdentity(workspace, host), config,
                 verifyPath = false)
                 .also { lease = it }.session
-            if (opened.resolvedRoot != workspace.remotePath) {
+            if (opened.resolvedRoot != workspace.sshRoot) {
                 remoteRuntime.directoryFailed(hostId, workspace.id, workspaceStrings.getString(R.string.workspace_remote_directory_changed), revision)
                 stage = RemoteConnectionStage.FINISHED
                 throw WorkspaceToolTargetChangedException()
@@ -970,7 +1079,7 @@ class WorkspaceRepository(
                     it.isRemote && it.remoteHostId == hostId && it.remotePath == workspace.remotePath
                 } != true) throw WorkspaceToolTargetChangedException()
             validateWorkspaceToolTarget(expectedTarget, workspace.id)
-            val result = runRemoteOperation(opened) { block(opened) }
+            val result = runRemoteOperation(opened) { block(remoteFiles(workspace, opened)) }
             if (!recordOperation) {
                 return result
             }
@@ -1061,7 +1170,7 @@ class WorkspaceRepository(
         require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
         val hostId = requireNotNull(workspace.remoteHostId)
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
-        if (!host.supportsInteractiveTerminal) throw me.rerere.workspace.RemoteTerminalUnsupportedException()
+        if (!workspace.isSpace && !host.supportsInteractiveTerminal) throw me.rerere.workspace.RemoteTerminalUnsupportedException()
         val revision = host.connectionRevision
         if ((expectedHostId != null && expectedHostId != hostId) ||
             (expectedHostRevision != null && expectedHostRevision != revision) ||
@@ -1069,12 +1178,12 @@ class WorkspaceRepository(
         ) throw WorkspaceToolTargetChangedException()
         remoteRuntime.begin(hostId, id, revision)
         var lease: RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>.Lease? = null
-        var terminal: RemoteTerminalSession? = null
+        var terminal: RemoteTerminal? = null
         var handedOff = false
         var classified = false
         try {
             val config = try {
-                host.config(requireNotNull(workspace.remotePath))
+                host.config(requireNotNull(workspace.sshRoot))
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1087,13 +1196,13 @@ class WorkspaceRepository(
             val opened = openLeasedConnection(remoteIdentity(workspace, host), config,
                 verifyPath = false)
                 .also { lease = it }.session
-            if (opened.resolvedRoot != workspace.remotePath ||
+            if (opened.resolvedRoot != workspace.sshRoot ||
                 hostDao.getById(hostId)?.connectionRevision != revision ||
                 dao.getById(id)?.let { it.isRemote && it.remoteHostId == hostId && it.remotePath == workspace.remotePath } != true
             ) throw WorkspaceToolTargetChangedException()
             validateWorkspaceToolTarget(expectedTarget, id, requireShell = command != null || persistentCommands)
             val pty = runRemoteOperation(opened) {
-                opened.openTerminal(columns, rows, command, persistentCommands).also { terminal = it }
+                remoteFiles(workspace, opened).openTerminal(columns, rows, command, persistentCommands).also { terminal = it }
             }
             currentCoroutineContext().ensureActive()
             // Metadata may change during the PTY handshake; never hand off an unexpected target.
@@ -1147,9 +1256,28 @@ class WorkspaceRepository(
     suspend fun <T : Closeable> openLeasedRemote(
         id: String,
         open: (RemoteWorkspaceSession) -> T,
+    ): LeasedRemote<T> = openLeased(id, space = false) { _, ssh -> open(ssh) }
+
+    /**
+     * Like [openLeasedRemote], for a resource of a partner's own computer: [open] gets the Space's client
+     * over the host's SSH session (e.g. the Space's own desktop).
+     */
+    suspend fun <T : Closeable> openLeasedSpace(
+        id: String,
+        open: (SpaceClient) -> T,
+    ): LeasedRemote<T> = openLeased(id, space = true) { workspace, ssh ->
+        open(requireNotNull(cuaSpaces) { "cua Spaces are unavailable" }.client(workspace, ssh))
+    }
+
+    private suspend fun <T : Closeable> openLeased(
+        id: String,
+        space: Boolean,
+        open: (WorkspaceEntity, RemoteWorkspaceSession) -> T,
     ): LeasedRemote<T> {
         val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_not_found))
         require(workspace.isRemote) { workspaceStrings.getString(R.string.workspace_remote_required) }
+        // Host resources (its desktop streams, cua-driver) are not a Space's, and a Space's are not the host's.
+        require(workspace.isSpace == space) { "Host resources are not available to a partner's own computer" }
         val hostId = requireNotNull(workspace.remoteHostId)
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
         val revision = host.connectionRevision
@@ -1160,7 +1288,7 @@ class WorkspaceRepository(
         var classified = false
         try {
             val config = try {
-                host.config(requireNotNull(workspace.remotePath))
+                host.config(requireNotNull(workspace.sshRoot))
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1172,10 +1300,10 @@ class WorkspaceRepository(
             }
             val opened = openLeasedConnection(remoteIdentity(workspace, host), config, verifyPath = false)
                 .also { lease = it }.session
-            if (opened.resolvedRoot != workspace.remotePath ||
+            if (opened.resolvedRoot != workspace.sshRoot ||
                 hostDao.getById(hostId)?.connectionRevision != revision
             ) throw WorkspaceToolTargetChangedException()
-            val value = runRemoteOperation(opened) { open(opened).also { resource = it } }
+            val value = runRemoteOperation(opened) { open(workspace, opened).also { resource = it } }
             currentCoroutineContext().ensureActive()
             if (hostDao.getById(hostId)?.connectionRevision != revision) throw WorkspaceToolTargetChangedException()
             remoteRuntime.connected(hostId, id, revision)
@@ -1450,13 +1578,15 @@ class WorkspaceRepository(
         fileName: String,
         inputStream: InputStream,
         scopeId: String? = null,
+        /** Remote workspaces only; a partner's own computer streams uploads, so it can take far more. */
+        maxBytes: Long = REMOTE_IMPORT_MAX_BYTES,
     ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error(workspaceStrings.getString(R.string.workspace_error_workspace_not_found, id))
         if (workspace.isRemote) {
             requireRemoteFilesArea(area)
             val target = if (destinationPath.isBlank()) fileName else "${destinationPath.trimEnd('/')}/$fileName"
             return@withContext withRemoteWorkspace(workspace) {
-                it.importFile(target, inputStream, overwrite = false)
+                it.importFile(target, inputStream, overwrite = false, maxBytes = maxBytes)
             }
         }
         val scope = WorkspaceScope.fromNullableId(scopeId)
@@ -1709,6 +1839,7 @@ class WorkspaceRepository(
         if (workspace.isRemote) {
             closeRemoteTerminals(id)
             remoteConnections.forget(id)
+            if (workspace.isSpace) cuaSpaces?.forget(id)
         }
         dao.deleteById(id)
         if (!workspace.isRemote) withContext(Dispatchers.IO) {
@@ -1756,5 +1887,8 @@ class WorkspaceRepository(
         private const val TAG = "WorkspaceRepository"
         private const val MAX_PREVIEW_BYTES = 512L * 1024
         private const val AUTH_MANAGED_KEY = "MANAGED_KEY"
+        private val SPACE_HELPER_ARG = Regex("[a-z0-9][a-z0-9-]{0,31}")
+        /** The remote files' own default import limit. */
+        const val REMOTE_IMPORT_MAX_BYTES = 32L * 1024 * 1024
     }
 }

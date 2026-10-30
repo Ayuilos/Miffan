@@ -436,7 +436,9 @@ class ChatService(
     private val computerControl: RemoteComputerControl? = null,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
-    private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
+    private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository) { workspaceId ->
+        getKoin().get<me.ayuilos.miffan.data.ai.computer.PartnerSpaces>().syncIn(workspaceId)
+    }
     private val miffanHelpClient = MiffanHelpClient(
         httpClient = httpClient,
         cacheFile = File(context.cacheDir, "miffan_help/resources.json"),
@@ -553,6 +555,10 @@ class ChatService(
 
     fun getProcessingStatusFlow(conversationId: Uuid): StateFlow<String?> {
         return getOrCreateSession(conversationId).processingStatus
+    }
+
+    fun getConnectedFlow(conversationId: Uuid): StateFlow<Boolean> {
+        return getOrCreateSession(conversationId).connected
     }
 
     fun getMessageQueueFlow(conversationId: Uuid): StateFlow<MessageQueueState> {
@@ -975,6 +981,8 @@ class ChatService(
         via: ToolDecisionVia,
         standingKey: String? = null,
         editedInput: JsonObject? = null,
+        /** Other pending calls of the same reply decided the same way in this one step. */
+        alsoIds: Set<String> = emptySet(),
     ): Job? {
         val session = getOrCreateSession(conversationId)
         val receiptId = terminalResultReceiptId(answer)
@@ -996,7 +1004,7 @@ class ChatService(
         val batchIds = if (standingKey != null) session.state.value.currentMessageNodes.lastOrNull()
             ?.currentMessage?.getTools().orEmpty()
             .filter { it.isPending && !it.isExecuted && standingApprovalKey(it.toolName) == standingKey }
-            .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId)
+            .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId) + alsoIds
         val hasOtherPendingTools = session.state.value.currentMessageNodes.any { node ->
             node.currentMessage.parts.any { part ->
                 part is UIMessagePart.Tool && part.isPending && part.toolCallId !in batchIds
@@ -1019,7 +1027,8 @@ class ChatService(
                 }
                 val approvedIds = if (standingKey != null) tip?.getTools().orEmpty()
                     .filter { it.isPending && !it.isExecuted && standingApprovalKey(it.toolName) == standingKey }
-                    .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId)
+                    .mapTo(HashSet()) { it.toolCallId } else setOf(toolCallId) +
+                    tip?.getTools().orEmpty().filter { it.toolCallId in alsoIds && it.isPending && !it.isExecuted }.map { it.toolCallId }
                 val newApprovalState = when {
                     answer != null -> ToolApprovalState.Answered(answer)
                     approved -> ToolApprovalState.Approved
@@ -1090,6 +1099,15 @@ class ChatService(
     }
 
     /** Persists an eligible pending call's standing grant and approves matching calls in this reply. */
+    /**
+     * Decides several pending calls of the latest reply at once. Each decision starts the turn's next step and cancels
+     * the one before it, so deciding them one by one in a row would lose all but the last.
+     */
+    fun handleToolApprovals(conversationId: Uuid, toolCallIds: List<String>, approved: Boolean, via: ToolDecisionVia = ToolDecisionVia.CARD) {
+        val first = toolCallIds.firstOrNull() ?: return
+        applyToolApproval(conversationId, first, approved, "", null, via, alsoIds = toolCallIds.drop(1).toSet())
+    }
+
     fun alwaysAllowTool(conversationId: Uuid, toolCallId: String) {
         val call = getOrCreateSession(conversationId).state.value.currentMessageNodes.lastOrNull()
             ?.currentMessage?.getTools()?.find { it.toolCallId == toolCallId && it.isPending && !it.isExecuted } ?: return
@@ -1263,6 +1281,7 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
+                connected = session.connected,
                 messages = generationMessages,
                 assistant = assistant,
                 conversationId = conversationId,
@@ -1372,6 +1391,8 @@ class ChatService(
                         )
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
+                    createSpaceNetworkToolIfReady(assistant, conversation.id.toString())?.let { add(it) }
+                    createSpaceHandoffToolIfReady(assistant, conversation.id.toString())?.let { add(it) }
                     createScheduleTaskToolIfReady(assistant, conversation.id)?.let { scheduleTool ->
                         add(scheduleTool)
                         createAgentToolsToolIfReady(assistant)?.let { add(it) }
@@ -1519,11 +1540,12 @@ class ChatService(
         )
     }
 
-    /** Workspaces of [chat]'s members whose computer they may operate: remote, with a screen set up. */
+    /** Workspaces of [chat]'s members whose computer they may operate: their own Space, or a host with a screen set up. */
     private suspend fun computerWorkspaces(chat: me.ayuilos.miffan.data.model.PartnerChat, settings: Settings): Set<Uuid> =
         chat.memberIds.mapNotNull { settings.getAssistantById(it)?.workspaceId }.toSet().filterTo(mutableSetOf()) { id ->
             val workspace = workspaceRepository.getById(id.toString())
-            workspace?.isRemote == true && workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled == true
+            workspace?.isRemote == true && (workspace.isSpace ||
+                workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled == true)
         }
 
     /**
@@ -1540,8 +1562,8 @@ class ChatService(
         val workspaceId = assistant.workspaceId?.toString() ?: return null
         val workspace = workspaceRepository.getById(workspaceId) ?: return null
         if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
-        // A host without a screen is a server, not a computer to operate.
-        if (workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled != true) return null
+        // A partner's own Space always has its desktop; a host without a screen is a server, not a computer to operate.
+        if (!workspace.isSpace && workspace.remoteHostId?.let { workspaceRepository.getHostById(it) }?.screenEnabled != true) return null
         val snapshot = workspaceRepository.currentWorkspaceToolTarget(
             assistant.id.toString(), workspaceId, assistant.workspaceScopeId?.toString(),
         )?.copy(conversationId = conversationId) ?: return null
@@ -1558,6 +1580,7 @@ class ChatService(
                     control = computerControl ?: getKoin().get(),
                     filesManager = getKoin().get(),
                     partnerName = assistant.name,
+                    snapshots = getKoin().get(),
                 )
             }
         }
@@ -1573,6 +1596,8 @@ class ChatService(
         val workspaceId = assistant.workspaceId?.toString() ?: return null
         val workspace = workspaceRepository.getById(workspaceId) ?: return null
         if (!workspace.isRemote || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        // Tasks run on the host by its system timer, outside the Space.
+        if (workspace.isSpace) return null
         val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
         if (host.trustedHostKeySha256 == null || partnerComputerUse(assistant, workspace) == ComputerUseMode.OFF) return null
         val repository = getKoin().get<me.ayuilos.miffan.data.remotetask.RemoteTaskRepository>()
@@ -1591,9 +1616,49 @@ class ChatService(
         )
     }
 
+    /**
+     * A partner's own computer on a Linux host can ask the owner to open its network; the fix (ufw) is a
+     * Linux one, and a Mac host's Spaces share cua's VM network instead.
+     */
+    private suspend fun createSpaceNetworkToolIfReady(assistant: Assistant, conversationId: String): Tool? {
+        val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        if (!workspace.isSpace || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        if (partnerComputerUse(assistant, workspace) == ComputerUseMode.OFF) return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        if (host.screenPlatform == "macos") return null
+        return me.ayuilos.miffan.data.ai.tools.createSpaceNetworkTool(
+            workspaceId = workspace.id,
+            computerName = host.name,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspace.id, assistant.workspaceScopeId?.toString(),
+            )?.copy(conversationId = conversationId),
+            spaces = getKoin().get(),
+        )
+    }
+
+    /** A partner's own computer hands files to the owner through its handoff folder on the host. */
+    private suspend fun createSpaceHandoffToolIfReady(assistant: Assistant, conversationId: String): Tool? {
+        val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        if (!workspace.isSpace || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
+        val spaces = getKoin().get<me.ayuilos.miffan.data.ai.computer.PartnerSpaces>()
+        // Before the reminder reads it: a Space made before handoff folders gets its folder here.
+        val folder = runCatching { spaces.handoffFolder(workspace.id, assistant.name) }.getOrNull() ?: return null
+        val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
+        return me.ayuilos.miffan.data.ai.tools.createSpaceHandoffTool(
+            workspaceId = workspace.id,
+            computerName = host.name,
+            handoffFolder = folder,
+            snapshot = workspaceRepository.currentWorkspaceToolTarget(
+                assistant.id.toString(), workspace.id, assistant.workspaceScopeId?.toString(),
+            )?.copy(conversationId = conversationId),
+            spaces = spaces,
+        )
+    }
+
     /** Only alongside [createScheduleTaskToolIfReady], and never for Windows computers (no tasks there yet). */
     private suspend fun createAgentToolsToolIfReady(assistant: Assistant): Tool? {
         val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
+        if (workspace.isSpace) return null
         val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
         if (me.rerere.workspace.RemotePlatform.parse(host.platform) == me.rerere.workspace.RemotePlatform.WINDOWS) return null
         return me.ayuilos.miffan.data.ai.tools.createAgentToolsTool(

@@ -29,7 +29,13 @@ import me.ayuilos.miffan.data.ai.computer.ComputerStatusRecord
 import me.ayuilos.miffan.data.ai.computer.ComputerStatusStore
 import me.ayuilos.miffan.data.ai.computer.CuaUpdateState
 import me.ayuilos.miffan.data.ai.computer.CuaUpdates
+import me.ayuilos.miffan.data.ai.computer.CuaSpaceProbe
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
+import me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup
+import me.ayuilos.miffan.data.ai.computer.PartnerSpaces
+import me.ayuilos.miffan.data.ai.computer.SpaceCapacity
+import me.ayuilos.miffan.data.ai.computer.SpaceSetupJob
+import me.ayuilos.miffan.data.ai.computer.SpaceTier
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerControl
 import me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry
 import me.ayuilos.miffan.data.datastore.SettingsStore
@@ -80,6 +86,15 @@ enum class ComputerSetupStep {
     READY,
     /** Who gets the computer, under the live screen. */
     SHARE,
+    /** Whether the partners use the computer's own desktop or get their own computer (a cua Space) on it. */
+    HOW,
+    /** cua is missing, or the computer cannot run Spaces yet: what to install or fix first. */
+    SPACE_INSTALL,
+    /** The partners' own computers are being made; this goes on after the page closes. */
+    SPACE_PREPARE,
+    /** Their own computers are made but cannot reach the internet. */
+    SPACE_NETWORK,
+    SPACE_DONE,
     DONE,
 }
 
@@ -156,7 +171,27 @@ data class ComputerSetupState(
     val unreachable: Boolean = false,
     /** The computer's cua-driver release check; null before it ran or when the computer could not ask. */
     val updateCheck: RemoteCuaUpdateCheck? = null,
+    /** Partners picked on [ComputerSetupStep.SHARE], carried to [ComputerSetupStep.HOW]. */
+    val sharePartners: List<Uuid> = emptyList(),
+    /** [ComputerSetupStep.HOW]: give each partner its own computer (the default) rather than the desktop. */
+    val useSpace: Boolean = true,
+    /** What the computer offers for Spaces, from the helper. */
+    val spaceProbe: CuaSpaceProbe? = null,
+    /** Memory already given to other partners' Spaces on this computer. */
+    val spaceUsedMemoryMb: Int = 0,
+    /** The size the user picked; null follows [recommendedTier]. */
+    val pickedTier: SpaceTier? = null,
+    /** The Linux family of the computer, read when Docker needs fixing; null when unknown or not read. */
+    val spaceFamily: LinuxFamily? = null,
+    /** Only mini boxes on this computer: its desktop is neither checked nor offered. */
+    val spaceOnly: Boolean = false,
 ) {
+    /** What this computer can give the new Spaces; null until the check ran or when it could not tell. */
+    val spaceCapacity: SpaceCapacity? get() = SpaceCapacity.from(spaceProbe?.host)
+    val recommendedTier: SpaceTier get() =
+        spaceCapacity?.recommend(spaceUsedMemoryMb, sharePartners.size) ?: SpaceTier.DEFAULT
+    val spaceTier: SpaceTier get() = pickedTier ?: recommendedTier
+
     val busy: Boolean get() = task != null
     /** The computer's system: what the check found, else what finding it suggested. */
     val system: NearbySystem get() = when (probe?.os) {
@@ -226,6 +261,11 @@ data class ComputerSetupArgs(
      * already set up, with updates offered, and no way on to sharing.
      */
     val status: Boolean = false,
+    /**
+     * Give [assistantId] a mini box on the saved computer [hostId]: once connected, straight to choosing its
+     * size, past the desktop's checks (a mini box needs none of them).
+     */
+    val space: Boolean = false,
 )
 
 /**
@@ -244,6 +284,8 @@ class ComputerSetupVM(
     private val cuaUpdates: CuaUpdates,
     private val statuses: ComputerStatusStore,
     private val control: RemoteComputerControl,
+    private val spaces: PartnerSpaces,
+    private val spaceSetup: PartnerSpaceSetup,
 ) : ViewModel() {
     /** The partner this setup is for; null when opened from "my computers". */
     val assistantId: Uuid? get() = args.assistantId
@@ -396,7 +438,12 @@ class ComputerSetupVM(
     fun back(): Boolean {
         val state = _state.value
         if (state.busy || state.history.isEmpty()) return false
-        _state.update { it.copy(step = it.history.last(), history = it.history.dropLast(1), error = null, keyRefused = false, unreachable = false) }
+        _state.update {
+            val step = it.history.last()
+            // Back at the checks, the desktop is on offer again.
+            it.copy(step = step, history = it.history.dropLast(1), error = null, keyRefused = false, unreachable = false,
+                spaceOnly = it.spaceOnly && step != ComputerSetupStep.READY)
+        }
         return true
     }
 
@@ -670,6 +717,13 @@ class ComputerSetupVM(
                 target = host?.target() ?: it.target, wantsScreen = it.wantsScreen ?: true.takeIf { host?.screenEnabled == true })
         }
         probe()
+        val partner = args.assistantId
+        if (args.space && partner != null && hostId == args.hostId && _state.value.probe != null) {
+            _state.update { it.copy(spaceOnly = true, useSpace = true) }
+            showHow(setOf(partner))
+            // Back from choosing leaves the setup: the user came for the mini box only.
+            _state.update { it.copy(history = emptyList()) }
+        }
     }
 
     /**
@@ -797,6 +851,17 @@ class ComputerSetupVM(
         }
     }
 
+    /**
+     * From [ComputerSetupStep.READY] before the desktop is ready: the user wants mini boxes only, which need
+     * none of its checks. On to the partners (or, for one partner, how), leaving the screen settings as they are.
+     */
+    fun onlySpaces() {
+        if (_state.value.busy) return
+        _state.update { it.copy(spaceOnly = true, useSpace = true) }
+        val partner = args.assistantId
+        if (partner != null) showHow(setOf(partner)) else go(ComputerSetupStep.SHARE)
+    }
+
     /** Leaves [ComputerSetupStep.READY] once everything is in place. */
     fun continueToShare() = run(ComputerSetupTask.SAVING) {
         check(_state.value.ready) { "The computer is not ready yet" }
@@ -855,6 +920,118 @@ class ComputerSetupVM(
         partnerComputers.bind(requireNotNull(_state.value.hostId), assistantIds)
         _state.update { it.copy(step = ComputerSetupStep.DONE, history = emptyList()) }
     }
+
+    // ---- A partner's own computer ----
+
+    /** The Space run on this computer, if one was started (here or earlier). */
+    val spaceJob: StateFlow<SpaceSetupJob?> = combine(spaceSetup.jobs, _state) { jobs, state -> state.hostId?.let(jobs::get) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    init {
+        // The run moves the screens on: to the network fix or to done.
+        viewModelScope.launch {
+            spaceJob.collect { job ->
+                val step = _state.value.step
+                if (job == null || job.stage != SpaceSetupJob.Stage.DONE) return@collect
+                if (step == ComputerSetupStep.SPACE_PREPARE || step == ComputerSetupStep.SPACE_NETWORK) {
+                    _state.update {
+                        it.copy(step = if (job.online) ComputerSetupStep.SPACE_DONE else ComputerSetupStep.SPACE_NETWORK,
+                            history = emptyList(), error = null)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * After picking partners: a Mac or Linux computer asks how they use it; on Windows (no Spaces yet)
+     * or with nobody picked, the choice is the desktop.
+     */
+    fun share(assistantIds: Set<Uuid>) {
+        if (_state.value.busy) return
+        if (assistantIds.isEmpty() || _state.value.isWindows) {
+            bind(assistantIds)
+            return
+        }
+        showHow(assistantIds)
+    }
+
+    private fun showHow(assistantIds: Set<Uuid>) {
+        go(ComputerSetupStep.HOW) { it.copy(sharePartners = assistantIds.toList()) }
+        // The size line on the Space option needs the host's size; the choice itself never waits for it.
+        viewModelScope.launch {
+            val hostId = _state.value.hostId ?: return@launch
+            val probe = runCatching { spaces.probe(hostId) }.getOrNull() ?: return@launch
+            val used = runCatching { spaces.usedMemoryMb(hostId) }.getOrDefault(0)
+            _state.update { it.copy(spaceProbe = probe, spaceUsedMemoryMb = used) }
+        }
+    }
+
+    fun pickTier(tier: SpaceTier) = _state.update { it.copy(pickedTier = tier) }
+
+    fun chooseSpace(useSpace: Boolean) = _state.update { it.copy(useSpace = useSpace) }
+
+    /** [ComputerSetupStep.HOW]'s main action: bind to the desktop, or check the computer for Spaces. */
+    fun continueHow() {
+        val state = _state.value
+        if (!state.useSpace) {
+            bind(state.sharePartners.toSet())
+            return
+        }
+        run(ComputerSetupTask.PREPARING) {
+            val probe = spaces.probe(requireNotNull(state.hostId))
+            val family = if (probe.docker?.ok == false) readLinuxFamily() else null
+            _state.update { it.copy(spaceProbe = probe, spaceFamily = family ?: it.spaceFamily) }
+            if (probe.cuaInstalled && probe.docker?.ok != false) startSpaces() else go(ComputerSetupStep.SPACE_INSTALL)
+        }
+    }
+
+    /** `ID` and `ID_LIKE` of the computer's /etc/os-release (a read, nothing is changed); null when it cannot be read. */
+    private suspend fun readLinuxFamily(): LinuxFamily? {
+        val workspaceId = _state.value.workspaceId ?: return null
+        val result = runCatching {
+            workspaces.executeCommand(workspaceId, "sed -n '/^ID=/p;/^ID_LIKE=/p' /etc/os-release", timeoutMillis = 10_000)
+        }.getOrNull() ?: return null
+        return if (result.exitCode == 0 && !result.timedOut) linuxFamily(result.stdout) else null
+    }
+
+    /** Installs cua on the computer (the user confirmed on [ComputerSetupStep.SPACE_INSTALL]), then goes on. */
+    fun installCua() = run(ComputerSetupTask.INSTALLING) {
+        val hostId = requireNotNull(_state.value.hostId)
+        if (_state.value.spaceProbe?.cuaInstalled != true) spaces.install(hostId)
+        val probe = spaces.probe(hostId)
+        _state.update { it.copy(spaceProbe = probe) }
+        if (probe.cuaInstalled && probe.docker?.ok != false) startSpaces()
+    }
+
+    /** Checks again after the user fixed something on the computer (Docker) themselves. */
+    fun recheckSpaces() = run(ComputerSetupTask.PREPARING) {
+        val probe = spaces.probe(requireNotNull(_state.value.hostId))
+        _state.update { it.copy(spaceProbe = probe) }
+        if (probe.cuaInstalled && probe.docker?.ok != false) startSpaces()
+    }
+
+    private fun startSpaces() {
+        val state = _state.value
+        spaceSetup.start(requireNotNull(state.hostId), state.sharePartners, state.spaceTier)
+        // No way back into a run that is under way.
+        _state.update { it.copy(step = ComputerSetupStep.SPACE_PREPARE, history = emptyList(), error = null) }
+    }
+
+    /** A failed run: try the partners that have no computer yet again. */
+    fun retrySpaces() {
+        val state = _state.value
+        val job = spaceJob.value ?: return
+        spaceSetup.start(requireNotNull(state.hostId), job.partnerIds.filter { it !in job.created }, job.tier)
+    }
+
+    fun recheckNetwork() {
+        _state.value.hostId?.let(spaceSetup::recheckNetwork)
+    }
+
+    /** Go on without the internet for now; the computer's page can check again later. */
+    fun skipNetwork() = _state.update { it.copy(step = ComputerSetupStep.SPACE_DONE, history = emptyList(), error = null) }
 
     // ---- Addresses ----
 

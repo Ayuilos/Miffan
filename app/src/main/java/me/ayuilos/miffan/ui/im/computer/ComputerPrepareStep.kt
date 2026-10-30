@@ -6,6 +6,7 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.rdpServer
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.usesRdp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +37,7 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteSunshinePerm
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteScreenSetupError
 import androidx.compose.ui.platform.LocalResources
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.InformationCircle
 
 private const val QUIET_RECHECK_INTERVAL_MS = 5_000L
@@ -164,6 +166,21 @@ internal fun ComputerReadyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
             OptionalRows(vm, state, stream, enablingStream = enablingStream, onEnableStream = { enablingStream = true })
         }
         if (!state.ready) SetupNote(HugeIcons.InformationCircle, stringResource(R.string.im_computer_auto_recheck))
+        // A mini box needs none of the desktop's checks; Windows has no mini boxes yet.
+        if (!statusPage && probe != null && !state.ready && state.usesScreen && !state.isWindows) {
+            Surface(onClick = vm::onlySpaces, enabled = !state.busy, shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(stringResource(R.string.im_computer_ready_box_only), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.im_computer_ready_box_only_help), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(HugeIcons.ArrowRight01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
     }
     if (enablingStream && stream != null) {
         RemoteStreamEnableFlow(stream, onStart = vm::startSunshine, onEnforce = vm::enforceStreamEncryption, onPair = vm::pairStream,

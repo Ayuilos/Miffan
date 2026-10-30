@@ -19,8 +19,10 @@
 #                           macOS: press a Mission Control shortcut that streamed keys cannot reach
 #   miffan task probe|which|stage|commit|list|remove|enable|disable|run|sync|log|exec
 #                           scheduled tasks run by the system timer (JSON on stdout)
+#   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
+#                           a partner's own cua Space on this computer (JSON on stdout)
 
-MIFFAN_HELPER_VERSION=23
+MIFFAN_HELPER_VERSION=32
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1843,6 +1845,919 @@ task() {
     esac
 }
 
+# --- Cua Spaces (a partner's own computer) ------------------------------------------------
+# Wraps the `cua` CLI. Every `space` command prints one JSON line on stdout; diagnostics go to
+# stderr and never carry the Space token.
+
+# On the Space's desktop, so it is in sight once its screen is shown.
+SPACE_HANDOFF_DIR=/home/cua/Desktop/Shared
+
+# {"error":code,"detail":text|null}, exit 1.
+space_fail() {
+    printf '{"error":%s,"detail":%s}\n' "$(json_str "$1")" "$(json_or_null "${2:-}")"
+    exit 1
+}
+
+# The last non-empty line of $1, as the human-readable detail of a failure.
+space_last_line() {
+    printf '%s\n' "$1" | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | tail -n 1
+}
+
+# Space names are app-generated.
+space_name_ok() {
+    printf '%s' "$1" | grep -Eq '^miffan-[0-9a-f]{8}$'
+}
+
+space_need_name() {
+    space_name_ok "${1:-}" || { printf '{"error":"bad_name","detail":null}\n'; exit 2; }
+}
+
+space_cua_path() {
+    for candidate in "$(command -v cua 2>/dev/null)" "$HOME/.local/bin/cua" /opt/homebrew/bin/cua /usr/local/bin/cua; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+space_cua_version() {
+    "$1" --version 2>/dev/null | head -n 1 | sed -n 's/.*[^0-9.]\([0-9][0-9]*\.[0-9][0-9.]*\).*/\1/p'
+}
+
+# The daemon and everything it spawns get the computer's proxy, but never for loopback: the
+# Space ports and the daemon itself live there.
+space_env() {
+    cua_proxy
+    export PATH="$HOME/.local/bin:$PATH" CUA_TELEMETRY=0
+    export NO_PROXY="127.0.0.1,localhost${NO_PROXY:+,$NO_PROXY}" no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
+}
+
+space_daemon_running() {
+    out=$("$SPACE_CUA" daemon status 2>&1) || return 1
+    printf '%s' "$out" | grep -q 'pid [0-9]'
+}
+
+space_daemon_ensure() {
+    space_daemon_running && return 0
+    err=$("$SPACE_CUA" daemon start 2>&1 >/dev/null) || space_fail daemon_failed "$(space_last_line "$err")"
+    tries=0
+    while [ "$tries" -lt 20 ]; do
+        space_daemon_running && return 0
+        sleep 1
+        tries=$((tries + 1))
+    done
+    space_fail daemon_failed "daemon did not start"
+}
+
+# Finds cua and makes sure its daemon runs.
+space_ready() {
+    SPACE_CUA=$(space_cua_path) || space_fail cua_missing
+    space_env
+    space_daemon_ensure
+}
+
+# running, stopped, ... or missing when cua does not know the Space or cannot report it.
+space_state() {
+    out=$("$SPACE_CUA" --json sb info "$1" 2>/dev/null) || { echo missing; return 0; }
+    st=$(printf '%s' "$out" | tr -d '\n\r' | grep -o '"state": *"[^"]*"' | head -n 1 | sed 's/.*: *"\(.*\)"/\1/')
+    echo "${st:-missing}"
+}
+
+space_port() {
+    "$SPACE_CUA" --json sb info "$1" 2>/dev/null | tr -d '\n\r' | grep -o '"env": *"[^"]*"' | head -n 1 | sed -n 's/.*:\([0-9][0-9]*\)"$/\1/p'
+}
+
+space_known() {
+    "$SPACE_CUA" --json sb ls 2>/dev/null | tr -d '\n\r' | grep -Eq "\"id\" *: *\"local:$1\""
+}
+
+# Waits until the Space runs and its loopback port is published (it changes on every start).
+space_wait_running() {
+    tries=0
+    limit=${MIFFAN_SPACE_WAIT:-90}
+    while [ "$tries" -lt "$limit" ]; do
+        if [ "$(space_state "$1")" = running ] && [ -n "$(space_port "$1")" ]; then return 0; fi
+        sleep 1
+        tries=$((tries + 1))
+    done
+    return 1
+}
+
+space_start_do() {
+    space_known "$1" || space_fail not_found
+    if [ "$(space_state "$1")" != running ]; then
+        err=$("$SPACE_CUA" spaces start "local:$1" 2>&1 >/dev/null) || space_fail start_failed "$(space_last_line "$err")"
+    fi
+    space_wait_running "$1" || space_fail start_failed "not running after start"
+}
+
+space_token() {
+    [ -r "$HOME/.cua/spaces-credentials.json" ] || return 1
+    tok=$(tr -d '\n\r ' < "$HOME/.cua/spaces-credentials.json" | sed -n 's/.*"local:'"$1"'":{[^}]*"token":"\([^"]*\)".*/\1/p')
+    [ -n "$tok" ] && printf '%s' "$tok"
+}
+
+# The cua-driver version inside the Space, from the MCP initialize reply; null when unreadable.
+# The token goes to curl through its config on stdin, not through argv.
+space_driver_version() {
+    tok=$(space_token "$1") || return 0
+    port=$(space_port "$1")
+    [ -n "$port" ] || return 0
+    printf 'header = "authorization: Bearer %s"\n' "$tok" |
+        curl -sS -m 5 --noproxy '*' -K - "http://127.0.0.1:$port/mcp" -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"miffan","version":"1"}}}' 2>/dev/null |
+        tr -d '\n\r' | grep -o '"serverInfo": *{[^}]*}' | grep -o '"version": *"[^"]*"' | head -n 1 | sed 's/.*: *"\(.*\)"/\1/'
+}
+
+space_disk_free_gb() {
+    df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 {print int($4 / 1048576)}'
+}
+
+space_docker_json() {
+    command -v docker >/dev/null 2>&1 || { printf '{"ok":false,"detail":"docker not installed"}'; return 0; }
+    if err=$(docker info --format '{{.ServerVersion}}' 2>&1 >/dev/null); then
+        printf '{"ok":true,"detail":null}'
+    else
+        printf '{"ok":false,"detail":%s}' "$(json_or_null "$(space_last_line "$err")")"
+    fi
+}
+
+space_list_json() {
+    ids=$("$SPACE_CUA" --json sb ls 2>/dev/null | tr -d '\n\r' | grep -o '"id": *"local:miffan-[0-9a-z]*"' | sed 's/.*"local:\(.*\)"/\1/')
+    sep=""
+    printf '['
+    for id in $ids; do
+        space_name_ok "$id" || continue
+        printf '%s{"id":"local:%s","state":%s}' "$sep" "$id" "$(json_str "$(space_state "$id")")"
+        sep=","
+    done
+    printf ']'
+}
+
+space_probe() {
+    path=""
+    version=""
+    running=false
+    spaces='[]'
+    if SPACE_CUA=$(space_cua_path); then
+        path=$SPACE_CUA
+        version=$(space_cua_version "$SPACE_CUA")
+        space_env
+        if space_daemon_running; then
+            running=true
+            spaces=$(space_list_json)
+        fi
+    fi
+    if [ "$(os)" = linux ]; then docker=$(space_docker_json); else docker=null; fi
+    printf '{"cua":{"path":%s,"version":%s},"daemon":{"running":%s},"docker":%s,"disk_free_gb":%s,"host":%s,"spaces":%s}\n' \
+        "$(json_or_null "$path")" "$(json_or_null "$version")" "$running" "$docker" "$(space_disk_free_gb)" "$(space_host_json)" "$spaces"
+}
+
+# This computer's CPUs and memory and, on macOS, the Linux VM cua runs every Space in (they all share it).
+space_host_json() {
+    if [ "$(os)" = macos ]; then
+        cpus=$(sysctl -n hw.ncpu 2>/dev/null)
+        mem=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1048576 ))
+        conf="$HOME/.cua/runtimes/linux/vm/cua/colima.yaml"
+        vcpu=$(sed -n 's/^cpu: *\([0-9][0-9]*\).*/\1/p' "$conf" 2>/dev/null | head -n 1)
+        vmem=$(sed -n 's/^memory: *\([0-9][0-9]*\).*/\1/p' "$conf" 2>/dev/null | head -n 1)
+        if [ -n "$vcpu" ] && [ -n "$vmem" ]; then runtime="{\"cpus\":$vcpu,\"memory_mb\":$((vmem * 1024))}"; else runtime=null; fi
+    else
+        cpus=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
+        mem=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
+        runtime=null
+    fi
+    printf '{"cpus":%s,"memory_mb":%s,"runtime":%s}' "${cpus:-null}" "${mem:-null}" "$runtime"
+}
+
+# Validated CPU count and memory (MiB) for a Space: $SPACE_CPUS and $SPACE_MEMORY, or bad_input.
+space_need_size() {
+    case "${1:-}" in ''|*[!0-9]*) space_fail bad_input "cpus" ;; esac
+    case "${2:-}" in ''|*[!0-9]*) space_fail bad_input "memory" ;; esac
+    { [ "$1" -ge 1 ] && [ "$1" -le 64 ]; } || space_fail bad_input "cpus"
+    { [ "$2" -ge 512 ] && [ "$2" -le 262144 ]; } || space_fail bad_input "memory"
+    SPACE_CPUS=$1
+    SPACE_MEMORY=$2
+}
+
+space_install() {
+    space_env
+    if ! SPACE_CUA=$(space_cua_path); then
+        script=$(mktemp "${TMPDIR:-/tmp}/miffan-cua-install.XXXXXX") || space_fail download_failed "no temp file"
+        if ! err=$(curl -fsSL --max-time 120 -o "$script" https://cua.ai/install.sh 2>&1); then
+            rm -f "$script"
+            space_fail download_failed "$(space_last_line "$err")"
+        fi
+        # The installer's output must not reach stdout, where the JSON line goes.
+        if ! sh "$script" --cli-only --yes --no-modify-path --no-onboarding >&2; then
+            rm -f "$script"
+            space_fail download_failed "the cua installer failed"
+        fi
+        rm -f "$script"
+        SPACE_CUA=$(space_cua_path) || space_fail download_failed "cua is still missing after the installer"
+    fi
+    space_daemon_ensure
+    printf '{"cua":{"path":%s,"version":%s},"daemon":{"running":true}}\n' \
+        "$(json_str "$SPACE_CUA")" "$(json_or_null "$(space_cua_version "$SPACE_CUA")")"
+}
+
+# Maps the text of a failed create to an error code.
+space_create_code() {
+    low=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
+    case "$low" in
+        *"no space left"*|*"not enough space"*|*"disk full"*|*"insufficient disk"*|*"disk space"*) echo disk_low ;;
+        *pull*|*download*|*proxy*|*"i/o timeout"*|*"tls handshake"*|*"dial tcp"*|*"no such host"*) echo download_failed ;;
+        *docker*) echo needs_docker ;;
+        *) echo create_failed ;;
+    esac
+}
+
+space_create_do() {
+    name=$1
+    if [ "$(os)" = linux ]; then
+        docker=$(space_docker_json)
+        case "$docker" in '{"ok":true'*) ;; *) space_fail needs_docker "$(printf '%s' "$docker" | sed -n 's/.*"detail":"\([^"]*\)".*/\1/p')" ;; esac
+    fi
+    free=$(space_disk_free_gb)
+    if [ -n "$free" ] && [ "$free" -lt 2 ]; then space_fail disk_low "${free} GB free"; fi
+    errfile=$(mktemp "${TMPDIR:-/tmp}/miffan-space.XXXXXX") || space_fail create_failed "no temp file"
+    out=$("$SPACE_CUA" spaces create linux --on local --kind container --runtime runc --name "$name" \
+        --cpus "$SPACE_CPUS" --memory-mb "$SPACE_MEMORY" --json 2>"$errfile")
+    status=$?
+    stderr_text=$(cat "$errfile")
+    rm -f "$errfile"
+    flat=$(printf '%s' "$out" | tr -d '\n\r')
+    msg=$(printf '%s' "$flat" | sed -n 's/.*"error": *"\([^"]*\)".*/\1/p' | head -n 1)
+    if [ "$status" -ne 0 ] || [ -n "$msg" ] || ! printf '%s' "$flat" | grep -Eq "\"id\" *: *\"local:$name\""; then
+        text="$msg"
+        [ -n "$text" ] || text=$(space_last_line "$stderr_text")
+        [ -n "$text" ] || text="cua spaces create failed"
+        space_fail "$(space_create_code "$msg $stderr_text")" "$text"
+    fi
+    space_wait_running "$name" || space_fail create_failed "not running after create"
+}
+
+space_create() {
+    space_create_do "$1"
+    printf '{"id":"local:%s","state":"running"}\n' "$1"
+}
+
+space_info() {
+    space_known "$1" || space_fail not_found
+    space_start_do "$1"
+    tok=$(space_token "$1") || space_fail not_found "no credentials for the Space"
+    port=$(space_port "$1")
+    proxy=$(space_share_ensure "$1")
+    printf '{"id":"local:%s","state":"running","port":%s,"token":%s,"driver_version":%s,"proxy":%s}\n' \
+        "$1" "$port" "$(json_str "$tok")" "$(json_or_null "$(space_driver_version "$1")")" "$(json_or_null "$proxy")"
+}
+
+space_start() {
+    space_start_do "$1"
+    printf '{"id":"local:%s","state":"running"}\n' "$1"
+}
+
+space_stop() {
+    space_known "$1" || space_fail not_found
+    err=$("$SPACE_CUA" spaces stop "local:$1" 2>&1 >/dev/null) || space_fail exec_failed "$(space_last_line "$err")"
+    st=$(space_state "$1")
+    case "$st" in running|missing) st=stopped ;; esac
+    printf '{"id":"local:%s","state":%s}\n' "$1" "$(json_str "$st")"
+}
+
+space_delete_do() {
+    space_known "$1" || space_fail not_found
+    err=$("$SPACE_CUA" spaces delete "local:$1" --force 2>&1 >/dev/null) || space_fail exec_failed "$(space_last_line "$err")"
+    ! space_known "$1" || space_fail exec_failed "the Space is still listed after delete"
+}
+
+space_delete() {
+    space_delete_do "$1"
+    space_share_forget "$1"
+    printf '{"id":"local:%s","deleted":true}\n' "$1"
+}
+
+space_reset() {
+    space_delete_do "$1"
+    space_create_do "$1"
+    # The new Space goes out the way the old one did.
+    if [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_net "$1"; then
+        space_share_start && space_share_configure "$1" "$(space_share_proxy)"
+    fi
+    printf '{"id":"local:%s","state":"running"}\n' "$1"
+}
+
+# Changes a running Space's CPUs and memory in place (files stay). Linux only: on macOS the Spaces live in
+# cua's own VM, where the app cannot reach their containers.
+space_resize() {
+    space_known "$1" || space_fail not_found
+    [ "$(os)" = linux ] || space_fail unsupported "resizing needs a Linux host"
+    err=$(docker update --cpus "$SPACE_CPUS" --memory "${SPACE_MEMORY}m" --memory-swap "${SPACE_MEMORY}m" "$1" 2>&1 >/dev/null) ||
+        space_fail exec_failed "$(space_last_line "$err")"
+    printf '{"id":"local:%s","cpus":%s,"memory_mb":%s}\n' "$1" "$SPACE_CPUS" "$SPACE_MEMORY"
+}
+
+# --- Network share (Linux) ---
+# A proxy on the host, listening only on a Space bridge's gateway, through which Spaces reach the internet
+# as the host does. Programs on the host (VPNs, transparent proxies such as v2rayA) often take over traffic
+# forwarded from containers in ways that never get out, while the host's own connections work; the share
+# makes the Space's connections the host's own. It refuses the host itself, loopback, link-local and other
+# containers on the bridge, so a Space reaches nothing on the host through it.
+
+SPACE_SHARE_DIR="$HOME/.miffan/netshare"
+SPACE_SHARE_PORT=${MIFFAN_SPACE_SHARE_PORT:-32190}
+
+space_share_relay_source() {
+    cat <<'PYEOF'
+import ipaddress, select, socket, subprocess, sys, threading, time, urllib.parse
+
+LISTEN, PORT = sys.argv[1], int(sys.argv[2])
+SUBNET = ipaddress.ip_network(sys.argv[3], strict=False)
+slots = threading.BoundedSemaphore(256)
+own, own_at = set(), 0.0
+
+def own_addresses():
+    global own, own_at
+    if time.time() - own_at > 30:
+        found = set()
+        try:
+            out = subprocess.run(['ip', '-o', 'addr'], capture_output=True, text=True, timeout=5).stdout
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) > 3:
+                    found.add(ipaddress.ip_interface(parts[3]).ip)
+        except Exception:
+            pass
+        own, own_at = found, time.time()
+    return own
+
+def allowed(text):
+    ip = ipaddress.ip_address(text.split('%')[0])
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return not (ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast
+                or ip in SUBNET or ip in own_addresses())
+
+def connect(host, port):
+    error = OSError('no address')
+    for family, kind, proto, _, address in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+        if not allowed(address[0]):
+            error = PermissionError('refused')
+            continue
+        upstream = socket.socket(family, kind, proto)
+        upstream.settimeout(15)
+        try:
+            upstream.connect(address)
+            upstream.settimeout(None)
+            return upstream
+        except OSError as failure:
+            error = failure
+            upstream.close()
+    raise error
+
+def pipe(a, b):
+    try:
+        while True:
+            ready, _, _ = select.select([a, b], [], [], 600)
+            if not ready:
+                return
+            for side in ready:
+                data = side.recv(65536)
+                if not data:
+                    return
+                (b if side is a else a).sendall(data)
+    except OSError:
+        pass
+
+def head(client):
+    data = b''
+    while b'\r\n\r\n' not in data:
+        chunk = client.recv(8192)
+        if not chunk or len(data) > 65536:
+            return None, b''
+        data += chunk
+    top, rest = data.split(b'\r\n\r\n', 1)
+    return top.decode('latin-1').split('\r\n'), rest
+
+def reply(client, status):
+    try:
+        client.sendall(('HTTP/1.1 %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n' % status).encode())
+    except OSError:
+        pass
+
+def serve(client, peer):
+    upstream = None
+    try:
+        if ipaddress.ip_address(peer[0].split('%')[0]) not in SUBNET:
+            return
+        client.settimeout(30)
+        lines, rest = head(client)
+        if not lines:
+            return
+        method, target, version = lines[0].split(' ', 2)
+        if method == 'CONNECT':
+            host, _, port = target.rpartition(':')
+            upstream = connect(host.strip('[]'), int(port))
+            client.sendall(b'HTTP/1.1 200 Connection established\r\n\r\n')
+        else:
+            url = urllib.parse.urlsplit(target)
+            if url.scheme != 'http' or not url.hostname:
+                return reply(client, '400 Bad Request')
+            upstream = connect(url.hostname, url.port or 80)
+            path = (url.path or '/') + ('?' + url.query if url.query else '')
+            kept = [line for line in lines[1:] if line.split(':', 1)[0].strip().lower()
+                    not in ('proxy-connection', 'proxy-authorization', 'connection', 'keep-alive')]
+            upstream.sendall(('%s %s %s\r\n' % (method, path, version) + ''.join(line + '\r\n' for line in kept)
+                              + 'Connection: close\r\n\r\n').encode('latin-1'))
+        if rest:
+            upstream.sendall(rest)
+        client.settimeout(None)
+        pipe(client, upstream)
+    except PermissionError:
+        reply(client, '403 Forbidden')
+    except (OSError, ValueError):
+        reply(client, '502 Bad Gateway')
+    finally:
+        client.close()
+        if upstream is not None:
+            upstream.close()
+        slots.release()
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind((LISTEN, PORT))
+server.listen(128)
+print('listening', flush=True)
+while True:
+    client, peer = server.accept()
+    if not slots.acquire(blocking=False):
+        client.close()
+        continue
+    threading.Thread(target=serve, args=(client, peer), daemon=True).start()
+PYEOF
+}
+
+# Sets SHARE_GW, SHARE_SUBNET and SHARE_IF (the bridge interface) for Space $1. Status 1 when unknown.
+space_share_net() {
+    line=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{$v.Gateway}} {{$v.IPAddress}}/{{$v.IPPrefixLen}}{{"\n"}}{{end}}' "$1" 2>/dev/null |
+        grep . | head -n 1)
+    net=${line%% *}
+    rest=${line#* }
+    SHARE_GW=${rest%% *}
+    SHARE_SUBNET=${rest#* }
+    printf '%s' "$SHARE_GW" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || return 1
+    printf '%s' "$SHARE_SUBNET" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$' || return 1
+    SHARE_IF=$(docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "$net" 2>/dev/null)
+    [ -n "$SHARE_IF" ] || SHARE_IF="br-$(docker network inspect -f '{{.Id}}' "$net" 2>/dev/null | cut -c1-12)"
+    printf '%s' "$SHARE_IF" | grep -Eq '^[A-Za-z0-9_.-]{1,15}$'
+}
+
+space_share_proxy() {
+    printf 'http://%s:%s' "$SHARE_GW" "$SPACE_SHARE_PORT"
+}
+
+space_share_running() {
+    pid=$(cat "$SPACE_SHARE_DIR/relay-$1.pid" 2>/dev/null) || return 1
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null || return 1
+    [ ! -r "/proc/$pid/cmdline" ] || tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q 'netshare/relay.py'
+}
+
+space_share_stop_all() {
+    for pidfile in "$SPACE_SHARE_DIR"/relay-*.pid; do
+        [ -f "$pidfile" ] || continue
+        gw=${pidfile##*/relay-}
+        gw=${gw%.pid}
+        space_share_running "$gw" && kill "$(cat "$pidfile")" 2>/dev/null
+        rm -f "$pidfile"
+    done
+}
+
+# Makes sure the share for SHARE_GW runs (a new helper's relay replaces the old one). Status 1, with the
+# reason in SHARE_ERROR, when it cannot.
+space_share_start() {
+    SHARE_ERROR=""
+    command -v python3 >/dev/null 2>&1 || { SHARE_ERROR="python3 is not installed"; return 1; }
+    mkdir -p "$SPACE_SHARE_DIR/spaces"
+    space_share_relay_source > "$SPACE_SHARE_DIR/relay.py.new"
+    if cmp -s "$SPACE_SHARE_DIR/relay.py.new" "$SPACE_SHARE_DIR/relay.py"; then
+        rm -f "$SPACE_SHARE_DIR/relay.py.new"
+    else
+        space_share_stop_all
+        mv "$SPACE_SHARE_DIR/relay.py.new" "$SPACE_SHARE_DIR/relay.py"
+    fi
+    space_share_running "$SHARE_GW" && return 0
+    log="$SPACE_SHARE_DIR/relay-$SHARE_GW.log"
+    : > "$log"
+    if command -v setsid >/dev/null 2>&1; then
+        setsid nohup python3 "$SPACE_SHARE_DIR/relay.py" "$SHARE_GW" "$SPACE_SHARE_PORT" "$SHARE_SUBNET" >"$log" 2>&1 </dev/null &
+    else
+        nohup python3 "$SPACE_SHARE_DIR/relay.py" "$SHARE_GW" "$SPACE_SHARE_PORT" "$SHARE_SUBNET" >"$log" 2>&1 </dev/null &
+    fi
+    echo "$!" > "$SPACE_SHARE_DIR/relay-$SHARE_GW.pid"
+    tries=0
+    while [ "$tries" -lt 30 ]; do
+        grep -q '^listening' "$log" 2>/dev/null && return 0
+        space_share_running "$SHARE_GW" || break
+        sleep 0.1
+        tries=$((tries + 1))
+    done
+    SHARE_ERROR=$(space_last_line "$(cat "$log" 2>/dev/null)")
+    [ -n "$SHARE_ERROR" ] || SHARE_ERROR="the network share did not start"
+    return 1
+}
+
+# Points Space $1's programs at proxy $2: login sessions, apt, sudo (which would drop the variables), and the
+# browsers by policy (desktop apps started by cua-driver never see /etc/environment). Firefox also skips its
+# first-run and terms pages, which would stand between a partner and the page it opened.
+space_share_configure() {
+    p=$2
+    hp=${p#http://}
+    script="set -e
+grep -viE '^(http|https|no)_proxy=' /etc/environment > /etc/environment.miffan || true
+printf '%s\n' http_proxy=$p https_proxy=$p HTTP_PROXY=$p HTTPS_PROXY=$p no_proxy=localhost,127.0.0.1,::1 NO_PROXY=localhost,127.0.0.1,::1 >> /etc/environment.miffan
+cat /etc/environment.miffan > /etc/environment
+rm -f /etc/environment.miffan
+mkdir -p /etc/apt/apt.conf.d
+printf 'Acquire::http::Proxy \"%s/\";\nAcquire::https::Proxy \"%s/\";\n' $p $p > /etc/apt/apt.conf.d/95miffan-proxy
+printf 'Defaults env_keep += \"http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY\"\n' > /etc/sudoers.d/miffan-proxy
+chmod 0440 /etc/sudoers.d/miffan-proxy
+mkdir -p /etc/firefox/policies /etc/chromium/policies/managed
+printf '%s\n' '{\"policies\":{\"Proxy\":{\"Mode\":\"manual\",\"HTTPProxy\":\"$hp\",\"UseHTTPProxyForAllProtocols\":true,\"Passthrough\":\"localhost, 127.0.0.1\"},\"DisableTelemetry\":true,\"SkipTermsOfUse\":true,\"OverrideFirstRunPage\":\"\",\"OverridePostUpdatePage\":\"\",\"DontCheckDefaultBrowser\":true}}' > /etc/firefox/policies/policies.json
+printf '%s\n' '{\"ProxyMode\":\"fixed_servers\",\"ProxyServer\":\"$hp\",\"ProxyBypassList\":\"localhost;127.0.0.1\"}' > /etc/chromium/policies/managed/miffan-proxy.json"
+    out=$("$SPACE_CUA" sb exec "$1" "sudo -n sh -c $(sh_quote "$script") && echo SHARECONF ok" 2>/dev/null)
+    case "$out" in *"SHARECONF ok"*) return 0 ;; esac
+    return 1
+}
+
+# A script for the Space that fetches the probe sites in parallel (curl options $1) and stops at the first
+# that answers: one slow or blocked site must not hold up the answer. Leaves h=1 on success, else the
+# failures in f.
+space_race_script() {
+    printf '%s' "t=\$(mktemp); p=''; for u in www.baidu.com www.cloudflare.com; do (curl -s -o /dev/null -m 5 --connect-timeout 3 $1 \"https://\$u\" && echo ok >> \"\$t\") >/dev/null 2>&1 & p=\"\$p \$!\"; done; while [ ! -s \"\$t\" ]; do a=0; for i in \$p; do kill -0 \$i 2>/dev/null && a=1; done; [ \$a = 1 ] || break; sleep 0.1; done; h=0; f=''; if [ -s \"\$t\" ]; then h=1; else f=' https:www.baidu.com https:www.cloudflare.com'; fi; kill \$p 2>/dev/null; rm -f \"\$t\";"
+}
+
+# Space $1 through the share at $2, in one round: SHARE_CONF (its settings are in place), SHARE_REACH (the
+# share answers) and SHARE_HTTPS, failures in SHARE_FAIL.
+space_share_check() {
+    script="c=0; grep -q '^https_proxy=$2\$' /etc/environment 2>/dev/null && [ -f /etc/apt/apt.conf.d/95miffan-proxy ] && grep -q '${2#http://}' /etc/firefox/policies/policies.json 2>/dev/null && c=1; r=0; h=0; f=''; code=\$(curl -s -o /dev/null -w '%{http_code}' -m 3 --connect-timeout 2 --noproxy '*' $2/ 2>/dev/null); case \"\$code\" in ''|000) f=' share:unreachable' ;; *) r=1 ;; esac; if [ \$r = 1 ]; then $(space_race_script "-x $2") fi; echo \"SHARECHECK conf=\$c reach=\$r https=\$h fail=\$f\""
+    line=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null | grep '^SHARECHECK ' | tail -n 1)
+    [ -n "$line" ] || line="SHARECHECK conf=0 reach=0 https=0 fail= check did not finish"
+    SHARE_CONF=false
+    SHARE_REACH=false
+    SHARE_HTTPS=false
+    case "$line" in *" conf=1 "*) SHARE_CONF=true ;; esac
+    case "$line" in *" reach=1 "*) SHARE_REACH=true ;; esac
+    case "$line" in *" https=1 "*) SHARE_HTTPS=true ;; esac
+    SHARE_FAIL=$(printf '%s' "$line" | sed -n 's/.* fail=//p' | sed 's/^ *//')
+}
+
+# Prints netcheck's JSON for Space $1 going out through the share: starts it, checks it, and (re)writes
+# the Space's proxy settings when they are missing (a new or reset Space).
+space_share_netcheck() {
+    if ! space_share_start; then
+        printf '{"dns":false,"https":false,"detail":%s,"hint":"share_failed","via":"share"}\n' "$(json_str "$SHARE_ERROR")"
+        return
+    fi
+    proxy=$(space_share_proxy)
+    space_share_check "$1" "$proxy"
+    if [ "$SHARE_CONF" = false ] && ! space_share_configure "$1" "$proxy"; then
+        printf '{"dns":false,"https":false,"detail":"could not set the proxy in the Space","hint":"share_failed","via":"share"}\n'
+        return
+    fi
+    printf '%s\n' "$proxy" > "$SPACE_SHARE_DIR/spaces/$1"
+    hint=""
+    if [ "$SHARE_REACH" = false ]; then
+        if [ "$(systemctl is-active ufw 2>/dev/null)" = active ]; then hint=ufw; else hint=firewall; fi
+    fi
+    printf '{"dns":%s,"https":%s,"detail":%s,"hint":%s,"via":"share","proxy":%s,"bridge":%s,"port":%s}\n' \
+        "$SHARE_HTTPS" "$SHARE_HTTPS" "$(json_or_null "$SHARE_FAIL")" "$(json_or_null "$hint")" "$(json_str "$proxy")" \
+        "$(json_str "$SHARE_IF")" "$SPACE_SHARE_PORT"
+}
+
+# The proxy Space $1 uses, its share running; empty when it has none.
+space_share_ensure() {
+    [ -f "$SPACE_SHARE_DIR/spaces/$1" ] || return 0
+    if [ "$(os)" = macos ]; then
+        cat "$SPACE_SHARE_DIR/spaces/$1"
+        return 0
+    fi
+    [ "$(os)" = linux ] || return 0
+    space_share_net "$1" || return 0
+    space_share_start || return 0
+    space_share_proxy
+}
+
+# Forgets Space $1's share; the last Space gone stops it.
+space_share_forget() {
+    rm -f "$SPACE_SHARE_DIR/spaces/$1"
+    for marker in "$SPACE_SHARE_DIR"/spaces/*; do [ -e "$marker" ] && return 0; done
+    space_share_stop_all
+}
+
+# --- The Mac's own proxy ---
+# On a Mac, Spaces run in cua's Linux VM and reach the Mac's loopback at SPACE_MAC_HOST, so a proxy set in
+# macOS (often a local one such as Clash) serves them too. Without it, sites the Mac only reaches through
+# that proxy stay out of reach from the Space while others work.
+
+SPACE_MAC_HOST=192.168.5.2
+
+# The Mac's HTTPS (else HTTP) proxy from its system settings as a Space reaches it; empty when there is none.
+space_mac_proxy() {
+    p=$(scutil --proxy 2>/dev/null | awk -v gw="$SPACE_MAC_HOST" '
+        / HTTPSEnable : / {se=$3} / HTTPSProxy : / {sh=$3} / HTTPSPort : / {sp=$3}
+        / HTTPEnable : / {he=$3} / HTTPProxy : / {hh=$3} / HTTPPort : / {hp=$3}
+        END {
+            if (se == 1 && sh != "" && sp != "") { h = sh; port = sp }
+            else if (he == 1 && hh != "" && hp != "") { h = hh; port = hp }
+            else exit
+            if (h == "127.0.0.1" || h == "localhost" || h == "::1") h = gw
+            print "http://" h ":" port
+        }')
+    # It goes into scripts run in the Space: nothing but a host name and a port.
+    printf '%s' "$p" | grep -Eq '^http://[A-Za-z0-9.-]+:[0-9]{1,5}$' && printf '%s' "$p"
+}
+
+# Takes Space $1 off a proxy it no longer has: the variables, apt's and sudo's settings and the browsers' proxy.
+space_share_unconfigure() {
+    script="set -e
+grep -viE '^(http|https|no)_proxy=' /etc/environment > /etc/environment.miffan || true
+cat /etc/environment.miffan > /etc/environment
+rm -f /etc/environment.miffan /etc/apt/apt.conf.d/95miffan-proxy /etc/sudoers.d/miffan-proxy /etc/chromium/policies/managed/miffan-proxy.json
+mkdir -p /etc/firefox/policies
+printf '%s\n' '{\"policies\":{\"DisableTelemetry\":true,\"SkipTermsOfUse\":true,\"OverrideFirstRunPage\":\"\",\"OverridePostUpdatePage\":\"\",\"DontCheckDefaultBrowser\":true}}' > /etc/firefox/policies/policies.json"
+    out=$("$SPACE_CUA" sb exec "$1" "sudo -n sh -c $(sh_quote "$script") && echo SHAREOFF ok" 2>/dev/null)
+    case "$out" in *"SHAREOFF ok"*) return 0 ;; esac
+    return 1
+}
+
+# netcheck for Space $1 on a Mac whose settings name proxy $2: the Space goes out through it, like through a
+# Linux host's share. Status 1, printing nothing, when the proxy does not answer from the Space.
+space_mac_netcheck() {
+    space_share_check "$1" "$2"
+    [ "$SHARE_REACH" = true ] || return 1
+    if [ "$SHARE_CONF" = false ] && ! space_share_configure "$1" "$2"; then
+        printf '{"dns":false,"https":false,"detail":"could not set the proxy in the Space","hint":"share_failed","via":"share"}\n'
+        return 0
+    fi
+    mkdir -p "$SPACE_SHARE_DIR/spaces"
+    printf '%s\n' "$2" > "$SPACE_SHARE_DIR/spaces/$1"
+    printf '{"dns":%s,"https":%s,"detail":%s,"hint":null,"via":"share","proxy":%s}\n' \
+        "$SHARE_HTTPS" "$SHARE_HTTPS" "$(json_or_null "$SHARE_FAIL")" "$(json_str "$2")"
+}
+
+space_netcheck() {
+    space_start_do "$1"
+    if [ "$(os)" = macos ]; then
+        mp=$(space_mac_proxy)
+        [ -n "$mp" ] && space_mac_netcheck "$1" "$mp" && return
+        # No proxy any more, or one the Space cannot reach: it goes out on its own again.
+        if [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_unconfigure "$1"; then
+            rm -f "$SPACE_SHARE_DIR/spaces/$1"
+        fi
+    fi
+    shared=false
+    [ "$(os)" = linux ] && [ -f "$SPACE_SHARE_DIR/spaces/$1" ] && space_share_net "$1" && shared=true
+    if [ "$shared" = true ]; then
+        space_share_netcheck "$1"
+        return
+    fi
+    # Every probe at once, bounded, and the first success is the answer; the resolver is only asked for
+    # the detail of a failure (a site that answered by name needed no more proof).
+    script="(timeout 3 getent hosts www.baidu.com >/dev/null 2>&1 && echo dns > /tmp/miffan-dns.\$\$) >/dev/null 2>&1 & $(space_race_script "") d=0; [ \$h = 1 ] && d=1; [ -s /tmp/miffan-dns.\$\$ ] && d=1; [ \$d = 1 ] || f=\" dns:www.baidu.com\$f\"; rm -f /tmp/miffan-dns.\$\$; echo \"NETCHECK dns=\$d https=\$h fail=\$f\""
+    out=$("$SPACE_CUA" sb exec "$1" "$script" 2>/dev/null)
+    line=$(printf '%s\n' "$out" | grep '^NETCHECK ' | tail -n 1)
+    # A check that could not finish counts as offline.
+    [ -n "$line" ] || line="NETCHECK dns=0 https=0 fail= check did not finish"
+    dns=false
+    https=false
+    case "$line" in *" dns=1 "*) dns=true ;; esac
+    case "$line" in *" https=1 "*|*" https=1") https=true ;; esac
+    fails=$(printf '%s' "$line" | sed -n 's/.* fail=//p' | sed 's/^ *//')
+    # Offline on its own: go out through the host instead, which works whatever the host runs.
+    if [ "$https" = false ] && [ "$(os)" = linux ] && command -v python3 >/dev/null 2>&1 && space_share_net "$1"; then
+        space_share_netcheck "$1"
+        return
+    fi
+    hint=""
+    if { [ "$dns" = false ] || [ "$https" = false ]; } && [ "$(os)" = linux ] &&
+        [ "$(systemctl is-active ufw 2>/dev/null)" = active ]; then
+        hint=ufw
+    fi
+    printf '{"dns":%s,"https":%s,"detail":%s,"hint":%s,"via":"direct"}\n' "$dns" "$https" "$(json_or_null "$fails")" "$(json_or_null "$hint")"
+}
+
+# --- Handoff folders ---
+
+# Decodes the JSON string value of key $2 in $1 (one line) to stdout. Status 1 when the key is missing,
+# empty or uses an escape other than \" \\ \/ (control characters have no place in folder names).
+space_json_string() {
+    enc=$(printf '%s' "$1" | sed -n -E 's/.*"'"$2"'" *: *"(([^"\\]|\\.)*)".*/\1/p')
+    [ -n "$enc" ] || return 1
+    printf '%s' "$enc" | awk 'BEGIN { ORS = ""; bad = 0 }
+        { n = length($0); i = 1
+          while (i <= n) {
+              c = substr($0, i, 1)
+              if (c == "\\") {
+                  d = substr($0, i + 1, 1); i += 2
+                  if (d == "\"" || d == "\\" || d == "/") print d; else bad = 1
+              } else { print c; i++ }
+          } }
+        END { exit bad }'
+}
+
+space_bad_input() {
+    space_fail bad_input "$1"
+}
+
+# Reads {"folder":…,"path":…} from stdin into SPACE_FOLDER and, when $1 is out, SPACE_REL.
+space_handoff_input() {
+    raw=$(cat | tr -d '\n\r')
+    SPACE_FOLDER=$(space_json_string "$raw" folder) || space_bad_input "folder"
+    # A relative folder is under the host account's home (the app stores it that way).
+    case "$SPACE_FOLDER" in /*) ;; ?*) SPACE_FOLDER="$HOME/$SPACE_FOLDER" ;; esac
+    while :; do case "$SPACE_FOLDER" in */) SPACE_FOLDER=${SPACE_FOLDER%/} ;; *) break ;; esac; done
+    [ -n "$SPACE_FOLDER" ] || space_bad_input "folder"
+    case "$SPACE_FOLDER/" in */../*|*/./*|*//*) space_bad_input "folder must be a clean absolute path" ;; esac
+    SPACE_REL=""
+    if [ "$1" = out ]; then
+        SPACE_REL=$(space_json_string "$raw" path) || space_bad_input "path"
+        while :; do case "$SPACE_REL" in */) SPACE_REL=${SPACE_REL%/} ;; *) break ;; esac; done
+        case "/$SPACE_REL/" in */../*|*/./*|*//*) space_bad_input "path must stay inside the handoff folder" ;; esac
+        [ -n "$SPACE_REL" ] || space_bad_input "path"
+    fi
+}
+
+sh_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+space_host_exists() { [ -e "$1" ] || [ -L "$1" ]; }
+
+# Exit 0 when $1 exists in the Space; anything but a clear answer fails the command.
+space_remote_exists() {
+    q=$(sh_quote "$1")
+    ans=$("$SPACE_CUA" sb exec "$SPACE_NAME" "if [ -e $q ] || [ -L $q ]; then echo EXISTS; else echo FREE; fi" 2>/dev/null | tail -n 1) ||
+        space_fail exec_failed "could not look inside the Space"
+    case "$ans" in EXISTS) return 0 ;; FREE) return 1 ;; *) space_fail exec_failed "could not look inside the Space" ;; esac
+}
+
+# Sets SPACE_UNIQUE to $2 or, when $1 (an exists-check) finds it taken, the same name with " (2)", " (3)"…
+# before the extension. Not run in a subshell: the checks may end the command with an error.
+space_unique() {
+    check=$1
+    p=$2
+    SPACE_UNIQUE=$p
+    "$check" "$p" || return 0
+    dir=${p%/*}
+    base=${p##*/}
+    case "$base" in
+        ?*.tar.*) stem=${base%.tar.*}; ext=.tar.${base##*.tar.} ;;
+        ?*.*) stem=${base%.*}; ext=.${base##*.} ;;
+        *) stem=$base; ext="" ;;
+    esac
+    n=2
+    while "$check" "$dir/$stem ($n)$ext"; do n=$((n + 1)); done
+    SPACE_UNIQUE="$dir/$stem ($n)$ext"
+}
+
+# "<size>:<mtime>" of a host file, to recognise one the helper wrote that nobody has touched since.
+space_file_sig() {
+    stat -c '%s:%Y' "$1" 2>/dev/null || stat -f '%z:%m' "$1" 2>/dev/null
+}
+
+# Files `out` put on the host; `in` must not bring them back as new (they would return as "x (2)").
+space_handoff_given() {
+    printf '%s\n' "$HOME/.miffan/space/$SPACE_NAME.handoff-out"
+}
+
+space_handoff_out() {
+    space_handoff_input out
+    space_start_do "$SPACE_NAME"
+    mkdir -p "$SPACE_FOLDER" && chmod 700 "$SPACE_FOLDER" 2>/dev/null
+    [ -d "$SPACE_FOLDER" ] || space_fail exec_failed "cannot create the host folder"
+    "$SPACE_CUA" sb exec "$SPACE_NAME" "mkdir -p $(sh_quote "$SPACE_HANDOFF_DIR")" >/dev/null 2>&1 || space_fail exec_failed "cannot create the handoff folder in the Space"
+    q=$(sh_quote "$SPACE_REL")
+    list=$("$SPACE_CUA" sb exec "$SPACE_NAME" "cd $(sh_quote "$SPACE_HANDOFF_DIR") || exit 3; if [ -L $q ]; then exit 4; elif [ -d $q ]; then find $q -type f; elif [ -f $q ]; then printf '%s\\n' $q; else exit 4; fi" 2>/dev/null)
+    status=$?
+    [ "$status" -ne 4 ] || space_fail not_found "$SPACE_REL"
+    [ "$status" -eq 0 ] || space_fail exec_failed "could not list the handoff folder"
+    copied=""
+    sep=""
+    given=$(space_handoff_given)
+    mkdir -p "${given%/*}"
+    tab=$(printf '\t')
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        space_unique space_host_exists "$SPACE_FOLDER/$rel"
+        dest=$SPACE_UNIQUE
+        mkdir -p "${dest%/*}" || space_fail exec_failed "cannot create a folder on the host"
+        "$SPACE_CUA" sb cp "$SPACE_NAME:$SPACE_HANDOFF_DIR/$rel" "$dest" >/dev/null 2>&1 || space_fail exec_failed "copy failed: $rel"
+        printf '%s%s%s\n' "${dest#"$SPACE_FOLDER"/}" "$tab" "$(space_file_sig "$dest")" >> "$given"
+        copied="$copied$sep$(json_str "${dest#"$SPACE_FOLDER"/}")"
+        sep=","
+    done <<EOF
+$list
+EOF
+    printf '{"copied":[%s]}\n' "$copied"
+}
+
+space_handoff_in() {
+    space_handoff_input in
+    mkdir -p "$SPACE_FOLDER" && chmod 700 "$SPACE_FOLDER" 2>/dev/null
+    [ -d "$SPACE_FOLDER" ] || space_fail exec_failed "cannot create the host folder"
+    state_dir="$HOME/.miffan/space"
+    mkdir -p "$state_dir"
+    state="$state_dir/$SPACE_NAME.handoff"
+    marker="$state.new"
+    : > "$marker"
+    if [ -f "$state" ]; then
+        list=$(cd "$SPACE_FOLDER" && find . -type f ! -name .DS_Store -newer "$state" | sort)
+    else
+        list=$(cd "$SPACE_FOLDER" && find . -type f ! -name .DS_Store | sort)
+    fi
+    given=$(space_handoff_given)
+    tab=$(printf '\t')
+    # What the partner handed out, untouched since, is already in the Space.
+    if [ -n "$list" ] && [ -f "$given" ]; then
+        list=$(printf '%s\n' "$list" | while IFS= read -r rel; do
+            grep -Fqx -- "${rel#./}$tab$(space_file_sig "$SPACE_FOLDER/${rel#./}")" "$given" || printf '%s\n' "$rel"
+        done)
+    fi
+    # Runs every turn: with nothing new, the Space is left alone and this answers at once.
+    if [ -n "$list" ]; then
+        space_start_do "$SPACE_NAME"
+        "$SPACE_CUA" sb exec "$SPACE_NAME" "mkdir -p $(sh_quote "$SPACE_HANDOFF_DIR")" >/dev/null 2>&1 || space_fail exec_failed "cannot create the handoff folder in the Space"
+    fi
+    copied=""
+    sep=""
+    while IFS= read -r rel; do
+        rel=${rel#./}
+        [ -n "$rel" ] || continue
+        space_unique space_remote_exists "$SPACE_HANDOFF_DIR/$rel"
+        dest=$SPACE_UNIQUE
+        "$SPACE_CUA" sb exec "$SPACE_NAME" "mkdir -p $(sh_quote "${dest%/*}")" >/dev/null 2>&1 || space_fail exec_failed "cannot create a folder in the Space"
+        "$SPACE_CUA" sb cp "$SPACE_FOLDER/$rel" "$SPACE_NAME:$dest" >/dev/null 2>&1 || space_fail exec_failed "copy failed: $rel"
+        copied="$copied$sep$(json_str "${dest#"$SPACE_HANDOFF_DIR"/}")"
+        sep=","
+    done <<EOF
+$list
+EOF
+    mv -f "$marker" "$state"
+    # Keep only handed-out files a later run could still list: unchanged, and not older than this run.
+    if [ -f "$given" ]; then
+        since=$(space_file_sig "$state"); since=${since#*:}
+        while IFS="$tab" read -r rel sig; do
+            [ "$(space_file_sig "$SPACE_FOLDER/$rel")" = "$sig" ] && [ "${sig#*:}" -ge "${since:-0}" ] &&
+                printf '%s%s%s\n' "$rel" "$tab" "$sig"
+        done < "$given" > "$given.new"
+        mv -f "$given.new" "$given"
+    fi
+    printf '{"copied":[%s]}\n' "$copied"
+}
+
+space_handoff() {
+    direction=${1:-}
+    SPACE_NAME=${2:-}
+    space_need_name "$SPACE_NAME"
+    case "$direction" in
+        in) space_handoff_in ;;
+        out) space_handoff_out ;;
+        *) echo "usage: miffan space handoff in|out <name>" >&2; exit 2 ;;
+    esac
+}
+
+space() {
+    umask 077
+    action=${1:-}
+    [ "$#" -eq 0 ] || shift
+    case "$action" in
+        probe) space_probe; return ;;
+        install) space_install; return ;;
+        create|reset|resize)
+            # create|reset|resize <name> <cpus> <memory MiB>
+            space_need_name "${1:-}"
+            space_need_size "${2:-}" "${3:-}"
+            space_ready
+            "space_$action" "$1"
+            ;;
+        info|start|stop|delete|netcheck)
+            space_need_name "${1:-}"
+            space_ready
+            "space_$action" "$1"
+            ;;
+        handoff)
+            space_need_name "${2:-}"
+            space_ready
+            space_handoff "$@"
+            ;;
+        *) echo "usage: miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff" >&2; exit 2 ;;
+    esac
+}
+
 # --- probe -------------------------------------------------------------------------------
 
 computer_name() {
@@ -1921,5 +2836,6 @@ case "${1:-}" in
     clip) clip ;;
     mac-shortcut) mac_shortcut "${2:-}" ;;
     task) shift; task "$@" ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|task" >&2; exit 2 ;;
+    space) shift; space "$@" ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|task|space" >&2; exit 2 ;;
 esac

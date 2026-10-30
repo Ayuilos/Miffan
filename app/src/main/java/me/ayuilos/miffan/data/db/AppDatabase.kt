@@ -54,9 +54,11 @@ import me.ayuilos.miffan.utils.JsonInstant
         me.ayuilos.miffan.data.db.entity.RemoteTaskHostEntity::class,
         me.ayuilos.miffan.data.db.entity.RemoteTaskRunEntity::class,
     ],
-    version = 40,
+    version = 42,
     autoMigrations = [
         AutoMigration(from = 39, to = 40),
+        AutoMigration(from = 40, to = 41),
+        AutoMigration(from = 41, to = 42),
         AutoMigration(from = 32, to = 33),
         AutoMigration(from = 31, to = 32),
         AutoMigration(from = 1, to = 2),

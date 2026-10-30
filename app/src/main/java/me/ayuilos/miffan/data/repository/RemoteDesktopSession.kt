@@ -16,7 +16,11 @@ import me.rerere.workspace.screen.RemoteScreenSession
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RemoteScreenStats
 
-enum class RemoteDesktopProtocol { VNC, RDP, STREAM }
+enum class RemoteDesktopProtocol {
+    VNC, RDP, STREAM,
+    /** A partner's own computer (cua Space), see [CuaSpaceDesktopSession]. */
+    SPACE,
+}
 
 data class RemoteVideoSize(val width: Int, val height: Int)
 

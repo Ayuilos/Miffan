@@ -27,6 +27,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
+import kotlin.uuid.Uuid
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.im.ImPressMenu
@@ -119,10 +120,13 @@ internal fun ThreadMessageBubble(
     onFavorite: (() -> Unit)? = null,
     onQuote: (MessageRef) -> Unit = {},
     onToolApproval: (String, Boolean) -> Unit = { _, _ -> },
+    /** Decides several pending calls together; one by one in a row would lose all but the last. */
+    onToolApprovals: (List<String>, Boolean) -> Unit = { ids, approved -> ids.forEach { onToolApproval(it, approved) } },
     onToolAnswer: (String, String) -> Unit = { _, _ -> },
     computer: PartnerComputer? = null,
     onComputerScreen: () -> Unit = {},
     assistant: Assistant? = null,
+    connection: ThreadConnection = ThreadConnection(),
 ) {
     val menu = rememberPressMenu()
     val clipboard = LocalClipboard.current
@@ -134,18 +138,18 @@ internal fun ThreadMessageBubble(
     val user = item.message.role == MessageRole.USER
     val partners = LocalSettings.current.assistants
     val parts = item.message.parts
-    val liveComputer = item.streaming && latestComputerAction(parts)?.approvalState !is me.rerere.ai.ui.ToolApprovalState.Pending &&
-        latestComputerAction(parts) != null
+    val liveComputer = computerWorkIsLive(parts, item.streaming)
     val steps = remember(parts) { if (user) emptyList() else threadSteps(parts) }
     val recordSteps = steps.worthRecording()
     val blocks = remember(parts, recordSteps) { threadReplyBlocks(parts, recordSteps) }
-    val liveStatus = threadLiveStatus(parts, item.streaming)
+    val liveStatus = threadLiveStatus(parts, item.streaming, item.segmentId in connection.connected, connection.online)
     // The record and the live computer card already say what is happening.
     val status = if (liveComputer || recordSteps && item.streaming) null else liveStatus
     // Files the partner published (screenshots, reports) are part of its answer, not process.
     val imageContext = remember(item.message.id, parts, computer?.workspaceId) {
         item.message.takeIf { !user }?.workspaceImageContext(null, computer?.workspaceId)
     }
+    val handed = remember(parts) { if (user) emptyList() else handedFiles(parts) }
     val published = remember(parts) { !user && parts.any { it is UIMessagePart.Tool && it.workspaceArtifacts().isNotEmpty() } }
     // Edited files are listed once the reply finishes, so they do not count as content while it streams.
     val visible = (published && !item.streaming) || parts.any { part ->
@@ -186,14 +190,15 @@ internal fun ThreadMessageBubble(
                                 ThreadStepRecord(block.steps, live = current, liveStatus = liveStatus)
                             }
                             is ThreadReplyBlock.Computer -> key(block.tools.first().toolCallId) {
-                                ThreadComputerBlock(block.tools, live = current && liveComputer, computer, onComputerScreen)
+                                ThreadComputerBlock(block.tools, live = liveComputer, computer, onComputerScreen, onToolApproval, threadAssistantName(assistant),
+                                    onApproveAll = { onToolApprovals(it, true) })
                             }
                             is ThreadReplyBlock.Content -> Unit
                         }
                         val part = (block as? ThreadReplyBlock.Content)?.part
                         // Several plain requests waiting together: one "allow all" right above the first of them.
                         if (batch.size > 1 && part === batch.first())
-                            ThreadBatchApprovalHeader(batch.size) { batch.forEach { onToolApproval(it.toolCallId, true) } }
+                            ThreadBatchApprovalHeader(batch.size) { onToolApprovals(batch.map { it.toolCallId }, true) }
                         when (part) {
                             is UIMessagePart.Text -> if (part.text.isBlank()) Unit
                             // The owner's own words with @partners in them read as typed, the mentions colored as in the input.
@@ -209,9 +214,6 @@ internal fun ThreadMessageBubble(
                             }
                             is UIMessagePart.Tool -> if (part.isThreadPrompt()) {
                                 if (part.isPartnerMessage()) ThreadPartnerMessage(part, assistant, onToolApproval)
-                                else if (part.isComputerTool() && part.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending) ThreadComputerApprovalCard(part,
-                                    computerTargetName(part, computer, stringResource(R.string.im_computer_computer)),
-                                    canOpenComputer(part, computer), onComputerScreen, onToolApproval)
                                 else ThreadToolPrompt(part, onToolApproval, onToolAnswer, assistant, item.segmentId.toString())
                             } else if (part.isImageGeneration()) ThreadGeneratedImages(part, item.streaming)
                             // Added without asking (the owner allowed it for good): the event still shows.
@@ -220,6 +222,7 @@ internal fun ThreadMessageBubble(
                         }
                     } }
                     if (published && !item.streaming) EditedFilesList(parts, assistant = null, imageContext = imageContext)
+                    handed.forEach { file -> key(file.toolCallId) { ThreadHandedFileCard(file, threadAssistantName(assistant)) } }
                 }
             }
             val text = item.message.previewText()
@@ -248,8 +251,9 @@ internal fun ThreadMessageBubble(
 }
 
 @Composable
-internal fun ThreadTyping(assistant: Assistant?) {
-    ThreadLiveStatusRow(assistant, AssistantGenerationPhase.Waiting, R.string.im_thread_status_thinking)
+internal fun ThreadTyping(assistant: Assistant?, segmentIds: Set<Uuid>, connection: ThreadConnection) {
+    val status = waitingStatus(segmentIds.any { it in connection.connected }, connection.online)
+    ThreadLiveStatusRow(assistant, AssistantGenerationPhase.Waiting, status.label)
 }
 
 @Composable

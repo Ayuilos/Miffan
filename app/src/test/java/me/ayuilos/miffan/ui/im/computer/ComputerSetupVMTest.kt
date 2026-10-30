@@ -119,7 +119,10 @@ class ComputerSetupVMTest {
     }
 
     private fun vm(f: Fixture, args: ComputerSetupArgs = ComputerSetupArgs()): ComputerSetupVM =
-        ComputerSetupVM(args, f.workspaces, f.screens, f.registry, f.store, f.computers, f.updates, f.statuses, f.control).also {
+        ComputerSetupVM(args, f.workspaces, f.screens, f.registry, f.store, f.computers, f.updates, f.statuses, f.control,
+            mockk(relaxed = true), mockk<me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup>(relaxed = true).also {
+                every { it.jobs } returns kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
+            }).also {
             viewModels.put(Uuid.random().toString(), it)
         }
 

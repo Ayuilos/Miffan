@@ -4,6 +4,41 @@ import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Message01
+import me.rerere.hugeicons.stroke.MinimizeScreen
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilledTonalIconToggleButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import me.ayuilos.miffan.data.ai.computer.RemoteController
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -105,6 +140,18 @@ internal fun RemoteScreenScaffold(
     /** Overrides the failure panel's explanation, e.g. with easy mode wording. */
     failureText: (Throwable) -> String? = { null },
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
+    /** Who the page is about, when the desktop's holder is not known (e.g. while the user holds it). */
+    partnerLabel: String? = null,
+    /** Easy mode: the partner's face beside the title; the flag is true while it works here. */
+    avatar: (@Composable (Modifier, Boolean) -> Unit)? = null,
+    /** The partner's current step, shown over the picture while it works. */
+    caption: String? = null,
+    /** Where the action awaiting the user's yes would act. */
+    marker: RemoteScreenMarker? = null,
+    /** The partner is waiting for the user's yes on an action here. */
+    awaitingApproval: Boolean = false,
+    /** Easy mode: the picture keeps the desktop's shape in a card and the rest of the page goes to [bottom]. */
+    framed: Boolean = false,
     bottom: @Composable ColumnScope.() -> Unit = {},
 ) {
     val resources = LocalResources.current
@@ -135,6 +182,7 @@ internal fun RemoteScreenScaffold(
     var customDialog by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
+    var drawer by rememberSaveable { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable { mutableStateOf(false) }
     val hints = remember(context) { context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE) }
     // Local-network access is asked for only after a stream needed it, then the screen reconnects.
@@ -144,6 +192,16 @@ internal fun RemoteScreenScaffold(
     var perfOverlay by remember { mutableStateOf(hints.getBoolean(PERF_OVERLAY, false)) }
     val connected = state is RemoteScreenUiState.Connected
     val macOS = platform == RemoteScreenPlatform.MACOS
+    // While the partner works, a touch only asks; the second touch takes over (see RemoteScreenTakeoverPrompt).
+    val partnerActive = connected && partnerBusy && controller != RemoteController.USER
+    var armed by rememberTakeoverArming(partnerActive)
+    fun armOrTakeOver() {
+        if (armed) { armed = false; vm.takeControl() } else armed = true
+    }
+    val userHolds = connected && shownController(controller, partnerBusy, partnerWaiting) == RemoteController.USER
+    val partnerName = holderName ?: partnerLabel ?: stringResource(R.string.workspace_screen_partner_generic)
+    // In landscape a question from the partner would sit in the folded conversation; bring it out.
+    LaunchedEffect(awaitingApproval, fullscreen) { if (awaitingApproval && fullscreen) drawer = true }
     // Each input mode explains its gestures once, the first time it is used on a live screen.
     LaunchedEffect(connected, trackpad) {
         if (!connected) return@LaunchedEffect
@@ -159,6 +217,7 @@ internal fun RemoteScreenScaffold(
     BackHandler {
         when {
             keyboard -> keyboard = false
+            drawer && fullscreen -> drawer = false
             fullscreen -> fullscreen = false
             else -> onBack()
         }
@@ -223,6 +282,8 @@ internal fun RemoteScreenScaffold(
             // Full screen keeps only the floating controls over the desktop.
             if (!fullscreen) TopAppBar(
                 title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    avatar?.invoke(Modifier.size(34.dp), partnerActive || awaitingApproval)
                     Column {
                         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         val status = stringResource(when (state) {
@@ -231,9 +292,23 @@ internal fun RemoteScreenScaffold(
                             else -> R.string.im_computer_disconnected
                         })
                         val mode = info?.takeIf { connected }?.let { remoteScreenModeLabel(resources, it.protocol) }
-                        Text(if (mode != null) "$status · $mode · ${bytes.fileSizeToString()}"
+                        // Who drives says more than the connection; the connection's details stay a tap away.
+                        val driving = when {
+                            !connected -> null
+                            userHolds -> stringResource(R.string.workspace_screen_status_user, partnerName)
+                            awaitingApproval -> stringResource(R.string.workspace_screen_status_approval, partnerName)
+                            partnerBusy -> stringResource(R.string.workspace_screen_status_partner, partnerName)
+                            else -> null
+                        }
+                        RemoteScreenStatusLine(driving ?: if (mode != null) "$status · $mode · ${bytes.fileSizeToString()}"
                             else stringResource(R.string.im_computer_connection_usage, status, bytes.fileSizeToString()),
-                            style = MaterialTheme.typography.bodySmall,
+                            dot = when {
+                                !connected -> MaterialTheme.colorScheme.outline
+                                userHolds -> MaterialTheme.colorScheme.primary
+                                partnerBusy || awaitingApproval -> MaterialTheme.colorScheme.tertiary
+                                else -> CONNECTED_DOT
+                            },
+                            breathing = state == RemoteScreenUiState.Connecting || (!userHolds && (partnerBusy || awaitingApproval)),
                             // Tapping explains the connection; a long press is the hidden diagnostics switch.
                             modifier = Modifier.pointerInput(Unit) {
                                 detectTapGestures(onTap = { if (vm.connectionInfo.value != null) details = true }, onLongPress = {
@@ -242,21 +317,10 @@ internal fun RemoteScreenScaffold(
                                 })
                             })
                     }
+                    }
                 },
                 navigationIcon = { BackButton(onClick = onBack) },
                 actions = {
-                    IconButton(enabled = connected, onClick = { trackpad = !trackpad }) {
-                        Icon(if (trackpad) HugeIcons.Touchpad01 else HugeIcons.Touch01,
-                            contentDescription = stringResource(if (trackpad) R.string.workspace_screen_mode_trackpad else R.string.workspace_screen_mode_direct),
-                            tint = if (trackpad) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(enabled = connected, onClick = { keyboard = !keyboard }) {
-                        Icon(HugeIcons.Keyboard, contentDescription = stringResource(R.string.workspace_screen_keyboard),
-                            tint = if (keyboard) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(enabled = connected, onClick = { fullscreen = true }) {
-                        Icon(HugeIcons.Fullscreen, contentDescription = stringResource(R.string.workspace_screen_fullscreen))
-                    }
                     androidx.compose.foundation.layout.Box {
                         IconButton(onClick = { menu = true }) {
                             Icon(HugeIcons.MoreVertical, contentDescription = stringResource(R.string.workspace_screen_actions))
@@ -313,9 +377,18 @@ internal fun RemoteScreenScaffold(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                RemoteScreenViewport(vm, trackpad, Modifier.fillMaxSize()) { failed ->
+        val ring by animateColorAsState(when {
+            userHolds -> MaterialTheme.colorScheme.primary
+            partnerActive || awaitingApproval -> MaterialTheme.colorScheme.tertiary
+            else -> Color.Transparent
+        }, tween(250), label = "ring")
+        val handBackFace = avatar?.let { face -> @Composable { modifier: Modifier -> face(modifier, false) } }
+        val screen = @Composable { modifier: Modifier, shape: Shape ->
+            Box(modifier.clip(shape).border(2.dp, ring, shape)) {
+                // The phone-side zoom buttons would cover much of a framed picture; landscape has the room.
+                RemoteScreenViewport(vm, trackpad, Modifier.fillMaxSize(), zoomControls = !framed || fullscreen,
+                    marker = marker?.takeIf { awaitingApproval && !userHolds },
+                    blocked = partnerActive, onBlockedTap = ::armOrTakeOver) { failed ->
                     RemoteScreenFailureContent(
                         state = failed,
                         settingsAvailable = onSettings != null,
@@ -331,21 +404,75 @@ internal fun RemoteScreenScaffold(
                     )
                 }
                 RemoteWindowsStreamSetup(vm)
-                Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Full screen shows who drives in its corner controls instead of over the picture.
-                    if (!fullscreen) RemoteScreenControllerBanner(controller, onHandBack = vm::handBackToPartner,
-                        partnerBusy = partnerBusy, partnerWaiting = partnerWaiting, partnerName = holderName)
+                Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     RemoteStreamSuggestion(vm)
                 }
+                RemoteScreenCaption((caption ?: stringResource(R.string.workspace_screen_status_partner, partnerName))
+                    .takeIf { partnerActive && !armed }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
+                RemoteScreenUserHold(userHolds, holderName ?: partnerLabel, onHandBack = vm::handBackToPartner, avatar = handBackFace)
+                if (connected && !fullscreen) IconButton(onClick = { fullscreen = true }, Modifier.align(Alignment.TopEnd)) {
+                    ScreenRoundIcon(HugeIcons.Fullscreen, stringResource(R.string.workspace_screen_fullscreen), size = 30.dp)
+                }
+                RemoteScreenTakeoverPrompt(armed, partnerName)
                 if (perfOverlay) RemoteScreenStatsOverlay(vm, Modifier.align(Alignment.BottomStart).padding(8.dp))
-                if (fullscreen) RemoteScreenFullscreenControls(keyboard, onKeyboard = { if (connected) keyboard = !keyboard },
-                    onExit = { fullscreen = false }, controller = controller, partnerBusy = partnerBusy,
-                    partnerWaiting = partnerWaiting, onHandBack = vm::handBackToPartner,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
             }
+        }
+        val onKeyboard = { if (partnerActive) armOrTakeOver() else if (connected) keyboard = !keyboard }
+        val connectedSize = state as? RemoteScreenUiState.Connected
+        val ratio = connectedSize?.let { it.width.toFloat() / it.height.coerceAtLeast(1) } ?: (16f / 10f)
+        if (fullscreen) Box(Modifier.fillMaxSize().background(FULLSCREEN_GROUND).padding(padding)) {
+            // Landscape: the desktop takes the height, the controls live in the black margins beside it.
+            Row(Modifier.fillMaxSize().imePadding()) {
+                Column(Modifier.fillMaxHeight().width(60.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = { fullscreen = false }) {
+                        ScreenRoundIcon(HugeIcons.MinimizeScreen, stringResource(R.string.workspace_screen_fullscreen_exit))
+                    }
+                    avatar?.invoke(Modifier.size(36.dp), partnerActive || awaitingApproval)
+                }
+                Column(Modifier.weight(1f).fillMaxHeight().padding(vertical = 8.dp)) {
+                    // The frame hugs the desktop rather than the black margins around it.
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        screen(Modifier.aspectRatio(ratio, matchHeightConstraintsFirst = true), RoundedCornerShape(14.dp))
+                    }
+                    if (keyboard && connected) RemoteScreenKeyboard(vm, platform)
+                }
+                Column(Modifier.fillMaxHeight().width(60.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = { trackpad = !trackpad }, enabled = connected) {
+                        ScreenRoundIcon(if (trackpad) HugeIcons.Touchpad01 else HugeIcons.Touch01,
+                            stringResource(if (trackpad) R.string.workspace_screen_mode_trackpad else R.string.workspace_screen_mode_direct))
+                    }
+                    IconButton(onClick = onKeyboard, enabled = connected) {
+                        ScreenRoundIcon(HugeIcons.Keyboard, stringResource(R.string.workspace_screen_keyboard), active = keyboard)
+                    }
+                    if (framed) IconButton(onClick = { drawer = true }) {
+                        ScreenRoundIcon(HugeIcons.Message01, stringResource(R.string.workspace_screen_open_chat), active = drawer)
+                    }
+                }
+            }
+            // The conversation slides over the desktop's right side and folds away again.
+            AnimatedVisibility(framed && drawer, Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                enter = slideInHorizontally(tween(220)) { it }, exit = slideOutHorizontally(tween(180)) { it }) {
+                Surface(Modifier.fillMaxHeight().width(360.dp).imePadding(), shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer, shadowElevation = 8.dp) {
+                    Column(Modifier.padding(bottom = 8.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            IconButton(onClick = { drawer = false }) {
+                                Icon(HugeIcons.ArrowRight01, stringResource(R.string.workspace_screen_close_chat))
+                            }
+                        }
+                        bottom()
+                    }
+                }
+            }
+        } else Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+            if (framed) screen(Modifier.padding(horizontal = 12.dp).fillMaxWidth().aspectRatio(ratio.coerceIn(1f, 2.4f)), RoundedCornerShape(18.dp))
+            else screen(Modifier.weight(1f).fillMaxWidth(), RectangleShape)
+            RemoteScreenDock(trackpad, onTrackpad = { trackpad = it }, keyboard, onKeyboard = onKeyboard, enabled = connected)
             if (keyboard && connected) RemoteScreenKeyboard(vm, platform)
-            if (!fullscreen) bottom()
+            bottom()
         }
     }
     info?.takeIf { details }?.let { RemoteConnectionDetailsDialog(it, bytes, onDismiss = { details = false }) }
@@ -362,4 +489,60 @@ private val STREAM_SETTINGS_FIXES = setOf(
 )
 
 private const val PERF_OVERLAY = "perf_overlay"
+private val CONNECTED_DOT = Color(0xFF2E9E5B)
+private val FULLSCREEN_GROUND = Color(0xFF0B0C0E)
+
+/** A control over or beside the desktop: a dark translucent disc that reads on any picture. */
+@Composable
+private fun ScreenRoundIcon(icon: ImageVector, description: String, active: Boolean = false, size: Dp = 40.dp) {
+    Surface(color = if (active) MaterialTheme.colorScheme.primary else Color(0x8C2A2E35),
+        contentColor = if (active) MaterialTheme.colorScheme.onPrimary else Color.White, shape = CircleShape, modifier = Modifier.size(size)) {
+        Box(contentAlignment = Alignment.Center) { Icon(icon, description, Modifier.size(size * 0.5f)) }
+    }
+}
+
+/** The line under the title: who drives, or the connection; a breathing dot while something is under way. */
+@Composable
+private fun RemoteScreenStatusLine(text: String, dot: Color, breathing: Boolean, modifier: Modifier = Modifier) {
+    val alpha = if (breathing) {
+        val transition = rememberInfiniteTransition(label = "status")
+        transition.animateFloat(1f, 0.3f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "dot").value
+    } else 1f
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(7.dp).graphicsLayer { this.alpha = alpha }.background(dot, CircleShape))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun DockChoice(icon: ImageVector, label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Surface(onClick = onClick, enabled = enabled, shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.surfaceContainerLowest else Color.Transparent,
+        shadowElevation = if (selected) 1.dp else 0.dp, modifier = Modifier.semantics { this.selected = selected }) {
+        Row(Modifier.height(34.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Icon(icon, null, Modifier.size(16.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
+    }
+}
+
+/** How touches reach the computer, and the keyboard: right under the picture, where the thumb already is. */
+@Composable
+private fun RemoteScreenDock(trackpad: Boolean, onTrackpad: (Boolean) -> Unit, keyboard: Boolean, onKeyboard: () -> Unit, enabled: Boolean) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f },
+        verticalAlignment = Alignment.CenterVertically) {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = CircleShape) {
+            Row(Modifier.padding(3.dp)) {
+                DockChoice(HugeIcons.Touch01, stringResource(R.string.workspace_screen_touch_direct), !trackpad, enabled) { onTrackpad(false) }
+                DockChoice(HugeIcons.Touchpad01, stringResource(R.string.workspace_screen_touch_trackpad), trackpad, enabled) { onTrackpad(true) }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        FilledTonalIconToggleButton(checked = keyboard, onCheckedChange = { onKeyboard() }, enabled = enabled) {
+            Icon(HugeIcons.Keyboard, stringResource(R.string.workspace_screen_keyboard))
+        }
+    }
+}
 
