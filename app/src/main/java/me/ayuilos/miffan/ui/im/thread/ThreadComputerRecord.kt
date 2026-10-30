@@ -33,11 +33,15 @@ internal data class ComputerRecordStep(
     val note: ComputerToolStatus? = null,
 )
 
-/** A step inside the partner's own mini box: the file and command tools that [threadSteps] words, aimed at a Space. */
+/**
+ * A step inside the partner's own mini box: the file and command tools that [threadSteps] words, aimed at a Space,
+ * and handing a file from it to the owner (that tool has no workspace target of its own).
+ */
 internal fun UIMessagePart.Tool.isMiniBoxStep(): Boolean =
-    !isComputerTool() && workspaceTarget?.kind == WorkspaceEntity.KIND_SPACE && threadSteps(listOf(this)).isNotEmpty()
+    !isComputerTool() && inMiniBox() && threadSteps(listOf(this)).isNotEmpty()
 
-internal fun UIMessagePart.Tool.inMiniBox(): Boolean = workspaceTarget?.kind == WorkspaceEntity.KIND_SPACE
+internal fun UIMessagePart.Tool.inMiniBox(): Boolean =
+    workspaceTarget?.kind == WorkspaceEntity.KIND_SPACE || toolName == SPACE_HANDOFF_TOOL
 
 /**
  * The steps of one reply's computer work, in the order they were taken. Looking (screenshots, lists) is no step

@@ -149,7 +149,8 @@ internal fun ThreadComputerBlock(
     val live = live || pendingComputerActions(tools).isNotEmpty()
     val steps = remember(tools, live) { computerRecordSteps(tools, live) }
     val evidence = remember(tools) { threadComputerEvidence(tools) }
-    val latest = tools.last()
+    // Which computer: the last step that names one (handing a file over names none of its own).
+    val latest = tools.lastOrNull { it.workspaceTarget != null } ?: tools.last()
     val miniBox = latest.inMiniBox()
     val name = computerTargetName(latest, computer, stringResource(R.string.im_computer_computer),
         stringResource(R.string.im_computer_detail_user_space))

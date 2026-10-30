@@ -5,6 +5,9 @@ import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.ToolDecisionVia
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.WorkspaceToolTargetSnapshot
+import me.ayuilos.miffan.data.ai.tools.SPACE_HANDOFF_TOOL
+import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -65,5 +68,15 @@ class ThreadReplyBlocksTest {
     fun aDeclinedActionAloneLeavesNoCardOfItsOwn() {
         val blocks = threadReplyBlocks(listOf(tool("computer_click", "denied", ToolApprovalState.Denied("no"))), recordSteps = false)
         assertEquals(emptyList<String>(), blocks.shape())
+    }
+
+    @Test
+    fun handingAFileOverJoinsTheMiniBoxRecord() {
+        val space = WorkspaceToolTargetSnapshot("a", "r", "ws", null, WorkspaceEntity.KIND_SPACE, workspaceName = "box", remoteHostId = "h")
+        val handoff = UIMessagePart.Tool("give", SPACE_HANDOFF_TOOL, """{"path":"title.txt"}""",
+            listOf(UIMessagePart.Text("""{"computer":"Mac","copied":["~/Miffan Partners/x/title.txt"]}""")))
+        val blocks = threadReplyBlocks(listOf(tool("workspace_shell", "run").copy(workspaceTarget = space), handoff,
+            UIMessagePart.Text("好了")), recordSteps = true)
+        assertEquals(listOf("computer:run,give", "好了"), blocks.shape())
     }
 }
