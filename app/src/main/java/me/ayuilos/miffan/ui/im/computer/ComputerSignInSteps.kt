@@ -111,10 +111,7 @@ internal fun ComputerKeyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     LaunchedEffect(Unit) { vm.ensureAppKey() }
     var username by rememberSaveable(state.target?.host) { mutableStateOf(state.username) }
     var handedOver by rememberSaveable { mutableStateOf(false) }
-    LifecycleResumeEffect(handedOver, username) {
-        if (handedOver && username.isNotBlank()) vm.signInWithKey(username.trim(), quiet = true)
-        onPauseOrDispose { }
-    }
+    RetryOnReturn { if (handedOver && username.isNotBlank()) vm.signInWithKey(username.trim(), quiet = true) }
     val name = state.target?.name.orEmpty()
     SetupScreen(
         title = stringResource(if (state.passwordRefused) R.string.im_computer_key_only_title else R.string.im_computer_key_title),
@@ -162,10 +159,7 @@ internal fun ComputerWindowsStep(vm: ComputerSetupVM, state: ComputerSetupState)
     var handedOver by rememberSaveable { mutableStateOf(false) }
     val needsAddress = state.target == null
     val canSignIn = username.isNotBlank() && (!needsAddress || address.isNotBlank()) && key != null
-    LifecycleResumeEffect(handedOver, username, address) {
-        if (handedOver && canSignIn && !needsAddress) vm.signInWithKey(username.trim(), quiet = true)
-        onPauseOrDispose { }
-    }
+    RetryOnReturn { if (handedOver && canSignIn && !needsAddress) vm.signInWithKey(username.trim(), quiet = true) }
     SetupScreen(
         title = stringResource(R.string.im_computer_windows_title),
         subtitle = stringResource(R.string.im_computer_windows_help),
@@ -194,6 +188,22 @@ internal fun ComputerWindowsStep(vm: ComputerSetupVM, state: ComputerSetupState)
             }
         }
         KeyStatus(state.keyRefused)
+    }
+}
+
+/**
+ * Runs [attempt] when the user comes back to the app after leaving it (to run the command on the computer),
+ * never while they stay here: typing the account or tapping Copy must not start a sign-in, which would
+ * disable the field mid-word and use up the quiet tries.
+ */
+@Composable
+private fun RetryOnReturn(attempt: () -> Unit) {
+    val latest by rememberUpdatedState(attempt)
+    var away by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        if (away) latest()
+        away = false
+        onPauseOrDispose { away = true }
     }
 }
 
