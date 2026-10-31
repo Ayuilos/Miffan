@@ -135,6 +135,9 @@ private class PasswordAnswer(private val password: String) : UserInfo, UIKeyboar
 class RemoteWorkspaceDirectoryException(cause: Throwable) :
     IllegalStateException("Remote workspace directory is inaccessible", cause)
 
+/** The computer stopped answering on a connection that still looked open; it has been closed. */
+class RemoteConnectionStalledException : java.net.SocketTimeoutException("The computer stopped answering on this connection")
+
 /**
  * Direct Java SSH/SFTP transport. [discoverHostKey] is for a UI confirmation flow: its result is
  * untrusted until the user compares it with a separately obtained server fingerprint.
@@ -402,6 +405,7 @@ class RemoteWorkspaceSession internal constructor(
         val channel = session.openChannel("exec") as ChannelExec
         register(channel)
         var timedOut = false
+        val result: WorkspaceCommandResult
         try {
             val request = RemoteShell.request(platform, directory, command, stdin)
             channel.setCommand(request.command)
@@ -417,7 +421,7 @@ class RemoteWorkspaceSession internal constructor(
                 }
                 Thread.sleep(20)
             }
-            return WorkspaceCommandResult(
+            result = WorkspaceCommandResult(
                 exitCode = if (timedOut) -1 else channel.exitStatus,
                 stdout = if (platform == RemotePlatform.WINDOWS) PowerShellOutput.readable(stdout.text()) else stdout.text(),
                 stderr = if (platform == RemotePlatform.WINDOWS) PowerShellOutput.readable(stderr.text()) else stderr.text(),
@@ -427,6 +431,32 @@ class RemoteWorkspaceSession internal constructor(
         } finally {
             channel.disconnect()
             unregister(channel)
+        }
+        // A command that outlived its time on a connection the computer no longer answers on was
+        // never going to finish: drop the connection so the next attempt opens a fresh one.
+        if (timedOut && !answers()) {
+            close()
+            throw RemoteConnectionStalledException()
+        }
+        return result
+    }
+
+    /**
+     * Whether the computer still answers on this connection. A network path can stall one way and
+     * deliver nothing more, while the connection still looks open. Any reply counts, even a refusal.
+     */
+    private fun answers(timeoutMillis: Int = STALL_CHECK_MILLIS): Boolean {
+        if (!isConnected) return false
+        val probe = try { session.openChannel("exec") as ChannelExec } catch (_: JSchException) { return false }
+        val started = System.nanoTime()
+        return try {
+            probe.setCommand("exit")
+            probe.connect(timeoutMillis)
+            true
+        } catch (_: JSchException) {
+            isConnected && (System.nanoTime() - started) / 1_000_000 < timeoutMillis - 500
+        } finally {
+            probe.disconnect()
         }
     }
 
@@ -935,6 +965,9 @@ private fun copyBounded(input: InputStream, output: OutputStream, maxBytes: Long
 }
 
 private const val MAX_LIST_ENTRIES = 500
+
+// Long enough for a slow relay to answer a channel open, short next to the command that already timed out.
+private const val STALL_CHECK_MILLIS = 5_000
 
 /** Receive window for forwarded streams: 4 MiB keeps a LAN or Tailscale link full (128 KiB managed ~4 MB/s). */
 private const val STREAM_WINDOW_BYTES = 4 * 1024 * 1024
