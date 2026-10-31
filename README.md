@@ -53,7 +53,7 @@ Connect a Mac, Windows or Linux computer over SSH, including over Tailscale, and
 - **You stay in charge.** Choose per computer whether the partner asks first, works on its own or leaves it alone. Each approval is recorded in a permission history that stays even if you delete the chat.
 - **Tasks that run on schedule.** Ask a partner to do something every morning and the computer's own scheduler runs it on time, even while your phone is off (Mac and Linux). A task can be a command or a call to an AI tool already installed there, such as Claude Code, Codex CLI or Gemini CLI. Results come back to the chat when you open Miffan, and "My computers" keeps the output of every run.
 - **See how a computer is doing.** A status page says in one line whether the computer is ready, fixes problems in place and offers updates for the control helper.
-- **A mini box of its own.** Rather keep a partner off your desktop? Give it its own separate mini box on your Mac or Linux computer. It works freely there and hands finished files to a folder on your computer.
+- **A mini box of its own.** Rather keep a partner off your desktop? Give it its own separate mini box on your Mac, Windows or Linux computer. It works freely there and hands finished files to a folder on your computer.
 - **Easy to connect.** Easy chat finds computers on your Wi-Fi and on Tailscale. Sign in once with the account password and Miffan switches to its own key; Windows gets a one-step setup script.
 
 <table>
