@@ -12,7 +12,7 @@ Miffan 在 Linux/macOS 与 Windows 上通过 SSH 调用的 helper 源码。此�
 
 `build-logic` 的可缓存 `AssembleRemoteHelper` task 只依赖 JVM。它将 `src/miffan.sh`
 和 `src/windows-setup.ps1` 原样复制，把 `src/windows/miffan.ps1` 模板中的整行
-`#include Name.cs` 替换为同目录 C# 文件的原始字节，输出至
+`#include Name.cs` 或 `#include Name.ps1`（如 `Space.ps1`，须为无 BOM 的 UTF-8）替换为同目录文件的原始字节，输出至
 `app/build/generated/remoteHelper/remote/`。模板中的 UTF-8 BOM 保留；包含文件末尾 LF
 也是内容的一部分。不要运行源码模板，Windows 使用生成后的文件。
 

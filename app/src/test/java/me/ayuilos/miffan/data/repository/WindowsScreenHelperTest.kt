@@ -14,8 +14,13 @@ class WindowsScreenHelperTest {
         assertEquals("\"\$HOME/.miffan/bin/miffan\" clip", screenHelperCommand(RemotePlatform.POSIX, "clip"))
         assertTrue(runCatching { screenHelperCommand(RemotePlatform.WINDOWS, "clip; Write-Host secret") }.isFailure)
         assertEquals(screenHelperCommand(RemotePlatform.WINDOWS, "cua install"), RemoteScreenRepository.cuaDriverCommand(RemotePlatform.WINDOWS))
-        assertTrue(windowsHelperInstallCommand.contains("OpenStandardInput().CopyTo"))
-        assertTrue(windowsHelperInstallCommand.contains("[IO.File]::Replace"))
+        assertEquals("& \"\$env:LOCALAPPDATA\\Miffan\\bin\\miffan.ps1\" space create miffan-0000abcd 2 4096",
+            spaceHelperCommand(RemotePlatform.WINDOWS, listOf("create", "miffan-0000abcd", "2", "4096")))
+        assertEquals("\"\$HOME/.miffan/bin/miffan\" space info miffan-0000abcd", spaceHelperCommand(RemotePlatform.POSIX, listOf("info", "miffan-0000abcd")))
+        // Exactly the helper's bytes, never up to the end of stdin.
+        assertTrue(windowsHelperInstallCommand(152485).contains("${'$'}left = 152485"))
+        assertFalse(windowsHelperInstallCommand(1).contains("CopyTo"))
+        assertTrue(windowsHelperInstallCommand(1).contains("[IO.File]::Replace"))
         val asset = File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readBytes()
         assertArrayEquals(byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()), asset.take(3).toByteArray())
         // versions.lock pins the exact version; here it only has to be a plain integer.

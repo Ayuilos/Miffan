@@ -110,6 +110,11 @@ private fun spaceErrorMessage(resources: Resources, error: me.ayuilos.miffan.dat
         "needs_docker" -> resources.getString(R.string.im_space_error_docker)
         "download_failed" -> resources.getString(R.string.im_space_error_download)
         "disk_low" -> resources.getString(R.string.im_space_error_disk)
+        // Windows: installing Docker Desktop, starting it in the signed-in session.
+        "needs_admin" -> resources.getString(R.string.im_space_error_admin)
+        "needs_login" -> resources.getString(R.string.im_space_error_login)
+        "needs_restart" -> resources.getString(R.string.im_space_error_restart)
+        "docker_install_failed" -> resources.getString(R.string.im_space_error_docker_install, error.message.orEmpty().removePrefix("docker_install_failed: "))
         "timeout" -> resources.getString(R.string.im_space_error_timeout)
         else -> resources.getString(R.string.im_space_error_failed, error.message.orEmpty())
     }

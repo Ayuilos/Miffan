@@ -88,7 +88,7 @@ class CuaSpaceSessions internal constructor(assets: AssetManager) {
     private fun info(ssh: RemoteWorkspaceSession, name: String): CuaSpaceInfo {
         require(SPACE_NAME.matches(name)) { "Invalid Space name" }
         helper.ensureInstalled(ssh)
-        val result = ssh.execute("$HELPER space info $name", timeoutMillis = INFO_TIMEOUT_MILLIS)
+        val result = ssh.execute(spaceHelperCommand(ssh.platform, listOf("info", name)), timeoutMillis = INFO_TIMEOUT_MILLIS)
         val info = result.stdout.trim().lineSequence().lastOrNull()
             ?.let { runCatching { JsonInstant.decodeFromString<CuaSpaceInfo>(it) }.getOrNull() }
         if (info == null || info.error != null || info.port == null || info.token.isNullOrEmpty()) {
@@ -117,7 +117,6 @@ class CuaSpaceSessions internal constructor(assets: AssetManager) {
     }
 
     companion object {
-        private const val HELPER = "\"\$HOME/.miffan/bin/miffan\""
         private const val VERIFY_AFTER_MILLIS = 30_000L
         // Starting a stopped Space boots the runtime VM on macOS first.
         private const val INFO_TIMEOUT_MILLIS = 180_000L

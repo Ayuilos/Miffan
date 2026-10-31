@@ -12,13 +12,24 @@ internal fun screenHelperCommand(platform: RemotePlatform, operation: String): S
     else "\"\$HOME/.miffan/bin/miffan\" $operation"
 }
 
+/** The helper's `space` command; [args] are fixed words and app-made Space names, checked by the callers. */
+internal fun spaceHelperCommand(platform: RemotePlatform, args: List<String>): String {
+    val words = args.joinToString(" ")
+    return if (platform == RemotePlatform.WINDOWS) "& \"\$env:LOCALAPPDATA\\Miffan\\bin\\miffan.ps1\" space $words"
+    else "\"\$HOME/.miffan/bin/miffan\" space $words"
+}
+
 internal val windowsHelperVersionCommand = """
     ${'$'}helper = Join-Path ${'$'}env:LOCALAPPDATA 'Miffan\bin\miffan.ps1'
     if (Test-Path -LiteralPath ${'$'}helper -PathType Leaf) { & ${'$'}helper version }
 """.trimIndent()
 
-/** Binary upload retains the asset BOM. Replace in the same directory, retaining the old ACL. */
-internal val windowsHelperInstallCommand = """
+/**
+ * Binary upload retains the asset BOM. Replace in the same directory, retaining the old ACL. Reads exactly
+ * [size] bytes: Windows OpenSSH sometimes never delivers the end of stdin after a large upload (seen with
+ * the 150 KB helper), and a copy to the end would then wait until the call times out.
+ */
+internal fun windowsHelperInstallCommand(size: Int): String = """
     ${'$'}ErrorActionPreference = 'Stop'
     ${'$'}directory = Join-Path ${'$'}env:LOCALAPPDATA 'Miffan\bin'
     ${'$'}null = New-Item -ItemType Directory -Path ${'$'}directory -Force
@@ -32,7 +43,15 @@ internal val windowsHelperInstallCommand = """
     ${'$'}temp = Join-Path ${'$'}directory ('miffan-' + [Guid]::NewGuid().ToString('N') + '.tmp')
     try {
         ${'$'}file = [IO.File]::Open(${'$'}temp, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
-        try { [Console]::OpenStandardInput().CopyTo(${'$'}file); ${'$'}file.Flush(${'$'}true) } finally { ${'$'}file.Dispose() }
+        try {
+            ${'$'}stdin = [Console]::OpenStandardInput(); ${'$'}buffer = New-Object byte[] 65536; ${'$'}left = $size
+            while (${'$'}left -gt 0) {
+                ${'$'}read = ${'$'}stdin.Read(${'$'}buffer, 0, [Math]::Min(${'$'}buffer.Length, ${'$'}left))
+                if (${'$'}read -le 0) { throw 'Helper upload ended early' }
+                ${'$'}file.Write(${'$'}buffer, 0, ${'$'}read); ${'$'}left -= ${'$'}read
+            }
+            ${'$'}file.Flush(${'$'}true)
+        } finally { ${'$'}file.Dispose() }
         if (Test-Path -LiteralPath ${'$'}target -PathType Leaf) { [IO.File]::Replace(${'$'}temp, ${'$'}target, [NullString]::Value) }
         else { [IO.File]::Move(${'$'}temp, ${'$'}target) }
     } finally { if (Test-Path -LiteralPath ${'$'}temp) { Remove-Item -LiteralPath ${'$'}temp -Force } }

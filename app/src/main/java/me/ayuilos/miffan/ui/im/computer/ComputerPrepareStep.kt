@@ -167,7 +167,7 @@ internal fun ComputerReadyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
         }
         if (!state.ready) SetupNote(HugeIcons.InformationCircle, stringResource(R.string.im_computer_auto_recheck))
         // A mini box needs none of the desktop's checks; Windows has no mini boxes yet.
-        if (!statusPage && probe != null && !state.ready && state.usesScreen && !state.isWindows) {
+        if (!statusPage && probe != null && !state.ready && state.usesScreen) {
             Surface(onClick = vm::onlySpaces, enabled = !state.busy, shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),

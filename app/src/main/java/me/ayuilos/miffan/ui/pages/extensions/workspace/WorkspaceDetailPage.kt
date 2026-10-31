@@ -677,7 +677,7 @@ internal fun WorkspaceBasicPage(
                         if (workspace?.isRemote == true) {
                             WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_login_target), remoteHost?.let { "${it.username}@${it.host}:${it.port}" } ?: workspaceStrings.getString(R.string.workspace_host_config_unavailable))
                             WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_remote_directory), workspace.remotePath.orEmpty())
-                            if (remoteHost?.platform == RemotePlatform.WINDOWS.storageName) {
+                            if (!workspace.isSpace && remoteHost?.platform == RemotePlatform.WINDOWS.storageName) {
                                 WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_remote_system), workspaceStrings.getString(R.string.workspace_remote_system_windows))
                             }
                             WorkspaceInfoRow(workspaceStrings.getString(R.string.workspace_host_identity), if (remoteHost?.trustedHostKeySha256 != null) workspaceStrings.getString(R.string.workspace_fingerprint_confirmed) else workspaceStrings.getString(R.string.workspace_fingerprint_unconfirmed))

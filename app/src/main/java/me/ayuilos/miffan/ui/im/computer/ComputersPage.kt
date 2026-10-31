@@ -374,27 +374,24 @@ fun ComputerDetailPage(hostId: String) {
                     AddRow(stringResource(R.string.im_computer_detail_add_partner), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { picking = true }
                 }
             }
-            // Windows has no mini boxes yet; one that was made before still shows.
-            if (current.platform != RemoteScreenPlatform.WINDOWS || boxWorkspaces.isNotEmpty()) {
-                item("boxes_title") {
-                    SectionHeader(stringResource(R.string.im_computer_detail_boxes), stringResource(R.string.im_computer_detail_boxes_help))
-                }
-                item("boxes") {
-                    SetupCard(padding = 0.dp, spacing = 0.dp) {
-                        boxes.forEach { (workspace, partner) ->
-                            MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) { nav.navigate(Screen.PartnerComputer(partner.id.toString())) }
-                            HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        }
-                        if (boxWorkspaces.isNotEmpty()) {
-                            MiniBoxMemoryBar(MiniBoxMemory(
-                                limitMb = boxWorkspaces.sumOf { it.spaceMemoryMb ?: SpaceTier.DEFAULT.memoryMb },
-                                usedMb = miniBoxesUsedMb(boxWorkspaces.map { boxLive.readings[it.id] }),
-                                totalMb = boxLive.hostMemoryMb,
-                            ))
-                            HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        }
-                        AddRow(stringResource(R.string.im_computer_detail_add_box), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { pickingBox = true }
+            item("boxes_title") {
+                SectionHeader(stringResource(R.string.im_computer_detail_boxes), stringResource(R.string.im_computer_detail_boxes_help))
+            }
+            item("boxes") {
+                SetupCard(padding = 0.dp, spacing = 0.dp) {
+                    boxes.forEach { (workspace, partner) ->
+                        MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) { nav.navigate(Screen.PartnerComputer(partner.id.toString())) }
+                        HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
+                    if (boxWorkspaces.isNotEmpty()) {
+                        MiniBoxMemoryBar(MiniBoxMemory(
+                            limitMb = boxWorkspaces.sumOf { it.spaceMemoryMb ?: SpaceTier.DEFAULT.memoryMb },
+                            usedMb = miniBoxesUsedMb(boxWorkspaces.map { boxLive.readings[it.id] }),
+                            totalMb = boxLive.hostMemoryMb,
+                        ))
+                        HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+                    AddRow(stringResource(R.string.im_computer_detail_add_box), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { pickingBox = true }
                 }
             }
             item("manage") {

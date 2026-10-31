@@ -27,7 +27,7 @@ class RemoteHelperContractTest {
                 "sunshine-pair-restart-failed sunshine-pair-state-unrecognized",
             "ps1" to "probe sunshine-running sunshine-busy sunshine-missing sunshine-start sunshine-encryption " +
                 "sunshine-pair sunshine-pair-replaced sunshine-unpair sunshine-unpair-none firewall-check firewall-review firewall-result " +
-                "clipboard clipboard-failed clipboard-serve clipboard-serve-failed",
+                "clipboard clipboard-failed clipboard-serve clipboard-serve-failed space-probe-installing",
         ).flatMap { (platform, names) -> names.split(" ").map { "$platform/$it.json" } }.toSet()
         assertEquals("Shared fixture inventory changed", expected, files.map { it.relativeTo(root).invariantSeparatorsPath }.toSet())
         for (file in files) {
@@ -35,8 +35,17 @@ class RemoteHelperContractTest {
             val windows = file.parentFile?.name == "ps1"
             val output = file.readText()
             when {
+                name == "space-probe-installing" -> json.decodeFromString<me.ayuilos.miffan.data.ai.computer.CuaSpaceProbe>(output).let {
+                    // Windows: cua is in, Docker Desktop downloads in the background.
+                    assertTrue(it.cuaInstalled)
+                    assertEquals(false, it.docker?.ok)
+                    assertEquals("download", it.dockerInstall?.stage)
+                    assertTrue(it.dockerInstall!!.running)
+                    assertEquals(620496816L, it.dockerInstall!!.total)
+                    assertEquals(12, it.host?.cpus)
+                }
                 name.startsWith("probe") -> parseHelperProbe(output).let {
-                    assertEquals(file.path, if (windows) 13 else 32, it.helper)
+                    assertEquals(file.path, if (windows) 14 else 32, it.helper)
                     assertEquals(if (windows) "windows" else if (name == "probe-macos") "macos" else "linux", it.os)
                     assertEquals("Fixture Desktop", it.hostname)
                     assertTrue(it.session.present)

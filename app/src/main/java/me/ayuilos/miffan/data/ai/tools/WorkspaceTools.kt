@@ -88,7 +88,9 @@ suspend fun createWorkspaceTools(
     val snapshot = workspaceRepository.currentWorkspaceToolTarget(assistantId, workspaceId, scopeId)
         ?.copy(conversationId = conversationId, conversationCwd = cwd) ?: return emptyList()
     val remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" }
-    val target = WorkspaceToolTarget(workspace, remoteHostLabel, snapshot, remoteHost?.platform == RemotePlatform.WINDOWS.storageName)
+    // A partner's own computer is Linux whatever its host runs.
+    val target = WorkspaceToolTarget(workspace, remoteHostLabel, snapshot,
+        !workspace.isSpace && remoteHost?.platform == RemotePlatform.WINDOWS.storageName)
     fun needsApproval(name: String) = computerUse?.let { computerWorkspaceApproval(name, it) } ?: if (name == WORKSPACE_SHELL_TOOL_NAME) {
         shellApprovalRequired || shellApprovalTarget?.sameTarget(snapshot) != true
     } else {

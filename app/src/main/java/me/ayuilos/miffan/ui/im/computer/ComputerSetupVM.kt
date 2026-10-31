@@ -29,6 +29,7 @@ import me.ayuilos.miffan.data.ai.computer.ComputerStatusRecord
 import me.ayuilos.miffan.data.ai.computer.ComputerStatusStore
 import me.ayuilos.miffan.data.ai.computer.CuaUpdateState
 import me.ayuilos.miffan.data.ai.computer.CuaUpdates
+import me.ayuilos.miffan.data.ai.computer.CuaSpaceException
 import me.ayuilos.miffan.data.ai.computer.CuaSpaceProbe
 import me.ayuilos.miffan.data.ai.computer.PartnerComputers
 import me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup
@@ -111,6 +112,7 @@ enum class ComputerSetupTask {
 
 /** Reads the Mac's grants every few seconds for about two minutes after asking for them. */
 private const val PERMISSION_WATCH_INTERVAL_MS = 3_000L
+private const val DOCKER_INSTALL_POLL_MILLIS = 3_000L
 private const val PERMISSION_WATCH_ROUNDS = 40
 
 /** Tries with the key when the user comes back from the computer; few, so sshd's failure limits stay far away. */
@@ -945,13 +947,10 @@ class ComputerSetupVM(
         }
     }
 
-    /**
-     * After picking partners: a Mac or Linux computer asks how they use it; on Windows (no Spaces yet)
-     * or with nobody picked, the choice is the desktop.
-     */
+    /** After picking partners: asks how they use the computer; with nobody picked, the choice is the desktop. */
     fun share(assistantIds: Set<Uuid>) {
         if (_state.value.busy) return
-        if (assistantIds.isEmpty() || _state.value.isWindows) {
+        if (assistantIds.isEmpty()) {
             bind(assistantIds)
             return
         }
@@ -997,10 +996,30 @@ class ComputerSetupVM(
         return if (result.exitCode == 0 && !result.timedOut) linuxFamily(result.stdout) else null
     }
 
-    /** Installs cua on the computer (the user confirmed on [ComputerSetupStep.SPACE_INSTALL]), then goes on. */
+    /**
+     * Installs cua on the computer (the user confirmed on [ComputerSetupStep.SPACE_INSTALL]), then goes on.
+     * On Windows the helper installs Docker Desktop too when it is missing: in the background on the computer,
+     * which can take up to an hour on a slow network, so this follows its progress until it is done. Leaving
+     * the page stops only the following; the step picks it up again when shown.
+     */
     fun installCua() = run(ComputerSetupTask.INSTALLING) {
         val hostId = requireNotNull(_state.value.hostId)
-        if (_state.value.spaceProbe?.cuaInstalled != true) spaces.install(hostId)
+        val before = _state.value.spaceProbe
+        if (before?.cuaInstalled != true || _state.value.isWindows && before.docker?.ok == false) {
+            var reply = spaces.install(hostId)
+            var job = reply.dockerInstall
+            while (job?.running == true) {
+                val cua = reply.cua
+                _state.update { it.copy(spaceProbe = it.spaceProbe?.copy(cua = cua ?: it.spaceProbe.cua, dockerInstall = job)) }
+                delay(DOCKER_INSTALL_POLL_MILLIS)
+                reply = spaces.probe(hostId)
+                job = reply.dockerInstall
+            }
+            when (job?.stage) {
+                "restart" -> throw CuaSpaceException("needs_restart", null)
+                "failed" -> throw CuaSpaceException("docker_install_failed", job.error)
+            }
+        }
         val probe = spaces.probe(hostId)
         _state.update { it.copy(spaceProbe = probe) }
         if (probe.cuaInstalled && probe.docker?.ok != false) startSpaces()

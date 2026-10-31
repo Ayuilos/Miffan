@@ -907,4 +907,66 @@ Test 'shared clipboard stream replies match C# producer literals' {
     }
 }
 
+function Get-SpaceFailure([scriptblock]$Body) {
+    try { & $Body; throw 'Expected a space failure' }
+    catch { if (-not $_.Exception.Data.Contains('space_code')) { throw }; return @{code=$_.Exception.Data['space_code'];detail=$_.Exception.Data['space_detail']} }
+}
+Test 'space arguments round-trip through the Windows C runtime rules' {
+    Assert-Equal (ConvertTo-SpaceArgument 'miffan-0000abcd') 'miffan-0000abcd' 'plain word'
+    Assert-Equal (ConvertTo-SpaceArgument '') '""' 'empty'
+    Assert-Equal (ConvertTo-SpaceArgument 'C:\Users\A B\x') '"C:\Users\A B\x"' 'path with a space'
+    Assert-Equal (ConvertTo-SpaceArgument 'C:\A B\') '"C:\A B\\"' 'trailing backslash is doubled before the quote'
+    Assert-Equal (ConvertTo-SpaceArgument 'say "hi"') '"say \"hi\""' 'quotes are escaped'
+    Assert-Equal (ConvertTo-SpaceArgument 'a\"b c') '"a\\\"b c"' 'backslashes before a quote are doubled'
+}
+Test 'space names, sizes and create failures' {
+    Assert-True (Test-SpaceName 'miffan-0123abcd') 'app name'
+    foreach ($bad in @('miffan-0123ABCD', 'miffan-0123abc', 'other-0123abcd', 'miffan-0123abcd ', '')) { Assert-True (-not (Test-SpaceName $bad)) "rejects [$bad]" }
+    Assert-Equal (Invoke-Space 'info' 'nope' '' '') 'bad_name' 'info with a bad name'
+    Assert-Equal (Invoke-Space 'handoff' 'out' 'nope' '') 'bad_name' 'handoff with a bad name'
+    Assert-Equal (Get-SpaceSize '2' '4096').memory 4096 'valid size'
+    Assert-Equal (Get-SpaceFailure { Get-SpaceSize 'x' '4096' }).detail 'cpus' 'bad cpus'
+    Assert-Equal (Get-SpaceFailure { Get-SpaceSize '2' '100' }).detail 'memory' 'too little memory'
+    Assert-Equal (Get-SpaceFailure { Invoke-Space 'bogus' '' '' '' }).code 'bad_input' 'unknown action'
+    Assert-Equal (Get-SpaceCreateCode 'Error: no space left on device') 'disk_low' 'disk'
+    Assert-Equal (Get-SpaceCreateCode 'failed to pull image: dial tcp: i/o timeout') 'download_failed' 'pull'
+    Assert-Equal (Get-SpaceCreateCode 'cannot connect to the docker engine') 'needs_docker' 'docker'
+    Assert-Equal (Get-SpaceCreateCode 'something else') 'create_failed' 'other'
+    Assert-Equal (Get-SpaceFailure { Stop-Space 'cua_missing' $null }).detail $null 'no detail is null'
+}
+Test 'space handoff paths stay inside their folders' {
+    foreach ($good in @('a', 'Miffan Partners/x', 'a/b c/d.txt')) { Assert-True (Test-SpaceRelative $good) "accepts [$good]" }
+    foreach ($bad in @('', '/a', 'a/../b', './a', 'a//b', 'a\b', 'a/')) { Assert-True (-not (Test-SpaceRelative $bad)) "rejects [$bad]" }
+    Assert-Equal (ConvertTo-SpaceHostName 'a:b*c?.txt') 'a_b_c_.txt' 'characters Windows refuses'
+    Assert-Equal (ConvertTo-SpaceHostName 'name. ') 'name' 'trailing dots and spaces'
+    Assert-Equal (ConvertTo-SpaceShellQuote "it's") "'it'\''s'" 'single quote'
+}
+Test 'space unique names add a number before the extension' {
+    $taken = @('C:\h\a.txt', 'C:\h\a (2).txt', 'C:\h\b.tar.gz', 'C:\h\.env', 'C:\h\noext')
+    $exists = { param($p) $taken -contains $p }
+    Assert-Equal (Get-SpaceUnique 'C:\h\new.txt' $exists '\') 'C:\h\new.txt' 'free name'
+    Assert-Equal (Get-SpaceUnique 'C:\h\a.txt' $exists '\') 'C:\h\a (3).txt' 'next free number'
+    Assert-Equal (Get-SpaceUnique 'C:\h\b.tar.gz' $exists '\') 'C:\h\b (2).tar.gz' 'double extension'
+    Assert-Equal (Get-SpaceUnique 'C:\h\.env' $exists '\') 'C:\h\.env (2)' 'dot file has no extension'
+    Assert-Equal (Get-SpaceUnique 'C:\h\noext' $exists '\') 'C:\h\noext (2)' 'no extension'
+    $remote = @('/home/cua/Desktop/Shared/x.md')
+    Assert-Equal (Get-SpaceUnique '/home/cua/Desktop/Shared/x.md' { param($p) $remote -contains $p } '/') '/home/cua/Desktop/Shared/x (2).md' 'Space side'
+}
+Test 'space system proxy is read and given to the Space by name and port only' {
+    function Get-ItemProperty { param($Path, $ErrorAction) return $script:ProxySettings }
+    $cases = @(
+        @(@{ProxyEnable=1;ProxyServer='127.0.0.1:7890'}, 'http://127.0.0.1:7890', 'http://host.docker.internal:7890'),
+        @(@{ProxyEnable=1;ProxyServer='http=10.0.0.2:3128;https=10.0.0.2:3129;socks=x:1'}, 'http://10.0.0.2:3129', 'http://10.0.0.2:3129'),
+        @(@{ProxyEnable=1;ProxyServer='http=localhost:8080'}, 'http://localhost:8080', 'http://host.docker.internal:8080'),
+        @(@{ProxyEnable=0;ProxyServer='127.0.0.1:7890'}, $null, $null),
+        @(@{ProxyEnable=1;ProxyServer='evil;rm -rf /:1'}, $null, $null),
+        @(@{ProxyEnable=1;ProxyServer='socks=127.0.0.1:1080'}, $null, $null)
+    )
+    foreach ($case in $cases) {
+        $script:ProxySettings = New-Object PSObject -Property $case[0]
+        Assert-Equal (Get-SpaceSystemProxy) $case[1] "system proxy for $($case[0].ProxyServer)"
+        Assert-Equal (Get-SpaceProxyForSpace) $case[2] "Space proxy for $($case[0].ProxyServer)"
+    }
+}
+
 [Console]::Out.WriteLine((ConvertTo-PlainJson @{success=$true;passed=$script:Passed;scope='offline; firewall/service/task mutations mocked'}))

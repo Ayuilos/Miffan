@@ -705,7 +705,7 @@ class WorkspaceRepository(
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
         return withSavedHostConnection(host, host.config()) { session ->
             spaces.ensureHelper(session)
-            session.execute("\"\$HOME/.miffan/bin/miffan\" space ${args.joinToString(" ")}",
+            session.execute(spaceHelperCommand(session.platform, args),
                 timeoutMillis = timeoutMillis, stdin = stdin?.inputStream())
         }
     }

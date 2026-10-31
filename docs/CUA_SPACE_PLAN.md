@@ -16,7 +16,7 @@
 - 多个伙伴各自一台，不共用。
 - 操作电脑的三档权限（先问我 / 直接操作 / 不允许）保留不变。独立电脑新建时默认“直接操作”，用户随时可改；真实桌面默认仍是“先问我”。
 - 文件交接两种都做：手机上传下载，以及宿主电脑上的交接文件夹。
-- Windows 主机暂缓，第一版只支持 Mac 和 Linux 主机。
+- Windows 主机暂缓，第一版只支持 Mac 和 Linux 主机（P5 起支持 Windows 主机，见下方“P5 Windows 主机”）。
 - 第一版画面用 cua-spacesd 自带的画面流，不用 Sunshine。
 
 ## 已确认的事实（2026-10-28 验证）
@@ -188,7 +188,8 @@
 | P2 画面 | cua 媒体客户端（OpenMedia + rcdp v2）、输入、剪贴板，接入现有屏幕页 | 用户在手机上看和操作独立电脑 |
 | P3 电脑操作 | 经 Space 内 driver MCP 的电脑操作、控制权按 Space 仲裁、独立电脑的默认权限 | 伙伴在独立电脑里完成“打开应用—输入—验证” |
 | P4 管理 | 重置、删除、占用显示、交接文件夹、宿主电脑删除时的处理 | 完整的轻松模式体验 |
-| P5 扩展 | Linux + NVIDIA 主机上可选的 Sunshine 高性能画面；macOS / Windows Space 镜像 | 按需求再定 |
+| P5 Windows 主机 | Windows 电脑上的小电脑（Linux Space 跑在 Docker Desktop 上），安装全走 App | 进行中（2026-10-31，`feature/space-windows`），见下方“P5 Windows 主机” |
+| P6 扩展 | Linux + NVIDIA 主机上可选的 Sunshine 高性能画面；macOS / Windows Space 镜像 | 按需求再定 |
 
 ## P1 状态（2026-10-28）
 
@@ -203,6 +204,24 @@
 - 伙伴“用电脑”页：显示占用（Space 内 cgroup 的内存，扣除不活跃文件缓存，与 docker stats 一致；CPU 按它的核数折算）和交接文件夹路径（点按复制）。
 - 删除宿主电脑：先在宿主上删除其上的小电脑，连不上时只从 App 里移除；交接文件夹保留。修复了之前有小电脑时删除确认框反复弹出、删不掉的问题。
 - 手机收发：小电脑页“收发文件 › 在手机上收发”打开 Space 的 Shared 文件夹（可进子文件夹）：点开、保存到手机、分享、删除，从手机添加（多选，同名加 “ (2)”，最多 2 GB）。上传经 gRPC 流式写入，不再整份读进内存（原 32 MB 上限）；手机加入的文件和宿主交接文件夹进来的一样写进伙伴下一轮的提示。
+
+## P5 Windows 主机（2026-10-31）
+
+用户决定：先做 Windows 电脑给伙伴开小电脑（小电脑仍是同一个 Linux 镜像），运行方式用 Docker Desktop（WSL 2），
+cua 与 Docker Desktop 的安装都走 App 的设置流程。
+
+- 事实（Win11 专业版测试机，i5-10400，16 GB）：cua 在 Windows 上是预览版，本地 Space 用 Docker Desktop（WSL 2）
+  或 QEMU+WHPX；cua 的数据目录同样是 `%USERPROFILE%\.cua`，命令行装在 `%LOCALAPPDATA%\Programs\cua\bin`（约 80 MB）。
+  管理员经 OpenSSH 登录得到提升后的会话，在 session 0；会话结束时 OpenSSH 结束它启动的所有进程，所以 Docker
+  Desktop 与 cua 守护进程用计划任务在已登录的桌面会话里启动。
+- helper 14（`remote-helper/src/windows/Space.ps1`，include 进 `miffan.ps1`）：与 POSIX 版同名同参同输出，细节见
+  PROTOCOL.md。Docker Desktop 安装包约 600 MB，国内直连约 150 KB/s、经代理约 200–700 KB/s（十几分钟到一小时）：
+  缺 Docker Desktop 时由一个后台任务（S4U、提升、与 SSH 无关）先装 cua、再断点续传下载并校验签名、安静安装，
+  进度写入状态文件；App 每 3 秒读一次，在安装页显示“正在下载 Docker Desktop · 26% · 157 / 591 MB”，离开页面后
+  再进来接着显示。需要重启（WSL 刚开启）时提示重启。
+- 联调中发现：Windows OpenSSH 偶尔不传 stdin 的结束，150 KB 的 helper 上传会一直等到超时（旧版 104 KB 也可能
+  碰到）。安装 helper 的命令改为按长度读取（`windowsHelperInstallCommand(size)`）。
+- Windows 上没有 ufw 修法：不提供 `request_network_fix`；系统代理开着时小电脑经 `host.docker.internal` 走它。
 
 ## 验收
 

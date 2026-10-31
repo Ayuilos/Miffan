@@ -14,7 +14,7 @@ internal class RemoteMiffanHelper(private val assets: AssetManager) {
             .find(script.toString(Charsets.UTF_8))?.groupValues?.get(1)) { "Helper script has no version" }
         val installed = ssh.execute(if (windows) windowsHelperVersionCommand else "\"\$HOME/.miffan/bin/miffan\" version 2>/dev/null", timeoutMillis = 10_000)
         if (installed.exitCode == 0 && !installed.timedOut && installed.stdout.trim() == version) return
-        val command = if (windows) windowsHelperInstallCommand else
+        val command = if (windows) windowsHelperInstallCommand(script.size) else
             "mkdir -p \"\$HOME/.miffan/bin\" && cat > \"\$HOME/.miffan/bin/miffan.tmp\" && " +
                 "chmod 755 \"\$HOME/.miffan/bin/miffan.tmp\" && mv -f \"\$HOME/.miffan/bin/miffan.tmp\" \"\$HOME/.miffan/bin/miffan\""
         val result = ssh.execute(command, timeoutMillis = 30_000, stdin = ByteArrayInputStream(script))
