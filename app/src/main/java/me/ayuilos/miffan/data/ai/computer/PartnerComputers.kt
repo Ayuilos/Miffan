@@ -2,7 +2,7 @@ package me.ayuilos.miffan.data.ai.computer
 
 import me.rerere.workspace.RemotePlatform
 import me.rerere.workspace.WindowsRemotePath
-import me.rerere.workspace.shouldTryNextRemoteAddress
+import me.rerere.workspace.isRemoteNetworkFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -214,7 +214,7 @@ class PartnerComputers(
                     if (workspaces.revokeComputerAccess(hostId, command, host.connectionRevision)) ForgetOutcome.FORGOTTEN
                     else ForgetOutcome.ALREADY_GONE
                 } catch (error: Exception) {
-                    if (shouldTryNextRemoteAddress(error)) throw ComputerUnreachableException(command, error)
+                    if (isRemoteNetworkFailure(error)) throw ComputerUnreachableException(command, error)
                     throw error
                 }
             }

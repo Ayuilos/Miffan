@@ -11,6 +11,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -75,7 +78,13 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
 
     private suspend fun candidates(row: RemoteHostEntity, probe: SunshineProbe, network: StreamNetworkSnapshot = routes.snapshot()): StreamCandidates = withContext(Dispatchers.IO) {
         orderStreamCandidates(routes.cached(row.id, row.connectionRevision, network.key), probe.candidates,
-            withTimeoutOrNull(3_000) { resolveStreamHost(row.host) }.orEmpty(), network)
+            resolveSavedAddresses(row), network)
+    }
+
+    // Every saved address, the last one that worked first; names resolve in parallel, each within its own wait.
+    private suspend fun resolveSavedAddresses(row: RemoteHostEntity): List<String> = coroutineScope {
+        row.connectionAddresses.map { address -> async { withTimeoutOrNull(3_000) { resolveStreamHost(address.host) }.orEmpty() } }
+            .awaitAll().flatten()
     }
 
     suspend fun open(ssh: RemoteWorkspaceSession, row: RemoteHostEntity, probe: SunshineProbe,
@@ -90,7 +99,7 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
         val identityKey = "${row.id}:${row.connectionRevision}"
         try {
             return withTimeout(budgetMillis.coerceAtLeast(1)) {
-                // HTTP discovery, DNS, pending-session backoff and both candidates share this budget.
+                // HTTP discovery, DNS, pending-session backoff and every candidate share this budget.
                 host = host(ssh, row.streamCertificateSha256)
                 val info = host!!.serverInfo()
                 streamPreflightFallback(probe, info.paired)?.let { return@withTimeout StreamOpenResult(fallback = RemoteStreamFallback(it)) }

@@ -168,7 +168,7 @@ object NativeSshWorkspaceTransport {
             when {
                 expired.get() -> KeySignInCheck.UNREACHABLE
                 isRemoteKeyAuthenticationRefused(error) -> KeySignInCheck.REFUSED
-                shouldTryNextRemoteAddress(error) -> KeySignInCheck.UNREACHABLE
+                isRemoteNetworkFailure(error) -> KeySignInCheck.UNREACHABLE
                 else -> throw error
             }
         } finally {

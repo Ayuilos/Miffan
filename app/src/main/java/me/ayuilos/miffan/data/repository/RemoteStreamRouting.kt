@@ -62,7 +62,7 @@ internal fun orderStreamCandidates(cached: String?, reported: List<String>, ssh:
         lan + reportedIps.filter(::tailscaleAddress) + sshIps
     fun local(address: String) = privateStreamAddress(address) || network.subnets.any { it.contains(address) }
     val skipped = ordered.any { local(it) && !network.localAllowed }
-    return StreamCandidates(ordered.distinct().filter { network.localAllowed || !local(it) }.take(2), skipped)
+    return StreamCandidates(ordered.distinct().filter { network.localAllowed || !local(it) }, skipped)
 }
 internal fun streamNetworkKey(parts: List<String>): String = parts.sorted().joinToString("|")
 internal fun streamRouteCacheKey(hostId: String, revision: String, network: String): String =
