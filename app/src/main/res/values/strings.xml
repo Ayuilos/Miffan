@@ -2780,6 +2780,8 @@
   <string name="im_computer_delete_offline_title" tools:ignore="MissingTranslation">Can\'t reach the computer</string>
   <string name="im_computer_delete_offline" tools:ignore="MissingTranslation">Miffan\'s key can\'t be removed from it right now. You can delete it from the phone only, and later run this line in the computer\'s terminal:</string>
   <string name="im_computer_delete_offline_later" tools:ignore="MissingTranslation">Or cancel, and delete it again once the computer is on.</string>
+  <string name="im_computer_delete_unverified_title">This computer was never connected</string>
+  <string name="im_computer_delete_unverified">Miffan cannot sign in to it to remove its key. If you already ran the setup on it, run this line in its terminal:</string>
   <string name="im_computer_delete_phone_only" tools:ignore="MissingTranslation">Delete from phone only</string>
   <string name="im_computer_forgetting" tools:ignore="MissingTranslation">Making the computer forget Miffan…</string>
   <string name="im_computer_delete_offline_sunshine" tools:ignore="MissingTranslation">High-quality mode is still paired too: open Sunshine\'s web page and remove Miffan under Clients.</string>

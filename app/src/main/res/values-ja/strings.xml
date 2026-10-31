@@ -2709,6 +2709,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_computer_delete_offline_title">今はコンピューターに接続できません</string>
   <string name="im_computer_delete_offline">今はコンピューターから Miffan のキーを削除できません。先にこのスマホからだけ削除して、あとでコンピューターのターミナルでこの行を実行できます：</string>
   <string name="im_computer_delete_offline_later">キャンセルして、コンピューターの電源が入ってから改めて削除することもできます。</string>
+  <string name="im_computer_delete_unverified_title">このコンピューターにはまだ一度も接続できていません</string>
+  <string name="im_computer_delete_unverified">Miffan はそのコンピューターにログインして Miffan のキーを削除できません。すでに設定スクリプトを実行しているなら、そのコンピューターのターミナルでこの行を実行してください：</string>
   <string name="im_computer_delete_phone_only">スマホからだけ削除</string>
   <string name="im_computer_forgetting">コンピューターに Miffan を忘れてもらっています…</string>
   <string name="im_computer_delete_offline_sunshine">HD モードのペアリングも残っています。Sunshine のウェブページを開き、「クライアント」から Miffan を削除してください。</string>

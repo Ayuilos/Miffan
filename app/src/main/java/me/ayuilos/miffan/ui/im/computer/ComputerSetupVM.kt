@@ -652,6 +652,7 @@ class ComputerSetupVM(
             workspaces.createHost(target.name, target.host, target.port, username, authentication = authentication, sshKeyId = sshKeyId)
                 .also { if (target.nameGuessed) guessedNameHostId = it.id }
         }
+        if (target.system == NearbySystem.WINDOWS) workspaces.noteUnverifiedHostPlatform(host.id, RemotePlatform.WINDOWS)
         _state.update { it.copy(hostId = host.id) }
         return host
     }

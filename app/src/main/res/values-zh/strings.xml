@@ -2766,6 +2766,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_computer_delete_offline_title">电脑现在连不上</string>
   <string name="im_computer_delete_offline">没法删掉它上面的 Miffan 钥匙。可以先只从手机上删除，等电脑开着时，在它的终端里运行这一行：</string>
   <string name="im_computer_delete_offline_later">也可以先取消，等它开机后再来删除。</string>
+  <string name="im_computer_delete_unverified_title">这台电脑还没连上过</string>
+  <string name="im_computer_delete_unverified">Miffan 没法登录它去删掉钥匙。如果你已经在它上面运行过准备脚本，可以在它的终端里运行这一行：</string>
   <string name="im_computer_delete_phone_only">只从手机上删除</string>
   <string name="im_computer_forgetting">正在让电脑忘掉 Miffan…</string>
   <string name="im_computer_delete_offline_sunshine">高清模式的配对也还在：打开 Sunshine 的网页后台，在「客户端」里删掉 Miffan。</string>

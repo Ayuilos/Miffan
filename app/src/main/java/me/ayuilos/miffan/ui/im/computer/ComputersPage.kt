@@ -270,6 +270,8 @@ fun ComputerDetailPage(hostId: String) {
     var offlineCommand by rememberSaveable { mutableStateOf<String?>(null) }
     // Whether that computer also still trusts this phone for high-quality mode.
     var offlinePaired by rememberSaveable { mutableStateOf(false) }
+    // Whether Miffan never reached it at all (its identity was never confirmed), rather than not now.
+    var offlineNever by rememberSaveable { mutableStateOf(false) }
     val hostList by remember(workspaces) { workspaces.listHostsFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val remoteTasks: me.ayuilos.miffan.data.remotetask.RemoteTaskRepository = koinInject()
     val hostTasks by remember(hostId) { remoteTasks.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -502,6 +504,7 @@ fun ComputerDetailPage(hostId: String) {
                                 } catch (error: ComputerUnreachableException) {
                                     offlineCommand = error.manualCommand
                                     offlinePaired = host?.streamCertificateSha256 != null
+                                    offlineNever = error.neverConnected
                                 } finally { forgetting = false }
                             }
                         }) { Text(stringResource(R.string.im_computer_delete_confirm), color = MaterialTheme.colorScheme.error) }
@@ -518,10 +521,10 @@ fun ComputerDetailPage(hostId: String) {
             })
         offlineCommand?.let { command ->
             AlertDialog(onDismissRequest = { offlineCommand = null },
-                title = { Text(stringResource(R.string.im_computer_delete_offline_title)) },
+                title = { Text(stringResource(if (offlineNever) R.string.im_computer_delete_unverified_title else R.string.im_computer_delete_offline_title)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(stringResource(R.string.im_computer_delete_offline))
+                        Text(stringResource(if (offlineNever) R.string.im_computer_delete_unverified else R.string.im_computer_delete_offline))
                         val context = LocalContext.current
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.weight(1f)) { CommandPreview(command) }
@@ -531,7 +534,8 @@ fun ComputerDetailPage(hostId: String) {
                             }) { Text(stringResource(R.string.im_computer_copy)) }
                         }
                         if (offlinePaired) Text(stringResource(R.string.im_computer_delete_offline_sunshine))
-                        Text(stringResource(R.string.im_computer_delete_offline_later), style = MaterialTheme.typography.bodySmall,
+                        // Waiting for it to be on does not help one that was never reached.
+                        if (!offlineNever) Text(stringResource(R.string.im_computer_delete_offline_later), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },

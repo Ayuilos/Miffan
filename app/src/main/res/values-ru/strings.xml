@@ -2724,6 +2724,8 @@
   <string name="im_computer_delete_offline_title">Не удаётся подключиться к компьютеру</string>
   <string name="im_computer_delete_offline">Сейчас не удаётся удалить ключ Miffan с компьютера. Можно удалить компьютер только с телефона, а позже выполнить эту строку в терминале компьютера:</string>
   <string name="im_computer_delete_offline_later">Или отмените удаление и попробуйте снова, когда компьютер будет включён.</string>
+  <string name="im_computer_delete_unverified_title">Этот компьютер ещё ни разу не подключался</string>
+  <string name="im_computer_delete_unverified">Miffan не может войти на компьютер, чтобы удалить ключ Miffan. Если вы уже запускали скрипт настройки на этом компьютере, выполните эту строку в его терминале:</string>
   <string name="im_computer_delete_phone_only">Удалить только с телефона</string>
   <string name="im_computer_forgetting">Помогаем компьютеру забыть Miffan…</string>
   <string name="im_computer_delete_offline_sunshine">Сопряжение в режиме HD тоже сохраняется: откройте веб-страницу Sunshine и удалите Miffan в разделе «Клиенты».</string>

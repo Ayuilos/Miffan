@@ -445,6 +445,15 @@ class WorkspaceRepository(
         return key
     }
 
+    /**
+     * Records the system the user said a computer runs, until a connection detects it: a computer never reached
+     * still gets commands in its own shell (the key-removal line when it is deleted). Detection overrides it.
+     */
+    suspend fun noteUnverifiedHostPlatform(id: String, platform: me.rerere.workspace.RemotePlatform) {
+        val host = hostDao.getById(id) ?: return
+        if (host.trustedHostKeySha256 == null) hostDao.updateDetectedPlatform(id, host.connectionRevision, platform.storageName)
+    }
+
     suspend fun createHost(
         name: String,
         host: String,

@@ -2710,6 +2710,8 @@
   <string name="im_computer_delete_offline_title">現在連不上電腦</string>
   <string name="im_computer_delete_offline">現在無法刪除電腦上的 Miffan 鑰匙。可以先只從手機上刪除，等電腦開著時，在它的終端機裡執行這一行：</string>
   <string name="im_computer_delete_offline_later">也可以先取消，等電腦開機後再來刪除。</string>
+  <string name="im_computer_delete_unverified_title">這台電腦還沒連上過</string>
+  <string name="im_computer_delete_unverified">Miffan 沒辦法登入它去刪掉鑰匙。如果你已經在它上面執行過準備腳本，可以在它的終端機裡執行這一行：</string>
   <string name="im_computer_delete_phone_only">只從手機上刪除</string>
   <string name="im_computer_forgetting">正在讓電腦忘掉 Miffan…</string>
   <string name="im_computer_delete_offline_sunshine">高畫質模式的配對也還在：開啟 Sunshine 的網頁管理介面，在「用戶端」裡刪除 Miffan。</string>

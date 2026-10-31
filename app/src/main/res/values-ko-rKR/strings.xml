@@ -2709,6 +2709,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_computer_delete_offline_title">지금은 컴퓨터에 연결할 수 없어요</string>
   <string name="im_computer_delete_offline">지금은 컴퓨터에서 Miffan의 키를 삭제할 수 없어요. 먼저 휴대폰에서만 삭제하고, 나중에 컴퓨터의 터미널에서 이 줄을 실행할 수 있어요:</string>
   <string name="im_computer_delete_offline_later">취소하고 컴퓨터가 켜진 뒤에 다시 삭제해도 돼요.</string>
+  <string name="im_computer_delete_unverified_title">이 컴퓨터에는 아직 연결한 적이 없어요</string>
+  <string name="im_computer_delete_unverified">Miffan이 이 컴퓨터에 로그인해서 Miffan의 키를 삭제할 수 없어요. 이미 설정 스크립트를 실행했다면 컴퓨터의 터미널에서 이 줄을 실행하세요:</string>
   <string name="im_computer_delete_phone_only">휴대폰에서만 삭제</string>
   <string name="im_computer_forgetting">컴퓨터가 Miffan을 잊도록 하는 중…</string>
   <string name="im_computer_delete_offline_sunshine">HD 모드 페어링도 남아 있어요. Sunshine 웹 페이지를 열고 클라이언트에서 Miffan을 삭제하세요.</string>
