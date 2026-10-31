@@ -120,7 +120,7 @@ class RemoteStreamTest {
         assertEquals(listOf("192.168.31.61", "100.64.0.5"), orderStreamCandidates(null, reported, listOf("100.64.0.5"), network).addresses)
         assertEquals(listOf("100.64.0.5", "192.168.31.61"), orderStreamCandidates("100.64.0.5", reported, emptyList(), network).addresses)
         assertEquals(listOf("192.168.31.61", "100.64.0.5"), orderStreamCandidates("192.168.50.1", reported, emptyList(), network).addresses)
-        assertEquals(listOf("100.64.0.5", "203.0.113.8"), orderStreamCandidates(null, listOf("100.64.0.5"), listOf("203.0.113.8", "203.0.113.9"), network).addresses)
+        assertEquals(listOf("100.64.0.5", "203.0.113.8", "203.0.113.9"), orderStreamCandidates(null, listOf("100.64.0.5"), listOf("203.0.113.8", "203.0.113.9"), network).addresses)
     }
     @Test fun deniedPermissionFiltersCachedLanAndSshLanWithoutFilteringTailscale() {
         val result = orderStreamCandidates("192.168.31.61", listOf("192.168.31.61", "100.64.0.5"), listOf("192.168.31.61"), network.copy(localAllowed = false))

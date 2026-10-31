@@ -118,6 +118,11 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
     // The feed follows the partner's current work, else the last reply that did something on a computer.
     val subject = latest?.takeIf { it.streaming || it.message.parts.any { part -> part is UIMessagePart.Tool && part.isComputerTool() } }
         ?: replies.lastOrNull { item -> item.message.parts.any { it is UIMessagePart.Tool && it.isComputerTool() } }
+    // The panel is a short window on the chat: the latest messages both ways, so a question typed below
+    // gets its answer here too. The partner's computer steps show inside its replies.
+    val recent = timeline.items.filterIsInstance<TimelineItem.Message>()
+        .filter { it.message.role == MessageRole.USER || it.message.role == MessageRole.ASSISTANT }
+        .takeLast(RECENT_MESSAGES)
     // Everything the partner is waiting on, not only computer actions: commands and questions block it too.
     val pending = replies.flatMap { item -> item.message.parts.filterIsInstance<UIMessagePart.Tool>()
         .filter { it.approvalState is ToolApprovalState.Pending }.map { item to it } }
@@ -151,34 +156,54 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
     ) {
         Surface(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val underway = subject?.streaming == true || pending.any { it.first == subject }
-                    Text(stringResource(if (underway) R.string.im_screen_feed_working else R.string.im_screen_feed_done, partnerName)
-                        .takeIf { subject != null }.orEmpty(),
-                        Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { openChat(subject ?: latest) }) {
+            val scroll = rememberScrollState()
+            // Like the chat, the newest message stays in view until the user scrolls up to read back.
+            var following by remember { mutableStateOf(true) }
+            LaunchedEffect(scroll) {
+                snapshotFlow { Triple(scroll.value, scroll.maxValue, scroll.isScrollInProgress) }.collect { (value, max, dragging) ->
+                    if (dragging) following = value >= max - 48
+                }
+            }
+            LaunchedEffect(scroll.maxValue) { if (following) scroll.scrollTo(scroll.maxValue) }
+            Column {
+                // Stays put above the messages, so the way to the full chat is always there.
+                Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val underway = generating.isNotEmpty() || pending.isNotEmpty()
+                    val acted = latest?.message?.parts?.any { it is UIMessagePart.Tool && it.isComputerTool() } == true
+                    Text(when {
+                        underway -> stringResource(R.string.im_screen_feed_working, partnerName)
+                        acted -> stringResource(R.string.im_screen_feed_done)
+                        else -> ""
+                    }, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { openChat(recent.lastOrNull()) }) {
                         Text(stringResource(R.string.im_screen_feed_chat))
                         Icon(HugeIcons.ArrowRight01, null, Modifier.size(16.dp))
                     }
                 }
-                if (subject == null) Text(stringResource(R.string.im_screen_feed_empty, partnerName),
-                    Modifier.fillMaxWidth().padding(vertical = 24.dp, horizontal = 12.dp), textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else PartnerScreenFeed(subject, partnerName, paused = userHolds)
-                pending.filterNot { it.second.isComputerTool() }.forEach { (item, tool) ->
-                    ThreadToolPrompt(tool,
-                        onApproval = { id, approved ->
-                            thread.answerToolApproval(item, id, approved, via = me.rerere.ai.ui.ToolDecisionVia.PARTNER_SCREEN)
-                        },
-                        onAnswer = { id, answer -> thread.answerToolQuestion(item, id, answer) },
-                        conversationId = item.segmentId.toString())
-                }
-                errors.lastOrNull()?.let { error ->
-                    ThreadErrorBubble(error, error.conversationId != null,
-                        onRetry = { error.conversationId?.let(thread::retry); thread.dismissError(error) },
-                        onDismiss = { thread.dismissError(error) })
+                Column(Modifier.verticalScroll(scroll).padding(start = 16.dp, end = 8.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (recent.isEmpty()) Text(stringResource(R.string.im_screen_feed_empty, partnerName),
+                        Modifier.fillMaxWidth().padding(vertical = 24.dp, horizontal = 12.dp), textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else recent.forEach { item ->
+                        key(item.key) {
+                            if (item.message.role == MessageRole.USER) item.message.previewText().takeIf { it.isNotBlank() }?.let { PartnerScreenOwnBubble(it) }
+                            else PartnerScreenFeed(item, partnerName, paused = userHolds)
+                        }
+                    }
+                    pending.filterNot { it.second.isComputerTool() }.forEach { (item, tool) ->
+                        ThreadToolPrompt(tool,
+                            onApproval = { id, approved ->
+                                thread.answerToolApproval(item, id, approved, via = me.rerere.ai.ui.ToolDecisionVia.PARTNER_SCREEN)
+                            },
+                            onAnswer = { id, answer -> thread.answerToolQuestion(item, id, answer) },
+                            conversationId = item.segmentId.toString())
+                    }
+                    errors.lastOrNull()?.let { error ->
+                        ThreadErrorBubble(error, error.conversationId != null,
+                            onRetry = { error.conversationId?.let(thread::retry); thread.dismissError(error) },
+                            onDismiss = { thread.dismissError(error) })
+                    }
                 }
             }
         }
@@ -209,8 +234,9 @@ private fun PartnerScreenFeed(reply: TimelineItem.Message, partnerName: String, 
     // Calls run one after another; only the first one not done yet is under way, the rest wait their turn.
     val running = tools.firstOrNull { !it.isExecuted && it.approvalState !is ToolApprovalState.Denied }
     val steps = tools.filter { it.toolName.removePrefix(COMPUTER_TOOL_PREFIX) !in QUIET_COMPUTER_TOOLS || (it === running && reply.streaming) }
-    val firstTool = parts.indexOfFirst { it is UIMessagePart.Tool }
-    val lastTool = parts.indexOfLast { it is UIMessagePart.Tool }
+    // A reply that only talked (or used other tools) is all words; one that acted wraps its steps in them.
+    val firstTool = parts.indexOfFirst { it is UIMessagePart.Tool && it.isComputerTool() }
+    val lastTool = parts.indexOfLast { it is UIMessagePart.Tool && it.isComputerTool() }
     fun text(range: List<UIMessagePart>) = range.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }.trim().takeIf { it.isNotBlank() }
     val opening = text(if (firstTool < 0) parts else parts.subList(0, firstTool))
     val closing = if (lastTool >= 0 && !reply.streaming) text(parts.subList(lastTool + 1, parts.size)) else null
@@ -246,6 +272,20 @@ private fun PartnerScreenFeed(reply: TimelineItem.Message, partnerName: String, 
 }
 
 private enum class StepState { DONE, LIVE, PAUSED, WAIT, DENIED, FAILED, QUEUED }
+
+/** About the last two exchanges: enough to follow along, short enough to read under the screen. */
+private const val RECENT_MESSAGES = 4
+
+/** What the user said, on the right as in the chat. */
+@Composable
+private fun PartnerScreenOwnBubble(text: String) {
+    Box(Modifier.fillMaxWidth().padding(start = 48.dp), contentAlignment = Alignment.CenterEnd) {
+        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(14.dp, 4.dp, 14.dp, 14.dp)) {
+            Text(text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 6, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
 
 @Composable
 private fun PartnerScreenBubble(text: String) {

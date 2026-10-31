@@ -52,7 +52,7 @@ class WindowsScreenRepositoryTest {
             val command = firstArg<String>(); commands += command
             val output = when {
                 command == windowsHelperVersionCommand -> installedVersion
-                command == windowsHelperInstallCommand -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = bundledVersion; "" }
+                command.startsWith(windowsHelperInstallCommand(0).substringBefore("\$left = ")) -> { installedBytes = arg<InputStream?>(4)!!.readBytes(); installedVersion = bundledVersion; "" }
                 command.endsWith("sunshine firewall check") -> firewall
                 command.endsWith("sunshine firewall apply") -> {
                     approvedStdin = arg<InputStream?>(4)!!.readBytes().toString(Charsets.UTF_8)
@@ -116,7 +116,7 @@ class WindowsScreenRepositoryTest {
         repository.checkSunshineFirewall("host", "legacy")
         assertArrayEquals(File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readBytes(), installedBytes)
         repository.checkSunshineFirewall("host", "legacy")
-        assertEquals(1, commands.count { it == windowsHelperInstallCommand })
+        assertEquals(1, commands.count { it == windowsHelperInstallCommand(installedBytes!!.size) })
         val result = repository.openSunshinePermissionSettings("host", "legacy", RemoteSunshinePermission.SCREEN_RECORDING)
         assertFalse(result.success)
         assertFalse(commands.any { "open-settings" in it || "wake" in it })

@@ -6,6 +6,8 @@ import me.ayuilos.miffan.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import android.net.Uri
+import android.content.ContentResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -18,7 +20,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
-import java.io.OutputStream
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.files.SkillManager
@@ -209,9 +210,12 @@ class WorkspaceDetailVM(
         }
     }
 
-    fun exportFile(entry: WorkspaceFileEntry, outputStream: OutputStream) {
+    fun exportFile(entry: WorkspaceFileEntry, uri: Uri, resolver: ContentResolver) {
         viewModelScope.launch {
             runCatching {
+                // Some ROMs' document pickers return a Uri that was never created; opening it throws.
+                val outputStream = withContext(Dispatchers.IO) { resolver.openOutputStream(uri) }
+                    ?: error("Cannot open $uri")
                 repository.exportFile(
                     id = id,
                     area = state.value.area,

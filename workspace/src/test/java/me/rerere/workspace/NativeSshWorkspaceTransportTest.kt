@@ -604,6 +604,26 @@ class NativeSshWorkspaceTransportTest {
             val result = workspace.execute("sleep 3", timeoutMillis = 150)
             assertTrue(result.timedOut)
             assertEquals(-1, result.exitCode)
+            assertTrue("A slow command on a live connection keeps it", workspace.isConnected)
+        }
+    }
+
+    /** The server stops answering once the command starts, like a network path stalled one way. */
+    @Test fun timedOutCommandOnAStalledConnectionClosesItAndSaysSo() {
+        val actual = NativeSshWorkspaceTransport.discoverHostKey("127.0.0.1", server.port)
+        NativeSshWorkspaceTransport.open(config(actual.sha256Fingerprint)).use { workspace ->
+            Thread {
+                while (startedCommand.get()?.contains("sleep 3") != true) Thread.sleep(10)
+                delayNextChannelOpen.set(true)
+            }.apply { isDaemon = true; start() }
+            val failure = runCatching { workspace.execute("sleep 3", timeoutMillis = 300) }.exceptionOrNull()
+            assertTrue("Expected a stalled connection, got $failure", failure is RemoteConnectionStalledException)
+            assertTrue(isRemoteNetworkFailure(failure!!))
+            assertFalse(workspace.isConnected)
+        }
+        releaseChannelOpen.countDown()
+        NativeSshWorkspaceTransport.open(config(actual.sha256Fingerprint)).use {
+            assertFalse(it.execute("true", timeoutMillis = 5_000).timedOut)
         }
     }
 

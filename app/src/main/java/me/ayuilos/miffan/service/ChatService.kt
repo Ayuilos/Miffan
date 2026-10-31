@@ -1618,14 +1618,14 @@ class ChatService(
 
     /**
      * A partner's own computer on a Linux host can ask the owner to open its network; the fix (ufw) is a
-     * Linux one, and a Mac host's Spaces share cua's VM network instead.
+     * Linux one. A Mac host's Spaces share cua's VM network, a Windows host's Docker Desktop's.
      */
     private suspend fun createSpaceNetworkToolIfReady(assistant: Assistant, conversationId: String): Tool? {
         val workspace = assistant.workspaceId?.toString()?.let { workspaceRepository.getById(it) } ?: return null
         if (!workspace.isSpace || workspace.shellStatus != WorkspaceShellStatus.READY.name) return null
         if (partnerComputerUse(assistant, workspace) == ComputerUseMode.OFF) return null
         val host = workspace.remoteHostId?.let { workspaceRepository.getHostById(it) } ?: return null
-        if (host.screenPlatform == "macos") return null
+        if (host.screenPlatform == "macos" || me.rerere.workspace.RemotePlatform.parse(host.platform) == me.rerere.workspace.RemotePlatform.WINDOWS) return null
         return me.ayuilos.miffan.data.ai.tools.createSpaceNetworkTool(
             workspaceId = workspace.id,
             computerName = host.name,

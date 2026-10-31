@@ -41,7 +41,8 @@ class WorkspaceReminderTransformer(
             remoteHostLabel = remoteHost?.let { "${it.username}@${it.host}:${it.port}" },
             shellEnabled = ctx.assistant.workspaceShellEnabled,
             spaceHostName = remoteHost?.name,
-            spaceNetworkFix = remoteHost != null && remoteHost.screenPlatform != "macos",
+            spaceNetworkFix = remoteHost != null && remoteHost.screenPlatform != "macos" &&
+                me.rerere.workspace.RemotePlatform.parse(remoteHost.platform) != me.rerere.workspace.RemotePlatform.WINDOWS,
             spaceArrivals = if (workspace.isSpace && workspace.spaceHandoff != null) {
                 runCatching { spaceArrivals(workspace.id) }.getOrNull()
             } else null,

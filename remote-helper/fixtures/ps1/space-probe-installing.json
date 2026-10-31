@@ -1,0 +1,1 @@
+{"cua":{"version":"0.9.0","path":"C:\\Users\\fixture\\AppData\\Local\\Programs\\cua\\bin\\cua.exe"},"daemon":{"running":false},"docker":{"detail":"docker not installed","ok":false,"running":false},"disk_free_gb":136,"docker_install":{"total":620496816,"error":null,"bytes":185720429,"stage":"download"},"spaces":[],"host":{"memory_mb":16322,"cpus":12,"runtime":null}}

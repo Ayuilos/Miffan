@@ -270,6 +270,8 @@ fun ComputerDetailPage(hostId: String) {
     var offlineCommand by rememberSaveable { mutableStateOf<String?>(null) }
     // Whether that computer also still trusts this phone for high-quality mode.
     var offlinePaired by rememberSaveable { mutableStateOf(false) }
+    // Whether Miffan never reached it at all (its identity was never confirmed), rather than not now.
+    var offlineNever by rememberSaveable { mutableStateOf(false) }
     val hostList by remember(workspaces) { workspaces.listHostsFlow() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val remoteTasks: me.ayuilos.miffan.data.remotetask.RemoteTaskRepository = koinInject()
     val hostTasks by remember(hostId) { remoteTasks.tasksFlow(hostId) }.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -372,27 +374,24 @@ fun ComputerDetailPage(hostId: String) {
                     AddRow(stringResource(R.string.im_computer_detail_add_partner), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { picking = true }
                 }
             }
-            // Windows has no mini boxes yet; one that was made before still shows.
-            if (current.platform != RemoteScreenPlatform.WINDOWS || boxWorkspaces.isNotEmpty()) {
-                item("boxes_title") {
-                    SectionHeader(stringResource(R.string.im_computer_detail_boxes), stringResource(R.string.im_computer_detail_boxes_help))
-                }
-                item("boxes") {
-                    SetupCard(padding = 0.dp, spacing = 0.dp) {
-                        boxes.forEach { (workspace, partner) ->
-                            MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) { nav.navigate(Screen.PartnerComputer(partner.id.toString())) }
-                            HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        }
-                        if (boxWorkspaces.isNotEmpty()) {
-                            MiniBoxMemoryBar(MiniBoxMemory(
-                                limitMb = boxWorkspaces.sumOf { it.spaceMemoryMb ?: SpaceTier.DEFAULT.memoryMb },
-                                usedMb = miniBoxesUsedMb(boxWorkspaces.map { boxLive.readings[it.id] }),
-                                totalMb = boxLive.hostMemoryMb,
-                            ))
-                            HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        }
-                        AddRow(stringResource(R.string.im_computer_detail_add_box), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { pickingBox = true }
+            item("boxes_title") {
+                SectionHeader(stringResource(R.string.im_computer_detail_boxes), stringResource(R.string.im_computer_detail_boxes_help))
+            }
+            item("boxes") {
+                SetupCard(padding = 0.dp, spacing = 0.dp) {
+                    boxes.forEach { (workspace, partner) ->
+                        MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) { nav.navigate(Screen.PartnerComputer(partner.id.toString())) }
+                        HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
+                    if (boxWorkspaces.isNotEmpty()) {
+                        MiniBoxMemoryBar(MiniBoxMemory(
+                            limitMb = boxWorkspaces.sumOf { it.spaceMemoryMb ?: SpaceTier.DEFAULT.memoryMb },
+                            usedMb = miniBoxesUsedMb(boxWorkspaces.map { boxLive.readings[it.id] }),
+                            totalMb = boxLive.hostMemoryMb,
+                        ))
+                        HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    }
+                    AddRow(stringResource(R.string.im_computer_detail_add_box), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { pickingBox = true }
                 }
             }
             item("manage") {
@@ -502,6 +501,7 @@ fun ComputerDetailPage(hostId: String) {
                                 } catch (error: ComputerUnreachableException) {
                                     offlineCommand = error.manualCommand
                                     offlinePaired = host?.streamCertificateSha256 != null
+                                    offlineNever = error.neverConnected
                                 } finally { forgetting = false }
                             }
                         }) { Text(stringResource(R.string.im_computer_delete_confirm), color = MaterialTheme.colorScheme.error) }
@@ -518,10 +518,10 @@ fun ComputerDetailPage(hostId: String) {
             })
         offlineCommand?.let { command ->
             AlertDialog(onDismissRequest = { offlineCommand = null },
-                title = { Text(stringResource(R.string.im_computer_delete_offline_title)) },
+                title = { Text(stringResource(if (offlineNever) R.string.im_computer_delete_unverified_title else R.string.im_computer_delete_offline_title)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(stringResource(R.string.im_computer_delete_offline))
+                        Text(stringResource(if (offlineNever) R.string.im_computer_delete_unverified else R.string.im_computer_delete_offline))
                         val context = LocalContext.current
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.weight(1f)) { CommandPreview(command) }
@@ -531,7 +531,8 @@ fun ComputerDetailPage(hostId: String) {
                             }) { Text(stringResource(R.string.im_computer_copy)) }
                         }
                         if (offlinePaired) Text(stringResource(R.string.im_computer_delete_offline_sunshine))
-                        Text(stringResource(R.string.im_computer_delete_offline_later), style = MaterialTheme.typography.bodySmall,
+                        // Waiting for it to be on does not help one that was never reached.
+                        if (!offlineNever) Text(stringResource(R.string.im_computer_delete_offline_later), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },

@@ -65,6 +65,8 @@ import org.koin.compose.koinInject
 private const val SPACE_DISK_GB = 5
 
 /** What `miffan space install` runs, shown before the user agrees. */
+private const val MEGABYTE = 1024L * 1024
+
 private const val SPACE_INSTALL_COMMAND =
     "curl -fsSL https://cua.ai/install.sh | sh -s -- --cli-only --yes --no-modify-path --no-onboarding"
 
@@ -166,9 +168,13 @@ internal fun ComputerHowStep(vm: ComputerSetupVM, state: ComputerSetupState) {
             ),
             onClick = { vm.chooseSpace(false) },
         )
-        if (state.useSpace && state.spaceProbe?.cuaInstalled != true) Column(Modifier.padding(horizontal = 8.dp)) {
+        // Windows also needs Docker Desktop, which the same install brings; its command is not one line to show.
+        val windowsDocker = state.isWindows && state.spaceProbe?.docker?.ok == false
+        if (state.useSpace && windowsDocker) Text(stringResource(R.string.im_space_cua_note_windows, computer),
+            Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        else if (state.useSpace && state.spaceProbe?.cuaInstalled != true) Column(Modifier.padding(horizontal = 8.dp)) {
             Text(stringResource(R.string.im_space_cua_note, computer), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-            Text(stringResource(if (showCommand) R.string.im_space_cmd_hide else R.string.im_space_cmd_show),
+            if (!state.isWindows) Text(stringResource(if (showCommand) R.string.im_space_cmd_hide else R.string.im_space_cmd_show),
                 Modifier.clip(MaterialTheme.shapes.small).clickable(role = Role.Button) { showCommand = !showCommand }
                     .heightIn(min = 40.dp).wrapContentHeight(Alignment.CenterVertically),
                 style = MaterialTheme.typography.labelLarge, color = colors.primary)
@@ -298,22 +304,34 @@ private fun HowIllustration(box: Boolean, partner: Assistant?) {
 internal fun ComputerSpaceInstallStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     val probe = state.spaceProbe
     val computer = state.target?.name.orEmpty()
-    val problem = dockerProblem(probe?.docker)
+    // On Windows the install brings Docker Desktop too, so a missing one is a line of the list, not a problem to fix.
+    val windows = state.isWindows
+    val problem = dockerProblem(probe?.docker).takeIf { !windows }
+    val dockerDesktop = probe?.docker?.ok == true
     val cua = probe?.cuaInstalled == true
     val command = problem?.let { dockerFixCommand(it, state.spaceFamily) }
     val hostId = state.hostId
     var running by rememberSaveable { mutableStateOf(false) }
     var ranOk by remember { mutableStateOf(false) }
+    // Docker Desktop kept installing on the computer while this page was away: follow it again.
+    LaunchedEffect(probe?.dockerInstall?.running) {
+        if (windows && probe?.dockerInstall?.running == true && !state.busy) vm.installCua()
+    }
     // A fixed Docker is checked again when the terminal is closed, so its output can be read first.
     if (running && hostId != null && command != null) HostCommandTerminal(hostId, command,
         onFinished = { ok -> ranOk = ok },
         onDismiss = { running = false; if (ranOk) { ranOk = false; vm.recheckSpaces() } })
     SetupScreen(
         title = stringResource(if (problem != null) R.string.im_space_fix_title else R.string.im_space_install_title, computer),
-        subtitle = stringResource(if (problem != null) R.string.im_space_fix_help else R.string.im_space_install_help),
+        subtitle = stringResource(when {
+            problem != null -> R.string.im_space_fix_help
+            windows -> R.string.im_space_install_help_windows
+            else -> R.string.im_space_install_help
+        }),
         state = state, onDismissError = vm::dismissError,
         primary = if (problem != null) SetupAction(stringResource(R.string.im_space_check_again), onClick = vm::recheckSpaces)
-            else SetupAction(stringResource(if (cua) R.string.im_space_continue else R.string.im_space_install_action), onClick = vm::installCua),
+            else SetupAction(stringResource(if (cua && (!windows || dockerDesktop)) R.string.im_space_continue else R.string.im_space_install_action),
+                onClick = vm::installCua),
         secondary = SetupAction(stringResource(R.string.im_space_later)) { vm.back() },
     ) {
         SetupCard(padding = 6.dp, spacing = 0.dp) {
@@ -322,13 +340,25 @@ internal fun ComputerSpaceInstallStep(vm: ComputerSetupVM, state: ComputerSetupS
                 SpaceCheckRow(free >= SPACE_DISK_GB,
                     stringResource(if (free >= SPACE_DISK_GB) R.string.im_space_check_disk else R.string.im_space_check_disk_low, free, SPACE_DISK_GB))
             }
-            if (problem != null) DockerPanel(problem, command, computer, canRun = hostId != null && !state.busy, onRun = { running = true })
+            val install = probe?.dockerInstall?.takeIf { it.running && it.stage != "cua" }
+            if (windows && install != null) SpaceCheckRow(false,
+                stringResource(if (install.stage == "install") R.string.im_space_docker_installing else R.string.im_space_docker_downloading),
+                if (install.stage == "install") stringResource(R.string.im_space_docker_installing_detail)
+                else stringResource(R.string.im_space_docker_download_progress,
+                    if (install.total > 0) (install.bytes * 100 / install.total).toInt() else 0,
+                    (install.bytes / MEGABYTE).toInt(), (install.total / MEGABYTE).toInt()))
+            else if (windows && probe?.docker != null) SpaceCheckRow(dockerDesktop,
+                stringResource(if (dockerDesktop) R.string.im_space_check_docker_desktop else R.string.im_space_check_docker_desktop_missing),
+                stringResource(R.string.im_space_check_docker_desktop_detail).takeIf { !dockerDesktop })
+            else if (problem != null) DockerPanel(problem, command, computer, canRun = hostId != null && !state.busy, onRun = { running = true })
             else if (probe?.docker != null) SpaceCheckRow(true, stringResource(R.string.im_space_check_docker))
-            SpaceCheckRow(cua,
+            if (windows && probe?.dockerInstall?.stage == "cua") SpaceCheckRow(false,
+                stringResource(R.string.im_space_cua_installing), stringResource(R.string.im_space_cua_installing_detail))
+            else SpaceCheckRow(cua,
                 stringResource(if (cua) R.string.im_space_check_cua else R.string.im_space_check_cua_missing),
                 stringResource(if (problem != null && !cua) R.string.im_space_check_cua_later else R.string.im_space_check_cua_detail).takeIf { !cua })
         }
-        if (!cua && problem == null) SetupDisclosure(stringResource(R.string.im_space_show_command)) {
+        if (!cua && problem == null && !windows) SetupDisclosure(stringResource(R.string.im_space_show_command)) {
             CommandBlock(SPACE_INSTALL_COMMAND)
         }
     }

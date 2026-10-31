@@ -31,6 +31,8 @@ data class CuaSpaceProbe(
     /** Linux only; null on macOS, where cua brings its own Linux VM. */
     val docker: Docker? = null,
     @SerialName("disk_free_gb") val diskFreeGb: Int? = null,
+    /** Windows: Docker Desktop installing in the background on the computer; null when none is under way or ran. */
+    @SerialName("docker_install") val dockerInstall: DockerInstall? = null,
     /** The host's size; null from helpers before 26. */
     val host: Host? = null,
     val spaces: List<Entry> = emptyList(),
@@ -41,6 +43,10 @@ data class CuaSpaceProbe(
     @Serializable data class Daemon(val running: Boolean = false)
     @Serializable data class Docker(val ok: Boolean = false, val detail: String? = null)
     @Serializable data class Entry(val id: String, val state: String? = null)
+    /** [stage]: cua (installing cua first), download, install, done, restart (Windows must restart) or failed ([error] says why). */
+    @Serializable data class DockerInstall(val stage: String, val bytes: Long = 0, val total: Long = 0, val error: String? = null) {
+        val running: Boolean get() = stage == "cua" || stage == "download" || stage == "install"
+    }
     @Serializable data class Host(
         val cpus: Int? = null,
         @SerialName("memory_mb") val memoryMb: Int? = null,
@@ -379,7 +385,8 @@ class PartnerSpaces(
         /** What the phone may upload into a Space at once; uploads stream, so this guards the Space's disk. */
         const val PHONE_UPLOAD_MAX_BYTES = 2L * 1024 * 1024 * 1024
 
-        private const val INSTALL_TIMEOUT_MILLIS = 10 * 60_000L
+        // A Windows install downloads Docker Desktop (about 600 MB) too.
+        private const val INSTALL_TIMEOUT_MILLIS = 30 * 60_000L
         private const val HANDOFF_TIMEOUT_MILLIS = 5 * 60_000L
         private const val SYNC_WAIT_MILLIS = 4_000L
         private const val SYNC_INTERVAL_MILLIS = 20_000L

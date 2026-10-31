@@ -188,7 +188,7 @@ Windows helper 不实现 task 命令。
 ## 伙伴专属电脑（POSIX `space`，helper 24 起）
 
 封装 `cua` CLI，管理伙伴自己的 cua Space（本机上的 Linux 容器，一律 `--runtime runc`：gVisor 重启会丢全部文件）。
-只在 macOS 与 Linux 主机上实现，Windows helper 没有 `space` 命令。所有 `space` 命令以 umask 077 运行，只依赖
+macOS 与 Linux 主机见本节；Windows 主机（helper 14 起）见下方“伙伴专属电脑（Windows `space`）”。所有 `space` 命令以 umask 077 运行，只依赖
 POSIX sh 与系统自带工具（含 curl、awk），不需要 python3。
 
 输出：stdout 最后一行是一行 JSON；诊断写 stderr；Space 的 token 只出现在 `info` 的 stdout，从不写入 stderr、
@@ -219,6 +219,43 @@ JSON 编码默认如此），其他转义（含 `\n`、`\u`）为 `bad_input`。
 
 - `out`：`path` 指向文件或目录；目录递归拷贝其中的普通文件，保持相对路径，宿主已有的子目录合并，冲突按文件重命名。符号链接或不存在为 `not_found`。
 - `in`：拷贝 `<folder>` 里（递归）比上一次 `in` 更新的普通文件；跳过符号链接与 `.DS_Store`。App 在伙伴每轮开始时调用（同一 Space 至多每 20 秒一次）；没有新文件时不启动、不进入 Space，直接返回 `{"copied":[]}`（helper 30 起）。`out` 写到宿主的文件记在 `~/.miffan/space/<名>.handoff-out`（相对路径、大小与修改时间）；`in` 跳过其中未被改动的文件，否则伙伴交出的文件会在下一轮以 ` (2)` 回到 Space（helper 31 起）。宿主上改过的文件照常拷入。记录只保留之后的 `in` 仍可能列出的条目。上一次的时间戳是 `~/.miffan/space/<名>.handoff` 的 mtime（本次开始时刻写入，成功后才替换；中途失败下次会重来，已拷贝的文件会以 ` (2)` 再出现一份）。
+
+## 伙伴专属电脑（Windows `space`，helper 14 起）
+
+`miffan.ps1 space …` 与 POSIX 版同名同参（`space create <名> <cpus> <内存 MiB>`、`space handoff out|in <名>` 等），
+输出、错误码、退出码（不合法的名为 2）和 handoff 的 stdin 也相同；源码在 `src/windows/Space.ps1`（构建时 include）。
+Space 由 cua 跑在 Docker Desktop（WSL 2 后端）上，一律 `--runtime runc`。差别：
+
+- 进程：Windows OpenSSH 会在会话结束时结束它启动的所有进程，所以 Docker Desktop 与 cua 守护进程都以计划任务
+  （`Miffan-docker-desktop`、`Miffan-cua-spaces`，当前用户、Interactive、Limited、无触发器、不限时）在已登录的桌面
+  会话里启动，需要时由 helper 拉起。守护进程任务运行 `miffan.ps1 space daemon`，它无窗口地运行
+  `cua.exe daemon start --foreground`。控制台没有登录这个 SSH 账户时为 `needs_login`。
+- `probe`：`docker` 为 `{ok,detail,running}`：装了 Docker Desktop 即 `ok:true`（用时再启动），`running` 表示此刻
+  `docker info` 是否应答，`detail` 是不应答的原因；没装为 `{ok:false,detail:"docker not installed",running:false}`。
+  `host.runtime` 在 Docker 运行时为 `docker info` 的 `{cpus,memory_mb}`（所有 Space 共用的 WSL 2 虚拟机）。
+  `disk_free_gb` 是 `%LOCALAPPDATA%` 所在盘（Docker Desktop 的数据在那里）。
+- `install`：Docker Desktop 没装时，由后台任务 `Miffan-docker-install`（当前用户、S4U、Highest，与 SSH 会话无关）
+  安装：先装 cua（没装时），再从 `desktop.docker.com` 断点续传下载安装包（约 600 MB，失败最多重试 8 次），校验
+  Authenticode 签名为 Docker Inc，以 `install --quiet --accept-license --backend=wsl-2 --always-run-service` 运行，之后
+  删掉安装包。代理取 SSH 会话里读到的系统代理，作为参数交给任务。进度写在
+  `%LOCALAPPDATA%\Miffan\docker-install\status.json`：`{stage,bytes,total,error}`，stage 为 `cua`、`download`、
+  `install`、`done`、`restart`（安装器退出码 3010，刚开启 WSL，要重启）或 `failed`；任务已不在运行而 stage 仍在
+  进行中时按 `failed`（`error:"interrupted"`）报告。此时 `install` 立即返回 `{cua,daemon:{running:false},docker_install}`，
+  任务没在运行就（重新）启动它；SSH 会话不是管理员为 `needs_admin`，stage 为 `restart` 时为 `needs_restart`。`probe`
+  在 Docker Desktop 没装时也带 `docker_install`（没有为 null）。App 每 3 秒 `probe` 一次直到不再进行中。
+  Docker Desktop 已装时：cua 没装就在前台下载 `https://cua.ai/install.ps1` 并以 `-CliOnly -Yes -NoModifyPath -NoOnboarding`
+  运行（不登录、不改 PATH，装到 `%LOCALAPPDATA%\Programs\cua\bin\cua.exe`），清掉后台任务与其目录，然后启动
+  Docker Desktop（首次启动最多等 240 秒，`needs_docker`）和守护进程，返回 `{cua,daemon:{running:true}}`。
+- 其余命令先确保 Docker Desktop 与守护进程在运行。`resize` 支持（`docker update`）。Space 里的脚本以 base64
+  传给 `cua sb exec <名> "echo … | base64 -d | sh"`，命令行里没有需要转义的内容。
+- `netcheck`：Windows 系统代理（`HKCU\…\Internet Settings` 的 `ProxyEnable`/`ProxyServer`，`https=` 优先，否则
+  `http=` 或单一地址）开着时，回环地址换成 `host.docker.internal`（Docker Desktop 把它交给电脑的回环），之后与
+  Mac 的系统代理相同：代理有应答就写入 Space 的设置并记标记（`%USERPROFILE%\.miffan\netshare\spaces\<名>`），
+  输出 `via:"share"`；否则去掉设置与标记，直连检查，`hint` 总为 null（没有 ufw 修法）。
+- `handoff`：`folder` 是相对 `%USERPROFILE%`、以 `/` 分段的路径（或 `X:\…` 绝对路径）。从 Space 拿出的文件名里
+  Windows 不接受的字符换成 `_`。`in` 跳过 `.DS_Store`、`desktop.ini`、`Thumbs.db` 与重解析点。记录与状态文件在
+  `%USERPROFILE%\.miffan\space\`，大小与修改时间（Unix 秒）同 POSIX 版。
+- 失败时 `detail` 是 cua 或 Docker 的原文；不是 helper 自己的失败只给出行号与异常类型，不输出异常文本。
 
 ## Windows 子命令（Windows PowerShell 5.1）
 

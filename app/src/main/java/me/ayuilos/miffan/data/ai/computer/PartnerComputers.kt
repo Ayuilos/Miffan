@@ -2,7 +2,7 @@ package me.ayuilos.miffan.data.ai.computer
 
 import me.rerere.workspace.RemotePlatform
 import me.rerere.workspace.WindowsRemotePath
-import me.rerere.workspace.shouldTryNextRemoteAddress
+import me.rerere.workspace.isRemoteNetworkFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -77,7 +77,8 @@ enum class ForgetOutcome { FORGOTTEN, NOT_NEEDED, SHARED, ALREADY_GONE }
  */
 data class ComputerWorkFiles(val path: String, val bytes: Long?)
 
-class ComputerUnreachableException(val manualCommand: String, cause: Throwable? = null) :
+/** [neverConnected]: Miffan never confirmed the computer's identity, so it may not sign in to it at all. */
+class ComputerUnreachableException(val manualCommand: String, cause: Throwable? = null, val neverConnected: Boolean = false) :
     IllegalStateException("The computer cannot be reached. Miffan has kept its saved record.", cause)
 
 /** Resolves which computer, if any, a partner is bound to. */
@@ -206,12 +207,14 @@ class PartnerComputers(
                 val key = requireNotNull(workspaces.getSshKeyById(host.sshKeyId)) { "Miffan SSH key not found" }
                 val workFilesRoot = workspace?.remotePath?.takeIf { deleteWorkFiles && it.startsWith('/') }
                 val command = revokeMiffanKeyCommand(key.publicKey, RemotePlatform.parse(host.platform), workFilesRoot)
+                // Never connected: an unconfirmed identity is never signed in to, but the key may already be on it.
+                if (host.trustedHostKeySha256 == null) throw ComputerUnreachableException(command, neverConnected = true)
                 try {
                     // The repository unpairs Sunshine on this same verified connection before revoking.
                     if (workspaces.revokeComputerAccess(hostId, command, host.connectionRevision)) ForgetOutcome.FORGOTTEN
                     else ForgetOutcome.ALREADY_GONE
                 } catch (error: Exception) {
-                    if (shouldTryNextRemoteAddress(error)) throw ComputerUnreachableException(command, error)
+                    if (isRemoteNetworkFailure(error)) throw ComputerUnreachableException(command, error)
                     throw error
                 }
             }

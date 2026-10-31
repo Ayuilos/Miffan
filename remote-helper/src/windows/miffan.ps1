@@ -1,9 +1,10 @@
 ﻿# Miffan Windows helper v4. PowerShell 5.1; install this file as UTF-8 WITH BOM.
 # Dot-source to load pure functions for offline tests; otherwise stdout is one JSON line.
 # version deliberately retains the POSIX integer contract. cua stdio is a byte stream; diagnostics stay off stdout.
-param([string]$Command, [string]$Action, [string]$Operation)
+# `space` takes up to five words (space create <name> <cpus> <memory>), hence Argument4 and Argument5.
+param([string]$Command, [string]$Action, [string]$Operation, [string]$Argument4, [string]$Argument5)
 
-$script:HelperVersion = 13
+$script:HelperVersion = 14
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -1115,6 +1116,8 @@ function Invoke-CuaCheckUpdate {
     return @{current_version=[string]$value.current_version;latest_version=[string]$value.latest_version;update_available=[bool]$value.update_available;release_notes_url=[string]$value.release_notes_url;error=$(if ($value.error) {[string]$value.error} else {$null})}
 }
 
+#include Space.ps1
+
 function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation) {
     switch ($Verb) {
         'version' { if ($Subcommand -or $Suboperation) {throw 'Usage: version'}; return $script:HelperVersion }
@@ -1248,6 +1251,23 @@ if ($MyInvocation.InvocationName -ne '.') {
     $OutputEncoding = $script:Utf8
     $script:LastBackup = $null; $script:LastDesktopTask=$null; $script:LastDesktopDirectory=$null
     try {
+        if ($Command -eq 'space') {
+            if ($Action -eq 'daemon' -and -not $Operation) { Invoke-SpaceDaemon }
+            try {
+                $result = Invoke-Space $Action $Operation $Argument4 $Argument5
+                if ($result -is [string] -and $result -ceq 'bad_name') { [Console]::Out.WriteLine('{"error":"bad_name","detail":null}'); exit 2 }
+                [Console]::Out.WriteLine((ConvertTo-PlainJson $result))
+                exit 0
+            } catch {
+                # Own failures carry their code; anything else names only where it happened, never its message.
+                $data = $_.Exception.Data
+                $failure = $(if ($data -and $data.Contains('space_code')) { @{error=[string]$data['space_code'];detail=$data['space_detail']} }
+                    else { @{error='helper_failed';detail=('line ' + $_.InvocationInfo.ScriptLineNumber + ': ' + $_.Exception.GetType().Name)} })
+                [Console]::Out.WriteLine((ConvertTo-PlainJson $failure))
+                exit 1
+            }
+        }
+        if ($Argument4 -or $Argument5) { throw 'Unexpected argument' }
         if ($Command -eq 'sunshine' -and $Action -eq 'pair' -and $args.Count -gt 0) { throw 'Unexpected Sunshine argument' }
         if ($Command -eq 'clip' -and $Action -eq 'serve' -and -not $Operation) {
             try { Invoke-CuaClipboardServe }

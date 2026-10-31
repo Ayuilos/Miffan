@@ -39,7 +39,7 @@ import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import me.rerere.workspace.NativeSshWorkspaceTransport
 import me.rerere.workspace.RemoteAuthentication
-import me.rerere.workspace.shouldTryNextRemoteAddress
+import me.rerere.workspace.isRemoteNetworkFailure
 import me.rerere.workspace.tryRemoteAddresses
 import me.rerere.workspace.isRemoteKeyAuthenticationRefused
 import me.rerere.workspace.RemoteHostConfig
@@ -185,7 +185,7 @@ class WorkspaceRepository(
         }
 
     /** Only the initial handshake is retried, never a dispatched file or shell operation. */
-    private fun Throwable.retryableConnectionFailure(): Boolean = shouldTryNextRemoteAddress(this)
+    private fun Throwable.retryableConnectionFailure(): Boolean = isRemoteNetworkFailure(this)
 
     /** All saved-host SSH opens share address order, pin checks, and success bookkeeping. */
     private suspend fun connectSavedHost(
@@ -206,7 +206,7 @@ class WorkspaceRepository(
             try {
                 val session = runRemoteInterruptible {
                     remoteTransport.open(config.copy(host = address.host, port = address.port),
-                        timeoutMillis = if (host.addresses.size > 1 && address != host.lastAddress) 4_000 else 10_000).also {
+                        timeoutMillis = addressTimeoutMillis(host, address)).also {
                         if (disposed.get()) it.close()
                         else {
                             opened.set(it)
@@ -251,10 +251,14 @@ class WorkspaceRepository(
         }
     }
 
+    // The last address that worked gets the full wait; others get enough for a VPN or proxy app on the phone to dial out.
+    private fun addressTimeoutMillis(host: RemoteHostEntity, address: RemoteHostAddress): Int =
+        if (host.addresses.size > 1 && address != host.lastAddress) 8_000 else 10_000
+
     private suspend fun discoverSavedHostKey(host: RemoteHostEntity): RemoteHostKey =
         tryRemoteAddresses(host.connectionAddresses) { address ->
             runRemoteInterruptible { remoteTransport.discoverHostKey(address.host, address.port,
-                timeoutMillis = if (host.addresses.size > 1 && address != host.lastAddress) 4_000 else 10_000) }
+                timeoutMillis = addressTimeoutMillis(host, address)) }
         }
 
     private suspend fun <T> runRemoteOperation(session: RemoteWorkspaceSession, block: () -> T): T {
@@ -443,6 +447,15 @@ class WorkspaceRepository(
             throw error
         }
         return key
+    }
+
+    /**
+     * Records the system the user said a computer runs, until a connection detects it: a computer never reached
+     * still gets commands in its own shell (the key-removal line when it is deleted). Detection overrides it.
+     */
+    suspend fun noteUnverifiedHostPlatform(id: String, platform: me.rerere.workspace.RemotePlatform) {
+        val host = hostDao.getById(id) ?: return
+        if (host.trustedHostKeySha256 == null) hostDao.updateDetectedPlatform(id, host.connectionRevision, platform.storageName)
     }
 
     suspend fun createHost(
@@ -696,7 +709,7 @@ class WorkspaceRepository(
         val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_remote_host_not_found))
         return withSavedHostConnection(host, host.config()) { session ->
             spaces.ensureHelper(session)
-            session.execute("\"\$HOME/.miffan/bin/miffan\" space ${args.joinToString(" ")}",
+            session.execute(spaceHelperCommand(session.platform, args),
                 timeoutMillis = timeoutMillis, stdin = stdin?.inputStream())
         }
     }

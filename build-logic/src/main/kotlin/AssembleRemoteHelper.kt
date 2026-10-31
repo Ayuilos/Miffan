@@ -38,7 +38,7 @@ abstract class AssembleRemoteHelper : DefaultTask() {
             val directive = line.toString(Charsets.UTF_8).removeSuffix("\n")
             if (directive.startsWith("#include ")) {
                 val name = directive.removePrefix("#include ")
-                require(name.matches(Regex("[A-Za-z][A-Za-z0-9]*\\.cs"))) { "Invalid include: $name" }
+                require(name.matches(Regex("[A-Za-z][A-Za-z0-9]*\\.(cs|ps1)"))) { "Invalid include: $name" }
                 expanded.write(windows.resolve(name).readBytes())
             } else {
                 expanded.write(line)
