@@ -87,6 +87,7 @@ class ComputerSetupVMTest {
         val updates = mockk<CuaUpdates>(relaxed = true)
         val statuses = mockk<ComputerStatusStore>(relaxed = true)
         val control = RemoteComputerControl()
+        val relaySetup = mockk<me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup>(relaxed = true)
         val probe = RemoteMachineProbe(
             helper = 5, os = "linux", arch = "x86_64",
             session = RemoteMachineProbe.Session(present = true, type = "wayland"),
@@ -122,7 +123,7 @@ class ComputerSetupVMTest {
         ComputerSetupVM(args, f.workspaces, f.screens, f.registry, f.store, f.computers, f.updates, f.statuses, f.control,
             mockk(relaxed = true), mockk<me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup>(relaxed = true).also {
                 every { it.jobs } returns kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
-            }).also {
+            }, f.relaySetup).also {
             viewModels.put(Uuid.random().toString(), it)
         }
 
@@ -532,4 +533,86 @@ class ComputerSetupVMTest {
         id = id, name = "Remote", root = "remote:$id", createdAt = 1, updatedAt = 1,
         kind = WorkspaceEntity.KIND_REMOTE, remoteHostId = hostId, remotePath = "/home/user",
     )
+
+    @Test
+    fun `a password computer goes straight on to sharing`() = runTest {
+        val f = Fixture()
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        vm.continueToShare()
+        runCurrent()
+        assertEquals(ComputerSetupStep.SHARE, vm.state.value.step)
+    }
+
+    @Test
+    fun `a key computer is offered the relay and can turn it on`() = runTest {
+        val f = Fixture()
+        f.host = f.host.copy(authType = "MANAGED_KEY")
+        val probe = me.ayuilos.miffan.data.repository.relay.RelayProbe(1200, 300,
+            me.rerere.workspace.relay.RelayPolicy(), me.rerere.workspace.relay.RelayUsage())
+        coEvery { f.relaySetup.probe("host") } returns probe
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        vm.continueToShare()
+        runCurrent()
+        assertEquals(ComputerSetupStep.AWAY, vm.state.value.step)
+        assertNull(vm.state.value.away)
+        vm.enableAway(null, null)
+        runCurrent()
+        coVerify { f.relaySetup.enable(f.workspaceId, "host",
+            me.rerere.workspace.relay.RelayEndpoint(me.ayuilos.miffan.data.repository.relay.OFFICIAL_RELAY_URL), any()) }
+        assertEquals(me.ayuilos.miffan.ui.im.computer.AwayProgress(3, failed = false, probe = probe), vm.state.value.away)
+        vm.leaveAway()
+        assertEquals(ComputerSetupStep.SHARE, vm.state.value.step)
+    }
+
+    @Test
+    fun `a failed relay try keeps the relay and can try again`() = runTest {
+        val f = Fixture()
+        f.host = f.host.copy(authType = "MANAGED_KEY")
+        coEvery { f.relaySetup.probe("host") } throws java.io.IOException("relay unreachable")
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        vm.continueToShare()
+        runCurrent()
+        vm.enableAway("https://relay.example.com", "code")
+        runCurrent()
+        coVerify { f.relaySetup.enable(f.workspaceId, "host", me.rerere.workspace.relay.RelayEndpoint("https://relay.example.com", "code"), any()) }
+        assertEquals(true, vm.state.value.away?.failed)
+        assertNull(vm.state.value.error)
+        vm.retryAway()
+        runCurrent()
+        coVerify(exactly = 2) { f.relaySetup.probe("host") }
+    }
+
+    @Test
+    fun `a failed install returns to the choice with the error`() = runTest {
+        val f = Fixture()
+        f.host = f.host.copy(authType = "MANAGED_KEY")
+        coEvery { f.relaySetup.enable(any(), any(), any(), any()) } throws
+            me.ayuilos.miffan.data.repository.relay.RelaySetupException("checksum_mismatch", "bad download")
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        vm.continueToShare()
+        runCurrent()
+        vm.enableAway(null, null)
+        runCurrent()
+        assertNull(vm.state.value.away)
+        assertEquals("checksum_mismatch",
+            (vm.state.value.error as? me.ayuilos.miffan.data.repository.relay.RelaySetupException)?.reason)
+    }
+
+    @Test
+    fun `a plain http relay address is refused before anything runs`() = runTest {
+        val f = Fixture()
+        f.host = f.host.copy(authType = "MANAGED_KEY")
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        vm.continueToShare()
+        runCurrent()
+        vm.enableAway("http://relay.example.com", null)
+        runCurrent()
+        assertTrue(vm.state.value.error is IllegalArgumentException)
+        coVerify(exactly = 0) { f.relaySetup.enable(any(), any(), any(), any()) }
+    }
 }
