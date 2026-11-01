@@ -98,6 +98,9 @@ class RemoteRelaySetup internal constructor(
         return relay
     }
 
+    /** Proves the relay route end to end; see [WorkspaceRepository.probeRelay]. */
+    suspend fun probe(hostId: String): RelayProbe = workspaces.probeRelay(hostId)
+
     /** Turns the relay route on or off for this phone without touching the computer. */
     suspend fun setEnabled(hostId: String, enabled: Boolean) {
         val host = hostDao.getById(hostId) ?: return

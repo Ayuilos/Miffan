@@ -69,3 +69,11 @@ class RelayAccess(
     val deviceKeys: RelayDeviceKeyStore,
     val network: RelayNetworkKey,
 )
+
+/** One forced trip through a relay: how long the session took to open and one command took to answer. */
+data class RelayProbe(
+    val openMillis: Long,
+    val commandMillis: Long,
+    val policy: me.rerere.workspace.relay.RelayPolicy,
+    val usage: me.rerere.workspace.relay.RelayUsage,
+)

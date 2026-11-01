@@ -30,6 +30,7 @@ import me.rerere.workspace.RemoteRoute
 import me.rerere.workspace.relay.RelayChannel
 import me.rerere.workspace.relay.RelayException
 import me.rerere.workspace.relay.RelaySocket
+import me.ayuilos.miffan.data.repository.relay.RelayProbe
 import me.ayuilos.miffan.data.db.entity.encodeRemoteHostAddresses
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
@@ -300,6 +301,29 @@ class WorkspaceRepository(
         val host = hostDao.getById(hostId) ?: return null
         val relay = host.relay?.takeIf { it.hostId == route.hostId } ?: return null
         return openThroughRelay(relay, host.config(), RelayChannel.MEDIA)
+    }
+
+    /**
+     * Connects through the computer's relay only (no direct addresses), runs one trivial command
+     * and closes again. For setup confirmation and relay diagnostics.
+     */
+    suspend fun probeRelay(hostId: String): RelayProbe {
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, hostId))
+        val relay = requireNotNull(host.relay) { "This computer has no relay" }
+        val config = host.config()
+        val started = System.nanoTime()
+        val session = openThroughRelay(relay, config, RelayChannel.CONTROL)
+        try {
+            val openMillis = (System.nanoTime() - started) / 1_000_000
+            val commandStarted = System.nanoTime()
+            val result = runRemoteInterruptible { session.execute("echo miffan-relay-ok", timeoutMillis = 20_000) }
+            val commandMillis = (System.nanoTime() - commandStarted) / 1_000_000
+            check(result.exitCode == 0 && result.stdout.contains("miffan-relay-ok")) { "The computer did not answer through the relay" }
+            val ready = (session.route as RemoteRoute.Relay).socket.ready
+            return RelayProbe(openMillis, commandMillis, ready.policy, ready.usage)
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+        }
     }
 
     private suspend fun recordRelaySuccess(host: RemoteHostEntity) {
