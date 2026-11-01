@@ -2322,18 +2322,18 @@
   <string name="workspace_screen_stream_reason_decoder" tools:ignore="MissingTranslation">this phone cannot decode Sunshine\'s video</string>
   <string name="workspace_screen_stream_reason_local_network" tools:ignore="MissingTranslation">Miffan has no permission to reach the local network</string>
   <string name="workspace_screen_stream_reason_other" tools:ignore="MissingTranslation">the connection failed</string>
-  <string name="workspace_screen_stream_reason_relay" tools:ignore="MissingTranslation">you are connected through a relay, which can\'t carry the high-performance picture yet</string>
-  <string name="workspace_screen_relay_stream_only" tools:ignore="MissingTranslation">Away from home, your partner can still use this computer, but its screen can only be shown on the same network for now.</string>
-  <string name="workspace_screen_relay_media_disabled" tools:ignore="MissingTranslation">This relay doesn\'t offer screen viewing. Your partner can still use the computer; to see the screen, connect from the same network or use your own relay.</string>
-  <string name="workspace_screen_relay_quota" tools:ignore="MissingTranslation">This computer has used up its screen time on the relay for now. Your partner can still use the computer.</string>
-  <string name="workspace_screen_relay_busy" tools:ignore="MissingTranslation">The free relay is busy and has paused screen viewing for today. Your partner can still use the computer; you can also set up your own relay.</string>
-  <string name="workspace_screen_relay_unavailable" tools:ignore="MissingTranslation">The relay couldn\'t open the screen (%1$s).</string>
-  <string name="workspace_relay_host_offline" tools:ignore="MissingTranslation">Couldn\'t reach the computer at home or through the relay. Check that the computer is on, awake and online.</string>
-  <string name="workspace_relay_denied" tools:ignore="MissingTranslation">The computer doesn\'t recognise this phone yet. Connect once on the same network to allow it again.</string>
-  <string name="workspace_relay_unauthorized" tools:ignore="MissingTranslation">The relay refused the access code. Check the relay settings for this computer.</string>
-  <string name="workspace_relay_quota" tools:ignore="MissingTranslation">This computer has used up its relay time for now. It works again at home, or after the quota resets.</string>
-  <string name="workspace_relay_busy" tools:ignore="MissingTranslation">The free relay has reached today\'s limit. It resets at 8:00 Beijing time; you can also set up your own relay.</string>
-  <string name="workspace_relay_unreachable" tools:ignore="MissingTranslation">Couldn\'t reach the computer at home or through the relay. Check this phone\'s network.</string>
+  <string name="workspace_screen_stream_reason_relay">you are connected through a relay, which can\'t carry the high-performance picture yet</string>
+  <string name="workspace_screen_relay_stream_only">Away from home, your partner can still use this computer, but its screen can only be shown on the same network for now.</string>
+  <string name="workspace_screen_relay_media_disabled">This relay doesn\'t offer screen viewing. Your partner can still use the computer; to see the screen, connect from the same network or use your own relay.</string>
+  <string name="workspace_screen_relay_quota">This computer has used up its screen time on the relay for now. Your partner can still use the computer.</string>
+  <string name="workspace_screen_relay_busy">The free relay is busy and has paused screen viewing for today. Your partner can still use the computer; you can also set up your own relay.</string>
+  <string name="workspace_screen_relay_unavailable">The relay couldn\'t open the screen (%1$s).</string>
+  <string name="workspace_relay_host_offline">Couldn\'t reach the computer at home or through the relay. Check that the computer is on, awake and online.</string>
+  <string name="workspace_relay_denied">The computer doesn\'t recognise this phone yet. Connect once on the same network to allow it again.</string>
+  <string name="workspace_relay_unauthorized">The relay refused the access code. Check the relay settings for this computer.</string>
+  <string name="workspace_relay_quota">This computer has used up its relay time for now. It works again at home, or after the quota resets.</string>
+  <string name="workspace_relay_busy">The free relay has reached today\'s limit. It resets at 8:00 Beijing time; you can also set up your own relay.</string>
+  <string name="workspace_relay_unreachable">Couldn\'t reach the computer at home or through the relay. Check this phone\'s network.</string>
   <string name="workspace_screen_stream_certificate_changed" tools:ignore="MissingTranslation">This computer\'s Sunshine certificate is not the one you paired with. If you reinstalled Sunshine or reset its credentials, you can trust the new one. Otherwise, something may be pretending to be this computer.</string>
   <string name="workspace_screen_stream_suggest" tools:ignore="MissingTranslation">This computer can show a smoother picture with high-performance mode.</string>
   <string name="workspace_screen_stream_suggest_dismiss" tools:ignore="MissingTranslation">Don\'t suggest again</string>
@@ -4021,99 +4021,99 @@
   <string name="im_thread_status_offline">No internet connection</string>
   <string name="im_thread_status_connecting">Connecting…</string>
   <string name="im_thread_status_connecting_slow">Slow connection…</string>
-  <string name="im_computer_away_working" tools:ignore="MissingTranslation">Setting up…</string>
-  <string name="im_computer_away_working_subtitle" tools:ignore="MissingTranslation">Making %1$s reachable from outside.</string>
-  <string name="im_computer_away_title" tools:ignore="MissingTranslation">Use this computer away from home too?</string>
-  <string name="im_computer_away_subtitle" tools:ignore="MissingTranslation">Turn this on and your partners can reach %1$s through Miffan\'s free relay while you\'re out. No Tailscale, no router changes.</string>
-  <string name="im_computer_away_point_encrypted_title" tools:ignore="MissingTranslation">Encrypted end to end</string>
-  <string name="im_computer_away_point_encrypted_body" tools:ignore="MissingTranslation">The relay only passes messages along; it can\'t see what happens on the computer.</string>
-  <string name="im_computer_away_point_phone_title" tools:ignore="MissingTranslation">Only this phone</string>
-  <string name="im_computer_away_point_phone_body" tools:ignore="MissingTranslation">The computer remembers this phone. Knowing the address isn\'t enough to get in.</string>
-  <string name="im_computer_away_point_free_title" tools:ignore="MissingTranslation">A free public relay</string>
-  <string name="im_computer_away_point_free_body" tools:ignore="MissingTranslation">Slower than at home. When it\'s busy, screen viewing may pause; your partner can still use the computer.</string>
-  <string name="im_computer_away_enable" tools:ignore="MissingTranslation">Turn on</string>
-  <string name="im_computer_away_skip" tools:ignore="MissingTranslation">Not now</string>
-  <string name="im_computer_away_own_relay" tools:ignore="MissingTranslation">Use my own relay</string>
-  <string name="im_computer_away_relay_address" tools:ignore="MissingTranslation">Address</string>
-  <string name="im_computer_away_access_code" tools:ignore="MissingTranslation">Access code</string>
-  <string name="im_computer_away_access_code_hint" tools:ignore="MissingTranslation">Leave empty if none</string>
-  <string name="im_computer_away_scan" tools:ignore="MissingTranslation">Scan to add</string>
-  <string name="im_computer_away_how_to_host" tools:ignore="MissingTranslation">How do I set one up?</string>
-  <string name="im_computer_away_done_title" tools:ignore="MissingTranslation">All set</string>
-  <string name="im_computer_away_done_subtitle" tools:ignore="MissingTranslation">Next time you\'re out, just open Miffan. There\'s nothing else to set up.</string>
-  <string name="im_computer_away_failed_title" tools:ignore="MissingTranslation">Almost there</string>
-  <string name="im_computer_away_failed_subtitle" tools:ignore="MissingTranslation">Miffan will try the relay again by itself next time you\'re away.</string>
-  <string name="im_computer_away_step_install" tools:ignore="MissingTranslation">Install the connector on the computer</string>
-  <string name="im_computer_away_step_allow" tools:ignore="MissingTranslation">Allow this phone</string>
-  <string name="im_computer_away_step_try" tools:ignore="MissingTranslation">Try once through the relay</string>
-  <string name="im_computer_away_step_try_ok" tools:ignore="MissingTranslation">Got through in %1$s s</string>
-  <string name="im_computer_away_step_try_failed" tools:ignore="MissingTranslation">Couldn\'t reach the relay</string>
-  <string name="im_computer_away_failed_note" tools:ignore="MissingTranslation">The home side is set up; this try just didn\'t get through. You can test again later from the computer\'s page.</string>
-  <string name="im_computer_away_keep_on" tools:ignore="MissingTranslation">Takes about half a minute. Keep the computer on.</string>
-  <string name="im_computer_away_finish" tools:ignore="MissingTranslation">Done</string>
-  <string name="im_computer_away_finish_anyway" tools:ignore="MissingTranslation">Leave it for now</string>
-  <string name="im_computer_away_retry" tools:ignore="MissingTranslation">Try again</string>
-  <string name="im_computer_away_relay_unreachable" tools:ignore="MissingTranslation">Couldn\'t reach that relay. Check the address.</string>
-  <string name="im_computer_away_install_failed" tools:ignore="MissingTranslation">Couldn\'t set up the connector on the computer (%1$s).</string>
-  <string name="im_computer_relay_section" tools:ignore="MissingTranslation">Away from home</string>
-  <string name="im_computer_relay_section_help" tools:ignore="MissingTranslation">Use this computer when you\'re not on its network.</string>
-  <string name="im_computer_relay_switch" tools:ignore="MissingTranslation">Works away from home</string>
-  <string name="im_computer_relay_off_hint" tools:ignore="MissingTranslation">Off: only reachable on the same network</string>
-  <string name="im_computer_relay_official" tools:ignore="MissingTranslation">Miffan free relay</string>
-  <string name="im_computer_relay_paused" tools:ignore="MissingTranslation">Paused on this phone</string>
-  <string name="im_computer_relay_today" tools:ignore="MissingTranslation">Through the relay today</string>
-  <string name="im_computer_relay_minutes" tools:ignore="MissingTranslation">%1$d min</string>
-  <string name="im_computer_relay_minutes_of" tools:ignore="MissingTranslation">%1$d / %2$d min</string>
-  <string name="im_computer_relay_resets" tools:ignore="MissingTranslation">Resets at %1$s</string>
-  <string name="im_computer_relay_test" tools:ignore="MissingTranslation">Test the connection</string>
-  <string name="im_computer_relay_change" tools:ignore="MissingTranslation">Use another relay</string>
-  <string name="im_computer_relay_forget" tools:ignore="MissingTranslation">Make the computer forget this phone</string>
-  <string name="im_computer_relay_forget_title" tools:ignore="MissingTranslation">Forget this phone?</string>
-  <string name="im_computer_relay_forget_body" tools:ignore="MissingTranslation">This phone won\'t reach %1$s away from home anymore. You can turn it on again from the same network.</string>
-  <string name="im_computer_relay_forget_confirm" tools:ignore="MissingTranslation">Forget</string>
-  <string name="im_computer_relay_note" tools:ignore="MissingTranslation">Away from home your partners can still use the computer. Viewing the screen uses data-saving quality and your mobile data.</string>
-  <string name="im_relay_test_title" tools:ignore="MissingTranslation">Test the connection</string>
-  <string name="im_relay_test_running" tools:ignore="MissingTranslation">Testing…</string>
-  <string name="im_relay_test_running_hint" tools:ignore="MissingTranslation">Takes about five seconds.</string>
-  <string name="im_relay_test_ok" tools:ignore="MissingTranslation">Works, a bit slower than at home</string>
-  <string name="im_relay_test_ok_hint" tools:ignore="MissingTranslation">Your partners can use the computer fine; the screen lags about half a second.</string>
-  <string name="im_relay_test_slow" tools:ignore="MissingTranslation">Works, but slowly</string>
-  <string name="im_relay_test_failed" tools:ignore="MissingTranslation">Couldn\'t get through</string>
-  <string name="im_relay_test_network" tools:ignore="MissingTranslation">This network</string>
-  <string name="im_relay_test_network_hint" tools:ignore="MissingTranslation">A new network picks its route again</string>
-  <string name="im_relay_test_entry" tools:ignore="MissingTranslation">To the relay</string>
-  <string name="im_relay_test_entry_hint" tools:ignore="MissingTranslation">Fastest route: %1$s</string>
-  <string name="im_relay_test_entry_hint_plain" tools:ignore="MissingTranslation">Fastest route</string>
-  <string name="im_relay_test_open" tools:ignore="MissingTranslation">Reach the computer through the relay</string>
-  <string name="im_relay_test_open_hint" tools:ignore="MissingTranslation">Including the computer checking this phone</string>
-  <string name="im_relay_test_answer" tools:ignore="MissingTranslation">The computer answers once</string>
-  <string name="im_relay_test_answer_hint" tools:ignore="MissingTranslation">About how long each partner action waits</string>
-  <string name="im_relay_test_millis" tools:ignore="MissingTranslation">%1$d ms</string>
-  <string name="im_relay_test_seconds" tools:ignore="MissingTranslation">%1$s s</string>
-  <string name="im_relay_test_offers" tools:ignore="MissingTranslation">What this relay offers</string>
-  <string name="im_relay_rule_screen" tools:ignore="MissingTranslation">Screen</string>
-  <string name="im_relay_rule_screen_saver" tools:ignore="MissingTranslation">Data saver</string>
-  <string name="im_relay_rule_screen_off" tools:ignore="MissingTranslation">Not offered</string>
-  <string name="im_relay_rule_today" tools:ignore="MissingTranslation">Used today</string>
-  <string name="im_relay_rule_today_of" tools:ignore="MissingTranslation">of %1$d min</string>
-  <string name="im_relay_rule_today_unlimited" tools:ignore="MissingTranslation">No limit</string>
-  <string name="im_relay_rule_fast" tools:ignore="MissingTranslation">High quality</string>
-  <string name="im_relay_rule_fast_off" tools:ignore="MissingTranslation">Not away</string>
-  <string name="im_relay_test_again" tools:ignore="MissingTranslation">Test again</string>
-  <string name="im_relay_test_copy" tools:ignore="MissingTranslation">Copy results</string>
-  <string name="im_relay_network_wifi" tools:ignore="MissingTranslation">Wi-Fi</string>
-  <string name="im_relay_network_cell" tools:ignore="MissingTranslation">Mobile data</string>
-  <string name="im_relay_network_ethernet" tools:ignore="MissingTranslation">Ethernet</string>
-  <string name="im_relay_network_other" tools:ignore="MissingTranslation">Other</string>
-  <string name="im_relay_region_us_west" tools:ignore="MissingTranslation">US West</string>
-  <string name="im_relay_region_us_east" tools:ignore="MissingTranslation">US East</string>
-  <string name="im_relay_region_hk" tools:ignore="MissingTranslation">Hong Kong</string>
-  <string name="im_relay_region_jp" tools:ignore="MissingTranslation">Japan</string>
-  <string name="im_relay_region_kr" tools:ignore="MissingTranslation">Korea</string>
-  <string name="im_relay_region_sg" tools:ignore="MissingTranslation">Singapore</string>
-  <string name="im_relay_region_tw" tools:ignore="MissingTranslation">Taiwan</string>
-  <string name="im_relay_region_eu" tools:ignore="MissingTranslation">Europe</string>
-  <string name="workspace_screen_mode_relay" tools:ignore="MissingTranslation">Via relay · %1$s</string>
-  <string name="workspace_screen_details_path_relay" tools:ignore="MissingTranslation">Through the relay, a bit slower than at home. Back on the same network it connects directly again.</string>
-  <string name="workspace_screen_details_path_relay_capped" tools:ignore="MissingTranslation">Through the relay at up to %1$.1f Mbps, a bit slower than at home. Back on the same network it connects directly again.</string>
+  <string name="im_computer_away_working">Setting up…</string>
+  <string name="im_computer_away_working_subtitle">Making %1$s reachable from outside.</string>
+  <string name="im_computer_away_title">Use this computer away from home too?</string>
+  <string name="im_computer_away_subtitle">Turn this on and your partners can reach %1$s through Miffan\'s free relay while you\'re out. No Tailscale, no router changes.</string>
+  <string name="im_computer_away_point_encrypted_title">Encrypted end to end</string>
+  <string name="im_computer_away_point_encrypted_body">The relay only passes messages along; it can\'t see what happens on the computer.</string>
+  <string name="im_computer_away_point_phone_title">Only this phone</string>
+  <string name="im_computer_away_point_phone_body">The computer remembers this phone. Knowing the address isn\'t enough to get in.</string>
+  <string name="im_computer_away_point_free_title">A free public relay</string>
+  <string name="im_computer_away_point_free_body">Slower than at home. When it\'s busy, screen viewing may pause; your partner can still use the computer.</string>
+  <string name="im_computer_away_enable">Turn on</string>
+  <string name="im_computer_away_skip">Not now</string>
+  <string name="im_computer_away_own_relay">Use my own relay</string>
+  <string name="im_computer_away_relay_address">Address</string>
+  <string name="im_computer_away_access_code">Access code</string>
+  <string name="im_computer_away_access_code_hint">Leave empty if none</string>
+  <string name="im_computer_away_scan">Scan to add</string>
+  <string name="im_computer_away_how_to_host">How do I set one up?</string>
+  <string name="im_computer_away_done_title">All set</string>
+  <string name="im_computer_away_done_subtitle">Next time you\'re out, just open Miffan. There\'s nothing else to set up.</string>
+  <string name="im_computer_away_failed_title">Almost there</string>
+  <string name="im_computer_away_failed_subtitle">Miffan will try the relay again by itself next time you\'re away.</string>
+  <string name="im_computer_away_step_install">Install the connector on the computer</string>
+  <string name="im_computer_away_step_allow">Allow this phone</string>
+  <string name="im_computer_away_step_try">Try once through the relay</string>
+  <string name="im_computer_away_step_try_ok">Got through in %1$s s</string>
+  <string name="im_computer_away_step_try_failed">Couldn\'t reach the relay</string>
+  <string name="im_computer_away_failed_note">The home side is set up; this try just didn\'t get through. You can test again later from the computer\'s page.</string>
+  <string name="im_computer_away_keep_on">Takes about half a minute. Keep the computer on.</string>
+  <string name="im_computer_away_finish">Done</string>
+  <string name="im_computer_away_finish_anyway">Leave it for now</string>
+  <string name="im_computer_away_retry">Try again</string>
+  <string name="im_computer_away_relay_unreachable">Couldn\'t reach that relay. Check the address.</string>
+  <string name="im_computer_away_install_failed">Couldn\'t set up the connector on the computer (%1$s).</string>
+  <string name="im_computer_relay_section">Away from home</string>
+  <string name="im_computer_relay_section_help">Use this computer when you\'re not on its network.</string>
+  <string name="im_computer_relay_switch">Works away from home</string>
+  <string name="im_computer_relay_off_hint">Off: only reachable on the same network</string>
+  <string name="im_computer_relay_official">Miffan free relay</string>
+  <string name="im_computer_relay_paused">Paused on this phone</string>
+  <string name="im_computer_relay_today">Through the relay today</string>
+  <string name="im_computer_relay_minutes">%1$d min</string>
+  <string name="im_computer_relay_minutes_of">%1$d / %2$d min</string>
+  <string name="im_computer_relay_resets">Resets at %1$s</string>
+  <string name="im_computer_relay_test">Test the connection</string>
+  <string name="im_computer_relay_change">Use another relay</string>
+  <string name="im_computer_relay_forget">Make the computer forget this phone</string>
+  <string name="im_computer_relay_forget_title">Forget this phone?</string>
+  <string name="im_computer_relay_forget_body">This phone won\'t reach %1$s away from home anymore. You can turn it on again from the same network.</string>
+  <string name="im_computer_relay_forget_confirm">Forget</string>
+  <string name="im_computer_relay_note">Away from home your partners can still use the computer. Viewing the screen uses data-saving quality and your mobile data.</string>
+  <string name="im_relay_test_title">Test the connection</string>
+  <string name="im_relay_test_running">Testing…</string>
+  <string name="im_relay_test_running_hint">Takes about five seconds.</string>
+  <string name="im_relay_test_ok">Works, a bit slower than at home</string>
+  <string name="im_relay_test_ok_hint">Your partners can use the computer fine; the screen lags about half a second.</string>
+  <string name="im_relay_test_slow">Works, but slowly</string>
+  <string name="im_relay_test_failed">Couldn\'t get through</string>
+  <string name="im_relay_test_network">This network</string>
+  <string name="im_relay_test_network_hint">A new network picks its route again</string>
+  <string name="im_relay_test_entry">To the relay</string>
+  <string name="im_relay_test_entry_hint">Fastest route: %1$s</string>
+  <string name="im_relay_test_entry_hint_plain">Fastest route</string>
+  <string name="im_relay_test_open">Reach the computer through the relay</string>
+  <string name="im_relay_test_open_hint">Including the computer checking this phone</string>
+  <string name="im_relay_test_answer">The computer answers once</string>
+  <string name="im_relay_test_answer_hint">About how long each partner action waits</string>
+  <string name="im_relay_test_millis">%1$d ms</string>
+  <string name="im_relay_test_seconds">%1$s s</string>
+  <string name="im_relay_test_offers">What this relay offers</string>
+  <string name="im_relay_rule_screen">Screen</string>
+  <string name="im_relay_rule_screen_saver">Data saver</string>
+  <string name="im_relay_rule_screen_off">Not offered</string>
+  <string name="im_relay_rule_today">Used today</string>
+  <string name="im_relay_rule_today_of">of %1$d min</string>
+  <string name="im_relay_rule_today_unlimited">No limit</string>
+  <string name="im_relay_rule_fast">High quality</string>
+  <string name="im_relay_rule_fast_off">Not away</string>
+  <string name="im_relay_test_again">Test again</string>
+  <string name="im_relay_test_copy">Copy results</string>
+  <string name="im_relay_network_wifi">Wi-Fi</string>
+  <string name="im_relay_network_cell">Mobile data</string>
+  <string name="im_relay_network_ethernet">Ethernet</string>
+  <string name="im_relay_network_other">Other</string>
+  <string name="im_relay_region_us_west">US West</string>
+  <string name="im_relay_region_us_east">US East</string>
+  <string name="im_relay_region_hk">Hong Kong</string>
+  <string name="im_relay_region_jp">Japan</string>
+  <string name="im_relay_region_kr">Korea</string>
+  <string name="im_relay_region_sg">Singapore</string>
+  <string name="im_relay_region_tw">Taiwan</string>
+  <string name="im_relay_region_eu">Europe</string>
+  <string name="workspace_screen_mode_relay">Via relay · %1$s</string>
+  <string name="workspace_screen_details_path_relay">Through the relay, a bit slower than at home. Back on the same network it connects directly again.</string>
+  <string name="workspace_screen_details_path_relay_capped">Through the relay at up to %1$.1f Mbps, a bit slower than at home. Back on the same network it connects directly again.</string>
 </resources>

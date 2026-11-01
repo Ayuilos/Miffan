@@ -3364,9 +3364,15 @@
   <string name="im_partner_computer_title">%1$s 用電腦</string>
   <string name="im_partner_computer_details">電腦詳情</string>
   <string name="im_partner_computer_mode">動手之前</string>
-  <plurals name="im_profile_tasks"><item quantity="other">%1$d 個定時任務</item></plurals>
-  <plurals name="im_profile_memory_on"><item quantity="other">%1$d 件 · 聊天時會記下新的</item></plurals>
-  <plurals name="im_profile_memory_paused"><item quantity="other">%1$d 件 · 暫停記新的</item></plurals>
+  <plurals name="im_profile_tasks">
+    <item quantity="other">%1$d 個定時任務</item>
+  </plurals>
+  <plurals name="im_profile_memory_on">
+    <item quantity="other">%1$d 件 · 聊天時會記下新的</item>
+  </plurals>
+  <plurals name="im_profile_memory_paused">
+    <item quantity="other">%1$d 件 · 暫停記新的</item>
+  </plurals>
   <string name="im_me_profile_desc">夥伴們這樣稱呼你 · 點一下修改</string>
   <string name="im_me_section_partners">夥伴與你</string>
   <string name="im_me_section_prefs">偏好</string>
@@ -3420,10 +3426,18 @@
   <string name="im_backup_restore_section">換手機或重裝後</string>
   <string name="im_backup_restore">從備份還原</string>
   <string name="im_backup_import_other">從其他 App 搬過來</string>
-  <plurals name="im_me_memory_count"><item quantity="other">%1$d 件事 · 可以隨時刪掉</item></plurals>
-  <plurals name="im_me_backup_days"><item quantity="other">%1$d 天沒備份</item></plurals>
-  <plurals name="im_backup_days_ago"><item quantity="other">已經 %1$d 天沒備份了</item></plurals>
-  <plurals name="im_backup_remind_desc"><item quantity="other">超過 %1$d 天</item></plurals>
+  <plurals name="im_me_memory_count">
+    <item quantity="other">%1$d 件事 · 可以隨時刪掉</item>
+  </plurals>
+  <plurals name="im_me_backup_days">
+    <item quantity="other">%1$d 天沒備份</item>
+  </plurals>
+  <plurals name="im_backup_days_ago">
+    <item quantity="other">已經 %1$d 天沒備份了</item>
+  </plurals>
+  <plurals name="im_backup_remind_desc">
+    <item quantity="other">超過 %1$d 天</item>
+  </plurals>
   <string name="im_time_today">今天</string>
   <string name="im_thread_favorite">收藏</string>
   <string name="im_thread_unfavorite">取消收藏</string>
@@ -3461,14 +3475,20 @@
   <string name="im_translate_paste">貼上</string>
   <string name="im_translate_clear">清空</string>
   <string name="im_translate_copied">已複製</string>
-  <plurals name="im_discover_favorites_all"><item quantity="other">全部 %1$d 則</item></plurals>
-  <plurals name="im_draw_count"><item quantity="other">%1$d 張</item></plurals>
+  <plurals name="im_discover_favorites_all">
+    <item quantity="other">全部 %1$d 則</item>
+  </plurals>
+  <plurals name="im_draw_count">
+    <item quantity="other">%1$d 張</item>
+  </plurals>
   <string name="im_translate_pick_language">翻成哪種語言</string>
   <string name="im_ai_service_manage">新增或管理服務商</string>
   <string name="im_ai_service_draw">畫圖</string>
   <string name="im_ai_service_draw_off">未開啟 · 選一個畫圖模型，夥伴就能幫你畫圖、改圖</string>
   <string name="im_ai_service_same_as_default">跟預設模型一樣</string>
-  <plurals name="im_ai_service_model_count"><item quantity="other">%1$d 個模型</item></plurals>
+  <plurals name="im_ai_service_model_count">
+    <item quantity="other">%1$d 個模型</item>
+  </plurals>
   <string name="magpie_description">**在手機上用你電腦上的 AI。** Magpie 是裝在電腦上的免費閘道，把你在電腦上能用的模型（包括登入好的 Claude Code、Codex）匯到一個位址。\n\n1. 在電腦上打開 Magpie →「設定」，打開 **區域網共享**。\n2. 把那裡顯示的 **位址** 和 **API 金鑰** 填到下面。\n3. 打開 **是否啟用**，再到 **模型** 頁新增模型。\n\n不在家裡的 Wi-Fi 時，可以用 Tailscale 等 VPN 連回電腦，把位址換成電腦的 Tailscale 位址。\n\n官網：[usemagpie.ai](https://usemagpie.ai)</string>
   <string name="im_look_title">換個樣子</string>
   <string name="im_look_done">完成</string>
@@ -3982,4 +4002,111 @@
   <string name="im_thread_status_offline">沒有網路，連上後再試</string>
   <string name="im_thread_status_connecting">正在連線…</string>
   <string name="im_thread_status_connecting_slow">連線有點慢…</string>
+  <string name="workspace_screen_stream_reason_relay">目前透過中轉連線，暫時無法傳送高效能畫面</string>
+  <string name="workspace_screen_relay_stream_only">不在家時，夥伴仍可使用這台電腦，但目前畫面只能在同一網路下查看。</string>
+  <string name="workspace_screen_relay_media_disabled">這個中轉不提供畫面檢視。夥伴仍可使用電腦；要看畫面，請在同一網路下連線，或改用你自己的中轉。</string>
+  <string name="workspace_screen_relay_quota">這台電腦透過中轉的畫面時間暫時用完了。夥伴仍可使用電腦。</string>
+  <string name="workspace_screen_relay_busy">免費中轉目前忙碌，今天已暫停畫面檢視。夥伴仍可使用電腦；你也可以設定自己的中轉。</string>
+  <string name="workspace_screen_relay_unavailable">中轉無法開啟畫面（%1$s）。</string>
+  <string name="workspace_relay_host_offline">無法連到家中的電腦，也無法透過中轉連線。請確認電腦已開機、沒有進入睡眠，且已連上網路。</string>
+  <string name="workspace_relay_denied">電腦還不認得這支手機。請在同一網路下連線一次，重新允許它。</string>
+  <string name="workspace_relay_unauthorized">中轉拒絕了存取碼。請檢查這台電腦的中轉設定。</string>
+  <string name="workspace_relay_quota">這台電腦的中轉時間暫時用完了。回到家中或額度重置後就能再用。</string>
+  <string name="workspace_relay_busy">免費中轉已達今天的上限，將於北京時間 8:00 重置。你也可以設定自己的中轉。</string>
+  <string name="workspace_relay_unreachable">無法連到家中的電腦，也無法透過中轉連線。請檢查這支手機的網路。</string>
+  <string name="im_computer_away_working">設定中…</string>
+  <string name="im_computer_away_working_subtitle">正在讓%1$s可從外面連上。</string>
+  <string name="im_computer_away_title">也要在外面使用這台電腦嗎？</string>
+  <string name="im_computer_away_subtitle">開啟後，外出時夥伴就能透過 Miffan 的免費中轉連到%1$s。不需要 Tailscale，也不用改路由器。</string>
+  <string name="im_computer_away_point_encrypted_title">端到端加密</string>
+  <string name="im_computer_away_point_encrypted_body">中轉只負責傳遞訊息，看不到電腦上發生的事。</string>
+  <string name="im_computer_away_point_phone_title">只限這支手機</string>
+  <string name="im_computer_away_point_phone_body">電腦會記住這支手機。只知道位址，無法進入。</string>
+  <string name="im_computer_away_point_free_title">免費的公用中轉</string>
+  <string name="im_computer_away_point_free_body">比在家慢。忙碌時畫面檢視可能暫停，但夥伴仍可使用電腦。</string>
+  <string name="im_computer_away_enable">開啟</string>
+  <string name="im_computer_away_skip">暫時不要</string>
+  <string name="im_computer_away_own_relay">使用我自己的中轉</string>
+  <string name="im_computer_away_relay_address">位址</string>
+  <string name="im_computer_away_access_code">存取碼</string>
+  <string name="im_computer_away_access_code_hint">沒有就留空</string>
+  <string name="im_computer_away_scan">掃描加入</string>
+  <string name="im_computer_away_how_to_host">要怎麼架設？</string>
+  <string name="im_computer_away_done_title">設定完成</string>
+  <string name="im_computer_away_done_subtitle">下次外出時，直接開啟 Miffan 就好，不需要再設定其他東西。</string>
+  <string name="im_computer_away_failed_title">快完成了</string>
+  <string name="im_computer_away_failed_subtitle">下次外出時，Miffan 會自己再試一次中轉。</string>
+  <string name="im_computer_away_step_install">在電腦上安裝連線程式</string>
+  <string name="im_computer_away_step_allow">允許這支手機</string>
+  <string name="im_computer_away_step_try">透過中轉試連一次</string>
+  <string name="im_computer_away_step_try_ok">%1$s 秒內連上</string>
+  <string name="im_computer_away_step_try_failed">無法連到中轉</string>
+  <string name="im_computer_away_failed_note">家中這一端已設定完成，只是這次沒有連上。之後可以在電腦頁面再測試一次。</string>
+  <string name="im_computer_away_keep_on">大約需要半分鐘，請保持電腦開機。</string>
+  <string name="im_computer_away_finish">完成</string>
+  <string name="im_computer_away_finish_anyway">先這樣就好</string>
+  <string name="im_computer_away_retry">重試</string>
+  <string name="im_computer_away_relay_unreachable">無法連到這個中轉，請檢查位址。</string>
+  <string name="im_computer_away_install_failed">無法在電腦上設定連線程式（%1$s）。</string>
+  <string name="im_computer_relay_section">外出時使用</string>
+  <string name="im_computer_relay_section_help">不在這台電腦的網路內時，也能使用它。</string>
+  <string name="im_computer_relay_switch">外出時也能使用</string>
+  <string name="im_computer_relay_off_hint">關閉：只能在同一網路下連線</string>
+  <string name="im_computer_relay_official">Miffan 免費中轉</string>
+  <string name="im_computer_relay_paused">在這支手機上已暫停</string>
+  <string name="im_computer_relay_today">今天透過中轉的用量</string>
+  <string name="im_computer_relay_minutes">%1$d 分鐘</string>
+  <string name="im_computer_relay_minutes_of">%1$d / %2$d 分鐘</string>
+  <string name="im_computer_relay_resets">%1$s 重置</string>
+  <string name="im_computer_relay_test">測試連線</string>
+  <string name="im_computer_relay_change">改用其他中轉</string>
+  <string name="im_computer_relay_forget">讓電腦忘記這支手機</string>
+  <string name="im_computer_relay_forget_title">要忘記這支手機嗎？</string>
+  <string name="im_computer_relay_forget_body">這支手機之後無法在外面連到%1$s。你可以在同一網路下重新開啟。</string>
+  <string name="im_computer_relay_forget_confirm">忘記</string>
+  <string name="im_computer_relay_note">外出時夥伴仍可使用電腦。檢視畫面會使用省流畫質，並消耗你的行動數據。</string>
+  <string name="im_relay_test_title">測試連線</string>
+  <string name="im_relay_test_running">測試中…</string>
+  <string name="im_relay_test_running_hint">大約需要五秒。</string>
+  <string name="im_relay_test_ok">可以使用，比在家稍慢</string>
+  <string name="im_relay_test_ok_hint">夥伴可以正常使用電腦；畫面大約會延遲半秒。</string>
+  <string name="im_relay_test_slow">可以用，但很慢</string>
+  <string name="im_relay_test_failed">無法連上</string>
+  <string name="im_relay_test_network">目前網路</string>
+  <string name="im_relay_test_network_hint">換了新網路後會重新選擇路線</string>
+  <string name="im_relay_test_entry">連到中轉</string>
+  <string name="im_relay_test_entry_hint">最快的路線：%1$s</string>
+  <string name="im_relay_test_entry_hint_plain">最快的路線</string>
+  <string name="im_relay_test_open">透過中轉連到電腦</string>
+  <string name="im_relay_test_open_hint">包括電腦確認這支手機的時間</string>
+  <string name="im_relay_test_answer">電腦回應一次</string>
+  <string name="im_relay_test_answer_hint">每次夥伴操作大約要等待的時間</string>
+  <string name="im_relay_test_millis">%1$d 毫秒</string>
+  <string name="im_relay_test_seconds">%1$s 秒</string>
+  <string name="im_relay_test_offers">這個中轉提供的功能</string>
+  <string name="im_relay_rule_screen">畫面</string>
+  <string name="im_relay_rule_screen_saver">省流模式</string>
+  <string name="im_relay_rule_screen_off">不提供</string>
+  <string name="im_relay_rule_today">今天已用</string>
+  <string name="im_relay_rule_today_of">共 %1$d 分鐘</string>
+  <string name="im_relay_rule_today_unlimited">不限制</string>
+  <string name="im_relay_rule_fast">高畫質</string>
+  <string name="im_relay_rule_fast_off">外出時不提供</string>
+  <string name="im_relay_test_again">再測試一次</string>
+  <string name="im_relay_test_copy">複製結果</string>
+  <string name="im_relay_network_wifi">Wi-Fi</string>
+  <string name="im_relay_network_cell">行動數據</string>
+  <string name="im_relay_network_ethernet">乙太網路</string>
+  <string name="im_relay_network_other">其他</string>
+  <string name="im_relay_region_us_west">美國西部</string>
+  <string name="im_relay_region_us_east">美國東部</string>
+  <string name="im_relay_region_hk">香港</string>
+  <string name="im_relay_region_jp">日本</string>
+  <string name="im_relay_region_kr">韓國</string>
+  <string name="im_relay_region_sg">新加坡</string>
+  <string name="im_relay_region_tw">台灣</string>
+  <string name="im_relay_region_eu">歐洲</string>
+  <string name="workspace_screen_mode_relay">透過中轉 · %1$s</string>
+  <string name="workspace_screen_details_path_relay">透過中轉連線，比在家慢一些。回到同一網路後會再直接連線。</string>
+  <string name="workspace_screen_details_path_relay_capped">透過中轉連線，速度最高 %1$.1f Mbps，比在家慢一些。回到同一網路後會再直接連線。</string>
 </resources>
