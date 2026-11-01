@@ -86,7 +86,9 @@ bunx wrangler login      # 浏览器里授权
    bunx wrangler deploy -c worker/wrangler.toml
    ```
 4. 验证：`curl https://relay.example.com/v1/info` 应返回 JSON（含 `"impl":"worker"`）。
-5. 在 Miffan 的"其他中转"里填 `https://relay.example.com`（访问码模式再填访问码）。
+5. 回到电脑所在的网络，在 Miffan 开启“不在家也能用”时（或电脑详情“出门在外 > 换一个中转”）点“用自己的中转”，填 `https://relay.example.com` 和访问码；也可以扫描内容为 `miffan-relay://add?url=https://relay.example.com&token=<访问码>` 的二维码。访问码建议用 `openssl rand -hex 24` 生成。
+
+给不熟悉命令行的用户的分步教程见 <https://miffan.ayuilos.me/docs/relay-self-hosting>。
 
 `wrangler.toml` 里已经配好 Durable Object（必须是 SQLite 存储，免费方案只支持这种）和迁移，不用手动创建。里面还有一个 `[env.dev]`（`bunx wrangler deploy --env dev`）用于测试环境。
 
@@ -104,19 +106,19 @@ bunx wrangler login      # 浏览器里授权
 # 在仓库根目录
 docker build -t miffan-relay relay/server
 
-mkdir -p relay-data
-cat > relay-data/relay.config.json <<'JSON'
-{ "accessMode": "token" }
-JSON
+# 镜像里的中转以 uid 1000 的 bun 用户运行，数据目录要归它所有
+sudo mkdir -p /srv/miffan-relay
+echo '{ "accessMode": "token" }' | sudo tee /srv/miffan-relay/relay.config.json
+sudo chown -R 1000:1000 /srv/miffan-relay
 
 docker run -d --name relay --restart unless-stopped \
-  -p 127.0.0.1:8787:8787 -v "$PWD/relay-data:/data" \
+  -p 127.0.0.1:8787:8787 -v /srv/miffan-relay:/data \
   -e ACCESS_TOKEN="$(openssl rand -base64 32)" -e ADMIN_TOKEN="$(openssl rand -base64 32)" \
   -e TRUSTED_IP_HEADER=x-forwarded-for \
   miffan-relay
 ```
 
-记下生成的 `ACCESS_TOKEN`（`docker inspect relay` 里能看到），用于手机上填写。计量数据在 `relay-data/relay.sqlite`。
+记下生成的 `ACCESS_TOKEN`（`docker inspect relay` 里能看到），用于手机上填写。计量数据在 `/srv/miffan-relay/relay.sqlite`。
 
 ### 单文件 + systemd
 
