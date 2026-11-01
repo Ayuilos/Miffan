@@ -103,6 +103,8 @@ class RemoteRelaySetup internal constructor(
             json.decodeFromString<RelayPairResult>(run(ssh, "relay pair", buildJsonObject {
                 put("device", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(devicePub))
                 put("name", deviceName())
+                // The connector serves every relay a paired phone uses; this phone uses this one.
+                put("relay", endpoint.baseUrl)
             }.toString()))
         }
         if (!RelayIds.isHostId(paired.hostId)) throw RelaySetupException("bad_host_id", "The connector returned an invalid id")

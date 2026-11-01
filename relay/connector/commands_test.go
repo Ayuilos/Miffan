@@ -67,21 +67,30 @@ func TestInitCreatesIdentityOnceAndConfig(t *testing.T) {
 		}
 	}
 	cfg, _ := loadConfig(dataPaths{dir})
-	if cfg.Target != "127.0.0.1:2222" || cfg.AccessToken != "abc" || len(cfg.Devices) != 0 {
+	if cfg.Target != "127.0.0.1:2222" || len(cfg.Relays) != 1 || cfg.Relays[0].AccessToken != "abc" || len(cfg.Devices) != 0 {
 		t.Fatalf("config = %+v", cfg)
 	}
-	// Re-running init keeps the key and the token, and updates the relay.
+	// Re-running init keeps the key; another relay is added next to the first, not instead of it.
 	m2 := runOK(t, "", "init", "--relay", "https://other.example.com", "--target", "127.0.0.1:22")
 	if m2["hostId"] != hostID {
 		t.Fatal("init must never replace an existing host key")
 	}
 	cfg, _ = loadConfig(dataPaths{dir})
-	if cfg.Relay != "https://other.example.com" || cfg.AccessToken != "abc" {
-		t.Fatalf("config after re-init = %+v", cfg)
+	if got := relayURLs(cfg.Relays); len(got) != 2 || got[0] != "https://relay.example.com" || got[1] != "https://other.example.com" {
+		t.Fatalf("relays after a second init = %v", got)
+	}
+	if cfg.findRelay("https://relay.example.com").AccessToken != "abc" || cfg.findRelay("https://other.example.com").AccessToken != "" {
+		t.Fatalf("each relay keeps its own access code: %+v", cfg.Relays)
+	}
+	// Naming the first relay again keeps its token and makes it the latest.
+	runOK(t, "", "init", "--relay", "https://relay.example.com", "--target", "127.0.0.1:22")
+	cfg, _ = loadConfig(dataPaths{dir})
+	if got := relayURLs(cfg.Relays); got[1] != "https://relay.example.com" || cfg.Relays[1].AccessToken != "abc" {
+		t.Fatalf("relays after re-init = %+v", cfg.Relays)
 	}
 	// An explicit empty token clears it.
-	runOK(t, "", "init", "--relay", "https://other.example.com", "--token", "", "--target", "127.0.0.1:22")
-	if cfg, _ = loadConfig(dataPaths{dir}); cfg.AccessToken != "" {
+	runOK(t, "", "init", "--relay", "https://relay.example.com", "--token", "", "--target", "127.0.0.1:22")
+	if cfg, _ = loadConfig(dataPaths{dir}); cfg.findRelay("https://relay.example.com").AccessToken != "" {
 		t.Fatal("--token '' should clear the access code")
 	}
 }
@@ -98,17 +107,23 @@ func runOK(t *testing.T, stdin string, args ...string) map[string]any {
 func TestInitStdinForms(t *testing.T) {
 	dir := cliHome(t)
 	runOK(t, `{"relay":"https://r.example.com","accessToken":"tok"}`, "init", "--stdin", "--target", "127.0.0.1:22")
-	cfg, _ := loadConfig(dataPaths{dir})
-	if cfg.Relay != "https://r.example.com" || cfg.AccessToken != "tok" {
-		t.Fatalf("config = %+v", cfg)
+	token := func() string {
+		cfg, _ := loadConfig(dataPaths{dir})
+		if len(cfg.Relays) != 1 || cfg.Relays[0].URL != "https://r.example.com" {
+			t.Fatalf("relays = %+v", cfg.Relays)
+		}
+		return cfg.Relays[0].AccessToken
+	}
+	if token() != "tok" {
+		t.Fatal("stdin token not stored")
 	}
 	runOK(t, "line-token\nignored", "init", "--relay", "https://r.example.com", "--token-stdin", "--target", "127.0.0.1:22")
-	if cfg, _ = loadConfig(dataPaths{dir}); cfg.AccessToken != "line-token" {
-		t.Fatalf("token = %q", cfg.AccessToken)
+	if got := token(); got != "line-token" {
+		t.Fatalf("token = %q", got)
 	}
 	// accessToken absent from the JSON keeps what is there.
 	runOK(t, `{"relay":"https://r.example.com"}`, "init", "--stdin", "--target", "127.0.0.1:22")
-	if cfg, _ = loadConfig(dataPaths{dir}); cfg.AccessToken != "line-token" {
+	if token() != "line-token" {
 		t.Fatal("missing accessToken must keep the stored one")
 	}
 	code, m := runCLI(t, `not json`, "init", "--stdin")
@@ -187,7 +202,7 @@ func TestPairUnpairStatus(t *testing.T) {
 	if devs := st["devices"].([]any); len(devs) != 2 {
 		t.Fatalf("status devices = %v", devs)
 	}
-	for _, key := range []string{"version", "hostId", "relay", "running", "connected", "lastError", "lastConnectedAt", "edge", "devices"} {
+	for _, key := range []string{"version", "hostId", "relay", "relays", "running", "connected", "lastError", "lastConnectedAt", "edge", "devices"} {
 		if _, ok := st[key]; !ok {
 			t.Errorf("status lacks %q", key)
 		}
@@ -220,7 +235,7 @@ func TestStatusReportsRunningFromLock(t *testing.T) {
 	dir := cliHome(t)
 	runOK(t, "", "init", "--relay", "https://relay.example.com", "--target", "127.0.0.1:22")
 	p := dataPaths{dir}
-	_ = saveState(p, &state{Connected: true, Edge: "104.17.5.5"})
+	_ = saveState(p, &stateFile{Relays: map[string]state{"https://relay.example.com": {Connected: true, Edge: "104.17.5.5"}}})
 	st := runOK(t, "", "status")
 	if st["running"] != false || st["connected"] != false || st["edge"] != nil {
 		t.Fatalf("a stale state.json without a running connector must not look connected: %v", st)
@@ -305,5 +320,105 @@ func TestLogLimiter(t *testing.T) {
 	l.printf("after")
 	if !strings.Contains(sb.String(), "log lines suppressed") || !strings.Contains(sb.String(), "after") {
 		t.Fatalf("no summary of suppressed lines:\n%s", sb.String())
+	}
+}
+
+func TestPairBindsEachPhoneToItsRelayAndPrunesUnusedOnes(t *testing.T) {
+	dir := cliHome(t)
+	official, own := "https://relay.miffan.example", "https://relay.example.com"
+	runOK(t, "", "init", "--relay", official, "--target", "127.0.0.1:22")
+	phoneA, phoneB := newTestApp(t), newTestApp(t)
+	pair := func(app *testApp, relay string) map[string]any {
+		body, _ := json.Marshal(map[string]string{"device": app.pub(), "name": "phone", "relay": relay})
+		return runOK(t, string(body), "pair", "--stdin")
+	}
+	pair(phoneA, official)
+	pair(phoneB, official)
+
+	// Phone B moves to its own relay; phone A stays on the official one, so both relays stay.
+	runOK(t, "", "init", "--relay", own, "--token", "code", "--target", "127.0.0.1:22")
+	out := pair(phoneB, own)
+	if out["relay"] != own {
+		t.Fatalf("pair output: %v", out)
+	}
+	cfg, _ := loadConfig(dataPaths{dir})
+	if got := relayURLs(cfg.Relays); len(got) != 2 {
+		t.Fatalf("both relays are in use: %v", got)
+	}
+	if active := relayURLs(cfg.activeRelays(time.Now().Add(time.Hour))); len(active) != 2 {
+		t.Fatalf("both relays stay active after the grace period: %v", active)
+	}
+	st := runOK(t, "", "status")
+	if rs := st["relays"].([]any); len(rs) != 2 || st["relay"] != own {
+		t.Fatalf("status relays = %v, relay = %v", rs, st["relay"])
+	}
+
+	// A relay that is not set up is refused rather than silently used.
+	body, _ := json.Marshal(map[string]string{"device": phoneA.pub(), "name": "phone", "relay": "https://unknown.example.com"})
+	code, m := runCLI(t, string(body), "pair", "--stdin")
+	mustFail(t, code, m, "unknown_relay")
+
+	// Phone A moves too: once its grace period is over, the official relay is no longer kept.
+	cfg.Relays[0].AddedAt = time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	_ = saveConfig(dataPaths{dir}, cfg)
+	pair(phoneA, own)
+	cfg, _ = loadConfig(dataPaths{dir})
+	if got := relayURLs(cfg.Relays); len(got) != 1 || got[0] != own {
+		t.Fatalf("unused relay kept: %v", got)
+	}
+	// Forgetting every phone drops the relay once nobody uses it.
+	cfg.Relays[0].AddedAt = ""
+	_ = saveConfig(dataPaths{dir}, cfg)
+	runOK(t, "", "unpair", "--device-id", phoneA.id())
+	out = runOK(t, "", "unpair", "--device-id", phoneB.id())
+	if rs := out["relays"].([]any); len(rs) != 0 {
+		t.Fatalf("relays after unpairing everyone: %v", rs)
+	}
+}
+
+func TestPairWithoutRelayUsesTheLatestInit(t *testing.T) {
+	cliHome(t)
+	runOK(t, "", "init", "--relay", "https://a.example.com", "--target", "127.0.0.1:22")
+	runOK(t, "", "init", "--relay", "https://b.example.com", "--target", "127.0.0.1:22")
+	if out := runOK(t, "", "pair", "--device", vectorSPKIB64(), "--name", "phone"); out["relay"] != "https://b.example.com" {
+		t.Fatalf("pair output: %v", out)
+	}
+}
+
+func TestConfigFromVersion1Migrates(t *testing.T) {
+	dir := cliHome(t)
+	paths := dataPaths{dir}
+	if _, _, err := ensureIdentity(paths); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"relay":"https://relay.miffan.example","accessToken":"tok","target":"127.0.0.1:22",
+		"devices":[{"id":"` + vectorDeviceID + `","pub":"` + vectorSPKIB64() + `","name":"PGEM10","addedAt":"2026-11-01T00:00:00Z"}]}`
+	if err := os.WriteFile(paths.config(), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Relays) != 1 || cfg.Relays[0].URL != "https://relay.miffan.example" || cfg.Relays[0].AccessToken != "tok" ||
+		cfg.Devices[0].Relay != "https://relay.miffan.example" {
+		t.Fatalf("migrated config = %+v", cfg)
+	}
+	// The existing phone keeps its relay active without any grace period.
+	if len(cfg.activeRelays(time.Now())) != 1 {
+		t.Fatal("migrated relay must stay active")
+	}
+	// Saving writes only the new form.
+	if err := saveConfig(paths, cfg); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(paths.config())
+	var generic map[string]any
+	_ = json.Unmarshal(raw, &generic)
+	if _, ok := generic["relay"]; ok {
+		t.Fatalf("legacy field written back: %s", raw)
+	}
+	if st := runOK(t, "", "status"); st["relay"] != "https://relay.miffan.example" {
+		t.Fatalf("status after migration: %v", st)
 	}
 }

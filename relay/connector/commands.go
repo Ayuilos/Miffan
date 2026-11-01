@@ -118,15 +118,18 @@ func cmdInit(paths dataPaths, args []string) int {
 			}
 			cfg = &config{}
 		}
-		cfg.Relay = clean
-		cfg.Target = targetValue
+		// Adds the relay next to the ones other phones use; pair binds this phone to it.
+		var tokenPtr *string
 		if tokenSet {
-			cfg.AccessToken = tokenValue
+			tokenPtr = &tokenValue
 		}
+		cfg.upsertRelay(clean, tokenPtr, time.Now())
+		cfg.Target = targetValue
 		if err := saveConfig(paths, cfg); err != nil {
 			return fail("io_error", err.Error())
 		}
-		return emit(map[string]any{"success": true, "hostId": id.hostID, "relay": cfg.Relay, "target": cfg.Target})
+		return emit(map[string]any{"success": true, "hostId": id.hostID, "relay": clean, "relays": relayURLs(cfg.Relays),
+			"target": cfg.Target})
 	})
 }
 
@@ -134,21 +137,29 @@ func cmdPair(paths dataPaths, args []string) int {
 	fs := newFlagSet("pair")
 	dev := fs.String("device", "", "device public key, base64url SubjectPublicKeyInfo")
 	name := fs.String("name", "", "display name")
-	useStdin := fs.Bool("stdin", false, `read {"device","name"} from stdin`)
+	relay := fs.String("relay", "", "the relay this phone uses (default: the one `init` named last)")
+	useStdin := fs.Bool("stdin", false, `read {"device","name","relay"} from stdin`)
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
-		return fail("usage", "usage: pair --device <b64u SPKI> --name NAME")
+		return fail("usage", "usage: pair --device <b64u SPKI> --name NAME [--relay URL]")
 	}
-	deviceValue, nameValue := *dev, *name
+	deviceValue, nameValue, relayValue := *dev, *name, *relay
 	if *useStdin {
 		raw, err := readStdinLimited()
 		if err != nil {
 			return fail("bad_input", err.Error())
 		}
-		var in struct{ Device, Name string }
+		var in struct{ Device, Name, Relay string }
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return fail("bad_input", "stdin is not valid JSON")
 		}
-		deviceValue, nameValue = in.Device, in.Name
+		deviceValue, nameValue, relayValue = in.Device, in.Name, in.Relay
+	}
+	if relayValue != "" {
+		clean, err := validateRelayURL(relayValue)
+		if err != nil {
+			return fail("bad_relay", err.Error())
+		}
+		relayValue = clean
 	}
 	der, _, err := parseDevicePub(deviceValue)
 	if err != nil {
@@ -169,18 +180,30 @@ func cmdPair(paths dataPaths, args []string) int {
 		if err != nil {
 			return fail("not_initialized", "run `miffan-connector init` first")
 		}
+		if relayValue == "" {
+			if len(cfg.Relays) == 0 {
+				return fail("not_initialized", "run `miffan-connector init` first")
+			}
+			relayValue = cfg.Relays[len(cfg.Relays)-1].URL
+		} else if cfg.findRelay(relayValue) == nil {
+			return fail("unknown_relay", "run `miffan-connector init --relay` for this relay first")
+		}
 		if existing := cfg.findDevice(deviceID); existing != nil {
 			existing.Name = nameValue
+			existing.Relay = relayValue
 		} else {
 			cfg.Devices = append(cfg.Devices, device{
 				ID: deviceID, Pub: b64u.EncodeToString(der), Name: nameValue,
-				AddedAt: time.Now().UTC().Format(time.RFC3339),
+				AddedAt: time.Now().UTC().Format(time.RFC3339), Relay: relayValue,
 			})
 		}
+		// A phone that moved to another relay may leave its old one unused.
+		cfg.prune(time.Now())
 		if err := saveConfig(paths, cfg); err != nil {
 			return fail("io_error", err.Error())
 		}
-		return emit(map[string]any{"success": true, "hostId": id.hostID, "relay": cfg.Relay, "deviceId": deviceID})
+		return emit(map[string]any{"success": true, "hostId": id.hostID, "relay": relayValue, "deviceId": deviceID,
+			"relays": relayURLs(cfg.Relays)})
 	})
 }
 
@@ -188,12 +211,13 @@ type deviceInfo struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	AddedAt string `json:"addedAt"`
+	Relay   string `json:"relay"`
 }
 
 func deviceList(cfg *config) []deviceInfo {
 	out := make([]deviceInfo, 0, len(cfg.Devices))
 	for _, d := range cfg.Devices {
-		out = append(out, deviceInfo{d.ID, d.Name, d.AddedAt})
+		out = append(out, deviceInfo{d.ID, d.Name, d.AddedAt, d.Relay})
 	}
 	return out
 }
@@ -223,11 +247,13 @@ func cmdUnpair(paths dataPaths, args []string) int {
 		}
 		cfg.Devices = kept
 		if removed {
+			cfg.prune(time.Now())
 			if err := saveConfig(paths, cfg); err != nil {
 				return fail("io_error", err.Error())
 			}
 		}
-		return emit(map[string]any{"success": true, "removed": removed, "devices": deviceList(cfg)})
+		return emit(map[string]any{"success": true, "removed": removed, "devices": deviceList(cfg),
+			"relays": relayURLs(cfg.Relays)})
 	})
 }
 
@@ -246,27 +272,47 @@ func cmdStatus(paths dataPaths) int {
 	} else if errors.Is(err, errLocked) {
 		running = true
 	}
-	st := loadState(paths)
-	edge := any(nil)
-	if running && st.Edge != "" {
-		edge = st.Edge
+	file := loadState(paths)
+	relays := make([]map[string]any, 0, len(cfg.Relays))
+	now := time.Now()
+	for _, r := range cfg.Relays {
+		st := file.Relays[r.URL]
+		active := cfg.inUse(r, now)
+		var edge, usage any
+		if running && active && st.Edge != "" {
+			edge = st.Edge
+		}
+		if running && active && len(st.Usage) > 0 {
+			usage = st.Usage
+		}
+		relays = append(relays, map[string]any{
+			"url":             r.URL,
+			"active":          active,
+			"connected":       running && active && st.Connected,
+			"lastError":       st.LastError,
+			"lastConnectedAt": st.LastConnectedAt,
+			"edge":            edge,
+			"usage":           usage,
+		})
 	}
-	var usage any
-	if running && len(st.Usage) > 0 {
-		usage = st.Usage
+	out := map[string]any{
+		"success":   true,
+		"version":   version,
+		"hostId":    id.hostID,
+		"relay":     nil,
+		"target":    cfg.Target,
+		"running":   running,
+		"connected": false,
+		"relays":    relays,
+		"devices":   deviceList(cfg),
 	}
-	return emit(map[string]any{
-		"success":         true,
-		"version":         version,
-		"hostId":          id.hostID,
-		"relay":           cfg.Relay,
-		"target":          cfg.Target,
-		"running":         running,
-		"connected":       running && st.Connected,
-		"lastError":       st.LastError,
-		"lastConnectedAt": st.LastConnectedAt,
-		"edge":            edge,
-		"usage":           usage,
-		"devices":         deviceList(cfg),
-	})
+	// The single-relay fields of 1.0 describe the relay `init` named last.
+	if n := len(relays); n > 0 {
+		last := relays[n-1]
+		for _, k := range []string{"connected", "lastError", "lastConnectedAt", "edge", "usage"} {
+			out[k] = last[k]
+		}
+		out["relay"] = last["url"]
+	}
+	return emit(out)
 }

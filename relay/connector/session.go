@@ -21,17 +21,12 @@ const (
 )
 
 // session serves one `open`: data connection → end-to-end handshake → forward to the configured target.
-func (c *connector) session(ctx context.Context, sid, ch string, p pace, edges []string) {
+func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string) {
 	short := sid[:8]
 	start := time.Now()
 	deadline := start.Add(c.timing.handshake)
 
-	cfg, err := loadConfig(c.paths)
-	if err != nil {
-		c.log.printf("session %s: cannot read config", short)
-		return
-	}
-	client, err := newRelayClient(cfg.Relay, cfg.AccessToken, c.env)
+	client, err := newRelayClient(l.url, l.token, c.env)
 	if err != nil {
 		c.log.printf("session %s: bad relay in config", short)
 		return
@@ -97,7 +92,7 @@ func (c *connector) session(ctx context.Context, sid, ch string, p pace, edges [
 	}
 
 	// 3. verify against the allowlist as it is now (pair/unpair take effect on the next handshake)
-	cfg, err = loadConfig(c.paths)
+	cfg, err := loadConfig(c.paths)
 	if err != nil {
 		closeWith(closeError, "internal")
 		return

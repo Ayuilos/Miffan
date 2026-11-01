@@ -23,13 +23,14 @@ type timing struct {
 	backoffReset  time.Duration // a connection that lived this long resets the backoff
 	longRetry     time.Duration // after 4401 / platform refusals
 	registerRetry time.Duration // after too_many_registrations without a retryAfter
+	reconcile     time.Duration // how often config.json is checked for relays to add or drop
 }
 
 func defaultTiming() timing {
 	return timing{
 		ping: 30 * time.Second, readIdle: 100 * time.Second, handshake: 10 * time.Second,
 		backoffMin: time.Second, backoffMax: 60 * time.Second, backoffReset: 30 * time.Second,
-		longRetry: 5 * time.Minute, registerRetry: time.Hour,
+		longRetry: 5 * time.Minute, registerRetry: time.Hour, reconcile: 2 * time.Second,
 	}
 }
 
@@ -46,14 +47,22 @@ type connector struct {
 	jitter  func(time.Duration) time.Duration
 
 	stateMu sync.Mutex
-	st      state
+	st      stateFile
+
+	sessions chan struct{}
+	wg       sync.WaitGroup
+}
+
+// link is the control connection to one relay. The connector keeps one per relay that a paired
+// phone uses, so every phone reaches the computer through its own relay.
+type link struct {
+	c     *connector
+	url   string
+	token string
 
 	selMu    sync.Mutex
 	selURL   string
 	selector *edgeSelector
-
-	sessions chan struct{}
-	wg       sync.WaitGroup
 }
 
 func newConnector(paths dataPaths, id *identity, version string, env netEnv, log *logger) *connector {
@@ -62,52 +71,79 @@ func newConnector(paths dataPaths, id *identity, version string, env netEnv, log
 		timing:   defaultTiming(),
 		limiter:  newFailureLimiter(),
 		jitter:   func(d time.Duration) time.Duration { return d + time.Duration((rand.Float64()*0.4-0.2)*float64(d)) },
+		st:       stateFile{Relays: map[string]state{}},
 		sessions: make(chan struct{}, maxConcurrentSessions),
 	}
 }
 
-func (c *connector) update(fn func(*state)) {
-	c.stateMu.Lock()
-	defer c.stateMu.Unlock()
-	fn(&c.st)
+func (c *connector) save() {
 	if err := saveState(c.paths, &c.st); err != nil {
 		c.log.printf("cannot write state.json: %v", err)
 	}
 }
 
-func (c *connector) snapshot() state {
+// update changes the state of the relay at url.
+func (c *connector) update(url string, fn func(*state)) {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
-	return c.st
+	if c.st.Relays == nil {
+		c.st.Relays = map[string]state{}
+	}
+	st := c.st.Relays[url]
+	fn(&st)
+	c.st.Relays[url] = st
+	c.save()
 }
 
-func (c *connector) setError(reason string) {
-	c.update(func(s *state) { s.Connected = false; s.LastError = &reason })
+// forget drops the state of relays that are no longer in config.json.
+func (c *connector) forget(keep map[string]bool) {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	changed := false
+	for url := range c.st.Relays {
+		if !keep[url] {
+			delete(c.st.Relays, url)
+			changed = true
+		}
+	}
+	if changed {
+		c.save()
+	}
+}
+
+func (c *connector) snapshot(url string) state {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	return c.st.Relays[url]
+}
+
+func (l *link) setError(reason string) {
+	l.c.update(l.url, func(s *state) { s.Connected = false; s.LastError = &reason })
 }
 
 // selectorFor returns the edge selector for the relay URL, replacing it when the URL changed.
-func (c *connector) selectorFor(client *relayClient) *edgeSelector {
-	c.selMu.Lock()
-	defer c.selMu.Unlock()
-	if c.selector == nil || c.selURL != client.base.String() {
-		c.selector = newEdgeSelector(client)
-		c.selURL = client.base.String()
+func (l *link) selectorFor(client *relayClient) *edgeSelector {
+	l.selMu.Lock()
+	defer l.selMu.Unlock()
+	if l.selector == nil || l.selURL != client.base.String() {
+		l.selector = newEdgeSelector(client)
+		l.selURL = client.base.String()
 	}
-	return c.selector
+	return l.selector
 }
 
-func (c *connector) cachedEdges() []string {
-	c.selMu.Lock()
-	defer c.selMu.Unlock()
-	if c.selector == nil {
+func (l *link) cachedEdges() []string {
+	l.selMu.Lock()
+	defer l.selMu.Unlock()
+	if l.selector == nil {
 		return []string{""}
 	}
-	c.selector.mu.Lock()
-	defer c.selector.mu.Unlock()
-	if len(c.selector.ranked) == 0 {
+	l.selector.mu.Lock()
+	defer l.selector.mu.Unlock()
+	if len(l.selector.ranked) == 0 {
 		return []string{""}
 	}
-	return append([]string(nil), c.selector.ranked...)
+	return append([]string(nil), l.selector.ranked...)
 }
 
 // outcome describes how one control connection attempt ended.
@@ -120,24 +156,91 @@ type outcome struct {
 	network     bool // connection-level failure or drop: re-measure the edges next time
 }
 
-// run keeps the control connection up until ctx ends.
+// run keeps one link per relay in use until ctx ends, following config.json: a relay that a phone
+// starts using is connected within timing.reconcile, and one that no phone uses any more is dropped.
 func (c *connector) run(ctx context.Context) {
 	defer c.wg.Wait()
-	c.update(func(s *state) { s.Connected = false })
+	type running struct {
+		token  string
+		cancel context.CancelFunc
+		done   chan struct{}
+	}
+	links := map[string]*running{}
+	stop := func(url string) {
+		r := links[url]
+		r.cancel()
+		<-r.done
+		delete(links, url)
+	}
+	defer func() {
+		for url := range links {
+			stop(url)
+		}
+	}()
+	ticker := time.NewTicker(c.timing.reconcile)
+	defer ticker.Stop()
+	lastErr := ""
+	for {
+		cfg, err := loadConfig(c.paths)
+		if err != nil {
+			if err.Error() != lastErr {
+				c.log.printf("cannot read config.json: %v", err)
+				lastErr = err.Error()
+			}
+		} else {
+			lastErr = ""
+			want := map[string]string{}
+			for _, r := range cfg.activeRelays(time.Now()) {
+				want[r.URL] = r.AccessToken
+			}
+			for url, r := range links {
+				if token, ok := want[url]; !ok || token != r.token {
+					c.log.printf("leaving relay %s", url)
+					stop(url)
+				}
+			}
+			known := map[string]bool{}
+			for _, r := range cfg.Relays {
+				known[r.URL] = true
+			}
+			c.forget(known)
+			for url, token := range want {
+				if links[url] != nil {
+					continue
+				}
+				lctx, cancel := context.WithCancel(ctx)
+				r := &running{token: token, cancel: cancel, done: make(chan struct{})}
+				links[url] = r
+				l := &link{c: c, url: url, token: token}
+				go func() { defer close(r.done); l.run(lctx) }()
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// run keeps this relay's control connection up until ctx ends.
+func (l *link) run(ctx context.Context) {
+	c := l.c
+	l.c.update(l.url, func(s *state) { s.Connected = false })
 	backoff := c.timing.backoffMin
 	force := false
 	for ctx.Err() == nil {
-		out := c.controlOnce(ctx, force)
+		out := l.controlOnce(ctx, force)
 		if ctx.Err() != nil {
 			break
 		}
 		force = out.network
 		if out.reason != "" {
-			c.setError(out.reason)
+			l.setError(out.reason)
 		} else {
-			c.update(func(s *state) { s.Connected = false })
+			c.update(l.url, func(s *state) { s.Connected = false })
 		}
-		c.log.printf("control connection ended (%s): %v", out.reason, out.err)
+		c.log.printf("control connection to %s ended (%s): %v", l.url, out.reason, out.err)
 		if out.established && out.lived >= c.timing.backoffReset {
 			backoff = c.timing.backoffMin
 		}
@@ -153,10 +256,11 @@ func (c *connector) run(ctx context.Context) {
 			break
 		}
 	}
-	c.update(func(s *state) { s.Connected = false })
+	c.update(l.url, func(s *state) { s.Connected = false })
 }
 
-func (c *connector) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
+func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
+	c := l.c
 	cfg, err := loadConfig(c.paths)
 	if err != nil {
 		return outcome{err: err, reason: "bad_config", wait: c.timing.longRetry}
@@ -164,18 +268,18 @@ func (c *connector) controlOnce(ctx context.Context, forceProbe bool) (out outco
 	if _, err := validateTarget(cfg.Target); err != nil {
 		return outcome{err: err, reason: "bad_config", wait: c.timing.longRetry}
 	}
-	client, err := newRelayClient(cfg.Relay, cfg.AccessToken, c.env)
+	client, err := newRelayClient(l.url, l.token, c.env)
 	if err != nil {
 		return outcome{err: err, reason: "bad_config", wait: c.timing.longRetry}
 	}
-	sel := c.selectorFor(client)
+	sel := l.selectorFor(client)
 	edges := sel.get(ctx, forceProbe)
 	if ctx.Err() != nil {
 		return outcome{err: ctx.Err()}
 	}
 
 	path := "/v1/host?pub=" + url.QueryEscape(b64u.EncodeToString(c.id.pub()))
-	if !c.snapshot().Registered {
+	if !c.snapshot(l.url).Registered {
 		if hint := hintForColo(client.colo(ctx, edges[0])); hint != "" {
 			path += "&hint=" + hint
 		}
@@ -222,7 +326,7 @@ func (c *connector) controlOnce(ctx context.Context, forceProbe bool) (out outco
 		return handshakeFailure(err, "protocol", c.timing)
 	}
 
-	c.update(func(s *state) {
+	c.update(l.url, func(s *state) {
 		now := time.Now().UTC().Format(time.RFC3339)
 		s.Connected = true
 		s.LastError = nil
@@ -233,7 +337,7 @@ func (c *connector) controlOnce(ctx context.Context, forceProbe bool) (out outco
 			s.Usage = hello.Usage
 		}
 	})
-	c.log.printf("connected to relay as %s via %s", c.id.hostID, describeEdge(edge))
+	c.log.printf("connected to relay %s as %s via %s", l.url, c.id.hostID, describeEdge(edge))
 
 	// Keepalive: text ping only (PROTOCOL §5.4).
 	stop := make(chan struct{})
@@ -278,10 +382,10 @@ func (c *connector) controlOnce(ctx context.Context, forceProbe bool) (out outco
 		}
 		switch m.T {
 		case "open":
-			c.startSession(ctx, m.Sid, m.Ch, m.Pace)
+			l.startSession(ctx, m.Sid, m.Ch, m.Pace)
 		case "usage":
 			if len(m.Usage) > 0 && len(m.Usage) <= 4096 {
-				c.update(func(s *state) { s.Usage = m.Usage })
+				c.update(l.url, func(s *state) { s.Usage = m.Usage })
 			}
 		}
 	}
@@ -341,7 +445,8 @@ func relayRefusal(re *relayError, t timing) outcome {
 	return out
 }
 
-func (c *connector) startSession(ctx context.Context, sid, ch string, p pace) {
+func (l *link) startSession(ctx context.Context, sid, ch string, p pace) {
+	c := l.c
 	if !sidPattern.MatchString(sid) || (ch != "control" && ch != "media") {
 		c.log.printf("ignoring malformed open message")
 		return
@@ -352,12 +457,12 @@ func (c *connector) startSession(ctx context.Context, sid, ch string, p pace) {
 		c.log.printf("too many sessions in flight; ignoring open %s", sid[:8])
 		return
 	}
-	edges := c.cachedEdges()
+	edges := l.cachedEdges()
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		defer func() { <-c.sessions }()
-		c.session(ctx, sid, ch, p, edges)
+		c.session(ctx, l, sid, ch, p, edges)
 	}()
 }
 

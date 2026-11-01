@@ -116,6 +116,11 @@ func (f *fakeRelay) handleHost(w http.ResponseWriter, r *http.Request) {
 	for {
 		kind, data, err := ws.ReadMessage()
 		if err != nil {
+			f.mu.Lock()
+			if f.control == ws {
+				f.control = nil
+			}
+			f.mu.Unlock()
 			return
 		}
 		if kind == websocket.TextMessage && string(data) == "ping" {
@@ -274,7 +279,7 @@ type harness struct {
 func testTiming() timing {
 	return timing{ping: 150 * time.Millisecond, readIdle: 5 * time.Second, handshake: 3 * time.Second,
 		backoffMin: 20 * time.Millisecond, backoffMax: 100 * time.Millisecond, backoffReset: time.Hour,
-		longRetry: 150 * time.Millisecond, registerRetry: 150 * time.Millisecond}
+		longRetry: 150 * time.Millisecond, registerRetry: 150 * time.Millisecond, reconcile: 30 * time.Millisecond}
 }
 
 func startHarness(t *testing.T, token string, configure func(*harness)) *harness {
@@ -288,7 +293,9 @@ func startHarness(t *testing.T, token string, configure func(*harness)) *harness
 	if h.id, _, err = ensureIdentity(h.paths); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config{Relay: h.relay.url(), AccessToken: token, Target: h.echo.addr(), Devices: []device{h.app.entry()}}
+	phone := h.app.entry()
+	phone.Relay = h.relay.url()
+	cfg := &config{Relays: []relayEntry{{URL: h.relay.url(), AccessToken: token}}, Target: h.echo.addr(), Devices: []device{phone}}
 	if err := saveConfig(h.paths, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -312,6 +319,9 @@ func startHarness(t *testing.T, token string, configure func(*harness)) *harness
 	t.Cleanup(h.stop)
 	return h
 }
+
+// state is the harness relay's entry in state.json.
+func (h *harness) state() state { return loadState(h.paths).Relays[h.relay.url()] }
 
 type testWriter struct{ t *testing.T }
 
@@ -380,7 +390,7 @@ func TestEndToEndForwardAndClosePropagation(t *testing.T) {
 		t.Fatalf("signed host = %q", reg.host)
 	}
 	waitFor(t, "connected state", func() bool {
-		st := loadState(h.paths)
+		st := h.state()
 		return st.Connected && st.Registered && st.LastConnectedAt != nil && st.LastError == nil
 	})
 
@@ -547,7 +557,9 @@ func TestEndToEndPairUnpairTakeEffectWhileRunning(t *testing.T) {
 		t.Fatalf("before pair: %s/%s", r, why)
 	}
 	cfg, _ := loadConfig(h.paths)
-	cfg.Devices = append(cfg.Devices, newcomer.entry())
+	entry := newcomer.entry()
+	entry.Relay = h.relay.url()
+	cfg.Devices = append(cfg.Devices, entry)
 	if err := saveConfig(h.paths, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -637,11 +649,11 @@ func TestEndToEndAccessToken(t *testing.T) {
 func TestEndToEndWrongTokenAndPlatformRefusal(t *testing.T) {
 	h := startHarness(t, "right", func(h *harness) {
 		cfg, _ := loadConfig(h.paths)
-		cfg.AccessToken = "wrong"
+		cfg.Relays[0].AccessToken = "wrong"
 		_ = saveConfig(h.paths, cfg)
 	})
 	waitFor(t, "unauthorized in state.json", func() bool {
-		st := loadState(h.paths)
+		st := h.state()
 		return !st.Connected && st.LastError != nil && *st.LastError == "unauthorized"
 	})
 
@@ -653,7 +665,8 @@ func TestEndToEndWrongTokenAndPlatformRefusal(t *testing.T) {
 	defer ts.Close()
 	h.stop()
 	cfg, _ := loadConfig(h.paths)
-	cfg.Relay, cfg.AccessToken = ts.URL, ""
+	cfg.Relays = []relayEntry{{URL: ts.URL}}
+	cfg.Devices[0].Relay = ts.URL
 	_ = saveConfig(h.paths, cfg)
 	c2 := newConnector(h.paths, h.id, "test", netEnv{dial: (&net.Dialer{}).DialContext}, newLogger(io.Discard))
 	c2.timing = testTiming()
@@ -661,7 +674,7 @@ func TestEndToEndWrongTokenAndPlatformRefusal(t *testing.T) {
 	done := make(chan struct{})
 	go func() { c2.run(ctx); close(done) }()
 	waitFor(t, "platform_rejected in state.json", func() bool {
-		st := loadState(h.paths)
+		st := loadState(h.paths).Relays[ts.URL]
 		return st.LastError != nil && *st.LastError == "platform_rejected"
 	})
 	cancel()
@@ -673,7 +686,7 @@ func TestEndToEndReconnectsAfterRelayDrop(t *testing.T) {
 	h.relay.waitRegistration(1)
 	h.relay.killControl(1012)
 	h.relay.waitRegistration(2)
-	waitFor(t, "connected again", func() bool { return loadState(h.paths).Connected })
+	waitFor(t, "connected again", func() bool { return h.state().Connected })
 	sid, ws := h.relay.open("control", pace{})
 	defer ws.Close()
 	if reply, _ := h.handshake(ws, sid, "control", nil); reply != "ok" {
@@ -689,7 +702,7 @@ func TestEndToEndTargetComesOnlyFromConfig(t *testing.T) {
 		_ = saveConfig(h.paths, cfg)
 	})
 	waitFor(t, "bad_config", func() bool {
-		st := loadState(h.paths)
+		st := h.state()
 		return st.LastError != nil && *st.LastError == "bad_config"
 	})
 	h.relay.mu.Lock()
@@ -710,4 +723,79 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s", what)
+}
+
+// One computer, two phones on two relays: both reach it at the same time, a third relay is joined as
+// soon as a phone starts using it, and a relay no phone uses any more is left.
+func TestEndToEndServesEveryRelayInUse(t *testing.T) {
+	h := startHarness(t, "", nil)
+	h.relay.waitRegistration(1)
+	second := newFakeRelay(t, "code")
+	other := newTestApp(t)
+
+	cfg, _ := loadConfig(h.paths)
+	cfg.upsertRelay(second.url(), func() *string { s := "code"; return &s }(), time.Now())
+	entry := other.entry()
+	entry.Relay = second.url()
+	cfg.Devices = append(cfg.Devices, entry)
+	if err := saveConfig(h.paths, cfg); err != nil {
+		t.Fatal(err)
+	}
+	reg := second.waitRegistration(1)
+	if reg.hostID != h.id.hostID || reg.authorization != "Bearer code" {
+		t.Fatalf("second relay registration = %+v", reg)
+	}
+	waitFor(t, "both relays connected", func() bool {
+		st := loadState(h.paths)
+		return st.Relays[h.relay.url()].Connected && st.Relays[second.url()].Connected
+	})
+
+	// Sessions run on both relays at once, each forwarding to the computer.
+	sidA, wsA := h.relay.open("control", pace{})
+	defer wsA.Close()
+	if reply, _ := h.handshake(wsA, sidA, "control", nil); reply != "ok" {
+		t.Fatalf("first relay: %q", reply)
+	}
+	sidB, wsB := second.open("control", pace{})
+	defer wsB.Close()
+	_ = wsB.SetReadDeadline(time.Now().Add(5 * time.Second))
+	var ch struct{ Nonce string }
+	if err := wsB.ReadJSON(&ch); err != nil {
+		t.Fatal(err)
+	}
+	_ = wsB.WriteJSON(other.auth(h.id.hostID, sidB, "control", ch.Nonce))
+	var reply struct{ T string }
+	if err := wsB.ReadJSON(&reply); err != nil || reply.T != "ok" {
+		t.Fatalf("second relay: %v %v", reply, err)
+	}
+	for _, ws := range []*websocket.Conn{wsA, wsB} {
+		if err := ws.WriteMessage(websocket.BinaryMessage, []byte("hello")); err != nil {
+			t.Fatal(err)
+		}
+		_, got, err := ws.ReadMessage()
+		if err != nil || string(got) != "hello" {
+			t.Fatalf("echo through relay: %q %v", got, err)
+		}
+	}
+
+	// The second phone is forgotten: the connector leaves its relay and drops its state.
+	cfg, _ = loadConfig(h.paths)
+	cfg.Devices = cfg.Devices[:1]
+	cfg.Relays[1].AddedAt = ""
+	cfg.prune(time.Now())
+	if err := saveConfig(h.paths, cfg); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "second relay left", func() bool {
+		second.mu.Lock()
+		defer second.mu.Unlock()
+		return second.control == nil
+	})
+	waitFor(t, "second relay state dropped", func() bool {
+		_, ok := loadState(h.paths).Relays[second.url()]
+		return !ok
+	})
+	if !h.state().Connected {
+		t.Fatal("the first relay must stay connected")
+	}
 }

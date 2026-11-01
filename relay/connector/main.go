@@ -1,7 +1,9 @@
-// miffan-connector keeps one computer reachable through a Miffan relay (relay/PROTOCOL.md, connector side).
+// miffan-connector keeps one computer reachable through Miffan relays (relay/PROTOCOL.md, connector side):
+// one control connection per relay that a paired phone uses, so phones on different relays all reach it.
 //
 //	miffan-connector init   --relay URL [--token T | --token-stdin | --stdin] [--target HOST:PORT]
-//	miffan-connector pair   --device <b64u SPKI> --name NAME     (or --stdin with {"device","name"})
+//	                        adds the relay; the connector stays connected to every relay a paired phone uses
+//	miffan-connector pair   --device <b64u SPKI> --name NAME [--relay URL]   (or --stdin with {"device","name","relay"})
 //	miffan-connector unpair --device-id ID
 //	miffan-connector status
 //	miffan-connector run                     foreground; started by the service manager

@@ -19,16 +19,35 @@ type device struct {
 	Pub     string `json:"pub"`
 	Name    string `json:"name"`
 	AddedAt string `json:"addedAt"`
+	// Relay is the relay this phone reaches the computer through. Each phone keeps its own, so phones
+	// on different relays all reach the computer at once.
+	Relay string `json:"relay,omitempty"`
 }
+
+// relayEntry is one relay the connector stays connected to.
+type relayEntry struct {
+	URL         string `json:"url"`
+	AccessToken string `json:"accessToken,omitempty"`
+	// AddedAt is refreshed by every `init`; a relay no phone uses yet stays connected for relayGrace after it,
+	// so the phone that is being set up can pair and test it.
+	AddedAt string `json:"addedAt,omitempty"`
+}
+
+// relayGrace is how long a relay that no paired phone uses is kept after `init` named it.
+const relayGrace = 10 * time.Minute
 
 type config struct {
-	Relay       string   `json:"relay"`
-	AccessToken string   `json:"accessToken"`
-	Target      string   `json:"target"`
-	Devices     []device `json:"devices"`
+	Relays  []relayEntry `json:"relays"`
+	Target  string       `json:"target"`
+	Devices []device     `json:"devices"`
+
+	// Before 1.1 the connector served a single relay. loadConfig moves these two into Relays, and
+	// binds every phone that has no relay yet to it.
+	LegacyRelay       string `json:"relay,omitempty"`
+	LegacyAccessToken string `json:"accessToken,omitempty"`
 }
 
-// state is what `run` reports to `status`.
+// state is what one relay's control loop reports to `status`.
 type state struct {
 	Connected       bool            `json:"connected"`
 	LastError       *string         `json:"lastError"`
@@ -36,7 +55,12 @@ type state struct {
 	Edge            string          `json:"edge"`
 	Registered      bool            `json:"registered"`
 	Usage           json.RawMessage `json:"usage,omitempty"`
-	UpdatedAt       string          `json:"updatedAt"`
+}
+
+// stateFile is state.json: one state per relay URL. A 1.0 state.json (one flat state) reads as empty.
+type stateFile struct {
+	Relays    map[string]state `json:"relays"`
+	UpdatedAt string           `json:"updatedAt"`
 }
 
 type dataPaths struct{ dir string }
@@ -137,12 +161,95 @@ func loadConfig(p dataPaths) (*config, error) {
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("config.json is not valid JSON: %w", err)
 	}
+	c.migrate()
 	return &c, nil
+}
+
+// migrate turns a 1.0 single-relay config into the relay list.
+func (c *config) migrate() {
+	if c.LegacyRelay == "" {
+		c.LegacyAccessToken = ""
+		return
+	}
+	if c.findRelay(c.LegacyRelay) == nil {
+		c.Relays = append([]relayEntry{{URL: c.LegacyRelay, AccessToken: c.LegacyAccessToken}}, c.Relays...)
+	}
+	for i := range c.Devices {
+		if c.Devices[i].Relay == "" {
+			c.Devices[i].Relay = c.LegacyRelay
+		}
+	}
+	c.LegacyRelay, c.LegacyAccessToken = "", ""
+}
+
+func (c *config) findRelay(url string) *relayEntry {
+	for i := range c.Relays {
+		if c.Relays[i].URL == url {
+			return &c.Relays[i]
+		}
+	}
+	return nil
+}
+
+// upsertRelay adds url, or refreshes it, as the most recently named relay (the last one).
+func (c *config) upsertRelay(url string, token *string, now time.Time) {
+	entry := relayEntry{URL: url}
+	kept := c.Relays[:0]
+	for _, r := range c.Relays {
+		if r.URL == url {
+			entry = r
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if token != nil {
+		entry.AccessToken = *token
+	}
+	entry.AddedAt = now.UTC().Format(time.RFC3339)
+	c.Relays = append(kept, entry)
+}
+
+// inUse reports whether a paired phone reaches the computer through url, or `init` named it within relayGrace.
+func (c *config) inUse(r relayEntry, now time.Time) bool {
+	for _, d := range c.Devices {
+		if d.Relay == r.URL {
+			return true
+		}
+	}
+	added, err := time.Parse(time.RFC3339, r.AddedAt)
+	return err == nil && now.Sub(added) < relayGrace
+}
+
+// activeRelays are the relays the connector stays connected to.
+func (c *config) activeRelays(now time.Time) []relayEntry {
+	var out []relayEntry
+	for _, r := range c.Relays {
+		if c.inUse(r, now) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// prune drops the relays that no phone uses any more.
+func (c *config) prune(now time.Time) {
+	c.Relays = c.activeRelays(now)
+}
+
+func relayURLs(rs []relayEntry) []string {
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, r.URL)
+	}
+	return out
 }
 
 func saveConfig(p dataPaths, c *config) error {
 	if c.Devices == nil {
 		c.Devices = []device{}
+	}
+	if c.Relays == nil {
+		c.Relays = []relayEntry{}
 	}
 	raw, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
@@ -160,15 +267,18 @@ func (c *config) findDevice(id string) *device {
 	return nil
 }
 
-func loadState(p dataPaths) state {
-	var s state
+func loadState(p dataPaths) stateFile {
+	var s stateFile
 	if raw, err := os.ReadFile(p.state()); err == nil {
 		_ = json.Unmarshal(raw, &s)
+	}
+	if s.Relays == nil {
+		s.Relays = map[string]state{}
 	}
 	return s
 }
 
-func saveState(p dataPaths, s *state) error {
+func saveState(p dataPaths, s *stateFile) error {
 	s.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	raw, err := json.Marshal(s)
 	if err != nil {
