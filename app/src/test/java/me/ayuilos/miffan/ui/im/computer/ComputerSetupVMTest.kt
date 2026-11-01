@@ -325,6 +325,24 @@ class ComputerSetupVMTest {
     }
 
     @Test
+    fun `a guessed name stays when another saved computer already has the computer's own`() = runTest {
+        val f = Fixture()
+        coEvery { f.workspaces.createHost(any(), any(), any(), any(), any(), any()) } answers {
+            f.host = f.host.copy(name = firstArg(), trustedHostKeySha256 = null); f.host
+        }
+        val other = f.host.copy(id = "other", name = "cachyos-x8664", host = "192.168.1.5")
+        every { f.workspaces.listHostsFlow() } answers { MutableStateFlow(listOf(f.host, other)) }
+        coEvery { f.screens.probeHost("host", any()) } returns f.probe.copy(hostname = "cachyos-x8664", os = "linux")
+        val vm = vm(f)
+        vm.pickNearby(NearbyComputer("frigate", "100.64.0.5", 22, NearbySystem.UNKNOWN,
+            network = NearbyNetwork.TAILSCALE, nameSource = NearbyNameSource.TAILSCALE_DNS))
+        vm.signIn("ekk", "password")
+        runCurrent()
+        coVerify(exactly = 0) { f.workspaces.updateHost("host", "cachyos-x8664", any(), any(), any(), any(), any()) }
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
     fun `a name the computer announced itself is kept`() = runTest {
         val f = Fixture()
         coEvery { f.screens.probeHost("host", any()) } returns f.probe.copy(hostname = "macbook")

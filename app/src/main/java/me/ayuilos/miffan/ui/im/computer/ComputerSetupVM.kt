@@ -1243,6 +1243,8 @@ class ComputerSetupVM(
      */
     private suspend fun adoptComputerName(host: RemoteHostEntity, hostname: String?) {
         val name = hostname?.trim()?.takeIf { it.isNotEmpty() }
+            // The same machine may already be saved under its own name (another address for it): keep the guess.
+            ?.takeIf { candidate -> hosts.value.none { it.id != host.id && it.name == candidate } }
         if (host.id == guessedNameHostId && name != null && name != host.name) {
             guessedNameHostId = null
             workspaces.updateHost(host.id, name, host.host, host.port, host.username)
