@@ -45,6 +45,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.apache.sshd.core)
     testImplementation(libs.apache.sshd.sftp)
+    testImplementation(libs.okhttp) // relay R0 spike live test
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }
