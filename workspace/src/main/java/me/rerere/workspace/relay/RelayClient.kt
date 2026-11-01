@@ -18,6 +18,19 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
+/** Plain sockets with TCP_NODELAY, for the relay's WebSocket (OkHttp leaves Nagle's algorithm on). */
+internal object NoDelaySocketFactory : javax.net.SocketFactory() {
+    private val plain: javax.net.SocketFactory = javax.net.SocketFactory.getDefault()
+    private fun Socket.noDelay(): Socket = apply { tcpNoDelay = true }
+    override fun createSocket(): Socket = plain.createSocket().noDelay()
+    override fun createSocket(host: String, port: Int): Socket = plain.createSocket(host, port).noDelay()
+    override fun createSocket(host: String, port: Int, localHost: InetAddress?, localPort: Int): Socket =
+        plain.createSocket(host, port, localHost, localPort).noDelay()
+    override fun createSocket(host: InetAddress, port: Int): Socket = plain.createSocket(host, port).noDelay()
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress?, localPort: Int): Socket =
+        plain.createSocket(address, port, localAddress, localPort).noDelay()
+}
+
 /** One entry candidate's handshake time; [ip] null is the relay host name through DNS. */
 data class RelayEdgeTiming(val ip: String?, val millis: Long?)
 
@@ -47,6 +60,8 @@ class RelayClient(
     private val edgeTtlMillis: Long = 60 * 60 * 1000L,
 ) {
     private val client = baseClient.newBuilder()
+        // SSH sends small packets back to back; Nagle's algorithm would hold each behind the previous ACK.
+        .socketFactory(NoDelaySocketFactory)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)

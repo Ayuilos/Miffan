@@ -326,8 +326,13 @@ class WorkspaceRepository(
             val result = runRemoteInterruptible { session.execute("echo miffan-relay-ok", timeoutMillis = 20_000) }
             val commandMillis = (System.nanoTime() - commandStarted) / 1_000_000
             check(result.exitCode == 0 && result.stdout.contains("miffan-relay-ok")) { "The computer did not answer through the relay" }
-            val ready = (session.route as RemoteRoute.Relay).socket.ready
-            return RelayProbe(openMillis, commandMillis, ready.policy, ready.usage)
+            val warmStarted = System.nanoTime()
+            runRemoteInterruptible { session.execute("echo miffan-relay-ok", timeoutMillis = 20_000) }
+            val warmMillis = (System.nanoTime() - warmStarted) / 1_000_000
+            val socket = (session.route as RemoteRoute.Relay).socket
+            val ping = withContext(Dispatchers.IO) { List(3) { socket.ping() }.filterNotNull().sorted() }
+            return RelayProbe(openMillis, commandMillis, socket.ready.policy, socket.ready.usage,
+                relayPingMillis = ping.getOrNull(ping.size / 2), relayOpenMillis = socket.openMillis, warmCommandMillis = warmMillis)
         } finally {
             withContext(NonCancellable + Dispatchers.IO) { session.close() }
         }

@@ -188,7 +188,7 @@ fun RelayDiagnosticsPage(hostId: String) {
                         appendLine("network=${check.network}")
                         appendLine("entry=${check.edgeMillis}ms ${check.edgeRegion.orEmpty()}")
                         probe?.let {
-                            appendLine("open=${it.openMillis}ms answer=${it.commandMillis}ms")
+                            appendLine("open=${it.openMillis}ms (relay ${it.relayOpenMillis}ms) answer=${it.commandMillis}ms warm=${it.warmCommandMillis}ms ping=${it.relayPingMillis}ms")
                             appendLine("media=${it.policy.media.allowed} ${it.policy.media.kbps}kbps today=${it.usage.dayActiveMin}min")
                         }
                         check.failure?.let { appendLine("failure=$it") }

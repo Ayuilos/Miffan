@@ -104,4 +104,10 @@ data class RelayProbe(
     val commandMillis: Long,
     val policy: me.rerere.workspace.relay.RelayPolicy,
     val usage: me.rerere.workspace.relay.RelayUsage,
+    /** Phone ↔ relay round trip (median of three pings), when measured. */
+    val relayPingMillis: Long? = null,
+    /** Of [openMillis], the relay session alone (WebSocket, `ready`, the connector's check of this phone). */
+    val relayOpenMillis: Long? = null,
+    /** A second command on the same session, with its file channel already open. */
+    val warmCommandMillis: Long? = null,
 )

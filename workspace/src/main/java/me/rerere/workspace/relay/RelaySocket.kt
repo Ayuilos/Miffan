@@ -49,6 +49,23 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
     lateinit var ready: RelayReady
         private set
 
+    /** How long [open] took, from the WebSocket request to the connector's `ok`. */
+    @Volatile var openMillis: Long = 0
+        private set
+    @Volatile private var pongWaiter: CountDownLatch? = null
+
+    /**
+     * One round trip to the relay itself (text `ping`, answered by the relay without waking its
+     * state), in milliseconds, or null when no `pong` came within [timeoutMillis].
+     */
+    fun ping(timeoutMillis: Long = 5_000): Long? {
+        val latch = CountDownLatch(1)
+        pongWaiter = latch
+        val start = System.nanoTime()
+        if (!ws.send("ping")) return null
+        return if (latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) (System.nanoTime() - start) / 1_000_000 else null
+    }
+
     /** Close reason code from the relay or connector, when the session ended with one. */
     @Volatile var closeReason: String? = null
         private set
@@ -172,6 +189,7 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         ): RelaySocket {
             require(RelayIds.isHostId(hostId)) { "Invalid relay host id" }
             val socket = RelaySocket(channel)
+            val started = System.nanoTime()
             val url = baseUrl.trimEnd('/').replaceFirst(Regex("^http"), "ws") +
                 "/v1/connect/$hostId?ch=${channel.wire}"
             val request = Request.Builder().url(url).apply {
@@ -191,6 +209,7 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
             }
             socket.failure.get()?.let { throw it }
             if (socket.closed) throw RelayException(socket.closeReason ?: RelayException.UNREACHABLE)
+            socket.openMillis = (System.nanoTime() - started) / 1_000_000
             socket.pinger = scheduler.scheduleWithFixedDelay(socket::pingOrClose, PING_SECONDS, PING_SECONDS, TimeUnit.SECONDS)
             return socket
         }
@@ -215,6 +234,7 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (text == "pong") {
                 lastPongNanos = System.nanoTime()
+                pongWaiter?.countDown()
                 return
             }
             if (stage == Stage.OPEN) return // v1 carries no text after the handshake
