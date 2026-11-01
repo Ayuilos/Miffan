@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -38,14 +39,15 @@ import androidx.compose.ui.unit.dp
 import java.util.Locale
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.components.ui.QRCodeScannerDialog
+import me.ayuilos.miffan.ui.pages.setting.miffanDocsUrl
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cloud
 import me.rerere.hugeicons.stroke.QrCode01
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.SquareLock02
 
-/** The relay's own setup guide on the Miffan site. */
-internal const val RELAY_HOSTING_GUIDE_URL = "https://miffan.ayuilos.me/docs"
+/** The self-hosting page of the guide (help topic `relay-self-hosting`) in the guide's language for [language]. */
+internal fun relayHostingGuideUrl(language: String): String = miffanDocsUrl(language) + "/relay-self-hosting"
 
 /**
  * Whether this computer can also be reached away from home through a relay: first the choice,
@@ -63,6 +65,7 @@ private fun AwayChoice(vm: ComputerSetupVM, state: ComputerSetupState, onLeave: 
     var code by rememberSaveable { mutableStateOf("") }
     var scanning by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
+    val language = LocalConfiguration.current.locales[0].language
     SetupScreen(
         title = stringResource(R.string.im_computer_away_title),
         subtitle = stringResource(R.string.im_computer_away_subtitle, state.target?.name.orEmpty()),
@@ -91,7 +94,7 @@ private fun AwayChoice(vm: ComputerSetupVM, state: ComputerSetupState, onLeave: 
                     Icon(HugeIcons.QrCode01, null, Modifier.size(18.dp))
                     Text(stringResource(R.string.im_computer_away_scan), Modifier.padding(start = 8.dp))
                 }
-                TextButton(onClick = { uriHandler.openUri(RELAY_HOSTING_GUIDE_URL) }, modifier = Modifier.heightIn(min = 44.dp)) {
+                TextButton(onClick = { uriHandler.openUri(relayHostingGuideUrl(language)) }, modifier = Modifier.heightIn(min = 44.dp)) {
                     Text(stringResource(R.string.im_computer_away_how_to_host))
                 }
             }

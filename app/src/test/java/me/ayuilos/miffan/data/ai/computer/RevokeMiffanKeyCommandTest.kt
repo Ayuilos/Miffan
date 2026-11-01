@@ -12,9 +12,10 @@ import java.util.concurrent.TimeUnit
 class RevokeMiffanKeyCommandTest {
     private val key = "ssh-ed25519 AAAA+bbb/ccc"
 
-    private fun run(home: Path, command: String): Pair<Int, String> {
+    private fun run(home: Path, command: String, pathFirst: Path? = null): Pair<Int, String> {
         val process = ProcessBuilder("sh", "-c", command).redirectErrorStream(true).apply {
             environment()["HOME"] = home.toString()
+            if (pathFirst != null) environment()["PATH"] = "$pathFirst:${environment()["PATH"]}"
         }.start()
         assertTrue("command timed out", process.waitFor(10, TimeUnit.SECONDS))
         return process.exitValue() to process.inputStream.bufferedReader().readText()
@@ -148,6 +149,53 @@ class RevokeMiffanKeyCommandTest {
             assertEquals(setOf("conversations"), names(home.resolve(".miffan")))
             assertFalse(Files.exists(home.resolve("INJECTED")))
         } finally { home.toFile().deleteRecursively(); root.toFile().deleteRecursively() }
+    }
+
+    @Test fun `posix stops the relay connector service before removing the helper`() {
+        val home = Files.createTempDirectory("revoke-relay")
+        val tools = Files.createTempDirectory("revoke-tools")
+        try {
+            Files.createDirectories(home.resolve(".miffan/bin")).resolve("miffan-connector").let { Files.writeString(it, "") }
+            val plist = Files.createDirectories(home.resolve("Library/LaunchAgents")).resolve("$RELAY_LAUNCH_AGENT.plist")
+            val unit = Files.createDirectories(home.resolve(".config/systemd/user")).resolve(RELAY_SYSTEMD_UNIT)
+            Files.writeString(plist, "")
+            Files.writeString(unit, "")
+            val calls = tools.resolve("calls")
+            for (tool in listOf("launchctl", "systemctl")) {
+                // Fails like a real service manager without a session would; the cleanup must go on.
+                tools.resolve(tool).let {
+                    Files.writeString(it, "#!/bin/sh\necho \"$tool \$*\" >> '$calls'\nexit 1\n")
+                    it.toFile().setExecutable(true)
+                }
+            }
+            assertEquals(0 to "", run(home, revokeMiffanKeyCommand(key, RemotePlatform.POSIX), tools))
+            assertFalse(Files.exists(plist))
+            assertFalse(Files.exists(unit))
+            assertFalse(Files.exists(home.resolve(".miffan")))
+            val log = Files.readString(calls)
+            assertTrue(log, log.contains("launchctl bootout gui/") && log.contains("/$RELAY_LAUNCH_AGENT"))
+            assertTrue(log, log.contains("systemctl --user disable --now $RELAY_SYSTEMD_UNIT"))
+            assertTrue(log, log.indexOf("systemctl --user disable") < log.indexOf("systemctl --user daemon-reload"))
+        } finally { home.toFile().deleteRecursively(); tools.toFile().deleteRecursively() }
+    }
+
+    @Test fun `relay service names match the bundled helper`() {
+        val assets = java.io.File(requireNotNull(System.getProperty("remoteHelper.assets")))
+        val sh = java.io.File(assets, "miffan.sh").readText()
+        assertTrue(sh.contains("RELAY_LABEL=$RELAY_LAUNCH_AGENT\n"))
+        assertTrue(sh.contains("RELAY_UNIT=$RELAY_SYSTEMD_UNIT\n"))
+        val ps1 = assets.walkTopDown().filter { it.extension == "ps1" }.joinToString("\n") { it.readText() }
+        assertTrue(ps1.contains("\$script:RelayTaskName = '$RELAY_WINDOWS_TASK'"))
+        assertTrue(ps1.contains("-File \"' + \$script:HelperFile + '\" relay run'"))
+    }
+
+    @Test fun `windows stops the relay connector task and process before removing the helper`() {
+        val command = revokeMiffanKeyCommand(key, RemotePlatform.WINDOWS)
+        assertTrue(command.contains("-ceq '$RELAY_WINDOWS_TASK'"))
+        assertTrue(command.contains("'\" relay run'"))
+        val kill = command.indexOf("Get-Process -Name 'miffan-connector'")
+        assertTrue(kill > command.indexOf("Unregister-ScheduledTask"))
+        assertTrue(kill < command.indexOf("Remove-Item -LiteralPath \$root"))
     }
 
     @Test fun `windows deletes work files only when asked`() {
