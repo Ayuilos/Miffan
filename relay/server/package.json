@@ -1,0 +1,21 @@
+{
+  "name": "miffan-relay-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Miffan relay server (protocol v1): Cloudflare Worker and Bun adapters over one core.",
+  "scripts": {
+    "test": "bun test test/unit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p worker/tsconfig.json --noEmit",
+    "conformance": "bun run test/conformance/run.ts",
+    "dev:worker": "wrangler dev --local -c worker/wrangler.toml",
+    "dev:bun": "bun run bun/server.ts",
+    "build:bun": "bun build --compile bun/server.ts --outfile dist/miffan-relay"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260501.0",
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.127.0"
+  }
+}
