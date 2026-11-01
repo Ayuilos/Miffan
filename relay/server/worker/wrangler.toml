@@ -61,7 +61,7 @@ routes = [{ pattern = "relay-dev.miffan.ayuilos.me", custom_domain = true }]
 [env.dev.vars]
 RELAY_CONFIG = '''
 {
-  "accessMode": "open",
+  "accessMode": "token",
   "registrationsPerIpPerDay": 5,
   "policy": {
     "control": { "kbps": 1000, "burstKb": 2048 },
@@ -70,7 +70,7 @@ RELAY_CONFIG = '''
     "quotas": { "hostDailyMb": 500, "hostDailyActiveMin": 0, "hostMonthlyControlMb": 2048, "hostMonthlyMediaMb": 10240 },
     "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "mediaReserve": 0.3 }
   },
-  "edges": []
+  "edges": ["104.17.5.5", "104.19.8.8", "162.159.135.42", "104.18.32.47"]
 }
 '''
 
