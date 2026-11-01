@@ -87,7 +87,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastFilter
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.CoroutineScope
@@ -101,6 +100,7 @@ import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.provider.filterByKeywords
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
 import me.ayuilos.miffan.R
@@ -858,17 +858,7 @@ private fun ModelPicker(
             sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
         ) {
             var filterText by remember { mutableStateOf("") }
-            val filterKeywords = filterText.split(" ").filter { it.isNotBlank() }
-            val filteredModels = models.fastFilter {
-                if (filterKeywords.isEmpty()) {
-                    true
-                } else {
-                    filterKeywords.all { keyword ->
-                        it.modelId.contains(keyword, ignoreCase = true) ||
-                            it.displayName.contains(keyword, ignoreCase = true)
-                    }
-                }
-            }
+            val filteredModels = models.filterByKeywords(filterText)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

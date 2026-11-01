@@ -66,6 +66,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.filterByKeywords
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Brain02
@@ -365,12 +366,8 @@ private fun ColumnScope.ModelList(
         }
     }
 
-    val searchFilteredModelsByProvider = remember(providers, modelType, textOnly, searchKeywords) {
-        providers.associate { provider ->
-            provider.id to provider.models.fastFilter {
-                it.listedFor(modelType, textOnly) && it.displayName.contains(searchKeywords, true)
-            }
-        }
+    val searchFilteredModelsByProvider = remember(typeFilteredModelsByProvider, searchKeywords) {
+        typeFilteredModelsByProvider.mapValues { (_, models) -> models.filterByKeywords(searchKeywords) }
     }
 
     // 计算当前选中模型的位置
