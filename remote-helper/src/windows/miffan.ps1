@@ -4,7 +4,7 @@
 # `space` takes up to five words (space create <name> <cpus> <memory>), hence Argument4 and Argument5.
 param([string]$Command, [string]$Action, [string]$Operation, [string]$Argument4, [string]$Argument5)
 
-$script:HelperVersion = 15
+$script:HelperVersion = 16
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 

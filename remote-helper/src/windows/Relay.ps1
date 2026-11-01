@@ -6,12 +6,11 @@
 # The connector runs as a logon scheduled task of this user with ordinary permissions, like the cua
 # daemon. Nothing here needs administrator rights.
 #
-# The release binary is pinned by version and SHA-256. The digest is a placeholder until
-# relay-connector-v$RelayConnectorVersion is published: take it from the release's SHA256SUMS. A
-# placeholder never matches, so an unpublished build cannot be installed by mistake.
+# The release binary is pinned by version and SHA-256, taken from the release's SHA256SUMS when
+# relay-connector-v$RelayConnectorVersion was published.
 
-$script:RelayConnectorVersion = '1.0.0'
-$script:RelayConnectorSha256 = @{ 'windows-amd64' = '0000000000000000000000000000000000000000000000000000000000000000' }
+$script:RelayConnectorVersion = '1.0.1'
+$script:RelayConnectorSha256 = @{ 'windows-amd64' = '99b68004e6fe30c868dff460539f9361d2279f6847b2f9f1648bbba4b2dee6a2' }
 $script:RelayReleaseUrl = 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v' + $script:RelayConnectorVersion
 # Extra download locations tried after the GitHub release, same file names. None yet.
 $script:RelayMirrors = @()

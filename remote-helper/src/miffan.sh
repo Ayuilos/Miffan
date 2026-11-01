@@ -24,7 +24,7 @@
 #   miffan relay status|install|pair|unpair|uninstall
 #                           the relay connector that lets the phone reach this computer from outside
 
-MIFFAN_HELPER_VERSION=33
+MIFFAN_HELPER_VERSION=34
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2766,15 +2766,14 @@ space() {
 # User data arrives on stdin and goes to the connector unchanged (it parses and validates it), never
 # through argv or an eval. Nothing here needs root; the service runs as this user.
 #
-# Release binaries are pinned by version and SHA-256. The digests below are placeholders until
-# relay-connector-v$MIFFAN_CONNECTOR_VERSION is published: take them from the release's SHA256SUMS.
-# A placeholder never matches, so an unpublished build cannot be installed by mistake.
+# Release binaries are pinned by version and SHA-256, taken from the release's SHA256SUMS when
+# relay-connector-v$MIFFAN_CONNECTOR_VERSION was published.
 
-MIFFAN_CONNECTOR_VERSION=1.0.0
-MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=0000000000000000000000000000000000000000000000000000000000000000
-MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=0000000000000000000000000000000000000000000000000000000000000000
-MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=0000000000000000000000000000000000000000000000000000000000000000
-MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=0000000000000000000000000000000000000000000000000000000000000000
+MIFFAN_CONNECTOR_VERSION=1.0.1
+MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=81d244a9a830f025e8c6be945ea4ed3b7d9f697a09aaa5db211a68cbf8e190fb
+MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=b44aee5248180a004166a355187f326c8a3f0d8a0f0d46e187ba756dea6ed472
+MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=94ce6073dc529ddf9b47c29ae7eb809c5dd469f944dcccd1c0b26be8725429fc
+MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=247af6d88d24cc01850e48ec8a1baf8c60d24f844c83d28c9e4d3832b50b35ba
 MIFFAN_CONNECTOR_RELEASE_URL="https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v$MIFFAN_CONNECTOR_VERSION"
 # Extra download locations tried after the GitHub release, space separated, same file names. None yet.
 MIFFAN_CONNECTOR_MIRRORS=""
