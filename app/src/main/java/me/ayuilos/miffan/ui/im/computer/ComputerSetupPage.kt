@@ -26,7 +26,7 @@ private val ComputerSetupStep.canGoBack: Boolean get() = this !in setOf(Computer
 private fun ComputerSetupStep.dot(): Int? = when (this) {
     ComputerSetupStep.FIND, ComputerSetupStep.MANUAL -> 0
     ComputerSetupStep.SIGN_IN, ComputerSetupStep.PASSWORD, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
-    ComputerSetupStep.READY -> 2
+    ComputerSetupStep.READY, ComputerSetupStep.AWAY -> 2
     ComputerSetupStep.SHARE -> 3
     ComputerSetupStep.HOW, ComputerSetupStep.SPACE_INSTALL, ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK,
     ComputerSetupStep.SPACE_DONE, ComputerSetupStep.DONE -> null
@@ -52,7 +52,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     val nav = LocalNavController.current
     val assistants = LocalSettings.current.assistants
     // This page's own entry on the back stack, to replace it on the way out.
-    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status, args.space)
+    val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status, args.space, args.away)
     val statusPage = args.status && state.step == ComputerSetupStep.READY
     val update by vm.cuaUpdate.collectAsStateWithLifecycle()
     fun back() {
@@ -95,6 +95,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 ComputerSetupStep.WINDOWS -> ComputerWindowsStep(vm, state)
                 ComputerSetupStep.VERIFY -> ComputerVerifyStep(vm, state)
                 ComputerSetupStep.READY -> ComputerReadyStep(vm, state)
+                ComputerSetupStep.AWAY -> ComputerAwayStep(vm, state) { if (vm.awayOnly) nav.popBackStack() else vm.leaveAway() }
                 ComputerSetupStep.SHARE -> ComputerShareStep(vm, state, forPartner)
                 ComputerSetupStep.HOW -> ComputerHowStep(vm, state)
                 ComputerSetupStep.SPACE_INSTALL -> ComputerSpaceInstallStep(vm, state)

@@ -62,6 +62,10 @@ interface RemoteHostDAO {
     suspend fun updateLastAddress(id: String, last: String, revision: String,
         expectedHost: String, expectedPort: Int, expectedAlternates: String): Int
 
+    /** Relay settings follow the SSH identity: a changed connection revision drops a late write. */
+    @Query("UPDATE remote_hosts SET relay=:relay, updated_at=:updatedAt WHERE id=:id AND connection_revision=:revision")
+    suspend fun updateRelay(id: String, relay: String, revision: String, updatedAt: Long): Int
+
     @Query("""UPDATE remote_hosts SET name=:name, host=:address, port=:port, username=:username,
         auth_type=:authType, ssh_key_id=:sshKeyId, trusted_host_key_sha256=:sshPin,
         connection_revision=:revision, updated_at=:updatedAt WHERE id=:id""")

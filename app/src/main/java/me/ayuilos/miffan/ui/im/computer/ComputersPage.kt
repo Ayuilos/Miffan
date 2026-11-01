@@ -299,6 +299,7 @@ fun ComputerDetailPage(hostId: String) {
         }
     }
     val current = computer
+    RetainComputerConnection(workspaceList.firstOrNull { it.isRemote && !it.isSpace && it.remoteHostId == hostId }?.id)
     // The name heads the page itself.
     Scaffold(topBar = { ImPageBar("") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         if (current == null) return@Scaffold
@@ -392,6 +393,15 @@ fun ComputerDetailPage(hostId: String) {
                         HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                     AddRow(stringResource(R.string.im_computer_detail_add_box), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { pickingBox = true }
+                }
+            }
+            hostList.find { it.id == hostId }?.let { entity ->
+                item("away") {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ComputerRelaySection(entity, current.name,
+                            workspaceList.firstOrNull { it.isRemote && !it.isSpace && it.remoteHostId == hostId }?.id,
+                            enabled = !busy, perform = ::perform)
+                    }
                 }
             }
             item("manage") {

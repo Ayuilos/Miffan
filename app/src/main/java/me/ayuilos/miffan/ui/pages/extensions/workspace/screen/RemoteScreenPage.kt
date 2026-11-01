@@ -291,7 +291,11 @@ internal fun RemoteScreenScaffold(
                             RemoteScreenUiState.Connecting -> R.string.im_computer_connecting
                             else -> R.string.im_computer_disconnected
                         })
-                        val mode = info?.takeIf { connected }?.let { remoteScreenModeLabel(resources, it.protocol) }
+                        val mode = info?.takeIf { connected }?.let { connection ->
+                            remoteScreenModeLabel(resources, connection.protocol).let {
+                                if (connection.relayMediaKbps != null) resources.getString(R.string.workspace_screen_mode_relay, it) else it
+                            }
+                        }
                         // Who drives says more than the connection; the connection's details stay a tap away.
                         val driving = when {
                             !connected -> null

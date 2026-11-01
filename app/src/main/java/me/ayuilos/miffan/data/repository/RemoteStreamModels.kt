@@ -48,6 +48,8 @@ data class RemoteStreamFallback(val reason: RemoteStreamFallbackReason, val deta
 enum class RemoteStreamFallbackReason {
     SUNSHINE_MISSING, SUNSHINE_NOT_RUNNING, NOT_PAIRED, ENCRYPTION_NOT_ENFORCED,
     UDP_UNREACHABLE, HOST_REJECTED, DECODER_UNSUPPORTED, LOCAL_NETWORK_PERMISSION, MAC_PERMISSIONS, DISPLAY_ASLEEP, SCREEN_LOCKED, OTHER,
+    /** Connected through a relay, which carries no UDP picture yet. */
+    RELAY,
 }
 class RemoteStreamCertificateChangedException(val expectedSha256: String, val actualSha256: String?) :
     RemoteScreenUnavailableException(RemoteScreenProblem.STREAM_CERTIFICATE_CHANGED, "Sunshine certificate fingerprint changed")

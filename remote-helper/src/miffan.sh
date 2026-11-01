@@ -21,8 +21,10 @@
 #                           scheduled tasks run by the system timer (JSON on stdout)
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
+#   miffan relay status|install|pair|unpair|uninstall
+#                           the relay connector that lets the phone reach this computer from outside
 
-MIFFAN_HELPER_VERSION=32
+MIFFAN_HELPER_VERSION=35
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2758,6 +2760,313 @@ space() {
     esac
 }
 
+# --- Relay connector (helper 33) -------------------------------------------------------------
+# Installs, pairs and removes miffan-connector, the agent that lets the phone reach this computer
+# through a Miffan relay (relay/PROTOCOL.md). Every `relay` command prints one JSON line on stdout.
+# User data arrives on stdin and goes to the connector unchanged (it parses and validates it), never
+# through argv or an eval. Nothing here needs root; the service runs as this user.
+#
+# Release binaries are pinned by version and SHA-256, taken from the release's SHA256SUMS when
+# relay-connector-v$MIFFAN_CONNECTOR_VERSION was published.
+
+MIFFAN_CONNECTOR_VERSION=1.1.0
+MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=05b6aca0fe24ae400da74874a2f0c456c7616ce5d109e1dcce850830a076df4f
+MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=f4a865790e8cbe5ca1e81a2b10364f596655c7b19a5c68a0cd161fbd9d44dabe
+MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=068f83a82ec0159294cd37cf643550be19029f5bb56791069287130ba99c2aaa
+MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=626ec0f32e7dcc3929d8bbc5bd417203c18d6d62aa0059634df1e8c380ec3256
+MIFFAN_CONNECTOR_RELEASE_URL="https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v$MIFFAN_CONNECTOR_VERSION"
+# Extra download locations tried after the GitHub release, space separated, same file names. None yet.
+MIFFAN_CONNECTOR_MIRRORS=""
+
+RELAY_BIN="$HOME/.miffan/bin/miffan-connector"
+RELAY_DIR="$HOME/.miffan/connector"
+RELAY_LOG="$RELAY_DIR/connector.log"
+RELAY_LABEL=me.ayuilos.miffan.connector
+RELAY_PLIST="$HOME/Library/LaunchAgents/$RELAY_LABEL.plist"
+RELAY_UNIT=miffan-connector.service
+RELAY_UNIT_FILE="$HOME/.config/systemd/user/$RELAY_UNIT"
+
+# {"success":false,"reason":code,"detail":text}, exit 1. Never call it inside $(...).
+relay_fail() {
+    printf '{"success":false,"reason":%s,"detail":%s}\n' "$(json_str "$1")" "$(json_str "$2")"
+    exit 1
+}
+
+# darwin-arm64, darwin-amd64, linux-amd64 or linux-arm64; status 1 elsewhere.
+relay_platform() {
+    case "$(uname -s)-$(uname -m)" in
+        Darwin-arm64) echo darwin-arm64 ;;
+        Darwin-x86_64) echo darwin-amd64 ;;
+        Linux-x86_64) echo linux-amd64 ;;
+        Linux-aarch64|Linux-arm64) echo linux-arm64 ;;
+        *) return 1 ;;
+    esac
+}
+
+# The pinned SHA-256 of the binary for platform $1. MIFFAN_CONNECTOR_SHA256 overrides it (tests, development).
+relay_expected_sha() {
+    if [ -n "${MIFFAN_CONNECTOR_SHA256:-}" ]; then
+        printf '%s' "$MIFFAN_CONNECTOR_SHA256" | tr 'A-F' 'a-f'
+        return
+    fi
+    case "$1" in
+        darwin-arm64) printf '%s' "$MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64" ;;
+        darwin-amd64) printf '%s' "$MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64" ;;
+        linux-amd64) printf '%s' "$MIFFAN_CONNECTOR_SHA256_LINUX_AMD64" ;;
+        linux-arm64) printf '%s' "$MIFFAN_CONNECTOR_SHA256_LINUX_ARM64" ;;
+    esac
+}
+
+relay_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        openssl dgst -sha256 "$1" | awk '{print $NF}'
+    fi
+}
+
+# Downloads release file $1 to $2: the GitHub release first, then each mirror. Goes through the
+# computer's own proxy like the cua download does.
+relay_download() {
+    cua_proxy
+    for base in "$MIFFAN_CONNECTOR_RELEASE_URL" $MIFFAN_CONNECTOR_MIRRORS; do
+        if curl -fsSL --connect-timeout 15 --max-time 300 --max-filesize 67108864 -o "$2" "$base/$1" 2>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Version of the installed connector, from its own `version` output; empty when unknown.
+relay_installed_version() {
+    [ -x "$RELAY_BIN" ] || return 0
+    "$RELAY_BIN" version 2>/dev/null | tail -n 1 | sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p'
+}
+
+# Gets the connector for this platform into $RELAY_BIN, verified. Sets RELAY_REPLACED=1 when the binary changed.
+# Status 0 on success, otherwise it ends the command with a JSON failure.
+relay_fetch_binary() {
+    platform=$1
+    RELAY_REPLACED=0
+    if [ -z "${MIFFAN_CONNECTOR_FILE:-}" ] && [ "$(relay_installed_version)" = "$MIFFAN_CONNECTOR_VERSION" ]; then
+        return 0
+    fi
+    expected=$(relay_expected_sha "$platform")
+    mkdir -p "$HOME/.miffan/bin" || relay_fail install_failed "cannot create the install directory"
+    tmp=$(mktemp "$HOME/.miffan/bin/.miffan-connector.XXXXXX") || relay_fail install_failed "cannot create a temporary file"
+    if [ -n "${MIFFAN_CONNECTOR_FILE:-}" ]; then
+        cp "$MIFFAN_CONNECTOR_FILE" "$tmp" 2>/dev/null || { rm -f "$tmp"; relay_fail install_failed "cannot read MIFFAN_CONNECTOR_FILE"; }
+    else
+        relay_download "miffan-connector-$platform" "$tmp" || { rm -f "$tmp"; relay_fail download_failed "could not download the connector"; }
+    fi
+    actual=$(relay_sha256 "$tmp")
+    if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+        rm -f "$tmp"
+        relay_fail checksum_mismatch "the connector does not match its pinned SHA-256; nothing was installed"
+    fi
+    chmod 755 "$tmp" && mv -f "$tmp" "$RELAY_BIN" || { rm -f "$tmp"; relay_fail install_failed "cannot install the connector"; }
+    RELAY_REPLACED=1
+}
+
+relay_plist_write() {
+    mkdir -p "$HOME/Library/LaunchAgents" "$RELAY_DIR" || return 1
+    {
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+        printf '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        printf '<plist version="1.0">\n<dict>\n<key>Label</key><string>%s</string>\n' "$RELAY_LABEL"
+        printf '<key>ProgramArguments</key><array><string>%s</string><string>run</string></array>\n' "$(task_xml "$RELAY_BIN")"
+        printf '<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><true/>\n<key>ThrottleInterval</key><integer>10</integer>\n'
+        printf '<key>ProcessType</key><string>Background</string>\n'
+        printf '<key>StandardOutPath</key><string>/dev/null</string>\n<key>StandardErrorPath</key><string>%s</string>\n' "$(task_xml "$RELAY_LOG")"
+        printf '</dict>\n</plist>\n'
+    } >"$RELAY_PLIST.tmp" && mv -f "$RELAY_PLIST.tmp" "$RELAY_PLIST"
+}
+
+relay_unit_write() {
+    mkdir -p "$HOME/.config/systemd/user" "$RELAY_DIR" || return 1
+    {
+        printf '[Unit]\nDescription=Miffan relay connector\nAfter=network-online.target\nWants=network-online.target\n\n'
+        printf '[Service]\nExecStart=%%h/.miffan/bin/miffan-connector run\nRestart=always\nRestartSec=5\n\n'
+        printf '[Install]\nWantedBy=default.target\n'
+    } >"$RELAY_UNIT_FILE.tmp" && mv -f "$RELAY_UNIT_FILE.tmp" "$RELAY_UNIT_FILE"
+}
+
+# Keeps the connector's log from growing without bound: past 1 MiB only the last 128 KiB stay.
+relay_trim_log() {
+    [ -f "$RELAY_LOG" ] || return 0
+    size=$(wc -c <"$RELAY_LOG" 2>/dev/null) || return 0
+    if [ "${size:-0}" -gt 1048576 ]; then
+        tail -c 131072 "$RELAY_LOG" >"$RELAY_LOG.tmp" && mv -f "$RELAY_LOG.tmp" "$RELAY_LOG"
+    fi
+    return 0
+}
+
+# Registers the login service and starts it. Ends the command with a JSON failure when it cannot.
+relay_service_start() {
+    relay_trim_log
+    case "$(os)" in
+        macos)
+            relay_plist_write || relay_fail service_failed "cannot write the LaunchAgent"
+            task_launchd_load "$RELAY_LABEL" "$RELAY_PLIST" ||
+                relay_fail login_required "launchd has no login session for this user; sign in on the computer once"
+            ;;
+        linux)
+            command -v systemctl >/dev/null 2>&1 || relay_fail no_service_manager "systemd is required"
+            task_user_bus
+            systemctl --user show-environment >/dev/null 2>&1 ||
+                relay_fail no_service_manager "the systemd user manager is not reachable"
+            relay_unit_write || relay_fail service_failed "cannot write the systemd unit"
+            systemctl --user daemon-reload >/dev/null 2>&1 &&
+                systemctl --user enable --now "$RELAY_UNIT" >/dev/null 2>&1 ||
+                relay_fail service_failed "systemctl could not enable the service"
+            [ "${RELAY_REPLACED:-0}" = 1 ] && systemctl --user restart "$RELAY_UNIT" >/dev/null 2>&1
+            # Keeps the service running without a login session. Not an error when it is refused.
+            command -v loginctl >/dev/null 2>&1 && loginctl enable-linger "$(id -un)" >/dev/null 2>&1
+            ;;
+        *) relay_fail unsupported_platform "this operating system is not supported" ;;
+    esac
+    return 0
+}
+
+relay_service_stop() {
+    case "$(os)" in
+        macos)
+            launchctl bootout "gui/$(id -u)/$RELAY_LABEL" >/dev/null 2>&1
+            rm -f "$RELAY_PLIST"
+            ;;
+        linux)
+            if command -v systemctl >/dev/null 2>&1; then
+                task_user_bus
+                systemctl --user disable --now "$RELAY_UNIT" >/dev/null 2>&1
+                rm -f "$RELAY_UNIT_FILE"
+                systemctl --user daemon-reload >/dev/null 2>&1
+            else
+                rm -f "$RELAY_UNIT_FILE"
+            fi
+            ;;
+    esac
+    return 0
+}
+
+# running, stopped or missing.
+relay_service_state() {
+    case "$(os)" in
+        macos)
+            [ -f "$RELAY_PLIST" ] || { echo missing; return 0; }
+            out=$(launchctl print "gui/$(id -u)/$RELAY_LABEL" 2>/dev/null) || { echo stopped; return 0; }
+            case "$out" in *"state = running"*) echo running ;; *) echo stopped ;; esac
+            ;;
+        linux)
+            [ -f "$RELAY_UNIT_FILE" ] || { echo missing; return 0; }
+            task_user_bus
+            if systemctl --user is-active --quiet "$RELAY_UNIT" 2>/dev/null; then echo running; else echo stopped; fi
+            ;;
+        *) echo missing ;;
+    esac
+}
+
+# true or false on Linux (does the service run without a login session?), null elsewhere.
+relay_linger() {
+    [ "$(os)" = linux ] || { printf null; return 0; }
+    command -v loginctl >/dev/null 2>&1 || { printf false; return 0; }
+    case "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" in yes) printf true ;; *) printf false ;; esac
+}
+
+relay_status() {
+    if [ ! -x "$RELAY_BIN" ]; then
+        printf '{"installed":false}\n'
+        return 0
+    fi
+    extras=$(printf '"installed":true,"service":"%s","pinnedVersion":%s,"linger":%s' \
+        "$(relay_service_state)" "$(json_str "$MIFFAN_CONNECTOR_VERSION")" "$(relay_linger)")
+    line=$("$RELAY_BIN" status 2>/dev/null | tail -n 1)
+    if printf '%s' "$line" | grep -Eq '^\{.*"success" *: *true.*\}$'; then
+        printf '%s,%s}\n' "${line%\}}" "$extras"
+    else
+        reason=$(printf '%s' "$line" | sed -n 's/.*"reason" *: *"\([^"]*\)".*/\1/p')
+        printf '{%s,"error":%s}\n' "$extras" "$(json_str "${reason:-connector_failed}")"
+    fi
+}
+
+# stdin {"relay":"https://…","accessToken":"…"?}
+relay_install() {
+    [ "$(os)" != unknown ] || relay_fail unsupported_platform "this operating system is not supported"
+    platform=$(relay_platform) || relay_fail unsupported_platform "no connector build for $(uname -s) $(uname -m)"
+    raw=$(head -c 65536)
+    [ -n "$raw" ] || relay_fail bad_input "relay is required"
+    relay_fetch_binary "$platform"
+    mkdir -p "$RELAY_DIR" && chmod 700 "$RELAY_DIR" || relay_fail install_failed "cannot create the data directory"
+    out=$(printf '%s' "$raw" | "$RELAY_BIN" init --stdin 2>/dev/null)
+    if [ "$?" -ne 0 ]; then
+        line=$(printf '%s' "$out" | tail -n 1)
+        case "$line" in '{'*) printf '%s\n' "$line" ;; *) printf '{"success":false,"reason":"init_failed","detail":"the connector could not be set up"}\n' ;; esac
+        exit 1
+    fi
+    relay_service_start
+    relay_status
+}
+
+# stdin {"device":"<b64u SPKI>","name":"…"}
+relay_pair() {
+    [ -x "$RELAY_BIN" ] || relay_fail not_installed "the connector is not installed"
+    raw=$(head -c 65536)
+    out=$(printf '%s' "$raw" | "$RELAY_BIN" pair --stdin 2>/dev/null)
+    code=$?
+    line=$(printf '%s' "$out" | tail -n 1)
+    case "$line" in
+        '{'*) printf '%s\n' "$line" ;;
+        *) printf '{"success":false,"reason":"connector_failed","detail":"the connector gave no answer"}\n'; code=1 ;;
+    esac
+    return "$code"
+}
+
+# stdin {"deviceId":"…"}
+relay_unpair() {
+    [ -x "$RELAY_BIN" ] || relay_fail not_installed "the connector is not installed"
+    raw=$(head -c 65536 | tr -d '\n\r')
+    id=$(space_json_string "$raw" deviceId) || relay_fail bad_input "deviceId is required"
+    printf '%s' "$id" | grep -Eq '^[a-z2-7]{26}$' || relay_fail bad_input "deviceId is not valid"
+    out=$("$RELAY_BIN" unpair "--device-id=$id" 2>/dev/null)
+    code=$?
+    line=$(printf '%s' "$out" | tail -n 1)
+    case "$line" in
+        '{'*) printf '%s\n' "$line" ;;
+        *) printf '{"success":false,"reason":"connector_failed","detail":"the connector gave no answer"}\n'; code=1 ;;
+    esac
+    return "$code"
+}
+
+# stdin (optional) {"forgetIdentity":true}. host.key and the paired-device list stay unless asked,
+# so a reinstall keeps the same hostId and the paired phones keep working.
+relay_uninstall() {
+    raw=""
+    [ -t 0 ] || raw=$(head -c 4096 | tr -d '\n\r')
+    forget=false
+    printf '%s' "$raw" | grep -Eq '"forgetIdentity"[[:space:]]*:[[:space:]]*true' && forget=true
+    relay_service_stop
+    rm -f "$RELAY_BIN" "$RELAY_LOG" "$RELAY_LOG.tmp" "$RELAY_DIR/state.json" "$RELAY_DIR/run.lock" "$RELAY_DIR/config.lock"
+    if [ "$forget" = true ]; then
+        rm -rf "$RELAY_DIR"
+    fi
+    printf '{"success":true,"identityKept":%s}\n' "$([ "$forget" = true ] && echo false || echo true)"
+}
+
+relay() {
+    umask 077
+    action=${1:-}
+    [ "$#" -eq 0 ] || shift
+    case "$action" in
+        status) relay_status ;;
+        install) relay_install ;;
+        pair) relay_pair ;;
+        unpair) relay_unpair ;;
+        uninstall) relay_uninstall ;;
+        *) echo "usage: miffan relay status|install|pair|unpair|uninstall" >&2; exit 2 ;;
+    esac
+}
+
 # --- probe -------------------------------------------------------------------------------
 
 computer_name() {
@@ -2837,5 +3146,6 @@ case "${1:-}" in
     mac-shortcut) mac_shortcut "${2:-}" ;;
     task) shift; task "$@" ;;
     space) shift; space "$@" ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|task|space" >&2; exit 2 ;;
+    relay) shift; relay "$@" ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|task|space|relay" >&2; exit 2 ;;
 esac

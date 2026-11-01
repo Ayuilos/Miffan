@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[3]
 FILES = {
     **{'fixtures/' + path.name: path for path in (ROOT / 'remote-helper/fixtures/ps1').glob('*.json')},
     'miffan.ps1': ROOT / 'app/build/generated/remoteHelper/remote/miffan.ps1',
-    **{name: Path(__file__).with_name(name) for name in ('Test-Helper.ps1', 'certificate.pem', 'certificate.sha256')},
+    **{name: Path(__file__).with_name(name) for name in ('Test-Helper.ps1', 'Test-Relay.ps1', 'certificate.pem', 'certificate.sha256')},
 }
 
 
@@ -28,6 +28,7 @@ $tokens=$null;$errors=$null
 $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $dir 'miffan.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){$errors | ForEach-Object {[Console]::Out.WriteLine($_.ToString())};exit 1}
 & (Join-Path $dir 'Test-Helper.ps1') -HelperPath (Join-Path $dir 'miffan.ps1') -FixturePath (Join-Path $dir 'fixtures')
+& (Join-Path $dir 'Test-Relay.ps1') -HelperPath (Join-Path $dir 'miffan.ps1')
 """
     result = run(script)
     print(json.dumps(result, ensure_ascii=False))

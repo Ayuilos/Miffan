@@ -1,0 +1,96 @@
+# Miffan relay on Cloudflare Workers. Never run `wrangler deploy` from an agent; see ../README.md.
+#
+#   default environment  ->  Worker "miffan-relay"      on relay.miffan.ayuilos.me      (official instance)
+#   --env dev            ->  Worker "miffan-relay-dev"  on relay-dev.miffan.ayuilos.me  (replaces the R0 prototype)
+#
+# `workers.dev` is not reachable from mainland China, so a custom domain is bound instead. Wrangler does not
+# inherit bindings, variables or migrations into [env.dev], so they are repeated below.
+#
+# Secrets (never put them here):  wrangler secret put ACCESS_TOKEN   (only when accessMode is "token")
+#                                 wrangler secret put ADMIN_TOKEN    (enables GET /v1/admin/stats)
+
+name = "miffan-relay"
+main = "index.ts"
+compatibility_date = "2026-05-01"
+workers_dev = false
+routes = [{ pattern = "relay.miffan.ayuilos.me", custom_domain = true }]
+
+[vars]
+# Official instance on the Cloudflare free plan. Durable Object time is the binding limit: 13,000 GB-s
+# a day is about 28 h of awake objects at 128 MB; the global budget keeps active time to 60% of that.
+# Bandwidth is free on Workers, so there are no traffic quotas.
+RELAY_CONFIG = '''
+{
+  "accessMode": "open",
+  "registrationsPerIpPerDay": 5,
+  "policy": {
+    "control": { "kbps": 1000, "burstKb": 2048 },
+    "media": { "allowed": true, "kbps": 4000, "burstKb": 4096 },
+    "limits": { "sessionsPerHost": 4, "idleTimeoutS": 300 },
+    "quotas": { "hostDailyMb": 0, "hostDailyActiveMin": 60, "hostMonthlyControlMb": 0, "hostMonthlyMediaMb": 0 },
+    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 17, "mediaReserve": 0.3 }
+  },
+  "edges": ["104.17.5.5", "104.19.8.8", "162.159.135.42", "104.18.32.47"]
+}
+'''
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "HostRelay"
+
+[[durable_objects.bindings]]
+name = "BUDGET"
+class_name = "Budget"
+
+# Durable Objects must use SQLite storage (the only kind on the free plan).
+# v1 is the tag the R0 prototype already applied on miffan-relay-dev; keep it so that deploy only adds v2.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["HostRelay"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Budget"]
+
+[observability]
+enabled = true
+
+[env.dev]
+name = "miffan-relay-dev"
+workers_dev = false
+routes = [{ pattern = "relay-dev.miffan.ayuilos.me", custom_domain = true }]
+
+[env.dev.vars]
+RELAY_CONFIG = '''
+{
+  "accessMode": "token",
+  "registrationsPerIpPerDay": 5,
+  "policy": {
+    "control": { "kbps": 1000, "burstKb": 2048 },
+    "media": { "allowed": true, "kbps": 4000, "burstKb": 4096 },
+    "limits": { "sessionsPerHost": 4, "idleTimeoutS": 300 },
+    "quotas": { "hostDailyMb": 500, "hostDailyActiveMin": 0, "hostMonthlyControlMb": 2048, "hostMonthlyMediaMb": 10240 },
+    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "mediaReserve": 0.3 }
+  },
+  "edges": ["104.17.5.5", "104.19.8.8", "162.159.135.42", "104.18.32.47"]
+}
+'''
+
+[[env.dev.durable_objects.bindings]]
+name = "RELAY"
+class_name = "HostRelay"
+
+[[env.dev.durable_objects.bindings]]
+name = "BUDGET"
+class_name = "Budget"
+
+[[env.dev.migrations]]
+tag = "v1"
+new_sqlite_classes = ["HostRelay"]
+
+[[env.dev.migrations]]
+tag = "v2"
+new_sqlite_classes = ["Budget"]
+
+[env.dev.observability]
+enabled = true

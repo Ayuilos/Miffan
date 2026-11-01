@@ -69,8 +69,28 @@ internal fun remoteScreenSetupError(resources: Resources, error: Throwable): Str
                 streamFallbackReason(resources, reason ?: RemoteStreamFallbackReason.OTHER))
             if (reason == RemoteStreamFallbackReason.UDP_UNREACHABLE) text + "\n" + resources.getString(R.string.workspace_screen_windows_udp_hint) else text
         }
+        RemoteScreenProblem.RELAY_STREAM_ONLY -> resources.getString(R.string.workspace_screen_relay_stream_only)
+        RemoteScreenProblem.RELAY_SCREEN_UNAVAILABLE -> relayScreenProblem(resources, (error as RemoteScreenUnavailableException).detail)
         else -> remoteSshError(resources, error) ?: error.localizedMessage ?: resources.getString(R.string.workspace_screen_connection_failed)
     }
+
+/** Why the relay route failed, when the direct addresses failed too (relay/PROTOCOL.md §9). */
+internal fun relayConnectError(resources: Resources, reason: String): String = resources.getString(when (reason) {
+    "host_offline", "host_timeout" -> R.string.workspace_relay_host_offline
+    "denied" -> R.string.workspace_relay_denied
+    "unauthorized" -> R.string.workspace_relay_unauthorized
+    "quota_exhausted", "too_many_sessions" -> R.string.workspace_relay_quota
+    "relay_busy", "platform" -> R.string.workspace_relay_busy
+    else -> R.string.workspace_relay_unreachable
+})
+
+/** A relay refusal for the screen channel, by its protocol reason code (relay/PROTOCOL.md §9). */
+internal fun relayScreenProblem(resources: Resources, reason: String?): String = when (reason) {
+    "media_disabled" -> resources.getString(R.string.workspace_screen_relay_media_disabled)
+    "quota_exhausted", "too_many_sessions" -> resources.getString(R.string.workspace_screen_relay_quota)
+    "relay_busy", "platform" -> resources.getString(R.string.workspace_screen_relay_busy)
+    else -> resources.getString(R.string.workspace_screen_relay_unavailable, reason ?: "?")
+}
 
 /** Why high-performance mode was not used, as the clause the fallback message wraps. */
 internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFallbackReason): String = resources.getString(when (reason) {
@@ -86,6 +106,7 @@ internal fun streamFallbackReason(resources: Resources, reason: RemoteStreamFall
     RemoteStreamFallbackReason.DISPLAY_ASLEEP -> R.string.workspace_screen_stream_reason_display_asleep
     RemoteStreamFallbackReason.SCREEN_LOCKED -> R.string.workspace_screen_stream_reason_screen_locked
     RemoteStreamFallbackReason.OTHER -> R.string.workspace_screen_stream_reason_other
+    RemoteStreamFallbackReason.RELAY -> R.string.workspace_screen_stream_reason_relay
 })
 
 /**
@@ -111,6 +132,7 @@ internal fun remoteSshError(resources: Resources, error: Throwable): String? {
     val tailnet = chain.firstNotNullOfOrNull { (it as? RemoteConnectException)?.host }?.let(::isTailnetAddress) == true
     val connect = chain.firstNotNullOfOrNull { it as? RemoteConnectException }
     val passwordSignIn = connect?.passwordSignIn
+    chain.firstNotNullOfOrNull { it as? me.rerere.workspace.relay.RelayException }?.let { return relayConnectError(resources, it.reason) }
     return when {
         passwordSignIn == RemotePasswordSignInFailure.NOT_OFFERED -> resources.getString(R.string.workspace_screen_ssh_password_not_allowed)
         // OpenSSH's default PermitRootLogin prohibit-password asks root for a password and always refuses it.

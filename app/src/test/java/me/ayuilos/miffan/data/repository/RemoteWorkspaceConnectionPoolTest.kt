@@ -172,4 +172,25 @@ class RemoteWorkspaceConnectionPoolTest {
         }
     }
 
+
+    @Test(timeout = 10_000) fun retireIdleClosesOnlyMatchingSessionsNobodyUses() = runBlocking {
+        val pool = RemoteWorkspaceConnectionPool<FakeConnection>(
+            connected = { it.open },
+            idleMillis = 60_000,
+            heartbeatMillis = 60_000,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        )
+        val idle = RemoteConnectionIdentity("idle", "host", "revision-1", "/a")
+        val busy = RemoteConnectionIdentity("busy", "host", "revision-1", "/b")
+        val idleLease = pool.acquire(idle) { FakeConnection() }
+        val busyLease = pool.acquire(busy) { FakeConnection() }
+        idleLease.close()
+        pool.retireIdle { true }
+        assertFalse(idleLease.session.open)
+        assertTrue(busyLease.session.open)
+        assertEquals(RemoteConnectionStatus.DISCONNECTED, pool.states.value["idle"])
+        busyLease.close()
+        pool.retireIdle { false }
+        assertTrue(busyLease.session.open)
+    }
 }

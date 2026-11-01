@@ -23,6 +23,12 @@ fun revokeMiffanKeyCommand(publicKey: String, platform: RemotePlatform, workFile
     }
 }
 
+// The relay connector's background service, as remote-helper installs it (miffan.sh, windows/Relay.ps1).
+// Its files live in the helper's folder, so forgetting Miffan stops the service before removing them.
+internal const val RELAY_LAUNCH_AGENT = "me.ayuilos.miffan.connector"
+internal const val RELAY_SYSTEMD_UNIT = "miffan-connector.service"
+internal const val RELAY_WINDOWS_TASK = "Miffan-connector"
+
 /** Partners' files inside a workspace's `.miffan`; everything else there belongs to the helper. */
 internal val WORK_FILE_FOLDERS = listOf("conversations", "skills")
 
@@ -67,6 +73,17 @@ private fun posixRevoke(type: String, key: String, fingerprint: String, workFile
         if [ -f "${'$'}HOME/.miffan/rdp/krdp.owner" ] && command -v systemctl >/dev/null 2>&1; then
             state=${'$'}(systemctl --user show miffan-rdp-kde.service -p LoadState --value);
             if [ "${'$'}state" = loaded ]; then systemctl --user stop miffan-rdp-kde.service; fi;
+        fi;
+        p="${'$'}HOME/Library/LaunchAgents/$RELAY_LAUNCH_AGENT.plist";
+        if [ -f "${'$'}p" ]; then
+            if command -v launchctl >/dev/null 2>&1; then launchctl bootout "gui/${'$'}(id -u)/$RELAY_LAUNCH_AGENT" >/dev/null 2>&1 || :; fi;
+            rm -f "${'$'}p";
+        fi;
+        u="${'$'}HOME/.config/systemd/user/$RELAY_SYSTEMD_UNIT";
+        if [ -f "${'$'}u" ]; then
+            if command -v systemctl >/dev/null 2>&1; then systemctl --user disable --now $RELAY_SYSTEMD_UNIT >/dev/null 2>&1 || :; fi;
+            rm -f "${'$'}u";
+            if command -v systemctl >/dev/null 2>&1; then systemctl --user daemon-reload >/dev/null 2>&1 || :; fi;
         fi;
         $removeWorkFiles
         d="${'$'}HOME/.miffan";
@@ -145,8 +162,14 @@ private fun windowsRevoke(type: String, key: String, workFilesRoot: String?): St
                         ${'$'}owned = ${'$'}arguments.EndsWith('-File "' + ${'$'}helper + '" cua bridge', [StringComparison]::Ordinal)
                     } elseif (${'$'}name -ceq 'cua-driver-serve') {
                         ${'$'}owned = ${'$'}arguments.EndsWith('-File "' + ${'$'}helper + '" cua daemon', [StringComparison]::Ordinal)
+                    } elseif (${'$'}name -ceq '$RELAY_WINDOWS_TASK') {
+                        ${'$'}owned = ${'$'}arguments.EndsWith('-File "' + ${'$'}helper + '" relay run', [StringComparison]::Ordinal)
                     };
                     if (${'$'}owned) { Stop-ScheduledTask -InputObject ${'$'}task; Unregister-ScheduledTask -InputObject ${'$'}task -Confirm:${'$'}false }
+                };
+                foreach (${'$'}process in @(Get-Process -Name 'miffan-connector' -ErrorAction SilentlyContinue)) {
+                    ${'$'}path = ''; try { ${'$'}path = [string]${'$'}process.Path } catch { };
+                    if (${'$'}path.StartsWith(${'$'}root + '\', [StringComparison]::OrdinalIgnoreCase)) { try { ${'$'}process.Kill(); ${'$'}null = ${'$'}process.WaitForExit(10000) } catch { } }
                 };
                 if (Test-Path -LiteralPath ${'$'}root) { Remove-Item -LiteralPath ${'$'}root -Recurse -Force };
                 ${workFilesRoot?.let { windowsWorkFilesRemoval(it) }.orEmpty()}

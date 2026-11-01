@@ -42,9 +42,11 @@ dependencies {
     api(libs.jsch)
     api(project(":cuaspace"))
     implementation(libs.bouncycastle)
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
     testImplementation(libs.apache.sshd.core)
     testImplementation(libs.apache.sshd.sftp)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

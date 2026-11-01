@@ -13,6 +13,10 @@ helper 和 PowerShell 测试文件均为 **UTF-8 with BOM**。公开的 `certifi
 powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File remote-helper\tests\windows\Test-Helper.ps1
 ```
 
+`Test-Relay.ps1` 以同样方式测试 `relay` 命令（`Relay.ps1`）：LOCALAPPDATA 指向临时目录，计划任务相关
+cmdlet 被同名函数遮蔽，不启动进程、不联网；在 Mac 的 pwsh 7 上也能跑其离线部分（需先设置
+`USERPROFILE`、`ProgramFiles`、`SystemRoot`、`ProgramData`、`LOCALAPPDATA` 环境变量，只为让 helper 能被 dot-source）。
+
 也可显式传入 helper 路径：
 
 ```powershell
