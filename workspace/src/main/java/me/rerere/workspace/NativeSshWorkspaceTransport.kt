@@ -232,6 +232,7 @@ object NativeSshWorkspaceTransport {
         sftpIdleTimeoutMillis: Long = 60_000,
         socketFactory: com.jcraft.jsch.SocketFactory? = null,
         keepAlive: Boolean = true,
+        route: () -> RemoteRoute = { RemoteRoute.Direct },
     ): RemoteWorkspaceSession {
         require(sftpIdleTimeoutMillis > 0)
         require(timeoutMillis > 0)
@@ -282,7 +283,7 @@ object NativeSshWorkspaceTransport {
             }, username = config.username.takeIf { authFailed })
         }
         return try {
-            RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis)
+            RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis, route())
                 .also { workspace ->
                     try {
                         workspace.verifyRoot()
@@ -302,11 +303,25 @@ object NativeSshWorkspaceTransport {
     }
 }
 
+/** How an SSH session reaches the computer. */
+sealed interface RemoteRoute {
+    data object Direct : RemoteRoute
+
+    /** Through a relay; [socket] holds the session's policy and usage from the relay's `ready`. */
+    data class Relay(
+        val endpoint: me.rerere.workspace.relay.RelayEndpoint,
+        val hostId: String,
+        val socket: me.rerere.workspace.relay.RelaySocket,
+    ) : RemoteRoute
+}
+
 class RemoteWorkspaceSession internal constructor(
     private val session: Session,
     private var paths: RemoteWorkspacePath,
     private val channelTimeoutMillis: Int,
     private val sftpIdleTimeoutMillis: Long,
+    /** Direct, or the relay this session runs through. */
+    val route: RemoteRoute = RemoteRoute.Direct,
 ) : Closeable, RemoteWorkspaceFiles {
     private val closed = AtomicBoolean(false)
     private val activeChannels = ConcurrentHashMap<Thread, Channel>()

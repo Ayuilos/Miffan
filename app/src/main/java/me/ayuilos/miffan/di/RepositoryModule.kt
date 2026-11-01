@@ -134,10 +134,17 @@ val repositoryModule = module {
     single { RemoteScreenCredentialStore(get()) }
 
     single { NativeSshWorkspaceTransport }
+    single {
+        me.ayuilos.miffan.data.repository.relay.RelayAccess(
+            me.rerere.workspace.relay.RelayClient(),
+            me.ayuilos.miffan.data.repository.relay.RelayDeviceKeyStore(),
+            me.ayuilos.miffan.data.repository.relay.RelayNetworkKey(get()),
+        )
+    }
 
     single {
         WorkspaceRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get<android.content.Context>().resources, RemoteSunshineUnpair(get()),
-            CuaSpaceSessions(get<android.content.Context>().assets))
+            CuaSpaceSessions(get<android.content.Context>().assets), get())
     }
 
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets, get()) }
