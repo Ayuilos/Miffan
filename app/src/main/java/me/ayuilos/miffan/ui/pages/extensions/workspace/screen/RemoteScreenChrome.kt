@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
 import android.content.pm.ActivityInfo
 import android.content.res.Resources
 import androidx.activity.compose.LocalActivity
@@ -164,6 +165,8 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                 })
                 if (info.protocol != RemoteDesktopProtocol.STREAM) {
                     DetailRow(stringResource(R.string.workspace_screen_stream), when {
+                        info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
+                            streamFallbackReason(resources, RemoteStreamFallbackReason.RELAY))
                         info.streamSkipped -> stringResource(R.string.workspace_screen_details_stream_skipped)
                         info.fallback != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
                             streamFallbackReason(resources, info.fallback.reason))

@@ -107,7 +107,14 @@ class WorkspaceRepository(
     private val remoteRuntime = RemoteWorkspaceRuntimeTracker()
     private val remoteConnections = RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>(
         connected = { it.isConnected },
-    )
+    ).also { pool ->
+        // On another network the computer may be reachable directly again (back home): idle relay
+        // sessions close, so the next use races the direct addresses afresh.
+        relayAccess?.network?.watch {
+            relayAccess.client.forgetEdges()
+            pool.retireIdle { it.route is RemoteRoute.Relay }
+        }
+    }
     private val terminalLock = Any()
     private val activeTerminals = mutableMapOf<String, MutableSet<RemoteTerminalConnection>>()
     private val activeLeased = mutableMapOf<String, MutableSet<LeasedRemote<*>>>()

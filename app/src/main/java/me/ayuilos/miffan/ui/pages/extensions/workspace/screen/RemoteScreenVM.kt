@@ -383,7 +383,8 @@ class RemoteScreenVM(
 
     /** Reads Sunshine once per page, only for plain connections the user has not declined to improve. */
     private fun suggestStream(opened: RemoteScreenConnection) {
-        if (streamChecked || opened.session.surface != null || opened.streamFallback != null) return
+        // Through a relay high-performance mode cannot work (no UDP), so suggesting it would only disappoint.
+        if (streamChecked || opened.session.surface != null || opened.streamFallback != null || opened.relayMediaKbps != null) return
         if (opened.platform == RemoteScreenPlatform.UNKNOWN || hints.getBoolean(streamDismissedKey(opened.hostId), false)) return
         streamChecked = true
         viewModelScope.launch {

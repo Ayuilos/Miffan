@@ -61,6 +61,25 @@ class RelayNetworkKey(private val context: Context) {
         }
         return "$kind:${network.networkHandle}"
     }
+
+    /** Calls [onChange] whenever the phone's default network changes (Wi-Fi ↔ mobile data, another Wi-Fi). */
+    fun watch(onChange: () -> Unit) {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
+        var last: String? = null
+        runCatching {
+            manager.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) = check()
+                override fun onLost(network: android.net.Network) = check()
+                override fun onCapabilitiesChanged(network: android.net.Network, caps: NetworkCapabilities) = check()
+                private fun check() {
+                    val now = current()
+                    val previous = last
+                    last = now
+                    if (previous != null && previous != now) onChange()
+                }
+            })
+        }
+    }
 }
 
 /** What the app needs to reach computers through relays. */
