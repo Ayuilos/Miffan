@@ -221,10 +221,17 @@ object NativeSshWorkspaceTransport {
             ?: IllegalStateException("Server did not present an SSH host key")
     }
 
+    /**
+     * [socketFactory] replaces the TCP connection, for example with a relay session. With
+     * [keepAlive] false, SSH sends no keepalives and has no read timeout once connected: the relay
+     * socket checks liveness itself, and any SSH packet would wake the relay's state.
+     */
     fun open(
         config: RemoteHostConfig,
         timeoutMillis: Int = 10_000,
         sftpIdleTimeoutMillis: Long = 60_000,
+        socketFactory: com.jcraft.jsch.SocketFactory? = null,
+        keepAlive: Boolean = true,
     ): RemoteWorkspaceSession {
         require(sftpIdleTimeoutMillis > 0)
         require(timeoutMillis > 0)
@@ -257,10 +264,12 @@ object NativeSshWorkspaceTransport {
         // Not setPassword: the answer object tells whether the server asked for a password at all.
         val passwordAnswer = (config.authentication as? RemoteAuthentication.Password)?.let { PasswordAnswer(it.value) }
         passwordAnswer?.let(session::setUserInfo)
+        socketFactory?.let(session::setSocketFactory)
         session.timeout = 60_000
-        session.setServerAliveInterval(10_000)
+        if (keepAlive) session.setServerAliveInterval(10_000)
         try {
             session.connect(timeoutMillis)
+            if (!keepAlive) session.timeout = 0
         } catch (error: Throwable) {
             session.disconnect()
             if (error is PasswordSignInStopped) throw RemoteConnectException(config.host, JSchException("Auth fail", error),
