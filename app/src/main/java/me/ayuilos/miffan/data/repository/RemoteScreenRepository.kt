@@ -173,6 +173,8 @@ class RemoteScreenConnection internal constructor(
     val streamAddress: String? = null,
     /** Who drives this desktop is arbitrated under this key: the host's id, or a Space's own key. */
     val controlKey: String = hostId,
+    /** Set when the picture runs through a relay: the relay's pace for it, in kbps (0 = no cap). */
+    val relayMediaKbps: Int? = null,
     private val onClose: (RemoteScreenConnection) -> Unit,
 ) : Closeable {
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -537,6 +539,7 @@ class RemoteScreenRepository(
         var streamAddress: String? = null
         var streamFallback: RemoteStreamFallback? = null
         var clipboard: WindowsClipboardChannel? = null
+        var relayMediaKbps: Int? = null
         val callerJob = currentCoroutineContext()[Job]
         val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
             runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { ensureRevision(host.id, host.connectionRevision) }
@@ -609,6 +612,7 @@ class RemoteScreenRepository(
             val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
             val media = if (relayed) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { openRelayMedia(host.id, ssh) } else null
             val tunnel = media ?: ssh
+            relayMediaKbps = (media?.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
             try {
             if (protocol == RemoteDesktopProtocol.RDP) {
                 val password = credentials.getOrCreateRdp(host.id)
@@ -659,7 +663,8 @@ class RemoteScreenRepository(
                 hostDao.updateDetectedScreen(host.id, platform.storageName, rdpUsername)
             }
             val platform = detected ?: RemoteScreenPlatform.parse(host.screenPlatform)
-            val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle, streamFallback, streamRequested, streamAddress) { closed ->
+            val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle, streamFallback, streamRequested, streamAddress,
+                relayMediaKbps = relayMediaKbps) { closed ->
                 synchronized(lock) {
                     open[host.id]?.remove(closed)
                     if (open[host.id].isNullOrEmpty()) open.remove(host.id)

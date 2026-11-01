@@ -3,6 +3,7 @@ package me.ayuilos.miffan.data.repository.relay
 import android.os.Build
 import java.io.ByteArrayInputStream
 import java.io.Closeable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -75,8 +76,21 @@ class RemoteRelaySetup internal constructor(
      * Installs the connector for [endpoint], allows this phone and saves the relay on [hostId].
      * Idempotent: running it again on a set-up computer only refreshes the pairing.
      */
-    suspend fun enable(workspaceId: String, hostId: String, endpoint: RelayEndpoint): RemoteHostRelay {
-        checkRelay(endpoint)
+    suspend fun enable(
+        workspaceId: String,
+        hostId: String,
+        endpoint: RelayEndpoint,
+        /** 0 while the connector installs, 1 while this phone is allowed. */
+        onStage: (Int) -> Unit = {},
+    ): RemoteHostRelay {
+        onStage(0)
+        try {
+            checkRelay(endpoint)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            throw RelaySetupException("relay_unreachable", error.message ?: "Relay unreachable")
+        }
         val devicePub = withContext(Dispatchers.IO) { access.deviceKeys.signer().publicKeySpki }
         val host = hostDao.getById(hostId) ?: throw RelaySetupException(null, "Computer not found")
         val paired = withRemote(workspaceId) { ssh ->
@@ -85,6 +99,7 @@ class RemoteRelaySetup internal constructor(
                 put("relay", endpoint.baseUrl)
                 endpoint.accessToken?.takeIf { it.isNotEmpty() }?.let { put("accessToken", it) }
             }.toString())
+            onStage(1)
             json.decodeFromString<RelayPairResult>(run(ssh, "relay pair", buildJsonObject {
                 put("device", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(devicePub))
                 put("name", deviceName())

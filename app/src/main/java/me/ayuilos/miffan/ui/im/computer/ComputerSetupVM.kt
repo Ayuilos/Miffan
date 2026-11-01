@@ -60,6 +60,10 @@ import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupController
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
+import me.ayuilos.miffan.data.repository.relay.OFFICIAL_RELAY_URL
+import me.ayuilos.miffan.data.repository.relay.RelayProbe
+import me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup
+import me.rerere.workspace.relay.RelayEndpoint
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteConnectException
 import me.rerere.workspace.RemotePasswordSignInFailure
@@ -85,6 +89,8 @@ enum class ComputerSetupStep {
     VERIFY,
     /** Everything the partner needs, checked and fixed in one list. */
     READY,
+    /** Whether this computer can also be reached away from home, through a relay; then its setup and a test trip. */
+    AWAY,
     /** Who gets the computer, under the live screen. */
     SHARE,
     /** Whether the partners use the computer's own desktop or get their own computer (a cua Space) on it. */
@@ -108,6 +114,8 @@ sealed interface ReplacedBinding {
 /** Long-running work, shown as progress; at most one runs at a time. */
 enum class ComputerSetupTask {
     CREATING_KEY, LOOKING_UP, CONNECTING, VERIFYING, PREPARING, INSTALLING, SAVING, CHECKING, BINDING, OPENING_SETTINGS,
+    /** Setting up the relay on [ComputerSetupStep.AWAY]; its own progress list shows the stages. */
+    RELAY,
 }
 
 /** Reads the Mac's grants every few seconds for about two minutes after asking for them. */
@@ -135,8 +143,18 @@ data class SetupTarget(
     val hostKey: String? = null,
 )
 
+/**
+ * The relay setup on [ComputerSetupStep.AWAY]: [stage] 0 installs the connector, 1 allows this
+ * phone, 2 tries the relay once, 3 is finished. [failed] means the try did not get through.
+ */
+data class AwayProgress(val stage: Int, val failed: Boolean = false, val probe: RelayProbe? = null) {
+    val finished: Boolean get() = stage >= 3
+}
+
 data class ComputerSetupState(
     val step: ComputerSetupStep = ComputerSetupStep.FIND,
+    /** Null while [ComputerSetupStep.AWAY] still asks; set once the relay setup started. */
+    val away: AwayProgress? = null,
     /** Screens to go back to, most recent last; empty means back leaves the setup. */
     val history: List<ComputerSetupStep> = emptyList(),
     val task: ComputerSetupTask? = null,
@@ -268,6 +286,8 @@ data class ComputerSetupArgs(
      * size, past the desktop's checks (a mini box needs none of them).
      */
     val space: Boolean = false,
+    /** Set up the relay for the saved computer [hostId]: once connected, straight to [ComputerSetupStep.AWAY]. */
+    val away: Boolean = false,
 )
 
 /**
@@ -288,6 +308,7 @@ class ComputerSetupVM(
     private val control: RemoteComputerControl,
     private val spaces: PartnerSpaces,
     private val spaceSetup: PartnerSpaceSetup,
+    private val relaySetup: RemoteRelaySetup,
 ) : ViewModel() {
     /** The partner this setup is for; null when opened from "my computers". */
     val assistantId: Uuid? get() = args.assistantId
@@ -393,7 +414,14 @@ class ComputerSetupVM(
             }
             args.hostId != null -> chooseHost(args.hostId)
         }
+        if (args.hostId != null && args.away) viewModelScope.launch {
+            val connected = _state.first { it.hostId == args.hostId && it.workspaceId != null && !it.busy }
+            if (connected.error == null) _state.update { it.copy(step = ComputerSetupStep.AWAY, history = emptyList()) }
+        }
     }
+
+    /** Opened only for the relay (see [ComputerSetupArgs.away]): leaving the step leaves the page. */
+    val awayOnly: Boolean get() = args.away
 
     private fun withProbedHost(action: (hostId: String, revision: String) -> Unit) {
         val state = _state.value
@@ -872,6 +900,61 @@ class ComputerSetupVM(
         if (!_state.value.usesScreen) screens.setScreenEnabled(currentHost().id, false)
         // Windows becomes ready only once Sunshine is paired, after the probe already ran.
         else afterProbe()
+        go(if (offersAway()) ComputerSetupStep.AWAY else ComputerSetupStep.SHARE)
+    }
+
+    // ---- Away from home ----
+
+    /** A key-signed computer without a relay is offered one; a password never goes through a relay. */
+    private suspend fun offersAway(): Boolean {
+        val host = workspaces.getHostById(_state.value.hostId ?: return false) ?: return false
+        return host.relay == null && host.authType != "PASSWORD" && _state.value.workspaceId != null
+    }
+
+    /**
+     * Installs the connector for the official relay, or for [customUrl] with [accessCode], allows
+     * this phone and tries the relay once. A failed try still keeps the relay: it may work later.
+     */
+    fun enableAway(customUrl: String?, accessCode: String?) {
+        val url = customUrl?.trim()?.takeIf { it.isNotEmpty() } ?: OFFICIAL_RELAY_URL
+        val endpoint = runCatching { RelayEndpoint(url, accessCode?.trim()?.takeIf { it.isNotEmpty() }) }.getOrElse { error ->
+            _state.update { it.copy(error = error) }
+            return
+        }
+        run(ComputerSetupTask.RELAY) {
+            val state = _state.value
+            val hostId = requireNotNull(state.hostId)
+            _state.update { it.copy(away = AwayProgress(0)) }
+            try {
+                relaySetup.enable(requireNotNull(state.workspaceId), hostId, endpoint) { stage ->
+                    _state.update { it.copy(away = AwayProgress(stage)) }
+                }
+            } catch (error: Throwable) {
+                _state.update { it.copy(away = null) }
+                throw error
+            }
+            tryAway(hostId)
+        }
+    }
+
+    /** Tries the relay again after a failed try. */
+    fun retryAway() = run(ComputerSetupTask.RELAY) { tryAway(requireNotNull(_state.value.hostId)) }
+
+    private suspend fun tryAway(hostId: String) {
+        _state.update { it.copy(away = AwayProgress(2)) }
+        val probe = try {
+            relaySetup.probe(hostId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        _state.update { it.copy(away = AwayProgress(3, failed = probe == null, probe = probe)) }
+    }
+
+    /** On to the partners, with or without the relay. */
+    fun leaveAway() {
+        if (_state.value.busy) return
         go(ComputerSetupStep.SHARE)
     }
 

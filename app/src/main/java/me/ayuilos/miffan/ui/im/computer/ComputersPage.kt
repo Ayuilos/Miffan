@@ -394,6 +394,15 @@ fun ComputerDetailPage(hostId: String) {
                     AddRow(stringResource(R.string.im_computer_detail_add_box), enabled = !busy && assistants.any { it.id !in current.partnerIds }) { pickingBox = true }
                 }
             }
+            hostList.find { it.id == hostId }?.let { entity ->
+                item("away") {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ComputerRelaySection(entity, current.name,
+                            workspaceList.firstOrNull { it.isRemote && !it.isSpace && it.remoteHostId == hostId }?.id,
+                            enabled = !busy, perform = ::perform)
+                    }
+                }
+            }
             item("manage") {
                 Spacer(Modifier.height(4.dp))
                 SetupCard(padding = 0.dp, spacing = 0.dp) {

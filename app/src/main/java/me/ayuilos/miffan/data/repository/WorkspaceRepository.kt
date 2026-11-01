@@ -227,7 +227,7 @@ class WorkspaceRepository(
                     }.also { directAddress = address }
                 }
             },
-            relay = relay?.let { { openThroughRelay(relay, config, RelayChannel.CONTROL) } },
+            relay = relay?.let { { openThroughRelay(host.id, relay, config, RelayChannel.CONTROL) } },
             relayHeadStartMillis = if (host.lastViaRelay) RELAY_HEAD_START_AFTER_RELAY_MILLIS else RELAY_HEAD_START_MILLIS,
             close = { withContext(NonCancellable + Dispatchers.IO) { it.close() } },
             preferError = { direct, relayError -> if (isRemoteNetworkFailure(direct)) relayError else direct },
@@ -275,7 +275,7 @@ class WorkspaceRepository(
      * An SSH session through [relay]. No SSH keepalives: the relay socket checks liveness with
      * text pings, which do not wake the relay's state (relay/PROTOCOL.md §5.4).
      */
-    private suspend fun openThroughRelay(relay: RemoteHostRelay, config: RemoteHostConfig, channel: RelayChannel): RemoteWorkspaceSession {
+    private suspend fun openThroughRelay(hostId: String, relay: RemoteHostRelay, config: RemoteHostConfig, channel: RelayChannel): RemoteWorkspaceSession {
         val access = requireNotNull(relayAccess)
         val signer = withContext(Dispatchers.IO) { access.deviceKeys.signer() }
         val networkKey = access.network.current()
@@ -286,7 +286,7 @@ class WorkspaceRepository(
             remoteTransport.open(config.copy(host = relay.hostId, port = 22), timeoutMillis = RELAY_SSH_TIMEOUT_MILLIS,
                 socketFactory = factory, keepAlive = false,
                 route = { RemoteRoute.Relay(relay.endpoint, relay.hostId, requireNotNull(socket.get())) })
-        }
+        }.also { session -> (session.route as? RemoteRoute.Relay)?.let { access.record(hostId, it.socket.ready) } }
     }
 
     /**
@@ -300,7 +300,7 @@ class WorkspaceRepository(
         if (!route.socket.ready.policy.media.allowed) throw RelayException("media_disabled")
         val host = hostDao.getById(hostId) ?: return null
         val relay = host.relay?.takeIf { it.hostId == route.hostId } ?: return null
-        return openThroughRelay(relay, host.config(), RelayChannel.MEDIA)
+        return openThroughRelay(host.id, relay, host.config(), RelayChannel.MEDIA)
     }
 
     /**
@@ -312,7 +312,7 @@ class WorkspaceRepository(
         val relay = requireNotNull(host.relay) { "This computer has no relay" }
         val config = host.config()
         val started = System.nanoTime()
-        val session = openThroughRelay(relay, config, RelayChannel.CONTROL)
+        val session = openThroughRelay(host.id, relay, config, RelayChannel.CONTROL)
         try {
             val openMillis = (System.nanoTime() - started) / 1_000_000
             val commandStarted = System.nanoTime()

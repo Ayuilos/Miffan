@@ -18,6 +18,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
+/** One entry candidate's handshake time; [ip] null is the relay host name through DNS. */
+data class RelayEdgeTiming(val ip: String?, val millis: Long?)
+
 /** Where a computer's relay is: the relay's base URL and the deployer's access code, if any. */
 data class RelayEndpoint(val baseUrl: String, val accessToken: String? = null) {
     init {
@@ -84,20 +87,38 @@ class RelayClient(
         val key = "${endpoint.baseUrl}|$networkKey"
         val now = System.currentTimeMillis()
         edgeCache[key]?.takeIf { now - it.first < edgeTtlMillis }?.let { return it.second }
+        return measureEdges(endpoint, networkKey).map { it.ip }
+    }
+
+    /**
+     * Measures every entry candidate now (TCP + TLS handshake), fastest first, and remembers the
+     * order for [networkKey]. Unreachable entries come last with no time; DNS is always included.
+     */
+    fun measureEdges(endpoint: RelayEndpoint, networkKey: String): List<RelayEdgeTiming> {
         val candidates: List<String?> = runCatching { info(endpoint).edges }.getOrDefault(emptyList()).distinct() + null
-        if (candidates.size == 1) return candidates
         val url = endpoint.baseUrl.toHttpUrl()
         val timed = candidates.map { ip ->
             ip to probes.submit(Callable { probe(url.host, url.port, ip) })
         }.map { (ip, future) ->
-            ip to runCatching { future.get(probeTimeoutMillis + 500L, TimeUnit.MILLISECONDS) }.getOrNull()
+            RelayEdgeTiming(ip, runCatching { future.get(probeTimeoutMillis + 500L, TimeUnit.MILLISECONDS) }.getOrNull()
+                ?.let { it / 1_000_000 })
         }
-        val ordered = timed.filter { it.second != null }.sortedBy { it.second }.map { it.first }
-            .ifEmpty { listOf(null) }
-            .let { if (null in it) it else it + null }
-        edgeCache[key] = now to ordered
+        val ordered = timed.sortedWith(compareBy(nullsLast()) { it.millis })
+        edgeCache["${endpoint.baseUrl}|$networkKey"] = System.currentTimeMillis() to ordered.map { it.ip }
         return ordered
     }
+
+    /**
+     * The Cloudflare location code ("LAX", "HKG"…) that answers through entry [ip], from the
+     * edge's own `/cdn-cgi/trace`; it never reaches the relay's Worker. Null for other hosts.
+     */
+    fun edgeLocation(endpoint: RelayEndpoint, ip: String?): String? = runCatching {
+        val request = Request.Builder().url(endpoint.baseUrl.trimEnd('/') + "/cdn-cgi/trace").build()
+        clientFor(endpoint, ip).newBuilder().readTimeout(5, TimeUnit.SECONDS).build().newCall(request).execute().use { response ->
+            if (!response.isSuccessful) null
+            else Regex("^colo=([A-Z]{3})$", RegexOption.MULTILINE).find(response.body.string())?.groupValues?.get(1)
+        }
+    }.getOrNull()
 
     private fun probe(host: String, port: Int, ip: String?): Long? {
         val start = System.nanoTime()

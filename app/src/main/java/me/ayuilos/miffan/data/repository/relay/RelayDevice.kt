@@ -68,7 +68,16 @@ class RelayAccess(
     val client: me.rerere.workspace.relay.RelayClient,
     val deviceKeys: RelayDeviceKeyStore,
     val network: RelayNetworkKey,
-)
+) {
+    private val _lastReady = kotlinx.coroutines.flow.MutableStateFlow<Map<String, me.rerere.workspace.relay.RelayReady>>(emptyMap())
+
+    /** The relay's last `ready` per computer (by host id): its policy and the computer's usage then. */
+    val lastReady: kotlinx.coroutines.flow.StateFlow<Map<String, me.rerere.workspace.relay.RelayReady>> = _lastReady
+
+    fun record(hostId: String, ready: me.rerere.workspace.relay.RelayReady) {
+        _lastReady.value = _lastReady.value + (hostId to ready)
+    }
+}
 
 /** One forced trip through a relay: how long the session took to open and one command took to answer. */
 data class RelayProbe(

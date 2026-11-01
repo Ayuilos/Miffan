@@ -155,9 +155,13 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                     RemoteDesktopProtocol.VNC -> "VNC"
                     RemoteDesktopProtocol.SPACE -> stringResource(R.string.im_computer_detail_user_space)
                 })
-                DetailRow(stringResource(R.string.workspace_screen_details_path),
-                    if (info.protocol == RemoteDesktopProtocol.STREAM) stringResource(R.string.workspace_screen_details_path_stream, info.streamAddress ?: "—")
-                    else stringResource(R.string.workspace_screen_details_path_ssh))
+                DetailRow(stringResource(R.string.workspace_screen_details_path), when {
+                    info.relayMediaKbps != null && info.relayMediaKbps > 0 ->
+                        stringResource(R.string.workspace_screen_details_path_relay_capped, info.relayMediaKbps / 1000.0)
+                    info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_path_relay)
+                    info.protocol == RemoteDesktopProtocol.STREAM -> stringResource(R.string.workspace_screen_details_path_stream, info.streamAddress ?: "—")
+                    else -> stringResource(R.string.workspace_screen_details_path_ssh)
+                })
                 if (info.protocol != RemoteDesktopProtocol.STREAM) {
                     DetailRow(stringResource(R.string.workspace_screen_stream), when {
                         info.streamSkipped -> stringResource(R.string.workspace_screen_details_stream_skipped)

@@ -39,6 +39,10 @@ internal fun rememberPartnerUsesPhone(assistantId: Uuid): State<Boolean> {
 
 internal fun computerErrorMessage(resources: Resources, error: Throwable): String =
     (error as? me.ayuilos.miffan.data.ai.computer.CuaSpaceException)?.let { spaceErrorMessage(resources, it) }
+        ?: (error as? me.ayuilos.miffan.data.repository.relay.RelaySetupException)?.let {
+            if (it.reason == "relay_unreachable") resources.getString(R.string.im_computer_away_relay_unreachable)
+            else resources.getString(R.string.im_computer_away_install_failed, it.reason ?: it.message.orEmpty())
+        }
         ?: when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.im_computer_no_desktop)
         RemoteScreenProblem.NO_VNC_SERVER -> resources.getString(R.string.im_computer_no_screen_service)
