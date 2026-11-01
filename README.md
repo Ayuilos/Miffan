@@ -46,7 +46,7 @@ Partners can message each other, and you can bring several into one chat.
 
 ## Let your partner use your computer
 
-Connect a Mac, Windows or Linux computer over SSH, including over Tailscale, and your partner can open apps, type and click on it while you watch from your phone. A server or NAS without a screen works too: the partner uses it through commands.
+Connect a Mac, Windows or Linux computer over SSH, including over Tailscale or, when you're out, through Miffan's free relay, and your partner can open apps, type and click on it while you watch from your phone. A server or NAS without a screen works too: the partner uses it through commands.
 
 - **One shared screen.** View and control the desktop from your phone, in portrait or full-screen landscape. While the partner works, the first touch only asks; a second touch takes over.
 - **High-performance mode.** With Sunshine on the computer, the graphics card encodes the picture for lower latency, smoother motion and sound. Miffan sets it up and pairs for you.
@@ -55,6 +55,7 @@ Connect a Mac, Windows or Linux computer over SSH, including over Tailscale, and
 - **See how a computer is doing.** A status page says in one line whether the computer is ready, fixes problems in place and offers updates for the control helper.
 - **A mini box of its own.** Rather keep a partner off your desktop? Give it its own separate mini box on your Mac, Windows or Linux computer. It works freely there and hands finished files to a folder on your computer.
 - **Easy to connect.** Easy chat finds computers on your Wi-Fi and on Tailscale. Sign in once with the account password and Miffan switches to its own key; Windows gets a one-step setup script.
+- **Away from home too.** When you're not on the computer's network, partners reach it through Miffan's free relay, with no Tailscale needed. You can also use a relay you host yourself.
 
 <table>
   <tr>
@@ -128,6 +129,7 @@ Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an
 | Oct 2026 | 4.5 | A redesigned easy chat: partner, Me and Discover pages, a Change look page, saved messages, and the Magpie gateway. |
 | Oct 2026 | 4.6 | A first run that is a chat with Miffan, choosing how long a partner thinks, and a computer status page. |
 | Oct 2026 | 4.7 | A partner's own mini box, and a redesigned screen view. |
+| Nov 2026 | 4.8 | Using your computer away from home through Miffan's relay, without Tailscale. |
 
 Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 
