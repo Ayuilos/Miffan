@@ -147,6 +147,10 @@ val repositoryModule = module {
             CuaSpaceSessions(get<android.content.Context>().assets), get())
     }
 
+    single {
+        me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup(get(), get(), get(),
+            me.ayuilos.miffan.data.repository.RemoteMiffanHelper(get<android.content.Context>().assets))
+    }
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets, get()) }
     single { me.ayuilos.miffan.data.remotetask.RemoteTaskRepository(get(), get(), get(), get(), get(), get<android.content.Context>().assets) }
     single { me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery(get(), get(), get(), threads = { getKoin().get() }) }
