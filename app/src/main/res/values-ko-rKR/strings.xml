@@ -4111,4 +4111,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_mode_relay">중계 경유 · %1$s</string>
   <string name="workspace_screen_details_path_relay">중계를 통해 연결되어 집에서보다 조금 느립니다. 같은 네트워크로 돌아오면 다시 직접 연결됩니다.</string>
   <string name="workspace_screen_details_path_relay_capped">중계를 통해 최대 %1$.1f Mbps로 연결되며, 집에서보다 조금 느립니다. 같은 네트워크로 돌아오면 다시 직접 연결됩니다.</string>
+  <string name="im_relay_test_slow_hint">동작마다 몇 초씩 기다려야 해서 파트너가 느리게 느낄 거예요. 잠시 후에 다시 테스트하거나 다른 네트워크에서 해 보세요.</string>
 </resources>

@@ -4111,4 +4111,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_mode_relay">中継経由 · %1$s</string>
   <string name="workspace_screen_details_path_relay">中継経由のため、自宅より少し遅くなります。同じネットワークに戻ると、再び直接接続します。</string>
   <string name="workspace_screen_details_path_relay_capped">中継経由で最大 %1$.1f Mbps。自宅より少し遅くなります。同じネットワークに戻ると、再び直接接続します。</string>
+  <string name="im_relay_test_slow_hint">操作のたびに数秒待つので、パートナーの動きが遅く感じられます。しばらくしてからもう一度試すか、別のネットワークでお試しください。</string>
 </resources>
