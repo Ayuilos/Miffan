@@ -16,7 +16,9 @@ workers_dev = false
 routes = [{ pattern = "relay.miffan.ayuilos.me", custom_domain = true }]
 
 [vars]
-# The values below are the defaults (RELAY_PLAN §5.1); 0 means unlimited. The official values are decided at deploy time.
+# Official instance on the Cloudflare free plan. Durable Object time is the binding limit: 13,000 GB-s
+# a day is about 28 h of awake objects at 128 MB; the global budget keeps active time to 60% of that.
+# Bandwidth is free on Workers, so there are no traffic quotas.
 RELAY_CONFIG = '''
 {
   "accessMode": "open",
@@ -25,10 +27,10 @@ RELAY_CONFIG = '''
     "control": { "kbps": 1000, "burstKb": 2048 },
     "media": { "allowed": true, "kbps": 4000, "burstKb": 4096 },
     "limits": { "sessionsPerHost": 4, "idleTimeoutS": 300 },
-    "quotas": { "hostDailyMb": 500, "hostDailyActiveMin": 0, "hostMonthlyControlMb": 2048, "hostMonthlyMediaMb": 10240 },
-    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "mediaReserve": 0.3 }
+    "quotas": { "hostDailyMb": 0, "hostDailyActiveMin": 60, "hostMonthlyControlMb": 0, "hostMonthlyMediaMb": 0 },
+    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 17, "mediaReserve": 0.3 }
   },
-  "edges": []
+  "edges": ["104.17.5.5", "104.19.8.8", "162.159.135.42", "104.18.32.47"]
 }
 '''
 
