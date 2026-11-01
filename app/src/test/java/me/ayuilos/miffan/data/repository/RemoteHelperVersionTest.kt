@@ -13,12 +13,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteHelperVersionTest {
-    @Test fun `older helpers refresh while current POSIX 34 and Windows 16 stay installed`() {
+    @Test fun `older helpers refresh while current POSIX 35 and Windows 17 stay installed`() {
         for ((platform, installedVersion, refresh) in listOf(
-            Triple(RemotePlatform.POSIX, "33", true),
-            Triple(RemotePlatform.POSIX, "34", false),
-            Triple(RemotePlatform.WINDOWS, "15", true),
-            Triple(RemotePlatform.WINDOWS, "16", false),
+            Triple(RemotePlatform.POSIX, "34", true),
+            Triple(RemotePlatform.POSIX, "35", false),
+            Triple(RemotePlatform.WINDOWS, "16", true),
+            Triple(RemotePlatform.WINDOWS, "17", false),
         )) {
             val fileName = if (platform == RemotePlatform.WINDOWS) "miffan.ps1" else "miffan.sh"
             val bytes = File(System.getProperty("remoteHelper.assets"), fileName).readBytes()

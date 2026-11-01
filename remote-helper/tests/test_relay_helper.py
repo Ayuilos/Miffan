@@ -70,7 +70,7 @@ with (root/'connector.jsonl').open('a') as log: log.write(json.dumps({'args':arg
 cmd=args[0]
 home=Path(os.environ['HOME'])/'.miffan/connector'
 def out(**kw): print(json.dumps(kw, separators=(',', ':')))
-if cmd=='version': out(success=True, version='1.0.1')
+if cmd=='version': out(success=True, version='1.1.0')
 elif cmd=='init':
     if 'refuse' in stdin: out(success=False, reason='bad_relay', detail='relay must be an https URL'); sys.exit(1)
     home.mkdir(parents=True, exist_ok=True)
@@ -81,7 +81,7 @@ elif cmd=='pair': out(success=True, hostId='fakehostid', relay='https://relay.ex
 elif cmd=='unpair': out(success=True, removed=True, devices=[])
 elif cmd=='status':
     if (root/'status_fails').exists(): out(success=False, reason='not_initialized', detail='run init first'); sys.exit(1)
-    out(success=True, version='1.0.1', hostId='fakehostid', relay='https://relay.example.com', running=True, connected=True,
+    out(success=True, version='1.1.0', hostId='fakehostid', relay='https://relay.example.com', running=True, connected=True,
         lastError=None, lastConnectedAt='2026-11-01T12:00:00Z', edge='default', devices=[])
 else: sys.exit(2)
 '''
@@ -170,7 +170,7 @@ def test_status_before_install(base):
 def test_linux_install_and_status(base):
     host = Host(base)
     status = host.json("install", stdin=INSTALL)
-    assert status["installed"] is True and status["service"] == "running" and status["pinnedVersion"] == "1.0.1"
+    assert status["installed"] is True and status["service"] == "running" and status["pinnedVersion"] == "1.1.0"
     assert status["linger"] is True and status["hostId"] == "fakehostid" and status["success"] is True
     assert host.installed().read_bytes() == host.connector.read_bytes()
     assert oct(host.installed().stat().st_mode & 0o777) == "0o755"
@@ -193,7 +193,7 @@ def test_linux_install_and_status(base):
     assert host.calls("curl") == []  # MIFFAN_CONNECTOR_FILE skips the download
 
     again = host.json("status")
-    assert again["installed"] and again["service"] == "running" and again["connected"] is True and again["pinnedVersion"] == "1.0.1"
+    assert again["installed"] and again["service"] == "running" and again["connected"] is True and again["pinnedVersion"] == "1.1.0"
 
 
 def test_linger_refused_is_not_an_error(base):
@@ -235,7 +235,7 @@ def test_checksum_mismatch_installs_nothing(base):
 
 def test_download_order_and_mirrors(base):
     host = Host(base, arch="aarch64")
-    release = "https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.0.1/miffan-connector-linux-arm64"
+    release = "https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.1.0/miffan-connector-linux-arm64"
     mirror_base = "https://mirror.example/connector"
     mirror = mirror_base + "/miffan-connector-linux-arm64"
     patched = Path(base) / "miffan-with-mirror.sh"
@@ -266,7 +266,7 @@ def test_download_order_and_mirrors(base):
 
 def test_same_version_skips_download(base):
     host = Host(base)
-    release = "https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.0.1/miffan-connector-linux-amd64"
+    release = "https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.1.0/miffan-connector-linux-amd64"
     host.state(serve={release: str(host.connector)})
     host.json("install", stdin=INSTALL, use_file=False)
     assert len(host.calls("curl")) == 1
