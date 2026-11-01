@@ -92,12 +92,14 @@ jobs:
           path: dist/*
           retention-days: 7
 
-      - name: Publish GitHub Release (prerelease)
+      # Releases here are immutable: files can only be added to a draft, which is published afterwards.
+      - name: Prepare draft GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: miffan-connector ${{ steps.version.outputs.version }}
+          draft: true
           prerelease: true
           make_latest: false
           fail_on_unmatched_files: true
@@ -113,3 +115,9 @@ jobs:
             dist/miffan-connector-linux-arm64
             dist/miffan-connector-windows-amd64.exe
             dist/SHA256SUMS
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
