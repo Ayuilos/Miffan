@@ -4,7 +4,7 @@
 # `space` takes up to five words (space create <name> <cpus> <memory>), hence Argument4 and Argument5.
 param([string]$Command, [string]$Action, [string]$Operation, [string]$Argument4, [string]$Argument5)
 
-$script:HelperVersion = 14
+$script:HelperVersion = 15
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -1117,6 +1117,7 @@ function Invoke-CuaCheckUpdate {
 }
 
 #include Space.ps1
+#include Relay.ps1
 
 function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation) {
     switch ($Verb) {
@@ -1263,6 +1264,23 @@ if ($MyInvocation.InvocationName -ne '.') {
                 $data = $_.Exception.Data
                 $failure = $(if ($data -and $data.Contains('space_code')) { @{error=[string]$data['space_code'];detail=$data['space_detail']} }
                     else { @{error='helper_failed';detail=('line ' + $_.InvocationInfo.ScriptLineNumber + ': ' + $_.Exception.GetType().Name)} })
+                [Console]::Out.WriteLine((ConvertTo-PlainJson $failure))
+                exit 1
+            }
+        }
+        if ($Command -eq 'relay') {
+            # The scheduled task runs `relay run`: the connector in a hidden window; it never returns JSON.
+            if ($Action -eq 'run' -and -not $Operation -and -not $Argument4 -and -not $Argument5) { Invoke-RelayRun }
+            $script:RelayExit = 0
+            try {
+                $result = Invoke-Relay $Action ($Operation + $Argument4 + $Argument5)
+                [Console]::Out.WriteLine($(if ($result -is [string]) { $result } else { ConvertTo-PlainJson $result }))
+                exit $script:RelayExit
+            } catch {
+                # Own failures carry their code; anything else names only where it happened, never its message.
+                $data = $_.Exception.Data
+                $failure = $(if ($data -and $data.Contains('relay_reason')) { @{success=$false;reason=[string]$data['relay_reason'];detail=[string]$data['relay_detail']} }
+                    else { @{success=$false;reason='helper_failed';detail=('line ' + $_.InvocationInfo.ScriptLineNumber + ': ' + $_.Exception.GetType().Name)} })
                 [Console]::Out.WriteLine((ConvertTo-PlainJson $failure))
                 exit 1
             }
