@@ -42,9 +42,19 @@ export default {
     if (parts[0] !== "v0" || !parts[2] || !HOST_ID.test(parts[2])) return json(404, { reason: "not_found" });
     const token = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? null;
     if (!(await tokenMatches(token, env.DEV_TOKEN))) return json(401, { reason: "unauthorized" });
+    if (parts[1] === "echo") {
+      // R0: WebSocket echo inside the Worker, no Durable Object, to split edge latency from object latency.
+      const pair = new WebSocketPair();
+      pair[1].accept();
+      pair[1].addEventListener("message", (e) => pair[1].send(e.data));
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
     const headers = new Headers(req.headers);
     headers.set("x-edge-colo", colo);
-    return env.RELAY.get(env.RELAY.idFromName(parts[2])).fetch(new Request(req, { headers }));
+    // locationHint only matters when the object is first created; R0 compares placements with it.
+    const hint = url.searchParams.get("hint") as DurableObjectLocationHint | null;
+    const stub = env.RELAY.get(env.RELAY.idFromName(parts[2]), hint ? { locationHint: hint } : undefined);
+    return stub.fetch(new Request(req, { headers }));
   },
 };
 
@@ -57,6 +67,16 @@ type Counter = { bytes: number; msgs: number };
 
 export class HostRelay extends DurableObject<Env> {
   private pending = new Map<string, Counter>(); // "ch|dir" -> not yet flushed
+  private placement?: Promise<string>;
+
+  /** The colo this object runs in, from Cloudflare's trace endpoint (R0 measurement only). */
+  private where(): Promise<string> {
+    this.placement ??= fetch("https://www.cloudflare.com/cdn-cgi/trace")
+      .then((r) => r.text())
+      .then((t) => /^colo=(.+)$/m.exec(t)?.[1] ?? "?")
+      .catch(() => "?");
+    return this.placement;
+  }
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -64,6 +84,10 @@ export class HostRelay extends DurableObject<Env> {
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS usage (
       day TEXT NOT NULL, ch TEXT NOT NULL, dir TEXT NOT NULL,
       bytes INTEGER NOT NULL, msgs INTEGER NOT NULL, PRIMARY KEY (day, ch, dir))`);
+    // R0: count constructions; a hibernated object is constructed again on its next event.
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS wakes (n INTEGER NOT NULL, last INTEGER NOT NULL)");
+    if (!ctx.storage.sql.exec("SELECT 1 FROM wakes").toArray().length) ctx.storage.sql.exec("INSERT INTO wakes VALUES (0, 0)");
+    ctx.storage.sql.exec("UPDATE wakes SET n = n + 1, last = ?", Date.now());
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -71,7 +95,7 @@ export class HostRelay extends DurableObject<Env> {
     const parts = url.pathname.split("/").filter(Boolean);
     const kind = parts[1];
     const colo = req.headers.get("x-edge-colo") ?? "?";
-    if (kind === "stats") return json(200, this.stats());
+    if (kind === "stats") return json(200, { ...this.stats(), objectColo: await this.where() });
     if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return json(426, { reason: "websocket_required" });
 
     if (kind === "host" && parts.length === 3) {
@@ -84,7 +108,7 @@ export class HostRelay extends DurableObject<Env> {
       if (!client || this.ctx.getWebSockets(`h:${sid}`).length) return json(404, { reason: "no_session" });
       const ch = (client.deserializeAttachment() as Attachment & { role: "c" }).ch;
       const res = this.accept([`h:${sid}`], { role: "h", sid, ch });
-      client.send(JSON.stringify({ t: "ready", sid, clientColo: (client.deserializeAttachment() as { colo: string }).colo, hostColo: colo }));
+      client.send(JSON.stringify({ t: "ready", sid, clientColo: (client.deserializeAttachment() as { colo: string }).colo, hostColo: colo, objectColo: await this.where() }));
       return res;
     }
     if (kind === "connect") {
@@ -179,6 +203,7 @@ export class HostRelay extends DurableObject<Env> {
     return {
       hostOnline: this.ctx.getWebSockets("host").length > 0,
       sessions: this.ctx.getWebSockets("c").length,
+      wakes: this.ctx.storage.sql.exec("SELECT n, last FROM wakes").one(),
       usage: this.ctx.storage.sql.exec("SELECT * FROM usage ORDER BY day DESC, ch, dir").toArray(),
     };
   }

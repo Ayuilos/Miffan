@@ -31,9 +31,9 @@ import (
 )
 
 type opts struct {
-	relay, host, ch, target, connectIP string
-	coalesce                           time.Duration
-	token                              string
+	relay, host, ch, target, connectIP, hint string
+	coalesce                                 time.Duration
+	token                                    string
 }
 
 func main() {
@@ -48,10 +48,13 @@ func main() {
 	fs.StringVar(&o.ch, "ch", "control", "channel (control|media)")
 	fs.StringVar(&o.target, "target", "127.0.0.1:22", "serve: TCP target, or \"bench\"")
 	fs.StringVar(&o.connectIP, "connect-ip", "", "dial this IP instead of resolving the relay host")
+	fs.StringVar(&o.hint, "hint", "", "Durable Object location hint used when the host object is first created")
 	fs.DurationVar(&o.coalesce, "coalesce", 0, "wait up to this long to fill a frame before sending")
 	rounds := fs.Int("rounds", 50, "bench: echo rounds")
 	downMB := fs.Int("down", 20, "bench: download MB")
 	upMB := fs.Int("up", 10, "bench: upload MB")
+	idleFor := fs.Duration("for", 3*time.Minute, "idle: how long to hold the session")
+	dataEvery := fs.Duration("data-every", 0, "idle: send one echo this often (0 = never)")
 	_ = fs.Parse(os.Args[2:])
 	if o.host == "" || o.token == "" {
 		log.Fatal("-host and RELAY_DEV_TOKEN are required")
@@ -63,6 +66,10 @@ func main() {
 		dial(o)
 	case "bench":
 		bench(o, *rounds, *downMB, *upMB)
+	case "idle":
+		idle(o, *idleFor, *dataEvery)
+	case "wecho":
+		workerEcho(o, *rounds)
 	default:
 		log.Fatalf("unknown command %q", os.Args[1])
 	}
@@ -85,6 +92,13 @@ func dialer(o opts) *websocket.Dialer {
 func open(o opts, path string) (*websocket.Conn, error) {
 	h := http.Header{}
 	h.Set("Authorization", "Bearer "+o.token)
+	if o.hint != "" {
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		path += sep + "hint=" + url.QueryEscape(o.hint)
+	}
 	c, res, err := dialer(o).Dial(strings.TrimRight(o.relay, "/")+path, h)
 	if err != nil && res != nil {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 512))
@@ -464,4 +478,86 @@ func bench(o opts, rounds, downMB, upMB int) {
 	}
 	out, _ := json.MarshalIndent(result, "", "  ")
 	fmt.Println(string(out))
+}
+
+// workerEcho measures WebSocket round trips to the Worker itself (no Durable Object, no connector).
+func workerEcho(o opts, rounds int) {
+	ws, err := open(o, "/v0/echo/"+o.host)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ws.Close()
+	msg := make([]byte, 64)
+	var rtts []float64
+	for i := 0; i < rounds; i++ {
+		t := time.Now()
+		if err := ws.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+			log.Fatal(err)
+		}
+		if _, _, err := ws.ReadMessage(); err != nil {
+			log.Fatal(err)
+		}
+		rtts = append(rtts, float64(time.Since(t).Microseconds())/1000)
+		time.Sleep(100 * time.Millisecond)
+	}
+	out, _ := json.Marshal(stats(rtts))
+	fmt.Println(string(out))
+}
+
+// idle holds one session open with text "ping" keepalives every 30 s (answered by the relay without
+// waking the object) and optionally one echo through the connector every dataEvery.
+func idle(o opts, d, dataEvery time.Duration) {
+	ws, _, _, err := connect(o)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ws.Close()
+	msgs := make(chan []byte, 16)
+	go func() {
+		for {
+			kind, data, err := ws.ReadMessage()
+			if err != nil {
+				close(msgs)
+				return
+			}
+			if kind == websocket.BinaryMessage {
+				msgs <- data
+			}
+		}
+	}()
+	end := time.Now().Add(d)
+	keep := time.NewTicker(30 * time.Second)
+	defer keep.Stop()
+	var data <-chan time.Time
+	if dataEvery > 0 {
+		t := time.NewTicker(dataEvery)
+		defer t.Stop()
+		data = t.C
+	}
+	echoes := 0
+	for time.Now().Before(end) {
+		select {
+		case <-keep.C:
+			if err := ws.WriteMessage(websocket.TextMessage, []byte("ping")); err != nil {
+				log.Fatalf("keepalive: %v", err)
+			}
+		case <-data:
+			_ = ws.WriteMessage(websocket.BinaryMessage, append([]byte{'p'}, make([]byte, 64)...))
+			got := 0
+			for got < 64 {
+				m, ok := <-msgs
+				if !ok {
+					log.Fatal("session closed")
+				}
+				got += len(m)
+			}
+			echoes++
+		case _, ok := <-msgs:
+			if !ok {
+				log.Fatal("session closed by relay")
+			}
+		case <-time.After(time.Until(end)):
+		}
+	}
+	fmt.Printf("{\"heldSeconds\":%d,\"echoes\":%d}\n", int(d.Seconds()), echoes)
 }

@@ -114,12 +114,22 @@ dgram = "auto"             # auto：Node 用 udp、Worker 用 ws | ws | off
 [limits]
 sessions_per_host = 4
 idle_timeout_s = 300
-host_daily_mb = 500        # 每台电脑每天（控制 + 画面）；0 = 不限
-global_daily_mb = 0        # 整个中转每天的总预算；0 = 不限
-global_media_reserve = 0.3 # 总预算剩余不足此比例时先停画面，只保留控制
+host_daily_mb = 500             # 每台电脑每天（控制 + 画面）；0 = 不限
+global_daily_mb = 0             # 整个中转每天的总流量预算；0 = 不限
+host_daily_active_min = 0       # 每台电脑每天的活跃分钟数；0 = 不限
+global_daily_active_hours = 0   # 整个中转每天的活跃小时数；0 = 不限
+global_media_reserve = 0.3      # 任一总预算剩余不足此比例时先停画面，只保留控制
+
+[edges]
+candidates = []                 # 入口 IP 候选（§7.4）；VPS 部署留空
 ```
 
-`global_daily_mb` 与 `host_daily_mb` 主要是给 Cloudflare 免费方案用的（§7.3）：免费额度是整个账号共用的，用超后 Cloudflare 会直接拒绝所有请求，直到第二天额度重置。中转必须在这之前主动收紧，先停画面、再拒绝新会话，而不是让所有人一起断线。自部署 VPS 可以把它们设为 0。
+配额有两种计量方式，因为两种部署的成本来源不同（R0 实测，见 [RELAY_R0.md](research/RELAY_R0.md) §5）：
+
+- **VPS**：成本是流量，用 `*_mb`。
+- **Cloudflare 免费方案**：成本几乎全是 Durable Object 的运行时长，而对象只在有数据经过时才醒着（空闲约 10 秒后休眠）。所以用"活跃时长"：会话里有数据经过的分钟数（按分钟取整，一分钟内有数据就算一分钟）。
+
+免费额度是整个账号共用的，用超后 Cloudflare 会直接拒绝所有请求，直到第二天额度重置。全局预算的作用是在这之前主动收紧：先停画面，再拒绝新会话，而不是让所有人一起断线。自部署 VPS 可以把全局预算设为 0。
 
 官方实例就是这份配置的一套取值，写在部署仓库里公开。
 
@@ -241,6 +251,19 @@ relay/server/
 
 如果实测下来免费额度撑不起画面，官方实例就设 `media.allowed = false`，只做"伙伴在外操作电脑"；想在外看画面的用户自己部署。这同样只是一项策略，不需要特殊代码。
 
+### 7.4 入口优选与对象位置（R0 结论）
+
+- Cloudflare 按入口 IP 决定线路。R0 中本域名默认被分到阿姆斯特丹，手动指定美西入口后，中转往返从约 550 ms 降到约 450 ms；新加坡 ICMP 最快，但晚高峰的 TCP 最差。默认 DNS 不可靠，而且因运营商而异。
+- 中转提供 `GET /v1/edges`，返回部署者配置的候选入口 IP（`[edges] candidates`）。App 和 connector 把这些 IP 与默认 DNS 一起并行测 TLS 握手时间，选最快的连接，并定期重测。TLS 的 SNI 和证书校验仍然针对中转域名，所以入口 IP 只影响线路，不影响安全。
+- 候选列表必须由部署者提供：不同 zone 可用的 IP 不同（其余返回 `error code: 1034`）。VPS 部署返回空列表。
+- Durable Object 固定在第一次创建时的位置附近。connector 首次注册前先做入口优选，再按选中的入口带上 `locationHint`（美西入口 → `wnam`）。位置长期不理想时，只能换一个 hostId 重新注册并重新配对，R1 要支持这个"更换中转身份"的流程。
+
+### 7.5 保活规则（R0 结论）
+
+- 经中转时，连接保活一律用 WebSocket 文本帧 `ping`，间隔 30 秒。中转回复 `pong` 由运行时自动完成，不唤醒对象，也不计请求。R0 中开着但空闲的会话 3 分钟内没有被唤醒，也没有被断开。
+- 经中转时，JSch 的 `ServerAliveInterval` 关闭（或设得很长）：SSH 层的保活是加密数据，每次都会唤醒对象，计 10 秒左右的运行时长。
+- App 不应在后台持续轮询经中转连接的电脑，否则对象会一直醒着。
+
 ## 8. connector
 
 - Go 单个静态二进制：darwin-arm64/amd64、linux-amd64/arm64、windows-amd64。
@@ -266,6 +289,8 @@ relay/server/
 - `RemoteAddressFallback` 识别中转的原因码：`host_offline` 等同"连不上"，`unauthorized` 是"这台手机未授权"，`quota_exhausted` 单独展示，都不按网络故障重试。
 - `RemoteMediaSessionProvider`（§4）。
 - 画质档位读取中转的 `media.maxKbps`，在现有"按网络类型记忆"之上再取上限。
+- 入口优选与保活按 §7.4、§7.5。
+- 建会话较慢（R0 晚高峰 1.5–2.6 秒：跨境 TLS + 通知 connector + connector 再连一次）。connector 预先保持一条空闲的数据连接，收到会话请求时直接使用，可以省掉 connector 那一次连接。
 
 ### 9.2 界面（简易模式优先，UI 由我做）
 
@@ -274,6 +299,7 @@ relay/server/
 - **电脑详情**：中转开关、当前使用的中转、本月用量、"移除这台手机"。
 - **画面页状态行**：`已连接 · 经中转 · 省流`；画面不可用时显示 §5.2 的文案；Windows 在 R2 之前显示"在外暂时只能让伙伴操作，看画面要回到家里的网络"。
 - **流量提醒**：沿用现有"按流量计费网络默认省流 + 一次性 GB/小时提示"，中转下同样适用。
+- **中转诊断**（电脑详情 → 中转）：一键测量当前网络到各入口的握手时间、经中转到电脑的往返时间和吞吐，结果可复制。用于补齐 R0 没测到的移动数据，也方便用户排查和反馈。
 
 ## 10. 仓库与发版
 
@@ -283,7 +309,9 @@ relay/server/
 
 ## 11. 分期
 
-### R0 验证（约 1 周）
+### R0 验证（2026-11-01 完成主体，报告见 [RELAY_R0.md](research/RELAY_R0.md)）
+
+已完成：Worker+DO 中转、Go connector、JSch over WebSocket；电信宽带晚高峰的延迟、吞吐、入口与对象位置对比；休眠与运行时长。Node 适配层推迟到 R1（官方实例不用 VPS）。手机移动数据的测量改由 R1 的"中转诊断"完成（无线 adb 在关闭 Wi-Fi 后会结束测试进程）。下面是原计划，未完成项见报告 §6。
 
 - 最小 Worker+DO 和 Node 中转（只转发字节）、最小 connector、JSch over WebSocket。
 - 测量：国内手机（Wi-Fi 和移动数据，白天和晚高峰）→ Cloudflare 免费方案的延迟和吞吐；AI 一次操作（截图 + 点击）的耗时；VNC 在 1/2/4 Mbps 下的体验；控制 1 小时、画面 1 小时各消耗多少免费额度（请求数、Durable Object 时长）；攒帧对额度和交互延迟的影响。
@@ -296,7 +324,7 @@ relay/server/
 
 - server 核心 + 两个适配层 + 策略/计量/原因码 + 一致性测试。
 - connector + helper `relay` 命令（sh + ps1）。
-- App：中转地址、`RelaySocketFactory`、设备密钥与配对、`RemoteMediaSessionProvider`、设置流程和用量界面。
+- App：中转地址、`RelaySocketFactory`、设备密钥与配对、`RemoteMediaSessionProvider`、入口优选、设置流程、用量界面和中转诊断。
 - 结果：所有平台在外都能让伙伴操作电脑；Mac/Linux 在外可以看 VNC 画面（受策略约束）。
 
 ### R2 Sunshine 走中转
