@@ -4109,4 +4109,5 @@
   <string name="workspace_screen_mode_relay">透過中轉 · %1$s</string>
   <string name="workspace_screen_details_path_relay">透過中轉連線，比在家慢一些。回到同一網路後會再直接連線。</string>
   <string name="workspace_screen_details_path_relay_capped">透過中轉連線，速度最高 %1$.1f Mbps，比在家慢一些。回到同一網路後會再直接連線。</string>
+  <string name="im_relay_test_slow_hint">每做一個動作都要等幾秒，夥伴操作會明顯變慢。可以過一會兒再測，或換個網路。</string>
 </resources>
