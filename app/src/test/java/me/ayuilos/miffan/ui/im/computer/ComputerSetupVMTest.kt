@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import me.ayuilos.miffan.data.ai.computer.ComputerStatusRecord
@@ -614,5 +615,26 @@ class ComputerSetupVMTest {
         runCurrent()
         assertTrue(vm.state.value.error is IllegalArgumentException)
         coVerify(exactly = 0) { f.relaySetup.enable(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `the relay trip waits for a just-installed connector to come online`() = runTest {
+        val f = Fixture()
+        f.host = f.host.copy(authType = "MANAGED_KEY")
+        val probe = me.ayuilos.miffan.data.repository.relay.RelayProbe(1200, 300,
+            me.rerere.workspace.relay.RelayPolicy(), me.rerere.workspace.relay.RelayUsage())
+        var calls = 0
+        coEvery { f.relaySetup.probe("host") } answers {
+            calls++
+            if (calls < 3) throw java.io.IOException("open", me.rerere.workspace.relay.RelayException("host_offline")) else probe
+        }
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        vm.continueToShare()
+        runCurrent()
+        vm.enableAway(null, null)
+        advanceUntilIdle()
+        assertEquals(3, calls)
+        assertEquals(false, vm.state.value.away?.failed)
     }
 }

@@ -132,6 +132,7 @@ fun RelayDiagnosticsPage(hostId: String) {
                 Text(when {
                     !check.done -> stringResource(R.string.im_relay_test_running_hint)
                     check.failure != null -> check.failure.orEmpty()
+                    (probe?.commandMillis ?: 0) > SLOW_MILLIS -> stringResource(R.string.im_relay_test_slow_hint)
                     else -> stringResource(R.string.im_relay_test_ok_hint)
                 }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

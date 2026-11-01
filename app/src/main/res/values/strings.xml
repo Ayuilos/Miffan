@@ -4116,4 +4116,5 @@
   <string name="workspace_screen_mode_relay">Via relay · %1$s</string>
   <string name="workspace_screen_details_path_relay">Through the relay, a bit slower than at home. Back on the same network it connects directly again.</string>
   <string name="workspace_screen_details_path_relay_capped">Through the relay at up to %1$.1f Mbps, a bit slower than at home. Back on the same network it connects directly again.</string>
+  <string name="im_relay_test_slow_hint" tools:ignore="MissingTranslation">Each action waits a few seconds, so your partners will feel slow. Try again later or on another network.</string>
 </resources>

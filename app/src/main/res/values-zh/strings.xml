@@ -4096,4 +4096,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_mode_relay">经中转 · %1$s</string>
   <string name="workspace_screen_details_path_relay">经中转连接，比在家里慢一些。回到同一个网络后会自动改为直接连接。</string>
   <string name="workspace_screen_details_path_relay_capped">经中转连接，画面最高 %1$.1f Mbps，比在家里慢一些。回到同一个网络后会自动改为直接连接。</string>
+  <string name="im_relay_test_slow_hint">每做一个动作要等几秒，伙伴操作会明显变慢。可以过一会儿再测，或者换个网络。</string>
 </resources>

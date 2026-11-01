@@ -71,6 +71,10 @@ import me.rerere.workspace.RemoteHostKey
 import me.rerere.workspace.RemotePlatform
 import kotlin.uuid.Uuid
 
+/** Tries of the setup's relay trip while a just-installed connector comes online, and the wait between. */
+private const val AWAY_TRIES = 6
+private const val AWAY_RETRY_MILLIS = 3_000L
+
 /** Screens of "connect a computer"; the user moves between them, [ComputerSetupState.history] remembers the way back. */
 enum class ComputerSetupStep {
     /** Computers on this Wi-Fi (and, on request, on Tailscale), plus the ones Miffan already knows. */
@@ -940,14 +944,29 @@ class ComputerSetupVM(
     /** Tries the relay again after a failed try. */
     fun retryAway() = run(ComputerSetupTask.RELAY) { tryAway(requireNotNull(_state.value.hostId)) }
 
+    /**
+     * One trip through the relay. A connector that was just installed needs a few seconds to come
+     * online, so "computer offline" is tried again a few times before the trip counts as failed.
+     */
     private suspend fun tryAway(hostId: String) {
         _state.update { it.copy(away = AwayProgress(2)) }
-        val probe = try {
-            relaySetup.probe(hostId)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            null
+        var probe: RelayProbe? = null
+        for (attempt in 1..AWAY_TRIES) {
+            probe = try {
+                relaySetup.probe(hostId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val offline = generateSequence<Throwable>(error) { it.cause }.take(16)
+                    .filterIsInstance<me.rerere.workspace.relay.RelayException>()
+                    .any { it.reason == "host_offline" || it.reason == "host_timeout" }
+                if (offline && attempt < AWAY_TRIES) {
+                    delay(AWAY_RETRY_MILLIS)
+                    continue
+                }
+                null
+            }
+            break
         }
         _state.update { it.copy(away = AwayProgress(3, failed = probe == null, probe = probe)) }
     }
