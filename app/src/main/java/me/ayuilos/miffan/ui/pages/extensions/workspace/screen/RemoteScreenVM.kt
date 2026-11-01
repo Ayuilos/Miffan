@@ -97,6 +97,8 @@ data class RemoteConnectionInfo(
     val fallback: RemoteStreamFallback?,
     /** The user chose the plain connection for this visit from the menu. */
     val streamSkipped: Boolean,
+    /** Set when the picture runs through a relay: its pace in kbps (0 = no cap). */
+    val relayMediaKbps: Int? = null,
 )
 
 data class RemoteScreenArgs(val workspaceId: String)
@@ -381,7 +383,8 @@ class RemoteScreenVM(
 
     /** Reads Sunshine once per page, only for plain connections the user has not declined to improve. */
     private fun suggestStream(opened: RemoteScreenConnection) {
-        if (streamChecked || opened.session.surface != null || opened.streamFallback != null) return
+        // Through a relay high-performance mode cannot work (no UDP), so suggesting it would only disappoint.
+        if (streamChecked || opened.session.surface != null || opened.streamFallback != null || opened.relayMediaKbps != null) return
         if (opened.platform == RemoteScreenPlatform.UNKNOWN || hints.getBoolean(streamDismissedKey(opened.hostId), false)) return
         streamChecked = true
         viewModelScope.launch {
@@ -644,7 +647,7 @@ class RemoteScreenVM(
                 prepareTyping()
                 opened.streamFallback?.let { _notices.tryEmit(RemoteScreenNotice.StreamFallback(it)) }
                 _connectionInfo.value = RemoteConnectionInfo(opened.session.protocol, opened.streamRequested,
-                    opened.streamAddress, opened.streamFallback, skipStream)
+                    opened.streamAddress, opened.streamFallback, skipStream, opened.relayMediaKbps)
                 opened.session.audio?.let { audio ->
                     if (hints.getBoolean(AUDIO_KEY, false)) audio.setEnabled(true)
                     launch { audio.enabled.collect { _audio.value = it } }

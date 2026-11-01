@@ -1,0 +1,123 @@
+name: Relay connector
+
+# Builds and publishes miffan-connector (relay/connector) when a tag relay-connector-vX.Y.Z is pushed.
+# The helper (remote-helper) pins the version and the SHA-256 of every binary, so a release is only
+# usable after the helper constants are updated with the values from SHA256SUMS.
+
+on:
+  push:
+    tags:
+      - 'relay-connector-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build without publishing (a dry run; nothing is released)
+        required: false
+        default: 0.0.0-dev
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: relay/connector/go.mod
+          cache-dependency-path: relay/connector/go.sum
+      - name: Vet
+        working-directory: relay/connector
+        run: go vet ./...
+      - name: Test
+        working-directory: relay/connector
+        run: go test -race -count=1 ./...
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: relay/connector/go.mod
+          cache-dependency-path: relay/connector/go.sum
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            version="${GITHUB_REF_NAME#relay-connector-v}"
+          else
+            version="${{ inputs.version }}"
+          fi
+          case "$version" in
+            ''|*[!0-9A-Za-z.+-]*) echo "invalid version: $version" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cross-compile
+        working-directory: relay/connector
+        env:
+          CGO_ENABLED: '0'
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p ../../dist
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do
+            os=${target%/*}
+            arch=${target#*/}
+            ext=''
+            [ "$os" = windows ] && ext=.exe
+            GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "../../dist/miffan-connector-${os}-${arch}${ext}" .
+          done
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum miffan-connector-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Keep the binaries of a dry run
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: miffan-connector-${{ steps.version.outputs.version }}
+          path: dist/*
+          retention-days: 7
+
+      # Releases here are immutable: files can only be added to a draft, which is published afterwards.
+      - name: Prepare draft GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: miffan-connector ${{ steps.version.outputs.version }}
+          draft: true
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          body: |
+            Computer-side connector for the Miffan relay (protocol v1).
+
+            Installed and updated by the Miffan helper (`miffan relay install`), which verifies the
+            SHA-256 below before running anything. See `SHA256SUMS`.
+          files: |
+            dist/miffan-connector-darwin-arm64
+            dist/miffan-connector-darwin-amd64
+            dist/miffan-connector-linux-amd64
+            dist/miffan-connector-linux-arm64
+            dist/miffan-connector-windows-amd64.exe
+            dist/SHA256SUMS
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease

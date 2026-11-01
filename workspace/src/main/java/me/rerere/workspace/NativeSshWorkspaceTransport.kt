@@ -221,10 +221,18 @@ object NativeSshWorkspaceTransport {
             ?: IllegalStateException("Server did not present an SSH host key")
     }
 
+    /**
+     * [socketFactory] replaces the TCP connection, for example with a relay session. With
+     * [keepAlive] false, SSH sends no keepalives and has no read timeout once connected: the relay
+     * socket checks liveness itself, and any SSH packet would wake the relay's state.
+     */
     fun open(
         config: RemoteHostConfig,
         timeoutMillis: Int = 10_000,
         sftpIdleTimeoutMillis: Long = 60_000,
+        socketFactory: com.jcraft.jsch.SocketFactory? = null,
+        keepAlive: Boolean = true,
+        route: () -> RemoteRoute = { RemoteRoute.Direct },
     ): RemoteWorkspaceSession {
         require(sftpIdleTimeoutMillis > 0)
         require(timeoutMillis > 0)
@@ -257,10 +265,12 @@ object NativeSshWorkspaceTransport {
         // Not setPassword: the answer object tells whether the server asked for a password at all.
         val passwordAnswer = (config.authentication as? RemoteAuthentication.Password)?.let { PasswordAnswer(it.value) }
         passwordAnswer?.let(session::setUserInfo)
+        socketFactory?.let(session::setSocketFactory)
         session.timeout = 60_000
-        session.setServerAliveInterval(10_000)
+        if (keepAlive) session.setServerAliveInterval(10_000)
         try {
             session.connect(timeoutMillis)
+            if (!keepAlive) session.timeout = 0
         } catch (error: Throwable) {
             session.disconnect()
             if (error is PasswordSignInStopped) throw RemoteConnectException(config.host, JSchException("Auth fail", error),
@@ -273,7 +283,7 @@ object NativeSshWorkspaceTransport {
             }, username = config.username.takeIf { authFailed })
         }
         return try {
-            RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis)
+            RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis, route())
                 .also { workspace ->
                     try {
                         workspace.verifyRoot()
@@ -293,14 +303,30 @@ object NativeSshWorkspaceTransport {
     }
 }
 
+/** How an SSH session reaches the computer. */
+sealed interface RemoteRoute {
+    data object Direct : RemoteRoute
+
+    /** Through a relay; [socket] holds the session's policy and usage from the relay's `ready`. */
+    data class Relay(
+        val endpoint: me.rerere.workspace.relay.RelayEndpoint,
+        val hostId: String,
+        val socket: me.rerere.workspace.relay.RelaySocket,
+    ) : RemoteRoute
+}
+
 class RemoteWorkspaceSession internal constructor(
     private val session: Session,
     private var paths: RemoteWorkspacePath,
     private val channelTimeoutMillis: Int,
     private val sftpIdleTimeoutMillis: Long,
+    /** Direct, or the relay this session runs through. */
+    val route: RemoteRoute = RemoteRoute.Direct,
 ) : Closeable, RemoteWorkspaceFiles {
     private val closed = AtomicBoolean(false)
     private val activeChannels = ConcurrentHashMap<Thread, Channel>()
+    /** Working directories that passed [requireDirectoryPath], with when (System.nanoTime). */
+    private val verifiedDirectories = ConcurrentHashMap<String, Long>()
     private val operation = ThreadLocal<OperationHandle?>()
 
     class OperationHandle internal constructor() {
@@ -348,6 +374,8 @@ class RemoteWorkspaceSession internal constructor(
         // Resolve it once; all subsequent file paths still reject links below the selected root.
         paths = RemoteWorkspacePath(resolveSelectedRoot(sftp, paths.root), aliasRoot = paths.root)
         requireDirectoryPath(sftp, paths.root)
+        // The first command usually runs in the root: it needs no second check right after this one.
+        verifiedDirectories[paths.root] = System.nanoTime()
     }
 
     private fun resolveSelectedRoot(sftp: ChannelSftp, root: String): String {
@@ -397,7 +425,13 @@ class RemoteWorkspaceSession internal constructor(
                 // A session without a workspace is rooted at "/", which is no Windows directory: start at home.
                 workingDirectory.ifEmpty { if (paths.root == "/") homeDirectory else workingDirectory })
             else paths.absolute(workingDirectory, allowRoot = true)
-        withSftp { sftp, _ -> requireDirectoryPath(sftp, directory) }
+        // Each check opens a file channel (several round trips; a relay makes each one slow), so a
+        // directory that passed recently is not checked again on this session.
+        val now = System.nanoTime()
+        if (verifiedDirectories[directory]?.let { now - it < DIRECTORY_CHECK_TTL_NANOS } != true) {
+            withSftp { sftp, _ -> requireDirectoryPath(sftp, directory) }
+            verifiedDirectories[directory] = now
+        }
         checkOpen()
         val budget = AtomicInteger(maxOutputBytes)
         val stdout = LimitedOutputStream(budget)
@@ -972,3 +1006,6 @@ private const val STALL_CHECK_MILLIS = 5_000
 /** Receive window for forwarded streams: 4 MiB keeps a LAN or Tailscale link full (128 KiB managed ~4 MB/s). */
 private const val STREAM_WINDOW_BYTES = 4 * 1024 * 1024
 private const val STREAM_PACKET_BYTES = 32 * 1024
+
+/** How long a checked working directory is trusted before [RemoteWorkspaceSession.execute] checks it again. */
+private const val DIRECTORY_CHECK_TTL_NANOS = 60_000_000_000L

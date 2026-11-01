@@ -41,7 +41,12 @@ data class RemoteHostEntity(
     @ColumnInfo("stream_certificate_sha256") val streamCertificateSha256: String? = null,
     @ColumnInfo("alternate_addresses", defaultValue = "'[]'") val alternateAddresses: String = "[]",
     @ColumnInfo("last_address") val lastAddressValue: String? = null,
+    /** [RemoteHostRelay] as JSON, or blank when the computer has no relay. */
+    @ColumnInfo("relay", defaultValue = "''") val relayValue: String = "",
 ) {
+    val relay: RemoteHostRelay? get() = decodeRemoteHostRelay(relayValue)
+    /** The relay connected last time, so it gets a shorter head start in the next race. */
+    val lastViaRelay: Boolean get() = lastAddressValue == RELAY_LAST_ADDRESS
     val addresses: List<RemoteHostAddress> get() =
         (listOf(RemoteHostAddress(host, port)) + decodeRemoteHostAddresses(alternateAddresses)).distinct()
     val lastAddress: RemoteHostAddress? get() = addresses.firstOrNull { it.storageValue == lastAddressValue }

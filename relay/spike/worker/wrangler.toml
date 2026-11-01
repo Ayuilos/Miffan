@@ -1,0 +1,17 @@
+# R0 spike only. Deployed to relay-dev.miffan.ayuilos.me; never the production hostname.
+name = "miffan-relay-dev"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+workers_dev = false
+routes = [{ pattern = "relay-dev.miffan.ayuilos.me", custom_domain = true }]
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "HostRelay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["HostRelay"]
+
+[observability]
+enabled = true

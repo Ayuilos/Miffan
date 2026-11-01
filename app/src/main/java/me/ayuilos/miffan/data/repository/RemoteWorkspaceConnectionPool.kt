@@ -159,6 +159,16 @@ internal class RemoteWorkspaceConnectionPool<T : Closeable>(
         publish(workspaceId, RemoteConnectionStatus.DISCONNECTED)
     }
 
+    /**
+     * Closes sessions nobody is using that match [predicate], so the next use connects again; for
+     * example relay sessions after the phone joined another network. Sessions in use are left alone.
+     */
+    fun retireIdle(predicate: (T) -> Boolean) = synchronized(lock) {
+        entries.values.toList().forEach { entry ->
+            if (entry.references == 0 && entry.session?.let(predicate) == true) evict(entry, RemoteConnectionStatus.DISCONNECTED)
+        }
+    }
+
     /** A failed operation may only retire the exact session on which it ran. */
     fun connectionLost(workspaceId: String, session: T) = synchronized(lock) {
         entries[workspaceId]?.takeIf { it.session === session }?.let {

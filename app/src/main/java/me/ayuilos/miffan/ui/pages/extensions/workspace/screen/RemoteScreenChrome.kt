@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import me.ayuilos.miffan.data.repository.RemoteStreamFallbackReason
 import android.content.pm.ActivityInfo
 import android.content.res.Resources
 import androidx.activity.compose.LocalActivity
@@ -155,11 +156,17 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                     RemoteDesktopProtocol.VNC -> "VNC"
                     RemoteDesktopProtocol.SPACE -> stringResource(R.string.im_computer_detail_user_space)
                 })
-                DetailRow(stringResource(R.string.workspace_screen_details_path),
-                    if (info.protocol == RemoteDesktopProtocol.STREAM) stringResource(R.string.workspace_screen_details_path_stream, info.streamAddress ?: "—")
-                    else stringResource(R.string.workspace_screen_details_path_ssh))
+                DetailRow(stringResource(R.string.workspace_screen_details_path), when {
+                    info.relayMediaKbps != null && info.relayMediaKbps > 0 ->
+                        stringResource(R.string.workspace_screen_details_path_relay_capped, info.relayMediaKbps / 1000.0)
+                    info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_path_relay)
+                    info.protocol == RemoteDesktopProtocol.STREAM -> stringResource(R.string.workspace_screen_details_path_stream, info.streamAddress ?: "—")
+                    else -> stringResource(R.string.workspace_screen_details_path_ssh)
+                })
                 if (info.protocol != RemoteDesktopProtocol.STREAM) {
                     DetailRow(stringResource(R.string.workspace_screen_stream), when {
+                        info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
+                            streamFallbackReason(resources, RemoteStreamFallbackReason.RELAY))
                         info.streamSkipped -> stringResource(R.string.workspace_screen_details_stream_skipped)
                         info.fallback != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
                             streamFallbackReason(resources, info.fallback.reason))

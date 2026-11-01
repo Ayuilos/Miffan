@@ -142,6 +142,7 @@ internal fun ComputerSetupTask.label(): Int = when (this) {
     ComputerSetupTask.CHECKING -> R.string.im_computer_partner_checking
     ComputerSetupTask.SAVING, ComputerSetupTask.BINDING -> R.string.im_computer_task_saving
     ComputerSetupTask.OPENING_SETTINGS -> R.string.im_computer_task_opening_settings
+    ComputerSetupTask.RELAY -> R.string.im_computer_away_working
 }
 
 /** Where the user is among find, sign in, get ready and share. */

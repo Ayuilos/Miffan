@@ -79,6 +79,29 @@ jobs:
           python3 remote-helper/tests/test_helper_safety.py
           python3 remote-helper/tests/test_sunshine_helper.py
           python3 remote-helper/tests/test_task_helper.py
+          python3 remote-helper/tests/test_relay_helper.py
+
+      - name: Set up Go for the relay connector
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: relay/connector/go.mod
+          cache-dependency-path: relay/connector/go.sum
+
+      - name: Test the relay connector
+        working-directory: relay/connector
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Set up Bun for the relay server
+        uses: oven-sh/setup-bun@v2
+
+      - name: Test the relay server
+        working-directory: relay/server
+        run: |
+          bun install --frozen-lockfile
+          bun run test
+          bun run typecheck
 
       - name: Check remote helper shell diagnostics
         run: |

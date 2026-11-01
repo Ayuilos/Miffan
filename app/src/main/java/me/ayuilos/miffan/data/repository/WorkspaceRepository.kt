@@ -20,7 +20,17 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.SshKeyDAO
+import me.ayuilos.miffan.data.db.entity.RELAY_LAST_ADDRESS
 import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
+import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
+import me.ayuilos.miffan.data.repository.relay.RelayAccess
+import me.ayuilos.miffan.data.repository.relay.RouteWinner
+import me.ayuilos.miffan.data.repository.relay.raceRoutes
+import me.rerere.workspace.RemoteRoute
+import me.rerere.workspace.relay.RelayChannel
+import me.rerere.workspace.relay.RelayException
+import me.rerere.workspace.relay.RelaySocket
+import me.ayuilos.miffan.data.repository.relay.RelayProbe
 import me.ayuilos.miffan.data.db.entity.encodeRemoteHostAddresses
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
@@ -91,12 +101,20 @@ class WorkspaceRepository(
     private val workspaceStrings: Resources,
     private val sunshineUnpair: RemoteSunshineUnpair? = null,
     private val cuaSpaces: CuaSpaceSessions? = null,
+    private val relayAccess: RelayAccess? = null,
 ) {
     private val localWorkspaceCreator = LocalWorkspaceCreator(dao, manager)
     private val remoteRuntime = RemoteWorkspaceRuntimeTracker()
     private val remoteConnections = RemoteWorkspaceConnectionPool<RemoteWorkspaceSession>(
         connected = { it.isConnected },
-    )
+    ).also { pool ->
+        // On another network the computer may be reachable directly again (back home): idle relay
+        // sessions close, so the next use races the direct addresses afresh.
+        relayAccess?.network?.watch {
+            relayAccess.client.forgetEdges()
+            pool.retireIdle { it.route is RemoteRoute.Relay }
+        }
+    }
     private val terminalLock = Any()
     private val activeTerminals = mutableMapOf<String, MutableSet<RemoteTerminalConnection>>()
     private val activeLeased = mutableMapOf<String, MutableSet<LeasedRemote<*>>>()
@@ -187,7 +205,11 @@ class WorkspaceRepository(
     /** Only the initial handshake is retried, never a dispatched file or shell operation. */
     private fun Throwable.retryableConnectionFailure(): Boolean = isRemoteNetworkFailure(this)
 
-    /** All saved-host SSH opens share address order, pin checks, and success bookkeeping. */
+    /**
+     * All saved-host SSH opens share address order, pin checks, and success bookkeeping. Direct
+     * addresses and the computer's relay (if any) race; only the winner is recorded and passed to
+     * [onOpened].
+     */
     private suspend fun connectSavedHost(
         hostId: String,
         config: RemoteHostConfig,
@@ -200,31 +222,129 @@ class WorkspaceRepository(
             host.username != config.username) {
             throw WorkspaceToolTargetChangedException()
         }
-        return tryRemoteAddresses(host.connectionAddresses) { address ->
-            val opened = AtomicReference<RemoteWorkspaceSession?>()
-            val disposed = AtomicBoolean(false)
-            try {
-                val session = runRemoteInterruptible {
-                    remoteTransport.open(config.copy(host = address.host, port = address.port),
-                        timeoutMillis = addressTimeoutMillis(host, address)).also {
-                        if (disposed.get()) it.close()
-                        else {
-                            opened.set(it)
-                            if (disposed.get()) opened.getAndSet(null)?.close()
-                        }
+        var directAddress: RemoteHostAddress? = null
+        // Through a relay only key sign-in is used: a password never leaves for a path through a third party.
+        val relay = host.relay?.takeIf { it.enabled && relayAccess != null && config.authentication is RemoteAuthentication.PrivateKey }
+        val (session, winner) = raceRoutes(
+            direct = {
+                tryRemoteAddresses(host.connectionAddresses) { address ->
+                    openGuarded {
+                        remoteTransport.open(config.copy(host = address.host, port = address.port),
+                            timeoutMillis = addressTimeoutMillis(host, address))
+                    }.also { directAddress = address }
+                }
+            },
+            relay = relay?.let { { openThroughRelay(host.id, relay, config, RelayChannel.CONTROL) } },
+            relayHeadStartMillis = if (host.lastViaRelay) RELAY_HEAD_START_AFTER_RELAY_MILLIS else RELAY_HEAD_START_MILLIS,
+            close = { withContext(NonCancellable + Dispatchers.IO) { it.close() } },
+            preferError = { direct, relayError -> if (isRemoteNetworkFailure(direct)) relayError else direct },
+        )
+        try {
+            currentCoroutineContext().ensureActive()
+            when (winner) {
+                RouteWinner.DIRECT -> directAddress?.let { recordSuccessfulAddress(host, it) }
+                RouteWinner.RELAY -> recordRelaySuccess(host)
+            }
+            onOpened(session)
+            return session
+        } catch (error: Throwable) {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+            throw error
+        }
+    }
+
+    /** Opens one SSH session; a session that finishes opening after cancellation is closed, not leaked. */
+    private suspend fun openGuarded(open: () -> RemoteWorkspaceSession): RemoteWorkspaceSession {
+        val opened = AtomicReference<RemoteWorkspaceSession?>()
+        val disposed = AtomicBoolean(false)
+        try {
+            val session = runRemoteInterruptible {
+                open().also {
+                    if (disposed.get()) it.close()
+                    else {
+                        opened.set(it)
+                        if (disposed.get()) opened.getAndSet(null)?.close()
                     }
                 }
-                currentCoroutineContext().ensureActive()
-                recordSuccessfulAddress(host, address)
-                onOpened(session)
-                opened.compareAndSet(session, null)
-                session
-            } finally {
-                disposed.set(true)
-                opened.getAndSet(null)?.let { session ->
-                    withContext(NonCancellable + Dispatchers.IO) { session.close() }
-                }
             }
+            currentCoroutineContext().ensureActive()
+            opened.compareAndSet(session, null)
+            return session
+        } finally {
+            disposed.set(true)
+            opened.getAndSet(null)?.let { session ->
+                withContext(NonCancellable + Dispatchers.IO) { session.close() }
+            }
+        }
+    }
+
+    /**
+     * An SSH session through [relay]. No SSH keepalives: the relay socket checks liveness with
+     * text pings, which do not wake the relay's state (relay/PROTOCOL.md §5.4).
+     */
+    private suspend fun openThroughRelay(hostId: String, relay: RemoteHostRelay, config: RemoteHostConfig, channel: RelayChannel): RemoteWorkspaceSession {
+        val access = requireNotNull(relayAccess)
+        val signer = withContext(Dispatchers.IO) { access.deviceKeys.signer() }
+        val networkKey = access.network.current()
+        val socket = AtomicReference<RelaySocket?>()
+        val factory = access.client.jschSocketFactory(relay.endpoint, relay.hostId, channel, signer, networkKey,
+            timeoutMillis = RELAY_OPEN_TIMEOUT_MILLIS) { socket.set(it) }
+        return openGuarded {
+            remoteTransport.open(config.copy(host = relay.hostId, port = 22), timeoutMillis = RELAY_SSH_TIMEOUT_MILLIS,
+                socketFactory = factory, keepAlive = false,
+                route = { RemoteRoute.Relay(relay.endpoint, relay.hostId, requireNotNull(socket.get())) })
+        }.also { session -> (session.route as? RemoteRoute.Relay)?.let { access.record(hostId, it.socket.ready) } }
+    }
+
+    /**
+     * A second SSH session for screen traffic when [control] runs through a relay, on the relay's
+     * media channel (RELAY_PLAN §4). Returns null for a direct session, which carries screen
+     * traffic itself. Throws [me.rerere.workspace.relay.RelayException] `media_disabled` when the
+     * relay offers no screen channel.
+     */
+    suspend fun openRelayMediaSession(hostId: String, control: RemoteWorkspaceSession): RemoteWorkspaceSession? {
+        val route = control.route as? RemoteRoute.Relay ?: return null
+        if (!route.socket.ready.policy.media.allowed) throw RelayException("media_disabled")
+        val host = hostDao.getById(hostId) ?: return null
+        val relay = host.relay?.takeIf { it.hostId == route.hostId } ?: return null
+        return openThroughRelay(host.id, relay, host.config(), RelayChannel.MEDIA)
+    }
+
+    /**
+     * Connects through the computer's relay only (no direct addresses), runs one trivial command
+     * and closes again. For setup confirmation and relay diagnostics.
+     */
+    suspend fun probeRelay(hostId: String): RelayProbe {
+        val host = hostDao.getById(hostId) ?: error(workspaceStrings.getString(R.string.workspace_error_host_not_found, hostId))
+        val relay = requireNotNull(host.relay) { "This computer has no relay" }
+        val config = host.config()
+        val started = System.nanoTime()
+        val session = openThroughRelay(host.id, relay, config, RelayChannel.CONTROL)
+        try {
+            val openMillis = (System.nanoTime() - started) / 1_000_000
+            val commandStarted = System.nanoTime()
+            val result = runRemoteInterruptible { session.execute("echo miffan-relay-ok", timeoutMillis = 20_000) }
+            val commandMillis = (System.nanoTime() - commandStarted) / 1_000_000
+            check(result.exitCode == 0 && result.stdout.contains("miffan-relay-ok")) { "The computer did not answer through the relay" }
+            val warmStarted = System.nanoTime()
+            runRemoteInterruptible { session.execute("echo miffan-relay-ok", timeoutMillis = 20_000) }
+            val warmMillis = (System.nanoTime() - warmStarted) / 1_000_000
+            val socket = (session.route as RemoteRoute.Relay).socket
+            val ping = withContext(Dispatchers.IO) { List(3) { socket.ping() }.filterNotNull().sorted() }
+            return RelayProbe(openMillis, commandMillis, socket.ready.policy, socket.ready.usage,
+                relayPingMillis = ping.getOrNull(ping.size / 2), relayOpenMillis = socket.openMillis, warmCommandMillis = warmMillis)
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+        }
+    }
+
+    private suspend fun recordRelaySuccess(host: RemoteHostEntity) {
+        while (true) {
+            val current = hostDao.getById(host.id) ?: return
+            if (current.connectionRevision != host.connectionRevision || current.relay == null) return
+            if (hostDao.updateLastAddress(current.id, RELAY_LAST_ADDRESS, current.connectionRevision,
+                    current.host, current.port, current.alternateAddresses) > 0) return
+            currentCoroutineContext().ensureActive()
         }
     }
 
@@ -1900,6 +2020,12 @@ class WorkspaceRepository(
         private const val TAG = "WorkspaceRepository"
         private const val MAX_PREVIEW_BYTES = 512L * 1024
         private const val AUTH_MANAGED_KEY = "MANAGED_KEY"
+        /** Relay attempts wait this long for a direct address first, or this long after the relay worked last time. */
+        private const val RELAY_HEAD_START_MILLIS = 2_000L
+        private const val RELAY_HEAD_START_AFTER_RELAY_MILLIS = 800L
+        /** Relay sessions cross the border twice; R0 measured 1.5–2.6 s to open one at evening peak. */
+        private const val RELAY_OPEN_TIMEOUT_MILLIS = 15_000L
+        private const val RELAY_SSH_TIMEOUT_MILLIS = 25_000
         private val SPACE_HELPER_ARG = Regex("[a-z0-9][a-z0-9-]{0,31}")
         /** The remote files' own default import limit. */
         const val REMOTE_IMPORT_MAX_BYTES = 32L * 1024 * 1024

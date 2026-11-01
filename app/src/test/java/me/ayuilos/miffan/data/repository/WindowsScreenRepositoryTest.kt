@@ -48,6 +48,7 @@ class WindowsScreenRepositoryTest {
         coEvery { dao.getByRemoteHostId("host") } returns listOf(workspace)
         coEvery { hosts.getById("host") } returns host
         every { ssh.platform } returns RemotePlatform.WINDOWS
+        every { ssh.route } returns me.rerere.workspace.RemoteRoute.Direct
         every { ssh.execute(any(), any(), any(), any(), any()) } answers {
             val command = firstArg<String>(); commands += command
             val output = when {

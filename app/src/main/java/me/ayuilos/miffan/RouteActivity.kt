@@ -494,9 +494,10 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.PartnerScreen> { key -> PartnerScreenPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.PartnerSpaceFiles> { key -> PartnerSpaceFilesPage(Uuid.parse(key.assistantId)) }
                             entry<Screen.ComputerSetup> { key ->
-                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen, key.status, key.space))
+                                ComputerSetupPage(ComputerSetupArgs(key.assistantId?.let(Uuid::parse), key.hostId, key.edit, key.screen, key.status, key.space, key.away))
                             }
                             entry<Screen.Computers> { ComputersPage() }
+                            entry<Screen.RelayDiagnostics> { key -> me.ayuilos.miffan.ui.im.computer.RelayDiagnosticsPage(key.hostId) }
                             entry<Screen.ComputerDetail> { key -> ComputerDetailPage(key.hostId) }
                             entry<Screen.RemoteTaskDetail> { key ->
                                 me.ayuilos.miffan.ui.im.computer.RemoteTaskDetailPage(key.hostId, key.taskId)
@@ -888,11 +889,17 @@ sealed interface Screen : NavKey {
         val status: Boolean = false,
         /** Give the partner a mini box on the saved computer; see ComputerSetupArgs.space. */
         val space: Boolean = false,
+        /** Set up the relay for the saved computer; see ComputerSetupArgs.away. */
+        val away: Boolean = false,
     ) : Screen
 
     /** Easy chat's list of computers. */
     @Serializable
     data object Computers : Screen
+
+    /** Tests a computer's relay from this phone's current network. */
+    @Serializable
+    data class RelayDiagnostics(val hostId: String) : Screen
 
     @Serializable
     data class ComputerDetail(val hostId: String) : Screen

@@ -315,9 +315,47 @@ result 在 check 的基础上返回 `success`、`detail`、`changed`、`backup`�
 `parseSunshineFirewallResult` 只消费 success/detail/changed/backup/firewall_model_ok/
 applied_changes，其他保留诊断不进入强类型模型。
 
+## 中转 connector（`relay`，POSIX helper 33 起、Windows helper 15 起）
+
+安装、配对和移除电脑端的 `miffan-connector`（[relay/PROTOCOL.md](../relay/PROTOCOL.md) 的 connector 一侧，
+实现在 `relay/connector/`）。两个平台命令、stdin、输出相同；每条命令 stdout 一行 JSON，失败为
+`{"success":false,"reason":"<code>","detail":"<text>"}` 并退出 1（用法错误 POSIX 退出 2）。用户数据只走
+stdin，**原样**交给 connector（由它解析并校验），不进入命令行；不需要 root / 管理员。
+
+| 调用 | stdin | stdout（成功） | 行为 |
+|---|---|---|---|
+| `relay status` | 无 | 未安装：`{"installed":false}`。否则 connector `status` 的 JSON 加 `installed:true,service:"running\|stopped\|missing",pinnedVersion,linger` | `linger` 仅 Linux 为布尔（systemd 用户服务能否在未登录时运行），其他平台 null。connector 无法回答（例如尚未 init）时没有 connector 字段，改带 `error:<reason>` |
+| `relay install` | `{"relay":"https://…","accessToken":"…"?}` | `relay status` 的结果 | 下载本平台二进制 → 校验 SHA-256 → 安装 → `init` → 安装并启动常驻服务；已安装的版本等于内置版本时跳过下载 |
+| `relay pair` | `{"device":"<b64u SPKI>","name":"…"}` | connector `pair` 的结果：`{success,hostId,relay,deviceId}` | 要求已安装；失败原样返回 connector 的失败 JSON |
+| `relay unpair` | `{"deviceId":"<26 位 a-z2-7>"}` | connector `unpair` 的结果：`{success,removed,devices:[{id,name,addedAt}]}` | id 在 helper 里先按正则校验，不合法时 `bad_input`，不会调用 connector |
+| `relay uninstall` | 可选 `{"forgetIdentity":true}` | `{"success":true,"identityKept":<bool>}` | 停止并移除服务、二进制、日志、`state.json` 与锁文件。默认**保留** `host.key` 和 `config.json`（同一个 hostId、已配对手机不受影响）；`forgetIdentity` 时删除整个数据目录 |
+
+失败原因码：`unsupported_platform`、`bad_input`、`download_failed`、`checksum_mismatch`、`install_failed`、
+`login_required`（macOS 没有登录会话，launchd 无法装入）、`no_service_manager`（Linux 无可用的 systemd 用户服务）、
+`service_failed`、`not_installed`、`init_failed`、`connector_failed`，以及 connector 自己的原因码（`bad_relay`、
+`bad_target`、`bad_device`、`bad_name`、`already_running` 等，见 `relay/connector/README.md`）。
+
+下载与校验：helper 内置固定的 connector 版本与每个平台产物的 SHA-256。顺序尝试 GitHub Release
+（`https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v<版本>/miffan-connector-<os>-<arch>[.exe]`）
+与预留的镜像地址（目前为空）。校验失败删除下载文件、`checksum_mismatch`、不安装。发版前这些摘要是占位值，
+不可能匹配，所以未发布的版本装不上。`MIFFAN_CONNECTOR_FILE=<本地路径>` 跳过下载（仍校验），
+`MIFFAN_CONNECTOR_SHA256` 覆盖期望摘要，仅用于测试与开发。
+
+文件：macOS/Linux 二进制 `~/.miffan/bin/miffan-connector`，数据 `~/.miffan/connector/`；Windows
+`%LOCALAPPDATA%\Miffan\bin\miffan-connector.exe` 与 `%LOCALAPPDATA%\Miffan\connector\`。数据目录里的
+`host.key`、`config.json`、`state.json`、`run.lock` 由 connector 管理，helper 只在 uninstall 时删除。
+connector 的日志写 `connector.log`（helper 在安装和启动时把超过 1 MiB 的日志截成末尾 128 KiB）。
+
+常驻服务（随用户登录运行）：macOS 为 `~/Library/LaunchAgents/me.ayuilos.miffan.connector.plist`
+（`RunAtLoad`、`KeepAlive`，`launchctl bootstrap gui/<uid>`）；Linux 为 `~/.config/systemd/user/miffan-connector.service`
+（`Restart=always`，`systemctl --user enable --now`，并尝试 `loginctl enable-linger`，失败不算错误，`status` 报告
+`linger:false`）；Windows 为当前用户的登录计划任务 `Miffan-connector`（普通权限、交互登录、失败自动重启），
+它运行 `powershell.exe -WindowStyle Hidden … miffan.ps1 relay run`，后者无控制台窗口地启动 connector 并把它的
+stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输出 JSON。
+
 ## 版本与安装
 
-当前 POSIX helper 为 24，Windows 为 13。POSIX 21 新增 `task` 命令，24 新增 `space` 命令；Windows 版本和摘要保持不变。
+当前 POSIX helper 为 33，Windows 为 15。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

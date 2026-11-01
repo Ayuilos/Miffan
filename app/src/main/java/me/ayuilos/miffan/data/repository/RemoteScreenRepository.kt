@@ -3,6 +3,8 @@ package me.ayuilos.miffan.data.repository
 import android.content.res.AssetManager
 import android.content.Context
 import android.os.Build
+import me.rerere.workspace.RemoteRoute
+import me.rerere.workspace.relay.RelayException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -76,6 +78,10 @@ enum class RemoteScreenProblem {
     VNC_START_FAILED, NO_RDP_SERVER, RDP_START_FAILED, RDP_ALREADY_CONFIGURED,
     RDP_KEYRING_LOCKED, RDP_CREDENTIAL_SETUP_UNAVAILABLE, RDP_CERTIFICATE_CHANGED, STREAM_CERTIFICATE_CHANGED,
     WINDOWS_NOT_SUPPORTED, FIREWALL_REVIEW_NEEDED, FIREWALL_CHECK_FAILED, STREAM_UNAVAILABLE,
+    /** Through a relay that offers no screen channel now; [RemoteScreenUnavailableException.detail] is its reason code. */
+    RELAY_SCREEN_UNAVAILABLE,
+    /** Through a relay, and this computer only has Sunshine, whose UDP picture relays do not carry yet. */
+    RELAY_STREAM_ONLY,
 }
 
 open class RemoteScreenUnavailableException(
@@ -167,6 +173,8 @@ class RemoteScreenConnection internal constructor(
     val streamAddress: String? = null,
     /** Who drives this desktop is arbitrated under this key: the host's id, or a Space's own key. */
     val controlKey: String = hostId,
+    /** Set when the picture runs through a relay: the relay's pace for it, in kbps (0 = no cap). */
+    val relayMediaKbps: Int? = null,
     private val onClose: (RemoteScreenConnection) -> Unit,
 ) : Closeable {
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -483,6 +491,24 @@ class RemoteScreenRepository(
         return requireNotNull(value).getOrThrow()
     }
 
+    /**
+     * The relay media-channel session for a screen over a relay. Relay refusals become
+     * [RemoteScreenProblem.RELAY_SCREEN_UNAVAILABLE] with the relay's reason code.
+     */
+    private suspend fun openRelayMedia(hostId: String, control: RemoteWorkspaceSession): RemoteWorkspaceSession =
+        try {
+            workspaces.openRelayMediaSession(hostId, control)
+                ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_SCREEN_UNAVAILABLE, "host_offline")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: RemoteScreenUnavailableException) {
+            throw error
+        } catch (error: Exception) {
+            val reason = generateSequence<Throwable>(error) { it.cause }.take(16)
+                .filterIsInstance<RelayException>().firstOrNull()?.reason ?: throw error
+            throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_SCREEN_UNAVAILABLE, reason)
+        }
+
     /** Called when the host is deleted; the host row itself is removed by [WorkspaceRepository]. */
     suspend fun forgetHost(hostId: String) {
         closeHost(hostId)
@@ -513,10 +539,15 @@ class RemoteScreenRepository(
         var streamAddress: String? = null
         var streamFallback: RemoteStreamFallback? = null
         var clipboard: WindowsClipboardChannel? = null
+        var relayMediaKbps: Int? = null
         val callerJob = currentCoroutineContext()[Job]
         val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
             runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { ensureRevision(host.id, host.connectionRevision) }
             val windows = ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS
+            // Through a relay: Sunshine's UDP picture cannot follow (protocol v1 has no datagrams), and
+            // VNC/RDP bytes go over a second session on the relay's media channel (RELAY_PLAN §4).
+            val relayed = ssh.route is RemoteRoute.Relay
+            if (windows && relayed) throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_STREAM_ONLY)
             if (windows) clipboard = WindowsClipboardChannel { ssh.openProcess(screenHelperCommand(ssh.platform, "clip serve")) }
             streamRequested = windows || streamRequested
             val endpoint = if (windows) RemoteScreenEndpoint.Helper else configuredEndpoint
@@ -535,7 +566,9 @@ class RemoteScreenRepository(
                     "Linux" -> RemoteScreenPlatform.LINUX
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
-            val attempt = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+            val attempt = if (relayed) {
+                StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.RELAY).takeIf { streamRequested })
+            } else runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
                 attemptRemoteStream(streamRequested) {
                     if (detected !in setOf(RemoteScreenPlatform.LINUX, RemoteScreenPlatform.MACOS, RemoteScreenPlatform.WINDOWS)) return@attemptRemoteStream StreamOpenResult(
                         fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux, macOS or Windows"))
@@ -577,16 +610,21 @@ class RemoteScreenRepository(
             if (attempt.session != null) return@openLeasedRemote attempt.session
             if (windows) throw windowsStreamUnavailable(attempt.fallback)
             val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
+            val media = if (relayed) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { openRelayMedia(host.id, ssh) } else null
+            val tunnel = media ?: ssh
+            relayMediaKbps = (media?.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
+            try {
             if (protocol == RemoteDesktopProtocol.RDP) {
                 val password = credentials.getOrCreateRdp(host.id)
                 val started = startHelperRdp(ssh, password)
                 rdpUsername = started.username
                 val expectedPin = expectedRdpCertificate(host.rdpCertificateSha256, started.certificateSha256)
-                val stream = ssh.openLoopbackStream(requireNotNull(started.port))
+                val stream = tunnel.openLoopbackStream(requireNotNull(started.port))
+                val closeStream = Closeable { stream.close(); media?.close() }
                 try {
                     val size = if (started.mode == "headless") 1920 to 1080 else
                         (started.width?.takeIf { it in 320..8192 } ?: 1920) to (started.height?.takeIf { it in 240..8192 } ?: 1080)
-                    RdpDesktopSession(RdpSession(stream.input, stream.output, stream,
+                    RdpDesktopSession(RdpSession(stream.input, stream.output, closeStream,
                         RdpCredentials(requireNotNull(started.username), password),
                         RdpOptions(size.first, size.second, expectedPin, rdpSecurityForServer(started.server)), sink), expectedPin,
                         onCertificateVerified = if (host.rdpCertificateSha256 == null && expectedPin != null) { pin ->
@@ -609,19 +647,24 @@ class RemoteScreenRepository(
                     else -> endpoint
                 }
                 val stream = when (target) {
-                    is RemoteScreenEndpoint.Tcp -> ssh.openLoopbackStream(target.port)
-                    is RemoteScreenEndpoint.Unix -> ssh.openUnixSocketStream(target.path)
+                    is RemoteScreenEndpoint.Tcp -> tunnel.openLoopbackStream(target.port)
+                    is RemoteScreenEndpoint.Unix -> tunnel.openUnixSocketStream(target.path)
                     RemoteScreenEndpoint.Helper -> throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
                 }
-                VncDesktopSession(RemoteScreenSession(stream.input, stream.output, stream, auth, jpeg, options, sink))
+                val closeStream = Closeable { stream.close(); media?.close() }
+                try {
+                    VncDesktopSession(RemoteScreenSession(stream.input, stream.output, closeStream, auth, jpeg, options, sink))
+                } catch (error: Throwable) { stream.close(); throw error }
             }
+            } catch (error: Throwable) { media?.close(); throw error }
         }
         return try {
             detected?.takeIf { it != RemoteScreenPlatform.UNKNOWN }?.let { platform ->
                 hostDao.updateDetectedScreen(host.id, platform.storageName, rdpUsername)
             }
             val platform = detected ?: RemoteScreenPlatform.parse(host.screenPlatform)
-            val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle, streamFallback, streamRequested, streamAddress) { closed ->
+            val connection = RemoteScreenConnection(host.id, platform, workspaceId, handle, streamFallback, streamRequested, streamAddress,
+                relayMediaKbps = relayMediaKbps) { closed ->
                 synchronized(lock) {
                     open[host.id]?.remove(closed)
                     if (open[host.id].isNullOrEmpty()) open.remove(host.id)
