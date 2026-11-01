@@ -374,6 +374,8 @@ class RemoteWorkspaceSession internal constructor(
         // Resolve it once; all subsequent file paths still reject links below the selected root.
         paths = RemoteWorkspacePath(resolveSelectedRoot(sftp, paths.root), aliasRoot = paths.root)
         requireDirectoryPath(sftp, paths.root)
+        // The first command usually runs in the root: it needs no second check right after this one.
+        verifiedDirectories[paths.root] = System.nanoTime()
     }
 
     private fun resolveSelectedRoot(sftp: ChannelSftp, root: String): String {

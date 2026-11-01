@@ -299,6 +299,7 @@ fun ComputerDetailPage(hostId: String) {
         }
     }
     val current = computer
+    RetainComputerConnection(workspaceList.firstOrNull { it.isRemote && !it.isSpace && it.remoteHostId == hostId }?.id)
     // The name heads the page itself.
     Scaffold(topBar = { ImPageBar("") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         if (current == null) return@Scaffold
