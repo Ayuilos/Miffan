@@ -63,9 +63,10 @@ describe("liveness (slow)", () => {
     const host = await HostControl.connect(D);
     const s = await openSession(host);
     const t0 = Date.now();
-    // The connector side pings and keeps sending; the app side has vanished without closing.
+    // The app pings and keeps sending; the connector's end of the session has vanished without
+    // closing (the computer's side gets 75 s, the app's side 150 s - the latter is covered by the unit tests).
     const timer = setInterval(() => {
-      for (const c of [pinging.conn, host.conn, s.data]) {
+      for (const c of [pinging.conn, host.conn, s.app]) {
         try {
           c.send("ping");
         } catch {
@@ -73,13 +74,13 @@ describe("liveness (slow)", () => {
         }
       }
       try {
-        s.data.send(bytes(10));
+        s.app.send(bytes(10));
       } catch {
         // closed
       }
     }, 15_000);
     try {
-      const closed = await s.data.waitClosed(110_000);
+      const closed = await s.app.waitClosed(110_000);
       expect(closeCodes(closed)).toBe("1000 peer_closed");
       await sleep(Math.max(0, 80_000 - (Date.now() - t0)));
       const gone = await upgradeAttempt(wsUrl(A, `/v1/connect/${silent.hostId}?ch=control`));

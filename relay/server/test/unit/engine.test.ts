@@ -407,23 +407,53 @@ describe("liveness", () => {
     expect(host.closedWith).toEqual([4404, "host_offline"]);
   });
 
-  test("sessions whose app went silent are closed and free their slot", async () => {
+  test("the app's side gets 150 s: a phone locked for two minutes keeps its session", async () => {
     const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 2, idleTimeoutS: 300 } } });
     const key = await newHostKey();
     const host = await connectHost(w, engine, key);
-    const gone = await openSession(w, engine, key, host);
+    const locked = await openSession(w, engine, key, host);
     const alive = await openSession(w, engine, key, host);
-    for (let i = 0; i < 4; i++) {
-      w.t += 20_000;
-      host.autoPing = alive.app.autoPing = alive.data.autoPing = gone.data.autoPing = w.t;
-      await engine.onMessage(gone.data, bin(10)); // the computer keeps sending; the phone is gone
-    }
-    // 80 s: the phone of `gone` was last heard at pairing.
-    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    const tick = async (seconds: number) => {
+      for (let i = 0; i < seconds / 20; i++) {
+        w.t += 20_000;
+        host.autoPing = alive.app.autoPing = alive.data.autoPing = locked.data.autoPing = w.t;
+        await engine.onMessage(locked.data, bin(10)); // the computer keeps sending; the phone sleeps
+      }
+    };
+    await tick(140); // the phone was last heard at pairing, 140 s ago
+    let r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(429); // both slots still taken: the locked phone's session is kept
+    expect(locked.app.closedWith).toBeUndefined();
+    // Unlocked: the phone pings again and carries on.
+    locked.app.autoPing = w.t;
+    await tick(140);
+    expect(locked.app.closedWith).toBeUndefined();
+    // Gone for good: past 150 s its session is closed and frees its slot.
+    await tick(20);
+    r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
     expect(r.status).toBe(200);
-    expect(gone.app.closedWith).toEqual([1000, "peer_closed"]);
-    expect(gone.data.closedWith).toEqual([1000, "peer_closed"]);
+    expect(locked.app.closedWith).toEqual([1000, "peer_closed"]);
+    expect(locked.data.closedWith).toEqual([1000, "peer_closed"]);
     expect(alive.app.closedWith).toBeUndefined();
+  });
+
+  test("the computer's side of a session gets 75 s", async () => {
+    const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 1, idleTimeoutS: 300 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 4; i++) {
+      w.t += 18_000;
+      host.autoPing = s.app.autoPing = w.t;
+      await engine.onMessage(s.app, bin(10)); // the phone keeps typing; the connector's data link died
+    }
+    // 72 s since the connector's side was last heard: still within its 75 s.
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(429);
+    w.t += 5_000;
+    host.autoPing = s.app.autoPing = w.t;
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(200);
+    expect(s.data.closedWith).toEqual([1000, "peer_closed"]);
+    expect(s.app.closedWith).toEqual([1000, "peer_closed"]);
   });
 
   test("an alarm that runs for another reason closes a session with a silent side", async () => {

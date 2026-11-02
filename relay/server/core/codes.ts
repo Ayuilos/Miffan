@@ -68,10 +68,14 @@ export const LIMITS = {
   /** How long a cached global-budget state may be used when a new session starts. */
   budgetCacheMs: 10_000,
   /**
-   * A socket not heard from (no `ping`, no binary frame) for this long is treated as gone. Released
-   * apps and connectors ping every 30 s on every connection, so this allows one lost ping and slack.
+   * A socket not heard from (no `ping`, no binary frame) for this long is treated as gone (PROTOCOL
+   * §5.4). Released apps and connectors ping every 30 s on every connection. The computer's side (its
+   * control connection and its end of each session) gets 75 s: one lost ping and slack. The app's end
+   * of a session gets 150 s, because a phone whose screen is locked stops pinging while it sleeps, and
+   * its sessions should still be there when it is unlocked a couple of minutes later.
    */
-  livenessMs: 75_000,
+  livenessHostMs: 75_000,
+  livenessAppMs: 150_000,
   rateWindowS: 10,
   rateSlack: 1.5,
   /**

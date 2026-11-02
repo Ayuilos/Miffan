@@ -400,7 +400,8 @@ export class Engine {
   //
   // Both ends ping every 30 s (PROTOCOL §5.4). A peer that vanished without closing its TCP connection
   // (a computer going to sleep, a phone switching networks) leaves a socket that looks open; one that
-  // has not been heard from - no ping, no binary frame - for LIMITS.livenessMs is treated as gone.
+  // has not been heard from - no ping, no binary frame - for LIMITS.livenessHostMs (the computer's
+  // side) or LIMITS.livenessAppMs (the app's side of a session) is treated as gone.
   // These checks only run when the object is awake anyway (a new session, an alarm that is due).
 
   private lastHeard(s: Sock, a: Att): number {
@@ -410,7 +411,9 @@ export class Engine {
   }
 
   private silent(s: Sock, now: number): boolean {
-    return now - this.lastHeard(s, s.att()) > LIMITS.livenessMs;
+    const a = s.att();
+    const limit = a.role === "c" ? LIMITS.livenessAppMs : LIMITS.livenessHostMs;
+    return now - this.lastHeard(s, a) > limit;
   }
 
   /** Close paired sessions with a side that has gone silent. */
