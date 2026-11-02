@@ -277,7 +277,7 @@ type harness struct {
 }
 
 func testTiming() timing {
-	return timing{ping: 150 * time.Millisecond, readIdle: 5 * time.Second, handshake: 3 * time.Second,
+	return timing{ping: 150 * time.Millisecond, readIdle: 5 * time.Second, handshake: 3 * time.Second, authWait: time.Second,
 		backoffMin: 20 * time.Millisecond, backoffMax: 100 * time.Millisecond, backoffReset: time.Hour,
 		longRetry: 150 * time.Millisecond, registerRetry: 150 * time.Millisecond, reconcile: 30 * time.Millisecond}
 }
@@ -532,6 +532,29 @@ func TestEndToEndRefusals(t *testing.T) {
 	h.echo.mu.Unlock()
 	if n != 0 {
 		t.Fatalf("%d connections reached the target", n)
+	}
+}
+
+func TestEndToEndSilentAppIsCutAfterAuthWait(t *testing.T) {
+	h := startHarness(t, "", nil) // authWait: 1 s
+	h.relay.waitRegistration(1)
+	_, ws := h.relay.open("control", pace{})
+	_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
+	var ch map[string]any
+	if err := ws.ReadJSON(&ch); err != nil || ch["t"] != "challenge" {
+		t.Fatalf("challenge: %v %v", ch, err)
+	}
+	start := time.Now()
+	_, _, err := ws.ReadMessage() // never answer
+	if err == nil {
+		t.Fatal("expected the connector to give up")
+	}
+	if d := time.Since(start); d < 800*time.Millisecond || d > 3*time.Second {
+		t.Fatalf("gave up after %v, want about the auth wait", d)
+	}
+	ws.Close()
+	if defaultTiming().authWait != 5*time.Second {
+		t.Fatalf("default auth wait is %v", defaultTiming().authWait)
 	}
 }
 

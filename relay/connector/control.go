@@ -17,7 +17,8 @@ import (
 type timing struct {
 	ping          time.Duration // text "ping" interval on every WebSocket
 	readIdle      time.Duration // no frame at all (not even a pong) for this long: the connection is dead
-	handshake     time.Duration // open received → authenticated
+	handshake     time.Duration // open received → data connection up and challenge sent
+	authWait      time.Duration // challenge sent → the app's auth must have arrived
 	backoffMin    time.Duration
 	backoffMax    time.Duration
 	backoffReset  time.Duration // a connection that lived this long resets the backoff
@@ -28,7 +29,7 @@ type timing struct {
 
 func defaultTiming() timing {
 	return timing{
-		ping: 30 * time.Second, readIdle: 100 * time.Second, handshake: 10 * time.Second,
+		ping: 30 * time.Second, readIdle: 100 * time.Second, handshake: 10 * time.Second, authWait: 5 * time.Second,
 		backoffMin: time.Second, backoffMax: 60 * time.Second, backoffReset: 30 * time.Second,
 		longRetry: 5 * time.Minute, registerRetry: time.Hour, reconcile: 2 * time.Second,
 	}

@@ -60,11 +60,13 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 		return
 	}
 	nonce := b64u.EncodeToString(nonceRaw)
-	_ = ws.SetReadDeadline(deadline)
 	ws.SetReadLimit(maxTextFrame)
 	if err := writeText(map[string]any{"t": "challenge", "v": 1, "nonce": nonce}); err != nil {
 		return
 	}
+	// The app answers as soon as the challenge arrives (one round trip and a signature). A session that
+	// stays silent is cut early: until it ends it holds one of the relay's per-computer session slots.
+	_ = ws.SetReadDeadline(time.Now().Add(c.timing.authWait))
 
 	// 2. auth (relay answers pings itself, but tolerate a stray text "ping"; binary before ok is refused)
 	var msg authMessage

@@ -18,9 +18,12 @@ const (
 	reasonBusy         = "busy"
 )
 
-// failureLimiter implements PROTOCOL §5.2 step 5: a device that fails five times within a minute is
-// refused for five minutes, and twenty failures from anyone within a minute close the door to all new
-// sessions for a minute.
+// failureLimiter implements PROTOCOL §5.2 step 5. It only ever refuses requests that could not succeed
+// anyway: a paired device with a correct signature always gets in, whatever has failed before, so that
+// someone who knows the hostId (or a device's public key) cannot lock the owner out by failing on purpose.
+// Twenty failures from anyone within a minute refuse unknown and unparsable requests for a minute (which
+// bounds the work and log lines garbage can cost); five bad signatures under one paired device's name
+// within a minute refuse further bad attempts for that device for five minutes.
 type failureLimiter struct {
 	mu           sync.Mutex
 	now          func() time.Time
@@ -124,35 +127,35 @@ type authMessage struct {
 
 // verifyAuth decides a handshake. On success it returns the deviceId; otherwise the reason to send in
 // the denied message. Failures are recorded here.
+//
+// A paired device's signature is always checked, and a correct one always passes: neither the global
+// lock nor the device's own failures can keep it out. The locks only answer "busy" in place of a refusal
+// that was coming anyway.
 func verifyAuth(cfg *config, limiter *failureLimiter, hostID, sid, ch, nonce string, msg authMessage) (string, string) {
-	if !limiter.allow("") {
-		return "", reasonBusy
+	refuse := func(deviceID, reason string) (string, string) {
+		if !limiter.allow(deviceID) {
+			return deviceID, reasonBusy
+		}
+		limiter.fail(deviceID)
+		return deviceID, reason
 	}
 	if msg.T != "auth" {
-		limiter.fail("")
-		return "", reasonBadSignature
+		return refuse("", reasonBadSignature)
 	}
 	der, pub, err := parseDevicePub(msg.Device)
 	if err != nil {
-		limiter.fail("")
-		return "", reasonUnknown
+		return refuse("", reasonUnknown)
 	}
 	deviceID := idOf(der)
-	if !limiter.allow(deviceID) {
-		return deviceID, reasonBusy
-	}
 	entry := cfg.findDevice(deviceID)
-	if entry == nil {
-		limiter.fail(deviceID)
-		return deviceID, reasonUnknown
-	}
-	if !samePub(entry, der) {
-		limiter.fail(deviceID)
-		return deviceID, reasonUnknown
+	if entry == nil || !samePub(entry, der) {
+		// Unknown devices are counted globally only: per-device entries for keys anyone can mint would
+		// just fill the table.
+		_, reason := refuse("", reasonUnknown)
+		return deviceID, reason
 	}
 	if !verifySession(pub, hostID, sid, ch, nonce, msg.Sig) {
-		limiter.fail(deviceID)
-		return deviceID, reasonBadSignature
+		return refuse(deviceID, reasonBadSignature)
 	}
 	limiter.success(deviceID)
 	return deviceID, ""
