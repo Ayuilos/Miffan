@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -131,16 +132,24 @@ class SnapshotDesktopSession internal constructor(
         }
     }
 
-    private suspend fun connect() {
-        shotPath = blocking(30_000) { serve.ready() }
-        val transport = StdioClientTransport(
-            input = process.input.asSource().buffered(),
-            output = process.output.asSink().buffered(),
-            error = process.errors?.asSource()?.buffered(),
-        )
-        withTimeout(30.seconds) { client.connect(transport) }
-        tools = client.listTools().tools.associateBy { it.name }
-        check("get_desktop_state" in tools) { "cua-driver cannot capture the desktop" }
+    /** The helper's greeting and cua-driver's MCP handshake are independent: wait for both at once. */
+    private suspend fun connect() = coroutineScope {
+        val ready = async { blocking(30_000) { serve.ready() } }
+        try {
+            val transport = StdioClientTransport(
+                input = process.input.asSource().buffered(),
+                output = process.output.asSink().buffered(),
+                error = process.errors?.asSource()?.buffered(),
+            )
+            withTimeout(30.seconds) { client.connect(transport) }
+            tools = client.listTools().tools.associateBy { it.name }
+            check("get_desktop_state" in tools) { "cua-driver cannot capture the desktop" }
+            shotPath = ready.await()
+        } catch (error: Throwable) {
+            // The greeting's blocking read ends only when its channel closes.
+            runCatching { pictures.close() }
+            throw error
+        }
         if ("start_session" in tools) call("start_session", JsonObject(emptyMap()))
     }
 
