@@ -114,6 +114,9 @@ class WorkspaceRepository(
         relayAccess?.network?.watch {
             relayAccess.client.forgetEdges()
             pool.retireIdle { it.route is RemoteRoute.Relay }
+            // Sessions in use most likely died with the old network: find out now (in the
+            // background), so their users reconnect at once rather than after missed pongs.
+            relayAccess.client.checkLiveSessions()
         }
     }
     private val terminalLock = Any()

@@ -70,6 +70,20 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
         return if (latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) (System.nanoTime() - start) / 1_000_000 else null
     }
 
+    /**
+     * Pings now and closes the session (reason [RelayException.UNREACHABLE]) when nothing at all is
+     * heard back within [timeoutMillis]; for example right after the phone changed networks, when
+     * the old connection is usually dead but would take up to a minute to notice. True if alive.
+     */
+    fun checkAlive(timeoutMillis: Long = 3_000): Boolean {
+        if (closed) return false
+        val started = System.nanoTime()
+        if (ping(timeoutMillis) != null || lastHeardNanos > started) return true
+        if (closed) return false
+        finish(IOException("relay did not answer after a network change"), 1000, RelayException.UNREACHABLE)
+        return false
+    }
+
     /** Close reason code from the relay or connector, when the session ended with one. */
     @Volatile var closeReason: String? = null
         private set

@@ -156,6 +156,42 @@ class RelaySocketTest {
             Socket(address, port, localAddress, localPort).small()
     }).build()
 
+    @Test fun checkAliveClosesASilentSession() {
+        val connector = FakeConnector(hostId, allowed = signer.publicKeySpki, answerPings = false)
+        server.enqueue(MockResponse.Builder().webSocketUpgrade(connector).build())
+        val socket = RelaySocket.open(client, server.url("/").toString(), null, hostId, RelayChannel.CONTROL, signer)
+        val started = System.nanoTime()
+        assertTrue(!socket.checkAlive(timeoutMillis = 500))
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000)
+        assertTrue(socket.isClosed)
+        assertEquals(RelayException.UNREACHABLE, socket.closedByRelay?.reason)
+    }
+
+    @Test fun checkAliveKeepsAnAnsweringSession() {
+        server.enqueue(MockResponse.Builder().webSocketUpgrade(FakeConnector(hostId, allowed = signer.publicKeySpki)).build())
+        val socket = RelaySocket.open(client, server.url("/").toString(), null, hostId, RelayChannel.CONTROL, signer)
+        assertTrue(socket.checkAlive(timeoutMillis = 2_000))
+        assertTrue(!socket.isClosed)
+        socket.close()
+    }
+
+    @Test fun clientChecksEveryOpenSessionAfterANetworkChange() {
+        server.enqueue(MockResponse.Builder().body("""{"v":1,"edges":[]}""").build())
+        server.enqueue(MockResponse.Builder().webSocketUpgrade(FakeConnector(hostId, allowed = signer.publicKeySpki)).build())
+        server.enqueue(MockResponse.Builder().webSocketUpgrade(
+            FakeConnector(hostId, allowed = signer.publicKeySpki, answerPings = false)).build())
+        val relay = RelayClient(client)
+        val endpoint = RelayEndpoint(server.url("/").toString().trimEnd('/'))
+        val answering = relay.open(endpoint, hostId, RelayChannel.CONTROL, signer, "wifi:1")
+        val silent = relay.open(endpoint, hostId, RelayChannel.CONTROL, signer, "wifi:1")
+        assertEquals(1, relay.checkLiveSessions(timeoutMillis = 500).get(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(silent.isClosed)
+        assertTrue(!answering.isClosed)
+        answering.close()
+        // A closed session is no longer checked.
+        assertEquals(0, relay.checkLiveSessions(timeoutMillis = 500).get(5, java.util.concurrent.TimeUnit.SECONDS))
+    }
+
     @Test fun tokenBucketPaces() {
         val bucket = TokenBucket(kbps = 800, burstKb = 64) // 100 KB/s, 64 KiB burst
         val start = System.nanoTime()

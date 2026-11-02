@@ -147,6 +147,22 @@ class RelayClient(
     /** Forgets entry choices, for example after the phone switched between Wi-Fi and mobile data. */
     fun forgetEdges() = edgeCache.clear()
 
+    /** Sessions opened by this client and not closed yet. */
+    private val live: MutableSet<RelaySocket> = ConcurrentHashMap.newKeySet()
+
+    /**
+     * Checks every open session at once ([RelaySocket.checkAlive]) and closes the ones that no
+     * longer answer, so their users reconnect now instead of after a minute of missing pongs. Runs
+     * in the background; the future completes with how many were closed.
+     */
+    fun checkLiveSessions(timeoutMillis: Long = 3_000): java.util.concurrent.CompletableFuture<Int> {
+        val checks = live.toList().map { socket ->
+            java.util.concurrent.CompletableFuture.supplyAsync({ socket.checkAlive(timeoutMillis) }, probes)
+        }
+        return java.util.concurrent.CompletableFuture.allOf(*checks.toTypedArray())
+            .thenApply { checks.count { !it.join() } }
+    }
+
     /**
      * Entry candidates, fastest first. `null` means the relay host name through normal DNS, which
      * is always included. [networkKey] separates choices per network.
@@ -290,7 +306,10 @@ class RelayClient(
         for (ip in entries) {
             try {
                 return RelaySocket.open(clientFor(endpoint, ip), endpoint.baseUrl, endpoint.accessToken, hostId, channel,
-                    signer, timeoutMillis)
+                    signer, timeoutMillis).also { socket ->
+                    live += socket
+                    socket.addCloseListener { live -= it }
+                }
             } catch (error: RelayException) {
                 if (error.reason != RelayException.UNREACHABLE) throw error
                 last = error
