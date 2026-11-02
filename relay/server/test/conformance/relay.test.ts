@@ -337,6 +337,33 @@ describe("policy", () => {
     host.close();
   });
 
+  test("rate_limited when a direction sends more than 6000 frames within 10 s, however small", async () => {
+    const host = await HostControl.connect(A);
+    const s = await openSession(host);
+    const one = bytes(1);
+    for (let i = 0; i < 6_001; i++) s.data.send(one);
+    expect(closeCodes(await s.data.waitClosed(10_000))).toBe("4429 rate_limited");
+    expect(closeCodes(await s.app.waitClosed())).toBe("4429 rate_limited");
+    host.close();
+  });
+
+  test("text beyond the end-to-end handshake is refused with 1008", async () => {
+    const host = await HostControl.connect(A);
+    const s = await openSession(host);
+    s.app.send('{"t":"auth"}');
+    s.app.send("second");
+    expect(await s.data.nextText()).toBe('{"t":"auth"}');
+    expect(await s.data.nextText()).toBe("second");
+    s.app.send("ping"); // never counted
+    expect(await s.app.nextText()).toBe("pong");
+    s.app.send("third");
+    expect(closeCodes(await s.app.waitClosed())).toBe("1008 bad_request");
+    expect(closeCodes(await s.data.waitClosed())).toBe("1000 peer_closed");
+
+    host.conn.send('{"t":"status"}'); // an authenticated control connection may only ping
+    expect(closeCodes(await host.conn.waitClosed())).toBe("1008 bad_request");
+  });
+
   test("media is subject to its own, higher allowance", async () => {
     const host = await HostControl.connect(A); // media: 200 kbps, burst 64 KB => 473,304 bytes per 10 s
     const s = await openSession(host, "media");

@@ -295,6 +295,74 @@ describe("sessions", () => {
     expect(t.app.closedWith).toBeUndefined();
   });
 
+  test("frames are limited by count as well as bytes; text frames count too", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    await engine.onMessage(s.data, '{"t":"challenge"}'); // counts as one frame of the connector's side
+    for (let i = 0; i < 5_999; i++) await engine.onMessage(s.data, bin(1));
+    expect(s.data.closedWith).toBeUndefined();
+    for (let i = 0; i < 6_000; i++) await engine.onMessage(s.app, bin(1)); // the other direction has its own count
+    expect(s.app.closedWith).toBeUndefined();
+    await engine.onMessage(s.data, bin(1));
+    expect(s.data.closedWith).toEqual([4429, "rate_limited"]);
+    expect(s.app.closedWith).toEqual([4429, "rate_limited"]);
+
+    const t = await openSession(w, engine, key, host);
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < 5_000; i++) await engine.onMessage(t.app, bin(1));
+      w.t += 10_000; // earlier frames have left the window
+    }
+    expect(t.app.closedWith).toBeUndefined();
+  });
+
+  test("a session carries text only for the handshake; text is metered but is not activity", async () => {
+    const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 4, idleTimeoutS: 100 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    const pairedAt = (s.app.a as SessAtt).lb;
+    await engine.onMessage(s.data, '{"t":"challenge","v":1,"nonce":"x"}');
+    await engine.onMessage(s.app, '{"t":"auth","device":"d","sig":"s"}');
+    await engine.onMessage(s.data, '{"t":"ok"}');
+    await engine.onMessage(s.app, "ping"); // never counted
+    await engine.onMessage(s.app, "ping");
+    expect(s.app.closedWith).toBeUndefined();
+    expect((s.app.a as SessAtt).lb).toBe(pairedAt);
+    w.t += 1000;
+    await engine.onAlarm();
+    await w.settle();
+    const handshake = ['{"t":"challenge","v":1,"nonce":"x"}', '{"t":"auth","device":"d","sig":"s"}', '{"t":"ok"}'];
+    expect(stored(w, key).dayControl).toBe(handshake.join("").length);
+    expect(stored(w, key).dayActiveMin).toBe(0);
+
+    await engine.onMessage(s.app, '{"t":"auth"}'); // the app's second text: still within the handshake allowance
+    expect(s.app.closedWith).toBeUndefined();
+    await engine.onMessage(s.app, "tunnelled");
+    expect(s.app.closedWith).toEqual([1008, "bad_request"]);
+    expect(s.data.closedWith).toEqual([1000, "peer_closed"]);
+
+    const t = await openSession(w, engine, key, host);
+    for (let i = 0; i < 2; i++) await engine.onMessage(t.data, "{}");
+    await engine.onMessage(t.data, "{}");
+    expect(t.data.closedWith).toEqual([1008, "bad_request"]);
+    expect(t.app.closedWith).toEqual([1000, "peer_closed"]);
+  });
+
+  test("an authenticated control connection may send nothing but ping", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    await engine.onMessage(host, "ping");
+    expect(host.closedWith).toBeUndefined();
+    await engine.onMessage(host, '{"t":"anything"}');
+    expect(host.closedWith).toEqual([1008, "bad_request"]);
+    const other = await connectHost(w, engine, key);
+    await engine.onMessage(other, bin(10));
+    expect(other.closedWith).toEqual([1008, "bad_request"]);
+  });
+
   test("the sessions limit counts unpaired sessions", async () => {
     const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 2, idleTimeoutS: 300 } } });
     const key = await newHostKey();

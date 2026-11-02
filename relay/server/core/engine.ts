@@ -106,6 +106,8 @@ export interface SessAtt {
   paired: boolean;
   /** Time of the last binary frame sent from this socket (pairing time at first). */
   lb: number;
+  /** Text frames (other than `ping`) received from this socket so far. */
+  tx?: number;
   p: PendAtt;
   x?: 1;
 }
@@ -351,7 +353,11 @@ export class Engine {
   private async hostMessage(s: Sock, a: HostAtt, msg: Frame): Promise<void> {
     if (msg === "ping") return void s.send("pong");
     if (this.oversize(msg)) return this.shut(s, CLOSE_CODE.frame_too_large, "frame_too_large");
-    if (a.authed) return; // nothing is expected from an authenticated control connection
+    if (a.authed) {
+      // Nothing but `ping` is expected from an authenticated control connection (PROTOCOL §4).
+      this.log("unexpected_message");
+      return this.shut(s, CLOSE_CODE.unexpected_text, "bad_request");
+    }
     const now = this.p.now();
     if (typeof msg !== "string" || now - a.at > LIMITS.challengeMs) return this.shut(s, CLOSE_CODE.unauthorized, "unauthorized");
 
@@ -426,31 +432,48 @@ export class Engine {
       this.shut(s, CLOSE_CODE.peer_closed, "peer_closed");
       return;
     }
-    if (typeof msg === "string") {
-      peer.send(msg);
-      return;
+    const text = typeof msg === "string";
+    let next = a;
+    if (text) {
+      // PROTOCOL §5.3: a session carries text only for the end-to-end handshake (the connector's
+      // challenge and verdict, the app's auth). Anything more is refused rather than relayed unmetered.
+      const tx = (a.tx ?? 0) + 1;
+      if (tx > LIMITS.sessionTexts) {
+        this.log("unexpected_text", { side: a.role });
+        this.shut(s, CLOSE_CODE.unexpected_text, "bad_request");
+        this.peerClosed(a);
+        return;
+      }
+      next = { ...a, tx };
     }
+    const bytes = frameBytes(msg);
     const now = this.p.now();
     const key = `${a.sid}|${a.role}`;
     let win = this.windows.get(key);
     if (!win) this.windows.set(key, (win = new RateWindow()));
-    if (win.wouldExceed(now, msg.byteLength, allowanceBytes(paceFor(this.cfg, a.ch)))) {
+    // Binary bytes are held to the channel's pace; every frame, text or binary, counts against the
+    // frame limit, because the platform bills each received message (PROTOCOL §6.2).
+    const binBytes = text ? 0 : bytes;
+    if (win.wouldExceed(now, binBytes, allowanceBytes(paceFor(this.cfg, a.ch)), LIMITS.maxFramesPerWindow)) {
       this.log("rate_limited", { ch: a.ch });
       this.closeSession(a.sid, CLOSE_CODE.rate_limited, "rate_limited");
       return;
     }
-    win.add(now, msg.byteLength);
+    win.add(now, binBytes);
     try {
       peer.send(msg);
     } catch {
       this.closeSession(a.sid, CLOSE_CODE.peer_closed, "peer_closed");
       return;
     }
-    this.account(s, a, msg.byteLength, now);
+    this.account(s, next, bytes, now, !text);
   }
 
-  /** Meter one forwarded binary frame (bytes, and the active UTC minute). */
-  private account(s: Sock, a: SessAtt, bytes: number, now: number): void {
+  /**
+   * Meter one forwarded frame: its bytes always, and for binary frames also the activity time and
+   * the active UTC minute (PROTOCOL §5.3, §6.3: only binary frames count as activity).
+   */
+  private account(s: Sock, a: SessAtt, bytes: number, now: number, binary: boolean): void {
     const day = utcDay(now);
     if (day !== this.pendDay) {
       void this.flush(); // counts so far belong to the previous day
@@ -458,9 +481,9 @@ export class Engine {
     }
     const wasEmpty = pendingIsEmpty(this.pend);
     this.pend[a.ch] += bytes;
-    const next: SessAtt = { ...a, lb: now, p: { ...a.p, b: a.p.b + bytes, d: day } };
+    const next: SessAtt = { ...a, lb: binary ? now : a.lb, p: { ...a.p, b: a.p.b + bytes, d: day } };
     const minute = Math.floor(now / 60_000);
-    if (minute > this.lastMinute()) {
+    if (binary && minute > this.lastMinute()) {
       this.lm = minute;
       this.pend.minutes += 1;
       next.p.m += 1;
