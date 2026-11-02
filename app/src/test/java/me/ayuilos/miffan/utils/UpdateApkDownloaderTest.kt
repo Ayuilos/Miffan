@@ -261,4 +261,83 @@ class UpdateApkDownloaderTest {
         assertTrue(requests.isEmpty())
         assertFalse(File(directory.parentFile, "escape.apk").exists())
     }
+
+    /** A body that sends [sent] and then drops the connection. */
+    private fun dropping(chain: Interceptor.Chain, sent: String): Response {
+        val body = object : ResponseBody() {
+            override fun contentType() = null
+            override fun contentLength() = content.length.toLong()
+            override fun source() = object : Source {
+                var done = false
+                override fun timeout() = Timeout.NONE
+                override fun close() = Unit
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    if (done) throw IOException("connection reset")
+                    done = true
+                    sink.writeUtf8(sent)
+                    return sent.length.toLong()
+                }
+            }.buffer()
+        }
+        return response(chain, 200, "").newBuilder().body(body).build()
+    }
+
+    @Test fun `a dropped download keeps its bytes and continues from them`() = runBlocking {
+        val half = content.length / 2
+        var online = false
+        val ranges = Collections.synchronizedList(mutableListOf<String?>())
+        val engine = engine { chain ->
+            ranges += chain.request().header("Range")
+            if (!online) dropping(chain, content.substring(0, half))
+            else response(chain, 206, content.substring(half)).newBuilder()
+                .header("Content-Range", "bytes $half-${content.length - 1}/${content.length}").build()
+        }
+        engine.downloadUpdate(download)
+        assertEquals(UpdateDownloadState.Failed(download, UpdateDownloadError.Network), finished(engine))
+        assertEquals(content.substring(0, half), File(directory, "${download.name}.part").readText())
+
+        online = true
+        engine.downloadUpdate(download)
+        assertEquals(UpdateDownloadState.Ready(download), finished(engine))
+        assertEquals(content, File(directory, download.name).readText())
+        assertEquals("bytes=$half-", ranges.last())
+    }
+
+    @Test fun `a server that ignores the range sends the whole file again`() = runBlocking {
+        val half = content.length / 2
+        var online = false
+        val engine = engine { chain -> if (!online) dropping(chain, content.substring(0, half)) else response(chain, 200, content) }
+        engine.downloadUpdate(download)
+        assertEquals(UpdateDownloadState.Failed(download, UpdateDownloadError.Network), finished(engine))
+        online = true
+        engine.downloadUpdate(download)
+        assertEquals(UpdateDownloadState.Ready(download), finished(engine))
+        assertEquals(content, File(directory, download.name).readText())
+    }
+
+    @Test fun `a quiet download reports only success`() = runBlocking {
+        val completions = Collections.synchronizedList(mutableListOf<UpdateDownloadState>())
+        var started = 0
+        var online = false
+        val client = UpdateSourceTest.client { url -> requests += url; if (online) 200 to content else 503 to "" }
+        val engine = UpdateApkDownloader(client, scope, directory, { true }, onStart = { started++ }, onTerminal = { completions += it })
+        engine.downloadUpdate(download, quiet = true)
+        assertEquals(UpdateDownloadState.Failed(download, UpdateDownloadError.Network), finished(engine))
+        assertTrue(completions.isEmpty())
+        online = true
+        engine.downloadUpdate(download, quiet = true)
+        assertEquals(UpdateDownloadState.Ready(download), finished(engine))
+        assertEquals(listOf(UpdateDownloadState.Ready(download)), completions)
+        assertEquals(0, started)
+    }
+
+    @Test fun `an APK from an earlier run is restored as Ready silently`() = runBlocking {
+        File(directory, download.name).writeText(content)
+        val completions = Collections.synchronizedList(mutableListOf<UpdateDownloadState>())
+        val engine = UpdateApkDownloader(OkHttpClient(), scope, directory, { true }, onTerminal = { completions += it })
+        engine.restoreReady(download)
+        assertEquals(UpdateDownloadState.Ready(download), finished(engine))
+        assertTrue(completions.isEmpty())
+        assertTrue(requests.isEmpty())
+    }
 }

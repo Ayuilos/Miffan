@@ -826,6 +826,17 @@ enum class ChatFontFamily {
 }
 
 @Serializable
+enum class UpdateReminder {
+    /** Only the red dot inside the app. */
+    @SerialName("badge")
+    BADGE,
+
+    /** The red dot, plus one system notification per version while Miffan is in the background. */
+    @SerialName("badge_and_notify")
+    BADGE_AND_NOTIFY,
+}
+
+@Serializable
 data class DisplaySetting(
     val userAvatar: Avatar = Avatar.Dummy,
     val userNickname: String = "",
@@ -840,6 +851,10 @@ data class DisplaySetting(
     val showThinkingContent: Boolean = true,
     val autoCloseThinking: Boolean = true,
     val updateCheckDisabledUntilEpochMillis: Long = 0L,
+    val updateReminder: UpdateReminder = UpdateReminder.BADGE_AND_NOTIFY,
+    // Off by default: downloading 30 MB without being asked surprises people.
+    val updateAutoDownloadOnWifi: Boolean = false,
+    val updateShowWhatsNew: Boolean = true,
     val showMessageJumper: Boolean = true,
     val messageJumperOnLeft: Boolean = false,
     val fontSizeRatio: Float = 1.0f,

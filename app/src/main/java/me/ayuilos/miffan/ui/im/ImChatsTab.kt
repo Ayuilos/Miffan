@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import me.ayuilos.miffan.ui.pages.update.UpdateWhatsNewCard
 import android.content.Context
 import androidx.core.content.edit
 import androidx.compose.animation.core.animateFloatAsState
@@ -138,6 +139,9 @@ internal fun ImChatsTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        item("whatsNew") {
+            UpdateWhatsNewCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
         if (current != null && current.pinned.isEmpty() && current.ungrouped.isEmpty() && current.groups.isEmpty()) {
             item("empty") { ImChatsEmpty(onFindPartner) }

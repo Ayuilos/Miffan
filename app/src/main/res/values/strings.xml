@@ -1166,13 +1166,10 @@
   <string name="update_card_downloading_percent">Downloading %1$d%%</string>
   <string name="update_card_downloading_indeterminate">Downloading…</string>
   <string name="update_card_verifying">Verifying the package…</string>
-  <string name="update_card_ready">Download complete</string>
-  <string name="update_card_ready_tap_to_install">Downloaded, tap to install</string>
   <string name="update_card_install">Install</string>
   <string name="update_card_cancel_download">Cancel download</string>
   <string name="update_card_retry">Retry</string>
   <string name="update_card_failed_tap_for_details">Download failed, tap for details</string>
-  <string name="update_card_failed_network">Download failed. Check your connection and try again.</string>
   <string name="update_card_failed_verification">The package failed verification. Try again.</string>
   <string name="update_card_failed_storage">Couldn\'t save the package. Check your free storage.</string>
   <string name="update_card_new_version_found">New version found %s</string>
@@ -1349,7 +1346,6 @@
   <string name="setting_update_reminder_pause_title">Pause update reminders</string>
   <string name="setting_update_reminder_pause_description">Choose how long to pause update reminders. They will resume automatically.</string>
   <string name="setting_update_reminder_pause_days">%1$d days</string>
-  <string name="setting_update_reminder_resume_now">Resume now</string>
   <string name="backup_page_import_overwrite_confirm">Importing a backup will overwrite app data. Continue?</string>
   <string name="setting_provider_page_test_non_streaming">Non-streaming</string>
   <string name="setting_provider_page_test_streaming">Streaming</string>
@@ -2143,7 +2139,6 @@
   <string name="mcp_oauth_error_authorization_server_not_found">Unable to discover authorization server metadata: %1$s</string>
   <string name="mcp_oauth_error_invalid_authorization_endpoint">Invalid authorization endpoint: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">hotword1, hotword2, hotword3</string>
-  <string name="update_changelog_see_release">See the GitHub Release below for the changelog.</string>
   <string name="setting_tts_model_recommended">%1$s (recommended)</string>
   <string name="setting_tts_model_free">%1$s (free)</string>
   <string name="setting_tts_step_api_key_description">Get a key from the StepFun website: platform.stepfun.com/interface-key</string>
@@ -3067,7 +3062,6 @@
   <string name="update_download_verifying">Verifying update package…</string>
   <string name="update_download_cancel">Cancel</string>
   <string name="update_download_complete_title">Update downloaded</string>
-  <string name="update_download_complete_text">Download complete, tap to install</string>
   <string name="update_download_failed_title">Update download failed</string>
   <string name="update_download_failed_text">Unable to download the update. Please try again.</string>
   <string name="im_computer_system_unix" tools:ignore="MissingTranslation">Mac / Linux</string>
@@ -3419,9 +3413,18 @@
   <string name="im_partner_computer_title">%1$s\'s computer</string>
   <string name="im_partner_computer_details">Computer details</string>
   <string name="im_partner_computer_mode">Before it acts</string>
-  <plurals name="im_profile_tasks"><item quantity="one">%1$d scheduled task</item><item quantity="other">%1$d scheduled tasks</item></plurals>
-  <plurals name="im_profile_memory_on"><item quantity="one">%1$d thing · learns as you chat</item><item quantity="other">%1$d things · learns as you chat</item></plurals>
-  <plurals name="im_profile_memory_paused"><item quantity="one">%1$d thing · not learning new ones</item><item quantity="other">%1$d things · not learning new ones</item></plurals>
+  <plurals name="im_profile_tasks">
+    <item quantity="one">%1$d scheduled task</item>
+    <item quantity="other">%1$d scheduled tasks</item>
+  </plurals>
+  <plurals name="im_profile_memory_on">
+    <item quantity="one">%1$d thing · learns as you chat</item>
+    <item quantity="other">%1$d things · learns as you chat</item>
+  </plurals>
+  <plurals name="im_profile_memory_paused">
+    <item quantity="one">%1$d thing · not learning new ones</item>
+    <item quantity="other">%1$d things · not learning new ones</item>
+  </plurals>
   <string name="im_me_profile_desc">What your partners call you · tap to change</string>
   <string name="im_me_section_partners">Partners and you</string>
   <string name="im_me_section_prefs">Preferences</string>
@@ -3455,8 +3458,7 @@
   <string name="im_notify_reply_desc">When you are not in Miffan, a finished reply sends a notification</string>
   <string name="im_notify_progress">Show progress in notifications</string>
   <string name="im_notify_progress_desc">While a partner works on something long, the notification shows how far it got</string>
-  <string name="im_notify_update">Tell me about new versions</string>
-  <string name="im_notify_update_desc">A banner and a dot on the Me tab</string>
+  <string name="im_notify_update_desc">Red dot, notifications and Wi-Fi downloads</string>
   <string name="im_backup_contains">Partners, memories and settings are always included</string>
   <string name="im_backup_choose_place">You will pick where to save it</string>
   <string name="im_backup_again">Back up again</string>
@@ -3475,10 +3477,22 @@
   <string name="im_backup_restore_section">After a new phone or a reinstall</string>
   <string name="im_backup_restore">Restore from a backup</string>
   <string name="im_backup_import_other">Move over from another app</string>
-  <plurals name="im_me_memory_count"><item quantity="one">%1$d thing · delete any time</item><item quantity="other">%1$d things · delete any time</item></plurals>
-  <plurals name="im_me_backup_days"><item quantity="one">%1$d day without a backup</item><item quantity="other">%1$d days without a backup</item></plurals>
-  <plurals name="im_backup_days_ago"><item quantity="one">It has been %1$d day since the last backup</item><item quantity="other">It has been %1$d days since the last backup</item></plurals>
-  <plurals name="im_backup_remind_desc"><item quantity="one">After %1$d day</item><item quantity="other">After %1$d days</item></plurals>
+  <plurals name="im_me_memory_count">
+    <item quantity="one">%1$d thing · delete any time</item>
+    <item quantity="other">%1$d things · delete any time</item>
+  </plurals>
+  <plurals name="im_me_backup_days">
+    <item quantity="one">%1$d day without a backup</item>
+    <item quantity="other">%1$d days without a backup</item>
+  </plurals>
+  <plurals name="im_backup_days_ago">
+    <item quantity="one">It has been %1$d day since the last backup</item>
+    <item quantity="other">It has been %1$d days since the last backup</item>
+  </plurals>
+  <plurals name="im_backup_remind_desc">
+    <item quantity="one">After %1$d day</item>
+    <item quantity="other">After %1$d days</item>
+  </plurals>
   <string name="im_time_today">Today</string>
   <string name="im_thread_favorite">Save</string>
   <string name="im_thread_unfavorite">Remove from saved</string>
@@ -3516,14 +3530,23 @@
   <string name="im_translate_paste">Paste</string>
   <string name="im_translate_clear">Clear</string>
   <string name="im_translate_copied">Copied</string>
-  <plurals name="im_discover_favorites_all"><item quantity="one">All %1$d</item><item quantity="other">All %1$d</item></plurals>
-  <plurals name="im_draw_count"><item quantity="one">%1$d picture</item><item quantity="other">%1$d pictures</item></plurals>
+  <plurals name="im_discover_favorites_all">
+    <item quantity="one">All %1$d</item>
+    <item quantity="other">All %1$d</item>
+  </plurals>
+  <plurals name="im_draw_count">
+    <item quantity="one">%1$d picture</item>
+    <item quantity="other">%1$d pictures</item>
+  </plurals>
   <string name="im_translate_pick_language">Translate into</string>
   <string name="im_ai_service_manage">Add or manage services</string>
   <string name="im_ai_service_draw">Drawing</string>
   <string name="im_ai_service_draw_off">Off · pick a drawing model and partners can draw and edit pictures for you</string>
   <string name="im_ai_service_same_as_default">Same as the default model</string>
-  <plurals name="im_ai_service_model_count"><item quantity="one">%1$d model</item><item quantity="other">%1$d models</item></plurals>
+  <plurals name="im_ai_service_model_count">
+    <item quantity="one">%1$d model</item>
+    <item quantity="other">%1$d models</item>
+  </plurals>
   <string name="magpie_description">**Use the AI on your computer from your phone.** Magpie is a free gateway on your computer that brings the models you have there, including Claude Code and Codex sign-ins, to one address.\n\n1. On the computer, open Magpie → Settings and turn on **Share on local network**.\n2. Copy the **address** and **API key** shown there into the fields below.\n3. Turn on **Enable**, then add models on the **Models** tab.\n\nAway from home Wi-Fi? Reach the computer through a VPN such as Tailscale, and use its Tailscale address instead.\n\nWebsite: [usemagpie.ai](https://usemagpie.ai)</string>
   <string name="im_look_title">Change look</string>
   <string name="im_look_done">Done</string>
@@ -4122,4 +4145,76 @@
   <string name="workspace_screen_details_path_relay">Through the relay, a bit slower than at home. Back on the same network it connects directly again.</string>
   <string name="workspace_screen_details_path_relay_capped">Through the relay at up to %1$.1f Mbps, a bit slower than at home. Back on the same network it connects directly again.</string>
   <string name="im_relay_test_slow_hint">Each action waits a few seconds, so your partners will feel slow. Try again later or on another network.</string>
+  <string name="update_page_title">Update</string>
+  <string name="update_page_subtitle">A new version of Miffan is out</string>
+  <string name="update_page_from_version">From %1$s</string>
+  <string name="update_page_no_notes">The release page has the notes for this version.</string>
+  <string name="update_page_changes">What\'s changed</string>
+  <string name="update_page_full_notes">Full release notes</string>
+  <string name="update_page_update_size">Update · %1$s</string>
+  <string name="update_page_update">Update</string>
+  <string name="update_page_later">Remind me later</string>
+  <string name="update_page_skip">Skip this version</string>
+  <string name="update_page_downloading_hint">You can keep chatting. Miffan will tell you when it\'s ready.</string>
+  <string name="update_page_failed_network">The network dropped. What\'s downloaded so far is kept.</string>
+  <string name="update_page_resume">Continue download</string>
+  <string name="update_keeps_data">Your chats and settings stay as they are</string>
+  <string name="update_snoozed_toast">OK, I\'ll remind you in 3 days</string>
+  <string name="update_skipped_toast">Skipped %1$s. You\'ll hear about the next version.</string>
+  <string name="update_undo">Undo</string>
+  <string name="update_card_new_title">Miffan %1$s is here</string>
+  <string name="update_card_new_fallback">Tap to see what\'s new</string>
+  <string name="update_card_downloading_title">Downloading %1$s</string>
+  <string name="update_card_ready_title">%1$s is ready to install</string>
+  <string name="update_card_look">See</string>
+  <string name="update_card_view">View</string>
+  <string name="update_me_waiting_tag">%1$s available</string>
+  <string name="update_permission_title">One more step</string>
+  <string name="update_permission_text">Android needs your permission for Miffan to install updates. You only do this once.</string>
+  <string name="update_permission_switch">Allow from this source</string>
+  <string name="update_permission_after">Turn this switch on and come back. Miffan carries on with the install.</string>
+  <string name="update_permission_open">Open settings</string>
+  <string name="update_status_checking">Checking…</string>
+  <string name="update_status_latest">You\'re up to date</string>
+  <string name="update_status_failed">Couldn\'t reach the update server</string>
+  <string name="update_status_failed_desc">Check the network, or switch the download route in Update settings</string>
+  <string name="update_status_never_checked">Not checked yet</string>
+  <string name="update_status_checked_at">Checked %1$s</string>
+  <string name="update_status_check">Check for updates</string>
+  <string name="update_status_open">See what\'s new</string>
+  <string name="update_settings_title">Update settings</string>
+  <string name="update_settings_when_new">When there\'s a new version</string>
+  <string name="update_settings_badge_only">Red dot only</string>
+  <string name="update_settings_badge_and_notify">Dot + notification</string>
+  <string name="update_settings_pause">Not for now</string>
+  <string name="update_settings_when_new_note">Miffan checks when you open it and once a day. Each version notifies you at most once.</string>
+  <string name="update_settings_wifi">Download on Wi-Fi</string>
+  <string name="update_settings_wifi_desc">When it\'s done, one tap installs it</string>
+  <string name="update_settings_whats_new">Show what\'s new after updating</string>
+  <string name="update_settings_whats_new_desc">Once, at the top of Chats</string>
+  <string name="update_settings_skipped">Skipped version</string>
+  <string name="update_settings_unskip">Restore</string>
+  <string name="update_settings_source">Download route</string>
+  <string name="update_settings_source_auto">Automatic</string>
+  <string name="update_settings_source_custom">Custom</string>
+  <string name="update_whats_new_card_title">Miffan is now %1$s</string>
+  <string name="update_whats_new_card_text">See what\'s new this time</string>
+  <string name="update_whats_new_dismiss">Dismiss</string>
+  <string name="update_whats_new_title">New in %1$s</string>
+  <string name="update_whats_new_subtitle">All of this works now</string>
+  <string name="update_whats_new_done">Got it</string>
+  <string name="update_notify_new_title">Miffan %1$s is ready to update</string>
+  <string name="update_notify_new_text_fallback">Tap to see what\'s new</string>
+  <string name="update_notify_new_text_more">%1$s, and %2$d more</string>
+  <string name="update_notify_action_update">Update</string>
+  <string name="update_notify_action_skip">Skip this version</string>
+  <string name="update_notify_ready_title">%1$s has downloaded</string>
+  <string name="update_notify_ready_text">Tap to install. Your chats stay as they are.</string>
+  <string name="update_notify_failed_network">The network dropped. Open Miffan to continue.</string>
+  <plurals name="update_status_change_count">
+    <item quantity="one">%d change</item>
+    <item quantity="other">%d changes</item>
+  </plurals>
+  <string name="update_page_skipped_title">Skipped %1$s</string>
+  <string name="update_page_skipped_text">You\'ll hear about the next version when it\'s out.</string>
 </resources>

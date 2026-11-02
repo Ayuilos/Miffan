@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.pages.setting
 
+import me.ayuilos.miffan.ui.pages.update.UpdateStatusCard
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Code
 import me.rerere.hugeicons.stroke.BookOpen01
@@ -128,6 +129,10 @@ fun SettingAboutPage() {
                             style = MaterialTheme.typography.displaySmall,
                         )
                     }
+                }
+
+                item("update") {
+                    UpdateStatusCard(Modifier.padding(horizontal = 8.dp))
                 }
 
                 item {

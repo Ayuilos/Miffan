@@ -1,23 +1,18 @@
 package me.ayuilos.miffan.ui.pages.setting
 
+import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.ui.context.LocalNavController
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,15 +39,11 @@ import me.ayuilos.miffan.utils.toLocalDateTime
 import org.koin.androidx.compose.koinViewModel
 import java.time.Instant
 
-private val UPDATE_PAUSE_DAY_OPTIONS = listOf(7, 14, 21)
-private const val MILLIS_PER_DAY = 24 * 60 * 60 * 1_000L
 
 @Composable
 fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var displaySetting by remember(settings) { mutableStateOf(settings.displaySetting) }
-    var showUpdatePauseDialog by remember { mutableStateOf(false) }
-    var selectedUpdatePauseDays by remember { mutableStateOf(UPDATE_PAUSE_DAY_OPTIONS.first()) }
 
     fun updateDisplaySetting(setting: DisplaySetting) {
         displaySetting = setting
@@ -60,6 +51,7 @@ fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val navController = LocalNavController.current
     val updateChecksEnabled =
         displaySetting.updateCheckDisabledUntilEpochMillis <= System.currentTimeMillis()
 
@@ -96,10 +88,7 @@ fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
                     modifier = Modifier.padding(horizontal = 8.dp),
                 ) {
                     item(
-                        onClick = {
-                            selectedUpdatePauseDays = UPDATE_PAUSE_DAY_OPTIONS.first()
-                            showUpdatePauseDialog = true
-                        },
+                        onClick = { navController.navigate(Screen.UpdateSettings) },
                         headlineContent = { Text(stringResource(R.string.setting_display_page_show_updates_title)) },
                         supportingContent = {
                             Text(
@@ -150,66 +139,5 @@ fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
                 }
             }
         }
-    }
-
-    if (showUpdatePauseDialog) {
-        AlertDialog(
-            onDismissRequest = { showUpdatePauseDialog = false },
-            title = { Text(stringResource(R.string.setting_update_reminder_pause_title)) },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(stringResource(R.string.setting_update_reminder_pause_description))
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        UPDATE_PAUSE_DAY_OPTIONS.forEachIndexed { index, days ->
-                            SegmentedButton(
-                                selected = selectedUpdatePauseDays == days,
-                                onClick = { selectedUpdatePauseDays = days },
-                                shape = SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = UPDATE_PAUSE_DAY_OPTIONS.size,
-                                ),
-                            ) {
-                                Text(stringResource(R.string.setting_update_reminder_pause_days, days))
-                            }
-                        }
-                    }
-                    if (!updateChecksEnabled) {
-                        TextButton(
-                            onClick = {
-                                updateDisplaySetting(
-                                    displaySetting.copy(updateCheckDisabledUntilEpochMillis = 0L)
-                                )
-                                showUpdatePauseDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(stringResource(R.string.setting_update_reminder_resume_now))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        updateDisplaySetting(
-                            displaySetting.copy(
-                                updateCheckDisabledUntilEpochMillis =
-                                    System.currentTimeMillis() + selectedUpdatePauseDays * MILLIS_PER_DAY,
-                            )
-                        )
-                        showUpdatePauseDialog = false
-                    }
-                ) {
-                    Text(stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUpdatePauseDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
     }
 }

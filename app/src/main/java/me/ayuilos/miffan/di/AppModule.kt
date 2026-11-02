@@ -29,6 +29,8 @@ import me.ayuilos.miffan.utils.JsonInstant
 import me.ayuilos.miffan.utils.SoundEffectPlayer
 import me.ayuilos.miffan.utils.UpdateApkDownloader
 import me.ayuilos.miffan.utils.UpdateChecker
+import me.ayuilos.miffan.utils.AndroidUpdateEnvironment
+import me.ayuilos.miffan.utils.SharedPreferencesUpdateLocalStore
 import me.ayuilos.miffan.web.WebServerManager
 import me.rerere.tts.provider.TTSManager
 import org.koin.dsl.module
@@ -52,6 +54,8 @@ val appModule = module {
             appScope = get<AppScope>(),
             settings = get<SettingsStore>().settingsFlow,
             downloader = get(),
+            store = SharedPreferencesUpdateLocalStore(get()),
+            environment = AndroidUpdateEnvironment(get()),
         )
     }
 

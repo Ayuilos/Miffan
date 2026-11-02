@@ -43,7 +43,6 @@ import me.ayuilos.miffan.ui.hooks.writeStringPreference
 import me.ayuilos.miffan.ui.hooks.ChatInputState
 import me.ayuilos.miffan.utils.AppAnalytics
 import me.ayuilos.miffan.utils.UpdateChecker
-import me.ayuilos.miffan.utils.availableUpdate
 import java.util.Locale
 import kotlin.uuid.Uuid
 
@@ -190,8 +189,8 @@ class ChatVM(
     }
 
     // Update checker
-    val availableUpdate = updateChecker.updateState
-        .map { it.availableUpdate() }
+    val availableUpdate = updateChecker.presentation
+        .map { it.available?.takeIf { _ -> it.showBadge } }
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),

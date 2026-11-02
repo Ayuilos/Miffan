@@ -31,6 +31,7 @@ import me.ayuilos.miffan.ui.pages.share.handler.ShareHandlerVM
 import me.ayuilos.miffan.ui.pages.translator.TranslatorVM
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
+import me.ayuilos.miffan.ui.pages.update.UpdateVM
 import org.koin.dsl.module
 
 val viewModelModule = module {
@@ -49,6 +50,7 @@ val viewModelModule = module {
     }
     viewModelOf(::ChatDrawerVM)
     viewModelOf(::ImHomeVM)
+    viewModelOf(::UpdateVM)
     viewModelOf(::ImWelcomeVM)
     viewModelOf(::ImSearchVM)
     viewModel<ImMemoryVM> { params -> ImMemoryVM(params.get(), get(), get(), get(), get()) }

@@ -52,14 +52,14 @@ import me.ayuilos.miffan.data.datastore.isNotConfigured
 import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.ui.components.ui.UIAvatar
-import me.ayuilos.miffan.ui.components.ui.UpdateAvailableBanner
+import me.ayuilos.miffan.ui.pages.update.UpdateCard
+import me.ayuilos.miffan.ui.pages.update.UpdateWaitingTag
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.hooks.EditStateContent
 import me.ayuilos.miffan.ui.hooks.rememberCurrentColorMode
 import me.ayuilos.miffan.ui.hooks.useEditState
 import me.ayuilos.miffan.ui.im.computer.rememberKnownComputers
 import me.ayuilos.miffan.ui.theme.ColorMode
-import me.ayuilos.miffan.utils.UpdateInfo
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
@@ -80,11 +80,11 @@ import kotlin.uuid.Uuid
  * plain words, and the professional settings folded away under "advanced".
  */
 @Composable
-internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate: UpdateInfo?) {
+internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
     val navController = LocalNavController.current
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val updateDownloadState by vm.downloadState.collectAsStateWithLifecycle()
+    val update by vm.updatePresentation.collectAsStateWithLifecycle()
     val computers by rememberKnownComputers()
     val scope = rememberCoroutineScope()
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -133,16 +133,9 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
                 }
             }
         }
-        availableUpdate?.let { info ->
+        if (update.showCard) {
             item("update") {
-                UpdateAvailableBanner(
-                    info = info,
-                    downloadState = updateDownloadState,
-                    onDownload = { vm.downloadUpdate(context, it) },
-                    onCancelDownload = vm::cancelUpdateDownload,
-                    onInstall = { vm.installUpdate(context) },
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
+                UpdateCard(modifier = Modifier.padding(horizontal = 16.dp))
             }
         }
         item("partners") {
@@ -219,8 +212,16 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, availableUpdate:
         }
         item("more") {
             ImCardGroup(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
-                ImListRow(HugeIcons.InformationCircle, stringResource(R.string.im_me_about_miffan), { navController.navigate(Screen.SettingAbout) },
-                    trailing = { ImRowValue(BuildConfig.VERSION_NAME) })
+                // After 「稍后提醒」 the card goes away; a quiet tag here still says an update is waiting.
+                val waiting = update.available?.takeIf { !update.showCard }
+                ImListRow(HugeIcons.InformationCircle, stringResource(R.string.im_me_about_miffan),
+                    { navController.navigate(if (waiting != null) Screen.Update else Screen.SettingAbout) },
+                    trailing = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            waiting?.let { UpdateWaitingTag(stringResource(R.string.update_me_waiting_tag, it.version)) }
+                            ImRowValue(BuildConfig.VERSION_NAME)
+                        }
+                    })
                 ImCardDivider()
                 ImListRow(HugeIcons.Settings03, stringResource(R.string.im_me_advanced), { advanced = !advanced },
                     supporting = stringResource(R.string.im_me_advanced_desc),

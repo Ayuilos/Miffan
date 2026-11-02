@@ -1,6 +1,5 @@
 package me.ayuilos.miffan.ui.im
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,9 +34,8 @@ import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadListSummaries
 import me.ayuilos.miffan.service.ChatService
 import me.ayuilos.miffan.utils.UpdateChecker
-import me.ayuilos.miffan.utils.UpdateDownload
 import me.ayuilos.miffan.utils.UpdateInfo
-import me.ayuilos.miffan.utils.availableUpdate
+import me.ayuilos.miffan.utils.UpdatePresentation
 import java.time.Instant
 import kotlin.uuid.Uuid
 
@@ -95,17 +93,12 @@ class ImHomeVM(
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
 
-    val availableUpdate: StateFlow<UpdateInfo?> = updateChecker.updateState
-        .map { it.availableUpdate() }
+    /** A new version worth a red dot on the 我 tab. */
+    val availableUpdate: StateFlow<UpdateInfo?> = updateChecker.presentation
+        .map { it.available?.takeIf { _ -> it.showBadge } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val downloadState = updateChecker.downloadState
-
-    fun cancelUpdateDownload() = updateChecker.cancelUpdateDownload()
-
-    fun installUpdate(context: Context): Boolean = updateChecker.installUpdate(context)
-
-    fun downloadUpdate(context: Context, download: UpdateDownload) = updateChecker.downloadUpdate(context, download)
+    val updatePresentation: StateFlow<UpdatePresentation> = updateChecker.presentation
 
     /** Per partner chat, the members whose requests wait for the owner. */
     private val chatApprovals = partnerChatService.observeSummaries()

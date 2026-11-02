@@ -17,6 +17,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionManager
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionNotification
 import me.ayuilos.miffan.ui.components.ui.permission.rememberPermissionState
@@ -25,8 +27,6 @@ import me.ayuilos.miffan.utils.toLocalDateTime
 import org.koin.androidx.compose.koinViewModel
 import java.time.Instant
 
-private val UPDATE_PAUSE_DAYS = listOf(7, 14, 21)
-private const val DAY_MILLIS = 24 * 60 * 60 * 1_000L
 
 /**
  * Easy chat's notifications in plain words. When the system blocks Miffan's notifications the page
@@ -46,7 +46,7 @@ fun ImNotificationsPage(vm: SettingVM = koinViewModel()) {
         permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setOf(PermissionNotification) else emptySet(),
     )
     PermissionManager(permissionState = permissionState)
-    var pausing by remember { mutableStateOf(false) }
+    val navController = LocalNavController.current
     val updatesOn = display.updateCheckDisabledUntilEpochMillis <= System.currentTimeMillis()
 
     Scaffold(topBar = { ImPageBar(stringResource(R.string.im_me_notification)) }) { padding ->
@@ -81,39 +81,12 @@ fun ImNotificationsPage(vm: SettingVM = koinViewModel()) {
                             vm.updateSettings { it.copy(displaySetting = it.displaySetting.copy(enableLiveUpdateNotification = on)) }
                         }, supporting = stringResource(R.string.im_notify_progress_desc), enabled = display.enableNotificationOnMessageGeneration)
                     ImCardDivider(start = 16.dp)
-                    ImSwitchRow(stringResource(R.string.im_notify_update), updatesOn, { on ->
-                        if (on) vm.updateSettings { it.copy(displaySetting = it.displaySetting.copy(updateCheckDisabledUntilEpochMillis = 0L)) }
-                        else pausing = true
-                    }, supporting = if (updatesOn) stringResource(R.string.im_notify_update_desc)
-                    else stringResource(R.string.setting_update_reminder_paused_until,
-                        Instant.ofEpochMilli(display.updateCheckDisabledUntilEpochMillis).toLocalDateTime()))
+                    ImListRow(null, stringResource(R.string.update_settings_title), { navController.navigate(Screen.UpdateSettings) },
+                        supporting = if (updatesOn) stringResource(R.string.im_notify_update_desc)
+                        else stringResource(R.string.setting_update_reminder_paused_until,
+                            Instant.ofEpochMilli(display.updateCheckDisabledUntilEpochMillis).toLocalDateTime()))
                 }
             }
         }
-    }
-    // Update reminders pause for a while rather than switch off for good.
-    if (pausing) {
-        var days by remember { mutableIntStateOf(UPDATE_PAUSE_DAYS.first()) }
-        AlertDialog(onDismissRequest = { pausing = false },
-            title = { Text(stringResource(R.string.setting_update_reminder_pause_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.setting_update_reminder_pause_description))
-                    UPDATE_PAUSE_DAYS.forEach { option ->
-                        Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(days == option, { days = option })
-                            Text(stringResource(R.string.setting_update_reminder_pause_days, option))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.updateSettings { it.copy(displaySetting = it.displaySetting.copy(
-                        updateCheckDisabledUntilEpochMillis = System.currentTimeMillis() + days * DAY_MILLIS)) }
-                    pausing = false
-                }) { Text(stringResource(R.string.confirm)) }
-            },
-            dismissButton = { TextButton(onClick = { pausing = false }) { Text(stringResource(R.string.cancel)) } })
     }
 }

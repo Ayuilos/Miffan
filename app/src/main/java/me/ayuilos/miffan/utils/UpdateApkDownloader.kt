@@ -64,22 +64,33 @@ class UpdateApkDownloader internal constructor(
     private val lock = Any()
     private var generation = 0L
     private var job: Job? = null
+
+    /** A background (Wi-Fi) download: no foreground service, and a failure stays silent. */
+    private var quiet = false
     private val state = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
     val downloadState: StateFlow<UpdateDownloadState> = state.asStateFlow()
 
-    fun downloadUpdate(download: UpdateDownload): Unit = synchronized(lock) {
+    fun downloadUpdate(download: UpdateDownload, quiet: Boolean = false): Unit = synchronized(lock) {
         val currentDownload = when (val current = state.value) {
             is UpdateDownloadState.Downloading -> current.download
             is UpdateDownloadState.Verifying -> current.download
             is UpdateDownloadState.Ready -> current.download
             else -> null
         }
-        if (currentDownload == download) return@synchronized
+        if (currentDownload == download) {
+            // The user took over a background download: from now on it is theirs, kept alive in the foreground.
+            if (!quiet && this.quiet) {
+                this.quiet = false
+                if (state.value !is UpdateDownloadState.Ready) onStart()
+            }
+            return@synchronized
+        }
         job?.cancel()
         val id = ++generation
+        this.quiet = quiet
         state.value = UpdateDownloadState.Downloading(download, host(download.url), 0, download.sizeBytes)
         // Request foreground lifetime on the caller's thread, before the activity can be hidden.
-        onStart()
+        if (!quiet) onStart()
         job = appScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
                 downloadMutex.withLock { runDownload(download, id) }
@@ -88,6 +99,44 @@ class UpdateApkDownloader internal constructor(
                 throw cancelled
             }
         }.also { it.start() }
+    }
+
+    /**
+     * Shows an APK finished in an earlier process as Ready again, after checking it, without a
+     * notification. Does nothing unless the downloader is idle.
+     */
+    fun restoreReady(download: UpdateDownload) {
+        if (!download.hasSafeName() || state.value !is UpdateDownloadState.Idle) return
+        val restoring = synchronized(lock) { generation }
+        appScope.launch(Dispatchers.IO) {
+            downloadMutex.withLock {
+                val final = File(directory, download.name)
+                if (!final.isFile) return@withLock
+                val verified = try {
+                    verify(final, download)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    false
+                }
+                synchronized(lock) {
+                    if (verified && generation == restoring && state.value is UpdateDownloadState.Idle) {
+                        ++generation
+                        state.value = UpdateDownloadState.Ready(download)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Removes downloaded APKs once they are no longer useful, for example after the update was installed. */
+    fun discardFiles() {
+        if (state.value !is UpdateDownloadState.Idle) return
+        appScope.launch(Dispatchers.IO) {
+            downloadMutex.withLock {
+                if (state.value is UpdateDownloadState.Idle) directory.listFiles()?.forEach { it.delete() }
+            }
+        }
     }
 
     fun cancelUpdateDownload() = synchronized(lock) {
@@ -105,7 +154,7 @@ class UpdateApkDownloader internal constructor(
     private fun publish(id: Long, value: UpdateDownloadState) = synchronized(lock) {
         if (id == generation) {
             state.value = value
-            if (value is UpdateDownloadState.Ready || value is UpdateDownloadState.Failed) {
+            if (value is UpdateDownloadState.Ready || (value is UpdateDownloadState.Failed && !quiet)) {
                 onTerminal(value)
             }
         }
@@ -113,17 +162,17 @@ class UpdateApkDownloader internal constructor(
 
     private suspend fun runDownload(download: UpdateDownload, id: Long) {
         var part: File? = null
+        // Bytes already fetched survive a network failure, so "retry" continues instead of starting over.
+        var keepPart = false
         try {
             // Release metadata is remote input; never allow it to escape cacheDir/updates.
-            if (download.name.isBlank() || download.name in listOf(".", "..") ||
-                '/' in download.name || '\\' in download.name
-            ) throw AttemptFailure(UpdateDownloadError.Storage)
+            if (!download.hasSafeName()) throw AttemptFailure(UpdateDownloadError.Storage)
             val final = File(directory, download.name)
             part = File(directory, "${download.name}.part")
             storage {
                 if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Cannot create updates directory")
                 val files = directory.listFiles() ?: throw IOException("Cannot list updates directory")
-                files.filter { it != final }.forEach(::deleteFile)
+                files.filter { it != final && it != part }.forEach(::deleteFile)
             }
             if (final.isFile) {
                 publish(id, UpdateDownloadState.Verifying(download))
@@ -151,6 +200,7 @@ class UpdateApkDownloader internal constructor(
                     currentCoroutineContext().ensureActive()
                     if (error is CancellationException) throw error
                     lastError = (error as? AttemptFailure)?.error ?: UpdateDownloadError.Network
+                    if (lastError == UpdateDownloadError.Network) continue
                     try {
                         storage { deleteFile(part) }
                     } catch (_: AttemptFailure) {
@@ -159,6 +209,7 @@ class UpdateApkDownloader internal constructor(
                     }
                 }
             }
+            keepPart = lastError == UpdateDownloadError.Network
             publish(id, UpdateDownloadState.Failed(download, lastError))
         } catch (error: Exception) {
             currentCoroutineContext().ensureActive()
@@ -166,14 +217,18 @@ class UpdateApkDownloader internal constructor(
             publish(id, UpdateDownloadState.Failed(download, (error as? AttemptFailure)?.error ?: UpdateDownloadError.Storage))
         } finally {
             // The mutex holds until cleanup finishes, including across rapid replacements.
-            part?.delete()
+            if (!keepPart) part?.delete()
         }
     }
 
     private suspend fun transfer(url: String, part: File, download: UpdateDownload, id: Long) = coroutineScope {
-        publish(id, UpdateDownloadState.Downloading(download, host(url), 0, download.sizeBytes))
+        val existing = if (part.isFile) part.length() else 0L
+        val resumeFrom = existing.takeIf { it > 0 && (download.sizeBytes == null || it < download.sizeBytes) } ?: 0L
+        if (resumeFrom == 0L && existing > 0) storage { deleteFile(part) }
+        publish(id, UpdateDownloadState.Downloading(download, host(url), resumeFrom, download.sizeBytes))
         val request = Request.Builder().url(url)
             .header("User-Agent", "Miffan-Android/${BuildConfig.VERSION_NAME} #${BuildConfig.VERSION_CODE}")
+            .apply { if (resumeFrom > 0) header("Range", "bytes=$resumeFrom-") }
             .build()
         val call = client.newCall(request)
         // await() cancels before headers; this watcher also interrupts blocking body reads.
@@ -186,15 +241,24 @@ class UpdateApkDownloader internal constructor(
         }
         try {
             call.await().use { response ->
+                if (response.code == 416) {
+                    // The stored part no longer matches what the server has; the next source starts fresh.
+                    storage { deleteFile(part) }
+                    throw AttemptFailure(UpdateDownloadError.Network)
+                }
                 if (!response.isSuccessful) throw AttemptFailure(UpdateDownloadError.Network)
-                val total = download.sizeBytes ?: response.body.contentLength().takeIf { it >= 0 }
-                publish(id, UpdateDownloadState.Downloading(download, host(url), 0, total))
+                // Only a 206 for exactly our offset may be appended; anything else is the whole file again.
+                val appending = resumeFrom > 0 && response.code == 206 &&
+                    response.header("Content-Range")?.startsWith("bytes $resumeFrom-") == true
+                val base = if (appending) resumeFrom else 0L
+                val total = download.sizeBytes ?: response.body.contentLength().takeIf { it >= 0 }?.plus(base)
+                publish(id, UpdateDownloadState.Downloading(download, host(url), base, total))
                 response.body.byteStream().use { input ->
-                    val output = storage { part.outputStream() }
+                    val output = storage { java.io.FileOutputStream(part, appending) }
                     try {
                         val buffer = ByteArray(32 * 1024)
-                        var bytes = 0L
-                        var lastBytes = 0L
+                        var bytes = base
+                        var lastBytes = base
                         var lastTime = System.nanoTime()
                         while (true) {
                             currentCoroutineContext().ensureActive()
@@ -264,6 +328,9 @@ class UpdateApkDownloader internal constructor(
     private fun deleteFile(file: File) {
         if (file.exists() && !file.delete()) throw IOException("Cannot remove update file")
     }
+
+    private fun UpdateDownload.hasSafeName(): Boolean =
+        name.isNotBlank() && name !in listOf(".", "..") && '/' !in name && '\\' !in name
 
     private fun host(url: String): String = url.toHttpUrlOrNull()?.host.orEmpty()
 

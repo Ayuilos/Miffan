@@ -73,7 +73,7 @@ import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.ui.components.nav.BackButton
 import me.ayuilos.miffan.ui.components.ui.CardGroup
 import me.ayuilos.miffan.ui.components.ui.Select
-import me.ayuilos.miffan.ui.components.ui.UpdateAvailableBanner
+import me.ayuilos.miffan.ui.pages.update.UpdateCard
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.Navigator
 import me.ayuilos.miffan.ui.hooks.rememberColorMode
@@ -98,7 +98,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     } else {
         vm.availableUpdate.collectAsStateWithLifecycle().value
     }
-    val updateDownloadState by vm.downloadState.collectAsStateWithLifecycle()
     val filesManager: FilesManager = koinInject()
     val settingsStore: SettingsStore = koinInject()
     val scope = rememberCoroutineScope()
@@ -124,17 +123,9 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             contentPadding = innerPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            availableUpdate?.let { info ->
+            if (availableUpdate != null) {
                 item("availableUpdate") {
-                    val context = LocalContext.current
-                    UpdateAvailableBanner(
-                        info = info,
-                        downloadState = updateDownloadState,
-                        onDownload = { vm.downloadUpdate(context, it) },
-                        onCancelDownload = vm::cancelUpdateDownload,
-                        onInstall = { vm.installUpdate(context) },
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
+                    UpdateCard(modifier = Modifier.padding(horizontal = 8.dp))
                 }
             }
 

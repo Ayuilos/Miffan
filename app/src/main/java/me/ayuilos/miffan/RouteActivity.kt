@@ -107,6 +107,8 @@ import me.ayuilos.miffan.ui.im.ImDrawPage
 import me.ayuilos.miffan.ui.im.ImFavoritesPage
 import me.ayuilos.miffan.ui.im.ImTranslatePage
 import me.ayuilos.miffan.ui.im.ImNotificationsPage
+import me.ayuilos.miffan.ui.pages.update.UpdatePage
+import me.ayuilos.miffan.ui.pages.update.UpdateSettingsPage
 import me.ayuilos.miffan.ui.im.ImPartnerEditPage
 import me.ayuilos.miffan.ui.im.computer.PartnerComputerPage
 import me.ayuilos.miffan.ui.im.ImChatRedirect
@@ -295,7 +297,8 @@ class RouteActivity : ComponentActivity() {
         normalLauncherEntry = isNormalLauncherEntry(intent)
         // Navigate to the chat screen if a conversation ID is provided
         notificationDestination(intent.getStringExtra("chatId"), intent.getStringExtra("conversationId"),
-            intent.getStringExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA))?.let {
+            intent.getStringExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA),
+            intent.getBooleanExtra(me.ayuilos.miffan.utils.OPEN_UPDATE_EXTRA, false))?.let {
             navStack?.add(it)
         }
     }
@@ -304,6 +307,7 @@ class RouteActivity : ComponentActivity() {
         (intent.action == Intent.ACTION_MAIN || intent.action == null) && intent.data == null &&
         !intent.hasExtra("chatId") && !intent.hasExtra("conversationId") &&
         !intent.hasExtra(me.ayuilos.miffan.data.ai.computer.COMPUTER_STATUS_EXTRA) && !intent.hasExtra(Intent.EXTRA_TEXT) &&
+        !intent.hasExtra(me.ayuilos.miffan.utils.OPEN_UPDATE_EXTRA) &&
         !intent.hasExtra(Intent.EXTRA_STREAM)
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -369,7 +373,13 @@ class RouteActivity : ComponentActivity() {
             AppStartupLoading(startupAppearance)
             return
         }
-        val backStack = rememberNavBackStack(resolvedStartScreen)
+        // A cold start from an update notification opens the update page over the usual first screen,
+        // so going back lands somewhere sensible.
+        val backStack = if (intent.getBooleanExtra(me.ayuilos.miffan.utils.OPEN_UPDATE_EXTRA, false)) {
+            rememberNavBackStack(resolvedStartScreen, Screen.Update)
+        } else {
+            rememberNavBackStack(resolvedStartScreen)
+        }
         // Reserve this launch for the workspace introduction, even after it is dismissed.
         // A user skipping several versions should not receive two promotional dialogs in a row.
         val workspaceIntroductionLaunch = rememberSaveable { !settings.remoteWorkspaceIntroSeen }
@@ -481,6 +491,8 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId, key.assistantId) }
                             entry<Screen.ImAppearance> { ImAppearancePage() }
                             entry<Screen.ImNotifications> { ImNotificationsPage() }
+                            entry<Screen.Update> { UpdatePage() }
+                            entry<Screen.UpdateSettings> { UpdateSettingsPage() }
                             entry<Screen.ImBackup> { ImBackupPage() }
                             entry<Screen.ImDraw> { key -> ImDrawPage(key.gallery) }
                             entry<Screen.ImFavorites> { ImFavoritesPage() }
@@ -1026,6 +1038,12 @@ sealed interface Screen : NavKey {
     data object SettingAbout : Screen
 
     @Serializable
+    data object Update : Screen
+
+    @Serializable
+    data object UpdateSettings : Screen
+
+    @Serializable
     data object SettingSearch : Screen
 
     @Serializable
@@ -1104,9 +1122,15 @@ sealed interface Screen : NavKey {
 }
 
 /** Shared by cold launches and notification taps while the activity is already running. */
-internal fun notificationDestination(chatId: String?, conversationId: String?, computerId: String? = null): Screen? = when {
+internal fun notificationDestination(
+    chatId: String?,
+    conversationId: String?,
+    computerId: String? = null,
+    update: Boolean = false,
+): Screen? = when {
     chatId != null -> Screen.PartnerChat(chatId)
     conversationId != null -> Screen.Chat(conversationId)
     computerId != null -> Screen.ComputerSetup(hostId = computerId, status = true)
+    update -> Screen.Update
     else -> null
 }
