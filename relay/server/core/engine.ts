@@ -77,6 +77,8 @@ export interface PendAtt {
   m: number;
   /** Last UTC minute credited through this socket. */
   lm: number;
+  /** UTC day the unwritten counts belong to (absent on attachments from before this field existed). */
+  d?: string;
 }
 
 export interface HostAtt {
@@ -140,7 +142,8 @@ export class Engine {
     private cfg: RelayConfig,
   ) {
     this.pendDay = utcDay(p.now());
-    // After hibernation, rebuild what was only in memory from the sockets' attachments.
+    // After hibernation, rebuild what was only in memory from the sockets' attachments. Unwritten
+    // counts keep the day they were made on, even when the object wakes after UTC midnight.
     for (const s of p.allSockets()) {
       const a = s.att();
       if (!this.hid) this.hid = a.hid;
@@ -148,6 +151,7 @@ export class Engine {
       this.pend[a.ch] += a.p.b;
       this.pend.minutes += a.p.m;
       this.lmSockets = Math.max(this.lmSockets, a.p.lm);
+      if ((a.p.b || a.p.m) && a.p.d) this.pendDay = a.p.d;
     }
   }
 
@@ -454,7 +458,7 @@ export class Engine {
     }
     const wasEmpty = pendingIsEmpty(this.pend);
     this.pend[a.ch] += bytes;
-    const next: SessAtt = { ...a, lb: now, p: { ...a.p, b: a.p.b + bytes } };
+    const next: SessAtt = { ...a, lb: now, p: { ...a.p, b: a.p.b + bytes, d: day } };
     const minute = Math.floor(now / 60_000);
     if (minute > this.lastMinute()) {
       this.lm = minute;

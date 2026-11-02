@@ -414,6 +414,34 @@ describe("metering", () => {
     expect(stored(w, key).dayMedia).toBe(777 + 5000);
   });
 
+  test("counts left unwritten before midnight keep their day when the object wakes after it", async () => {
+    const { w, cfg, engine } = setup();
+    w.t = Date.UTC(2026, 10, 1, 23, 59, 0);
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    await engine.onMessage(s.app, bin(1000));
+    w.t += 1000;
+    await engine.onAlarm(); // first write-back after a quiet spell is immediate
+    await w.settle();
+    w.t = Date.UTC(2026, 10, 1, 23, 59, 55);
+    await engine.onMessage(s.app, bin(6000)); // the alarm for it never runs before midnight
+    // Evicted; the alarm wakes a new object after midnight.
+    w.t = Date.UTC(2026, 10, 2, 0, 0, 30);
+    const woken = wake(w, cfg);
+    await woken.onAlarm();
+    await w.settle();
+    expect(sqlite(w.db).all("SELECT day, bytes FROM usage_day ORDER BY day")).toEqual([{ day: "2026-11-01", bytes: 7000 }]);
+    // New traffic after the wake belongs to the new day.
+    await woken.onMessage(s.app, bin(50));
+    woken.onClose(s.app);
+    await w.settle();
+    expect(sqlite(w.db).all("SELECT day, bytes FROM usage_day ORDER BY day")).toEqual([
+      { day: "2026-11-01", bytes: 7000 },
+      { day: "2026-11-02", bytes: 50 },
+    ]);
+  });
+
   test("a day change flushes the previous day's counts to the previous day", async () => {
     const { w, engine } = setup();
     w.t = Date.UTC(2026, 10, 1, 23, 59, 50);
