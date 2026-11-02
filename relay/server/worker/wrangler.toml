@@ -59,8 +59,15 @@ new_sqlite_classes = ["HostRelay"]
 tag = "v2"
 new_sqlite_classes = ["Budget"]
 
+# Keep our own console.log lines (hostId prefix and event names only), but not the per-request
+# invocation logs: those carry request metadata (client address, location) for days, while PROTOCOL
+# §6.3 allows source addresses to be kept for at most one day.
 [observability]
 enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = false
 
 [env.dev]
 name = "miffan-relay-dev"
@@ -101,3 +108,7 @@ new_sqlite_classes = ["Budget"]
 
 [env.dev.observability]
 enabled = true
+
+[env.dev.observability.logs]
+enabled = true
+invocation_logs = false
