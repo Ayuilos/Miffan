@@ -17,10 +17,16 @@ class WindowsScreenHelperTest {
         assertEquals("& \"\$env:LOCALAPPDATA\\Miffan\\bin\\miffan.ps1\" space create miffan-0000abcd 2 4096",
             spaceHelperCommand(RemotePlatform.WINDOWS, listOf("create", "miffan-0000abcd", "2", "4096")))
         assertEquals("\"\$HOME/.miffan/bin/miffan\" space info miffan-0000abcd", spaceHelperCommand(RemotePlatform.POSIX, listOf("info", "miffan-0000abcd")))
-        // Exactly the helper's bytes, never up to the end of stdin.
-        assertTrue(windowsHelperInstallCommand(152485).contains("${'$'}left = 152485"))
-        assertFalse(windowsHelperInstallCommand(1).contains("CopyTo"))
-        assertTrue(windowsHelperInstallCommand(1).contains("[IO.File]::Replace"))
+        // Exactly the helper's bytes, never up to the end of stdin, read asynchronously with a deadline and
+        // checked against the helper's SHA-256.
+        val install = windowsHelperInstallCommand(ByteArray(152485))
+        assertTrue(install.contains("${'$'}left = 152485"))
+        assertTrue(install.contains("(Get-FileHash -Algorithm SHA256 -LiteralPath ${'$'}temp).Hash -ne '" +
+            java.security.MessageDigest.getInstance("SHA-256").digest(ByteArray(152485)).joinToString("") { "%02X".format(it) } + "'"))
+        assertTrue(install.contains("New-Object IO.FileStream (${'$'}handle, [IO.FileAccess]::Read, 65536, ${'$'}true)"))
+        assertTrue(install.contains(".Wait(20000)"))
+        assertFalse(install.contains("CopyTo"))
+        assertTrue(install.contains("[IO.File]::Replace"))
         val asset = File(System.getProperty("remoteHelper.assets"), "miffan.ps1").readBytes()
         assertArrayEquals(byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()), asset.take(3).toByteArray())
         // versions.lock pins the exact version; here it only has to be a plain integer.

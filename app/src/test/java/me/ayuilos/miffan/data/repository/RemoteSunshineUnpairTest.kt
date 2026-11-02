@@ -46,7 +46,8 @@ class RemoteSunshineUnpairTest {
                 }
             }
             RemoteSunshineUnpair(assets) { fixture("certificate.pem").readText() }.unpair(ssh)
-            assertEquals(3, commands.size)
+            // Version check, the same check again under the install lock, install, unpair.
+            assertEquals(4, commands.size)
             assertTrue(commands.last().endsWith("sunshine unpair $expected"))
             assertFalse(commands.any { "revoke" in it })
         }
