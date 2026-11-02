@@ -127,7 +127,7 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     )
                     ImTab.PARTNERS -> ImPartnersTab(vm, contentPadding)
                     ImTab.DISCOVER -> ImDiscoverTab(contentPadding)
-                    ImTab.ME -> ImMeTab(vm, contentPadding, availableUpdate)
+                    ImTab.ME -> ImMeTab(vm, contentPadding)
                 }
             }
             // Lists scroll under the transparent status bar; the fade stays inside the titles' top padding.

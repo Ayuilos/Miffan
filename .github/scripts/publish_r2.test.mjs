@@ -56,6 +56,19 @@ test('maps a published ARM64 APK into the website manifest contract', () => {
   assert.equal(releaseFromGitHub(github('v3.0.5')).fileName, release.fileName);
 });
 
+test('carries the release notes, and still reads manifests written before they existed', () => {
+  const notes = '更新内容：\n\n### Miffan 自有改动\n\n- 一项改动\n\nUpdates:\n\n### Miffan changes\n\n- One change';
+  const withNotes = releaseFromGitHub({ ...github(), body: notes });
+  assert.equal(withNotes.changelog, notes);
+  assert.deepEqual(parseManifest(withNotes), withNotes);
+  assert.equal(release.changelog, '');
+  const { changelog, ...legacy } = release;
+  assert.equal(parseManifest(legacy).changelog, undefined);
+  assert.throws(() => parseManifest({ ...release, changelog: 42 }));
+  assert.throws(() => parseManifest({ ...release, changelog: 'x'.repeat(40000) }));
+  assert.equal(releaseFromGitHub({ ...github(), body: 'x'.repeat(40000) }).changelog.length, 32768);
+});
+
 test('rejects drafts, prereleases, missing/ambiguous files, invalid hashes and sizes', () => {
   for (const change of [
     { draft: true }, { prerelease: true }, { tag_name: '3.0.5-rc.1' },

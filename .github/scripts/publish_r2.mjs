@@ -10,6 +10,7 @@ export const BUCKET = 'miffan-releases';
 export const ORIGIN = 'https://downloads.ayuilos.me';
 const ENDPOINT = 'https://c2df10005f1eb0cb71b0e7b4d089cdb3.r2.cloudflarestorage.com';
 const IMMUTABLE = 'public, max-age=31536000, immutable';
+const MAX_CHANGELOG_LENGTH = 32768;
 
 export function validTag(tag) {
   return typeof tag === 'string' && tag.length <= 64 &&
@@ -20,7 +21,9 @@ export function parseManifest(value) {
   if (!value || !validTag(value.version) || value.architecture !== 'arm64-v8a' ||
       typeof value.publishedAt !== 'string' || !Number.isFinite(Date.parse(value.publishedAt)) ||
       !Number.isSafeInteger(value.size) || value.size <= 0 || value.size > 512_000_000 ||
-      typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256)) {
+      typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256) ||
+      (value.changelog !== undefined &&
+        (typeof value.changelog !== 'string' || value.changelog.length > MAX_CHANGELOG_LENGTH))) {
     throw new Error('Invalid stable release manifest.');
   }
   const fileName = 'Miffan-' + value.version.replace(/^v/, '') + '-arm64-v8a.apk';
@@ -30,11 +33,14 @@ export function parseManifest(value) {
       value.checksumUrl !== downloadUrl + '.sha256' || value.releaseUrl !== releaseUrl) {
     throw new Error('Release manifest has an unexpected URL or filename.');
   }
-  return {
+  const manifest = {
     version: value.version, publishedAt: value.publishedAt, architecture: 'arm64-v8a',
     fileName, size: value.size, sha256: value.sha256, downloadUrl,
     checksumUrl: downloadUrl + '.sha256', releaseUrl,
   };
+  // The bilingual release notes; the app shows the part for its language. Older manifests have none.
+  if (value.changelog !== undefined) manifest.changelog = value.changelog;
+  return manifest;
 }
 
 export function releaseFromGitHub(data) {
@@ -54,6 +60,7 @@ export function releaseFromGitHub(data) {
     fileName, size: apks[0].size, sha256: apks[0].digest.slice(7),
     downloadUrl, checksumUrl: downloadUrl + '.sha256',
     releaseUrl: 'https://github.com/' + REPO + '/releases/tag/' + data.tag_name,
+    changelog: typeof data.body === 'string' ? data.body.slice(0, MAX_CHANGELOG_LENGTH) : '',
   });
 }
 

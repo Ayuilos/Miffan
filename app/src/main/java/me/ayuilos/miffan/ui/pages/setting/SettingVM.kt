@@ -1,6 +1,5 @@
 package me.ayuilos.miffan.ui.pages.setting
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -13,9 +12,7 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.withWhaleThemeTrial
 import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.utils.UpdateChecker
-import me.ayuilos.miffan.utils.UpdateDownload
 import me.ayuilos.miffan.utils.UpdateInfo
-import me.ayuilos.miffan.utils.availableUpdate
 
 class SettingVM(
     private val settingsStore: SettingsStore,
@@ -27,8 +24,8 @@ class SettingVM(
         .stateIn(viewModelScope, SharingStarted.Lazily, Settings(init = true, providers = emptyList()))
 
     val availableUpdate: StateFlow<UpdateInfo?> =
-        updateChecker.updateState
-            .map { it.availableUpdate() }
+        updateChecker.presentation
+            .map { it.available?.takeIf { _ -> it.showCard } }
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
@@ -49,15 +46,5 @@ class SettingVM(
 
     suspend fun experienceWhaleTheme(whaleName: String) {
         settingsStore.update { it.withWhaleThemeTrial(whaleName) }
-    }
-
-    val downloadState = updateChecker.downloadState
-
-    fun cancelUpdateDownload() = updateChecker.cancelUpdateDownload()
-
-    fun installUpdate(context: Context): Boolean = updateChecker.installUpdate(context)
-
-    fun downloadUpdate(context: Context, download: UpdateDownload) {
-        updateChecker.downloadUpdate(context, download)
     }
 }

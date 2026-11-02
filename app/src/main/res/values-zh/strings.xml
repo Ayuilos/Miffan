@@ -1124,13 +1124,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="update_card_downloading_percent">正在下载 %1$d%%</string>
   <string name="update_card_downloading_indeterminate">正在下载…</string>
   <string name="update_card_verifying">正在校验安装包…</string>
-  <string name="update_card_ready">下载完成</string>
-  <string name="update_card_ready_tap_to_install">已下载，点按安装</string>
   <string name="update_card_install">安装</string>
   <string name="update_card_cancel_download">取消下载</string>
   <string name="update_card_retry">重试</string>
   <string name="update_card_failed_tap_for_details">下载失败，点按查看</string>
-  <string name="update_card_failed_network">下载失败，请检查网络后重试</string>
   <string name="update_card_failed_verification">安装包校验未通过，请重试</string>
   <string name="update_card_failed_storage">无法保存安装包，请检查剩余存储空间</string>
   <string name="update_card_new_version_found">发现新版本 %s</string>
@@ -1323,7 +1320,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_update_reminder_pause_title">暂停更新提醒</string>
   <string name="setting_update_reminder_pause_description">选择暂停更新提醒的时长。它们会自动恢复。</string>
   <string name="setting_update_reminder_pause_days">%1$d 天</string>
-  <string name="setting_update_reminder_resume_now">立即恢复</string>
   <string name="reasoning_max">最大</string>
   <string name="backup_page_import_overwrite_confirm">导入备份会覆盖 App 数据，是否继续</string>
   <string name="setting_page_preferences_network">网络</string>
@@ -2136,7 +2132,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="mcp_oauth_error_authorization_server_not_found">无法发现授权服务器元数据: %1$s</string>
   <string name="mcp_oauth_error_invalid_authorization_endpoint">非法的授权端点: %1$s</string>
   <string name="setting_asr_hotwords_placeholder">热词1, 热词2, 热词3</string>
-  <string name="update_changelog_see_release">更新日志请查看下方 GitHub Release。</string>
   <string name="setting_tts_model_recommended">%1$s (推荐)</string>
   <string name="setting_tts_model_free">%1$s (免费)</string>
   <string name="setting_tts_step_api_key_description">从阶跃星辰官网获取密钥: platform.stepfun.com/interface-key</string>
@@ -3050,7 +3045,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="update_download_verifying">正在验证更新包…</string>
   <string name="update_download_cancel">取消</string>
   <string name="update_download_complete_title">更新下载完成</string>
-  <string name="update_download_complete_text">下载完成，点击安装</string>
   <string name="update_download_failed_title">更新下载失败</string>
   <string name="update_download_failed_text">无法下载更新，请重试</string>
   <string name="im_computer_system_unix">Mac / Linux</string>
@@ -3401,9 +3395,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_partner_computer_title">%1$s 用电脑</string>
   <string name="im_partner_computer_details">电脑详情</string>
   <string name="im_partner_computer_mode">动手之前</string>
-  <plurals name="im_profile_tasks"><item quantity="other">%1$d 个定时任务</item></plurals>
-  <plurals name="im_profile_memory_on"><item quantity="other">%1$d 件 · 聊天时会记下新的</item></plurals>
-  <plurals name="im_profile_memory_paused"><item quantity="other">%1$d 件 · 暂停记新的</item></plurals>
+  <plurals name="im_profile_tasks">
+    <item quantity="other">%1$d 个定时任务</item>
+  </plurals>
+  <plurals name="im_profile_memory_on">
+    <item quantity="other">%1$d 件 · 聊天时会记下新的</item>
+  </plurals>
+  <plurals name="im_profile_memory_paused">
+    <item quantity="other">%1$d 件 · 暂停记新的</item>
+  </plurals>
   <string name="im_me_profile_desc">伙伴们这样称呼你 · 点一下修改</string>
   <string name="im_me_section_partners">伙伴与你</string>
   <string name="im_me_section_prefs">偏好</string>
@@ -3437,8 +3437,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_notify_reply_desc">你不在 Miffan 里的时候，伙伴说完话会发通知</string>
   <string name="im_notify_progress">在通知栏看伙伴的进度</string>
   <string name="im_notify_progress_desc">伙伴忙一件长任务时，通知栏会显示它做到哪了</string>
-  <string name="im_notify_update">有新版本时告诉我</string>
-  <string name="im_notify_update_desc">在“我”页面和横幅里提示更新</string>
+  <string name="im_notify_update_desc">红点、通知和 Wi-Fi 自动下载</string>
   <string name="im_backup_contains">伙伴、记忆和设置都在里面</string>
   <string name="im_backup_choose_place">会让你选一个保存的位置</string>
   <string name="im_backup_again">再备份一次</string>
@@ -3457,10 +3456,18 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_backup_restore_section">换手机或重装后</string>
   <string name="im_backup_restore">从备份恢复</string>
   <string name="im_backup_import_other">从其他 App 搬过来</string>
-  <plurals name="im_me_memory_count"><item quantity="other">%1$d 件事 · 可以随时删掉</item></plurals>
-  <plurals name="im_me_backup_days"><item quantity="other">%1$d 天没备份</item></plurals>
-  <plurals name="im_backup_days_ago"><item quantity="other">已经 %1$d 天没备份了</item></plurals>
-  <plurals name="im_backup_remind_desc"><item quantity="other">超过 %1$d 天</item></plurals>
+  <plurals name="im_me_memory_count">
+    <item quantity="other">%1$d 件事 · 可以随时删掉</item>
+  </plurals>
+  <plurals name="im_me_backup_days">
+    <item quantity="other">%1$d 天没备份</item>
+  </plurals>
+  <plurals name="im_backup_days_ago">
+    <item quantity="other">已经 %1$d 天没备份了</item>
+  </plurals>
+  <plurals name="im_backup_remind_desc">
+    <item quantity="other">超过 %1$d 天</item>
+  </plurals>
   <string name="im_time_today">今天</string>
   <string name="im_thread_favorite">收藏</string>
   <string name="im_thread_unfavorite">取消收藏</string>
@@ -3498,14 +3505,20 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_translate_paste">粘贴</string>
   <string name="im_translate_clear">清空</string>
   <string name="im_translate_copied">已复制</string>
-  <plurals name="im_discover_favorites_all"><item quantity="other">全部 %1$d 条</item></plurals>
-  <plurals name="im_draw_count"><item quantity="other">%1$d 张</item></plurals>
+  <plurals name="im_discover_favorites_all">
+    <item quantity="other">全部 %1$d 条</item>
+  </plurals>
+  <plurals name="im_draw_count">
+    <item quantity="other">%1$d 张</item>
+  </plurals>
   <string name="im_translate_pick_language">翻成哪种语言</string>
   <string name="im_ai_service_manage">添加或管理服务商</string>
   <string name="im_ai_service_draw">画图</string>
   <string name="im_ai_service_draw_off">未开启 · 选一个画图模型，伙伴就能帮你画图、改图</string>
   <string name="im_ai_service_same_as_default">跟默认模型一样</string>
-  <plurals name="im_ai_service_model_count"><item quantity="other">%1$d 个模型</item></plurals>
+  <plurals name="im_ai_service_model_count">
+    <item quantity="other">%1$d 个模型</item>
+  </plurals>
   <string name="magpie_description">**在手机上用你电脑上的 AI。** Magpie 是装在电脑上的免费网关，把你在电脑上能用的模型（包括登录好的 Claude Code、Codex）汇到一个地址。\n\n1. 在电脑上打开 Magpie →「设置」，打开 **局域网共享**。\n2. 把那里显示的 **地址** 和 **API 密钥** 填到下面。\n3. 打开 **是否启用**，再到 **模型** 页添加模型。\n\n不在家里的 Wi-Fi 时，可以用 Tailscale 等 VPN 连回电脑，把地址换成电脑的 Tailscale 地址。\n\n官网：[usemagpie.ai](https://usemagpie.ai)</string>
   <string name="im_look_title">换个样子</string>
   <string name="im_look_done">完成</string>
@@ -4102,4 +4115,75 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_details_path_relay">经中转连接，比在家里慢一些。回到同一个网络后会自动改为直接连接。</string>
   <string name="workspace_screen_details_path_relay_capped">经中转连接，画面最高 %1$.1f Mbps，比在家里慢一些。回到同一个网络后会自动改为直接连接。</string>
   <string name="im_relay_test_slow_hint">每做一个动作要等几秒，伙伴操作会明显变慢。可以过一会儿再测，或者换个网络。</string>
+  <string name="update_page_title">版本更新</string>
+  <string name="update_page_subtitle">Miffan 有新版本了</string>
+  <string name="update_page_from_version">从 %1$s 升级</string>
+  <string name="update_page_no_notes">这个版本的更新说明在发布页上。</string>
+  <string name="update_page_changes">这次更新</string>
+  <string name="update_page_full_notes">完整更新说明</string>
+  <string name="update_page_update_size">更新 · %1$s</string>
+  <string name="update_page_update">更新</string>
+  <string name="update_page_later">稍后提醒</string>
+  <string name="update_page_skip">跳过这个版本</string>
+  <string name="update_page_downloading_hint">可以先去聊天，下好了会告诉你</string>
+  <string name="update_page_failed_network">网络断了，已经下好的部分会保留</string>
+  <string name="update_page_resume">继续下载</string>
+  <string name="update_keeps_data">聊天记录和设置都会保留</string>
+  <string name="update_snoozed_toast">好，3 天后再提醒你</string>
+  <string name="update_skipped_toast">已跳过 %1$s，有更新的版本再告诉你</string>
+  <string name="update_undo">撤销</string>
+  <string name="update_card_new_title">Miffan %1$s 来了</string>
+  <string name="update_card_new_fallback">点开看看更新了什么</string>
+  <string name="update_card_downloading_title">正在下载 %1$s</string>
+  <string name="update_card_ready_title">%1$s 已准备好</string>
+  <string name="update_card_look">看看</string>
+  <string name="update_card_view">查看</string>
+  <string name="update_me_waiting_tag">%1$s 可更新</string>
+  <string name="update_permission_title">还差一步</string>
+  <string name="update_permission_text">安卓需要你先允许 Miffan 安装更新，只用开一次。</string>
+  <string name="update_permission_switch">允许来自此来源的应用</string>
+  <string name="update_permission_after">打开这个开关后返回，Miffan 会接着帮你装。</string>
+  <string name="update_permission_open">去打开</string>
+  <string name="update_status_checking">正在检查…</string>
+  <string name="update_status_latest">已是最新版本</string>
+  <string name="update_status_failed">没连上更新服务器</string>
+  <string name="update_status_failed_desc">看看网络，或在「更新设置」里换一条下载线路</string>
+  <string name="update_status_never_checked">还没检查过</string>
+  <string name="update_status_checked_at">%1$s检查过</string>
+  <string name="update_status_check">检查更新</string>
+  <string name="update_status_open">看看更新了什么</string>
+  <string name="update_settings_title">更新设置</string>
+  <string name="update_settings_when_new">有新版本时</string>
+  <string name="update_settings_badge_only">只标红点</string>
+  <string name="update_settings_badge_and_notify">红点＋通知</string>
+  <string name="update_settings_pause">先别提醒</string>
+  <string name="update_settings_when_new_note">Miffan 会在打开时和每天一次检查更新，每个版本最多通知一次。</string>
+  <string name="update_settings_wifi">Wi-Fi 下自动下载</string>
+  <string name="update_settings_wifi_desc">下好后只需点一下安装</string>
+  <string name="update_settings_whats_new">装好后讲讲新变化</string>
+  <string name="update_settings_whats_new_desc">在聊天页顶部出现一次</string>
+  <string name="update_settings_skipped">跳过的版本</string>
+  <string name="update_settings_unskip">恢复</string>
+  <string name="update_settings_source">下载线路</string>
+  <string name="update_settings_source_auto">自动</string>
+  <string name="update_settings_source_custom">自定义</string>
+  <string name="update_whats_new_card_title">Miffan 更新到 %1$s 了</string>
+  <string name="update_whats_new_card_text">看看这次多了什么</string>
+  <string name="update_whats_new_dismiss">不看了</string>
+  <string name="update_whats_new_title">%1$s 新变化</string>
+  <string name="update_whats_new_subtitle">更新好了，这些已经能用</string>
+  <string name="update_whats_new_done">知道了</string>
+  <string name="update_notify_new_title">Miffan %1$s 可以更新了</string>
+  <string name="update_notify_new_text_fallback">点开看看更新了什么</string>
+  <string name="update_notify_new_text_more">%1$s，还有 %2$d 项改动</string>
+  <string name="update_notify_action_update">更新</string>
+  <string name="update_notify_action_skip">跳过这个版本</string>
+  <string name="update_notify_ready_title">%1$s 已经下好了</string>
+  <string name="update_notify_ready_text">点一下就能装，聊天记录都会保留</string>
+  <string name="update_notify_failed_network">网络断了，打开 Miffan 可以继续下载</string>
+  <plurals name="update_status_change_count">
+    <item quantity="other">%d 项改动</item>
+  </plurals>
+  <string name="update_page_skipped_title">已跳过 %1$s</string>
+  <string name="update_page_skipped_text">有更新的版本出来时再告诉你。</string>
 </resources>

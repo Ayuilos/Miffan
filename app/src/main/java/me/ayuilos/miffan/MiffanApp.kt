@@ -109,6 +109,8 @@ class MiffanApp : Application() {
 
         deliverRemoteTaskResults()
 
+        startUpdateChecks()
+
         // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
     }
 
@@ -122,6 +124,19 @@ class MiffanApp : Application() {
                 if (event == Lifecycle.Event.ON_START) get<AppScope>().launch(Dispatchers.IO) {
                     get<me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery>().syncAndDeliver()
                 }
+            })
+        }
+    }
+
+    /** Checks on launch, whenever Miffan returns to the foreground (when due), and once a day in the background. */
+    private fun startUpdateChecks() {
+        get<AppScope>().launch {
+            val checker = get<me.ayuilos.miffan.utils.UpdateChecker>()
+            if (me.ayuilos.miffan.utils.PlayStoreUtil.isInstalledFromPlayStore(this@MiffanApp)) return@launch
+            runCatching { me.ayuilos.miffan.service.UpdateCheckWorker.schedule(this@MiffanApp) }
+                .onFailure { Log.w(TAG, "Unable to schedule update checks", it) }
+            ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_START) checker.checkIfDue()
             })
         }
     }
