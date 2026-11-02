@@ -2308,6 +2308,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_stream_reason_display_asleep">Mac のディスプレイがスリープ中で、解除できませんでした</string>
   <string name="workspace_screen_stream_reason_screen_locked">Mac がロックされていて、高パフォーマンスモードではパスワードを入力できません。ここでロックを解除してからメニューで切り替えてください</string>
   <string name="workspace_screen_mode_stream">高性能</string>
+  <string name="workspace_screen_mode_snapshot">スナップショット</string>
   <string name="workspace_screen_quality_saver">データ節約</string>
   <string name="workspace_screen_quality_balanced">バランス</string>
   <string name="workspace_screen_quality_best">最高画質</string>
@@ -2317,9 +2318,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_quality_custom_fps">フレームレート（fps）</string>
   <string name="workspace_screen_quality_custom_hint">高パフォーマンスモードでのみ有効です。1 時間あたり最大約 %1$s GB。パソコンの画面より大きい解像度は画面サイズまで下げられます。</string>
   <string name="workspace_screen_quality_fps">最大 %1$d fps</string>
+  <string name="workspace_screen_quality_snapshot">幅 %1$d px</string>
   <string name="workspace_screen_quality_server">画面はパソコン側で決まります（RDP）</string>
   <string name="workspace_screen_audio">サウンド</string>
   <string name="workspace_screen_stream_skip">今回は通常の接続を使う</string>
+  <string name="workspace_screen_snapshot_live">ライブ画面に切り替え</string>
+  <string name="workspace_screen_snapshot_use">スナップショットに切り替え</string>
   <string name="workspace_screen_stream_retry">高性能モードで再接続</string>
   <string name="workspace_screen_fullscreen">全画面</string>
   <string name="workspace_screen_fullscreen_exit">全画面を終了</string>
@@ -2327,6 +2331,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_details">接続の詳細</string>
   <string name="workspace_screen_details_mode">接続方式</string>
   <string name="workspace_screen_details_stream">高性能モード（Sunshine）</string>
+  <string name="workspace_screen_details_snapshot">スナップショット。数秒ごとに更新され、タップや入力の直後にも更新されます</string>
   <string name="workspace_screen_details_rdp">リモートデスクトップ（RDP）</string>
   <string name="workspace_screen_details_path">画面の経路</string>
   <string name="workspace_screen_details_path_stream">UDP で %1$s に直接接続（暗号化）</string>
