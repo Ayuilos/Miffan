@@ -228,9 +228,12 @@ class WorkspaceRepository(
         val (session, winner) = raceRoutes(
             direct = {
                 tryRemoteAddresses(host.connectionAddresses) { address ->
-                    openGuarded {
+                    val timeout = addressTimeoutMillis(host, address)
+                    // Losing the race must end a blocked connect now, not at its timeout.
+                    val sockets = me.rerere.workspace.CancellableSocketFactory(timeout)
+                    openGuarded(onCancel = sockets::cancel) {
                         remoteTransport.open(config.copy(host = address.host, port = address.port),
-                            timeoutMillis = addressTimeoutMillis(host, address))
+                            timeoutMillis = timeout, socketFactory = sockets)
                     }.also { directAddress = address }
                 }
             },
@@ -253,10 +256,19 @@ class WorkspaceRepository(
         }
     }
 
-    /** Opens one SSH session; a session that finishes opening after cancellation is closed, not leaked. */
-    private suspend fun openGuarded(open: () -> RemoteWorkspaceSession): RemoteWorkspaceSession {
+    /**
+     * Opens one SSH session; a session that finishes opening after cancellation is closed, not leaked.
+     * [onCancel] runs as soon as the caller is cancelled, to unblock a socket that ignores interrupts.
+     */
+    @OptIn(kotlinx.coroutines.InternalCoroutinesApi::class)
+    private suspend fun openGuarded(onCancel: (() -> Unit)? = null, open: () -> RemoteWorkspaceSession): RemoteWorkspaceSession {
         val opened = AtomicReference<RemoteWorkspaceSession?>()
         val disposed = AtomicBoolean(false)
+        val cancellationHook = onCancel?.let { cancel ->
+            currentCoroutineContext()[kotlinx.coroutines.Job]?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+                if (cause != null) runCatching { cancel() }
+            }
+        }
         try {
             val session = runRemoteInterruptible {
                 open().also {
@@ -271,6 +283,7 @@ class WorkspaceRepository(
             opened.compareAndSet(session, null)
             return session
         } finally {
+            cancellationHook?.dispose()
             disposed.set(true)
             opened.getAndSet(null)?.let { session ->
                 withContext(NonCancellable + Dispatchers.IO) { session.close() }

@@ -3,9 +3,13 @@ package me.ayuilos.miffan.data.repository.relay
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -95,5 +99,32 @@ class RouteRaceTest {
         val (value, winner) = raceRoutes(direct = { "lan" }, relay = null, relayHeadStartMillis = 0,
             close = {}, preferError = prefer)
         assertEquals("lan" to RouteWinner.DIRECT, value to winner)
+    }
+
+    @Test fun relayWinnerReturnsWithoutWaitingForABlockedDirect() = runTest {
+        // A blocking Socket.connect ignores cancellation: the direct route only returns at its timeout.
+        val (value, winner) = raceRoutes(
+            direct = { withContext(NonCancellable) { delay(8_000) }; "lan" },
+            relay = { delay(500); "relay" },
+            relayHeadStartMillis = 2_000, close = { closed += it }, preferError = prefer,
+        )
+        assertEquals("relay" to RouteWinner.RELAY, value to winner)
+        assertEquals(2_500, currentTime)
+        // The late direct session is still closed once its blocked attempt returns.
+        advanceUntilIdle()
+        assertEquals(listOf("lan"), closed.toList())
+    }
+
+    @Test fun timeoutInsideARouteCountsAsFailure() = runTest {
+        // withTimeout throws a CancellationException while the race is still active.
+        val error = runCatching {
+            raceRoutes<String>(
+                direct = { withTimeout(100) { awaitCancellation() } },
+                relay = { throw IOException("host_offline") },
+                relayHeadStartMillis = 2_000, close = {}, preferError = { _, relay -> relay },
+            )
+        }.exceptionOrNull()
+        assertEquals("host_offline", error?.message)
+        assertEquals(100, currentTime)
     }
 }
