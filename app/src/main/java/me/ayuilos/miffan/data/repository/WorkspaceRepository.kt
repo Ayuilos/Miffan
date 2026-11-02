@@ -27,6 +27,7 @@ import me.ayuilos.miffan.data.repository.relay.RelayAccess
 import me.ayuilos.miffan.data.repository.relay.RouteWinner
 import me.ayuilos.miffan.data.repository.relay.raceRoutes
 import me.ayuilos.miffan.data.repository.relay.relaySessionClose
+import me.ayuilos.miffan.data.repository.relay.shouldPreconnect
 import me.rerere.workspace.RemoteRoute
 import me.rerere.workspace.relay.RelayChannel
 import me.rerere.workspace.relay.RelayException
@@ -412,11 +413,15 @@ class WorkspaceRepository(
         }
     }
 
-    /** Holds a connection while a configured workspace is on screen. */
-    suspend fun retainRemoteWorkspace(id: String): Closeable? {
+    /**
+     * Holds a connection while a configured workspace is on screen. With [throughRelay] false, a
+     * computer last reached through its relay is left alone ([shouldPreconnect]).
+     */
+    suspend fun retainRemoteWorkspace(id: String, throughRelay: Boolean = true): Closeable? {
         if (!remoteConnections.mayPreconnect(id)) return null
         val workspace = dao.getById(id)?.takeIf { it.isRemote } ?: return null
         val host = hostDao.getById(workspace.remoteHostId ?: return null) ?: return null
+        if (!shouldPreconnect(host, throughRelay)) return null
         val config = host.config(requireNotNull(workspace.sshRoot))
         return openLeasedConnection(remoteIdentity(workspace, host), config, explicit = false)
     }

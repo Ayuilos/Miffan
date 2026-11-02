@@ -15,6 +15,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+/**
+ * Whether to connect ahead to [host]. Not when [throughRelay] is false and the computer was last
+ * reached through its relay: that connection would probably go through the relay again, and each
+ * relay session uses part of the computer's daily allowance (every minute with SSH traffic counts).
+ */
+internal fun shouldPreconnect(host: me.ayuilos.miffan.data.db.entity.RemoteHostEntity, throughRelay: Boolean): Boolean =
+    throughRelay || !(host.lastViaRelay && host.relay?.enabled == true)
+
 /** Which route won a [raceRoutes]. */
 enum class RouteWinner { DIRECT, RELAY }
 
