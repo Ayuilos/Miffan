@@ -200,8 +200,10 @@ class SnapshotDesktopSession internal constructor(
             val wait = pacing.nextWait(unchanged, (nowNanos() - lastActivityNanos) / 1_000_000)
             if (wait == null) {
                 _autoRefreshStopped.value = true
+                holdSession()
                 nudges.receive()
                 _autoRefreshStopped.value = false
+                holdSession()
                 lastActivityNanos = nowNanos()
             } else if (withTimeoutOrNull(wait) { nudges.receive() } != null) {
                 lastActivityNanos = nowNanos()
@@ -351,7 +353,18 @@ class SnapshotDesktopSession internal constructor(
 
     override fun setPaused(paused: Boolean) {
         this.paused.value = paused
+        holdSession()
         if (!paused) refresh()
+    }
+
+    /**
+     * A hidden screen, or one that stopped refreshing, does not keep its relay session alive: an
+     * idle relay session closes after a few minutes instead of costing a relay minute every few.
+     */
+    private fun holdSession() {
+        val hold = !paused.value && !_autoRefreshStopped.value
+        process.holdsSessionOpen = hold
+        pictures.holdsSessionOpen = hold
     }
 
     override fun setMaxFps(fps: Int) {} // Pictures come at their own pace.

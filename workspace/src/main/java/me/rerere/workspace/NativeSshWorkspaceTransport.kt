@@ -981,8 +981,15 @@ class RemoteChannelStream internal constructor(
     val platform: RemotePlatform get() = owner.platform
     val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
 
-    /** An open process or forwarded stream is work in progress for as long as it stays open. */
-    override fun wantsKeepAlive(nowNanos: Long): Boolean = isConnected
+    /**
+     * Whether this open stream keeps a relay session from closing when idle (see
+     * [RemoteWorkspaceSession.busy]). Its owner clears it while nobody needs the stream, for example
+     * a screen in the background or one that stopped refreshing.
+     */
+    @Volatile var holdsSessionOpen: Boolean = true
+
+    /** An open process or forwarded stream is work in progress while it stays open and [holdsSessionOpen]. */
+    override fun wantsKeepAlive(nowNanos: Long): Boolean = holdsSessionOpen && isConnected
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {

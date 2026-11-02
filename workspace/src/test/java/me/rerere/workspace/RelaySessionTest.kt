@@ -122,3 +122,22 @@ internal fun bridgeFactory(bridge: FakeRelayBridge, onOpen: (me.rerere.workspace
         override fun getInputStream(socket: java.net.Socket) = socket.getInputStream()
         override fun getOutputStream(socket: java.net.Socket) = socket.getOutputStream()
     }
+
+class RelayHeldStreamTest {
+    private val sshd = TestSshd()
+
+    @After fun stop() = sshd.close()
+
+    @Test fun aStreamThatNoLongerHoldsTheSessionLetsItRest() {
+        FakeRelayBridge(sshd.server.port, idleTimeoutS = 3).use { bridge ->
+            val (session, socket) = openThroughBridge(sshd, bridge)
+            session.use {
+                val process = session.openProcess("cat")
+                process.holdsSessionOpen = false
+                Thread.sleep(3_500)
+                assertTrue("a released stream still kept the session alive", socket.binaryQuietMillis() >= 3_000)
+                process.close()
+            }
+        }
+    }
+}
