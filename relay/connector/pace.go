@@ -104,11 +104,14 @@ type deadlineReader interface {
 
 // framer cuts the bytes read from the local connection into WebSocket frames.
 type framer struct {
-	now      func() time.Time
-	lastSent time.Time
+	now                                       func() time.Time
+	quietGap, quietMax, streamGap, streamWait time.Duration
+	lastSent                                  time.Time
 }
 
-func newFramer() *framer { return &framer{now: time.Now} }
+func newFramer() *framer {
+	return &framer{now: time.Now, quietGap: quietGap, quietMax: quietMax, streamGap: streamGap, streamWait: streamWindow}
+}
 
 // read reads one outgoing frame from r into buf (len(buf) is the frame limit). The first Read blocks for
 // as long as there is nothing to send. What happens next depends on how recently the previous frame
@@ -129,19 +132,19 @@ func (f *framer) read(r deadlineReader, buf []byte) (int, error) {
 		return n, err
 	}
 	first := f.now()
-	stream := !f.lastSent.IsZero() && first.Sub(f.lastSent) < streamGap
+	stream := !f.lastSent.IsZero() && first.Sub(f.lastSent) < f.streamGap
 	limit := len(buf)
 	if limit > coalesceBelow {
 		limit = coalesceBelow
 	}
-	end := first.Add(quietMax)
+	end := first.Add(f.quietMax)
 	if stream {
-		end = first.Add(streamWindow)
+		end = first.Add(f.streamWait)
 	}
 	for n < limit {
 		deadline := end
 		if !stream {
-			if quiet := f.now().Add(quietGap); quiet.Before(deadline) {
+			if quiet := f.now().Add(f.quietGap); quiet.Before(deadline) {
 				deadline = quiet
 			}
 		}
