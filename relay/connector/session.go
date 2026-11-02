@@ -204,8 +204,9 @@ func (c *connector) forward(ctx context.Context, ws *websocket.Conn, local net.C
 	// local → relay, paced and coalesced
 	bkt := newBucket(p)
 	buf := make([]byte, bkt.frameLimit())
+	fr := newFramer()
 	for ctx.Err() == nil {
-		n, err := readFrame(local, buf)
+		n, err := fr.read(local, buf)
 		if n > 0 {
 			if werr := bkt.take(ctx, n); werr != nil {
 				break

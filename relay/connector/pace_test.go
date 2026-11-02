@@ -108,12 +108,12 @@ func TestReadFrameCoalescesSmallWrites(t *testing.T) {
 	go func() {
 		for i := 0; i < 5; i++ {
 			_, _ = b.Write(bytes.Repeat([]byte{byte('a' + i)}, 100))
-			time.Sleep(time.Millisecond)
+			time.Sleep(200 * time.Microsecond)
 		}
 	}()
 	buf := make([]byte, maxBinaryFrame)
 	start := time.Now()
-	n, err := readFrame(a, buf)
+	n, err := newFramer().read(a, buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,23 +125,111 @@ func TestReadFrameCoalescesSmallWrites(t *testing.T) {
 	}
 }
 
-func TestReadFrameSendsLoneKeystrokeWithin10ms(t *testing.T) {
+func TestReadFrameSendsLoneKeystrokeAtOnce(t *testing.T) {
 	a, b := net.Pipe()
 	defer a.Close()
 	defer b.Close()
+	var wrote time.Time
 	go func() {
 		time.Sleep(50 * time.Millisecond)
+		wrote = time.Now()
 		_, _ = b.Write([]byte("x"))
 	}()
 	buf := make([]byte, maxBinaryFrame)
-	start := time.Now()
-	n, err := readFrame(a, buf)
+	n, err := newFramer().read(a, buf)
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
-	// The wait for the keystroke itself is not coalescing; after it arrived the frame must leave within ~10 ms.
-	if d := time.Since(start); d < 50*time.Millisecond || d > 150*time.Millisecond {
-		t.Fatalf("frame left after %s", d)
+	// After a quiet spell the frame leaves once 2 ms pass without more data (10 ms at the latest).
+	if d := time.Since(wrote); d > 12*time.Millisecond {
+		t.Fatalf("frame left %s after the keystroke", d)
+	}
+}
+
+// tcpPair returns both ends of a loopback TCP connection (real deadlines and kernel buffering).
+func tcpPair(t *testing.T) (net.Conn, net.Conn) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, _ := ln.Accept()
+		accepted <- c
+	}()
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := <-accepted
+	t.Cleanup(func() { c.Close(); s.Close() })
+	return c, s
+}
+
+// Output that trickles in (a scrolling build log) leaves in about 25 frames per second instead of one
+// frame every 10 ms, and no byte waits much longer than the 40 ms stream window.
+func TestReadFrameStreamsLeaveInFewFrames(t *testing.T) {
+	for _, gap := range []time.Duration{time.Millisecond, 2 * time.Millisecond, 5 * time.Millisecond, 15 * time.Millisecond} {
+		local, sshd := tcpPair(t)
+		const dur = time.Second
+		go func() {
+			end := time.Now().Add(dur)
+			chunk := make([]byte, 200)
+			for time.Now().Before(end) {
+				_, _ = sshd.Write(chunk)
+				time.Sleep(gap)
+			}
+			sshd.Close()
+		}()
+		f := newFramer()
+		buf := make([]byte, maxBinaryFrame)
+		frames := 0
+		start := time.Now()
+		for {
+			n, err := f.read(local.(*net.TCPConn), buf)
+			if n > 0 {
+				frames++
+			}
+			if err != nil {
+				break
+			}
+		}
+		rate := float64(frames) / time.Since(start).Seconds()
+		t.Logf("write every %v: %.0f frames/s", gap, rate)
+		if rate > 40 {
+			t.Errorf("write every %v: %.0f frames/s, want about 25", gap, rate)
+		}
+	}
+}
+
+// Typing: each echo comes long after the previous frame, so each leaves on its own and at once.
+func TestReadFrameTypingStaysInteractive(t *testing.T) {
+	local, sshd := tcpPair(t)
+	sent := make(chan time.Time, 20)
+	go func() {
+		for i := 0; i < 10; i++ {
+			time.Sleep(60 * time.Millisecond) // a fast typist
+			sent <- time.Now()
+			_, _ = sshd.Write([]byte("k"))
+		}
+	}()
+	f := newFramer()
+	buf := make([]byte, maxBinaryFrame)
+	var worst time.Duration
+	for i := 0; i < 10; i++ {
+		n, err := f.read(local.(*net.TCPConn), buf)
+		if err != nil || n != 1 {
+			t.Fatalf("keystroke %d: n=%d err=%v", i, n, err)
+		}
+		if d := time.Since(<-sent); d > worst {
+			worst = d
+		}
+	}
+	t.Logf("worst echo delay %v", worst)
+	if worst > 15*time.Millisecond {
+		t.Fatalf("an echo waited %v", worst)
 	}
 }
 
@@ -154,7 +242,7 @@ func TestReadFrameBigDataIsNotDelayedAndRespectsLimit(t *testing.T) {
 	buf := make([]byte, maxBinaryFrame)
 	total := 0
 	for {
-		n, err := readFrame(a, buf)
+		n, err := newFramer().read(a, buf)
 		if n > maxBinaryFrame {
 			t.Fatalf("frame of %d bytes exceeds 64 KiB", n)
 		}
@@ -176,7 +264,7 @@ func TestReadFrameReturnsDataBeforeError(t *testing.T) {
 	defer a.Close()
 	go func() { _, _ = b.Write([]byte("tail")); b.Close() }()
 	buf := make([]byte, maxBinaryFrame)
-	n, err := readFrame(a, buf)
+	n, err := newFramer().read(a, buf)
 	if string(buf[:n]) != "tail" {
 		t.Fatalf("lost the last bytes: %q", buf[:n])
 	}
