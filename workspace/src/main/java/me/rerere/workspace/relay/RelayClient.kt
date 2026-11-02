@@ -75,6 +75,8 @@ class RelayClient(
     private val infoStore: RelayInfoStore? = null,
     /** After the fastest entry answers, how long slower ones may still finish before a connection uses the order. */
     private val probeSettleMillis: Long = 150,
+    /** Connect timeout through one pinned entry IP: a probe just answered there within milliseconds. */
+    private val pinnedConnectTimeoutMillis: Long = 3_000,
     /** Replaces the TLS handshake probe in tests: handshake nanos, or null when the entry failed. */
     private val edgeProbe: ((host: String, port: Int, ip: String?) -> Long?)? = null,
 ) {
@@ -264,7 +266,7 @@ class RelayClient(
         if (ip == null) return client
         val host = endpoint.host
         val address = InetAddress.getByName(ip)
-        return client.newBuilder().dns(object : Dns {
+        return client.newBuilder().connectTimeout(pinnedConnectTimeoutMillis, TimeUnit.MILLISECONDS).dns(object : Dns {
             override fun lookup(hostname: String): List<InetAddress> =
                 if (hostname.equals(host, ignoreCase = true)) listOf(address) else Dns.SYSTEM.lookup(hostname)
         }).build()
@@ -272,7 +274,8 @@ class RelayClient(
 
     /**
      * Opens a session through the fastest entry, trying the next one only when an entry could not
-     * be reached at all. A refusal from the relay or connector is final and thrown as is.
+     * be reached at all, and the relay's name through normal DNS last (PROTOCOL §8.2). A refusal
+     * from the relay or connector is final and thrown as is.
      */
     fun open(
         endpoint: RelayEndpoint,
@@ -282,7 +285,7 @@ class RelayClient(
         networkKey: String,
         timeoutMillis: Long = 20_000,
     ): RelaySocket {
-        val entries = edges(endpoint, networkKey).take(MAX_ENTRY_ATTEMPTS)
+        val entries = entryAttempts(edges(endpoint, networkKey))
         var last: RelayException? = null
         for (ip in entries) {
             try {
@@ -313,7 +316,11 @@ class RelayClient(
         override fun getOutputStream(socket: Socket): OutputStream = socket.getOutputStream()
     }
 
-    private companion object {
+    internal companion object {
         const val MAX_ENTRY_ATTEMPTS = 2
+
+        /** The fastest [MAX_ENTRY_ATTEMPTS] entries, then normal DNS if it was not among them. */
+        fun entryAttempts(order: List<String?>): List<String?> =
+            order.take(MAX_ENTRY_ATTEMPTS).let { if (null in it) it else it + null }
     }
 }

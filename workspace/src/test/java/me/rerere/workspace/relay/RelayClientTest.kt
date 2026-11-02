@@ -27,6 +27,12 @@ class RelayClientTest {
         override fun write(baseUrl: String, info: StoredRelayInfo) { values[baseUrl] = info }
     }
 
+    @Test fun dnsIsAlwaysTheLastAttempt() {
+        assertEquals(listOf("a", "b", null), RelayClient.entryAttempts(listOf("a", "b", "c", null)))
+        assertEquals(listOf("a", null), RelayClient.entryAttempts(listOf("a", null, "b")))
+        assertEquals(listOf(null), RelayClient.entryAttempts(listOf(null)))
+    }
+
     @Test fun aSlowEntryDoesNotHoldUpTheChoice() {
         server.enqueue(MockResponse.Builder().body(info).build())
         val client = RelayClient(edgeProbe = { _, _, ip ->
