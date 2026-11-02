@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -86,6 +87,9 @@ func TestWarmConnectionCarriesTheUpgrade(t *testing.T) {
 
 	c.warm = w
 	echoOnce(t, c) // the upgrade goes over the spare: no new handshake for it
+	if c.warmed.kind != "warm" {
+		t.Fatalf("outcome %+v, want warm", c.warmed)
+	}
 	// Taking the spare starts the next one right away.
 	waitUntil(t, "a new spare", w.ready)
 	if got := handshakes.Load(); got != 2 {
@@ -105,14 +109,14 @@ func TestWarmConnectionOnlyServesItsEdge(t *testing.T) {
 	defer cancel()
 	go w.run(ctx)
 	waitUntil(t, "the spare connection", w.ready)
-	if w.take("104.17.5.5") != nil {
+	if tc, o := w.take("104.17.5.5"); tc != nil || o.kind != "none" {
 		t.Fatal("a spare for one route must not be used for another")
 	}
 	if !w.ready() {
 		t.Fatal("a refused take must leave the spare in place")
 	}
 	var none *tlsWarmer
-	if none.take("") != nil {
+	if tc, o := none.take(""); tc != nil || o.kind != "none" {
 		t.Fatal("no warmer, no connection")
 	}
 }
@@ -173,6 +177,9 @@ func TestWarmConnectionClosedByTheEdgeFallsBackToDialing(t *testing.T) {
 	time.Sleep(300 * time.Millisecond) // the server has closed the idle spare by now
 	c.warm = w
 	echoOnce(t, c) // the dead spare is noticed and a fresh connection dialed
+	if c.warmed.kind != "stale" || c.warmed.age < 250*time.Millisecond {
+		t.Fatalf("outcome %+v, want stale and about 300 ms old", c.warmed)
+	}
 	if got := handshakes.Load(); got < 2 {
 		t.Fatalf("%d handshakes: the session must have dialed its own connection", got)
 	}
@@ -185,5 +192,23 @@ func TestWarmConnectionVerifiesTheRelayCertificate(t *testing.T) {
 	c, _ := newRelayClient("https://relay.test", "", edgeEnv(poolOf(t, good), impostor))
 	if _, err := c.dialTLS(context.Background(), ""); err == nil {
 		t.Fatal("a spare must be refused when the certificate is not the relay's")
+	}
+}
+
+func TestWarmOutcomeIsLoggedWithoutSecrets(t *testing.T) {
+	var out strings.Builder
+	log := newLogger(&out)
+	logWarm(log, "0123abcd", warmOutcome{kind: "warm", age: 12400 * time.Millisecond})
+	logWarm(log, "0123abcd", warmOutcome{kind: "stale", age: 47 * time.Second})
+	logWarm(log, "0123abcd", warmOutcome{kind: "none"})
+	got := out.String()
+	for _, want := range []string{
+		"session 0123abcd: data connection reused the warm TLS connection (12s old)",
+		"session 0123abcd: the warm TLS connection had been closed by the edge (47s old); dialed a new one",
+		"session 0123abcd: no warm TLS connection ready; dialed a new one",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log lacks %q:\n%s", want, got)
+		}
 	}
 }

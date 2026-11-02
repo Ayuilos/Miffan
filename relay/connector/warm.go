@@ -89,17 +89,25 @@ func (w *tlsWarmer) put(c *tls.Conn) {
 	}
 }
 
+// warmOutcome is what happened when a session asked for the spare, for the log (hit rate, and how long
+// the edge keeps idle connections).
+type warmOutcome struct {
+	kind string        // "warm": used; "stale": the edge had closed it; "none": no spare for this edge
+	age  time.Duration // of the spare, for "warm" and "stale"
+}
+
 // take hands out the spare for a connection to edge, or nil when there is none that is usable.
-func (w *tlsWarmer) take(edge string) *tls.Conn {
+func (w *tlsWarmer) take(edge string) (*tls.Conn, warmOutcome) {
 	if w == nil {
-		return nil
+		return nil, warmOutcome{kind: "none"}
 	}
 	w.mu.Lock()
 	c := w.conn
 	if c == nil || edge != w.edge || w.now().Sub(w.born) >= w.maxAge {
 		w.mu.Unlock()
-		return nil
+		return nil, warmOutcome{kind: "none"}
 	}
+	age := w.now().Sub(w.born)
 	w.conn = nil
 	w.mu.Unlock()
 	select {
@@ -108,9 +116,9 @@ func (w *tlsWarmer) take(edge string) *tls.Conn {
 	}
 	if !stillOpen(c) {
 		c.Close()
-		return nil
+		return nil, warmOutcome{kind: "stale", age: age}
 	}
-	return c
+	return c, warmOutcome{kind: "warm", age: age}
 }
 
 // stillOpen reports whether an idle TLS connection has not been closed by the other end. Waiting a

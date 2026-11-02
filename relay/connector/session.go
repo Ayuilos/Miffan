@@ -36,6 +36,9 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 	// The session data connection is authorised by the sid alone (PROTOCOL §3), so no access code is sent.
 	ws, _, err := client.dialWSAny(dialCtx, edges, "/v1/host/"+c.id.hostID+"/session/"+sid, false)
 	cancel()
+	if warm != nil {
+		logWarm(c.log, short, client.warmed)
+	}
 	if err != nil {
 		c.log.printf("session %s: cannot open data connection: %v", short, err)
 		return
@@ -234,4 +237,17 @@ func (c *connector) forward(ctx context.Context, ws *websocket.Conn, local net.C
 	_ = ws.Close()
 	wg.Wait()
 	return toRelay, fromRelay
+}
+
+// logWarm records whether a session's data connection used the spare TLS connection, so the hit rate
+// (and how long the edge keeps an idle connection) can be read from the log.
+func logWarm(log *logger, short string, o warmOutcome) {
+	switch o.kind {
+	case "warm":
+		log.printf("session %s: data connection reused the warm TLS connection (%s old)", short, o.age.Round(time.Second))
+	case "stale":
+		log.printf("session %s: the warm TLS connection had been closed by the edge (%s old); dialed a new one", short, o.age.Round(time.Second))
+	default:
+		log.printf("session %s: no warm TLS connection ready; dialed a new one", short)
+	}
 }
