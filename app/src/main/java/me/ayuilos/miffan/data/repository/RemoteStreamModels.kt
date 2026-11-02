@@ -148,7 +148,20 @@ data class RemoteStreamRequest(
     val quality: RemoteScreenQuality = RemoteScreenQuality.BALANCED,
     val skip: Boolean = false,
     val custom: RemoteStreamCustom = RemoteStreamCustom(),
+    /**
+     * Through a relay, show still pictures (snapshot mode) when the computer has cua-driver. False asks
+     * for the live VNC/RDP picture instead; Windows, which has no live picture through a relay, always
+     * uses pictures.
+     */
+    val snapshot: Boolean = true,
 )
+
+/** The picture size and JPEG quality of snapshot mode for each level. */
+internal fun RemoteScreenQuality.snapshotQuality(): SnapshotQuality = when (this) {
+    RemoteScreenQuality.SAVER -> SnapshotQuality(1280, 50)
+    RemoteScreenQuality.BALANCED -> SnapshotQuality(1600, 60)
+    RemoteScreenQuality.BEST, RemoteScreenQuality.CUSTOM -> SnapshotQuality(1920, 70)
+}
 
 internal fun RemoteStreamRequest.requested(hostEnabled: Boolean): Boolean = hostEnabled && !skip
 

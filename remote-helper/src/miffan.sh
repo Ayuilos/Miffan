@@ -24,7 +24,7 @@
 #   miffan relay status|install|pair|unpair|uninstall
 #                           the relay connector that lets the phone reach this computer from outside
 
-MIFFAN_HELPER_VERSION=35
+MIFFAN_HELPER_VERSION=36
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -151,6 +151,62 @@ mac_shortcut() {
     [ "$(os)" = macos ] || { echo "mac-shortcut is only for macOS" >&2; return 2; }
     cua=$(cua_path) || { echo "cua-driver not found" >&2; return 127; }
     "$cua" hotkey "{\"scope\":\"desktop\",\"keys\":[\"ctrl\",\"fn\",\"$key\"]}" >/dev/null
+}
+
+# The screen page over a relay shows still pictures instead of a stream (snapshot mode): cua-driver
+# writes each capture to `snapshot path`, and `snapshot encode QUALITY SINCE` sends it back as one
+# JSON line. A capture whose checksum equals SINCE answers {"same":true} and sends no picture; any
+# other is re-encoded as JPEG when the computer has an encoder (sips, ImageMagick, ffmpeg or
+# Pillow), else sent as the PNG. The picture is base64 in "data".
+SNAPSHOT_DIR="$HOME/.miffan/snapshot"
+
+snapshot() {
+    case "${1:-}" in
+        path)
+            mkdir -p "$SNAPSHOT_DIR" && chmod 700 "$SNAPSHOT_DIR" || { echo '{"error":"io_error"}'; return 1; }
+            printf '{"path":%s}\n' "$(json_str "$SNAPSHOT_DIR/desktop.png")"
+            ;;
+        encode) snapshot_encode "${2:-55}" "${3:-}" ;;
+        *) echo "usage: miffan snapshot path|encode QUALITY [SINCE]" >&2; return 2 ;;
+    esac
+}
+
+snapshot_encode() {
+    quality=$1
+    case "$quality" in ''|*[!0-9]*) quality=55 ;; esac
+    [ "$quality" -ge 20 ] || quality=20
+    [ "$quality" -le 90 ] || quality=90
+    png="$SNAPSHOT_DIR/desktop.png"
+    jpg="$SNAPSHOT_DIR/desktop.jpg"
+    [ -s "$png" ] || { echo '{"error":"no_snapshot"}'; return 1; }
+    digest=$(cksum < "$png" | awk '{print $1 "-" $2}')
+    if [ -n "$2" ] && [ "$2" = "$digest" ]; then
+        printf '{"same":true,"digest":"%s"}\n' "$digest"
+        return 0
+    fi
+    rm -f "$jpg"
+    case "$(os)" in
+        macos) sips -s format jpeg -s formatOptions "$quality" "$png" --out "$jpg" >/dev/null 2>&1 ;;
+        *)
+            if command -v magick >/dev/null 2>&1; then
+                magick "$png" -quality "$quality" "$jpg" >/dev/null 2>&1
+            elif command -v convert >/dev/null 2>&1; then
+                convert "$png" -quality "$quality" "$jpg" >/dev/null 2>&1
+            elif command -v ffmpeg >/dev/null 2>&1; then
+                # ffmpeg's -q:v runs 2 (best) to 31; 55 lands near 18.
+                ffmpeg -loglevel error -y -i "$png" -q:v "$(( (100 - quality) * 29 / 80 + 2 ))" "$jpg" >/dev/null 2>&1
+            elif command -v python3 >/dev/null 2>&1; then
+                python3 -c 'import sys
+from PIL import Image
+Image.open(sys.argv[1]).convert("RGB").save(sys.argv[2], "JPEG", quality=int(sys.argv[3]))' "$png" "$jpg" "$quality" >/dev/null 2>&1
+            fi
+            ;;
+    esac
+    if [ -s "$jpg" ]; then file=$jpg; format=jpeg; else file=$png; format=png; fi
+    printf '{"digest":"%s","format":"%s","data":"' "$digest" "$format"
+    base64 < "$file" | tr -d '\n\r'
+    printf '"}\n'
+    rm -f "$jpg"
 }
 
 cua_version() {
@@ -3144,8 +3200,9 @@ case "${1:-}" in
     sunshine) shift; if [ "$#" -eq 0 ]; then sunshine probe; else sunshine "$@"; fi ;;
     clip) clip ;;
     mac-shortcut) mac_shortcut "${2:-}" ;;
+    snapshot) snapshot "${2:-}" "${3:-}" "${4:-}" ;;
     task) shift; task "$@" ;;
     space) shift; space "$@" ;;
     relay) shift; relay "$@" ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|task|space|relay" >&2; exit 2 ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|snapshot|task|space|relay" >&2; exit 2 ;;
 esac
