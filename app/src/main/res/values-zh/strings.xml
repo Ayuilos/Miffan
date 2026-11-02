@@ -4161,7 +4161,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="update_settings_wifi">Wi-Fi 下自动下载</string>
   <string name="update_settings_wifi_desc">下好后只需点一下安装</string>
   <string name="update_settings_whats_new">装好后讲讲新变化</string>
-  <string name="update_settings_whats_new_desc">在聊天页顶部出现一次</string>
+  <string name="update_settings_whats_new_desc">在消息页顶部出现一次</string>
   <string name="update_settings_skipped">跳过的版本</string>
   <string name="update_settings_unskip">恢复</string>
   <string name="update_settings_source">下载线路</string>

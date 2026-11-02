@@ -4154,7 +4154,7 @@
   <string name="update_settings_wifi">透過 Wi-Fi 自動下載</string>
   <string name="update_settings_wifi_desc">下好後只要點一下就能安裝</string>
   <string name="update_settings_whats_new">更新後顯示新功能說明</string>
-  <string name="update_settings_whats_new_desc">只出現一次，位於聊天頁頂部</string>
+  <string name="update_settings_whats_new_desc">只出現一次，位於訊息頁頂部</string>
   <string name="update_settings_skipped">已跳過的版本</string>
   <string name="update_settings_unskip">恢復</string>
   <string name="update_settings_source">下載線路</string>
