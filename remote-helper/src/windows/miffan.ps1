@@ -4,7 +4,7 @@
 # `space` takes up to five words (space create <name> <cpus> <memory>), hence Argument4 and Argument5.
 param([string]$Command, [string]$Action, [string]$Operation, [string]$Argument4, [string]$Argument5)
 
-$script:HelperVersion = 18
+$script:HelperVersion = 19
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -1287,8 +1287,8 @@ if ($MyInvocation.InvocationName -ne '.') {
             }
         }
         if ($Command -eq 'snapshot') {
-            if ($Argument5) { throw 'Unexpected argument' }
-            [Console]::Out.WriteLine((Invoke-Snapshot $Action $Operation $Argument4))
+            if ($Action -cne 'serve' -or $Operation -or $Argument4 -or $Argument5) { throw 'Usage: snapshot serve' }
+            Invoke-SnapshotServe
             exit 0
         }
         if ($Argument4 -or $Argument5) { throw 'Unexpected argument' }

@@ -26,7 +26,7 @@ public static class MiffanCuaBridge {
     [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool GetUserObjectInformation(IntPtr obj, int index, StringBuilder info, int length, out int needed);
     [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int number);
-    static Stream Standard(int number, FileAccess access) {
+    public static Stream Standard(int number, FileAccess access) {
         // Windows OpenSSH inherits OVERLAPPED pipe handles. ConsoleStream's synchronous
         // ReadFile can handle the first buffered batch then hang on the next pending read.
         try { return new FileStream(new SafeFileHandle(GetStdHandle(number),false),access,65536,true); }
