@@ -21,7 +21,7 @@ const (
 )
 
 // session serves one `open`: data connection → end-to-end handshake → forward to the configured target.
-func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string) {
+func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string, warm *tlsWarmer) {
 	short := sid[:8]
 	start := time.Now()
 	deadline := start.Add(c.timing.handshake)
@@ -31,10 +31,14 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 		c.log.printf("session %s: bad relay in config", short)
 		return
 	}
+	client.warm = warm
 	dialCtx, cancel := context.WithDeadline(ctx, deadline)
 	// The session data connection is authorised by the sid alone (PROTOCOL §3), so no access code is sent.
 	ws, _, err := client.dialWSAny(dialCtx, edges, "/v1/host/"+c.id.hostID+"/session/"+sid, false)
 	cancel()
+	if warm != nil {
+		logWarm(c.log, short, client.warmed)
+	}
 	if err != nil {
 		c.log.printf("session %s: cannot open data connection: %v", short, err)
 		return
@@ -60,11 +64,13 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 		return
 	}
 	nonce := b64u.EncodeToString(nonceRaw)
-	_ = ws.SetReadDeadline(deadline)
 	ws.SetReadLimit(maxTextFrame)
 	if err := writeText(map[string]any{"t": "challenge", "v": 1, "nonce": nonce}); err != nil {
 		return
 	}
+	// The app answers as soon as the challenge arrives (one round trip and a signature). A session that
+	// stays silent is cut early: until it ends it holds one of the relay's per-computer session slots.
+	_ = ws.SetReadDeadline(time.Now().Add(c.timing.authWait))
 
 	// 2. auth (relay answers pings itself, but tolerate a stray text "ping"; binary before ok is refused)
 	var msg authMessage
@@ -202,8 +208,9 @@ func (c *connector) forward(ctx context.Context, ws *websocket.Conn, local net.C
 	// local → relay, paced and coalesced
 	bkt := newBucket(p)
 	buf := make([]byte, bkt.frameLimit())
+	fr := newFramer()
 	for ctx.Err() == nil {
-		n, err := readFrame(local, buf)
+		n, err := fr.read(local, buf)
 		if n > 0 {
 			if werr := bkt.take(ctx, n); werr != nil {
 				break
@@ -230,4 +237,17 @@ func (c *connector) forward(ctx context.Context, ws *websocket.Conn, local net.C
 	_ = ws.Close()
 	wg.Wait()
 	return toRelay, fromRelay
+}
+
+// logWarm records whether a session's data connection used the spare TLS connection, so the hit rate
+// (and how long the edge keeps an idle connection) can be read from the log.
+func logWarm(log *logger, short string, o warmOutcome) {
+	switch o.kind {
+	case "warm":
+		log.printf("session %s: data connection reused the warm TLS connection (%s old)", short, o.age.Round(time.Second))
+	case "stale":
+		log.printf("session %s: the warm TLS connection had been closed by the edge (%s old); dialed a new one", short, o.age.Round(time.Second))
+	default:
+		log.printf("session %s: no warm TLS connection ready; dialed a new one", short)
+	}
 }

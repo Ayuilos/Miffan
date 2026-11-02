@@ -27,12 +27,21 @@ describe("registrations", () => {
   test("too_many_registrations once the source IP has registered too many new hosts", async () => {
     const known = await HostControl.connect(A);
     known.close();
+    // Hosts that never prove their key are not counted.
+    for (let i = 0; i < 5; i++) {
+      const key = await newHostKey();
+      const r = await upgradeAttempt(wsUrl(A, `/v1/host?pub=${key.pubB64u}`));
+      expect(r.status).toBe(101);
+    }
     let refused: { status: number; json: any } | undefined;
     for (let i = 0; i < 80 && !refused; i++) {
       const key = await newHostKey();
       const r = await upgradeAttempt(wsUrl(A, `/v1/host?pub=${key.pubB64u}`));
       if (r.status === 429) refused = r as never;
-      else expect(r.status).toBe(101);
+      else {
+        expect(r.status).toBe(101);
+        (await HostControl.connect(A, key)).close(); // registered once it authenticates
+      }
     }
     expect(refused).toBeDefined();
     expect(refused!.json.reason).toBe("too_many_registrations");

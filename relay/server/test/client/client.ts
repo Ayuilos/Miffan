@@ -83,7 +83,9 @@ export class HostControl {
 
   async nextOpen(timeoutMs?: number): Promise<OpenMsg> {
     for (;;) {
-      const m = await this.conn.nextJson<{ t: string }>(timeoutMs);
+      const text = await this.conn.nextText(timeoutMs);
+      if (text === "pong") continue; // answers to our own keepalive pings
+      const m = JSON.parse(text) as { t: string };
       if (m.t === "open") return m as unknown as OpenMsg;
       // `usage` pushes may interleave; ignore everything but `open`
     }

@@ -155,20 +155,24 @@ func TestDeviceBackoff(t *testing.T) {
 		}
 		now = now.Add(5 * time.Second)
 	}
-	// The sixth attempt is refused as busy even with a correct signature.
-	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != reasonBusy {
+	// Further bad signatures under this device's name are refused as busy for five minutes...
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, bad); r != reasonBusy {
 		t.Fatalf("after five failures: %q, want busy", r)
 	}
-	// Other devices are unaffected.
+	// ...but the device itself, signing correctly, is never locked out: its public key is no secret,
+	// so anyone could otherwise keep it out by failing under its name.
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != "" {
+		t.Fatalf("a correct signature must pass: %q", r)
+	}
 	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, bystander.auth(testHost, testSID, "control", testNonce)); r != "" {
 		t.Fatalf("bystander refused: %q", r)
 	}
 	now = now.Add(4*time.Minute + 30*time.Second)
-	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != reasonBusy {
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, bad); r != reasonBusy {
 		t.Fatalf("still inside the five minutes: %q", r)
 	}
 	now = now.Add(time.Minute)
-	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != "" {
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, bad); r != reasonBadSignature {
 		t.Fatalf("after five minutes: %q", r)
 	}
 }
@@ -200,22 +204,51 @@ func TestGlobalBackoff(t *testing.T) {
 		}
 		now = now.Add(time.Second)
 	}
-	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != "" {
-		t.Fatalf("19 failures must not close the door: %q", r)
-	}
-	// The 20th failure does.
 	stranger := newTestApp(t)
 	verifyAuth(cfg, l, testHost, testSID, "control", testNonce, stranger.auth(testHost, testSID, "control", testNonce))
-	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != reasonBusy {
-		t.Fatalf("after 20 failures even a valid device is refused: %q", r)
+	// The 20th failure closes the door to unknown and unparsable requests for a minute...
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, newTestApp(t).auth(testHost, testSID, "control", testNonce)); r != reasonBusy {
+		t.Fatalf("unknown device after 20 failures: %q, want busy", r)
+	}
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, authMessage{T: "auth", Device: "!!!"}); r != reasonBusy {
+		t.Fatalf("garbage after 20 failures: %q, want busy", r)
+	}
+	// ...but never to a paired device that signs correctly (PROTOCOL §5.2 step 5).
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != "" {
+		t.Fatalf("after 20 failures a valid device must still pass: %q", r)
+	}
+	// Its bad signatures are refused as busy meanwhile, like everything else that would fail.
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, authMessage{T: "auth", Device: app.pub(), Sig: "AAAA"}); r != reasonBusy {
+		t.Fatalf("bad signature during the lock: %q", r)
 	}
 	now = now.Add(59 * time.Second)
-	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != reasonBusy {
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, newTestApp(t).auth(testHost, testSID, "control", testNonce)); r != reasonBusy {
 		t.Fatalf("inside the minute: %q", r)
 	}
 	now = now.Add(2 * time.Second)
-	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != "" {
+	if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, newTestApp(t).auth(testHost, testSID, "control", testNonce)); r != reasonUnknown {
 		t.Fatalf("after the minute: %q", r)
+	}
+}
+
+// An attacker who knows the hostId keeps failing faster than the lock expires; the owner still gets in.
+func TestOwnerIsNeverLockedOut(t *testing.T) {
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	l := newFailureLimiter()
+	l.now = func() time.Time { return now }
+	app := newTestApp(t)
+	cfg := &config{Devices: []device{app.entry()}}
+	impostor := authMessage{T: "auth", Device: app.pub(), Sig: "AAAA"}
+	for minute := 0; minute < 10; minute++ {
+		for i := 0; i < 30; i++ {
+			verifyAuth(cfg, l, testHost, testSID, "control", testNonce, newTestApp(t).auth(testHost, testSID, "control", testNonce))
+			verifyAuth(cfg, l, testHost, testSID, "control", testNonce, impostor)
+			now = now.Add(time.Second)
+		}
+		if _, r := verifyAuth(cfg, l, testHost, testSID, "control", testNonce, app.auth(testHost, testSID, "control", testNonce)); r != "" {
+			t.Fatalf("minute %d: the owner was refused: %q", minute, r)
+		}
+		now = now.Add(30 * time.Second)
 	}
 }
 

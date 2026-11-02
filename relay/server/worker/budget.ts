@@ -25,8 +25,15 @@ export class Budget extends DurableObject<Env> {
     return this.global.state(Date.now());
   }
 
-  report(bytes: number, minutes: number): BudgetState {
-    return this.global.report(Date.now(), bytes, minutes);
+  report(bytes: number, minutes: number, requests = 0): BudgetState {
+    return this.global.report(Date.now(), bytes, minutes, requests);
+  }
+
+  async checkIp(ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }> {
+    const now = Date.now();
+    const r = await this.ips.check(now, ip, this.cfg.registrationsPerIpPerDay);
+    if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(nextUtcMidnight(now) + 1000);
+    return r;
   }
 
   async registerIp(ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }> {

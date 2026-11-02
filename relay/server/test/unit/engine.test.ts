@@ -1,6 +1,7 @@
 // Engine behaviour with a fake platform and a manual clock: timers, write-back cadence, hibernation
 // recovery, enforcement. Wire-level behaviour is covered by the conformance suite.
 
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { parseConfig, type RelayConfig } from "../../core/config.ts";
 import { Engine, type SessAtt } from "../../core/engine.ts";
@@ -44,6 +45,7 @@ async function openSession(w: World, engine: Engine, key: HostKey, host: FakeSoc
   return { app, data, sid: open.sid as string, ready: app.texts.find((t) => t.t === "ready") };
 }
 
+const w0 = Date.UTC(2026, 10, 1, 12, 0, 0);
 const stored = (w: World, key: HostKey) => new HostLedger(sqlite(w.db), key.hostId).totals(w.t);
 
 describe("control connection", () => {
@@ -122,6 +124,48 @@ describe("control connection", () => {
     const res = await e2.start({ kind: "host", hostId: stranger.hostId, pub: stranger.pub }, w.requestCtx());
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ reason: "too_many_registrations", retryAfter: 60 });
+  });
+
+  test("a host is counted and given storage only once it proves its key", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    await engine.start({ kind: "host", hostId: key.hostId, pub: key.pub }, w.requestCtx());
+    const silent = w.socks.at(-1)!;
+    expect(w.ipChecks).toBe(1);
+    w.t += 11_000;
+    await engine.onAlarm();
+    expect(silent.closedWith).toEqual([4401, "unauthorized"]);
+    expect(w.registrations).toBe(0);
+    expect(sqlite(w.db).all("SELECT name FROM sqlite_master")).toEqual([]);
+
+    // A wrong signature leaves nothing either.
+    await engine.start({ kind: "host", hostId: key.hostId, pub: key.pub }, w.requestCtx());
+    const bad = w.socks.at(-1)!;
+    const other = await newHostKey();
+    await engine.onMessage(bad, JSON.stringify({ t: "auth", sig: await other.signChallenge("relay.test", bad.json(0).nonce) }));
+    expect(bad.closedWith?.[0]).toBe(4401);
+    expect(w.registrations).toBe(0);
+    expect(sqlite(w.db).all("SELECT name FROM sqlite_master")).toEqual([]);
+
+    const host = await connectHost(w, engine, key);
+    expect(host.texts.at(-1).t).toBe("hello");
+    expect(w.registrations).toBe(1);
+    expect(new HostLedger(sqlite(w.db), key.hostId).registered()).toBe(true);
+    expect("reg" in host.a).toBe(false); // the address does not outlive the handshake
+  });
+
+  test("an unreachable budget service does not stop a new host from registering", async () => {
+    const { w, engine } = setup();
+    w.budget.checkIp = async () => {
+      throw new Error("down");
+    };
+    w.budget.registerIp = async () => {
+      throw new Error("down");
+    };
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    expect(host.texts.at(-1).t).toBe("hello");
+    expect(new HostLedger(sqlite(w.db), key.hostId).registered()).toBe(true);
   });
 
   test("an unregistered, refused host leaves nothing in storage", async () => {
@@ -220,10 +264,13 @@ describe("sessions", () => {
     w.t += 60_000;
     await engine.onMessage(s.app, bin(1));
     await engine.onMessage(s.app, "ping");
+    s.data.autoPing = w.t; // both ends keep pinging (answered by the platform)
     w.t += 60_000; // 120 s since pairing but 60 s since the last binary frame
+    s.app.autoPing = s.data.autoPing = w.t;
     await engine.onAlarm();
     expect(s.app.closedWith).toBeUndefined();
     w.t += 40_000;
+    s.app.autoPing = s.data.autoPing = w.t;
     await engine.onAlarm();
     expect(s.app.closedWith).toEqual([1000, "idle"]);
     expect(s.data.closedWith).toEqual([1000, "idle"]);
@@ -253,6 +300,74 @@ describe("sessions", () => {
     expect(t.app.closedWith).toBeUndefined();
   });
 
+  test("frames are limited by count as well as bytes; text frames count too", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    await engine.onMessage(s.data, '{"t":"challenge"}'); // counts as one frame of the connector's side
+    for (let i = 0; i < 5_999; i++) await engine.onMessage(s.data, bin(1));
+    expect(s.data.closedWith).toBeUndefined();
+    for (let i = 0; i < 6_000; i++) await engine.onMessage(s.app, bin(1)); // the other direction has its own count
+    expect(s.app.closedWith).toBeUndefined();
+    await engine.onMessage(s.data, bin(1));
+    expect(s.data.closedWith).toEqual([4429, "rate_limited"]);
+    expect(s.app.closedWith).toEqual([4429, "rate_limited"]);
+
+    const t = await openSession(w, engine, key, host);
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < 5_000; i++) await engine.onMessage(t.app, bin(1));
+      w.t += 10_000; // earlier frames have left the window
+    }
+    expect(t.app.closedWith).toBeUndefined();
+  });
+
+  test("a session carries text only for the handshake; text is metered but is not activity", async () => {
+    const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 4, idleTimeoutS: 100 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    const pairedAt = (s.app.a as SessAtt).lb;
+    await engine.onMessage(s.data, '{"t":"challenge","v":1,"nonce":"x"}');
+    await engine.onMessage(s.app, '{"t":"auth","device":"d","sig":"s"}');
+    await engine.onMessage(s.data, '{"t":"ok"}');
+    await engine.onMessage(s.app, "ping"); // never counted
+    await engine.onMessage(s.app, "ping");
+    expect(s.app.closedWith).toBeUndefined();
+    expect((s.app.a as SessAtt).lb).toBe(pairedAt);
+    w.t += 1000;
+    await engine.onAlarm();
+    await w.settle();
+    const handshake = ['{"t":"challenge","v":1,"nonce":"x"}', '{"t":"auth","device":"d","sig":"s"}', '{"t":"ok"}'];
+    expect(stored(w, key).dayControl).toBe(handshake.join("").length);
+    expect(stored(w, key).dayActiveMin).toBe(0);
+
+    await engine.onMessage(s.app, '{"t":"auth"}'); // the app's second text: still within the handshake allowance
+    expect(s.app.closedWith).toBeUndefined();
+    await engine.onMessage(s.app, "tunnelled");
+    expect(s.app.closedWith).toEqual([1008, "bad_request"]);
+    expect(s.data.closedWith).toEqual([1000, "peer_closed"]);
+
+    const t = await openSession(w, engine, key, host);
+    for (let i = 0; i < 2; i++) await engine.onMessage(t.data, "{}");
+    await engine.onMessage(t.data, "{}");
+    expect(t.data.closedWith).toEqual([1008, "bad_request"]);
+    expect(t.app.closedWith).toEqual([1000, "peer_closed"]);
+  });
+
+  test("an authenticated control connection may send nothing but ping", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    await engine.onMessage(host, "ping");
+    expect(host.closedWith).toBeUndefined();
+    await engine.onMessage(host, '{"t":"anything"}');
+    expect(host.closedWith).toEqual([1008, "bad_request"]);
+    const other = await connectHost(w, engine, key);
+    await engine.onMessage(other, bin(10));
+    expect(other.closedWith).toEqual([1008, "bad_request"]);
+  });
+
   test("the sessions limit counts unpaired sessions", async () => {
     const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 2, idleTimeoutS: 300 } } });
     const key = await newHostKey();
@@ -261,6 +376,115 @@ describe("sessions", () => {
     const third = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
     expect(third.status).toBe(429);
     expect((await third.json()).reason).toBe("too_many_sessions");
+  });
+});
+
+describe("liveness", () => {
+  test("a control connection silent for over 75 s is offline: 404 at once, not host_timeout 10 s later", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    w.t += 70_000;
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(200);
+    w.t += 6_000; // 76 s without a ping
+    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(404);
+    expect((await r.json()).reason).toBe("host_offline");
+    expect(host.closedWith).toEqual([4404, "host_offline"]);
+  });
+
+  test("pings answered by the platform or by the engine keep a control connection alive", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    for (let i = 0; i < 10; i++) {
+      w.t += 30_000;
+      if (i % 2) host.autoPing = w.t; // Worker: the runtime answered it
+      else await engine.onMessage(host, "ping"); // Bun: the engine answered it
+    }
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(200);
+    expect(host.closedWith).toBeUndefined();
+    w.t += 80_000;
+    await engine.onAlarm(); // an alarm that runs anyway also notices
+    expect(host.closedWith).toEqual([4404, "host_offline"]);
+  });
+
+  test("the app's side gets 150 s: a phone locked for two minutes keeps its session", async () => {
+    const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 2, idleTimeoutS: 300 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const locked = await openSession(w, engine, key, host);
+    const alive = await openSession(w, engine, key, host);
+    const tick = async (seconds: number) => {
+      for (let i = 0; i < seconds / 20; i++) {
+        w.t += 20_000;
+        host.autoPing = alive.app.autoPing = alive.data.autoPing = locked.data.autoPing = w.t;
+        await engine.onMessage(locked.data, bin(10)); // the computer keeps sending; the phone sleeps
+      }
+    };
+    await tick(140); // the phone was last heard at pairing, 140 s ago
+    let r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(429); // both slots still taken: the locked phone's session is kept
+    expect(locked.app.closedWith).toBeUndefined();
+    // Unlocked: the phone pings again and carries on.
+    locked.app.autoPing = w.t;
+    await tick(140);
+    expect(locked.app.closedWith).toBeUndefined();
+    // Gone for good: past 150 s its session is closed and frees its slot.
+    await tick(20);
+    r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(200);
+    expect(locked.app.closedWith).toEqual([1000, "peer_closed"]);
+    expect(locked.data.closedWith).toEqual([1000, "peer_closed"]);
+    expect(alive.app.closedWith).toBeUndefined();
+  });
+
+  test("the computer's side of a session gets 75 s", async () => {
+    const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 1, idleTimeoutS: 300 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 4; i++) {
+      w.t += 18_000;
+      host.autoPing = s.app.autoPing = w.t;
+      await engine.onMessage(s.app, bin(10)); // the phone keeps typing; the connector's data link died
+    }
+    // 72 s since the connector's side was last heard: still within its 75 s.
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(429);
+    w.t += 5_000;
+    host.autoPing = s.app.autoPing = w.t;
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(200);
+    expect(s.data.closedWith).toEqual([1000, "peer_closed"]);
+    expect(s.app.closedWith).toEqual([1000, "peer_closed"]);
+  });
+
+  test("an alarm that runs for another reason closes a session with a silent side", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    w.t += 60_000;
+    s.app.autoPing = host.autoPing = w.t;
+    await engine.onMessage(s.app, bin(10)); // data flows towards a connector that is gone
+    w.t += 30_000; // the write-back alarm
+    await engine.onAlarm();
+    expect(s.data.closedWith).toEqual([1000, "peer_closed"]);
+    expect(s.app.closedWith).toEqual([1000, "peer_closed"]);
+  });
+
+  test("binary frames count as being heard; a session is not reaped while both ends send", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 20; i++) {
+      w.t += 10_000;
+      host.autoPing = w.t;
+      await engine.onMessage(s.app, bin(10));
+      await engine.onMessage(s.data, bin(10));
+      await engine.onAlarm();
+    }
+    expect(s.app.closedWith).toBeUndefined();
   });
 });
 
@@ -277,7 +501,7 @@ describe("metering", () => {
     w.t += 20;
     await engine.onAlarm();
     expect(stored(w, key).dayControl).toBe(1000);
-    expect(w.reports).toEqual([{ bytes: 1000, minutes: 1 }]);
+    expect(w.reports).toMatchObject([{ bytes: 1000, minutes: 1 }]);
 
     w.t += 1_000;
     await engine.onMessage(s.app, bin(2000));
@@ -291,7 +515,7 @@ describe("metering", () => {
     w.t = flushedAt + 30_000;
     await engine.onAlarm();
     expect(stored(w, key).dayControl).toBe(6000);
-    expect(w.reports.at(-1)).toEqual({ bytes: 5000, minutes: 0 });
+    expect(w.reports.at(-1)).toMatchObject({ bytes: 5000, minutes: 0 });
     expect(w.reports.length).toBe(2);
   });
 
@@ -370,6 +594,35 @@ describe("metering", () => {
     w.t += 30_000;
     await woken.onAlarm();
     expect(stored(w, key).dayMedia).toBe(777 + 5000);
+  });
+
+  test("counts left unwritten before midnight keep their day when the object wakes after it", async () => {
+    const { w, cfg, engine } = setup();
+    w.t = Date.UTC(2026, 10, 1, 23, 59, 0);
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    await engine.onMessage(s.app, bin(1000));
+    w.t += 1000;
+    await engine.onAlarm(); // first write-back after a quiet spell is immediate
+    await w.settle();
+    w.t = Date.UTC(2026, 10, 1, 23, 59, 55);
+    await engine.onMessage(s.app, bin(6000)); // the alarm for it never runs before midnight
+    s.data.autoPing = host.autoPing = Date.UTC(2026, 10, 2, 0, 0, 20); // the connector keeps pinging
+    // Evicted; the alarm wakes a new object after midnight.
+    w.t = Date.UTC(2026, 10, 2, 0, 0, 30);
+    const woken = wake(w, cfg);
+    await woken.onAlarm();
+    await w.settle();
+    expect(sqlite(w.db).all("SELECT day, bytes FROM usage_day ORDER BY day")).toEqual([{ day: "2026-11-01", bytes: 7000 }]);
+    // New traffic after the wake belongs to the new day.
+    await woken.onMessage(s.app, bin(50));
+    woken.onClose(s.app);
+    await w.settle();
+    expect(sqlite(w.db).all("SELECT day, bytes FROM usage_day ORDER BY day")).toEqual([
+      { day: "2026-11-01", bytes: 7000 },
+      { day: "2026-11-02", bytes: 50 },
+    ]);
   });
 
   test("a day change flushes the previous day's counts to the previous day", async () => {
@@ -467,7 +720,50 @@ describe("enforcement and budget", () => {
     expect(w.reports.length).toBe(0);
     w.t += 20;
     await engine.onAlarm();
-    expect(w.reports).toEqual([{ bytes: 20_000, minutes: 1 }]);
+    expect(w.reports).toMatchObject([{ bytes: 20_000, minutes: 1 }]);
+  });
+
+  test("reports estimate the platform's requests: messages / 20, upgrades, alarms and budget calls", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key); // budget calls: checkIp, registerIp; upgrade + auth message
+    const s = await openSession(w, engine, key, host); // two upgrades
+    for (let i = 0; i < 199; i++) await engine.onMessage(s.app, bin(100));
+    await engine.onMessage(s.app, "ping"); // answered without waking the object: not billed
+    w.t += 20;
+    await engine.onAlarm();
+    // (1 auth + 199 frames) / 20 + 3 upgrades + 2 registration calls + 1 alarm + 1 report
+    expect(w.reports).toHaveLength(1);
+    expect(w.reports[0]!.requests).toBeCloseTo(10 + 3 + 2 + 1 + 1, 6);
+  });
+
+  test("messages and upgrades not yet reported survive hibernation", async () => {
+    const { w, cfg, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    w.t += 20;
+    await engine.onAlarm();
+    await w.settle();
+    const before = w.reports.length;
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 40; i++) await engine.onMessage(s.data, bin(10));
+    const woken = wake(w, cfg);
+    w.t += 30_000;
+    await woken.onAlarm();
+    // 40 frames / 20 + 2 upgrades + 1 alarm + 1 report; the first engine's in-memory extras are lost.
+    expect(w.reports.length).toBe(before + 1);
+    expect(w.reports.at(-1)!.requests).toBeCloseTo(2 + 2 + 1 + 1, 6);
+  });
+
+  test("the requests budget refuses new sessions like the other budgets", async () => {
+    const { w, engine } = setup({ policy: { budget: { globalDailyRequests: 1000 } } });
+    const key = await newHostKey();
+    await connectHost(w, engine, key);
+    w.t += 20_000;
+    w.budgetState = "closed";
+    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(503);
+    expect((await r.json()).reason).toBe("relay_busy");
   });
 
   test("an unreachable budget service does not break sessions; the increment is retried", async () => {
@@ -487,7 +783,72 @@ describe("enforcement and budget", () => {
     w.t += 30_000;
     await engine.onMessage(s.app, bin(100));
     await engine.onAlarm();
-    expect(w.reports.at(-1)).toEqual({ bytes: 600, minutes: 1 });
+    expect(w.reports.at(-1)).toMatchObject({ bytes: 600, minutes: 1 });
+  });
+});
+
+describe("daily message quota", () => {
+  test("once used up, every running session of the host is closed with 4429 and new ones are refused", async () => {
+    const { w, engine } = setup({ policy: { quotas: { hostDailyMb: 0, hostMonthlyControlMb: 0, hostMonthlyMediaMb: 0, hostDailyMessages: 100 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    expect(host.texts.find((t) => t.t === "hello").usage.dayMessages).toBe(0);
+    const control = await openSession(w, engine, key, host, "control");
+    const media = await openSession(w, engine, key, host, "media");
+    for (let i = 0; i < 50; i++) await engine.onMessage(control.app, bin(10));
+    for (let i = 0; i < 30; i++) await engine.onMessage(media.data, bin(10));
+    for (let i = 0; i < 40; i++) await engine.onMessage(control.app, "ping"); // never counted
+    for (let i = 0; i < 20; i++) await engine.onMessage(control.data, bin(10)); // the 100th message
+    expect(control.app.closedWith).toBeUndefined();
+    const forwarded = control.app.sent.length;
+    await engine.onMessage(control.data, bin(10)); // the 101st: refused, and everything is cut
+    expect(control.app.sent.length).toBe(forwarded);
+    for (const sock of [control.app, control.data, media.app, media.data]) expect(sock.closedWith).toEqual([4429, "quota_exhausted"]);
+    expect(host.closedWith).toBeUndefined(); // the computer stays online and is told
+    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(429);
+    const body = await r.json();
+    expect(body.reason).toBe("quota_exhausted");
+    expect(body.retryAfter).toBe(Math.ceil((Date.UTC(2026, 10, 2) - w.t) / 1000));
+    await w.settle();
+    expect(host.texts.filter((t) => t.t === "usage").at(-1).usage.dayMessages).toBe(100);
+  });
+
+  test("the count is stored, survives a wake, and resets the next UTC day", async () => {
+    const { w, cfg, engine } = setup({ policy: { quotas: { hostDailyMessages: 50 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 30; i++) await engine.onMessage(s.app, bin(10));
+    w.t += 20;
+    await engine.onAlarm();
+    await w.settle();
+    expect(stored(w, key).dayMsgs).toBe(30);
+    for (let i = 0; i < 25; i++) await engine.onMessage(s.app, bin(10)); // 50 used, then one refused
+    expect(s.app.closedWith).toEqual([4429, "quota_exhausted"]);
+    await w.settle();
+    const woken = wake(w, cfg);
+    expect((await woken.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(429);
+    expect(stored(w, key).dayMsgs).toBe(50);
+    w.t = Date.UTC(2026, 10, 2, 0, 0, 1);
+    host.autoPing = w.t;
+    const next = await woken.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(next.status).toBe(200);
+    const open = host.texts.filter((t) => t.t === "open").at(-1);
+    await woken.start({ kind: "data", hostId: key.hostId, sid: open.sid }, w.requestCtx());
+    const app = w.socks.at(-2)!;
+    expect(app.texts.find((t) => t.t === "ready").usage.dayMessages).toBe(0);
+  });
+
+  test("hosts registered before the quota existed get its table on first use", () => {
+    const sql = sqlite(new Database(":memory:"));
+    const old = new HostLedger(sql, "h1");
+    old.ensure();
+    old.commit(w0, utcDay(w0), { control: 1, media: 0, minutes: 0, msgs: 0, reqs: 0 }, 1);
+    expect(sql.all("SELECT name FROM sqlite_master WHERE name = 'msgs_day'")).toEqual([]);
+    const later = new HostLedger(sql, "h1");
+    later.commit(w0 + 1000, utcDay(w0), { control: 1, media: 0, minutes: 0, msgs: 7, reqs: 1 }, 1);
+    expect(new HostLedger(sql, "h1").totals(w0 + 2000).dayMsgs).toBe(7);
   });
 });
 

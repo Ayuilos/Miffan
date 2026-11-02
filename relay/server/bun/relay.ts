@@ -122,7 +122,8 @@ export function createBunRelay(opts: BunRelayOptions) {
   const ips = new IpRegistrations(sqlite(new Database(":memory:")));
   const budget: BudgetPort = {
     state: async () => global.state(Date.now()),
-    report: async (bytes, minutes) => global.report(Date.now(), bytes, minutes),
+    report: async (bytes, minutes, requests) => global.report(Date.now(), bytes, minutes, requests),
+    checkIp: (ip) => ips.check(Date.now(), ip, cfg.registrationsPerIpPerDay),
     registerIp: (ip) => ips.register(Date.now(), ip, cfg.registrationsPerIpPerDay),
   };
   const slots = new Map<string, Slot>();
@@ -180,6 +181,10 @@ export function createBunRelay(opts: BunRelayOptions) {
   const websocket: Bun.WebSocketHandler<SockData> = {
     // Larger than any legal frame, so oversized frames reach the engine and are closed with 4413.
     maxPayloadLength: 1 << 20,
+    // Bytes buffered for a reader that is slower than its sender. Beyond this send() drops the frame and
+    // BunSock closes the connection with 1013 (PROTOCOL §9). SSH flow control keeps an ordinary session
+    // far below it; the default (16 MiB per socket) let a few stalled phones take much of a small VPS.
+    backpressureLimit: 4 * 1024 * 1024,
     idleTimeout: 120,
     open(ws) {
       ws.data.sock.bind(ws);

@@ -17,12 +17,13 @@ export const profiles = {
     },
     edges: ["104.17.5.5", "104.19.8.8"],
   },
-  // Access code required, media switched off.
+  // Access code required, media switched off, 100 messages per host and day.
   B: {
     accessMode: "token",
     policy: {
       media: { allowed: false },
       limits: { sessionsPerHost: 4, idleTimeoutS: 60 },
+      quotas: { hostDailyMessages: 100 },
     },
   },
   // Global budget: 0.5 MiB per day, media pauses below 50% remaining.
@@ -35,6 +36,15 @@ export const profiles = {
       limits: { sessionsPerHost: 4, idleTimeoutS: 60 },
       quotas: { hostDailyMb: 0, hostDailyActiveMin: 0, hostMonthlyControlMb: 0, hostMonthlyMediaMb: 0 },
       budget: { globalDailyMb: 0.5, globalDailyActiveHours: 0, mediaReserve: 0.5 },
+    },
+  },
+  // Long idle timeout and no budgets: only liveness (PROTOCOL §5.4) can end a session here.
+  D: {
+    accessMode: "open",
+    registrationsPerIpPerDay: 60,
+    policy: {
+      limits: { sessionsPerHost: 4, idleTimeoutS: 600 },
+      quotas: { hostDailyMb: 0, hostDailyActiveMin: 0, hostMonthlyControlMb: 0, hostMonthlyMediaMb: 0 },
     },
   },
 } as const;
