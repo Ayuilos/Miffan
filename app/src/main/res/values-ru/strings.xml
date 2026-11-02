@@ -4076,7 +4076,7 @@
   <string name="workspace_screen_relay_idle">Изображение не менялось, поэтому ретранслятор закрыл экран, чтобы сберечь время ретранслятора для этого компьютера. Повторите попытку, чтобы продолжить просмотр.</string>
   <string name="workspace_screen_relay_rate_limited">Ретранслятор отключил экран за слишком частую отправку данных. Повторите попытку или выберите более низкое качество.</string>
   <string name="workspace_screen_relay_lost">Потеряно соединение с ретранслятором, возможно, телефон сменил сеть. Повторите попытку.</string>
-  <string name="workspace_screen_still_refresh">Экран не меняется · Нажмите, чтобы обновить</string>
+  <string name="workspace_screen_still_refresh">Без изменений · Обновить</string>
   <string name="workspace_screen_relay_unavailable">Ретранслятор не смог открыть экран (%1$s).</string>
   <string name="workspace_relay_host_offline">Не удалось подключиться к компьютеру дома или через ретранслятор. Проверьте, что компьютер включён, не спит и подключён к сети.</string>
   <string name="workspace_relay_denied">Компьютер пока не узнаёт этот телефон. Подключитесь один раз из той же сети, чтобы разрешить его снова.</string>
