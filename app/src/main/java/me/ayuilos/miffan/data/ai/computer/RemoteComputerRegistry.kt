@@ -46,6 +46,8 @@ import me.ayuilos.miffan.data.repository.RemoteScreenRepository
 
 private const val TAG = "RemoteComputer"
 private const val START_SESSION = "start_session"
+/** cua-driver tools that only read the desktop (get_desktop_state, list_windows, verify_state…). */
+private val OBSERVING_PREFIXES = listOf("get_", "list_", "check_", "verify_", "health_", "history_", "parse_", "zoom")
 
 /** macOS privacy grants cua-driver needs to read and operate the desktop. */
 data class ComputerPermissions(val accessibility: Boolean, val screenRecording: Boolean) {
@@ -118,11 +120,21 @@ class RemoteComputerRegistry(
      */
     suspend fun call(workspaceId: String, name: String, arguments: JsonObject): CallToolResult {
         val current = connection(workspaceId)
-        val result = callOnce(current, name, arguments)
+        val result = try { callOnce(current, name, arguments) } finally { noteAction(current, name) }
         if (name == START_SESSION || !result.sessionEnded() || !current.canStartSession) return result
         Log.i(TAG, "cua-driver session ${current.label} had ended; starting it again for $name")
         val started = callOnce(current, START_SESSION, JsonObject(emptyMap()))
         return if (started.isError == true) result else callOnce(current, name, arguments)
+    }
+
+    /**
+     * A call that may change the host's desktop wakes a screen of it that stopped refreshing (a still
+     * screen through a relay). Reading tools and a partner's own computer (a Space) do not.
+     */
+    private fun noteAction(current: Connection, name: String) {
+        if (current.capabilities.controlKey != current.capabilities.hostId) return
+        if (OBSERVING_PREFIXES.any(name::startsWith) || name == START_SESSION) return
+        runCatching { screens.noteComputerAction(current.capabilities.hostId) }
     }
 
     /**

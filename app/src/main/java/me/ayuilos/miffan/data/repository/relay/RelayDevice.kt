@@ -11,6 +11,7 @@ import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import me.rerere.workspace.relay.RelayDeviceSigner
+import kotlinx.coroutines.flow.update
 import me.rerere.workspace.relay.RelayIds
 
 /**
@@ -95,8 +96,38 @@ class RelayAccess(
 
     fun record(hostId: String, ready: me.rerere.workspace.relay.RelayReady) {
         _lastReady.value = _lastReady.value + (hostId to ready)
+        // A new session on the same channel supersedes how the last one ended.
+        _lastClose.update { closes -> if (closes[hostId]?.channel?.wire == ready.ch) closes - hostId else closes }
+    }
+
+    private val _lastClose = kotlinx.coroutines.flow.MutableStateFlow<Map<String, RelaySessionClose>>(emptyMap())
+
+    /**
+     * Per computer (by host id), how its last relay session ended when the relay closed it after it
+     * had opened: `idle`, `quota_exhausted`, `rate_limited`, `relay_busy`, `peer_closed`, or
+     * `unreachable` when the relay stopped answering. Cleared when a new session on that channel opens.
+     */
+    val lastClose: kotlinx.coroutines.flow.StateFlow<Map<String, RelaySessionClose>> = _lastClose
+
+    fun recordClose(hostId: String, closed: me.rerere.workspace.relay.RelaySessionClosedException) {
+        _lastClose.update { it + (hostId to RelaySessionClose(closed.reason, closed.channel, System.currentTimeMillis())) }
     }
 }
+
+/** How a relay session ended; see [RelayAccess.lastClose]. [reason] is a PROTOCOL §9 code. */
+data class RelaySessionClose(
+    val reason: String,
+    val channel: me.rerere.workspace.relay.RelayChannel,
+    val atMillis: Long,
+)
+
+/**
+ * The relay's reason when this error came from a relay session the relay closed: from the cause
+ * chain or a suppressed [me.rerere.workspace.relay.RelaySessionClosedException]. Null otherwise.
+ */
+fun Throwable.relaySessionClose(): me.rerere.workspace.relay.RelaySessionClosedException? =
+    generateSequence(this) { it.cause }.take(16).flatMap { sequenceOf(it) + it.suppressed.asSequence() }
+        .filterIsInstance<me.rerere.workspace.relay.RelaySessionClosedException>().firstOrNull()
 
 /** One forced trip through a relay: how long the session took to open and one command took to answer. */
 data class RelayProbe(

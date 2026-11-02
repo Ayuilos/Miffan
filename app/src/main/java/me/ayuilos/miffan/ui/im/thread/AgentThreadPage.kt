@@ -91,8 +91,8 @@ fun AgentThreadPage(
     }
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val computer by rememberPartnerComputer(assistantId)
-    // A partner on a computer gets its connection ready while its chat is open.
-    me.ayuilos.miffan.ui.im.computer.RetainComputerConnection(assistant?.workspaceId?.toString())
+    // A partner on a computer gets its connection ready while its chat is open (not through a relay).
+    me.ayuilos.miffan.ui.im.computer.RetainComputerConnection(assistant?.workspaceId?.toString(), throughRelay = false)
     // One state, so the page never sees "loaded" before the items that came with it.
     val timelineState = vm.timelineState.collectAsStateWithLifecycle()
     val timeline by remember { derivedStateOf { timelineState.value.items } }

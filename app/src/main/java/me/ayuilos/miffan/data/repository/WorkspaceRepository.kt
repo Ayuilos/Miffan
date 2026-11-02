@@ -26,6 +26,8 @@ import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
 import me.ayuilos.miffan.data.repository.relay.RelayAccess
 import me.ayuilos.miffan.data.repository.relay.RouteWinner
 import me.ayuilos.miffan.data.repository.relay.raceRoutes
+import me.ayuilos.miffan.data.repository.relay.relaySessionClose
+import me.ayuilos.miffan.data.repository.relay.shouldPreconnect
 import me.rerere.workspace.RemoteRoute
 import me.rerere.workspace.relay.RelayChannel
 import me.rerere.workspace.relay.RelayException
@@ -113,6 +115,9 @@ class WorkspaceRepository(
         relayAccess?.network?.watch {
             relayAccess.client.forgetEdges()
             pool.retireIdle { it.route is RemoteRoute.Relay }
+            // Sessions in use most likely died with the old network: find out now (in the
+            // background), so their users reconnect at once rather than after missed pongs.
+            relayAccess.client.checkLiveSessions()
         }
     }
     private val terminalLock = Any()
@@ -228,9 +233,12 @@ class WorkspaceRepository(
         val (session, winner) = raceRoutes(
             direct = {
                 tryRemoteAddresses(host.connectionAddresses) { address ->
-                    openGuarded {
+                    val timeout = addressTimeoutMillis(host, address)
+                    // Losing the race must end a blocked connect now, not at its timeout.
+                    val sockets = me.rerere.workspace.CancellableSocketFactory(timeout)
+                    openGuarded(onCancel = sockets::cancel) {
                         remoteTransport.open(config.copy(host = address.host, port = address.port),
-                            timeoutMillis = addressTimeoutMillis(host, address))
+                            timeoutMillis = timeout, socketFactory = sockets)
                     }.also { directAddress = address }
                 }
             },
@@ -253,10 +261,19 @@ class WorkspaceRepository(
         }
     }
 
-    /** Opens one SSH session; a session that finishes opening after cancellation is closed, not leaked. */
-    private suspend fun openGuarded(open: () -> RemoteWorkspaceSession): RemoteWorkspaceSession {
+    /**
+     * Opens one SSH session; a session that finishes opening after cancellation is closed, not leaked.
+     * [onCancel] runs as soon as the caller is cancelled, to unblock a socket that ignores interrupts.
+     */
+    @OptIn(kotlinx.coroutines.InternalCoroutinesApi::class)
+    private suspend fun openGuarded(onCancel: (() -> Unit)? = null, open: () -> RemoteWorkspaceSession): RemoteWorkspaceSession {
         val opened = AtomicReference<RemoteWorkspaceSession?>()
         val disposed = AtomicBoolean(false)
+        val cancellationHook = onCancel?.let { cancel ->
+            currentCoroutineContext()[kotlinx.coroutines.Job]?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+                if (cause != null) runCatching { cancel() }
+            }
+        }
         try {
             val session = runRemoteInterruptible {
                 open().also {
@@ -271,6 +288,7 @@ class WorkspaceRepository(
             opened.compareAndSet(session, null)
             return session
         } finally {
+            cancellationHook?.dispose()
             disposed.set(true)
             opened.getAndSet(null)?.let { session ->
                 withContext(NonCancellable + Dispatchers.IO) { session.close() }
@@ -280,19 +298,26 @@ class WorkspaceRepository(
 
     /**
      * An SSH session through [relay]. No SSH keepalives: the relay socket checks liveness with
-     * text pings, which do not wake the relay's state (relay/PROTOCOL.md §5.4).
+     * text pings, which do not wake the relay's state (relay/PROTOCOL.md §5.4). Every round trip
+     * crosses the relay, so key sign-in skips JSch's probing requests, and a second session to the
+     * same computer ([sameHostAs]) skips checking its root.
      */
-    private suspend fun openThroughRelay(hostId: String, relay: RemoteHostRelay, config: RemoteHostConfig, channel: RelayChannel): RemoteWorkspaceSession {
+    private suspend fun openThroughRelay(hostId: String, relay: RemoteHostRelay, config: RemoteHostConfig, channel: RelayChannel,
+        sameHostAs: RemoteWorkspaceSession? = null): RemoteWorkspaceSession {
         val access = requireNotNull(relayAccess)
         val signer = withContext(Dispatchers.IO) { access.deviceKeys.signer() }
         val networkKey = access.network.current()
         val socket = AtomicReference<RelaySocket?>()
         val factory = access.client.jschSocketFactory(relay.endpoint, relay.hostId, channel, signer, networkKey,
-            timeoutMillis = RELAY_OPEN_TIMEOUT_MILLIS) { socket.set(it) }
+            timeoutMillis = RELAY_OPEN_TIMEOUT_MILLIS) { opened ->
+            socket.set(opened)
+            opened.addCloseListener { closed -> closed.closedByRelay?.let { access.recordClose(hostId, it) } }
+        }
         return openGuarded {
             remoteTransport.open(config.copy(host = relay.hostId, port = 22), timeoutMillis = RELAY_SSH_TIMEOUT_MILLIS,
                 socketFactory = factory, keepAlive = false,
-                route = { RemoteRoute.Relay(relay.endpoint, relay.hostId, requireNotNull(socket.get())) })
+                route = { RemoteRoute.Relay(relay.endpoint, relay.hostId, requireNotNull(socket.get())) },
+                fewerRoundTrips = true, sameHostAs = sameHostAs)
         }.also { session -> (session.route as? RemoteRoute.Relay)?.let { access.record(hostId, it.socket.ready) } }
     }
 
@@ -307,7 +332,7 @@ class WorkspaceRepository(
         if (!route.socket.ready.policy.media.allowed) throw RelayException("media_disabled")
         val host = hostDao.getById(hostId) ?: return null
         val relay = host.relay?.takeIf { it.hostId == route.hostId } ?: return null
-        return openThroughRelay(host.id, relay, host.config(), RelayChannel.MEDIA)
+        return openThroughRelay(host.id, relay, host.config(), RelayChannel.MEDIA, sameHostAs = control)
     }
 
     /**
@@ -388,11 +413,15 @@ class WorkspaceRepository(
         }
     }
 
-    /** Holds a connection while a configured workspace is on screen. */
-    suspend fun retainRemoteWorkspace(id: String): Closeable? {
+    /**
+     * Holds a connection while a configured workspace is on screen. With [throughRelay] false, a
+     * computer last reached through its relay is left alone ([shouldPreconnect]).
+     */
+    suspend fun retainRemoteWorkspace(id: String, throughRelay: Boolean = true): Closeable? {
         if (!remoteConnections.mayPreconnect(id)) return null
         val workspace = dao.getById(id)?.takeIf { it.isRemote } ?: return null
         val host = hostDao.getById(workspace.remoteHostId ?: return null) ?: return null
+        if (!shouldPreconnect(host, throughRelay)) return null
         val config = host.config(requireNotNull(workspace.sshRoot))
         return openLeasedConnection(remoteIdentity(workspace, host), config, explicit = false)
     }
@@ -1258,6 +1287,8 @@ class WorkspaceRepository(
                 val outcomeUnknown = transportLost || error is JSchException ||
                     error is SftpException || error is RemoteFileTimeoutException
                 if (transportLost) {
+                    // The UI reads the relay's reason (idle, quota…) with Throwable.relaySessionClose().
+                    lease?.session?.relayClose?.let { if (error.relaySessionClose() == null) error.addSuppressed(it) }
                     lease?.session?.let { remoteConnections.connectionLost(workspace.id, it) }
                     remoteRuntime.connectionLost(hostId,
                         workspaceStrings.getString(R.string.workspace_ssh_interrupted), revision)

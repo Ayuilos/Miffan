@@ -93,7 +93,7 @@ enum class RelayChannel(val wire: String) { CONTROL("control"), MEDIA("media") }
  * when the response did not come from the relay itself (for example Cloudflare's own error page
  * after the free quota runs out): that must never be shown as "computer offline".
  */
-class RelayException(
+open class RelayException(
     val reason: String,
     val retryAfterSeconds: Int? = null,
     val httpStatus: Int? = null,
@@ -153,3 +153,11 @@ interface RelayDeviceSigner {
     /** ECDSA P-256 / SHA-256 signature in DER form. */
     fun sign(data: ByteArray): ByteArray
 }
+
+/**
+ * A session that had opened ended because the relay (or the connector through it) closed it with
+ * [reason]: `idle`, `peer_closed`, `quota_exhausted`, `rate_limited`, `relay_busy` (PROTOCOL §6.4,
+ * §9), any later code, or [RelayException.UNREACHABLE] when the relay stopped answering pings.
+ */
+class RelaySessionClosedException(reason: String, val channel: RelayChannel) :
+    RelayException(reason, message = "Relay closed the ${channel.wire} session: $reason")

@@ -136,7 +136,9 @@ val repositoryModule = module {
     single { NativeSshWorkspaceTransport }
     single {
         me.ayuilos.miffan.data.repository.relay.RelayAccess(
-            me.rerere.workspace.relay.RelayClient(),
+            me.rerere.workspace.relay.RelayClient(
+                infoStore = me.ayuilos.miffan.data.repository.relay.RelayInfoPrefsStore(get<android.content.Context>()),
+            ),
             me.ayuilos.miffan.data.repository.relay.RelayDeviceKeyStore(),
             me.ayuilos.miffan.data.repository.relay.RelayNetworkKey(get()),
         )

@@ -104,7 +104,7 @@ class HostAddressesTest {
         every { session.platform } returns me.rerere.workspace.RemotePlatform.WINDOWS
         every { session.homeDirectory } returns "/C:/Users/user"
         val attempted = mutableListOf<String>()
-        every { transport.open(any(), any(), any()) } answers {
+        every { transport.open(any(), any(), any(), socketFactory = any()) } answers {
             val config = firstArg<me.rerere.workspace.RemoteHostConfig>()
             attempted += config.host
             assertEquals(pin, config.trustedHostKeySha256)
@@ -125,7 +125,7 @@ class HostAddressesTest {
         val session = mockk<RemoteWorkspaceSession>(relaxed = true)
         every { session.platform } returns me.rerere.workspace.RemotePlatform.WINDOWS
         every { session.homeDirectory } returns "/C:/Users/user"
-        every { transport.open(any(), any(), any()) } answers {
+        every { transport.open(any(), any(), any(), socketFactory = any()) } answers {
             host = host!!.copy(host = "100.64.0.5", alternateAddresses = "[]")
             session
         }
@@ -162,8 +162,8 @@ class HostAddressesTest {
     @Test fun passwordFailureIsReturnedIntactWithoutTryingAlternate() = runBlocking {
         repo.addHostAddress("id", "100.64.0.5", 22)
         val failure = RemoteConnectException("192.168.1.5", JSchException("Auth fail"), RemotePasswordSignInFailure.REJECTED, "user")
-        every { transport.open(any(), any(), any()) } throws failure
+        every { transport.open(any(), any(), any(), socketFactory = any()) } throws failure
         assertSame(failure, runCatching { repo.remoteHome("id") }.exceptionOrNull())
-        verify(exactly = 1) { transport.open(any(), any(), any()) }
+        verify(exactly = 1) { transport.open(any(), any(), any(), socketFactory = any()) }
     }
 }
