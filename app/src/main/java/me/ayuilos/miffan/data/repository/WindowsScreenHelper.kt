@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.data.repository
 
+import java.security.MessageDigest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import me.rerere.workspace.RemotePlatform
@@ -25,11 +26,19 @@ internal val windowsHelperVersionCommand = """
 """.trimIndent()
 
 /**
- * Binary upload retains the asset BOM. Replace in the same directory, retaining the old ACL. Reads exactly
- * [size] bytes: Windows OpenSSH sometimes never delivers the end of stdin after a large upload (seen with
- * the 150 KB helper), and a copy to the end would then wait until the call times out.
+ * Uploads [script] over stdin and installs it. Binary upload retains the asset BOM; the replacement
+ * happens in the same directory, retaining the old ACL.
+ *
+ * Windows OpenSSH hands the command an overlapped stdin pipe. A synchronous read of it (what
+ * `[Console]::OpenStandardInput()` does) hangs for good once the reader catches up with the data in
+ * flight, which with Win32-OpenSSH 10.0 happens to any upload over ~128 KiB, such as the helper. So stdin
+ * is read as an asynchronous FileStream, each read with a deadline, exactly [script]'s size, and the result
+ * must match its SHA-256. A stalled upload ends the process instead of leaving it waiting; temp files left
+ * by earlier, stuck uploads are removed.
  */
-internal fun windowsHelperInstallCommand(size: Int): String = """
+internal fun windowsHelperInstallCommand(script: ByteArray): String {
+    val sha256 = MessageDigest.getInstance("SHA-256").digest(script).joinToString("") { "%02X".format(it) }
+    return """
     ${'$'}ErrorActionPreference = 'Stop'
     ${'$'}directory = Join-Path ${'$'}env:LOCALAPPDATA 'Miffan\bin'
     ${'$'}null = New-Item -ItemType Directory -Path ${'$'}directory -Force
@@ -40,22 +49,33 @@ internal fun windowsHelperInstallCommand(size: Int): String = """
     }
     ${'$'}target = Join-Path ${'$'}directory 'miffan.ps1'
     if ((Test-Path -LiteralPath ${'$'}target) -and ((Get-Item -LiteralPath ${'$'}target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Reparse helper is not allowed' }
+    Get-ChildItem -LiteralPath ${'$'}directory -Filter 'miffan-*.tmp' -File -Force | Where-Object { ${'$'}_.LastWriteTime -lt (Get-Date).AddMinutes(-10) } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
     ${'$'}temp = Join-Path ${'$'}directory ('miffan-' + [Guid]::NewGuid().ToString('N') + '.tmp')
     try {
+        try {
+            Add-Type -Namespace MiffanUpload -Name Std -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetStdHandle(int n);'
+            ${'$'}handle = New-Object Microsoft.Win32.SafeHandles.SafeFileHandle ([MiffanUpload.Std]::GetStdHandle(-10), ${'$'}false)
+            ${'$'}stdin = New-Object IO.FileStream (${'$'}handle, [IO.FileAccess]::Read, 65536, ${'$'}true)
+        } catch { ${'$'}stdin = [Console]::OpenStandardInput() }
         ${'$'}file = [IO.File]::Open(${'$'}temp, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
         try {
-            ${'$'}stdin = [Console]::OpenStandardInput(); ${'$'}buffer = New-Object byte[] 65536; ${'$'}left = $size
+            ${'$'}buffer = New-Object byte[] 65536; ${'$'}left = ${script.size}
             while (${'$'}left -gt 0) {
-                ${'$'}read = ${'$'}stdin.Read(${'$'}buffer, 0, [Math]::Min(${'$'}buffer.Length, ${'$'}left))
+                ${'$'}pending = ${'$'}stdin.ReadAsync(${'$'}buffer, 0, [Math]::Min(${'$'}buffer.Length, ${'$'}left))
+                if (-not ${'$'}pending.Wait(20000)) { throw 'Helper upload stalled' }
+                ${'$'}read = ${'$'}pending.Result
                 if (${'$'}read -le 0) { throw 'Helper upload ended early' }
                 ${'$'}file.Write(${'$'}buffer, 0, ${'$'}read); ${'$'}left -= ${'$'}read
             }
             ${'$'}file.Flush(${'$'}true)
         } finally { ${'$'}file.Dispose() }
+        if ((Get-FileHash -Algorithm SHA256 -LiteralPath ${'$'}temp).Hash -ne '$sha256') { throw 'Helper upload is corrupt' }
         if (Test-Path -LiteralPath ${'$'}target -PathType Leaf) { [IO.File]::Replace(${'$'}temp, ${'$'}target, [NullString]::Value) }
         else { [IO.File]::Move(${'$'}temp, ${'$'}target) }
     } finally { if (Test-Path -LiteralPath ${'$'}temp) { Remove-Item -LiteralPath ${'$'}temp -Force } }
 """.trimIndent()
+}
 
 @Serializable
 internal data class WindowsClipboardResult(val success: Boolean, val verified: Boolean = false, val detail: String)
