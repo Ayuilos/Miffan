@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.repository.relay
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import me.rerere.workspace.relay.RelayInfoStore
@@ -23,6 +24,6 @@ class RelayInfoPrefsStore(private val prefs: SharedPreferences) : RelayInfoStore
     }.getOrNull()
 
     override fun write(baseUrl: String, info: StoredRelayInfo) {
-        runCatching { prefs.edit().putString(baseUrl, Json.encodeToString(Entry(info.fetchedAtMillis, info.json))).apply() }
+        runCatching { prefs.edit { putString(baseUrl, Json.encodeToString(Entry(info.fetchedAtMillis, info.json))) } }
     }
 }
