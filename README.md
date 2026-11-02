@@ -102,7 +102,7 @@ Each partner gets its own look: a Miffan rice bowl in four kinds and six colors,
 
 ## Get started
 
-1. Download the latest APK from [GitHub Releases](https://github.com/Ayuilos/Miffan/releases). Official builds are for `arm64-v8a` devices on Android 8.0 or later. Later updates download and install from inside the app.
+1. Download the latest APK from [GitHub Releases](https://github.com/Ayuilos/Miffan/releases). Official builds are for `arm64-v8a` devices on Android 8.0 or later. After that, Miffan tells you about new versions and downloads and installs them from inside the app; it can also download them over Wi-Fi by itself.
 2. On first launch, Miffan walks you through it in a chat: connect an AI service (one-tap OpenRouter sign-in or an API key), pick a model and your first partner. You can also restore from a backup.
 3. Start chatting.
 

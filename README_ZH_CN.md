@@ -102,7 +102,7 @@
 
 ## 开始使用
 
-1. 从 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 下载最新 APK。正式版适用于 Android 8.0 及以上的 `arm64-v8a` 设备。之后的更新在应用内就能下载安装。
+1. 从 [GitHub Releases](https://github.com/Ayuilos/Miffan/releases) 下载最新 APK。正式版适用于 Android 8.0 及以上的 `arm64-v8a` 设备。之后 Miffan 会自己提醒新版本，在应用内就能下载安装，也可以设为 Wi-Fi 下自动下载。
 2. 首次打开时，Miffan 会在聊天里带你连上 AI 服务（OpenRouter 一键登录或 API Key），选好模型和第一个伙伴；也可以从备份恢复。
 3. 开始聊天。
 
