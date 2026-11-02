@@ -64,6 +64,19 @@ type link struct {
 	selMu    sync.Mutex
 	selURL   string
 	selector *edgeSelector
+	warm     *tlsWarmer // spare TLS connection for session data connections, while the control link is up
+}
+
+func (l *link) setWarmer(w *tlsWarmer) {
+	l.selMu.Lock()
+	l.warm = w
+	l.selMu.Unlock()
+}
+
+func (l *link) warmer() *tlsWarmer {
+	l.selMu.Lock()
+	defer l.selMu.Unlock()
+	return l.warm
 }
 
 func newConnector(paths dataPaths, id *identity, version string, env netEnv, log *logger) *connector {
@@ -340,6 +353,18 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 	})
 	c.log.printf("connected to relay %s as %s via %s", l.url, c.id.hostID, describeEdge(edge))
 
+	// Keep a TLS connection ready for the next session's data connection (not through a proxy).
+	if client.base.Scheme == "https" && edge != edgeProxy {
+		w := newTLSWarmer(client, edge)
+		wctx, wcancel := context.WithCancel(ctx)
+		go w.run(wctx)
+		l.setWarmer(w)
+		defer func() {
+			l.setWarmer(nil)
+			wcancel()
+		}()
+	}
+
 	// Keepalive: text ping only (PROTOCOL §5.4).
 	stop := make(chan struct{})
 	defer close(stop)
@@ -459,11 +484,12 @@ func (l *link) startSession(ctx context.Context, sid, ch string, p pace) {
 		return
 	}
 	edges := l.cachedEdges()
+	warm := l.warmer()
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		defer func() { <-c.sessions }()
-		c.session(ctx, l, sid, ch, p, edges)
+		c.session(ctx, l, sid, ch, p, edges, warm)
 	}()
 }
 

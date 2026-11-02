@@ -21,7 +21,7 @@ const (
 )
 
 // session serves one `open`: data connection → end-to-end handshake → forward to the configured target.
-func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string) {
+func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string, warm *tlsWarmer) {
 	short := sid[:8]
 	start := time.Now()
 	deadline := start.Add(c.timing.handshake)
@@ -31,6 +31,7 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 		c.log.printf("session %s: bad relay in config", short)
 		return
 	}
+	client.warm = warm
 	dialCtx, cancel := context.WithDeadline(ctx, deadline)
 	// The session data connection is authorised by the sid alone (PROTOCOL §3), so no access code is sent.
 	ws, _, err := client.dialWSAny(dialCtx, edges, "/v1/host/"+c.id.hostID+"/session/"+sid, false)
