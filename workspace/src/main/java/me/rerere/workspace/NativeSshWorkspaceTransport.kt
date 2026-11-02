@@ -225,6 +225,11 @@ object NativeSshWorkspaceTransport {
      * [socketFactory] replaces the TCP connection, for example with a relay session. With
      * [keepAlive] false, SSH sends no keepalives and has no read timeout once connected: the relay
      * socket checks liveness itself, and any SSH packet would wake the relay's state.
+     *
+     * [fewerRoundTrips] is for slow paths such as a relay: key sign-in skips JSch's `none` request
+     * and its unsigned public-key query (two round trips). [sameHostAs], an open session to the same
+     * computer, supplies its platform and home directory, so a session rooted at "/" (for example a
+     * relay's screen channel) skips the SFTP check of its root (about six round trips).
      */
     fun open(
         config: RemoteHostConfig,
@@ -233,6 +238,8 @@ object NativeSshWorkspaceTransport {
         socketFactory: com.jcraft.jsch.SocketFactory? = null,
         keepAlive: Boolean = true,
         route: () -> RemoteRoute = { RemoteRoute.Direct },
+        fewerRoundTrips: Boolean = false,
+        sameHostAs: RemoteWorkspaceSession? = null,
     ): RemoteWorkspaceSession {
         require(sftpIdleTimeoutMillis > 0)
         require(timeoutMillis > 0)
@@ -262,6 +269,10 @@ object NativeSshWorkspaceTransport {
                 is RemoteAuthentication.PrivateKey -> "publickey"
             },
         )
+        if (fewerRoundTrips && config.authentication is RemoteAuthentication.PrivateKey) {
+            session.setConfig("enable_auth_none", "no")
+            session.setConfig("enable_pubkey_auth_query", "no")
+        }
         // Not setPassword: the answer object tells whether the server asked for a password at all.
         val passwordAnswer = (config.authentication as? RemoteAuthentication.Password)?.let { PasswordAnswer(it.value) }
         passwordAnswer?.let(session::setUserInfo)
@@ -285,6 +296,10 @@ object NativeSshWorkspaceTransport {
         return try {
             RemoteWorkspaceSession(session, RemoteWorkspacePath(config.remoteRoot), timeoutMillis, sftpIdleTimeoutMillis, route())
                 .also { workspace ->
+                    if (sameHostAs != null && config.remoteRoot == "/" && sameHostAs.isConnected) {
+                        workspace.adoptHost(sameHostAs)
+                        return@also
+                    }
                     try {
                         workspace.verifyRoot()
                     } catch (error: SftpException) {
@@ -405,6 +420,12 @@ class RemoteWorkspaceSession internal constructor(
     var homeDirectory: String = "/"
         private set
     val supportsInteractiveTerminal: Boolean get() = platform.supportsInteractiveTerminal
+
+    /** Takes [other]'s platform and home: the same computer, already checked on that session. */
+    internal fun adoptHost(other: RemoteWorkspaceSession) {
+        platform = other.platform
+        homeDirectory = other.homeDirectory
+    }
 
     internal fun verifyRoot() = withSftp { sftp, _ ->
         homeDirectory = sftp.realpath(".")

@@ -294,9 +294,12 @@ class WorkspaceRepository(
 
     /**
      * An SSH session through [relay]. No SSH keepalives: the relay socket checks liveness with
-     * text pings, which do not wake the relay's state (relay/PROTOCOL.md §5.4).
+     * text pings, which do not wake the relay's state (relay/PROTOCOL.md §5.4). Every round trip
+     * crosses the relay, so key sign-in skips JSch's probing requests, and a second session to the
+     * same computer ([sameHostAs]) skips checking its root.
      */
-    private suspend fun openThroughRelay(hostId: String, relay: RemoteHostRelay, config: RemoteHostConfig, channel: RelayChannel): RemoteWorkspaceSession {
+    private suspend fun openThroughRelay(hostId: String, relay: RemoteHostRelay, config: RemoteHostConfig, channel: RelayChannel,
+        sameHostAs: RemoteWorkspaceSession? = null): RemoteWorkspaceSession {
         val access = requireNotNull(relayAccess)
         val signer = withContext(Dispatchers.IO) { access.deviceKeys.signer() }
         val networkKey = access.network.current()
@@ -309,7 +312,8 @@ class WorkspaceRepository(
         return openGuarded {
             remoteTransport.open(config.copy(host = relay.hostId, port = 22), timeoutMillis = RELAY_SSH_TIMEOUT_MILLIS,
                 socketFactory = factory, keepAlive = false,
-                route = { RemoteRoute.Relay(relay.endpoint, relay.hostId, requireNotNull(socket.get())) })
+                route = { RemoteRoute.Relay(relay.endpoint, relay.hostId, requireNotNull(socket.get())) },
+                fewerRoundTrips = true, sameHostAs = sameHostAs)
         }.also { session -> (session.route as? RemoteRoute.Relay)?.let { access.record(hostId, it.socket.ready) } }
     }
 
@@ -324,7 +328,7 @@ class WorkspaceRepository(
         if (!route.socket.ready.policy.media.allowed) throw RelayException("media_disabled")
         val host = hostDao.getById(hostId) ?: return null
         val relay = host.relay?.takeIf { it.hostId == route.hostId } ?: return null
-        return openThroughRelay(host.id, relay, host.config(), RelayChannel.MEDIA)
+        return openThroughRelay(host.id, relay, host.config(), RelayChannel.MEDIA, sameHostAs = control)
     }
 
     /**
