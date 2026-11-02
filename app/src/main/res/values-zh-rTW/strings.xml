@@ -4005,6 +4005,10 @@
   <string name="workspace_screen_relay_media_disabled">這個中轉不提供畫面檢視。夥伴仍可使用電腦；要看畫面，請在同一網路下連線，或改用你自己的中轉。</string>
   <string name="workspace_screen_relay_quota">這台電腦透過中轉的畫面時間暫時用完了。夥伴仍可使用電腦。</string>
   <string name="workspace_screen_relay_busy">免費中轉目前忙碌，今天已暫停畫面檢視。夥伴仍可使用電腦；你也可以設定自己的中轉。</string>
+  <string name="workspace_screen_relay_idle">畫面一直沒有變化，為了節省這台電腦的中轉額度，中轉先關閉了畫面。重試就能接著看。</string>
+  <string name="workspace_screen_relay_rate_limited">畫面資料發送得太快，被中轉限速斷開了。可以重試，或調低畫質再看。</string>
+  <string name="workspace_screen_relay_lost">和中轉的連線斷了，可能是手機換了網路。重試一下。</string>
+  <string name="workspace_screen_still_refresh">畫面靜止 · 輕觸重新整理</string>
   <string name="workspace_screen_relay_unavailable">中轉無法開啟畫面（%1$s）。</string>
   <string name="workspace_relay_host_offline">無法連到家中的電腦，也無法透過中轉連線。請確認電腦已開機、沒有進入睡眠，且已連上網路。</string>
   <string name="workspace_relay_denied">電腦還不認得這支手機。請在同一網路下連線一次，重新允許它。</string>

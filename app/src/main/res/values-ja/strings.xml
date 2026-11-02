@@ -4007,6 +4007,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_relay_media_disabled">この中継では画面の表示はできません。パートナーはパソコンを使えます。画面を見るには同じネットワークから接続するか、自分の中継を使ってください。</string>
   <string name="workspace_screen_relay_quota">このパソコンの中継での画面表示の時間を使い切りました。パートナーはパソコンを使えます。</string>
   <string name="workspace_screen_relay_busy">無料の中継が混み合っていて、今日は画面表示を一時停止しています。パートナーはパソコンを使えます。自分の中継を設定することもできます。</string>
+  <string name="workspace_screen_relay_idle">画面が長く動かなかったため、中継がこのパソコンの中継時間を節約するために画面を閉じました。もう一度試すと、見続けられます。</string>
+  <string name="workspace_screen_relay_rate_limited">短時間に送信しすぎたため、中継が画面を切断しました。再試行するか、画質を下げてください。</string>
+  <string name="workspace_screen_relay_lost">中継との接続が切れました。スマホのネットワークが切り替わったためかもしれません。再試行してください。</string>
+  <string name="workspace_screen_still_refresh">静止中 · タップで更新</string>
   <string name="workspace_screen_relay_unavailable">中継で画面を開けませんでした（%1$s）。</string>
   <string name="workspace_relay_host_offline">自宅のパソコンにも中継経由でも接続できませんでした。パソコンの電源が入っていて、スリープになっておらず、オンラインかどうかご確認ください。</string>
   <string name="workspace_relay_denied">パソコンがこのスマホをまだ認識していません。同じネットワークに一度接続して、もう一度許可してください。</string>
