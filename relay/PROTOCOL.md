@@ -311,6 +311,7 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 | `rate_limited` | — | 4429 | 会话超出限速 |
 | `relay_busy` | 503 | 4503 | 全局预算收紧或用完 |
 | `replaced` | — | 4000 | 同一电脑的新控制连接取代了旧连接 |
+| `backpressure` | — | 1013 | 接收方读得太慢，relay 为它缓冲的数据超过上限（Bun 实现为每条连接 4 MiB）；另一侧随后以 1000 `peer_closed` 关闭 |
 | `peer_closed` / `idle` | — | 1000 | 对端关闭 / 会话空闲超时 |
 
 WebSocket 关闭时，`reason` 字段携带上表中的原因码文本。
