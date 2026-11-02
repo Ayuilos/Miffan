@@ -512,6 +512,15 @@ class RemoteScreenRepository(
             throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_SCREEN_UNAVAILABLE, reason)
         }
 
+    /**
+     * The partner acted on [hostId]'s desktop: open screens of it that stopped refreshing on their
+     * own ([RemoteDesktopSession.autoRefreshStopped]) fetch a new picture and resume.
+     */
+    fun noteComputerAction(hostId: String) {
+        val screens = synchronized(lock) { open[hostId]?.toList().orEmpty() }
+        screens.forEach { (it.session as? SnapshotDesktopSession)?.noteComputerAction() }
+    }
+
     /** Called when the host is deleted; the host row itself is removed by [WorkspaceRepository]. */
     suspend fun forgetHost(hostId: String) {
         closeHost(hostId)

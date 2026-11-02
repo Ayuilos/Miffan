@@ -64,6 +64,11 @@ data class SnapshotQuality(val maxDimension: Int, val jpegQuality: Int)
  * the helper sends it back as a JPEG unless nothing changed, and taps, keys and text become
  * cua-driver actions in the picture's pixels. Both run on the relay's screen channel: [process] is
  * cua-driver's MCP, and [pictures] the helper's `snapshot serve`, which sends each picture as raw bytes.
+ *
+ * Every refresh is SSH traffic through the relay, and each minute with traffic counts against the
+ * computer's daily relay allowance. So after [stopAfterStillMillis] with an unchanged picture and
+ * no activity (input, [refresh], [setQuality], [setPaused] false, [noteComputerAction]), refreshing
+ * stops until the next activity: [autoRefreshStopped].
  */
 class SnapshotDesktopSession internal constructor(
     private val process: RemoteChannelStream,
@@ -77,6 +82,9 @@ class SnapshotDesktopSession internal constructor(
     private val onClose: () -> Unit,
     private val intervalMillis: Long = 2_000,
     private val idleMillis: Long = 5_000,
+    /** Null refreshes for as long as the screen is open. */
+    private val stopAfterStillMillis: Long? = 30_000,
+    private val nowNanos: () -> Long = System::nanoTime,
 ) : RemoteDesktopSession {
     private val closed = AtomicBoolean()
     private val started = AtomicBoolean()
@@ -89,6 +97,11 @@ class SnapshotDesktopSession internal constructor(
     private val actions = Channel<SnapshotAction>(Channel.UNLIMITED)
     private val nudges = Channel<Unit>(Channel.CONFLATED)
     private val paused = MutableStateFlow(false)
+    private val _autoRefreshStopped = MutableStateFlow(false)
+    override val autoRefreshStopped: StateFlow<Boolean> = _autoRefreshStopped
+    private val pacing = SnapshotPacing(intervalMillis, idleMillis, stopAfterStillMillis)
+    /** The last change of picture or activity, which keeps automatic refreshing going. */
+    @Volatile private var lastActivityNanos = nowNanos()
     @Volatile private var quality = quality
     /** Bytes of pictures cua-driver returned itself, when it ignores the output file. */
     @Volatile private var inline = 0L
@@ -153,7 +166,10 @@ class SnapshotDesktopSession internal constructor(
         if ("start_session" in tools) call("start_session", JsonObject(emptyMap()))
     }
 
-    /** Captures until closed: new pictures every [intervalMillis], every [idleMillis] while nothing changes. */
+    /**
+     * Captures until closed: new pictures every [intervalMillis], every [idleMillis] while nothing
+     * changes, and none at all once still for [stopAfterStillMillis] until an activity nudges.
+     */
     private suspend fun runCaptures() {
         var since: String? = null
         var unchanged = 0
@@ -169,6 +185,7 @@ class SnapshotDesktopSession internal constructor(
                 if (shot == null) unchanged++ else {
                     unchanged = 0
                     since = shot.digest
+                    lastActivityNanos = nowNanos()
                     show(shot.bytes)
                 }
             } catch (cancelled: CancellationException) {
@@ -180,9 +197,31 @@ class SnapshotDesktopSession internal constructor(
                 if (++failures >= 3) throw error
                 Log.w(TAG, "capture failed ($failures)", error)
             }
-            withTimeoutOrNull(if (unchanged >= 3) idleMillis else intervalMillis) { nudges.receive() }
+            val wait = pacing.nextWait(unchanged, (nowNanos() - lastActivityNanos) / 1_000_000)
+            if (wait == null) {
+                _autoRefreshStopped.value = true
+                nudges.receive()
+                _autoRefreshStopped.value = false
+                lastActivityNanos = nowNanos()
+            } else if (withTimeoutOrNull(wait) { nudges.receive() } != null) {
+                lastActivityNanos = nowNanos()
+            }
         }
     }
+
+    /** Input counts as activity; while refreshing has stopped it also fetches a picture at once. */
+    private fun inputActivity() {
+        lastActivityNanos = nowNanos()
+        if (_autoRefreshStopped.value) nudges.trySend(Unit)
+    }
+
+    override fun refresh() {
+        lastActivityNanos = nowNanos()
+        nudges.trySend(Unit)
+    }
+
+    /** The partner just acted on this computer: the picture is about to change. */
+    fun noteComputerAction() = refresh()
 
     private fun currentJobActive() = job?.isActive != false && !closed.get()
 
@@ -307,31 +346,35 @@ class SnapshotDesktopSession internal constructor(
     /** Pictures of a different size or quality from the next capture on. */
     fun setQuality(value: SnapshotQuality) {
         quality = value
-        nudges.trySend(Unit)
+        refresh()
     }
 
     override fun setPaused(paused: Boolean) {
         this.paused.value = paused
-        if (!paused) nudges.trySend(Unit)
+        if (!paused) refresh()
     }
 
     override fun setMaxFps(fps: Int) {} // Pictures come at their own pace.
 
     override fun pointer(x: Int, y: Int, buttons: Int) {
+        inputActivity()
         input.pointer(x, y, buttons).forEach { actions.trySend(it) }
     }
 
     override fun key(keysym: Int, down: Boolean) {
+        inputActivity()
         input.key(keysym, down)?.let { actions.trySend(it) }
     }
 
     /** cua-driver types any language as-is, so text never needs the clipboard. */
     override fun typeText(text: String): Boolean {
+        inputActivity()
         if (text.isNotEmpty()) actions.trySend(SnapshotAction.Type(text))
         return true
     }
 
     override fun sendClipboard(text: String) {
+        inputActivity()
         actions.trySend(SnapshotAction.Clipboard(text))
     }
 
@@ -361,3 +404,20 @@ class SnapshotDesktopSession internal constructor(
 }
 
 private fun CallToolResult.text() = content.filterIsInstance<TextContent>().joinToString("\n") { it.text }
+
+/**
+ * When the next snapshot is due: [intervalMillis] after a change, [idleMillis] once three captures
+ * in a row were unchanged, and never on its own (null: wait for a nudge) once the picture has been
+ * still, without activity, for [stopAfterStillMillis].
+ */
+internal class SnapshotPacing(
+    private val intervalMillis: Long,
+    private val idleMillis: Long,
+    private val stopAfterStillMillis: Long?,
+) {
+    fun nextWait(unchanged: Int, stillForMillis: Long): Long? = when {
+        stopAfterStillMillis != null && unchanged > 0 && stillForMillis >= stopAfterStillMillis -> null
+        unchanged >= 3 -> idleMillis
+        else -> intervalMillis
+    }
+}
