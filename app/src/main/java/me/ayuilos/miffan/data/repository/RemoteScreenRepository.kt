@@ -24,6 +24,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
@@ -188,6 +191,12 @@ class RemoteScreenConnection internal constructor(
         }
     }
 }
+
+/** `snapshot encode` digests: cksum's "crc-size" on Mac and Linux, MD5 hex on Windows. */
+private val SNAPSHOT_DIGEST = Regex("[0-9a-f-]{1,80}")
+
+/** A snapshot JPEG is ~150 KB; a PNG fallback of a large screen can be several MB, as base64. */
+private const val SNAPSHOT_MAX_OUTPUT = 24 * 1024 * 1024
 
 /** How long Sunshine may take to answer after a restart; Windows needs about 30 s. */
 private const val SUNSHINE_RESTART_MILLIS = 60_000L
@@ -547,7 +556,6 @@ class RemoteScreenRepository(
             // Through a relay: Sunshine's UDP picture cannot follow (protocol v1 has no datagrams), and
             // VNC/RDP bytes go over a second session on the relay's media channel (RELAY_PLAN §4).
             val relayed = ssh.route is RemoteRoute.Relay
-            if (windows && relayed) throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_STREAM_ONLY)
             if (windows) clipboard = WindowsClipboardChannel { ssh.openProcess(screenHelperCommand(ssh.platform, "clip serve")) }
             streamRequested = windows || streamRequested
             val endpoint = if (windows) RemoteScreenEndpoint.Helper else configuredEndpoint
@@ -566,6 +574,21 @@ class RemoteScreenRepository(
                     "Linux" -> RemoteScreenPlatform.LINUX
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
+            // Through a relay a stream's frames crawl, so a computer with cua-driver shows still pictures.
+            if (relayed && (stream.snapshot || windows)) {
+                val probed = machine ?: runCatching {
+                    ensureHelper(ssh)
+                    parseHelperProbe(ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000).stdout)
+                }.getOrNull()
+                if (probed?.cua?.ok == true) {
+                    val media = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { openRelayMedia(host.id, ssh) }
+                    relayMediaKbps = (media.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
+                    return@openLeasedRemote try {
+                        openSnapshot(media, host.name, sink, windows, detected == RemoteScreenPlatform.MACOS, stream.quality.snapshotQuality())
+                    } catch (error: Throwable) { media.close(); throw error }
+                }
+            }
+            if (windows && relayed) throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_STREAM_ONLY)
             val attempt = if (relayed) {
                 StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.RELAY).takeIf { streamRequested })
             } else runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
@@ -675,6 +698,31 @@ class RemoteScreenRepository(
             synchronized(lock) { open.getOrPut(host.id, ::mutableSetOf) += connection }
             connection
         } catch (error: Throwable) { clipboard?.close(); handle.close(); throw error }
+    }
+
+    /**
+     * Snapshot mode on the relay's screen channel [media]: cua-driver's MCP for captures and actions,
+     * and the helper's `snapshot encode` for each picture.
+     */
+    private fun openSnapshot(
+        media: RemoteWorkspaceSession, name: String, sink: RemoteScreenFrameSink, windows: Boolean, macos: Boolean,
+        quality: SnapshotQuality,
+    ): SnapshotDesktopSession {
+        val platform = media.platform
+        val prepared = media.execute(screenHelperCommand(platform, "snapshot path"), timeoutMillis = 20_000)
+        check(prepared.exitCode == 0 && !prepared.timedOut) { prepared.stderr.ifBlank { "snapshot path failed" } }
+        val path = json.parseToJsonElement(prepared.stdout.trim().lineSequence().last()).jsonObject["path"]
+            ?.jsonPrimitive?.contentOrNull ?: error("The helper named no snapshot path")
+        val process = media.openProcess(screenHelperCommand(platform, "cua"))
+        return SnapshotDesktopSession(process, encode = { jpegQuality, since ->
+            require(since == null || since.matches(SNAPSHOT_DIGEST)) { "Unexpected snapshot digest" }
+            val command = screenHelperCommand(platform, "snapshot encode") + " $jpegQuality" + (since?.let { " $it" } ?: "")
+            val result = media.execute(command, timeoutMillis = 60_000, maxOutputBytes = SNAPSHOT_MAX_OUTPUT)
+            check(!result.timedOut && (result.exitCode == 0 || result.stdout.isNotBlank())) {
+                result.stderr.ifBlank { "snapshot encode failed" }
+            }
+            result.stdout
+        }, path, sink, name, macos, windows, quality, onClose = { media.close() })
     }
 
     /**

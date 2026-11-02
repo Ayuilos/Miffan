@@ -2306,6 +2306,7 @@
   <string name="workspace_screen_stream_reason_display_asleep">Mac 的顯示器在睡眠，無法喚醒</string>
   <string name="workspace_screen_stream_reason_screen_locked">Mac 已鎖定，高效能模式下無法輸入密碼。請先在這裡解鎖，再從選單切換</string>
   <string name="workspace_screen_mode_stream">高效能</string>
+  <string name="workspace_screen_mode_snapshot">截圖</string>
   <string name="workspace_screen_quality_saver">省流量</string>
   <string name="workspace_screen_quality_balanced">均衡</string>
   <string name="workspace_screen_quality_best">最清晰</string>
@@ -2315,9 +2316,12 @@
   <string name="workspace_screen_quality_custom_fps">影格率（幀/秒）</string>
   <string name="workspace_screen_quality_custom_hint">僅在高效能模式下生效。最多約每小時 %1$s GB；超過電腦螢幕的解析度會自動降到螢幕大小。</string>
   <string name="workspace_screen_quality_fps">最多 %1$d 幀/秒</string>
+  <string name="workspace_screen_quality_snapshot">%1$d 像素寬</string>
   <string name="workspace_screen_quality_server">畫面由電腦決定（RDP）</string>
   <string name="workspace_screen_audio">聲音</string>
   <string name="workspace_screen_stream_skip">這次用一般連線</string>
+  <string name="workspace_screen_snapshot_live">改用即時畫面</string>
+  <string name="workspace_screen_snapshot_use">改用截圖</string>
   <string name="workspace_screen_stream_retry">用高效能模式重新連線</string>
   <string name="workspace_screen_fullscreen">全螢幕</string>
   <string name="workspace_screen_fullscreen_exit">結束全螢幕</string>
@@ -2325,6 +2329,7 @@
   <string name="workspace_screen_details">連線詳情</string>
   <string name="workspace_screen_details_mode">連線方式</string>
   <string name="workspace_screen_details_stream">高效能模式（Sunshine）</string>
+  <string name="workspace_screen_details_snapshot">截圖，每隔幾秒重新整理，點按或輸入後馬上重新整理</string>
   <string name="workspace_screen_details_rdp">遠端桌面（RDP）</string>
   <string name="workspace_screen_details_path">畫面傳輸</string>
   <string name="workspace_screen_details_path_stream">UDP 直連 %1$s，已加密</string>

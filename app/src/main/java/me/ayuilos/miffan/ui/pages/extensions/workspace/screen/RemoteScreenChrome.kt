@@ -33,6 +33,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.repository.RemoteDesktopProtocol
 import me.ayuilos.miffan.data.repository.RemoteScreenQuality
+import me.ayuilos.miffan.data.repository.snapshotQuality
 import me.ayuilos.miffan.data.repository.RemoteStreamCustom
 import me.ayuilos.miffan.data.repository.streamConfig
 import kotlin.math.roundToInt
@@ -68,6 +69,7 @@ internal fun remoteScreenModeLabel(resources: Resources, protocol: RemoteDesktop
     RemoteDesktopProtocol.RDP -> "RDP"
     RemoteDesktopProtocol.VNC -> "VNC"
     RemoteDesktopProtocol.SPACE -> resources.getString(R.string.im_computer_detail_user_space)
+    RemoteDesktopProtocol.SNAPSHOT -> resources.getString(R.string.workspace_screen_mode_snapshot)
 }
 
 /** A picture level's name and what it means for the connection in use. */
@@ -80,7 +82,9 @@ internal fun remoteScreenQualityLabel(resources: Resources, quality: RemoteScree
 
 internal fun remoteScreenQualityDetail(resources: Resources, quality: RemoteScreenQuality, protocol: RemoteDesktopProtocol?,
     custom: RemoteStreamCustom): String =
-    if (protocol == RemoteDesktopProtocol.STREAM) when (quality) {
+    if (protocol == RemoteDesktopProtocol.SNAPSHOT) resources.getString(R.string.workspace_screen_quality_snapshot,
+        quality.snapshotQuality().maxDimension)
+    else if (protocol == RemoteDesktopProtocol.STREAM) when (quality) {
         RemoteScreenQuality.SAVER -> "720p · 30 fps"
         RemoteScreenQuality.BALANCED -> "1080p · 60 fps"
         RemoteScreenQuality.BEST -> "1440p · 60 fps"
@@ -155,6 +159,7 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                     RemoteDesktopProtocol.RDP -> stringResource(R.string.workspace_screen_details_rdp)
                     RemoteDesktopProtocol.VNC -> "VNC"
                     RemoteDesktopProtocol.SPACE -> stringResource(R.string.im_computer_detail_user_space)
+                    RemoteDesktopProtocol.SNAPSHOT -> stringResource(R.string.workspace_screen_details_snapshot)
                 })
                 DetailRow(stringResource(R.string.workspace_screen_details_path), when {
                     info.relayMediaKbps != null && info.relayMediaKbps > 0 ->

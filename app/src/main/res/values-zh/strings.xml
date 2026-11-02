@@ -2345,6 +2345,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_stream_reason_display_asleep">Mac 的显示器在睡眠，没能唤醒</string>
   <string name="workspace_screen_stream_reason_screen_locked">Mac 已锁屏，高性能模式下无法输入密码。请先在这里解锁，再从菜单切换</string>
   <string name="workspace_screen_mode_stream">高性能</string>
+  <string name="workspace_screen_mode_snapshot">截图</string>
   <string name="workspace_screen_quality_saver">省流量</string>
   <string name="workspace_screen_quality_balanced">均衡</string>
   <string name="workspace_screen_quality_best">最清晰</string>
@@ -2354,9 +2355,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_quality_custom_fps">帧率（帧/秒）</string>
   <string name="workspace_screen_quality_custom_hint">仅高性能模式生效。最多约每小时 %1$s GB；超过电脑屏幕的分辨率会自动降到屏幕大小。</string>
   <string name="workspace_screen_quality_fps">最多 %1$d 帧/秒</string>
+  <string name="workspace_screen_quality_snapshot">%1$d 像素宽</string>
   <string name="workspace_screen_quality_server">画面由电脑决定（RDP）</string>
   <string name="workspace_screen_audio">声音</string>
   <string name="workspace_screen_stream_skip">这次用普通连接</string>
+  <string name="workspace_screen_snapshot_live">改用实时画面</string>
+  <string name="workspace_screen_snapshot_use">改用截图</string>
   <string name="workspace_screen_stream_retry">用高性能模式重连</string>
   <string name="workspace_screen_fullscreen">全屏</string>
   <string name="workspace_screen_fullscreen_exit">退出全屏</string>
@@ -2364,6 +2368,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_details">连接详情</string>
   <string name="workspace_screen_details_mode">连接方式</string>
   <string name="workspace_screen_details_stream">高性能模式（Sunshine）</string>
+  <string name="workspace_screen_details_snapshot">截图，每隔几秒刷新，点按或输入后马上刷新</string>
   <string name="workspace_screen_details_rdp">远程桌面（RDP）</string>
   <string name="workspace_screen_details_path">画面传输</string>
   <string name="workspace_screen_details_path_stream">UDP 直连 %1$s，已加密</string>
