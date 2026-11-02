@@ -8,6 +8,8 @@ import { sqlite } from "../../bun/relay.ts";
 export class FakeSock implements Sock {
   sent: Frame[] = [];
   closedWith?: [number, string];
+  /** Time of the last ping the platform answered by itself (the Worker's auto-response), if any. */
+  autoPing: number | null = null;
   constructor(
     readonly tags: string[],
     public a: Att,
@@ -25,6 +27,9 @@ export class FakeSock implements Sock {
   close(code: number, reason: string): void {
     if (this.closedWith) throw new Error("already closed");
     this.closedWith = [code, reason];
+  }
+  lastAutoPing(): number | null {
+    return this.autoPing;
   }
   json(i: number): any {
     return JSON.parse(this.sent[i] as string);

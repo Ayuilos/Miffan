@@ -262,10 +262,13 @@ describe("sessions", () => {
     w.t += 60_000;
     await engine.onMessage(s.app, bin(1));
     await engine.onMessage(s.app, "ping");
+    s.data.autoPing = w.t; // both ends keep pinging (answered by the platform)
     w.t += 60_000; // 120 s since pairing but 60 s since the last binary frame
+    s.app.autoPing = s.data.autoPing = w.t;
     await engine.onAlarm();
     expect(s.app.closedWith).toBeUndefined();
     w.t += 40_000;
+    s.app.autoPing = s.data.autoPing = w.t;
     await engine.onAlarm();
     expect(s.app.closedWith).toEqual([1000, "idle"]);
     expect(s.data.closedWith).toEqual([1000, "idle"]);
@@ -371,6 +374,85 @@ describe("sessions", () => {
     const third = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
     expect(third.status).toBe(429);
     expect((await third.json()).reason).toBe("too_many_sessions");
+  });
+});
+
+describe("liveness", () => {
+  test("a control connection silent for over 75 s is offline: 404 at once, not host_timeout 10 s later", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    w.t += 70_000;
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(200);
+    w.t += 6_000; // 76 s without a ping
+    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(404);
+    expect((await r.json()).reason).toBe("host_offline");
+    expect(host.closedWith).toEqual([4404, "host_offline"]);
+  });
+
+  test("pings answered by the platform or by the engine keep a control connection alive", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    for (let i = 0; i < 10; i++) {
+      w.t += 30_000;
+      if (i % 2) host.autoPing = w.t; // Worker: the runtime answered it
+      else await engine.onMessage(host, "ping"); // Bun: the engine answered it
+    }
+    expect((await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(200);
+    expect(host.closedWith).toBeUndefined();
+    w.t += 80_000;
+    await engine.onAlarm(); // an alarm that runs anyway also notices
+    expect(host.closedWith).toEqual([4404, "host_offline"]);
+  });
+
+  test("sessions whose app went silent are closed and free their slot", async () => {
+    const { w, engine } = setup({ policy: { limits: { sessionsPerHost: 2, idleTimeoutS: 300 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const gone = await openSession(w, engine, key, host);
+    const alive = await openSession(w, engine, key, host);
+    for (let i = 0; i < 4; i++) {
+      w.t += 20_000;
+      host.autoPing = alive.app.autoPing = alive.data.autoPing = gone.data.autoPing = w.t;
+      await engine.onMessage(gone.data, bin(10)); // the computer keeps sending; the phone is gone
+    }
+    // 80 s: the phone of `gone` was last heard at pairing.
+    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(200);
+    expect(gone.app.closedWith).toEqual([1000, "peer_closed"]);
+    expect(gone.data.closedWith).toEqual([1000, "peer_closed"]);
+    expect(alive.app.closedWith).toBeUndefined();
+  });
+
+  test("an alarm that runs for another reason closes a session with a silent side", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    w.t += 60_000;
+    s.app.autoPing = host.autoPing = w.t;
+    await engine.onMessage(s.app, bin(10)); // data flows towards a connector that is gone
+    w.t += 30_000; // the write-back alarm
+    await engine.onAlarm();
+    expect(s.data.closedWith).toEqual([1000, "peer_closed"]);
+    expect(s.app.closedWith).toEqual([1000, "peer_closed"]);
+  });
+
+  test("binary frames count as being heard; a session is not reaped while both ends send", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 20; i++) {
+      w.t += 10_000;
+      host.autoPing = w.t;
+      await engine.onMessage(s.app, bin(10));
+      await engine.onMessage(s.data, bin(10));
+      await engine.onAlarm();
+    }
+    expect(s.app.closedWith).toBeUndefined();
   });
 });
 
@@ -494,6 +576,7 @@ describe("metering", () => {
     await w.settle();
     w.t = Date.UTC(2026, 10, 1, 23, 59, 55);
     await engine.onMessage(s.app, bin(6000)); // the alarm for it never runs before midnight
+    s.data.autoPing = host.autoPing = Date.UTC(2026, 10, 2, 0, 0, 20); // the connector keeps pinging
     // Evicted; the alarm wakes a new object after midnight.
     w.t = Date.UTC(2026, 10, 2, 0, 0, 30);
     const woken = wake(w, cfg);

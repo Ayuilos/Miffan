@@ -197,6 +197,10 @@ App                         relay                         connector
 ### 5.4 保活
 
 - 两侧都应当每 30 秒发送一次文本 `ping`。relay 必须在不唤醒会话状态的前提下回复 `pong`（Cloudflare 实现使用 WebSocket auto-response）。
+- **存活判定**：一条连接超过 75 秒既没有 `ping` 也没有二进制帧，relay 就把它视为已消失（电脑睡眠、手机切换网络时，TCP 连接往往不会正常关闭）。relay 只在本来就醒着的时候检查（新会话请求、已到期的 alarm），不为此额外唤醒：
+  - 控制连接：视为电脑离线，以 4404 `host_offline` 关闭；新会话请求直接得到 404 `host_offline`，而不是等 10 秒后的 `host_timeout`。
+  - 会话：任一侧消失，就以 1000 `peer_closed` 关闭整条会话，并且不再占用 `sessionsPerHost` 的名额。
+  - 因此连接两侧的 `ping` 间隔不得超过 30 秒（75 秒允许丢一次）。
 - App 在经 relay 的 SSH 会话上不应当启用 SSH 层保活（JSch `ServerAliveInterval`）。
 
 ## 6. 策略、限速与计量
@@ -298,7 +302,7 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 | `unauthorized` | 401 | 4401 | 访问码错误，或主机签名错误/超时 |
 | `media_disabled` | 403 | — | 本中转不提供画面通道 |
 | `denied` | — | 4403 | connector 拒绝了设备（端到端握手失败） |
-| `host_offline` | 404 | 4404 | 电脑的 connector 不在线 |
+| `host_offline` | 404 | 4404 | 电脑的 connector 不在线；WebSocket 上：控制连接超过 75 秒没有 `ping`（§5.4） |
 | `host_timeout` | — | 4408 | connector 没有及时接起会话 |
 | `frame_too_large` | — | 4413 | 帧超出大小限制 |
 | `quota_exhausted` | 429 | 4429 | 该电脑的配额用完 |

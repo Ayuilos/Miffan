@@ -67,6 +67,11 @@ export const LIMITS = {
   flushMs: 30_000,
   /** How long a cached global-budget state may be used when a new session starts. */
   budgetCacheMs: 10_000,
+  /**
+   * A socket not heard from (no `ping`, no binary frame) for this long is treated as gone. Released
+   * apps and connectors ping every 30 s on every connection, so this allows one lost ping and slack.
+   */
+  livenessMs: 75_000,
   rateWindowS: 10,
   rateSlack: 1.5,
   /**

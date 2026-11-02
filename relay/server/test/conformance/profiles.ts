@@ -37,6 +37,15 @@ export const profiles = {
       budget: { globalDailyMb: 0.5, globalDailyActiveHours: 0, mediaReserve: 0.5 },
     },
   },
+  // Long idle timeout and no budgets: only liveness (PROTOCOL §5.4) can end a session here.
+  D: {
+    accessMode: "open",
+    registrationsPerIpPerDay: 60,
+    policy: {
+      limits: { sessionsPerHost: 4, idleTimeoutS: 600 },
+      quotas: { hostDailyMb: 0, hostDailyActiveMin: 0, hostMonthlyControlMb: 0, hostMonthlyMediaMb: 0 },
+    },
+  },
 } as const;
 
 export type ProfileName = keyof typeof profiles;

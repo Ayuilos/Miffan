@@ -37,6 +37,11 @@ export interface Sock {
   setAtt(a: Att): void;
   send(data: Frame): void;
   close(code: number, reason: string): void;
+  /**
+   * When the platform last answered a text `ping` on this socket by itself (the Worker's
+   * auto-response), or null. Platforms where the engine answers `ping` omit it.
+   */
+  lastAutoPing?(): number | null;
 }
 
 export interface BudgetPort {
@@ -100,6 +105,8 @@ export interface HostAtt {
   ub: string;
   /** Source address of a host that is not registered yet; counted (and dropped) once it authenticates. */
   reg?: string;
+  /** Last `ping` the engine itself answered (Bun; the Worker answers pings without the engine). */
+  lp?: number;
   x?: 1;
 }
 
@@ -114,6 +121,8 @@ export interface SessAtt {
   lb: number;
   /** Text frames (other than `ping`) received from this socket so far. */
   tx?: number;
+  /** Last `ping` the engine itself answered (Bun; the Worker answers pings without the engine). */
+  lp?: number;
   p: PendAtt;
   x?: 1;
 }
@@ -278,7 +287,15 @@ export class Engine {
 
   private async startConnect(route: Extract<Route, { kind: "connect" }>, rc: RequestCtx): Promise<Response> {
     const now = this.p.now();
-    const host = this.authedHost();
+    let host = this.authedHost();
+    if (host && this.silent(host, now)) {
+      // The computer went away without closing (sleep, lost network): it is offline, not slow.
+      this.log("host_silent");
+      this.shut(host, CLOSE_CODE.host_offline, "host_offline");
+      host = undefined;
+    }
+    // Sessions whose other end vanished must not hold the per-host session slots.
+    this.reapSilentSessions(now);
     const budget = host ? await this.budgetFresh() : "ok";
     const rej = checkNewSession({
       ch: route.ch,
@@ -374,12 +391,47 @@ export class Engine {
     this.pend.reqs += 1;
   }
 
+  private pong(s: Sock, a: Att): void {
+    s.setAtt({ ...a, lp: this.p.now() });
+    s.send("pong");
+  }
+
+  // ---- liveness ----------------------------------------------------------------------------
+  //
+  // Both ends ping every 30 s (PROTOCOL §5.4). A peer that vanished without closing its TCP connection
+  // (a computer going to sleep, a phone switching networks) leaves a socket that looks open; one that
+  // has not been heard from - no ping, no binary frame - for LIMITS.livenessMs is treated as gone.
+  // These checks only run when the object is awake anyway (a new session, an alarm that is due).
+
+  private lastHeard(s: Sock, a: Att): number {
+    let t = Math.max(a.at, a.lp ?? 0, s.lastAutoPing?.() ?? 0);
+    if (a.role !== "host") t = Math.max(t, a.lb);
+    return t;
+  }
+
+  private silent(s: Sock, now: number): boolean {
+    return now - this.lastHeard(s, s.att()) > LIMITS.livenessMs;
+  }
+
+  /** Close paired sessions with a side that has gone silent. */
+  private reapSilentSessions(now: number): void {
+    for (const c of this.live("c")) {
+      const a = c.att();
+      if (a.role !== "c" || !a.paired) continue;
+      const h = this.peerOf(a);
+      if (this.silent(c, now) || (h && this.silent(h, now))) {
+        this.log("session_silent");
+        this.closeSession(a.sid, CLOSE_CODE.peer_closed, "peer_closed");
+      }
+    }
+  }
+
   private oversize(msg: Frame): boolean {
     return typeof msg === "string" ? textBytes(msg) > LIMITS.maxTextFrame : msg.byteLength > LIMITS.maxBinaryFrame;
   }
 
   private async hostMessage(s: Sock, a: HostAtt, msg: Frame): Promise<void> {
-    if (msg === "ping") return void s.send("pong");
+    if (msg === "ping") return this.pong(s, a);
     if (this.oversize(msg)) return this.shut(s, CLOSE_CODE.frame_too_large, "frame_too_large");
     if (a.authed) {
       // Nothing but `ping` is expected from an authenticated control connection (PROTOCOL §4).
@@ -448,7 +500,7 @@ export class Engine {
   }
 
   private async sessionMessage(s: Sock, a: SessAtt, msg: Frame): Promise<void> {
-    if (msg === "ping") return void s.send("pong");
+    if (msg === "ping") return this.pong(s, a);
     if (a.role === "c" && !a.paired) {
       // PROTOCOL §5.1: the app waits for `ready` before sending anything.
       this.shut(s, CLOSE_CODE.early_frame, "bad_request");
@@ -661,11 +713,16 @@ export class Engine {
     this.unreported.reqs += 1; // every alarm run is a billed request
     // Timers may fire a few ms early; treat a deadline that close as due.
     const now = this.p.now() + 5;
+    this.reapSilentSessions(now);
     for (const s of this.p.allSockets()) {
       const a = s.att();
       if (a.x) continue;
       if (a.role === "host") {
         if (!a.authed && now - a.at >= LIMITS.challengeMs) this.shut(s, CLOSE_CODE.unauthorized, "unauthorized");
+        else if (a.authed && this.silent(s, now)) {
+          this.log("host_silent");
+          this.shut(s, CLOSE_CODE.host_offline, "host_offline");
+        }
       } else if (a.role === "c") {
         if (!a.paired) {
           if (now - a.at >= LIMITS.pairMs) {

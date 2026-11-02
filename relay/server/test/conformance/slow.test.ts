@@ -55,6 +55,49 @@ describe("sessions (slow)", () => {
 
 });
 
+describe("liveness (slow)", () => {
+  test("silent connections are treated as gone after 75 s; pinging ones are not", async () => {
+    const D = process.env.RELAY_D!; // idle timeout 600 s, so only liveness can end the session below
+    const silent = await HostControl.connect(A);
+    const pinging = await HostControl.connect(A);
+    const host = await HostControl.connect(D);
+    const s = await openSession(host);
+    const t0 = Date.now();
+    // The connector side pings and keeps sending; the app side has vanished without closing.
+    const timer = setInterval(() => {
+      for (const c of [pinging.conn, host.conn, s.data]) {
+        try {
+          c.send("ping");
+        } catch {
+          // closed
+        }
+      }
+      try {
+        s.data.send(bytes(10));
+      } catch {
+        // closed
+      }
+    }, 15_000);
+    try {
+      const closed = await s.data.waitClosed(110_000);
+      expect(closeCodes(closed)).toBe("1000 peer_closed");
+      await sleep(Math.max(0, 80_000 - (Date.now() - t0)));
+      const gone = await upgradeAttempt(wsUrl(A, `/v1/connect/${silent.hostId}?ch=control`));
+      expect(gone.status).toBe(404);
+      expect(gone.json?.reason).toBe("host_offline");
+      const { conn } = await connectApp(A, pinging.hostId, "control");
+      const open = await pinging.nextOpen();
+      expect(open.sid).toMatch(/^[a-f0-9]{32}$/);
+      conn.close();
+    } finally {
+      clearInterval(timer);
+    }
+    silent.close();
+    pinging.close();
+    host.close();
+  }, 130_000);
+});
+
 // ---- long-running behaviour ----------------------------------------------------------------
 
 describe("running sessions", () => {
