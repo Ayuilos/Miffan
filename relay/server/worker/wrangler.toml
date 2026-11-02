@@ -25,6 +25,10 @@ routes = [{ pattern = "relay.miffan.ayuilos.me", custom_domain = true }]
 #     globalDailyRequests is the relay's own estimate of these requests; 60,000 leaves 40% for what it
 #     cannot attribute to a host (refused or unauthenticated requests, the budget object's own alarm,
 #     /v1/admin/stats). Media pauses at 70% of it (mediaReserve), new sessions stop at 100%.
+# hostDailyMessages caps one computer's share of those requests: 400,000 messages (about 20,000 requests)
+# a day, after which its sessions are cut and new ones refused until UTC midnight. A screen session
+# through a relay normally uses snapshots (a few messages a second); an hour of VNC at the full media
+# pace with today's apps and connectors is roughly 300,000-900,000 (see IMPLEMENTED.md).
 # Bandwidth is free on Workers, so there are no traffic quotas.
 RELAY_CONFIG = '''
 {
@@ -34,7 +38,7 @@ RELAY_CONFIG = '''
     "control": { "kbps": 1000, "burstKb": 2048 },
     "media": { "allowed": true, "kbps": 4000, "burstKb": 4096 },
     "limits": { "sessionsPerHost": 4, "idleTimeoutS": 300 },
-    "quotas": { "hostDailyMb": 0, "hostDailyActiveMin": 60, "hostMonthlyControlMb": 0, "hostMonthlyMediaMb": 0 },
+    "quotas": { "hostDailyMb": 0, "hostDailyActiveMin": 60, "hostMonthlyControlMb": 0, "hostMonthlyMediaMb": 0, "hostDailyMessages": 400000 },
     "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 17, "globalDailyRequests": 60000, "mediaReserve": 0.3 }
   },
   "edges": ["104.17.5.5", "104.19.8.8", "162.159.135.42", "104.18.32.47"]

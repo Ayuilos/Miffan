@@ -17,6 +17,7 @@ import {
   HostLedger,
   buildUsage,
   counted,
+  messagesExhausted,
   pendingIsEmpty,
   requestUnits,
   quotaStatus,
@@ -374,11 +375,32 @@ export class Engine {
     const a = s.att();
     if (a.x) return;
     // Every received message but `ping` is billed by the platform (the Worker answers `ping` without
-    // waking the object). Messages of a host that has not authenticated are not counted: they belong
-    // to no known host, and counting them would create its storage.
-    if (msg !== "ping" && (a.role !== "host" || a.authed)) this.countMessage();
+    // waking the object). Session messages count against the host's daily message quota and the global
+    // budget; on an authenticated control connection (where only `ping` is allowed) they count towards
+    // the budget only. Messages of a host that has not authenticated are not counted at all: they
+    // belong to no known host, and counting them would create its storage.
+    if (msg !== "ping") {
+      if (a.role !== "host") {
+        if (this.messagesUsedUp()) return;
+        this.countMessage();
+      } else if (a.authed) {
+        this.unreported.reqs += requestUnits(1, 0);
+      }
+    }
     if (a.role === "host") return this.hostMessage(s, a, msg);
     return this.sessionMessage(s, a, msg);
+  }
+
+  /** The daily message quota is used up: end every session of this host (PROTOCOL §6.4). */
+  private messagesUsedUp(now = this.p.now()): boolean {
+    if (this.cfg.policy.quotas.hostDailyMessages <= 0) return false;
+    if (!messagesExhausted(this.cfg.policy, counted(this.ledger.totals(now), this.pend))) return false;
+    this.log("session_cut", { reason: "messages" });
+    for (const c of this.live("c")) {
+      const ca = c.att();
+      if (ca.role === "c") this.closeSession(ca.sid, CLOSE_CODE.quota_exhausted, "quota_exhausted");
+    }
+    return true;
   }
 
   private countMessage(): void {
@@ -484,7 +506,7 @@ export class Engine {
     s.setAtt({ ...rest, authed: true, nonce: "", ub: level });
     // The control connection's upgrade and its auth message, counted only once the host is known.
     this.countRequest();
-    this.pend.msgs += 1;
+    this.unreported.reqs += requestUnits(1, 0);
     s.send(
       JSON.stringify({
         t: "hello",
@@ -682,6 +704,7 @@ export class Engine {
   /** Close media sessions that quota or budget no longer allow, and tell the connector about level changes. */
   private enforce(): void {
     const now = this.p.now();
+    this.messagesUsedUp(now);
     const c = counted(this.ledger.totals(now), this.pend);
     const verdict = mediaSessionVerdict(this.cfg.policy, this.budgetCached(), c, now);
     if (verdict) {

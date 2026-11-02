@@ -15,6 +15,8 @@ export interface Totals {
   monthControl: number;
   monthMedia: number;
   dayActiveMin: number;
+  /** Messages the host's sessions received this UTC day (PROTOCOL §6.3). */
+  dayMsgs: number;
 }
 
 /** Counts not yet written to storage. */
@@ -22,7 +24,7 @@ export interface Pending {
   control: number;
   media: number;
   minutes: number;
-  /** WebSocket messages received (other than `ping`); only reported to the global budget. */
+  /** Messages received on the host's sessions (other than `ping`): the daily message quota, and the global budget. */
   msgs: number;
   /** Other billed requests (accepted WebSocket upgrades); only reported to the global budget. */
   reqs: number;
@@ -35,6 +37,8 @@ export interface Usage {
   dayActiveMin: number;
   monthControlMb: number;
   monthMediaMb: number;
+  /** Messages the host's sessions sent today (PROTOCOL §6.3); counted against quotas.hostDailyMessages. */
+  dayMessages: number;
   budget: BudgetState;
   resetsAt: string;
 }
@@ -61,6 +65,7 @@ export interface Counted {
   dayActiveMin: number;
   monthControlBytes: number;
   monthMediaBytes: number;
+  dayMsgs: number;
 }
 
 export function counted(t: Totals, p: Pending): Counted {
@@ -69,7 +74,14 @@ export function counted(t: Totals, p: Pending): Counted {
     dayActiveMin: t.dayActiveMin + p.minutes,
     monthControlBytes: t.monthControl + p.control,
     monthMediaBytes: t.monthMedia + p.media,
+    dayMsgs: t.dayMsgs + p.msgs,
   };
+}
+
+/** Has the host used up its daily message quota? Unlike the other quotas it also ends running sessions. */
+export function messagesExhausted(policy: Policy, c: Counted): boolean {
+  const limit = policy.quotas.hostDailyMessages;
+  return limit > 0 && c.dayMsgs >= limit;
 }
 
 /**
@@ -89,6 +101,7 @@ export function quotaStatus(
   const checks: { used: number; limit: number; reset: number; applies: boolean }[] = [
     { used: c.dayBytes, limit: q.hostDailyMb * MIB, reset: midnight, applies: true },
     { used: c.dayActiveMin, limit: q.hostDailyActiveMin, reset: midnight, applies: true },
+    { used: c.dayMsgs, limit: q.hostDailyMessages, reset: midnight, applies: true },
     { used: c.monthControlBytes, limit: q.hostMonthlyControlMb * MIB, reset: month, applies: ch === null || ch === "control" },
     { used: c.monthMediaBytes, limit: q.hostMonthlyMediaMb * MIB, reset: month, applies: ch === null || ch === "media" },
   ];
@@ -116,6 +129,7 @@ export function buildUsage(now: number, t: Totals, p: Pending, budget: BudgetSta
     dayActiveMin: c.dayActiveMin,
     monthControlMb: round3(c.monthControlBytes / MIB),
     monthMediaMb: round3(c.monthMediaBytes / MIB),
+    dayMessages: c.dayMsgs,
     budget,
     resetsAt: isoNoMillis(q.exhausted ? q.resetAt : nextUtcMidnight(now)),
   };
@@ -128,6 +142,8 @@ export interface HostMeta {
 
 export class HostLedger {
   private exists?: boolean;
+  /** Whether msgs_day exists: added after the other tables, so hosts registered earlier lack it. */
+  private msgsTable?: boolean;
   private totalsCache?: Totals;
   private metaCache?: HostMeta;
 
@@ -188,7 +204,7 @@ export class HostLedger {
     const day = utcDay(now);
     if (this.totalsCache?.day === day) return this.totalsCache;
     const month = utcMonth(now);
-    const t: Totals = { day, month, dayControl: 0, dayMedia: 0, monthControl: 0, monthMedia: 0, dayActiveMin: 0 };
+    const t: Totals = { day, month, dayControl: 0, dayMedia: 0, monthControl: 0, monthMedia: 0, dayActiveMin: 0, dayMsgs: 0 };
     if (this.tableExists()) {
       for (const r of this.sql.all<{ ch: string; bytes: number }>(
         "SELECT ch, bytes FROM usage_day WHERE host = ? AND day = ?",
@@ -210,9 +226,17 @@ export class HostLedger {
       t.dayActiveMin =
         this.sql.all<{ minutes: number }>("SELECT minutes FROM active_day WHERE host = ? AND day = ?", this.host, day)[0]
           ?.minutes ?? 0;
+      if (this.hasMsgsTable()) {
+        t.dayMsgs = this.sql.all<{ n: number }>("SELECT n FROM msgs_day WHERE host = ? AND day = ?", this.host, day)[0]?.n ?? 0;
+      }
     }
     this.totalsCache = t;
     return t;
+  }
+
+  private hasMsgsTable(): boolean {
+    this.msgsTable ??= this.sql.all("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'msgs_day'").length > 0;
+    return this.msgsTable;
   }
 
   /** Write one flush. `day` is the UTC day the pending counts belong to. */
@@ -220,6 +244,18 @@ export class HostLedger {
     this.ensure();
     if (delta.control > 0) this.addBytes(day, "control", delta.control);
     if (delta.media > 0) this.addBytes(day, "media", delta.media);
+    if (delta.msgs > 0) {
+      if (!this.hasMsgsTable()) {
+        this.sql.run("CREATE TABLE IF NOT EXISTS msgs_day (host TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (host, day))");
+        this.msgsTable = true;
+      }
+      this.sql.run(
+        `INSERT INTO msgs_day (host, day, n) VALUES (?, ?, ?) ON CONFLICT (host, day) DO UPDATE SET n = n + excluded.n`,
+        this.host,
+        day,
+        delta.msgs,
+      );
+    }
     if (delta.minutes > 0) {
       this.sql.run(
         `INSERT INTO active_day (host, day, minutes) VALUES (?, ?, ?)
@@ -240,6 +276,7 @@ export class HostLedger {
     const monthStart = utcMonth(now) + "-01";
     this.sql.run("DELETE FROM usage_day WHERE host = ? AND day < ?", this.host, monthStart);
     this.sql.run("DELETE FROM active_day WHERE host = ? AND day < ?", this.host, monthStart);
+    if (this.msgsTable) this.sql.run("DELETE FROM msgs_day WHERE host = ? AND day < ?", this.host, monthStart);
     this.metaCache = { lastMinute, lastFlush: now };
     this.totalsCache = undefined;
   }

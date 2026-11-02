@@ -17,12 +17,13 @@ export const profiles = {
     },
     edges: ["104.17.5.5", "104.19.8.8"],
   },
-  // Access code required, media switched off.
+  // Access code required, media switched off, 100 messages per host and day.
   B: {
     accessMode: "token",
     policy: {
       media: { allowed: false },
       limits: { sessionsPerHost: 4, idleTimeoutS: 60 },
+      quotas: { hostDailyMessages: 100 },
     },
   },
   // Global budget: 0.5 MiB per day, media pauses below 50% remaining.

@@ -1,6 +1,7 @@
 // Engine behaviour with a fake platform and a manual clock: timers, write-back cadence, hibernation
 // recovery, enforcement. Wire-level behaviour is covered by the conformance suite.
 
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { parseConfig, type RelayConfig } from "../../core/config.ts";
 import { Engine, type SessAtt } from "../../core/engine.ts";
@@ -44,6 +45,7 @@ async function openSession(w: World, engine: Engine, key: HostKey, host: FakeSoc
   return { app, data, sid: open.sid as string, ready: app.texts.find((t) => t.t === "ready") };
 }
 
+const w0 = Date.UTC(2026, 10, 1, 12, 0, 0);
 const stored = (w: World, key: HostKey) => new HostLedger(sqlite(w.db), key.hostId).totals(w.t);
 
 describe("control connection", () => {
@@ -782,6 +784,71 @@ describe("enforcement and budget", () => {
     await engine.onMessage(s.app, bin(100));
     await engine.onAlarm();
     expect(w.reports.at(-1)).toMatchObject({ bytes: 600, minutes: 1 });
+  });
+});
+
+describe("daily message quota", () => {
+  test("once used up, every running session of the host is closed with 4429 and new ones are refused", async () => {
+    const { w, engine } = setup({ policy: { quotas: { hostDailyMb: 0, hostMonthlyControlMb: 0, hostMonthlyMediaMb: 0, hostDailyMessages: 100 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    expect(host.texts.find((t) => t.t === "hello").usage.dayMessages).toBe(0);
+    const control = await openSession(w, engine, key, host, "control");
+    const media = await openSession(w, engine, key, host, "media");
+    for (let i = 0; i < 50; i++) await engine.onMessage(control.app, bin(10));
+    for (let i = 0; i < 30; i++) await engine.onMessage(media.data, bin(10));
+    for (let i = 0; i < 40; i++) await engine.onMessage(control.app, "ping"); // never counted
+    for (let i = 0; i < 20; i++) await engine.onMessage(control.data, bin(10)); // the 100th message
+    expect(control.app.closedWith).toBeUndefined();
+    const forwarded = control.app.sent.length;
+    await engine.onMessage(control.data, bin(10)); // the 101st: refused, and everything is cut
+    expect(control.app.sent.length).toBe(forwarded);
+    for (const sock of [control.app, control.data, media.app, media.data]) expect(sock.closedWith).toEqual([4429, "quota_exhausted"]);
+    expect(host.closedWith).toBeUndefined(); // the computer stays online and is told
+    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(429);
+    const body = await r.json();
+    expect(body.reason).toBe("quota_exhausted");
+    expect(body.retryAfter).toBe(Math.ceil((Date.UTC(2026, 10, 2) - w.t) / 1000));
+    await w.settle();
+    expect(host.texts.filter((t) => t.t === "usage").at(-1).usage.dayMessages).toBe(100);
+  });
+
+  test("the count is stored, survives a wake, and resets the next UTC day", async () => {
+    const { w, cfg, engine } = setup({ policy: { quotas: { hostDailyMessages: 50 } } });
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 30; i++) await engine.onMessage(s.app, bin(10));
+    w.t += 20;
+    await engine.onAlarm();
+    await w.settle();
+    expect(stored(w, key).dayMsgs).toBe(30);
+    for (let i = 0; i < 25; i++) await engine.onMessage(s.app, bin(10)); // 50 used, then one refused
+    expect(s.app.closedWith).toEqual([4429, "quota_exhausted"]);
+    await w.settle();
+    const woken = wake(w, cfg);
+    expect((await woken.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx())).status).toBe(429);
+    expect(stored(w, key).dayMsgs).toBe(50);
+    w.t = Date.UTC(2026, 10, 2, 0, 0, 1);
+    host.autoPing = w.t;
+    const next = await woken.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(next.status).toBe(200);
+    const open = host.texts.filter((t) => t.t === "open").at(-1);
+    await woken.start({ kind: "data", hostId: key.hostId, sid: open.sid }, w.requestCtx());
+    const app = w.socks.at(-2)!;
+    expect(app.texts.find((t) => t.t === "ready").usage.dayMessages).toBe(0);
+  });
+
+  test("hosts registered before the quota existed get its table on first use", () => {
+    const sql = sqlite(new Database(":memory:"));
+    const old = new HostLedger(sql, "h1");
+    old.ensure();
+    old.commit(w0, utcDay(w0), { control: 1, media: 0, minutes: 0, msgs: 0, reqs: 0 }, 1);
+    expect(sql.all("SELECT name FROM sqlite_master WHERE name = 'msgs_day'")).toEqual([]);
+    const later = new HostLedger(sql, "h1");
+    later.commit(w0 + 1000, utcDay(w0), { control: 1, media: 0, minutes: 0, msgs: 7, reqs: 1 }, 1);
+    expect(new HostLedger(sql, "h1").totals(w0 + 2000).dayMsgs).toBe(7);
   });
 });
 

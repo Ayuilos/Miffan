@@ -4,7 +4,7 @@ import { GlobalBudget, IpRegistrations, budgetState, ipBucket } from "../../core
 import { ConfigError, DEFAULT_CONFIG, infoDocument, parseConfig, publicPolicy } from "../../core/config.ts";
 import { b64uDecode, b64uEncode, base32Lower, hostIdFromPub, secretEquals, verifyHostSignature } from "../../core/crypto.ts";
 import { routeRequest } from "../../core/http.ts";
-import { HostLedger, buildUsage, counted, quotaStatus, requestUnits } from "../../core/ledger.ts";
+import { HostLedger, buildUsage, counted, messagesExhausted, quotaStatus, requestUnits } from "../../core/ledger.ts";
 import { checkNewSession, mediaSessionVerdict } from "../../core/policy.ts";
 import { RateWindow, allowanceBytes } from "../../core/ratelimit.ts";
 import { MIB, nextUtcMidnight, nextUtcMonth, utcDay } from "../../core/time.ts";
@@ -223,8 +223,8 @@ describe("ledger", () => {
 
   test("usage object: rounding, pending counts, resetsAt", () => {
     const policy = DEFAULT_CONFIG.policy;
-    const totals = { day: "2026-11-15", month: "2026-11", dayControl: 3 * MIB, dayMedia: 0, monthControl: 10 * MIB, monthMedia: 5 * MIB, dayActiveMin: 4 };
-    const u = buildUsage(T, totals, { control: MIB / 2, media: 0, minutes: 1, msgs: 0, reqs: 0 }, "ok", policy);
+    const totals = { day: "2026-11-15", month: "2026-11", dayControl: 3 * MIB, dayMedia: 0, monthControl: 10 * MIB, monthMedia: 5 * MIB, dayActiveMin: 4, dayMsgs: 100 };
+    const u = buildUsage(T, totals, { control: MIB / 2, media: 0, minutes: 1, msgs: 20, reqs: 3 }, "ok", policy);
     expect(u).toEqual({
       day: "2026-11-15",
       month: "2026-11",
@@ -232,6 +232,7 @@ describe("ledger", () => {
       dayActiveMin: 5,
       monthControlMb: 10.5,
       monthMediaMb: 5,
+      dayMessages: 120,
       budget: "ok",
       resetsAt: "2026-11-16T00:00:00Z",
     });
@@ -239,7 +240,7 @@ describe("ledger", () => {
 
   test("quota status: daily covers both channels, monthly its own channel, reset times differ", () => {
     const p = parseConfig({ policy: { quotas: { hostDailyMb: 10, hostDailyActiveMin: 0, hostMonthlyControlMb: 100, hostMonthlyMediaMb: 200 } } }).policy;
-    const base = { dayBytes: 0, dayActiveMin: 0, monthControlBytes: 0, monthMediaBytes: 0 };
+    const base = { dayBytes: 0, dayActiveMin: 0, monthControlBytes: 0, monthMediaBytes: 0, dayMsgs: 0 };
     expect(quotaStatus(p, base, "control", T).exhausted).toBe(false);
     const day = quotaStatus(p, { ...base, dayBytes: 10 * MIB }, "media", T);
     expect(day).toMatchObject({ exhausted: true, resetAt: nextUtcMidnight(T) });
@@ -254,13 +255,20 @@ describe("ledger", () => {
     expect(quotaStatus(am, { ...base, dayActiveMin: 30 }, "control", T).exhausted).toBe(true);
     // 0 = unlimited
     const none = parseConfig({ policy: { quotas: { hostDailyMb: 0, hostDailyActiveMin: 0, hostMonthlyControlMb: 0, hostMonthlyMediaMb: 0 } } }).policy;
-    expect(quotaStatus(none, { dayBytes: 1e15, dayActiveMin: 1e9, monthControlBytes: 1e15, monthMediaBytes: 1e15 }, null, T).exhausted).toBe(false);
+    expect(quotaStatus(none, { dayBytes: 1e15, dayActiveMin: 1e9, monthControlBytes: 1e15, monthMediaBytes: 1e15, dayMsgs: 1e12 }, null, T).exhausted).toBe(false);
+    // Messages: a daily quota over both channels.
+    const msgs = parseConfig({ policy: { quotas: { hostDailyMb: 0, hostMonthlyControlMb: 0, hostMonthlyMediaMb: 0, hostDailyMessages: 1000 } } }).policy;
+    expect(quotaStatus(msgs, { ...base, dayMsgs: 999 }, "control", T).exhausted).toBe(false);
+    expect(quotaStatus(msgs, { ...base, dayMsgs: 1000 }, "control", T)).toMatchObject({ exhausted: true, resetAt: nextUtcMidnight(T) });
+    expect(quotaStatus(msgs, { ...base, dayMsgs: 500 }, null, T).fraction).toBe(0.5);
+    expect(messagesExhausted(msgs, { ...base, dayMsgs: 1000 })).toBe(true);
+    expect(messagesExhausted(none, { ...base, dayMsgs: 1e12 })).toBe(false);
   });
 });
 
 describe("policy checks", () => {
   const policy = parseConfig({ policy: { limits: { sessionsPerHost: 2, idleTimeoutS: 300 } } }).policy;
-  const zero = { dayBytes: 0, dayActiveMin: 0, monthControlBytes: 0, monthMediaBytes: 0 };
+  const zero = { dayBytes: 0, dayActiveMin: 0, monthControlBytes: 0, monthMediaBytes: 0, dayMsgs: 0 };
   const base = { ch: "control" as const, hostOnline: true, policy, budget: "ok" as const, counted: zero, sessions: 0, now: T };
 
   test("an unobstructed request passes", () => {
@@ -302,10 +310,10 @@ describe("policy checks", () => {
 
   test("counted() adds pending to stored totals", () => {
     const c = counted(
-      { day: "d", month: "m", dayControl: 1, dayMedia: 2, monthControl: 3, monthMedia: 4, dayActiveMin: 5 },
-      { control: 10, media: 20, minutes: 1, msgs: 0, reqs: 0 },
+      { day: "d", month: "m", dayControl: 1, dayMedia: 2, monthControl: 3, monthMedia: 4, dayActiveMin: 5, dayMsgs: 7 },
+      { control: 10, media: 20, minutes: 1, msgs: 8, reqs: 2 },
     );
-    expect(c).toEqual({ dayBytes: 33, dayActiveMin: 6, monthControlBytes: 13, monthMediaBytes: 24 });
+    expect(c).toEqual({ dayBytes: 33, dayActiveMin: 6, monthControlBytes: 13, monthMediaBytes: 24, dayMsgs: 15 });
   });
 });
 

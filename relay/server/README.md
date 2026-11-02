@@ -30,7 +30,8 @@
       "hostDailyMb": 500,
       "hostDailyActiveMin": 0,
       "hostMonthlyControlMb": 2048,
-      "hostMonthlyMediaMb": 10240
+      "hostMonthlyMediaMb": 10240,
+      "hostDailyMessages": 0
     },
     "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "globalDailyRequests": 0, "mediaReserve": 0.3 }
   },
@@ -45,7 +46,7 @@
 | `policy.control` | 控制通道（SSH、AI 操作电脑）的限速：持续速率 `kbps`、突发 `burstKb`。超过 1.5 倍会被中转断开 |
 | `policy.media` | 画面通道。`allowed: false` 表示本中转不提供画面；`kbps`/`burstKb` 同上 |
 | `policy.limits` | 每台电脑同时最多几个会话；会话多少秒没有数据就关闭 |
-| `policy.quotas` | 每台电脑的额度：每天总流量（MB）、每天活跃分钟数、每月控制/画面流量（MB）。用完后新会话返回 `quota_exhausted` |
+| `policy.quotas` | 每台电脑的额度：每天总流量（MB）、每天活跃分钟数、每月控制/画面流量（MB）、每天消息数（`hostDailyMessages`，该电脑所有会话收到的帧数，`ping` 不算）。用完后新会话返回 `quota_exhausted`；消息数用完时，这台电脑正在进行的会话也以 4429 关闭 |
 | `policy.budget` | 整个中转的每日预算：总流量（MB）、活跃小时数、平台请求数（`globalDailyRequests`，Cloudflare 口径的估算：收到的消息每 20 条计 1 次，加上连接升级、alarm 等）。剩余比例低于 `mediaReserve` 时先停画面，用完则拒绝所有新会话（`relay_busy`） |
 | `edges` | 入口 IP 候选（Cloudflare 部署用，帮手机选线路；VPS 留空） |
 

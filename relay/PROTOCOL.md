@@ -227,13 +227,16 @@ App                         relay                         connector
     "hostDailyMb": 500,
     "hostDailyActiveMin": 0,
     "hostMonthlyControlMb": 2048,
-    "hostMonthlyMediaMb": 10240
+    "hostMonthlyMediaMb": 10240,
+    "hostDailyMessages": 0
   },
   "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "globalDailyRequests": 0, "mediaReserve": 0.3 }
 }
 ```
 
 数值 `0` 表示不限。字段缺失按不限处理；客户端必须忽略未知字段。
+
+`quotas.hostDailyMessages` 是每台电脑每个 UTC 日的消息配额：该电脑所有会话中 relay 收到的帧（文本和二进制，`ping` 除外）合计。
 
 `budget.globalDailyRequests` 是全局每日"平台请求数"预算，按 Cloudflare 的计费口径由 relay 自行估算：收到的 WebSocket 消息（`ping` 除外）每 20 条计 1 次，每次接受的 WebSocket 升级、每次 alarm、每次对全局预算服务的调用各计 1 次。与其他全局预算一样，剩余低于 `mediaReserve` 时进入 `media_paused`，用完时为 `closed`（§6.4）。
 
@@ -249,6 +252,7 @@ relay 按 `hostId` 记录：
 
 - 每个 UTC 日、每个通道的转发字节数（两个方向合计）；
 - 每个 UTC 日的**活跃分钟数**：该电脑任一会话转发过二进制帧的不同 UTC 分钟数；
+- 每个 UTC 日的**消息数**：该电脑所有会话中 relay 收到的帧数（`ping` 除外）；
 - 每个 UTC 月、每个通道的字节数。
 
 日与月都按 UTC 划分（与 Cloudflare 免费额度的重置时间一致，北京时间 8 点）。
@@ -261,12 +265,13 @@ relay 按 `hostId` 记录：
   "dayActiveMin": 14,
   "monthControlMb": 300.2,
   "monthMediaMb": 3100.0,
+  "dayMessages": 182000,
   "budget": "ok",
   "resetsAt": "2026-11-02T00:00:00Z"
 }
 ```
 
-`budget`：`"ok"`、`"media_paused"`（任一全局预算——流量、活跃时长、请求数——剩余低于 `mediaReserve`）、`"closed"`（任一全局预算用完）。
+`dayMessages` 是当天的消息数（较旧的 relay 不提供此字段）。`budget`：`"ok"`、`"media_paused"`（任一全局预算——流量、活跃时长、请求数——剩余低于 `mediaReserve`）、`"closed"`（任一全局预算用完）。
 
 relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内容；来源 IP 只用于注册频率限制，不得落盘超过一天。
 
@@ -285,7 +290,7 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 | 该电脑任一日/月配额用完 | 429 `quota_exhausted`（`retryAfter` 到重置时间） |
 | 该电脑会话数已达上限 | 429 `too_many_sessions` |
 
-会话进行中配额或预算耗尽：画面会话以 4429 `quota_exhausted` / 4503 `relay_busy` 关闭；控制会话允许继续到自然结束，但不得开新会话。
+会话进行中配额或预算耗尽：画面会话以 4429 `quota_exhausted` / 4503 `relay_busy` 关闭；控制会话允许继续到自然结束，但不得开新会话。例外是 `hostDailyMessages`：它用完时，该电脑**所有**正在进行的会话（控制和画面）都以 4429 `quota_exhausted` 关闭，超出配额的那一帧不转发；只影响这台电脑，控制连接保持在线并收到 `usage` 推送。
 
 ## 7. connector 的转发目标
 

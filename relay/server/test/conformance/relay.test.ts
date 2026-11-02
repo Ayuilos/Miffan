@@ -493,6 +493,29 @@ describe("access code", () => {
   });
 });
 
+describe("daily message quota", () => {
+  test("past the quota the host's running sessions are cut with 4429 and new ones refused; ready carries the count", async () => {
+    const opts = { token: ACCESS_TOKEN };
+    const host = await HostControl.connect(B, undefined, opts); // hostDailyMessages = 100
+    expect(host.hello.usage).toMatchObject({ dayMessages: 0 });
+    expect(host.hello.policy.quotas.hostDailyMessages).toBe(100);
+    const first = await openSession(host, "control", opts);
+    for (let i = 0; i < 60; i++) first.app.send(bytes(1));
+    for (let i = 0; i < 60; i++) await first.data.nextBinary();
+    const second = await openSession(host, "control", opts);
+    expect((second.ready.usage as any).dayMessages).toBe(60);
+    for (let i = 0; i < 41; i++) second.data.send(bytes(1)); // the 101st message
+    for (const c of [first.app, first.data, second.app, second.data]) {
+      expect(closeCodes(await c.waitClosed())).toBe("4429 quota_exhausted");
+    }
+    const refused = await upgradeAttempt(wsUrl(B, `/v1/connect/${host.hostId}?ch=control`), { authorization: `Bearer ${ACCESS_TOKEN}` });
+    expect(refused.status).toBe(429);
+    expect((refused.json as any).reason).toBe("quota_exhausted");
+    expect((refused.json as any).retryAfter).toBeGreaterThan(0);
+    host.close();
+  });
+});
+
 describe("admin", () => {
   test("/v1/admin/stats needs the admin token", async () => {
     for (const base of [A, B, C]) {
