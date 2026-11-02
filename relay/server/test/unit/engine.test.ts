@@ -124,6 +124,48 @@ describe("control connection", () => {
     expect(await res.json()).toEqual({ reason: "too_many_registrations", retryAfter: 60 });
   });
 
+  test("a host is counted and given storage only once it proves its key", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    await engine.start({ kind: "host", hostId: key.hostId, pub: key.pub }, w.requestCtx());
+    const silent = w.socks.at(-1)!;
+    expect(w.ipChecks).toBe(1);
+    w.t += 11_000;
+    await engine.onAlarm();
+    expect(silent.closedWith).toEqual([4401, "unauthorized"]);
+    expect(w.registrations).toBe(0);
+    expect(sqlite(w.db).all("SELECT name FROM sqlite_master")).toEqual([]);
+
+    // A wrong signature leaves nothing either.
+    await engine.start({ kind: "host", hostId: key.hostId, pub: key.pub }, w.requestCtx());
+    const bad = w.socks.at(-1)!;
+    const other = await newHostKey();
+    await engine.onMessage(bad, JSON.stringify({ t: "auth", sig: await other.signChallenge("relay.test", bad.json(0).nonce) }));
+    expect(bad.closedWith?.[0]).toBe(4401);
+    expect(w.registrations).toBe(0);
+    expect(sqlite(w.db).all("SELECT name FROM sqlite_master")).toEqual([]);
+
+    const host = await connectHost(w, engine, key);
+    expect(host.texts.at(-1).t).toBe("hello");
+    expect(w.registrations).toBe(1);
+    expect(new HostLedger(sqlite(w.db), key.hostId).registered()).toBe(true);
+    expect("reg" in host.a).toBe(false); // the address does not outlive the handshake
+  });
+
+  test("an unreachable budget service does not stop a new host from registering", async () => {
+    const { w, engine } = setup();
+    w.budget.checkIp = async () => {
+      throw new Error("down");
+    };
+    w.budget.registerIp = async () => {
+      throw new Error("down");
+    };
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    expect(host.texts.at(-1).t).toBe("hello");
+    expect(new HostLedger(sqlite(w.db), key.hostId).registered()).toBe(true);
+  });
+
   test("an unregistered, refused host leaves nothing in storage", async () => {
     const { w, engine } = setup();
     w.registrationLimit = 0;

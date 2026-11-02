@@ -92,6 +92,33 @@ export class GlobalBudget {
 }
 
 /**
+ * The unit the registration limit counts: an IPv4 address, or the /64 prefix of an IPv6 address (one
+ * subscriber usually holds a whole /64, so counting single IPv6 addresses would cost nothing to evade).
+ * IPv4-mapped IPv6 addresses count as their IPv4 address. Anything unparsable is counted as given.
+ */
+export function ipBucket(ip: string): string {
+  const s = ip.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  if (!s.includes(":")) return s;
+  const mapped = /^(?:::|(?:0{1,4}:){5})ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(s);
+  if (mapped) return mapped[1]!;
+  let head = s;
+  let tail = "";
+  const dbl = s.indexOf("::");
+  if (dbl >= 0) {
+    head = s.slice(0, dbl);
+    tail = s.slice(dbl + 2);
+  }
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  if (t.length && t[t.length - 1]!.includes(".")) return s; // embedded IPv4 in a non-mapped address: rare, count as given
+  const missing = 8 - h.length - t.length;
+  if (missing < 0 || (dbl < 0 && missing !== 0)) return s;
+  const groups = [...h, ...Array<string>(missing).fill("0"), ...t];
+  if (groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return s;
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":") + "::/64";
+}
+
+/**
  * Per-source-IP counter of newly registered hosts. Only a salted hash of the address is stored, the
  * salt is replaced every UTC day, and every earlier day is deleted, so nothing identifying survives
  * the day (PROTOCOL §6.3).
@@ -126,14 +153,29 @@ export class IpRegistrations {
     return value;
   }
 
+  private async keyOf(day: string, ip: string): Promise<string> {
+    const salt = this.daySalt(day);
+    return b64uEncode((await sha256(new Uint8Array([...salt, ...new TextEncoder().encode(ipBucket(ip))]))).slice(0, 12));
+  }
+
+  private count(day: string, key: string): number {
+    return this.sql.all<{ n: number }>("SELECT n FROM reg_ip WHERE day = ? AND ip = ?", day, key)[0]?.n ?? 0;
+  }
+
+  /** Would a registration from `ip` be refused? Reads only; nothing is counted. */
+  async check(now: number, ip: string, limit: number): Promise<{ ok: true } | { ok: false; retryAfter: number }> {
+    if (limit <= 0) return { ok: true };
+    const day = utcDay(now);
+    if (this.count(day, await this.keyOf(day, ip)) >= limit) return { ok: false, retryAfter: secondsUntil(nextUtcMidnight(now), now) };
+    return { ok: true };
+  }
+
   /** Count one registration from `ip`. `limit` 0 means unlimited. */
   async register(now: number, ip: string, limit: number): Promise<{ ok: true } | { ok: false; retryAfter: number }> {
     if (limit <= 0) return { ok: true };
     const day = utcDay(now);
-    const salt = this.daySalt(day);
-    const key = b64uEncode((await sha256(new Uint8Array([...salt, ...new TextEncoder().encode(ip)]))).slice(0, 12));
-    const n = this.sql.all<{ n: number }>("SELECT n FROM reg_ip WHERE day = ? AND ip = ?", day, key)[0]?.n ?? 0;
-    if (n >= limit) return { ok: false, retryAfter: secondsUntil(nextUtcMidnight(now), now) };
+    const key = await this.keyOf(day, ip);
+    if (this.count(day, key) >= limit) return { ok: false, retryAfter: secondsUntil(nextUtcMidnight(now), now) };
     this.sql.run(
       "INSERT INTO reg_ip (day, ip, n) VALUES (?, ?, 1) ON CONFLICT (day, ip) DO UPDATE SET n = n + 1",
       day,

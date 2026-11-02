@@ -38,6 +38,7 @@ export class HostRelay extends DurableObject<Env> {
       budget: {
         state: () => budget.state(),
         report: (bytes, minutes) => budget.report(bytes, minutes),
+        checkIp: (ip) => budget.checkIp(ip),
         registerIp: (ip) => budget.registerIp(ip),
       },
       log: (line) => console.log(JSON.stringify(line)),

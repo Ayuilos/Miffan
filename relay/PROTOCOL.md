@@ -96,7 +96,7 @@ connector                          relay
 - 签名：`sig = Ed25519(hostKey, UTF8("miffan-relay/v1 host\n" + host + "\n" + nonce))`，其中 `host` 是请求的 `Host` 头的值（小写），`nonce` 是 challenge 中的 b64u 文本原样。
 - relay 必须在 10 秒内收到正确签名，否则关闭 4401。
 - 同一 `hostId` 只保留一条控制连接：新连接**验签通过后**，旧连接以 4000 `replaced` 关闭。
-- 首次出现的 `hostId` 计入按来源 IP 的注册频率限制（策略 `access.registrationsPerIpPerDay`），超出返回 429 `too_many_registrations`。
+- 首次出现的 `hostId` 受按来源 IP 的注册频率限制（策略 `access.registrationsPerIpPerDay`）：升级前检查，超出返回 429 `too_many_registrations`；只有**验签通过**后才计数并为它建立状态，未通过验签的连接不留下任何记录。IPv6 地址按 /64 前缀计数，IPv4 映射地址按其 IPv4 地址计数。
 
 `hello`：
 

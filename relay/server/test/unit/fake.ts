@@ -44,6 +44,7 @@ export class World {
   reports: { bytes: number; minutes: number }[] = [];
   stateCalls = 0;
   registrations = 0;
+  ipChecks = 0;
   registrationLimit = Infinity;
   logs: Record<string, unknown>[] = [];
 
@@ -55,6 +56,10 @@ export class World {
     report: async (bytes, minutes) => {
       this.reports.push({ bytes, minutes });
       return this.budgetState;
+    },
+    checkIp: async () => {
+      this.ipChecks++;
+      return this.registrations >= this.registrationLimit ? { ok: false, retryAfter: 60 } : { ok: true };
     },
     registerIp: async () => {
       if (this.registrations >= this.registrationLimit) return { ok: false, retryAfter: 60 };

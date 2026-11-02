@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { GlobalBudget, IpRegistrations, budgetState } from "../../core/budget.ts";
+import { GlobalBudget, IpRegistrations, budgetState, ipBucket } from "../../core/budget.ts";
 import { ConfigError, DEFAULT_CONFIG, infoDocument, parseConfig, publicPolicy } from "../../core/config.ts";
 import { b64uDecode, b64uEncode, base32Lower, hostIdFromPub, secretEquals, verifyHostSignature } from "../../core/crypto.ts";
 import { routeRequest } from "../../core/http.ts";
@@ -340,6 +340,31 @@ describe("global budget", () => {
 });
 
 describe("ip registrations", () => {
+  test("IPv6 addresses count per /64, IPv4-mapped ones as IPv4", async () => {
+    expect(ipBucket("203.0.113.9")).toBe("203.0.113.9");
+    expect(ipBucket("2001:db8:1:2:aaaa::1")).toBe("2001:db8:1:2::/64");
+    expect(ipBucket("2001:0DB8:0001:0002:ffff:ffff:ffff:ffff")).toBe("2001:db8:1:2::/64");
+    expect(ipBucket("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(ipBucket("[2001:db8:1:2::5]")).toBe("2001:db8:1:2::/64");
+    expect(ipBucket("fe80::1%en0")).toBe("fe80:0:0:0::/64");
+    expect(ipBucket("::ffff:198.51.100.7")).toBe("198.51.100.7");
+    expect(ipBucket("unknown")).toBe("unknown");
+
+    const r = new IpRegistrations(sqlite(new Database(":memory:")));
+    expect(await r.register(T, "2001:db8:1:2::1", 2)).toEqual({ ok: true });
+    expect(await r.register(T, "2001:db8:1:2::2", 2)).toEqual({ ok: true });
+    expect((await r.check(T, "2001:db8:1:2:dead:beef::9", 2)).ok).toBe(false); // same /64
+    expect(await r.check(T, "2001:db8:1:3::1", 2)).toEqual({ ok: true }); // next /64
+  });
+
+  test("check counts nothing", async () => {
+    const r = new IpRegistrations(sqlite(new Database(":memory:")));
+    for (let i = 0; i < 5; i++) expect(await r.check(T, "198.51.100.7", 1)).toEqual({ ok: true });
+    expect(r.total(T)).toBe(0);
+    await r.register(T, "198.51.100.7", 1);
+    expect((await r.check(T, "198.51.100.7", 1)).ok).toBe(false);
+  });
+
   test("limit per IP and day; 0 = unlimited; only hashes are stored", async () => {
     const sql = sqlite(new Database(":memory:"));
     const r = new IpRegistrations(sql);

@@ -41,6 +41,9 @@ export interface Sock {
 export interface BudgetPort {
   state(): Promise<BudgetState>;
   report(bytes: number, minutes: number): Promise<BudgetState>;
+  /** Would a new host from `ip` be refused? Counts nothing. */
+  checkIp(ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }>;
+  /** Count a new host from `ip` (called once it has proved its key). */
   registerIp(ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }>;
 }
 
@@ -87,6 +90,8 @@ export interface HostAtt {
   at: number;
   /** Key of the last usage level pushed to the connector. */
   ub: string;
+  /** Source address of a host that is not registered yet; counted (and dropped) once it authenticates. */
+  reg?: string;
   x?: 1;
 }
 
@@ -221,9 +226,12 @@ export class Engine {
   }
 
   private async startHost(route: Extract<Route, { kind: "host" }>, rc: RequestCtx): Promise<Response> {
-    if (!this.ledger.registered()) {
+    // A new host is checked against the per-IP limit here, but only counted (and given storage) once
+    // it has proved its key, so unauthenticated requests cost nothing that lasts.
+    const unregistered = !this.ledger.registered();
+    if (unregistered) {
       try {
-        const r = await this.p.budget.registerIp(rc.ip);
+        const r = await this.p.budget.checkIp(rc.ip);
         if (!r.ok) {
           this.log("registration_refused");
           return reject("too_many_registrations", r.retryAfter);
@@ -231,8 +239,6 @@ export class Engine {
       } catch {
         this.log("registration_check_unreachable"); // fail open: the limit is abuse protection, not security
       }
-      this.ledger.markRegistered();
-      this.log("registered");
     }
     const nonce = b64uEncode(randomBytes(32));
     const att: HostAtt = {
@@ -245,6 +251,7 @@ export class Engine {
       host: rc.host,
       at: this.p.now(),
       ub: "",
+      ...(unregistered ? { reg: rc.ip } : {}),
     };
     const res = rc.accept(["host"], att, (s) => s.send(JSON.stringify({ t: "challenge", nonce })));
     this.reschedule();
@@ -367,10 +374,20 @@ export class Engine {
         this.log("host_replaced");
       }
     }
+    if (cur.reg !== undefined && !this.ledger.registered()) {
+      try {
+        await this.p.budget.registerIp(cur.reg);
+      } catch {
+        this.log("registration_check_unreachable");
+      }
+      this.ledger.markRegistered();
+      this.log("registered");
+    }
     await this.budgetFresh();
     const usage = this.usage();
     const level = this.usageKey(usage);
-    s.setAtt({ ...cur, authed: true, nonce: "", ub: level });
+    const { reg: _reg, ...rest } = cur;
+    s.setAtt({ ...rest, authed: true, nonce: "", ub: level });
     s.send(
       JSON.stringify({
         t: "hello",

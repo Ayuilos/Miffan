@@ -123,6 +123,7 @@ export function createBunRelay(opts: BunRelayOptions) {
   const budget: BudgetPort = {
     state: async () => global.state(Date.now()),
     report: async (bytes, minutes) => global.report(Date.now(), bytes, minutes),
+    checkIp: (ip) => ips.check(Date.now(), ip, cfg.registrationsPerIpPerDay),
     registerIp: (ip) => ips.register(Date.now(), ip, cfg.registrationsPerIpPerDay),
   };
   const slots = new Map<string, Slot>();
