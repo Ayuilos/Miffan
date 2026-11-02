@@ -353,6 +353,27 @@ connector 的日志写 `connector.log`（helper 在安装和启动时把超过 1
 它运行 `powershell.exe -WindowStyle Hidden … miffan.ps1 relay run`，后者无控制台窗口地启动 connector 并把它的
 stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输出 JSON。
 
+## 截图模式（`snapshot serve`，POSIX helper 37 起、Windows helper 19 起）
+
+经中转看屏幕时，App 用 cua-driver 截图（`get_desktop_state` 的 `screenshot_out_file`），再由这个常驻进程把
+图片发回。整个屏幕页只开一个进程，每张图不再启动新命令；图片是**原始字节**，不经 base64 或 JSON。
+两个平台协议相同；用法错误时 POSIX 退出 2，Windows 抛错。
+
+1. 启动后先输出一行 `ready <路径>`：cua-driver 写截图的位置（macOS/Linux `~/.miffan/snapshot/desktop.png`，
+   目录权限 700；Windows `%LOCALAPPDATA%\Miffan\snapshot\desktop.png`）。路径为 UTF-8，可含空格。目录建不出来时
+   输出 `error io_error` 并结束。
+2. 之后每读到一行请求 `<质量> [<摘要>]` 就回复一次。质量是 JPEG 质量，钳到 20–90，不是数字时按 55。
+   摘要是上一张图回复里的 `<摘要>`。回复是一行头，有图时紧跟 `<长度>` 个字节：
+
+| 头 | 之后 | 含义 |
+|---|---|---|
+| `same <摘要>` | 无 | 截图与请求里的摘要相同，不发图 |
+| `jpeg <摘要> <长度>` / `png <摘要> <长度>` | `<长度>` 字节图片 | 有编码器时转成 JPEG（macOS `sips`；Linux 依次 ImageMagick、ffmpeg、Pillow；Windows System.Drawing），否则原样发 PNG |
+| `error <原因码>` | 无 | `no_snapshot`（还没有截图）或 `io_error`；进程继续服务下一行 |
+
+摘要：macOS/Linux 为 `cksum` 的 `<crc>-<大小>`，Windows 为 MD5 十六进制；App 只接受 `[0-9a-f-]{1,80}`。
+stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会读走后续请求。
+
 ## 版本与安装
 
 当前 POSIX helper 为 33，Windows 为 15。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。

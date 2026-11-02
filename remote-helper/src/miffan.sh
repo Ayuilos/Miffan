@@ -24,7 +24,7 @@
 #   miffan relay status|install|pair|unpair|uninstall
 #                           the relay connector that lets the phone reach this computer from outside
 
-MIFFAN_HELPER_VERSION=36
+MIFFAN_HELPER_VERSION=37
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -153,35 +153,43 @@ mac_shortcut() {
     "$cua" hotkey "{\"scope\":\"desktop\",\"keys\":[\"ctrl\",\"fn\",\"$key\"]}" >/dev/null
 }
 
-# The screen page over a relay shows still pictures instead of a stream (snapshot mode): cua-driver
-# writes each capture to `snapshot path`, and `snapshot encode QUALITY SINCE` sends it back as one
-# JSON line. A capture whose checksum equals SINCE answers {"same":true} and sends no picture; any
-# other is re-encoded as JPEG when the computer has an encoder (sips, ImageMagick, ffmpeg or
-# Pillow), else sent as the PNG. The picture is base64 in "data".
+# The screen page over a relay shows still pictures instead of a stream (snapshot mode). `snapshot serve`
+# stays open for the whole screen: it first answers `ready PATH`, where cua-driver writes each capture,
+# then reads one request line per picture, `QUALITY [SINCE]`, and answers with one header line, raw
+# picture bytes after it, so nothing is base64 and no command starts per picture:
+#   same DIGEST                the capture's checksum equals SINCE; no picture follows
+#   jpeg|png DIGEST LENGTH     then LENGTH bytes of the picture
+#   error CODE                 no picture follows
+# A capture is re-encoded as JPEG when the computer has an encoder (sips, ImageMagick, ffmpeg or
+# Pillow), else sent as the PNG. EOF on stdin ends it.
 SNAPSHOT_DIR="$HOME/.miffan/snapshot"
 
 snapshot() {
     case "${1:-}" in
-        path)
-            mkdir -p "$SNAPSHOT_DIR" && chmod 700 "$SNAPSHOT_DIR" || { echo '{"error":"io_error"}'; return 1; }
-            printf '{"path":%s}\n' "$(json_str "$SNAPSHOT_DIR/desktop.png")"
-            ;;
-        encode) snapshot_encode "${2:-55}" "${3:-}" ;;
-        *) echo "usage: miffan snapshot path|encode QUALITY [SINCE]" >&2; return 2 ;;
+        serve) snapshot_serve ;;
+        *) echo "usage: miffan snapshot serve" >&2; return 2 ;;
     esac
 }
 
-snapshot_encode() {
+snapshot_serve() {
+    mkdir -p "$SNAPSHOT_DIR" && chmod 700 "$SNAPSHOT_DIR" || { echo 'error io_error'; return 1; }
+    printf 'ready %s\n' "$SNAPSHOT_DIR/desktop.png"
+    while IFS=' ' read -r quality since _; do
+        snapshot_picture "$quality" "$since"
+    done
+}
+
+snapshot_picture() {
     quality=$1
     case "$quality" in ''|*[!0-9]*) quality=55 ;; esac
     [ "$quality" -ge 20 ] || quality=20
     [ "$quality" -le 90 ] || quality=90
     png="$SNAPSHOT_DIR/desktop.png"
     jpg="$SNAPSHOT_DIR/desktop.jpg"
-    [ -s "$png" ] || { echo '{"error":"no_snapshot"}'; return 1; }
+    [ -s "$png" ] || { echo 'error no_snapshot'; return 0; }
     digest=$(cksum < "$png" | awk '{print $1 "-" $2}')
     if [ -n "$2" ] && [ "$2" = "$digest" ]; then
-        printf '{"same":true,"digest":"%s"}\n' "$digest"
+        printf 'same %s\n' "$digest"
         return 0
     fi
     rm -f "$jpg"
@@ -201,11 +209,13 @@ from PIL import Image
 Image.open(sys.argv[1]).convert("RGB").save(sys.argv[2], "JPEG", quality=int(sys.argv[3]))' "$png" "$jpg" "$quality" >/dev/null 2>&1
             fi
             ;;
-    esac
+    esac </dev/null
     if [ -s "$jpg" ]; then file=$jpg; format=jpeg; else file=$png; format=png; fi
-    printf '{"digest":"%s","format":"%s","data":"' "$digest" "$format"
-    base64 < "$file" | tr -d '\n\r'
-    printf '"}\n'
+    # The app captures only between requests, so the file stays the same while it is sent.
+    size=$(wc -c < "$file" | tr -d ' ')
+    case "$size" in ''|*[!0-9]*) echo 'error io_error'; rm -f "$jpg"; return 0 ;; esac
+    printf '%s %s %s\n' "$format" "$digest" "$size"
+    cat "$file"
     rm -f "$jpg"
 }
 
@@ -3200,7 +3210,7 @@ case "${1:-}" in
     sunshine) shift; if [ "$#" -eq 0 ]; then sunshine probe; else sunshine "$@"; fi ;;
     clip) clip ;;
     mac-shortcut) mac_shortcut "${2:-}" ;;
-    snapshot) snapshot "${2:-}" "${3:-}" "${4:-}" ;;
+    snapshot) snapshot "${2:-}" ;;
     task) shift; task "$@" ;;
     space) shift; space "$@" ;;
     relay) shift; relay "$@" ;;

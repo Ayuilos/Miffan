@@ -14,6 +14,8 @@ import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.Tool as McpTool
+import java.io.IOException
+import java.io.InputStream
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
@@ -23,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,15 +41,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rdp.RdpStats
 import me.rerere.workspace.RemoteChannelStream
 import me.rerere.workspace.screen.RemoteScreenFrameSink
@@ -63,15 +61,13 @@ data class SnapshotQuality(val maxDimension: Int, val jpegQuality: Int)
  * The screen as still pictures, for a screen opened through a relay, where a stream is slow: every
  * [intervalMillis] (and shortly after each action) cua-driver captures the desktop on the computer,
  * the helper sends it back as a JPEG unless nothing changed, and taps, keys and text become
- * cua-driver actions in the picture's pixels. Both run over [process], cua-driver's MCP on the relay's
- * screen channel, and [encode], the helper's `snapshot encode` on that same channel.
+ * cua-driver actions in the picture's pixels. Both run on the relay's screen channel: [process] is
+ * cua-driver's MCP, and [pictures] the helper's `snapshot serve`, which sends each picture as raw bytes.
  */
 class SnapshotDesktopSession internal constructor(
     private val process: RemoteChannelStream,
-    /** Runs `snapshot encode QUALITY SINCE` on the computer and returns its JSON line. */
-    private val encode: (quality: Int, since: String?) -> String,
-    /** Where cua-driver writes each capture, from `snapshot path`. */
-    private val shotPath: String,
+    /** The helper's `snapshot serve`, see [SnapshotPictures]. */
+    private val pictures: RemoteChannelStream,
     private val sink: RemoteScreenFrameSink,
     private val name: String,
     macos: Boolean,
@@ -93,7 +89,11 @@ class SnapshotDesktopSession internal constructor(
     private val nudges = Channel<Unit>(Channel.CONFLATED)
     private val paused = MutableStateFlow(false)
     @Volatile private var quality = quality
-    @Volatile private var received = 0L
+    /** Bytes of pictures cua-driver returned itself, when it ignores the output file. */
+    @Volatile private var inline = 0L
+    private val serve = SnapshotPictures(pictures.input, pictures.output)
+    /** Where cua-driver writes each capture, named by `snapshot serve`. */
+    private var shotPath = ""
     private var width = 0
     private var height = 0
 
@@ -103,7 +103,7 @@ class SnapshotDesktopSession internal constructor(
     override val protocol = RemoteDesktopProtocol.SNAPSHOT
     override val state: StateFlow<RemoteScreenState> = _state
     override val clipboard = MutableSharedFlow<String>()
-    override val bytesReceived: Long get() = received
+    override val bytesReceived: Long get() = inline + serve.bytesRead
     override val certificateSha256: StateFlow<String?> = MutableStateFlow(null)
     override val rdpStats: StateFlow<RdpStats>? = null
     override val stats: StateFlow<RemoteScreenStats> = _stats
@@ -113,6 +113,7 @@ class SnapshotDesktopSession internal constructor(
         check(!closed.get() && started.compareAndSet(false, true)) { "Session already started or closed" }
         job = scope.launch(Dispatchers.IO) {
             try {
+                pictures.errors?.let { errors -> launch { logErrors(errors) } }
                 connect()
                 launch { runActions() }
                 runCaptures()
@@ -131,6 +132,7 @@ class SnapshotDesktopSession internal constructor(
     }
 
     private suspend fun connect() {
+        shotPath = blocking(30_000) { serve.ready() }
         val transport = StdioClientTransport(
             input = process.input.asSource().buffered(),
             output = process.output.asSink().buffered(),
@@ -162,6 +164,8 @@ class SnapshotDesktopSession internal constructor(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (error: IOException) {
+                throw error // The helper or the channel is gone.
             } catch (error: Throwable) {
                 // One slow or failed capture is not the end; three in a row are.
                 if (++failures >= 3) throw error
@@ -185,16 +189,32 @@ class SnapshotDesktopSession internal constructor(
         // A driver that ignores the output file returns the PNG itself.
         result.content.filterIsInstance<ImageContent>().lastOrNull()?.let { image ->
             val bytes = Base64.decode(image.data, Base64.DEFAULT)
-            received += image.data.length
+            inline += image.data.length
             return Shot(bytes, null)
         }
-        val line = withContext(Dispatchers.IO) { encode(wanted.jpegQuality, since) }.trim().lineSequence().lastOrNull().orEmpty()
-        received += line.length
-        val reply = Json.parseToJsonElement(line).jsonObject
-        reply.string("error")?.let { error("snapshot encode failed: $it") }
-        if (reply["same"]?.jsonPrimitive?.booleanOrNull == true) return null
-        val data = requireNotNull(reply.string("data")) { "snapshot encode sent no picture" }
-        return Shot(Base64.decode(data, Base64.DEFAULT), reply.string("digest"))
+        return when (val reply = blocking(60_000) { serve.request(wanted.jpegQuality, since) }) {
+            is SnapshotPictures.Reply.Same -> null
+            is SnapshotPictures.Reply.Picture -> Shot(reply.bytes, reply.digest)
+        }
+    }
+
+    /**
+     * Runs a blocking read or write of [pictures] off the main thread. A stalled helper gets
+     * [timeoutMillis]; then its channel is closed, which ends the read and the screen.
+     */
+    private suspend fun <T> blocking(timeoutMillis: Long, block: () -> T): T = coroutineScope {
+        val watchdog = launch {
+            delay(timeoutMillis)
+            Log.w(TAG, "snapshot serve stalled")
+            runCatching { pictures.close() }
+        }
+        try { withContext(Dispatchers.IO) { block() } } finally { watchdog.cancel() }
+    }
+
+    private fun logErrors(errors: InputStream) {
+        runCatching {
+            errors.bufferedReader().useLines { lines -> lines.forEach { Log.w(TAG, "snapshot serve: ${it.take(300)}") } }
+        }
     }
 
     private fun show(bytes: ByteArray) {
@@ -309,6 +329,8 @@ class SnapshotDesktopSession internal constructor(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         job?.cancel()
+        // A blocking read of a picture ends only when its channel closes.
+        runCatching { pictures.close() }
         if (job == null) release()
         if (_state.value !is RemoteScreenState.Closed) _state.value = RemoteScreenState.Closed(null)
     }
@@ -320,6 +342,7 @@ class SnapshotDesktopSession internal constructor(
         if (!released.compareAndSet(false, true)) return
         actions.close()
         runCatching { process.close() }
+        runCatching { pictures.close() }
         runCatching { onClose() }
     }
 
@@ -329,5 +352,3 @@ class SnapshotDesktopSession internal constructor(
 }
 
 private fun CallToolResult.text() = content.filterIsInstance<TextContent>().joinToString("\n") { it.text }
-
-private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull

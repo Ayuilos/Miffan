@@ -192,12 +192,6 @@ class RemoteScreenConnection internal constructor(
     }
 }
 
-/** `snapshot encode` digests: cksum's "crc-size" on Mac and Linux, MD5 hex on Windows. */
-private val SNAPSHOT_DIGEST = Regex("[0-9a-f-]{1,80}")
-
-/** A snapshot JPEG is ~150 KB; a PNG fallback of a large screen can be several MB, as base64. */
-private const val SNAPSHOT_MAX_OUTPUT = 24 * 1024 * 1024
-
 /** How long Sunshine may take to answer after a restart; Windows needs about 30 s. */
 private const val SUNSHINE_RESTART_MILLIS = 60_000L
 
@@ -702,27 +696,16 @@ class RemoteScreenRepository(
 
     /**
      * Snapshot mode on the relay's screen channel [media]: cua-driver's MCP for captures and actions,
-     * and the helper's `snapshot encode` for each picture.
+     * and the helper's `snapshot serve` for the pictures.
      */
     private fun openSnapshot(
         media: RemoteWorkspaceSession, name: String, sink: RemoteScreenFrameSink, windows: Boolean, macos: Boolean,
         quality: SnapshotQuality,
     ): SnapshotDesktopSession {
-        val platform = media.platform
-        val prepared = media.execute(screenHelperCommand(platform, "snapshot path"), timeoutMillis = 20_000)
-        check(prepared.exitCode == 0 && !prepared.timedOut) { prepared.stderr.ifBlank { "snapshot path failed" } }
-        val path = json.parseToJsonElement(prepared.stdout.trim().lineSequence().last()).jsonObject["path"]
-            ?.jsonPrimitive?.contentOrNull ?: error("The helper named no snapshot path")
-        val process = media.openProcess(screenHelperCommand(platform, "cua"))
-        return SnapshotDesktopSession(process, encode = { jpegQuality, since ->
-            require(since == null || since.matches(SNAPSHOT_DIGEST)) { "Unexpected snapshot digest" }
-            val command = screenHelperCommand(platform, "snapshot encode") + " $jpegQuality" + (since?.let { " $it" } ?: "")
-            val result = media.execute(command, timeoutMillis = 60_000, maxOutputBytes = SNAPSHOT_MAX_OUTPUT)
-            check(!result.timedOut && (result.exitCode == 0 || result.stdout.isNotBlank())) {
-                result.stderr.ifBlank { "snapshot encode failed" }
-            }
-            result.stdout
-        }, path, sink, name, macos, windows, quality, onClose = { media.close() })
+        val pictures = media.openProcess(screenHelperCommand(media.platform, "snapshot serve"))
+        val process = try { media.openProcess(screenHelperCommand(media.platform, "cua")) }
+            catch (error: Throwable) { pictures.close(); throw error }
+        return SnapshotDesktopSession(process, pictures, sink, name, macos, windows, quality, onClose = { media.close() })
     }
 
     /**
