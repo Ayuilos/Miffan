@@ -32,7 +32,7 @@
       "hostMonthlyControlMb": 2048,
       "hostMonthlyMediaMb": 10240
     },
-    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "mediaReserve": 0.3 }
+    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "globalDailyRequests": 0, "mediaReserve": 0.3 }
   },
   "edges": []
 }
@@ -46,12 +46,13 @@
 | `policy.media` | 画面通道。`allowed: false` 表示本中转不提供画面；`kbps`/`burstKb` 同上 |
 | `policy.limits` | 每台电脑同时最多几个会话；会话多少秒没有数据就关闭 |
 | `policy.quotas` | 每台电脑的额度：每天总流量（MB）、每天活跃分钟数、每月控制/画面流量（MB）。用完后新会话返回 `quota_exhausted` |
-| `policy.budget` | 整个中转的每日预算：总流量（MB）、活跃小时数。剩余比例低于 `mediaReserve` 时先停画面，用完则拒绝所有新会话（`relay_busy`） |
+| `policy.budget` | 整个中转的每日预算：总流量（MB）、活跃小时数、平台请求数（`globalDailyRequests`，Cloudflare 口径的估算：收到的消息每 20 条计 1 次，加上连接升级、alarm 等）。剩余比例低于 `mediaReserve` 时先停画面，用完则拒绝所有新会话（`relay_busy`） |
 | `edges` | 入口 IP 候选（Cloudflare 部署用，帮手机选线路；VPS 留空） |
 
 说明：
 
-- 计量按 UTC 的日和月；"MB"是 1024×1024 字节；只统计转发的二进制帧。
+- 计量按 UTC 的日和月；"MB"是 1024×1024 字节；统计转发的二进制帧和握手文本帧（活跃分钟只看二进制帧）。
+- **请求数**：Cloudflare 免费方案每天 10 万次 Durable Object 请求，收到的 WebSocket 消息每 20 条计 1 次。输出断断续续的会话（滚动的构建日志）每秒约 80–90 帧，所以请求数可能比运行时长先用完；官方实例用 `globalDailyRequests` 给它设预算。VPS 部署留 0 即可。
 - **活跃分钟**：该电脑任一会话转发过数据的不同 UTC 分钟数。Cloudflare 免费方案的成本主要是 Durable Object 的运行时长，而它只在有数据经过时才醒着，所以按活跃分钟限额比按流量更贴近成本；VPS 的成本是流量，用 MB 限额即可。
 - `accessMode` 为 `token` 时需要两个口令（都是环境变量/secret，**不要写进配置文件**）：
   - `ACCESS_TOKEN`：访问码。手机和 connector 请求中转时带 `Authorization: Bearer <访问码>`。

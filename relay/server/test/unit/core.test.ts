@@ -4,7 +4,7 @@ import { GlobalBudget, IpRegistrations, budgetState, ipBucket } from "../../core
 import { ConfigError, DEFAULT_CONFIG, infoDocument, parseConfig, publicPolicy } from "../../core/config.ts";
 import { b64uDecode, b64uEncode, base32Lower, hostIdFromPub, secretEquals, verifyHostSignature } from "../../core/crypto.ts";
 import { routeRequest } from "../../core/http.ts";
-import { HostLedger, buildUsage, counted, quotaStatus } from "../../core/ledger.ts";
+import { HostLedger, buildUsage, counted, quotaStatus, requestUnits } from "../../core/ledger.ts";
 import { checkNewSession, mediaSessionVerdict } from "../../core/policy.ts";
 import { RateWindow, allowanceBytes } from "../../core/ratelimit.ts";
 import { MIB, nextUtcMidnight, nextUtcMonth, utcDay } from "../../core/time.ts";
@@ -201,9 +201,9 @@ describe("ledger", () => {
     const l = new HostLedger(sql, "h1");
     l.ensure();
     const day2 = T - 86_400_000;
-    l.commit(day2, utcDay(day2), { control: 1000, media: 0, minutes: 3 }, 10);
-    l.commit(T, utcDay(T), { control: 500, media: 2000, minutes: 2 }, 20);
-    l.commit(T + 1000, utcDay(T), { control: 500, media: 0, minutes: 1 }, 21);
+    l.commit(day2, utcDay(day2), { control: 1000, media: 0, minutes: 3, msgs: 0, reqs: 0 }, 10);
+    l.commit(T, utcDay(T), { control: 500, media: 2000, minutes: 2, msgs: 0, reqs: 0 }, 20);
+    l.commit(T + 1000, utcDay(T), { control: 500, media: 0, minutes: 1, msgs: 0, reqs: 0 }, 21);
     const t = new HostLedger(sql, "h1").totals(T); // a new instance reads it back from storage
     expect(t).toMatchObject({ day: "2026-11-15", month: "2026-11", dayControl: 1000, dayMedia: 2000, monthControl: 2000, monthMedia: 2000, dayActiveMin: 3 });
     expect(new HostLedger(sql, "h1").meta()).toEqual({ lastMinute: 21, lastFlush: T + 1000 });
@@ -215,8 +215,8 @@ describe("ledger", () => {
     const l = new HostLedger(sql, "h1");
     l.ensure();
     const lastMonth = Date.UTC(2026, 9, 31, 23, 0, 0);
-    l.commit(lastMonth, utcDay(lastMonth), { control: 999, media: 0, minutes: 1 }, 1);
-    l.commit(T, utcDay(T), { control: 1, media: 0, minutes: 1 }, 2);
+    l.commit(lastMonth, utcDay(lastMonth), { control: 999, media: 0, minutes: 1, msgs: 0, reqs: 0 }, 1);
+    l.commit(T, utcDay(T), { control: 1, media: 0, minutes: 1, msgs: 0, reqs: 0 }, 2);
     expect(sql.all("SELECT day FROM usage_day").map((r: any) => r.day)).toEqual(["2026-11-15"]);
     expect(l.totals(T).monthControl).toBe(1);
   });
@@ -224,7 +224,7 @@ describe("ledger", () => {
   test("usage object: rounding, pending counts, resetsAt", () => {
     const policy = DEFAULT_CONFIG.policy;
     const totals = { day: "2026-11-15", month: "2026-11", dayControl: 3 * MIB, dayMedia: 0, monthControl: 10 * MIB, monthMedia: 5 * MIB, dayActiveMin: 4 };
-    const u = buildUsage(T, totals, { control: MIB / 2, media: 0, minutes: 1 }, "ok", policy);
+    const u = buildUsage(T, totals, { control: MIB / 2, media: 0, minutes: 1, msgs: 0, reqs: 0 }, "ok", policy);
     expect(u).toEqual({
       day: "2026-11-15",
       month: "2026-11",
@@ -303,7 +303,7 @@ describe("policy checks", () => {
   test("counted() adds pending to stored totals", () => {
     const c = counted(
       { day: "d", month: "m", dayControl: 1, dayMedia: 2, monthControl: 3, monthMedia: 4, dayActiveMin: 5 },
-      { control: 10, media: 20, minutes: 1 },
+      { control: 10, media: 20, minutes: 1, msgs: 0, reqs: 0 },
     );
     expect(c).toEqual({ dayBytes: 33, dayActiveMin: 6, monthControlBytes: 13, monthMediaBytes: 24 });
   });
@@ -311,24 +311,31 @@ describe("policy checks", () => {
 
 describe("global budget", () => {
   test("state thresholds", () => {
-    const b = { globalDailyMb: 10, globalDailyActiveHours: 0, mediaReserve: 0.3 };
+    const b = { globalDailyMb: 10, globalDailyActiveHours: 0, globalDailyRequests: 0, mediaReserve: 0.3 };
     expect(budgetState(b, 0, 0)).toBe("ok");
     expect(budgetState(b, 6.9 * MIB, 0)).toBe("ok"); // 31% left
     expect(budgetState(b, 7.1 * MIB, 0)).toBe("media_paused"); // 29% left
     expect(budgetState(b, 10 * MIB, 0)).toBe("closed");
     expect(budgetState({ ...b, globalDailyMb: 0 }, 1e12, 0)).toBe("ok"); // unlimited
-    const hours = { globalDailyMb: 0, globalDailyActiveHours: 1, mediaReserve: 0.5 };
+    const hours = { globalDailyMb: 0, globalDailyActiveHours: 1, globalDailyRequests: 0, mediaReserve: 0.5 };
     expect(budgetState(hours, 0, 29)).toBe("ok");
     expect(budgetState(hours, 0, 31)).toBe("media_paused");
     expect(budgetState(hours, 0, 60)).toBe("closed");
     // The tighter of the two budgets decides.
-    expect(budgetState({ globalDailyMb: 100, globalDailyActiveHours: 1, mediaReserve: 0.1 }, 0, 60)).toBe("closed");
+    expect(budgetState({ globalDailyMb: 100, globalDailyActiveHours: 1, globalDailyRequests: 0, mediaReserve: 0.1 }, 0, 60)).toBe("closed");
     expect(budgetState({ ...b, mediaReserve: 0 }, 9.9 * MIB, 0)).toBe("ok");
+    // Requests, in platform request units.
+    const reqs = { globalDailyMb: 0, globalDailyActiveHours: 0, globalDailyRequests: 1000, mediaReserve: 0.3 };
+    expect(budgetState(reqs, 1e12, 1e6, 0)).toBe("ok");
+    expect(budgetState(reqs, 0, 0, 690)).toBe("ok");
+    expect(budgetState(reqs, 0, 0, 710)).toBe("media_paused");
+    expect(budgetState(reqs, 0, 0, 1000)).toBe("closed");
+    expect(requestUnits(200, 3)).toBe(13);
   });
 
   test("totals persist for the day and reset on the next", () => {
     const sql = sqlite(new Database(":memory:"));
-    const b = { globalDailyMb: 1, globalDailyActiveHours: 0, mediaReserve: 0.5 };
+    const b = { globalDailyMb: 1, globalDailyActiveHours: 0, globalDailyRequests: 0, mediaReserve: 0.5 };
     const g = new GlobalBudget(sql, b);
     expect(g.report(T, 0.6 * MIB, 3)).toBe("media_paused");
     expect(new GlobalBudget(sql, b).state(T)).toBe("media_paused"); // survives a restart
@@ -336,6 +343,18 @@ describe("global budget", () => {
     expect(g.stats(T, 7)).toMatchObject({ day: "2026-11-15", budget: "closed", usedMb: 1.1, registrationsToday: 7 });
     expect(g.state(T + 86_400_000)).toBe("ok");
     expect(sql.all("SELECT day FROM global_day").length).toBe(1);
+  });
+
+  test("requests accumulate, and a table from before the requests column is upgraded", () => {
+    const sql = sqlite(new Database(":memory:"));
+    sql.run("CREATE TABLE global_day (day TEXT PRIMARY KEY, bytes INTEGER NOT NULL, minutes INTEGER NOT NULL)");
+    sql.run("INSERT INTO global_day (day, bytes, minutes) VALUES (?, 5, 1)", utcDay(T));
+    const b = { globalDailyMb: 0, globalDailyActiveHours: 0, globalDailyRequests: 100, mediaReserve: 0.3 };
+    const g = new GlobalBudget(sql, b);
+    expect(g.state(T)).toBe("ok");
+    expect(g.report(T, 0, 0, 70.5)).toBe("media_paused");
+    expect(new GlobalBudget(sql, b).report(T, 0, 0, 29.5)).toBe("closed");
+    expect(new GlobalBudget(sql, b).stats(T, 0)).toMatchObject({ requests: 100, usedMb: 0, budget: "closed" });
   });
 });
 

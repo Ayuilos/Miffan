@@ -22,6 +22,10 @@ export interface Pending {
   control: number;
   media: number;
   minutes: number;
+  /** WebSocket messages received (other than `ping`); only reported to the global budget. */
+  msgs: number;
+  /** Other billed requests (accepted WebSocket upgrades); only reported to the global budget. */
+  reqs: number;
 }
 
 export interface Usage {
@@ -35,10 +39,18 @@ export interface Usage {
   resetsAt: string;
 }
 
-export const EMPTY_PENDING: Readonly<Pending> = Object.freeze({ control: 0, media: 0, minutes: 0 });
+export const EMPTY_PENDING: Readonly<Pending> = Object.freeze({ control: 0, media: 0, minutes: 0, msgs: 0, reqs: 0 });
 
 export function pendingIsEmpty(p: Pending): boolean {
-  return p.control === 0 && p.media === 0 && p.minutes === 0;
+  return p.control === 0 && p.media === 0 && p.minutes === 0 && p.msgs === 0 && p.reqs === 0;
+}
+
+/**
+ * Durable Object requests a count stands for: the platform bills 20 received WebSocket messages as
+ * one request, and every other request (an upgrade, an alarm, an RPC) as one.
+ */
+export function requestUnits(msgs: number, reqs: number): number {
+  return msgs / 20 + reqs;
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;

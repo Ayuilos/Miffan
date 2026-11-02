@@ -505,7 +505,12 @@ describe("admin", () => {
       expect(j.day).toBe(today());
       expect(["ok", "media_paused", "closed"]).toContain(j.budget);
       expect(typeof j.usedMb).toBe("number");
+      expect(typeof j.requests).toBe("number");
+      expect(j.limits).toHaveProperty("globalDailyRequests");
     }
+    // Server A has carried sessions by now (metering flushes when a session closes).
+    const a = (await getJson(A + "/v1/admin/stats", { authorization: `Bearer ${ADMIN_TOKEN}` })).json as any;
+    expect(a.requests).toBeGreaterThan(0);
   });
 });
 

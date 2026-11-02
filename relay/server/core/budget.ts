@@ -10,11 +10,13 @@ export type BudgetState = "ok" | "media_paused" | "closed";
 /**
  * `closed` when any configured daily budget is used up; `media_paused` when the remaining share of
  * any configured budget has fallen below `mediaReserve`; otherwise `ok`. Budgets of 0 are unlimited.
+ * `requests` is in platform request units (see `requestUnits`).
  */
-export function budgetState(b: Policy["budget"], bytes: number, activeMinutes: number): BudgetState {
+export function budgetState(b: Policy["budget"], bytes: number, activeMinutes: number, requests = 0): BudgetState {
   const shares: number[] = [];
   if (b.globalDailyMb > 0) shares.push(1 - bytes / (b.globalDailyMb * MIB));
   if (b.globalDailyActiveHours > 0) shares.push(1 - activeMinutes / (b.globalDailyActiveHours * 60));
+  if (b.globalDailyRequests > 0) shares.push(1 - requests / b.globalDailyRequests);
   if (shares.length === 0) return "ok";
   const remaining = Math.min(...shares);
   if (remaining <= 0) return "closed";
@@ -27,13 +29,15 @@ export interface GlobalStats {
   budget: BudgetState;
   usedMb: number;
   activeHours: number;
-  limits: { globalDailyMb: number; globalDailyActiveHours: number; mediaReserve: number };
+  /** Estimated Durable Object requests (received messages / 20 + upgrades, alarms and RPCs). */
+  requests: number;
+  limits: Policy["budget"];
   registrationsToday: number;
 }
 
 export class GlobalBudget {
   private ready = false;
-  private cache?: { day: string; bytes: number; minutes: number };
+  private cache?: { day: string; bytes: number; minutes: number; requests: number };
 
   constructor(
     private sql: Sql,
@@ -42,49 +46,64 @@ export class GlobalBudget {
 
   private ensure(): void {
     if (this.ready) return;
-    this.sql.run("CREATE TABLE IF NOT EXISTS global_day (day TEXT PRIMARY KEY, bytes INTEGER NOT NULL, minutes INTEGER NOT NULL)");
+    this.sql.run(
+      "CREATE TABLE IF NOT EXISTS global_day (day TEXT PRIMARY KEY, bytes INTEGER NOT NULL, minutes INTEGER NOT NULL, requests REAL NOT NULL DEFAULT 0)",
+    );
+    // Tables created before the requests budget existed lack the column.
+    try {
+      this.sql.all("SELECT requests FROM global_day LIMIT 0");
+    } catch {
+      this.sql.run("ALTER TABLE global_day ADD COLUMN requests REAL NOT NULL DEFAULT 0");
+    }
     this.ready = true;
   }
 
-  private load(now: number): { day: string; bytes: number; minutes: number } {
+  private load(now: number): { day: string; bytes: number; minutes: number; requests: number } {
     const day = utcDay(now);
     if (this.cache?.day === day) return this.cache;
     this.ensure();
-    const row = this.sql.all<{ bytes: number; minutes: number }>("SELECT bytes, minutes FROM global_day WHERE day = ?", day)[0];
-    this.cache = { day, bytes: row?.bytes ?? 0, minutes: row?.minutes ?? 0 };
+    const row = this.sql.all<{ bytes: number; minutes: number; requests: number }>(
+      "SELECT bytes, minutes, requests FROM global_day WHERE day = ?",
+      day,
+    )[0];
+    this.cache = { day, bytes: row?.bytes ?? 0, minutes: row?.minutes ?? 0, requests: row?.requests ?? 0 };
     return this.cache;
   }
 
   state(now: number): BudgetState {
     const t = this.load(now);
-    return budgetState(this.budget, t.bytes, t.minutes);
+    return budgetState(this.budget, t.bytes, t.minutes, t.requests);
   }
 
-  /** Add one host's increment and return the resulting state. */
-  report(now: number, bytes: number, minutes: number): BudgetState {
+  /** Add one host's increment and return the resulting state. `requests` is in request units. */
+  report(now: number, bytes: number, minutes: number, requests = 0): BudgetState {
     const t = this.load(now);
-    if (bytes > 0 || minutes > 0) {
+    if (bytes > 0 || minutes > 0 || requests > 0) {
       this.sql.run(
-        `INSERT INTO global_day (day, bytes, minutes) VALUES (?, ?, ?)
-         ON CONFLICT (day) DO UPDATE SET bytes = bytes + excluded.bytes, minutes = minutes + excluded.minutes`,
+        `INSERT INTO global_day (day, bytes, minutes, requests) VALUES (?, ?, ?, ?)
+         ON CONFLICT (day) DO UPDATE SET bytes = bytes + excluded.bytes, minutes = minutes + excluded.minutes,
+           requests = requests + excluded.requests`,
         t.day,
         Math.round(bytes),
         Math.round(minutes),
+        requests,
       );
       t.bytes += Math.round(bytes);
       t.minutes += Math.round(minutes);
+      t.requests += requests;
       this.sql.run("DELETE FROM global_day WHERE day < ?", t.day);
     }
-    return budgetState(this.budget, t.bytes, t.minutes);
+    return budgetState(this.budget, t.bytes, t.minutes, t.requests);
   }
 
   stats(now: number, registrationsToday: number): GlobalStats {
     const t = this.load(now);
     return {
       day: t.day,
-      budget: budgetState(this.budget, t.bytes, t.minutes),
+      budget: budgetState(this.budget, t.bytes, t.minutes, t.requests),
       usedMb: Math.round((t.bytes / MIB) * 1000) / 1000,
       activeHours: Math.round((t.minutes / 60) * 100) / 100,
+      requests: Math.round(t.requests),
       limits: { ...this.budget },
       registrationsToday,
     };

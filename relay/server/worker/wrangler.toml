@@ -16,8 +16,15 @@ workers_dev = false
 routes = [{ pattern = "relay.miffan.ayuilos.me", custom_domain = true }]
 
 [vars]
-# Official instance on the Cloudflare free plan. Durable Object time is the binding limit: 13,000 GB-s
-# a day is about 28 h of awake objects at 128 MB; the global budget keeps active time to 60% of that.
+# Official instance on the Cloudflare free plan. Two Durable Object limits apply to the whole account:
+#   - 13,000 GB-s a day, about 28 h of awake objects at 128 MB; globalDailyActiveHours keeps active time
+#     to 60% of that (R0 measured far less billed time than wall-clock time, so this is conservative).
+#   - 100,000 requests a day, where 20 received WebSocket messages count as one request and every
+#     upgrade, alarm and RPC as one. A session whose output trickles in sends 80-90 frames/s, about
+#     4 requests/s, so on busy days this limit is reached before the active-time one.
+#     globalDailyRequests is the relay's own estimate of these requests; 60,000 leaves 40% for what it
+#     cannot attribute to a host (refused or unauthenticated requests, the budget object's own alarm,
+#     /v1/admin/stats). Media pauses at 70% of it (mediaReserve), new sessions stop at 100%.
 # Bandwidth is free on Workers, so there are no traffic quotas.
 RELAY_CONFIG = '''
 {
@@ -28,7 +35,7 @@ RELAY_CONFIG = '''
     "media": { "allowed": true, "kbps": 4000, "burstKb": 4096 },
     "limits": { "sessionsPerHost": 4, "idleTimeoutS": 300 },
     "quotas": { "hostDailyMb": 0, "hostDailyActiveMin": 60, "hostMonthlyControlMb": 0, "hostMonthlyMediaMb": 0 },
-    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 17, "mediaReserve": 0.3 }
+    "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 17, "globalDailyRequests": 60000, "mediaReserve": 0.3 }
   },
   "edges": ["104.17.5.5", "104.19.8.8", "162.159.135.42", "104.18.32.47"]
 }

@@ -37,7 +37,7 @@ export class HostRelay extends DurableObject<Env> {
       sql: doSql(ctx.storage.sql),
       budget: {
         state: () => budget.state(),
-        report: (bytes, minutes) => budget.report(bytes, minutes),
+        report: (bytes, minutes, requests) => budget.report(bytes, minutes, requests),
         checkIp: (ip) => budget.checkIp(ip),
         registerIp: (ip) => budget.registerIp(ip),
       },

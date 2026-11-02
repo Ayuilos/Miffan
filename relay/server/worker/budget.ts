@@ -25,8 +25,8 @@ export class Budget extends DurableObject<Env> {
     return this.global.state(Date.now());
   }
 
-  report(bytes: number, minutes: number): BudgetState {
-    return this.global.report(Date.now(), bytes, minutes);
+  report(bytes: number, minutes: number, requests = 0): BudgetState {
+    return this.global.report(Date.now(), bytes, minutes, requests);
   }
 
   async checkIp(ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }> {

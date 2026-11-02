@@ -387,7 +387,7 @@ describe("metering", () => {
     w.t += 20;
     await engine.onAlarm();
     expect(stored(w, key).dayControl).toBe(1000);
-    expect(w.reports).toEqual([{ bytes: 1000, minutes: 1 }]);
+    expect(w.reports).toMatchObject([{ bytes: 1000, minutes: 1 }]);
 
     w.t += 1_000;
     await engine.onMessage(s.app, bin(2000));
@@ -401,7 +401,7 @@ describe("metering", () => {
     w.t = flushedAt + 30_000;
     await engine.onAlarm();
     expect(stored(w, key).dayControl).toBe(6000);
-    expect(w.reports.at(-1)).toEqual({ bytes: 5000, minutes: 0 });
+    expect(w.reports.at(-1)).toMatchObject({ bytes: 5000, minutes: 0 });
     expect(w.reports.length).toBe(2);
   });
 
@@ -605,7 +605,50 @@ describe("enforcement and budget", () => {
     expect(w.reports.length).toBe(0);
     w.t += 20;
     await engine.onAlarm();
-    expect(w.reports).toEqual([{ bytes: 20_000, minutes: 1 }]);
+    expect(w.reports).toMatchObject([{ bytes: 20_000, minutes: 1 }]);
+  });
+
+  test("reports estimate the platform's requests: messages / 20, upgrades, alarms and budget calls", async () => {
+    const { w, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key); // budget calls: checkIp, registerIp; upgrade + auth message
+    const s = await openSession(w, engine, key, host); // two upgrades
+    for (let i = 0; i < 199; i++) await engine.onMessage(s.app, bin(100));
+    await engine.onMessage(s.app, "ping"); // answered without waking the object: not billed
+    w.t += 20;
+    await engine.onAlarm();
+    // (1 auth + 199 frames) / 20 + 3 upgrades + 2 registration calls + 1 alarm + 1 report
+    expect(w.reports).toHaveLength(1);
+    expect(w.reports[0]!.requests).toBeCloseTo(10 + 3 + 2 + 1 + 1, 6);
+  });
+
+  test("messages and upgrades not yet reported survive hibernation", async () => {
+    const { w, cfg, engine } = setup();
+    const key = await newHostKey();
+    const host = await connectHost(w, engine, key);
+    w.t += 20;
+    await engine.onAlarm();
+    await w.settle();
+    const before = w.reports.length;
+    const s = await openSession(w, engine, key, host);
+    for (let i = 0; i < 40; i++) await engine.onMessage(s.data, bin(10));
+    const woken = wake(w, cfg);
+    w.t += 30_000;
+    await woken.onAlarm();
+    // 40 frames / 20 + 2 upgrades + 1 alarm + 1 report; the first engine's in-memory extras are lost.
+    expect(w.reports.length).toBe(before + 1);
+    expect(w.reports.at(-1)!.requests).toBeCloseTo(2 + 2 + 1 + 1, 6);
+  });
+
+  test("the requests budget refuses new sessions like the other budgets", async () => {
+    const { w, engine } = setup({ policy: { budget: { globalDailyRequests: 1000 } } });
+    const key = await newHostKey();
+    await connectHost(w, engine, key);
+    w.t += 20_000;
+    w.budgetState = "closed";
+    const r = await engine.start({ kind: "connect", hostId: key.hostId, ch: "control" }, w.requestCtx());
+    expect(r.status).toBe(503);
+    expect((await r.json()).reason).toBe("relay_busy");
   });
 
   test("an unreachable budget service does not break sessions; the increment is retried", async () => {
@@ -625,7 +668,7 @@ describe("enforcement and budget", () => {
     w.t += 30_000;
     await engine.onMessage(s.app, bin(100));
     await engine.onAlarm();
-    expect(w.reports.at(-1)).toEqual({ bytes: 600, minutes: 1 });
+    expect(w.reports.at(-1)).toMatchObject({ bytes: 600, minutes: 1 });
   });
 });
 

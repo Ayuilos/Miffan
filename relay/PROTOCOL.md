@@ -217,11 +217,13 @@ App                         relay                         connector
     "hostMonthlyControlMb": 2048,
     "hostMonthlyMediaMb": 10240
   },
-  "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "mediaReserve": 0.3 }
+  "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "globalDailyRequests": 0, "mediaReserve": 0.3 }
 }
 ```
 
 数值 `0` 表示不限。字段缺失按不限处理；客户端必须忽略未知字段。
+
+`budget.globalDailyRequests` 是全局每日"平台请求数"预算，按 Cloudflare 的计费口径由 relay 自行估算：收到的 WebSocket 消息（`ping` 除外）每 20 条计 1 次，每次接受的 WebSocket 升级、每次 alarm、每次对全局预算服务的调用各计 1 次。与其他全局预算一样，剩余低于 `mediaReserve` 时进入 `media_paused`，用完时为 `closed`（§6.4）。
 
 ### 6.2 限速
 
@@ -252,7 +254,7 @@ relay 按 `hostId` 记录：
 }
 ```
 
-`budget`：`"ok"`、`"media_paused"`（全局预算剩余低于 `mediaReserve`）、`"closed"`（全局预算用完）。
+`budget`：`"ok"`、`"media_paused"`（任一全局预算——流量、活跃时长、请求数——剩余低于 `mediaReserve`）、`"closed"`（任一全局预算用完）。
 
 relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内容；来源 IP 只用于注册频率限制，不得落盘超过一天。
 

@@ -18,6 +18,7 @@ import {
   buildUsage,
   counted,
   pendingIsEmpty,
+  requestUnits,
   quotaStatus,
   type Pending,
   type Usage,
@@ -40,7 +41,8 @@ export interface Sock {
 
 export interface BudgetPort {
   state(): Promise<BudgetState>;
-  report(bytes: number, minutes: number): Promise<BudgetState>;
+  /** Add an increment: bytes, active minutes and platform request units (see `requestUnits`). */
+  report(bytes: number, minutes: number, requests: number): Promise<BudgetState>;
   /** Would a new host from `ip` be refused? Counts nothing. */
   checkIp(ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }>;
   /** Count a new host from `ip` (called once it has proved its key). */
@@ -79,6 +81,10 @@ export interface PendAtt {
   lm: number;
   /** UTC day the unwritten counts belong to (absent on attachments from before this field existed). */
   d?: string;
+  /** Messages received on this socket and not yet reported. */
+  n?: number;
+  /** Upgrades (this socket's own) not yet reported: 1 until the first write-back. */
+  o?: number;
 }
 
 export interface HostAtt {
@@ -124,7 +130,8 @@ function frameBytes(m: Frame): number {
   return typeof m === "string" ? textBytes(m) : m.byteLength;
 }
 
-const zeroPending = (): Pending => ({ control: 0, media: 0, minutes: 0 });
+const zeroPending = (): Pending => ({ control: 0, media: 0, minutes: 0, msgs: 0, reqs: 0 });
+const hasPending = (p: PendAtt) => Boolean(p.b || p.m || p.n || p.o);
 
 // ---- engine --------------------------------------------------------------------------------
 
@@ -136,7 +143,8 @@ export class Engine {
   private lm?: number;
   private pendDay: string;
   private budgetCache?: { state: BudgetState; at: number; day: string };
-  private unreported = { bytes: 0, minutes: 0 };
+  /** Increments the global budget has not acknowledged yet; `reqs` is in request units. */
+  private unreported = { bytes: 0, minutes: 0, reqs: 0 };
   private windows = new Map<string, RateWindow>();
 
   constructor(
@@ -152,8 +160,10 @@ export class Engine {
       if (a.role === "host") continue;
       this.pend[a.ch] += a.p.b;
       this.pend.minutes += a.p.m;
+      this.pend.msgs += a.p.n ?? 0;
+      this.pend.reqs += a.p.o ?? 0;
       this.lmSockets = Math.max(this.lmSockets, a.p.lm);
-      if ((a.p.b || a.p.m) && a.p.d) this.pendDay = a.p.d;
+      if (hasPending(a.p) && a.p.d) this.pendDay = a.p.d;
     }
   }
 
@@ -193,7 +203,7 @@ export class Engine {
 
   private budgetEnabled(): boolean {
     const b = this.cfg.policy.budget;
-    return b.globalDailyMb > 0 || b.globalDailyActiveHours > 0;
+    return b.globalDailyMb > 0 || b.globalDailyActiveHours > 0 || b.globalDailyRequests > 0;
   }
 
   /** The global budget state, refreshed from the budget service when the cached copy is old. */
@@ -203,6 +213,7 @@ export class Engine {
     const c = this.budgetCache;
     if (c && c.day === utcDay(now) && now - c.at < LIMITS.budgetCacheMs) return c.state;
     try {
+      this.unreported.reqs += 1; // the call is itself a request to the budget object
       const state = await this.p.budget.state();
       this.budgetCache = { state, at: now, day: utcDay(now) };
       return state;
@@ -237,6 +248,7 @@ export class Engine {
     const unregistered = !this.ledger.registered();
     if (unregistered) {
       try {
+        this.unreported.reqs += 1;
         const r = await this.p.budget.checkIp(rc.ip);
         if (!r.ok) {
           this.log("registration_refused");
@@ -290,9 +302,10 @@ export class Engine {
       at: now,
       paired: false,
       lb: now,
-      p: { b: 0, m: 0, lm: 0 },
+      p: { b: 0, m: 0, lm: 0, d: utcDay(now), o: 1 },
     };
     const res = rc.accept(["c", `c:${sid}`], att, () => {});
+    this.countRequest();
     try {
       host.send(JSON.stringify({ t: "open", sid, ch: route.ch, pace: paceFor(this.cfg, route.ch) }));
     } catch {
@@ -318,9 +331,10 @@ export class Engine {
       at: now,
       paired: true,
       lb: now,
-      p: { b: 0, m: 0, lm: 0 },
+      p: { b: 0, m: 0, lm: 0, d: utcDay(now), o: 1 },
     };
     const res = rc.accept(["h", `h:${route.sid}`], att, () => {});
+    this.countRequest();
     client.setAtt({ ...ca, paired: true, lb: now });
     client.send(
       JSON.stringify({
@@ -342,8 +356,22 @@ export class Engine {
   async onMessage(s: Sock, msg: Frame): Promise<void> {
     const a = s.att();
     if (a.x) return;
+    // Every received message but `ping` is billed by the platform (the Worker answers `ping` without
+    // waking the object). Messages of a host that has not authenticated are not counted: they belong
+    // to no known host, and counting them would create its storage.
+    if (msg !== "ping" && (a.role !== "host" || a.authed)) this.countMessage();
     if (a.role === "host") return this.hostMessage(s, a, msg);
     return this.sessionMessage(s, a, msg);
+  }
+
+  private countMessage(): void {
+    const wasEmpty = pendingIsEmpty(this.pend);
+    this.pend.msgs += 1;
+    if (wasEmpty) this.reschedule();
+  }
+
+  private countRequest(): void {
+    this.pend.reqs += 1;
   }
 
   private oversize(msg: Frame): boolean {
@@ -386,6 +414,7 @@ export class Engine {
     }
     if (cur.reg !== undefined && !this.ledger.registered()) {
       try {
+        this.unreported.reqs += 1;
         await this.p.budget.registerIp(cur.reg);
       } catch {
         this.log("registration_check_unreachable");
@@ -398,6 +427,9 @@ export class Engine {
     const level = this.usageKey(usage);
     const { reg: _reg, ...rest } = cur;
     s.setAtt({ ...rest, authed: true, nonce: "", ub: level });
+    // The control connection's upgrade and its auth message, counted only once the host is known.
+    this.countRequest();
+    this.pend.msgs += 1;
     s.send(
       JSON.stringify({
         t: "hello",
@@ -481,7 +513,7 @@ export class Engine {
     }
     const wasEmpty = pendingIsEmpty(this.pend);
     this.pend[a.ch] += bytes;
-    const next: SessAtt = { ...a, lb: binary ? now : a.lb, p: { ...a.p, b: a.p.b + bytes, d: day } };
+    const next: SessAtt = { ...a, lb: binary ? now : a.lb, p: { ...a.p, b: a.p.b + bytes, n: (a.p.n ?? 0) + 1, d: day } };
     const minute = Math.floor(now / 60_000);
     if (binary && minute > this.lastMinute()) {
       this.lm = minute;
@@ -553,9 +585,9 @@ export class Engine {
     this.ledger.commit(this.p.now(), this.pendDay, delta, this.lastMinute());
     for (const s of this.p.allSockets()) {
       const a = s.att();
-      if (a.role !== "host" && (a.p.b || a.p.m)) {
+      if (a.role !== "host" && hasPending(a.p)) {
         try {
-          s.setAtt({ ...a, p: { ...a.p, b: 0, m: 0 } });
+          s.setAtt({ ...a, p: { ...a.p, b: 0, m: 0, n: 0, o: 0 } });
         } catch {
           // closed meanwhile
         }
@@ -570,15 +602,17 @@ export class Engine {
     if (!delta) return;
     this.unreported.bytes += delta.control + delta.media;
     this.unreported.minutes += delta.minutes;
+    this.unreported.reqs += requestUnits(delta.msgs, delta.reqs) + 1; // + this report itself
     const send = this.unreported;
-    this.unreported = { bytes: 0, minutes: 0 };
+    this.unreported = { bytes: 0, minutes: 0, reqs: 0 };
     try {
-      const state = await this.p.budget.report(send.bytes, send.minutes);
+      const state = await this.p.budget.report(send.bytes, send.minutes, send.reqs);
       const now = this.p.now();
       this.budgetCache = { state, at: now, day: utcDay(now) };
     } catch {
       this.unreported.bytes += send.bytes;
       this.unreported.minutes += send.minutes;
+      this.unreported.reqs += send.reqs;
       this.log("budget_report_failed");
     }
     this.enforce();
@@ -624,6 +658,7 @@ export class Engine {
   // ---- alarm -------------------------------------------------------------------------------
 
   async onAlarm(): Promise<void> {
+    this.unreported.reqs += 1; // every alarm run is a billed request
     // Timers may fire a few ms early; treat a deadline that close as due.
     const now = this.p.now() + 5;
     for (const s of this.p.allSockets()) {

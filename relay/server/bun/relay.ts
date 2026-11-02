@@ -122,7 +122,7 @@ export function createBunRelay(opts: BunRelayOptions) {
   const ips = new IpRegistrations(sqlite(new Database(":memory:")));
   const budget: BudgetPort = {
     state: async () => global.state(Date.now()),
-    report: async (bytes, minutes) => global.report(Date.now(), bytes, minutes),
+    report: async (bytes, minutes, requests) => global.report(Date.now(), bytes, minutes, requests),
     checkIp: (ip) => ips.check(Date.now(), ip, cfg.registrationsPerIpPerDay),
     registerIp: (ip) => ips.register(Date.now(), ip, cfg.registrationsPerIpPerDay),
   };
