@@ -74,6 +74,27 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
     @Volatile var closeReason: String? = null
         private set
 
+    /** Why the relay ended this session after it had opened; null while open or after a local close. */
+    val closedByRelay: RelaySessionClosedException?
+        get() = closeReason?.takeIf { closed && established }?.let { RelaySessionClosedException(it, channel) }
+
+    /** Set once [open] has returned this socket. */
+    @Volatile private var established = false
+
+    /** When an SSH byte last crossed the session in either direction (the relay's idle clock). */
+    @Volatile private var lastBinaryNanos = System.nanoTime()
+
+    /** Milliseconds since an SSH byte last crossed this session; text pings do not count (PROTOCOL §5.3). */
+    fun binaryQuietMillis(): Long = (System.nanoTime() - lastBinaryNanos) / 1_000_000
+
+    private val closeListeners = java.util.concurrent.CopyOnWriteArrayList<(RelaySocket) -> Unit>()
+
+    /** Runs [listener] once the session ends (at once if it already has); [closeReason] tells why. */
+    fun addCloseListener(listener: (RelaySocket) -> Unit) {
+        closeListeners += listener
+        if (closed && closeListeners.remove(listener)) runCatching { listener(this) }
+    }
+
     private val input = object : InputStream() {
         private var current: ByteString? = null
         private var offset = 0
@@ -133,6 +154,7 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
                     Thread.sleep(5)
                 }
                 if (!ws.send(b.toByteString(pos, n))) throw failure.get() ?: IOException("relay send failed")
+                lastBinaryNanos = System.nanoTime()
                 pos += n
             }
         }
@@ -161,6 +183,7 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
         if (::ws.isInitialized) runCatching { ws.close(code, null) }
         incoming.offer(EOF)
         opened.countDown()
+        closeListeners.toList().forEach { listener -> if (closeListeners.remove(listener)) runCatching { listener(this) } }
     }
 
     private fun sendText(text: String, via: WebSocket = ws) {
@@ -224,6 +247,7 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
             socket.failure.get()?.let { throw it }
             if (socket.closed) throw RelayException(socket.closeReason ?: RelayException.UNREACHABLE)
             socket.openMillis = (System.nanoTime() - started) / 1_000_000
+            socket.established = true
             socket.pinger = scheduler.scheduleWithFixedDelay(socket::pingOrClose, timings.pingMillis, timings.pingMillis,
                 TimeUnit.MILLISECONDS)
             return socket
@@ -234,7 +258,7 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
         if (closed) return
         val sent = pingSentNanos
         if (sent != 0L && lastHeardNanos < sent && System.nanoTime() - sent > timings.graceMillis * 1_000_000L) {
-            finish(IOException("relay stopped answering"), 1000, null)
+            finish(IOException("relay stopped answering"), 1000, RelayException.UNREACHABLE)
             return
         }
         pingSentNanos = System.nanoTime()
@@ -292,6 +316,7 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
                 finish(RelayException("bad_request", message = "Data before the handshake finished"), 4403, null)
                 return
             }
+            lastBinaryNanos = System.nanoTime()
             if (bytes.size > 0) incoming.offer(bytes)
         }
 
@@ -301,7 +326,8 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            finish(toRelayException(t, response), 1000, null)
+            // After the handshake a failure is the link going away (reset, network change).
+            finish(toRelayException(t, response), 1000, if (stage == Stage.OPEN) RelayException.UNREACHABLE else null)
         }
     }
 }

@@ -26,6 +26,7 @@ import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
 import me.ayuilos.miffan.data.repository.relay.RelayAccess
 import me.ayuilos.miffan.data.repository.relay.RouteWinner
 import me.ayuilos.miffan.data.repository.relay.raceRoutes
+import me.ayuilos.miffan.data.repository.relay.relaySessionClose
 import me.rerere.workspace.RemoteRoute
 import me.rerere.workspace.relay.RelayChannel
 import me.rerere.workspace.relay.RelayException
@@ -301,7 +302,10 @@ class WorkspaceRepository(
         val networkKey = access.network.current()
         val socket = AtomicReference<RelaySocket?>()
         val factory = access.client.jschSocketFactory(relay.endpoint, relay.hostId, channel, signer, networkKey,
-            timeoutMillis = RELAY_OPEN_TIMEOUT_MILLIS) { socket.set(it) }
+            timeoutMillis = RELAY_OPEN_TIMEOUT_MILLIS) { opened ->
+            socket.set(opened)
+            opened.addCloseListener { closed -> closed.closedByRelay?.let { access.recordClose(hostId, it) } }
+        }
         return openGuarded {
             remoteTransport.open(config.copy(host = relay.hostId, port = 22), timeoutMillis = RELAY_SSH_TIMEOUT_MILLIS,
                 socketFactory = factory, keepAlive = false,
@@ -1271,6 +1275,8 @@ class WorkspaceRepository(
                 val outcomeUnknown = transportLost || error is JSchException ||
                     error is SftpException || error is RemoteFileTimeoutException
                 if (transportLost) {
+                    // The UI reads the relay's reason (idle, quota…) with Throwable.relaySessionClose().
+                    lease?.session?.relayClose?.let { if (error.relaySessionClose() == null) error.addSuppressed(it) }
                     lease?.session?.let { remoteConnections.connectionLost(workspace.id, it) }
                     remoteRuntime.connectionLost(hostId,
                         workspaceStrings.getString(R.string.workspace_ssh_interrupted), revision)

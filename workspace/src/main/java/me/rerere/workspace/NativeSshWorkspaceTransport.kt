@@ -325,6 +325,41 @@ class RemoteWorkspaceSession internal constructor(
 ) : Closeable, RemoteWorkspaceFiles {
     private val closed = AtomicBoolean(false)
     private val activeChannels = ConcurrentHashMap<Thread, Channel>()
+    /** Open terminals and process/forwarded streams, which may need the session kept alive. */
+    private val longLived: MutableSet<LongLivedChannel> = ConcurrentHashMap.newKeySet()
+    private val idleKeepAlive = (route as? RemoteRoute.Relay)?.let { relay -> scheduleRelayKeepAlive(relay) }
+
+    /** A channel that outlives one call: whether it needs the session kept open right now. */
+    internal interface LongLivedChannel {
+        fun wantsKeepAlive(nowNanos: Long): Boolean
+    }
+
+    internal fun track(channel: LongLivedChannel) { longLived += channel }
+    internal fun untrack(channel: LongLivedChannel) { longLived -= channel }
+
+    /**
+     * Whether something is in progress that a relay's idle close would cut off: a running command
+     * or file operation, an open process or forwarded stream (a screen's cua-driver, Windows' `clip
+     * serve`, an MCP process), or a terminal typed in recently. An idle connection is not busy.
+     */
+    internal fun busy(nowNanos: Long = System.nanoTime()): Boolean =
+        activeChannels.isNotEmpty() || longLived.any { it.wantsKeepAlive(nowNanos) }
+
+    /**
+     * A relay closes a session after `idleTimeoutS` without SSH bytes (PROTOCOL §5.3), and relay
+     * sessions run without SSH keepalives (§5.4). While [busy], one SSH keepalive goes out shortly
+     * before that deadline; an idle connection is left to close.
+     */
+    private fun scheduleRelayKeepAlive(relay: RemoteRoute.Relay): java.util.concurrent.ScheduledFuture<*>? {
+        val limitMillis = relay.socket.ready.policy.limits.idleTimeoutS * 1000L
+        if (limitMillis <= 0) return null
+        val sendAfter = if (limitMillis > 60_000) limitMillis - 30_000 else limitMillis / 2
+        val period = minOf(RELAY_KEEPALIVE_CHECK_MILLIS, maxOf(1_000L, sendAfter / 3))
+        return relayKeepAliveScheduler.scheduleWithFixedDelay({
+            if (closed.get() || !session.isConnected) return@scheduleWithFixedDelay
+            if (relay.socket.binaryQuietMillis() >= sendAfter && busy()) runCatching { session.sendKeepAliveMsg() }
+        }, period, period, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
     /** Working directories that passed [requireDirectoryPath], with when (System.nanoTime). */
     private val verifiedDirectories = ConcurrentHashMap<String, Long>()
     private val operation = ThreadLocal<OperationHandle?>()
@@ -360,6 +395,10 @@ class RemoteWorkspaceSession internal constructor(
     }
 
     val isConnected: Boolean get() = !closed.get() && session.isConnected
+
+    /** Why the relay ended this session (`idle`, `quota_exhausted`…), once it has; null for a direct one. */
+    val relayClose: me.rerere.workspace.relay.RelaySessionClosedException?
+        get() = (route as? RemoteRoute.Relay)?.socket?.closedByRelay
     override val resolvedRoot: String get() = paths.root
     var platform: RemotePlatform = RemotePlatform.POSIX
         private set
@@ -520,7 +559,7 @@ class RemoteWorkspaceSession internal constructor(
             val output = channel.outputStream
             channel.connect(channelTimeoutMillis)
             unregister(channel)
-            return RemoteTerminalSession(this, channel, input, output)
+            return RemoteTerminalSession(this, channel, input, output).also(::track)
         } catch (error: Throwable) {
             runCatching { channel?.disconnect() }
             channel?.let(::unregister)
@@ -739,6 +778,7 @@ class RemoteWorkspaceSession internal constructor(
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
+            idleKeepAlive?.cancel(false)
             activeChannels.values.forEach { runCatching { it.disconnect() } }
             session.disconnect()
         }
@@ -858,10 +898,21 @@ class RemoteTerminalSession internal constructor(
     private val owner: RemoteWorkspaceSession,
     private val channel: ChannelExec,
     override val input: InputStream,
-    override val output: OutputStream,
-) : RemoteTerminal {
+    keyboard: OutputStream,
+) : RemoteTerminal, RemoteWorkspaceSession.LongLivedChannel {
     private val closed = AtomicBoolean(false)
     private val controlLock = Any()
+    @Volatile private var lastInputNanos = System.nanoTime()
+
+    override val output: OutputStream = object : OutputStream() {
+        override fun write(b: Int) { lastInputNanos = System.nanoTime(); keyboard.write(b) }
+        override fun write(b: ByteArray, off: Int, len: Int) { lastInputNanos = System.nanoTime(); keyboard.write(b, off, len) }
+        override fun flush() = keyboard.flush()
+        override fun close() = keyboard.close()
+    }
+
+    /** Kept alive while typed in within [TERMINAL_KEEPALIVE_NANOS]; a forgotten terminal may close. */
+    override fun wantsKeepAlive(nowNanos: Long): Boolean = isConnected && nowNanos - lastInputNanos < TERMINAL_KEEPALIVE_NANOS
 
     val platform: RemotePlatform get() = owner.platform
     override val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
@@ -886,6 +937,7 @@ class RemoteTerminalSession internal constructor(
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
+            owner.untrack(this)
             closeSshChannelOnIo(channel, input, output)
         }
     }
@@ -898,20 +950,36 @@ class RemoteChannelStream internal constructor(
     val input: InputStream,
     val output: OutputStream,
     val errors: InputStream?,
-) : Closeable {
+) : Closeable, RemoteWorkspaceSession.LongLivedChannel {
     private val closed = AtomicBoolean(false)
+
+    init {
+        owner.track(this)
+    }
 
     val platform: RemotePlatform get() = owner.platform
     val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
 
+    /** An open process or forwarded stream is work in progress for as long as it stays open. */
+    override fun wantsKeepAlive(nowNanos: Long): Boolean = isConnected
+
     override fun close() {
         if (closed.compareAndSet(false, true)) {
+            owner.untrack(this)
             closeSshChannelOnIo(channel, input, output, errors)
         }
     }
 }
 
 private val sshChannelCleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+private const val RELAY_KEEPALIVE_CHECK_MILLIS = 10_000L
+/** A terminal nobody typed in for this long no longer holds its relay session open. */
+private const val TERMINAL_KEEPALIVE_NANOS = 10L * 60 * 1_000_000_000
+
+private val relayKeepAliveScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { runnable ->
+    Thread(runnable, "miffan-relay-keepalive").apply { isDaemon = true }
+}
 
 /**
  * JSch disconnect sends SSH CLOSE, and OutputStream.close may send EOF. A main-thread
