@@ -2322,6 +2322,10 @@
   <string name="workspace_screen_relay_media_disabled">This relay doesn\'t offer screen viewing. Your partner can still use the computer; to see the screen, connect from the same network or use your own relay.</string>
   <string name="workspace_screen_relay_quota">This computer has used up its screen time on the relay for now. Your partner can still use the computer.</string>
   <string name="workspace_screen_relay_busy">The free relay is busy and has paused screen viewing for today. Your partner can still use the computer; you can also set up your own relay.</string>
+  <string name="workspace_screen_relay_idle">The picture stayed still for a while, so the relay closed the screen to save this computer's relay time. Try again to keep watching.</string>
+  <string name="workspace_screen_relay_rate_limited">The relay cut the screen off for sending too much too fast. Try again, or choose a lower quality.</string>
+  <string name="workspace_screen_relay_lost">Lost the connection to the relay, perhaps because this phone changed networks. Try again.</string>
+  <string name="workspace_screen_still_refresh">Still · Tap to refresh</string>
   <string name="workspace_screen_relay_unavailable">The relay couldn\'t open the screen (%1$s).</string>
   <string name="workspace_relay_host_offline">Couldn\'t reach the computer at home or through the relay. Check that the computer is on, awake and online.</string>
   <string name="workspace_relay_denied">The computer doesn\'t recognise this phone yet. Connect once on the same network to allow it again.</string>

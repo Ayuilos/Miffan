@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
 import android.content.res.Resources
+import me.ayuilos.miffan.data.repository.relay.relaySessionClose
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -39,6 +40,8 @@ internal fun rememberPartnerUsesPhone(assistantId: Uuid): State<Boolean> {
 
 internal fun computerErrorMessage(resources: Resources, error: Throwable): String =
     (error as? me.ayuilos.miffan.data.ai.computer.CuaSpaceException)?.let { spaceErrorMessage(resources, it) }
+        // The relay ended a screen that was open (idle, quota…): say so rather than "connection failed".
+        ?: error.relaySessionClose()?.let { me.ayuilos.miffan.ui.pages.extensions.workspace.screen.relayScreenEnded(resources, it.reason) }
         ?: (error as? me.ayuilos.miffan.data.repository.relay.RelaySetupException)?.let {
             if (it.reason == "relay_unreachable") resources.getString(R.string.im_computer_away_relay_unreachable)
             else resources.getString(R.string.im_computer_away_install_failed, it.reason ?: it.message.orEmpty())

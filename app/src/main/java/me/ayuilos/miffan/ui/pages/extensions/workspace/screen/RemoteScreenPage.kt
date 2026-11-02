@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -98,6 +99,7 @@ import me.rerere.hugeicons.stroke.Keyboard
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.VolumeOff
 import me.rerere.hugeicons.stroke.MoreVertical
+import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Touch01
 import me.rerere.hugeicons.stroke.Touchpad01
 import org.koin.androidx.compose.koinViewModel
@@ -172,6 +174,7 @@ internal fun RemoteScreenScaffold(
     val custom by vm.custom.collectAsStateWithLifecycle()
     val info by vm.connectionInfo.collectAsStateWithLifecycle()
     val relaySnapshots by vm.relaySnapshots.collectAsStateWithLifecycle()
+    val stillPicture by vm.stillPicture.collectAsStateWithLifecycle()
     val audio by vm.audio.collectAsStateWithLifecycle()
     val platform by vm.platform.collectAsStateWithLifecycle()
     val canUseAutomatic by vm.canUseAutomatic.collectAsStateWithLifecycle()
@@ -415,6 +418,7 @@ internal fun RemoteScreenScaffold(
                 RemoteWindowsStreamSetup(vm)
                 Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     RemoteStreamSuggestion(vm)
+                    if (connected && stillPicture) RemoteScreenStillBadge(onRefresh = vm::refreshPicture)
                 }
                 RemoteScreenCaption((caption ?: stringResource(R.string.workspace_screen_status_partner, partnerName))
                     .takeIf { partnerActive && !armed }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
@@ -507,6 +511,22 @@ private fun ScreenRoundIcon(icon: ImageVector, description: String, active: Bool
     Surface(color = if (active) MaterialTheme.colorScheme.primary else Color(0x8C2A2E35),
         contentColor = if (active) MaterialTheme.colorScheme.onPrimary else Color.White, shape = CircleShape, modifier = Modifier.size(size)) {
         Box(contentAlignment = Alignment.Center) { Icon(icon, description, Modifier.size(size * 0.5f)) }
+    }
+}
+
+/**
+ * Over a still picture through a relay, which stopped refreshing to save the computer's relay
+ * allowance: a dark pill like the other on-picture controls, tapped to fetch a new picture.
+ */
+@Composable
+private fun RemoteScreenStillBadge(onRefresh: () -> Unit) {
+    Surface(onClick = onRefresh, color = Color(0x8C2A2E35), contentColor = Color.White, shape = CircleShape,
+        modifier = Modifier.padding(top = 4.dp)) {
+        Row(Modifier.heightIn(min = 36.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(HugeIcons.Refresh01, null, Modifier.size(16.dp))
+            Text(stringResource(R.string.workspace_screen_still_refresh), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
     }
 }
 

@@ -981,6 +981,9 @@ class RemoteChannelStream internal constructor(
     val platform: RemotePlatform get() = owner.platform
     val isConnected: Boolean get() = !closed.get() && owner.isConnected && channel.isConnected && !channel.isClosed
 
+    /** Why the relay ended this stream's session, once it has; see [RemoteWorkspaceSession.relayClose]. */
+    val relayClose: me.rerere.workspace.relay.RelaySessionClosedException? get() = owner.relayClose
+
     /**
      * Whether this open stream keeps a relay session from closing when idle (see
      * [RemoteWorkspaceSession.busy]). Its owner clears it while nobody needs the stream, for example

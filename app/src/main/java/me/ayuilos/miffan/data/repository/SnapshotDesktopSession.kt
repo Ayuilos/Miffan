@@ -20,6 +20,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
+import me.ayuilos.miffan.data.repository.relay.relaySessionClose
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
@@ -135,6 +136,10 @@ class SnapshotDesktopSession internal constructor(
                 throw cancelled
             } catch (error: Throwable) {
                 Log.w(TAG, "snapshot screen ended", error)
+                // The page tells why the relay ended the screen (idle, quota…) instead of a bare end of stream.
+                (process.relayClose ?: pictures.relayClose)?.let { closed ->
+                    if (error.relaySessionClose() == null) error.addSuppressed(closed)
+                }
                 _state.value = RemoteScreenState.Closed(error)
             } finally {
                 withContext(NonCancellable) {

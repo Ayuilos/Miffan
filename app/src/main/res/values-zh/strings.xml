@@ -2313,6 +2313,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_relay_media_disabled">这个中转不提供看画面。伙伴仍然可以操作电脑；想看画面，可以连回同一个网络，或者用自己的中转。</string>
   <string name="workspace_screen_relay_quota">这台电脑在中转上的看画面额度暂时用完了。伙伴仍然可以操作电脑。</string>
   <string name="workspace_screen_relay_busy">免费中转今天比较忙，暂停了看画面。伙伴仍然可以操作电脑；你也可以自己搭一个中转。</string>
+  <string name="workspace_screen_relay_idle">画面一直没动，为了省这台电脑的中转额度，中转先断开了屏幕。重试就能接着看。</string>
+  <string name="workspace_screen_relay_rate_limited">画面数据发得太快，被中转限速断开了。可以重试，或者调低画质再看。</string>
+  <string name="workspace_screen_relay_lost">和中转的连接断了，可能是手机换了网络。重试一下。</string>
+  <string name="workspace_screen_still_refresh">画面静止 · 轻点刷新</string>
   <string name="workspace_screen_relay_unavailable">中转没能打开画面（%1$s）。</string>
   <string name="workspace_relay_host_offline">在家里的网络和中转上都没连到电脑。请确认电脑开着、没有睡眠、并且联网。</string>
   <string name="workspace_relay_denied">电脑还不认识这台手机。请在同一个网络里连一次，重新授权。</string>
