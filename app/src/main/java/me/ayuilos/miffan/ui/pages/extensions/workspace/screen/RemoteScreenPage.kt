@@ -171,6 +171,7 @@ internal fun RemoteScreenScaffold(
     val quality by vm.quality.collectAsStateWithLifecycle()
     val custom by vm.custom.collectAsStateWithLifecycle()
     val info by vm.connectionInfo.collectAsStateWithLifecycle()
+    val relaySnapshots by vm.relaySnapshots.collectAsStateWithLifecycle()
     val audio by vm.audio.collectAsStateWithLifecycle()
     val platform by vm.platform.collectAsStateWithLifecycle()
     val canUseAutomatic by vm.canUseAutomatic.collectAsStateWithLifecycle()
@@ -358,6 +359,10 @@ internal fun RemoteScreenScaffold(
                                     trailingIcon = { if (on) Text("✓") },
                                     onClick = { vm.setAudio(!on); menu = false })
                             }
+                            // Through a relay Mac and Linux can trade the still pictures for the live picture.
+                            if (info?.relayMediaKbps != null && platform != RemoteScreenPlatform.WINDOWS) DropdownMenuItem(
+                                text = { Text(stringResource(if (relaySnapshots) R.string.workspace_screen_snapshot_live else R.string.workspace_screen_snapshot_use)) },
+                                onClick = { menu = false; vm.useRelaySnapshots(!relaySnapshots) })
                             when {
                                 // Windows has no plain connection to switch to.
                                 platform == RemoteScreenPlatform.WINDOWS -> Unit

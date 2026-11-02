@@ -2311,6 +2311,7 @@
   <string name="workspace_screen_stream_reason_display_asleep">дисплей Mac спит, и разбудить его не удалось</string>
   <string name="workspace_screen_stream_reason_screen_locked">Mac заблокирован, а в режиме высокой производительности пароль ввести нельзя. Разблокируйте его здесь, затем переключитесь в меню</string>
   <string name="workspace_screen_mode_stream">Высокая производительность</string>
+  <string name="workspace_screen_mode_snapshot">Снимки</string>
   <string name="workspace_screen_quality_saver">Экономия трафика</string>
   <string name="workspace_screen_quality_balanced">Баланс</string>
   <string name="workspace_screen_quality_best">Максимальная чёткость</string>
@@ -2320,9 +2321,12 @@
   <string name="workspace_screen_quality_custom_fps">Частота кадров (fps)</string>
   <string name="workspace_screen_quality_custom_hint">Только в режиме высокой производительности. До %1$s ГБ в час; разрешение больше экрана компьютера будет уменьшено до его размера.</string>
   <string name="workspace_screen_quality_fps">До %1$d кадров/с</string>
+  <string name="workspace_screen_quality_snapshot">Ширина %1$d пикс.</string>
   <string name="workspace_screen_quality_server">Изображение задаёт компьютер (RDP)</string>
   <string name="workspace_screen_audio">Звук</string>
   <string name="workspace_screen_stream_skip">В этот раз обычное подключение</string>
+  <string name="workspace_screen_snapshot_live">Переключить на живое изображение</string>
+  <string name="workspace_screen_snapshot_use">Переключить на снимки</string>
   <string name="workspace_screen_stream_retry">Переподключиться в режиме высокой производительности</string>
   <string name="workspace_screen_fullscreen">Полный экран</string>
   <string name="workspace_screen_fullscreen_exit">Выйти из полноэкранного режима</string>
@@ -2330,6 +2334,7 @@
   <string name="workspace_screen_details">Сведения о подключении</string>
   <string name="workspace_screen_details_mode">Способ подключения</string>
   <string name="workspace_screen_details_stream">Режим высокой производительности (Sunshine)</string>
+  <string name="workspace_screen_details_snapshot">Снимки, обновляются каждые несколько секунд и сразу после нажатия или ввода</string>
   <string name="workspace_screen_details_rdp">Удалённый рабочий стол (RDP)</string>
   <string name="workspace_screen_details_path">Путь изображения</string>
   <string name="workspace_screen_details_path_stream">Напрямую по UDP к %1$s, с шифрованием</string>

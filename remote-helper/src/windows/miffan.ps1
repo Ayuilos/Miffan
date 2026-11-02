@@ -4,7 +4,7 @@
 # `space` takes up to five words (space create <name> <cpus> <memory>), hence Argument4 and Argument5.
 param([string]$Command, [string]$Action, [string]$Operation, [string]$Argument4, [string]$Argument5)
 
-$script:HelperVersion = 17
+$script:HelperVersion = 19
 $script:HelperFile = $PSCommandPath
 $script:Utf8 = New-Object Text.UTF8Encoding($false, $true)
 
@@ -1118,6 +1118,7 @@ function Invoke-CuaCheckUpdate {
 
 #include Space.ps1
 #include Relay.ps1
+#include Snapshot.ps1
 
 function Invoke-Helper([string]$Verb, [string]$Subcommand, [string]$Suboperation) {
     switch ($Verb) {
@@ -1284,6 +1285,11 @@ if ($MyInvocation.InvocationName -ne '.') {
                 [Console]::Out.WriteLine((ConvertTo-PlainJson $failure))
                 exit 1
             }
+        }
+        if ($Command -eq 'snapshot') {
+            if ($Action -cne 'serve' -or $Operation -or $Argument4 -or $Argument5) { throw 'Usage: snapshot serve' }
+            Invoke-SnapshotServe
+            exit 0
         }
         if ($Argument4 -or $Argument5) { throw 'Unexpected argument' }
         if ($Command -eq 'sunshine' -and $Action -eq 'pair' -and $args.Count -gt 0) { throw 'Unexpected Sunshine argument' }

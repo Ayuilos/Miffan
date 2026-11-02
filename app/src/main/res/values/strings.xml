@@ -2354,6 +2354,7 @@
   <string name="workspace_screen_stream_reason_display_asleep" tools:ignore="MissingTranslation">the Mac\'s display is asleep and could not be woken</string>
   <string name="workspace_screen_stream_reason_screen_locked" tools:ignore="MissingTranslation">the Mac is locked and its password cannot be typed in high-performance mode; unlock it here, then switch from the menu</string>
   <string name="workspace_screen_mode_stream" tools:ignore="MissingTranslation">High performance</string>
+  <string name="workspace_screen_mode_snapshot" tools:ignore="MissingTranslation">Snapshots</string>
   <string name="workspace_screen_quality_saver" tools:ignore="MissingTranslation">Data saver</string>
   <string name="workspace_screen_quality_balanced" tools:ignore="MissingTranslation">Balanced</string>
   <string name="workspace_screen_quality_best" tools:ignore="MissingTranslation">Sharpest</string>
@@ -2363,9 +2364,12 @@
   <string name="workspace_screen_quality_custom_fps" tools:ignore="MissingTranslation">Frame rate (fps)</string>
   <string name="workspace_screen_quality_custom_hint" tools:ignore="MissingTranslation">High-performance mode only. Up to about %1$s GB per hour; a size larger than the computer\'s screen is lowered to fit it.</string>
   <string name="workspace_screen_quality_fps" tools:ignore="MissingTranslation">Up to %1$d fps</string>
+  <string name="workspace_screen_quality_snapshot" tools:ignore="MissingTranslation">%1$d px wide</string>
   <string name="workspace_screen_quality_server" tools:ignore="MissingTranslation">Picture set by the computer (RDP)</string>
   <string name="workspace_screen_audio" tools:ignore="MissingTranslation">Sound</string>
   <string name="workspace_screen_stream_skip" tools:ignore="MissingTranslation">Use the normal connection this time</string>
+  <string name="workspace_screen_snapshot_live" tools:ignore="MissingTranslation">Use the live picture</string>
+  <string name="workspace_screen_snapshot_use" tools:ignore="MissingTranslation">Use snapshots</string>
   <string name="workspace_screen_stream_retry" tools:ignore="MissingTranslation">Reconnect with high-performance mode</string>
   <string name="workspace_screen_fullscreen" tools:ignore="MissingTranslation">Full screen</string>
   <string name="workspace_screen_fullscreen_exit" tools:ignore="MissingTranslation">Exit full screen</string>
@@ -2373,6 +2377,7 @@
   <string name="workspace_screen_details" tools:ignore="MissingTranslation">Connection details</string>
   <string name="workspace_screen_details_mode" tools:ignore="MissingTranslation">Connection</string>
   <string name="workspace_screen_details_stream" tools:ignore="MissingTranslation">High-performance mode (Sunshine)</string>
+  <string name="workspace_screen_details_snapshot" tools:ignore="MissingTranslation">Snapshots, refreshed every few seconds and right after you tap or type</string>
   <string name="workspace_screen_details_rdp" tools:ignore="MissingTranslation">Remote Desktop (RDP)</string>
   <string name="workspace_screen_details_path" tools:ignore="MissingTranslation">Picture path</string>
   <string name="workspace_screen_details_path_stream" tools:ignore="MissingTranslation">Direct UDP to %1$s, encrypted</string>

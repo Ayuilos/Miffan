@@ -28,6 +28,8 @@ import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.repository.RemoteScreenConnection
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import me.ayuilos.miffan.data.repository.RemoteScreenRepository
+import me.ayuilos.miffan.data.repository.SnapshotDesktopSession
+import me.ayuilos.miffan.data.repository.snapshotQuality
 import me.ayuilos.miffan.data.repository.RemoteDesktopProtocol
 import me.ayuilos.miffan.data.repository.RemoteScreenQuality
 import me.ayuilos.miffan.data.repository.RemoteStreamCustom
@@ -178,6 +180,20 @@ class RemoteScreenVM(
 
     /** The plain connection was chosen from the menu; kept until the user asks for the stream again. */
     private var skipStream = false
+
+    private val _relaySnapshots = MutableStateFlow(hints.getBoolean(RELAY_SNAPSHOT_KEY, true))
+    /**
+     * Through a relay, still pictures (snapshot mode) rather than the live picture; remembered for
+     * every computer. Windows always uses pictures through a relay.
+     */
+    val relaySnapshots: StateFlow<Boolean> = _relaySnapshots.asStateFlow()
+
+    /** Switches between still pictures and the live picture through a relay, and reconnects. */
+    fun useRelaySnapshots(enabled: Boolean) {
+        _relaySnapshots.value = enabled
+        hints.edit().putBoolean(RELAY_SNAPSHOT_KEY, enabled).apply()
+        reconnect()
+    }
 
     private val _stats = MutableStateFlow<RemoteScreenStats?>(null)
     /** Rolling session statistics for the performance overlay; null until connected. */
@@ -486,6 +502,7 @@ class RemoteScreenVM(
         when (session.protocol) {
             RemoteDesktopProtocol.VNC -> session.setMaxFps(vncFps(quality))
             RemoteDesktopProtocol.STREAM, RemoteDesktopProtocol.SPACE -> reconnect()
+            RemoteDesktopProtocol.SNAPSHOT -> (session as? SnapshotDesktopSession)?.setQuality(quality.snapshotQuality())
             RemoteDesktopProtocol.RDP -> Unit
         }
     }
@@ -568,7 +585,8 @@ class RemoteScreenVM(
      * fn flag its system shortcuts need, so a stream presses them through cua-driver over SSH.
      */
     internal fun macShortcut(shortcut: MacShortcut) {
-        if (connection?.session?.protocol != RemoteDesktopProtocol.STREAM) {
+        // Snapshot mode presses keys through cua-driver too, which has the fn flag macOS wants here.
+        if (connection?.session?.protocol !in setOf(RemoteDesktopProtocol.STREAM, RemoteDesktopProtocol.SNAPSHOT)) {
             key(when (shortcut) {
                 MacShortcut.DESKTOP_LEFT -> RfbKeys.LEFT
                 MacShortcut.DESKTOP_RIGHT -> RfbKeys.RIGHT
@@ -638,7 +656,7 @@ class RemoteScreenVM(
                         maxFps = vncFps(quality),
                         lowColor = quality == RemoteScreenQuality.SAVER,
                     ),
-                    RemoteStreamRequest(quality, skip = skipStream, custom = _custom.value),
+                    RemoteStreamRequest(quality, skip = skipStream, custom = _custom.value, snapshot = _relaySnapshots.value),
                 )
                 connection = opened
                 _hostId.value = opened.hostId
@@ -787,6 +805,7 @@ private fun vncFps(quality: RemoteScreenQuality) = when (quality) {
 private const val CUSTOM_HEIGHT_KEY = "stream_custom_height"
 private const val CUSTOM_FPS_KEY = "stream_custom_fps"
 private const val AUDIO_KEY = "stream_audio"
+private const val RELAY_SNAPSHOT_KEY = "relay_snapshots"
 private const val METERED_STREAM_KEY = "stream_metered_warned"
 
 /** Shared with the page's one-time hints. */

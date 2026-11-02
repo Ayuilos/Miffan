@@ -24,6 +24,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.data.db.dao.RemoteHostDAO
 import me.ayuilos.miffan.data.db.dao.WorkspaceDAO
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
@@ -547,7 +550,6 @@ class RemoteScreenRepository(
             // Through a relay: Sunshine's UDP picture cannot follow (protocol v1 has no datagrams), and
             // VNC/RDP bytes go over a second session on the relay's media channel (RELAY_PLAN §4).
             val relayed = ssh.route is RemoteRoute.Relay
-            if (windows && relayed) throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_STREAM_ONLY)
             if (windows) clipboard = WindowsClipboardChannel { ssh.openProcess(screenHelperCommand(ssh.platform, "clip serve")) }
             streamRequested = windows || streamRequested
             val endpoint = if (windows) RemoteScreenEndpoint.Helper else configuredEndpoint
@@ -566,6 +568,21 @@ class RemoteScreenRepository(
                     "Linux" -> RemoteScreenPlatform.LINUX
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
+            // Through a relay a stream's frames crawl, so a computer with cua-driver shows still pictures.
+            if (relayed && (stream.snapshot || windows)) {
+                val probed = machine ?: runCatching {
+                    ensureHelper(ssh)
+                    parseHelperProbe(ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000).stdout)
+                }.getOrNull()
+                if (probed?.cua?.ok == true) {
+                    val media = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { openRelayMedia(host.id, ssh) }
+                    relayMediaKbps = (media.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
+                    return@openLeasedRemote try {
+                        openSnapshot(media, host.name, sink, windows, detected == RemoteScreenPlatform.MACOS, stream.quality.snapshotQuality())
+                    } catch (error: Throwable) { media.close(); throw error }
+                }
+            }
+            if (windows && relayed) throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_STREAM_ONLY)
             val attempt = if (relayed) {
                 StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.RELAY).takeIf { streamRequested })
             } else runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
@@ -675,6 +692,20 @@ class RemoteScreenRepository(
             synchronized(lock) { open.getOrPut(host.id, ::mutableSetOf) += connection }
             connection
         } catch (error: Throwable) { clipboard?.close(); handle.close(); throw error }
+    }
+
+    /**
+     * Snapshot mode on the relay's screen channel [media]: cua-driver's MCP for captures and actions,
+     * and the helper's `snapshot serve` for the pictures.
+     */
+    private fun openSnapshot(
+        media: RemoteWorkspaceSession, name: String, sink: RemoteScreenFrameSink, windows: Boolean, macos: Boolean,
+        quality: SnapshotQuality,
+    ): SnapshotDesktopSession {
+        val pictures = media.openProcess(screenHelperCommand(media.platform, "snapshot serve"))
+        val process = try { media.openProcess(screenHelperCommand(media.platform, "cua")) }
+            catch (error: Throwable) { pictures.close(); throw error }
+        return SnapshotDesktopSession(process, pictures, sink, name, macos, windows, quality, onClose = { media.close() })
     }
 
     /**

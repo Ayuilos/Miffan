@@ -20,6 +20,8 @@ enum class RemoteDesktopProtocol {
     VNC, RDP, STREAM,
     /** A partner's own computer (cua Space), see [CuaSpaceDesktopSession]. */
     SPACE,
+    /** Still pictures through a relay, see [SnapshotDesktopSession]. */
+    SNAPSHOT,
 }
 
 data class RemoteVideoSize(val width: Int, val height: Int)
