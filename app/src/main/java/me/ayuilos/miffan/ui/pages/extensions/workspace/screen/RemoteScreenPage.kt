@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
@@ -104,6 +105,7 @@ import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 import me.ayuilos.miffan.utils.fileSizeToString
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.CloudServer
 import me.rerere.hugeicons.stroke.Fullscreen
 import me.rerere.hugeicons.stroke.Keyboard
 import me.rerere.hugeicons.stroke.VolumeHigh
@@ -312,19 +314,21 @@ internal fun RemoteScreenScaffold(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     avatar?.invoke(Modifier.size(34.dp), partnerActive || awaitingApproval)
-                    Column {
+                    // Tapping explains the connection; a long press is the hidden diagnostics switch.
+                    Column(Modifier.pointerInput(Unit) {
+                        detectTapGestures(onTap = { if (vm.connectionInfo.value != null) details = true }, onLongPress = {
+                            perfOverlay = !perfOverlay
+                            hints.edit { putBoolean(PERF_OVERLAY, perfOverlay) }
+                        })
+                    }) {
                         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // Symbols, not words: the dot is the connection (and who drives, which the frame and
+                        // hand-back bar spell out), the pill how the picture comes and at what level.
                         val status = stringResource(when (state) {
                             is RemoteScreenUiState.Connected -> R.string.im_computer_connected
                             RemoteScreenUiState.Connecting -> R.string.im_computer_connecting
                             else -> R.string.im_computer_disconnected
                         })
-                        val mode = info?.takeIf { connected }?.let { connection ->
-                            remoteScreenModeLabel(resources, connection.protocol, connection.window).let {
-                                if (connection.relayMediaKbps != null) resources.getString(R.string.workspace_screen_mode_relay, it) else it
-                            }
-                        }
-                        // Who drives says more than the connection; the connection's details stay a tap away.
                         val driving = when {
                             !connected -> null
                             userHolds -> stringResource(R.string.workspace_screen_status_user, partnerName)
@@ -332,27 +336,28 @@ internal fun RemoteScreenScaffold(
                             partnerBusy -> stringResource(R.string.workspace_screen_status_partner, partnerName)
                             else -> null
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RemoteScreenStatusLine(driving ?: if (mode != null) "$status · $mode · ${bytes.fileSizeToString()}"
-                            else stringResource(R.string.im_computer_connection_usage, status, bytes.fileSizeToString()),
-                            dot = when {
-                                !connected -> MaterialTheme.colorScheme.outline
-                                userHolds -> MaterialTheme.colorScheme.primary
-                                partnerBusy || awaitingApproval -> MaterialTheme.colorScheme.tertiary
-                                else -> CONNECTED_DOT
-                            },
-                            breathing = state == RemoteScreenUiState.Connecting || (!userHolds && (partnerBusy || awaitingApproval)),
-                            // Tapping explains the connection; a long press is the hidden diagnostics switch.
-                            modifier = Modifier.weight(1f, fill = false).pointerInput(Unit) {
-                                detectTapGestures(onTap = { if (vm.connectionInfo.value != null) details = true }, onLongPress = {
-                                    perfOverlay = !perfOverlay
-                                    hints.edit { putBoolean(PERF_OVERLAY, perfOverlay) }
-                                })
-                            })
-                        // What the picture is now, a tap from changing it.
-                        info?.takeIf { connected }?.let { connection ->
-                            remoteScreenQualityTag(resources, quality, connection.protocol, custom, connection.window)
-                        }?.let { tag -> RemoteQualityTag(tag, onClick = { qualitySheet = true }) }
+                        val connection = info?.takeIf { connected }
+                        Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RemoteScreenStatusDot(
+                                dot = when {
+                                    state is RemoteScreenUiState.Failed -> MaterialTheme.colorScheme.error
+                                    !connected -> MaterialTheme.colorScheme.outline
+                                    userHolds -> MaterialTheme.colorScheme.primary
+                                    partnerBusy || awaitingApproval -> MaterialTheme.colorScheme.tertiary
+                                    else -> CONNECTED_DOT
+                                },
+                                breathing = state == RemoteScreenUiState.Connecting || (!userHolds && (partnerBusy || awaitingApproval)),
+                                description = listOfNotNull(status, driving).joinToString(" · "))
+                            if (connection?.relayMediaKbps != null) Icon(HugeIcons.CloudServer,
+                                stringResource(R.string.workspace_screen_relay), Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            connection?.let {
+                                val tag = remoteScreenQualityTag(resources, quality, it.protocol, custom, it.window)
+                                RemoteModeTag(remoteScreenModeIcon(it.protocol, it.window),
+                                    remoteScreenModeLabel(resources, it.protocol, it.window), tag,
+                                    onClick = { if (tag != null) qualitySheet = true else details = true })
+                            }
                         }
                     }
                     }
@@ -606,18 +611,19 @@ private fun RemoteScreenStillBadge(onRefresh: () -> Unit) {
     }
 }
 
-/** The line under the title: who drives, or the connection; a breathing dot while something is under way. */
+/**
+ * The connection at a glance: its colour says connected, failed or who drives, breathing while something
+ * is under way. [description] says it in words for screen readers.
+ */
 @Composable
-private fun RemoteScreenStatusLine(text: String, dot: Color, breathing: Boolean, modifier: Modifier = Modifier) {
+private fun RemoteScreenStatusDot(dot: Color, breathing: Boolean, description: String) {
     val alpha = if (breathing) {
         val transition = rememberInfiniteTransition(label = "status")
         transition.animateFloat(1f, 0.3f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "dot").value
     } else 1f
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(7.dp).graphicsLayer { this.alpha = alpha }.background(dot, CircleShape))
-        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    val color by animateColorAsState(dot, label = "dot color")
+    Box(Modifier.size(8.dp).graphicsLayer { this.alpha = alpha }.background(color, CircleShape)
+        .semantics { contentDescription = description })
 }
 
 @Composable

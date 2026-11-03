@@ -2393,7 +2393,7 @@
   <string name="workspace_screen_stream_retry" tools:ignore="MissingTranslation">Reconnect with high-performance mode</string>
   <string name="workspace_screen_fullscreen" tools:ignore="MissingTranslation">Full screen</string>
   <string name="workspace_screen_fullscreen_exit" tools:ignore="MissingTranslation">Exit full screen</string>
-  <string name="workspace_screen_stream_metered" tools:ignore="MissingTranslation">You are on mobile data. High-performance mode at \"%1$s\" can use up to about %2$s GB per hour. Change the picture from the menu at the top right.</string>
+  <string name="workspace_screen_stream_metered" tools:ignore="MissingTranslation">You are on mobile data. High-performance mode at \"%1$s\" can use up to about %2$s GB per hour. Tap the picture tag under the name to change it.</string>
   <string name="workspace_screen_details" tools:ignore="MissingTranslation">Connection details</string>
   <string name="workspace_screen_details_mode" tools:ignore="MissingTranslation">Connection</string>
   <string name="workspace_screen_details_stream" tools:ignore="MissingTranslation">High-performance mode (Sunshine)</string>
@@ -4259,4 +4259,51 @@
   </plurals>
   <string name="update_page_skipped_title">Skipped %1$s</string>
   <string name="update_page_skipped_text">You\'ll hear about the next version when it\'s out.</string>
+  <string name="workspace_screen_window_whole_screen">Whole screen</string>
+  <string name="workspace_screen_window_switch">Pick a window or the whole screen</string>
+  <string name="workspace_screen_window_fit_restore">Original size</string>
+  <string name="workspace_screen_window_fit_phone">Fit to phone</string>
+  <string name="workspace_screen_window_picker_title">What to view</string>
+  <string name="workspace_screen_window_whole_screen_subtitle">All windows and desktops</string>
+  <string name="workspace_screen_window_opening">Opening %1$s on the Mac…</string>
+  <string name="workspace_screen_window_none">No windows to view on their own</string>
+  <string name="workspace_screen_window_other_group">Other</string>
+  <string name="workspace_screen_window_untitled">Window</string>
+  <string name="workspace_screen_window_minimized_hint">Minimized; picking it restores it first</string>
+  <string name="workspace_screen_window_background_hint">Running in the background; picking it opens it on the Mac</string>
+  <string name="workspace_screen_window_background_badge">Background</string>
+  <string name="workspace_screen_window_footer">You can view it even when other windows cover it. When you use it, the Mac brings it to the front, switching desktops first if it is on another one.</string>
+  <string name="workspace_screen_window_this_window">This window</string>
+  <string name="workspace_screen_window_issue_minimized">%1$s is minimized to the Dock</string>
+  <string name="workspace_screen_window_issue_minimized_detail">A minimized window shows no picture</string>
+  <string name="workspace_screen_window_issue_closed">This window was closed</string>
+  <string name="workspace_screen_window_issue_permission">The Mac is asking for permission</string>
+  <string name="workspace_screen_window_issue_permission_detail">Click “Allow” to view single windows. Apple asks again from time to time.</string>
+  <string name="workspace_screen_window_issue_other_desktop">%1$s is on another Mac desktop</string>
+  <string name="workspace_screen_window_issue_other_desktop_detail">Switch to it to see it</string>
+  <string name="workspace_screen_window_restore">Restore it on the Mac</string>
+  <string name="workspace_screen_window_pick_another">Pick another window</string>
+  <string name="workspace_screen_window_view_whole">View the whole screen</string>
+  <string name="workspace_screen_window_permission_action">Click “Allow” on the whole screen</string>
+  <string name="workspace_screen_window_switch_desktop">Switch to that desktop</string>
+  <string name="workspace_screen_window_side">Switch window</string>
+  <string name="workspace_screen_mode_window">Single window</string>
+  <string name="workspace_screen_relay">Via relay</string>
+  <string name="workspace_screen_desktop_current">Current desktop</string>
+  <string name="workspace_screen_desktop">Desktop %1$d</string>
+  <string name="workspace_screen_desktop_fullscreen">Full screen · %1$s</string>
+  <string name="workspace_screen_desktop_app">App</string>
+  <string name="workspace_screen_desktop_display">Display %1$d · %2$s</string>
+  <string name="workspace_screen_desktop_now">%1$s (current)</string>
+  <string name="workspace_screen_quality_space">%1$d px · %2$d fps</string>
+  <string name="workspace_screen_quality_tag_fps">%1$s · %2$d fps</string>
+  <string name="workspace_screen_quality_tag_snapshot">Snapshot · %1$d px</string>
+  <string name="workspace_screen_quality_tag_vnc">%1$d fps</string>
+  <string name="workspace_screen_quality_sheet_title">Picture</string>
+  <string name="workspace_screen_quality_sheet_stream">High performance: sharper and smoother uses more data</string>
+  <string name="workspace_screen_quality_sheet_snapshot">One snapshot at a time: sharper means bigger snapshots</string>
+  <string name="workspace_screen_quality_sheet_window">Single window: sharper uses more data</string>
+  <string name="workspace_screen_quality_sheet_space">Sharper uses more data</string>
+  <string name="workspace_screen_quality_sheet_fps">More frames feel more responsive and use more data</string>
+  <string name="workspace_screen_quality_gb_per_hour">≤%1$s GB/h</string>
 </resources>

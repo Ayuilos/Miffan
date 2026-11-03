@@ -186,7 +186,13 @@ data class RemoteCuaUpdateCheck(
 data class RemoteHostWindow(val window: SpaceWindow, val desktop: Long?, val current: Boolean, val hidden: Boolean)
 
 /** A desktop's name in the picker; [current] is the one in front on the computer. */
-data class RemoteHostDesktop(val id: Long, val label: String, val current: Boolean)
+/**
+ * A desktop (macOS Space) holding listed windows: its [number] among the display's desktops, or a
+ * [fullscreen] app's own; [display] counts from 1 when the computer has several. No number and not
+ * full screen: the desktop in front, when the order of desktops is unknown.
+ */
+data class RemoteHostDesktop(val id: Long, val current: Boolean, val number: Int? = null, val fullscreen: Boolean = false,
+    val app: String? = null, val display: Int? = null)
 
 data class RemoteHostWindows(val windows: List<RemoteHostWindow>, val desktops: List<RemoteHostDesktop>)
 
@@ -860,23 +866,22 @@ class RemoteScreenRepository(
         RemoteHostWindows(hosted, desktopLabels(order, current, hosted))
     }
 
-    /** "桌面 2" / "全屏 · App" per desktop id, current first then Mission Control order. */
+    /** What names each desktop holding windows (see remoteHostDesktopLabel), current first then Mission Control order. */
     private fun desktopLabels(order: List<List<HostSpace>>?, current: Long?, windows: List<RemoteHostWindow>): List<RemoteHostDesktop> {
         val used = windows.mapNotNull { it.desktop }.toSet()
         if (order == null) {
-            return used.sorted().mapIndexed { index, id -> RemoteHostDesktop(id, if (id == current) "当前桌面" else "桌面 ${index + 1}", id == current) }
+            return used.sorted().mapIndexed { index, id -> RemoteHostDesktop(id, id == current, number = (index + 1).takeIf { id != current }) }
                 .sortedByDescending { it.current }
         }
         val labels = mutableListOf<RemoteHostDesktop>()
         order.forEachIndexed { displayIndex, spaces ->
-            val prefix = if (order.size > 1) "显示器 ${displayIndex + 1} · " else ""
+            val display = (displayIndex + 1).takeIf { order.size > 1 }
             var desktopNumber = 0
             spaces.forEach { space ->
-                val name = if (space.fullscreen) {
+                labels += if (space.fullscreen) {
                     val app = windows.firstOrNull { it.desktop == space.id && (space.pid == null || it.window.pid == space.pid) }?.window?.app
-                    "全屏 · ${app ?: "应用"}"
-                } else "桌面 ${++desktopNumber}"
-                labels += RemoteHostDesktop(space.id, prefix + name + if (space.id == current) "（当前）" else "", space.id == current)
+                    RemoteHostDesktop(space.id, space.id == current, fullscreen = true, app = app?.ifBlank { null }, display = display)
+                } else RemoteHostDesktop(space.id, space.id == current, number = ++desktopNumber, display = display)
             }
         }
         return labels.filter { it.id in used }.sortedByDescending { it.current }

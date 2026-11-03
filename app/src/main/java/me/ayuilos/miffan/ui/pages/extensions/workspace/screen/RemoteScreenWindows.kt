@@ -1,6 +1,9 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
 import androidx.compose.foundation.Image
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
+import me.ayuilos.miffan.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -74,9 +77,9 @@ internal fun RemoteWindowBar(vm: RemoteScreenVM, onPick: () -> Unit, onFit: () -
                 if (window != null) AppBadge(window.app, Modifier.size(28.dp))
                 else Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     contentAlignment = Alignment.Center) { Icon(HugeIcons.Computer, null, Modifier.size(16.dp)) }
-                Text(window?.let { listOf(it.app, it.title).filter(String::isNotBlank).joinToString(" · ") } ?: "整个屏幕",
+                Text(window?.let { listOf(it.app, it.title).filter(String::isNotBlank).joinToString(" · ") } ?: stringResource(R.string.workspace_screen_window_whole_screen),
                     Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(HugeIcons.ArrowDown01, "换一个窗口或看整个屏幕", Modifier.size(16.dp))
+                Icon(HugeIcons.ArrowDown01, stringResource(R.string.workspace_screen_window_switch), Modifier.size(16.dp))
             }
         }
         if (target != null) {
@@ -86,7 +89,7 @@ internal fun RemoteWindowBar(vm: RemoteScreenVM, onPick: () -> Unit, onFit: () -
                 Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(HugeIcons.SmartPhone01, null, Modifier.size(16.dp))
-                    Text(if (fitted) "还原大小" else "适配手机", style = MaterialTheme.typography.labelLarge)
+                    Text(if (fitted) stringResource(R.string.workspace_screen_window_fit_restore) else stringResource(R.string.workspace_screen_window_fit_phone), style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -106,8 +109,8 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp)) {
-            Text("看什么", Modifier.padding(horizontal = 8.dp, vertical = 6.dp), style = MaterialTheme.typography.titleMedium)
-            PickerRow(selected = target == null, title = "整个屏幕", subtitle = "所有窗口和桌面",
+            Text(stringResource(R.string.workspace_screen_window_picker_title), Modifier.padding(horizontal = 8.dp, vertical = 6.dp), style = MaterialTheme.typography.titleMedium)
+            PickerRow(selected = target == null, title = stringResource(R.string.workspace_screen_window_whole_screen), subtitle = stringResource(R.string.workspace_screen_window_whole_screen_subtitle),
                 thumbnail = { Icon(HugeIcons.Computer, null, Modifier.size(22.dp)) }) { vm.showWindow(null); onDismiss() }
             val list = windows
             val opening by vm.opening.collectAsStateWithLifecycle()
@@ -115,17 +118,24 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text("正在 Mac 上打开 $app…", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.workspace_screen_window_opening, app), style = MaterialTheme.typography.bodyMedium)
                 }
             }
             when {
                 list == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
-                list.choices.isEmpty() -> Text("没有找到可以单独看的窗口", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> LazyColumn(Modifier.heightIn(max = 520.dp)) {
+                list.choices.isEmpty() -> Text(stringResource(R.string.workspace_screen_window_none), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> {
+                val resources = LocalResources.current
+                val other = stringResource(R.string.workspace_screen_window_other_group)
+                val untitled = stringResource(R.string.workspace_screen_window_untitled)
+                val minimizedHint = stringResource(R.string.workspace_screen_window_minimized_hint)
+                val backgroundHint = stringResource(R.string.workspace_screen_window_background_hint)
+                val backgroundBadge = stringResource(R.string.workspace_screen_window_background_badge)
+                LazyColumn(Modifier.heightIn(max = 520.dp)) {
                     // The desktop in front first, then the others as Mission Control orders them.
                     val groups = buildList {
-                        list.desktops.forEach { desktop -> add(desktop.label to list.choices.filter { it.desktop == desktop.id }) }
-                        add("其他" to list.choices.filter { choice -> list.desktops.none { it.id == choice.desktop } })
+                        list.desktops.forEach { desktop -> add(remoteHostDesktopLabel(resources, desktop) to list.choices.filter { it.desktop == desktop.id }) }
+                        add(other to list.choices.filter { choice -> list.desktops.none { it.id == choice.desktop } })
                     }.filter { it.second.isNotEmpty() }
                     groups.forEach { (label, members) ->
                     item(key = "header-$label") {
@@ -137,13 +147,13 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
                         val window = choice.window
                         PickerRow(
                             selected = target?.id == window.id,
-                            title = window.app.ifBlank { "窗口" },
+                            title = window.app.ifBlank { untitled },
                             subtitle = when {
-                                window.state == SpaceWindow.State.MINIMIZED -> "已最小化，选它会先还原"
-                                choice.background -> "在后台运行，选它会在 Mac 上打开"
+                                window.state == SpaceWindow.State.MINIMIZED -> minimizedHint
+                                choice.background -> backgroundHint
                                 else -> window.title.ifBlank { " " }
                             },
-                            badge = if (choice.background) "后台" else null,
+                            badge = if (choice.background) backgroundBadge else null,
                             dimmed = choice.background,
                             thumbnail = {
                                 val image = choice.thumbnail
@@ -155,8 +165,9 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
                     }
                     }
                 }
+                }
             }
-            Text("被别的窗口挡住也能看。你一操作，Mac 会把这个窗口放到最前面，它在别的桌面时会先切过去。",
+            Text(stringResource(R.string.workspace_screen_window_footer),
                 Modifier.padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 16.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -204,14 +215,14 @@ private fun AppBadge(app: String, modifier: Modifier = Modifier) {
 @Composable
 internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIssue, onPick: () -> Unit, modifier: Modifier = Modifier) {
     val target by vm.target.collectAsStateWithLifecycle()
-    val app = target?.app?.ifBlank { null } ?: "这个窗口"
+    val app = target?.app?.ifBlank { null } ?: stringResource(R.string.workspace_screen_window_this_window)
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         val (icon, title, detail) = when (issue) {
-            RemoteWindowIssue.MINIMIZED -> Triple(HugeIcons.Minimize01, "$app 缩到程序坞里了", "最小化的窗口看不到画面")
-            RemoteWindowIssue.CLOSED -> Triple(HugeIcons.Cancel01, "这个窗口已经关了", null)
-            RemoteWindowIssue.PERMISSION -> Triple(HugeIcons.Alert02, "Mac 弹出了一个确认框", "点了「允许」才能单独看窗口。苹果会隔一段时间要求确认一次。")
-            RemoteWindowIssue.OTHER_DESKTOP -> Triple(HugeIcons.Layers01, "$app 在 Mac 的另一个桌面上", "切过去才能看到它")
+            RemoteWindowIssue.MINIMIZED -> Triple(HugeIcons.Minimize01, stringResource(R.string.workspace_screen_window_issue_minimized, app), stringResource(R.string.workspace_screen_window_issue_minimized_detail))
+            RemoteWindowIssue.CLOSED -> Triple(HugeIcons.Cancel01, stringResource(R.string.workspace_screen_window_issue_closed), null)
+            RemoteWindowIssue.PERMISSION -> Triple(HugeIcons.Alert02, stringResource(R.string.workspace_screen_window_issue_permission), stringResource(R.string.workspace_screen_window_issue_permission_detail))
+            RemoteWindowIssue.OTHER_DESKTOP -> Triple(HugeIcons.Layers01, stringResource(R.string.workspace_screen_window_issue_other_desktop, app), stringResource(R.string.workspace_screen_window_issue_other_desktop_detail))
         }
         Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(24.dp)) }
@@ -224,18 +235,30 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (issue) {
-                RemoteWindowIssue.MINIMIZED -> Button(onClick = vm::restoreWindow) { Text("在 Mac 上还原它") }
+                RemoteWindowIssue.MINIMIZED -> Button(onClick = vm::restoreWindow) { Text(stringResource(R.string.workspace_screen_window_restore)) }
                 RemoteWindowIssue.CLOSED -> {
-                    Button(onClick = onPick) { Text("换一个窗口") }
-                    FilledTonalButton(onClick = { vm.showWindow(null) }) { Text("看整个屏幕") }
+                    Button(onClick = onPick) { Text(stringResource(R.string.workspace_screen_window_pick_another)) }
+                    FilledTonalButton(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_view_whole)) }
                 }
-                RemoteWindowIssue.PERMISSION -> Button(onClick = { vm.showWindow(null) }) { Text("去整个屏幕点「允许」") }
-                RemoteWindowIssue.OTHER_DESKTOP -> Button(onClick = vm::activateWindow) { Text("切到那个桌面") }
+                RemoteWindowIssue.PERMISSION -> Button(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_permission_action)) }
+                RemoteWindowIssue.OTHER_DESKTOP -> Button(onClick = vm::activateWindow) { Text(stringResource(R.string.workspace_screen_window_switch_desktop)) }
             }
         }
     }
 }
 
+/** A desktop's name in the picker: "Desktop 2", "Full screen · App", with the display when there are several. */
+internal fun remoteHostDesktopLabel(resources: android.content.res.Resources, desktop: me.ayuilos.miffan.data.repository.RemoteHostDesktop): String {
+    val name = when {
+        desktop.fullscreen -> resources.getString(R.string.workspace_screen_desktop_fullscreen,
+            desktop.app ?: resources.getString(R.string.workspace_screen_desktop_app))
+        desktop.number != null -> resources.getString(R.string.workspace_screen_desktop, desktop.number)
+        else -> return resources.getString(R.string.workspace_screen_desktop_current)
+    }
+    val placed = desktop.display?.let { resources.getString(R.string.workspace_screen_desktop_display, it, name) } ?: name
+    return if (desktop.current) resources.getString(R.string.workspace_screen_desktop_now, placed) else placed
+}
+
 /** The landscape side button that opens the picker. */
 @Composable
-internal fun RemoteWindowSideIcon() = Icon(HugeIcons.AppWindow, "换窗口")
+internal fun RemoteWindowSideIcon() = Icon(HugeIcons.AppWindow, stringResource(R.string.workspace_screen_window_side))
