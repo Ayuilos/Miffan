@@ -140,7 +140,7 @@ internal fun RemoteScreenCanvas(
     }
     Box(modifier) {
     // The video sits under the gesture canvas, which stays transparent where there is no bitmap.
-    if (video != null) key(video, width, height) { RemoteVideoSurface(video, width, height, input) }
+    if (video != null) key(video, width, height) { RemoteVideoSurface(video, width, height, input, vm.videoFrames) }
     Canvas(Modifier.fillMaxSize().onSizeChanged { viewSize.value = Size(it.width.toFloat(), it.height.toFloat()); input.resize(viewSize.value) }
         // Touching the picture folds the desktop shortcuts away, without taking the touch.
         .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); macExpanded = false } }
@@ -216,7 +216,7 @@ internal class RemoteScreenZoom {
  * would occupy, so panning and zooming never resize the view or restart the decoder.
  */
 @Composable
-private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: Int, input: ScreenGestures) {
+private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: Int, input: ScreenGestures, frames: RemoteVideoFrames) {
     val placement = remember { VideoPlacement() }
     AndroidView(
         factory = { context ->
@@ -226,16 +226,28 @@ private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: 
                     override fun onSurfaceTextureAvailable(texture: SurfaceTexture, viewWidth: Int, viewHeight: Int) {
                         texture.setDefaultBufferSize(width, height)
                         surface = Surface(texture).also(target::setSurface)
+                        // The buffer at thumbnail size, without the zoom's transform.
+                        val view = this@apply
+                        frames.reader = { if (view.isAvailable) frames.read(view, width, height) else null }
                     }
                     override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, viewWidth: Int, viewHeight: Int) = Unit
                     override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
                         // Detach the decoder before the buffer goes away; the stream itself keeps running.
+                        frames.reader = null
                         target.setSurface(null)
                         surface?.release()
                         surface = null
                         return true
                     }
-                    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+                    private var keptAt = 0L
+                    // Now and then keep a copy for pages that remember the screen: by the time the page
+                    // goes, this view's buffer may already be gone.
+                    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - keptAt < FRAME_KEEP_MILLIS) return
+                        keptAt = now
+                        frames.read(this@apply, width, height)?.let { frames.last = it }
+                    }
                 }
                 addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> placement.apply(view as TextureView) }
             }
@@ -245,6 +257,8 @@ private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: 
         modifier = Modifier.fillMaxSize(),
     )
 }
+
+private const val FRAME_KEEP_MILLIS = 3_000L
 
 /** Where the video should appear in view pixels; kept so a later layout pass can apply it too. */
 private class VideoPlacement {

@@ -270,6 +270,16 @@ class RemoteScreenVM(
      */
     val video: StateFlow<RemoteSurfaceTarget?> = _video.asStateFlow()
 
+    /** The [video] picture for pages that remember the screen; see [currentFrame]. */
+    internal val videoFrames = RemoteVideoFrames()
+
+    /**
+     * What the screen shows now, for pages that keep a picture of it (a mini box's detail, the chat):
+     * the video's when one plays, otherwise the bitmap. Null when nothing real has been drawn yet.
+     */
+    fun currentFrame(): Bitmap? =
+        (if (_video.value != null) videoFrames.current() else _bitmap.value)?.takeUnless { it.isRecycled || it.isBlank() }
+
     private val _streamStats = MutableStateFlow<StreamStats?>(null)
     /** The stream's own numbers; null unless [video] is set. */
     val streamStats: StateFlow<StreamStats?> = _streamStats.asStateFlow()
@@ -1135,6 +1145,27 @@ private const val WINDOW_REFRESH_MILLIS = 2_000L
 private const val WINDOW_IDLE_REFRESH_MILLIS = 10_000L
 private const val FRONT_CHECK_MILLIS = 1_000L
 private const val BACKGROUND_IDLE_RETRY_MILLIS = 120_000L
+
+/**
+ * A video picture lives in its TextureView, out of the VM's reach: [reader] reads it while the view
+ * is up, and [last] keeps what it showed as the view went away.
+ */
+internal class RemoteVideoFrames {
+    @Volatile var reader: (() -> Bitmap?)? = null
+    @Volatile var last: Bitmap? = null
+
+    /** The live picture when it can still be read, else the kept one; never a black one. */
+    fun current(): Bitmap? = runCatching { reader?.invoke() }.getOrNull()?.takeUnless { it.isBlank() } ?: last
+
+    /** [view]'s picture at most [THUMBNAIL_EDGE] on its long side; null when there is none yet. */
+    fun read(view: android.view.TextureView, width: Int, height: Int): Bitmap? {
+        val scale = minOf(1f, THUMBNAIL_EDGE.toFloat() / maxOf(width, height, 1))
+        return runCatching { view.getBitmap((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1)) }
+            .getOrNull()?.takeUnless { it.isBlank() }
+    }
+
+    private companion object { const val THUMBNAIL_EDGE = 1280 }
+}
 
 /** True when a capture shows nothing: every sampled pixel black or transparent. */
 private fun android.graphics.Bitmap.isBlank(): Boolean {
