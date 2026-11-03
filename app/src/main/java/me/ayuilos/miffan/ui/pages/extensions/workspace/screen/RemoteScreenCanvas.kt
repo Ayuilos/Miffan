@@ -49,6 +49,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -90,6 +91,8 @@ internal fun RemoteScreenCanvas(
     /** Touches only call [onBlockedTap] (one per tap) instead of reaching the computer. */
     blocked: Boolean = false,
     onBlockedTap: () -> Unit = {},
+    /** Pixels at the bottom of the view hidden under the keyboard; the picture can be moved above them. */
+    coveredBottom: Float = 0f,
 ) {
     var macExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -101,6 +104,7 @@ internal fun RemoteScreenCanvas(
     val input = remember(width, height, vm) {
         ScreenGestures(context, width, height, vm, scope).apply { resize(viewSize.value) }
     }
+    LaunchedEffect(input, coveredBottom) { input.cover(coveredBottom) }
     DisposableEffect(input, trackpad) {
         input.trackpad = trackpad
         onDispose { input.cancel() }
@@ -183,7 +187,8 @@ internal fun RemoteScreenCanvas(
         onMacShortcut = if (macOS) vm::macShortcut else null,
         macExpanded = macExpanded,
         onMacExpandedChange = { macExpanded = it },
-        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
+            .padding(bottom = with(LocalDensity.current) { coveredBottom.toDp() }),
     )
     }
 }
@@ -317,12 +322,28 @@ private class ScreenGestures(
     private fun toBitmap(point: Offset): Offset = (point - topLeft) / scale
     private fun inside(point: Offset): Boolean = point.x in 0f..width.toFloat() && point.y in 0f..height.toFloat()
     private fun clampPoint(point: Offset) = Offset(point.x.coerceIn(0f, (width - 1).toFloat()), point.y.coerceIn(0f, (height - 1).toFloat()))
+    /** Height at the bottom of the view hidden under the keyboard. */
+    private var covered = 0f
+    private val visibleHeight: Float get() = (viewport.height - covered).coerceAtLeast(1f)
+    /** Whether part of the picture is out of sight, so a one-finger drag in direct mode moves it. */
+    private val pannable: Boolean get() = zoom > 1f || height * scale > visibleHeight + 0.5f
     private fun clampPan() {
         val x = max(0f, (width * scale - viewport.width) / 2f)
-        val y = max(0f, (height * scale - viewport.height) / 2f)
-        pan = Offset(pan.x.coerceIn(-x, x), pan.y.coerceIn(-y, y))
+        // Vertically the picture stays within the part of the view the keyboard leaves visible.
+        val shown = height * scale
+        val centered = (viewport.height - shown) / 2f
+        val y = if (shown <= visibleHeight) (visibleHeight - shown) / 2f - centered
+        else pan.y.coerceIn(visibleHeight - shown - centered, -centered)
+        pan = Offset(pan.x.coerceIn(-x, x), y)
     }
     fun resize(size: Size) { viewport = size; clampPan() }
+    /** The keyboard came or went: keep the spot last pointed at in the visible part. */
+    fun cover(pixels: Float) {
+        if (pixels == covered) return
+        covered = pixels
+        if (pixels > 0f) pan = Offset(pan.x, pan.y + visibleHeight / 2f - toViewport(pointer).y)
+        clampPan()
+    }
     private fun click(button: RemoteMouseButton, count: Int = 1, at: Offset = last) {
         val point = if (trackpad) pointer else toBitmap(at)
         if (!trackpad && inside(point)) pointer = point
@@ -345,7 +366,7 @@ private class ScreenGestures(
         val margin = min(32f * density, min(viewport.width, viewport.height) / 4f)
         pan += Offset(
             when { point.x < margin -> margin - point.x; point.x > viewport.width - margin -> viewport.width - margin - point.x; else -> 0f },
-            when { point.y < margin -> margin - point.y; point.y > viewport.height - margin -> viewport.height - margin - point.y; else -> 0f },
+            when { point.y < margin -> margin - point.y; point.y > visibleHeight - margin -> visibleHeight - margin - point.y; else -> 0f },
         )
         clampPan()
     }
@@ -479,7 +500,7 @@ private class ScreenGestures(
                     if (moved) {
                         if (trackpad) movePointerBy(delta)
                         else if (dragging) move(toBitmap(point))
-                        else if (!longPressed && zoom > 1f) { pan += delta; clampPan() }
+                        else if (!longPressed && pannable) { pan += delta; clampPan() }
                     }
                     detector.onTouchEvent(e)
                 }

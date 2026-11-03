@@ -69,6 +69,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -179,8 +182,15 @@ internal fun RemoteScreenScaffold(
     val platform by vm.platform.collectAsStateWithLifecycle()
     val canUseAutomatic by vm.canUseAutomatic.collectAsStateWithLifecycle()
     val firewallApplying by vm.firewallApplying.collectAsStateWithLifecycle()
-    var trackpad by rememberSaveable { mutableStateOf(false) }
+    val hints = remember(context) { context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE) }
+    // The pointer mode is a habit, so the last choice is kept for every screen and every visit.
+    var trackpad by remember { mutableStateOf(hints.getBoolean(TRACKPAD_MODE, false)) }
+    LaunchedEffect(trackpad) { hints.edit { putBoolean(TRACKPAD_MODE, trackpad) } }
     var keyboard by rememberSaveable { mutableStateOf(false) }
+    // Landscape only: where the desktop's frame ends and the keyboard overlay begins, in root pixels.
+    var screenBottom by remember { mutableFloatStateOf(0f) }
+    var keyboardTop by remember { mutableFloatStateOf(Float.MAX_VALUE) }
+    val keyboardCover = (screenBottom - keyboardTop).coerceAtLeast(0f)
     var menu by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     var customDialog by remember { mutableStateOf(false) }
@@ -188,7 +198,6 @@ internal fun RemoteScreenScaffold(
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var drawer by rememberSaveable { mutableStateOf(false) }
     var meteredNoticeShown by rememberSaveable { mutableStateOf(false) }
-    val hints = remember(context) { context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE) }
     // Local-network access is asked for only after a stream needed it, then the screen reconnects.
     val localNetwork = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) vm.reconnect()
@@ -400,7 +409,8 @@ internal fun RemoteScreenScaffold(
                 // The phone-side zoom buttons would cover much of a framed picture; landscape has the room.
                 RemoteScreenViewport(vm, trackpad, Modifier.fillMaxSize(), zoomControls = !framed || fullscreen,
                     marker = marker?.takeIf { awaitingApproval && !userHolds },
-                    blocked = partnerActive, onBlockedTap = ::armOrTakeOver) { failed ->
+                    blocked = partnerActive, onBlockedTap = ::armOrTakeOver,
+                    coveredBottom = if (fullscreen && keyboard) keyboardCover else 0f) { failed ->
                     RemoteScreenFailureContent(
                         state = failed,
                         settingsAvailable = onSettings != null,
@@ -435,7 +445,7 @@ internal fun RemoteScreenScaffold(
         val ratio = connectedSize?.let { it.width.toFloat() / it.height.coerceAtLeast(1) } ?: (16f / 10f)
         if (fullscreen) Box(Modifier.fillMaxSize().background(FULLSCREEN_GROUND).padding(padding)) {
             // Landscape: the desktop takes the height, the controls live in the black margins beside it.
-            Row(Modifier.fillMaxSize().imePadding()) {
+            Row(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxHeight().width(60.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(onClick = { fullscreen = false }) {
@@ -443,12 +453,18 @@ internal fun RemoteScreenScaffold(
                     }
                     avatar?.invoke(Modifier.size(36.dp), partnerActive || awaitingApproval)
                 }
-                Column(Modifier.weight(1f).fillMaxHeight().padding(vertical = 8.dp)) {
+                // A landscape input method takes most of the height. Shrinking the desktop above it would leave a
+                // thumbnail, so the keyboard covers the picture's lower part and the picture moves up instead.
+                Box(Modifier.weight(1f).fillMaxHeight()) {
                     // The frame hugs the desktop rather than the black margins around it.
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        screen(Modifier.aspectRatio(ratio, matchHeightConstraintsFirst = true), RoundedCornerShape(14.dp))
+                    Box(Modifier.fillMaxSize().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                        screen(Modifier.aspectRatio(ratio, matchHeightConstraintsFirst = true)
+                            .onGloballyPositioned { screenBottom = it.boundsInRoot().bottom }, RoundedCornerShape(14.dp))
                     }
-                    if (keyboard && connected) RemoteScreenKeyboard(vm, platform)
+                    if (keyboard && connected) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        .onGloballyPositioned { keyboardTop = it.boundsInRoot().top }.imePadding()) {
+                        RemoteScreenKeyboard(vm, platform, compact = true)
+                    }
                 }
                 Column(Modifier.fillMaxHeight().width(60.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -502,6 +518,7 @@ private val STREAM_SETTINGS_FIXES = setOf(
 )
 
 private const val PERF_OVERLAY = "perf_overlay"
+private const val TRACKPAD_MODE = "trackpad_mode"
 private val CONNECTED_DOT = Color(0xFF2E9E5B)
 private val FULLSCREEN_GROUND = Color(0xFF0B0C0E)
 
