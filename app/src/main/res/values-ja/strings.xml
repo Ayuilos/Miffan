@@ -4185,4 +4185,21 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   </plurals>
   <string name="update_page_skipped_title">%1$s をスキップしました</string>
   <string name="update_page_skipped_text">次のバージョンが出たらお知らせします。</string>
+  <string name="im_computer_detail_box_idle">未使用のミニPC</string>
+  <string name="im_computer_idle_box_help">どのパートナーも使っていませんが、%1$sのメモリを最大%2$sまで使えます</string>
+  <string name="im_computer_idle_box_assign">パートナーに渡す</string>
+  <string name="im_computer_idle_box_assign_detail">中のファイルはすべて残ります</string>
+  <string name="im_computer_idle_box_delete">このミニPCを削除</string>
+  <string name="im_computer_idle_box_delete_detail">%1$sのメモリを解放します。中のファイルも削除されます</string>
+  <string name="im_computer_idle_box_assign_title">ミニPCを渡す相手</string>
+  <string name="im_computer_idle_box_assign_footer">ほかのミニPCと同じく、パートナーは確認せずに中で操作できます。</string>
+  <string name="im_computer_idle_box_delete_title">この未使用のミニPCを削除しますか？</string>
+  <string name="im_computer_idle_box_delete_body">%1$sから中身ごと削除されます。元に戻すことはできません。</string>
+  <string name="im_space_delete_with_partner">そのミニPCも削除する</string>
+  <string name="im_space_delete_with_partner_on">%1$sにあるミニPCも、中のファイルとともに削除されます</string>
+  <string name="im_space_delete_with_partner_off">%1$sにあるミニPCは未使用のまま残ります。そのコンピューターのページで別のパートナーに渡せます</string>
+  <string name="im_space_old_title">現在使用中のミニPC</string>
+  <string name="im_space_old_row">%2$sにある%1$sのミニPCを削除</string>
+  <string name="im_space_old_delete">新しい設定が完了したら、中のファイルとともに削除されます</string>
+  <string name="im_space_old_keep">未使用のまま残ります。そのコンピューターのページで別のパートナーに渡せます</string>
 </resources>

@@ -4183,4 +4183,21 @@
   </plurals>
   <string name="update_page_skipped_title">已略過 %1$s</string>
   <string name="update_page_skipped_text">有更新的版本推出時再告訴你。</string>
+  <string name="im_computer_detail_box_idle">閒置的小電腦</string>
+  <string name="im_computer_idle_box_help">沒有夥伴在用它，但它仍可能佔用 %1$s 最多 %2$s 記憶體</string>
+  <string name="im_computer_idle_box_assign">分給一位夥伴</string>
+  <string name="im_computer_idle_box_assign_detail">裡面的檔案都會保留</string>
+  <string name="im_computer_idle_box_delete">刪除這台小電腦</string>
+  <string name="im_computer_idle_box_delete_detail">釋放 %1$s 記憶體，裡面的檔案也一起刪除</string>
+  <string name="im_computer_idle_box_assign_title">把小電腦分給誰</string>
+  <string name="im_computer_idle_box_assign_footer">和其他小電腦一樣，夥伴在裡面操作不用先問你。</string>
+  <string name="im_computer_idle_box_delete_title">刪除這台閒置的小電腦？</string>
+  <string name="im_computer_idle_box_delete_body">它會從 %1$s 上刪除，裡面的內容也一起刪除，無法復原。</string>
+  <string name="im_space_delete_with_partner">同時刪除它的小電腦</string>
+  <string name="im_space_delete_with_partner_on">%1$s 上的那台和裡面的檔案會一起刪除</string>
+  <string name="im_space_delete_with_partner_off">%1$s 上的那台會留著閒置，可以在那台電腦的頁面分給其他夥伴</string>
+  <string name="im_space_old_title">目前使用中的小電腦</string>
+  <string name="im_space_old_row">刪掉%1$s在 %2$s 上的小電腦</string>
+  <string name="im_space_old_delete">換好後刪除，裡面的檔案也一起刪除</string>
+  <string name="im_space_old_keep">會留著閒置，可以在那台電腦的頁面分給其他夥伴</string>
 </resources>

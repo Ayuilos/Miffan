@@ -4185,4 +4185,21 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   </plurals>
   <string name="update_page_skipped_title">%1$s 건너뜀</string>
   <string name="update_page_skipped_text">다음 버전이 나오면 알려 드릴게요.</string>
+  <string name="im_computer_detail_box_idle">쓰지 않는 미니 PC</string>
+  <string name="im_computer_idle_box_help">아무 파트너도 쓰지 않지만, %1$s의 메모리를 최대 %2$s까지 쓸 수 있어요</string>
+  <string name="im_computer_idle_box_assign">파트너에게 주기</string>
+  <string name="im_computer_idle_box_assign_detail">안의 파일은 모두 그대로 남아요</string>
+  <string name="im_computer_idle_box_delete">이 미니 PC 삭제</string>
+  <string name="im_computer_idle_box_delete_detail">%1$s 메모리를 확보하고, 안의 파일도 함께 삭제돼요</string>
+  <string name="im_computer_idle_box_assign_title">미니 PC를 줄 파트너</string>
+  <string name="im_computer_idle_box_assign_footer">다른 미니 PC와 마찬가지로, 파트너는 먼저 묻지 않고 안에서 작업해요.</string>
+  <string name="im_computer_idle_box_delete_title">쓰지 않는 미니 PC를 삭제할까요?</string>
+  <string name="im_computer_idle_box_delete_body">%1$s에서 안의 모든 것과 함께 삭제돼요. 되돌릴 수 없어요.</string>
+  <string name="im_space_delete_with_partner">이 파트너의 미니 PC도 함께 삭제</string>
+  <string name="im_space_delete_with_partner_on">%1$s의 미니 PC도 안의 파일과 함께 삭제돼요</string>
+  <string name="im_space_delete_with_partner_off">%1$s의 미니 PC는 쓰지 않는 상태로 남아요. 그 컴퓨터 페이지에서 다른 파트너에게 줄 수 있어요</string>
+  <string name="im_space_old_title">지금 사용 중인 미니 PC</string>
+  <string name="im_space_old_row">%2$s에 있는 %1$s의 미니 PC 삭제</string>
+  <string name="im_space_old_delete">새 설정이 끝나면 안의 파일과 함께 삭제돼요</string>
+  <string name="im_space_old_keep">쓰지 않는 상태로 남아요. 그 컴퓨터 페이지에서 다른 파트너에게 줄 수 있어요</string>
 </resources>
