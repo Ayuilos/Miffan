@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import me.rerere.cuaspace.activateWindow
 import me.rerere.cuaspace.SpaceClient
 import me.rerere.cuaspace.SpaceInput
 import me.rerere.cuaspace.SpaceMedia
@@ -33,6 +35,16 @@ class CuaSpaceDesktopSession internal constructor(
     private val media: SpaceMedia,
     private val name: String,
     private val lifetime: CoroutineScope,
+    /** Runs after the media session ended, e.g. to close a client this session owns. */
+    private val onClosed: () -> Unit = {},
+    /**
+     * The single window shown, on a computer's own desktop. Input goes to whatever is on top where the
+     * pointer lands, so the window is brought to the front (switching to its desktop) before the first
+     * input and again after a pause, while that input waits.
+     */
+    private val window: me.rerere.cuaspace.SpaceWindow? = null,
+    /** -1 flips wheel direction (a Mac's window with natural scrolling). */
+    private val scrollSign: Double = 1.0,
 ) : RemoteDesktopSession, RemoteSurfaceTarget {
     private val closed = AtomicBoolean()
     private val started = AtomicBoolean()
@@ -43,9 +55,19 @@ class CuaSpaceDesktopSession internal constructor(
     private val _state = MutableStateFlow<RemoteScreenState>(RemoteScreenState.Connecting)
     private val _videoSize = MutableStateFlow<RemoteVideoSize?>(null)
     private val _stats = MutableStateFlow(RemoteScreenStats())
+    private val _suspended = MutableStateFlow<String?>(null)
+    /** Why capture is paused (a window minimized or hidden…), as the server says it; null while it runs. */
+    val suspended: StateFlow<String?> = _suspended
     private var received = 0L
     private var renderedFrames = 0
     private var buttons = 0
+    private var lastInputAt = 0L
+    private var raising = false
+    /** Whether the next input must bring [window] to the front first; set again by [noteFront]. */
+    private var raiseNeeded = true
+    private var raisedAt = 0L
+    private var frontCheckedAt = 0L
+    private val heldInput = mutableListOf<SpaceInput>()
     /** What the phone last put on the Space's clipboard, so it does not come back as the Space's own copy. */
     @Volatile private var sentClipboard: String? = null
 
@@ -104,7 +126,9 @@ class CuaSpaceDesktopSession internal constructor(
             is SpaceMediaEvent.Closed -> if (!closed.get()) {
                 _state.value = RemoteScreenState.Closed(event.error ?: SpaceMediaClosedException(event.code, event.reason))
             }
-            is SpaceMediaEvent.Suspended, SpaceMediaEvent.Resumed, is SpaceMediaEvent.Other -> Unit
+            is SpaceMediaEvent.Suspended -> _suspended.value = event.reason ?: "suspended"
+            SpaceMediaEvent.Resumed -> _suspended.value = null
+            is SpaceMediaEvent.Other -> Unit
         }
     }
 
@@ -146,19 +170,57 @@ class CuaSpaceDesktopSession internal constructor(
         }
         // Wheel bits are presses: one notch each time a bit turns on.
         for ((bit, delta) in listOf(8 to (0.0 to -WHEEL), 16 to (0.0 to WHEEL), 32 to (-WHEEL to 0.0), 64 to (WHEEL to 0.0))) {
-            if (buttons and bit != 0 && this.buttons and bit == 0) events += SpaceInput.Scroll(nx, ny, delta.first, delta.second)
+            if (buttons and bit != 0 && this.buttons and bit == 0) events += SpaceInput.Scroll(nx, ny, delta.first * scrollSign, delta.second * scrollSign)
         }
         this.buttons = buttons
-        media.send(events)
+        deliver(events)
     }
 
     override fun key(keysym: Int, down: Boolean) {
         if (closed.get()) return
         val key = spaceKeyName(keysym) ?: return
-        media.send(listOf(SpaceInput.Key(key, down)))
+        deliver(listOf(SpaceInput.Key(key, down)))
     }
 
-    override fun typeText(text: String): Boolean = !closed.get() && media.send(listOf(SpaceInput.Text(text)))
+    override fun typeText(text: String): Boolean = !closed.get() && deliver(listOf(SpaceInput.Text(text)))
+
+    /**
+     * What the computer says is in front: when [window] is not (someone switched desktop or app there),
+     * the next input brings it back first. Ignored right after a raise, which it may predate.
+     */
+    @Synchronized fun noteFront(inFront: Boolean) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (raising || now - raisedAt < RAISE_SETTLE_MILLIS) return
+        frontCheckedAt = now
+        raiseNeeded = !inFront
+    }
+
+    /**
+     * Sends [events], first bringing [window] to the front when it is not (see [noteFront]), or, when
+     * nothing said lately, when input starts again after a pause.
+     */
+    @Synchronized private fun deliver(events: List<SpaceInput>): Boolean {
+        val shown = window ?: return media.send(events)
+        val now = android.os.SystemClock.elapsedRealtime()
+        val unsure = now - frontCheckedAt > FRONT_STALE_MILLIS && now - lastInputAt > RAISE_AFTER_IDLE_MILLIS
+        lastInputAt = now
+        if (raising) { heldInput += events; return true }
+        if (!raiseNeeded && !unsure) return media.send(events)
+        raising = true
+        raiseNeeded = false
+        heldInput += events
+        lifetime.launch(Dispatchers.IO) {
+            // macOS may report the raise unverified although it happened; the input goes either way.
+            withTimeoutOrNull(RAISE_TIMEOUT_MILLIS) { runCatching { client.activateWindow(shown) } }
+            synchronized(this@CuaSpaceDesktopSession) {
+                raising = false
+                raisedAt = android.os.SystemClock.elapsedRealtime()
+                if (!closed.get()) media.send(heldInput.toList())
+                heldInput.clear()
+            }
+        }
+        return true
+    }
 
     override fun sendClipboard(text: String) {
         if (closed.get()) return
@@ -174,11 +236,16 @@ class CuaSpaceDesktopSession internal constructor(
         // The session is ours alone: end it, not only the socket, so the Space stops encoding.
         lifetime.launch(NonCancellable + Dispatchers.IO) {
             media.closeSession()
+            runCatching(onClosed)
             withContext(Dispatchers.Default) { lifetime.cancel() }
         }
     }
 
     private companion object {
+        const val RAISE_AFTER_IDLE_MILLIS = 8_000L
+        const val RAISE_TIMEOUT_MILLIS = 3_000L
+        const val RAISE_SETTLE_MILLIS = 1_500L
+        const val FRONT_STALE_MILLIS = 5_000L
         /** One wheel notch in the pixel deltas a browser sends. */
         const val WHEEL = 100.0
         const val CLIPBOARD_POLL_MILLIS = 1_500L

@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.snapshotFlow
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Matrix
@@ -93,6 +95,8 @@ internal fun RemoteScreenCanvas(
     onBlockedTap: () -> Unit = {},
     /** Pixels at the bottom of the view hidden under the keyboard; the picture can be moved above them. */
     coveredBottom: Float = 0f,
+    /** Set when the page draws the zoom buttons itself (full screen puts them beside the picture). */
+    zoom: RemoteScreenZoom? = null,
 ) {
     var macExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -105,6 +109,11 @@ internal fun RemoteScreenCanvas(
         ScreenGestures(context, width, height, vm, scope).apply { resize(viewSize.value) }
     }
     LaunchedEffect(input, coveredBottom) { input.cover(coveredBottom) }
+    if (zoom != null) LaunchedEffect(input, zoom) {
+        zoom.zoomIn = { input.zoomStep(zoomIn = true) }
+        zoom.zoomOut = { input.zoomStep(zoomIn = false) }
+        snapshotFlow { input.zoomed }.collect { zoom.canZoomOut = it }
+    }
     DisposableEffect(input, trackpad) {
         input.trackpad = trackpad
         onDispose { input.cancel() }
@@ -191,6 +200,14 @@ internal fun RemoteScreenCanvas(
             .padding(bottom = with(LocalDensity.current) { coveredBottom.toDp() }),
     )
     }
+}
+
+/** The picture's zoom, for buttons the page places itself; filled in by [RemoteScreenCanvas]. */
+@Stable
+internal class RemoteScreenZoom {
+    var zoomIn: () -> Unit by mutableStateOf({})
+    var zoomOut: () -> Unit by mutableStateOf({})
+    var canZoomOut: Boolean by mutableStateOf(false)
 }
 
 /**

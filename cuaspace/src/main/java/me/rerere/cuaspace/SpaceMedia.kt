@@ -219,9 +219,9 @@ class SpaceMedia internal constructor(
         private const val MAX_EVENTS = 256
         private const val MAX_HEADER = 1 shl 20
 
-        internal suspend fun open(client: SpaceClient, maxDimension: Int, maxFps: Int, bitrateKbps: Int): SpaceMedia {
+        internal suspend fun open(client: SpaceClient, maxDimension: Int, maxFps: Int, bitrateKbps: Int, window: SpaceWindow? = null): SpaceMedia {
             val response = client.grpc.unary("cua.env.v1.StreamService/OpenMedia", OpenMediaRequest(
-                target = MediaTarget(display_id = "primary"),
+                target = window?.let { MediaTarget(window = it.ref) } ?: MediaTarget(display_id = "primary"),
                 codecs = listOf(MediaCodec.MEDIA_CODEC_H264),
                 max_fps = maxFps,
                 max_dimension = maxDimension,

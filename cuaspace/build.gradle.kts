@@ -19,6 +19,7 @@ wire {
         "cua.env.v1.FilesystemService",
         "cua.env.v1.StreamService",
         "cua.env.v1.ComputerService",
+        "cua.env.v1.WindowsService",
     )
 }
 

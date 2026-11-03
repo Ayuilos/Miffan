@@ -14,8 +14,21 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import me.rerere.cuaspace.SpaceClient
+import me.rerere.cuaspace.SpaceWindow
+import me.rerere.cuaspace.activateWindow
+import me.rerere.cuaspace.listWindows
+import me.rerere.cuaspace.resizeWindow
+import me.rerere.cuaspace.restoreWindow
+import me.rerere.cuaspace.windowThumbnail
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.security.SecureRandom
 import java.io.ByteArrayInputStream
 import java.io.Closeable
@@ -166,6 +179,26 @@ data class RemoteCuaUpdateCheck(
 )
 
 /** A desktop viewer bound to a workspace's SSH lease. Call [RemoteDesktopSession.start] once. */
+/**
+ * A window of a computer that shares its desktop, with the desktop (macOS Space) it is on. [hidden]
+ * means the app runs without showing it (or it is minimized); known only on the desktop in front.
+ */
+data class RemoteHostWindow(val window: SpaceWindow, val desktop: Long?, val current: Boolean, val hidden: Boolean)
+
+/** A desktop's name in the picker; [current] is the one in front on the computer. */
+data class RemoteHostDesktop(val id: Long, val label: String, val current: Boolean)
+
+data class RemoteHostWindows(val windows: List<RemoteHostWindow>, val desktops: List<RemoteHostDesktop>)
+
+/** cua's own windows: the agent pointer overlay and the capture service. */
+private const val THUMBNAIL_PARALLEL = 3
+// A window's picture takes 2–4 seconds on a Mac (more for another desktop); an app showing no window never gives one.
+private const val THUMBNAIL_TIMEOUT_MILLIS = 10_000L
+private val HIDDEN_WINDOW_APPS = setOf("Cua Driver", "CuaDriver", "cua-spacesd", "Cua Spaces", "loginwindow")
+
+/** The computer does not share its desktop through cua-spacesd, so single windows cannot be shown. */
+class HostWindowsUnavailableException : IllegalStateException("This computer does not share single windows")
+
 class RemoteScreenConnection internal constructor(
     val hostId: String,
     val platform: RemoteScreenPlatform,
@@ -215,6 +248,8 @@ class RemoteScreenRepository(
     private val json = Json { ignoreUnknownKeys = true }
 
     private val lock = Any()
+    /** Each computer's own cua-spacesd port and token, read over SSH; memory only. */
+    private val hostEndpoints = java.util.concurrent.ConcurrentHashMap<String, HostEndpoint>()
     /** The long-lived clipboard writer of each open Windows screen, by workspace. */
     private val windowsClipboards = java.util.concurrent.ConcurrentHashMap<String, WindowsClipboardChannel>()
     private val open = mutableMapOf<String, MutableSet<RemoteScreenConnection>>()
@@ -543,6 +578,7 @@ class RemoteScreenRepository(
         val host = hostDao.getById(requireNotNull(workspace.remoteHostId))
             ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_FOUND)
         if (workspace.isSpace) return openSpace(workspaceId, host.id, host.name, stream)
+        stream.window?.let { return openHostWindow(workspaceId, host.id, it, stream) }
         if (!host.screenEnabled) throw RemoteScreenUnavailableException(RemoteScreenProblem.NOT_ENABLED)
         val configuredEndpoint = RemoteScreenEndpoint.parse(host.screenEndpoint)
         var detected: RemoteScreenPlatform? = null
@@ -751,6 +787,185 @@ class RemoteScreenRepository(
         }
         synchronized(lock) { open.getOrPut(hostId, ::mutableSetOf) += connection }
         return connection
+    }
+
+    /**
+     * Experimental single-window view: the computer's own cua-spacesd streams [window] alone (even while
+     * other windows cover it) over the host's SSH session. See [HostDesktopSpace].
+     */
+    private suspend fun openHostWindow(workspaceId: String, hostId: String, window: SpaceWindow, stream: RemoteStreamRequest): RemoteScreenConnection {
+        val (dimension, fps) = when (stream.quality) {
+            RemoteScreenQuality.SAVER -> 1280 to 20
+            RemoteScreenQuality.BALANCED -> 1600 to 30
+            else -> 2400 to 30
+        }
+        val callerJob = currentCoroutineContext()[Job]
+        val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
+            val endpoint = hostEndpoint(workspaceId, ssh)
+            val client = HostDesktopSpace.client(ssh, endpoint.port, endpoint.token)
+            try {
+                val media = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+                    client.openMedia(maxDimension = dimension, maxFps = fps, window = window)
+                }
+                CuaSpaceDesktopSession(client, media, window.app.ifBlank { window.title },
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default), onClosed = client::close, window = window,
+                    // Its windows get the Mac's own scroll direction; spacesd scrolls up for positive deltas.
+                    scrollSign = if (endpoint.naturalScroll) -1.0 else 1.0)
+            } catch (error: Throwable) { client.close(); forgetHostEndpoint(workspaceId, error); throw error }
+        }
+        val connection = RemoteScreenConnection(hostId, RemoteScreenPlatform.MACOS, workspaceId, handle) { closed ->
+            synchronized(lock) {
+                open[hostId]?.remove(closed)
+                if (open[hostId].isNullOrEmpty()) open.remove(hostId)
+            }
+        }
+        synchronized(lock) { open.getOrPut(hostId, ::mutableSetOf) += connection }
+        return connection
+    }
+
+    /** Whether this computer shares its desktop through cua-spacesd, so single windows can be shown. */
+    suspend fun hostWindowsAvailable(workspaceId: String): Boolean = withContext(Dispatchers.IO) {
+        hostEndpoints.remove(workspaceId)
+        runCatching { withRemote(workspaceId) { ssh -> HostDesktopSpace.endpoint(ssh)?.also { hostEndpoints[workspaceId] = it } != null } }
+            .getOrDefault(false)
+    }
+
+    /**
+     * The windows worth offering and the desktops (macOS Spaces) they are on, in Mission Control order
+     * when the Mac tells it. Overlays (cua's own pointer and capture windows) are left out.
+     */
+    suspend fun hostWindows(workspaceId: String): RemoteHostWindows = withHostDesktop(workspaceId) { client, ssh ->
+        // The window list (about a second on the Mac) and where each window is are read side by side.
+        val where = async(Dispatchers.IO) { runCatching { HostDesktopSpace.placement(ssh) }.getOrNull() }
+        val windows = client.listWindows()
+        val (placed, order) = where.await() ?: (null to null)
+        val current = placed?.current
+        val hosted = windows.mapNotNull { window ->
+            if (window.app in HIDDEN_WINDOW_APPS) return@mapNotNull null
+            val found = placed?.find(window.pid, window.title, window.x, window.y, window.width, window.height)
+            val spaces = found?.spaces
+            // Untitled windows on several desktops at once are overlays; small untitled ones are popups.
+            if (window.title.isBlank() && ((spaces?.size ?: 0) > 1 || window.height < 240)) return@mapNotNull null
+            if (placed != null && spaces.isNullOrEmpty() && window.state != SpaceWindow.State.MINIMIZED) return@mapNotNull null
+            val onCurrent = current?.let { spaces?.contains(it) } ?: window.available
+            RemoteHostWindow(
+                window = window,
+                desktop = spaces?.firstOrNull(),
+                current = onCurrent,
+                // On the desktop in front, a window that is not on screen is an app running without
+                // one (or minimized); elsewhere the picture tells (see RemoteScreenVM).
+                hidden = onCurrent && found != null && !found.onScreen,
+            )
+        }
+        RemoteHostWindows(hosted, desktopLabels(order, current, hosted))
+    }
+
+    /** "桌面 2" / "全屏 · App" per desktop id, current first then Mission Control order. */
+    private fun desktopLabels(order: List<List<HostSpace>>?, current: Long?, windows: List<RemoteHostWindow>): List<RemoteHostDesktop> {
+        val used = windows.mapNotNull { it.desktop }.toSet()
+        if (order == null) {
+            return used.sorted().mapIndexed { index, id -> RemoteHostDesktop(id, if (id == current) "当前桌面" else "桌面 ${index + 1}", id == current) }
+                .sortedByDescending { it.current }
+        }
+        val labels = mutableListOf<RemoteHostDesktop>()
+        order.forEachIndexed { displayIndex, spaces ->
+            val prefix = if (order.size > 1) "显示器 ${displayIndex + 1} · " else ""
+            var desktopNumber = 0
+            spaces.forEach { space ->
+                val name = if (space.fullscreen) {
+                    val app = windows.firstOrNull { it.desktop == space.id && (space.pid == null || it.window.pid == space.pid) }?.window?.app
+                    "全屏 · ${app ?: "应用"}"
+                } else "桌面 ${++desktopNumber}"
+                labels += RemoteHostDesktop(space.id, prefix + name + if (space.id == current) "（当前）" else "", space.id == current)
+            }
+        }
+        return labels.filter { it.id in used }.sortedByDescending { it.current }
+    }
+
+    /**
+     * Shows a window of [window]'s app, as clicking it in the Dock does, and waits for it. Returns the
+     * window to stream: [window] itself when the app showed it again, otherwise the app's newly shown
+     * window, or null when none came up.
+     */
+    suspend fun reopenHostApp(workspaceId: String, window: SpaceWindow): SpaceWindow? = withContext(Dispatchers.IO) {
+        val placed = withRemote(workspaceId) { ssh -> HostDesktopSpace.reopenApp(ssh, window.pid) }
+        val shown = placed?.windows?.filter { it.pid == window.pid && it.onScreen && it.height >= 120 }.orEmpty()
+        if (shown.isEmpty()) return@withContext null
+        // The same window shown again keeps its target, so it streams without listing again.
+        if (shown.any { it.title == window.title && kotlin.math.abs(it.width - window.width) < 2 && kotlin.math.abs(it.height - window.height) < 2 }) {
+            return@withContext window.copy(state = SpaceWindow.State.NORMAL)
+        }
+        hostWindows(workspaceId).windows.map { it.window }
+            .filter { it.pid == window.pid && it.state == SpaceWindow.State.NORMAL }
+            .let { candidates -> candidates.firstOrNull { it.available } ?: candidates.firstOrNull() }
+    }
+
+    /**
+     * Small pictures of [windows] over one connection, a few at a time, each as it lands; null when a
+     * window gave no picture in time (an app running without showing it gives none). Stops when
+     * collection stops.
+     */
+    fun hostWindowThumbnails(workspaceId: String, windows: List<SpaceWindow>): Flow<Pair<SpaceWindow, ByteArray?>> = channelFlow {
+        withHostDesktop(workspaceId) { client, _ ->
+            val gate = Semaphore(THUMBNAIL_PARALLEL)
+            windows.map { window ->
+                launch {
+                    gate.withPermit {
+                        send(window to withTimeoutOrNull(THUMBNAIL_TIMEOUT_MILLIS) { client.windowThumbnail(window) })
+                    }
+                }
+            }.joinAll()
+        }
+    }
+
+    suspend fun restoreHostWindow(workspaceId: String, window: SpaceWindow) = withHostDesktop(workspaceId) { client, _ -> client.restoreWindow(window) }
+
+    suspend fun activateHostWindow(workspaceId: String, window: SpaceWindow) = withHostDesktop(workspaceId) { client, _ -> client.activateWindow(window) }
+
+    suspend fun resizeHostWindow(workspaceId: String, window: SpaceWindow, width: Double, height: Double): Pair<Double, Double>? =
+        withHostDesktop(workspaceId) { client, _ -> client.resizeWindow(window, width, height) }
+
+    /**
+     * Runs [block] with a client of the computer's own cua-spacesd. Its port and token are read once and
+     * kept in memory; a failure reads them again next time (the service may have restarted).
+     * Cancelling the caller cancels [block]'s calls.
+     */
+    private suspend fun <T> withHostDesktop(
+        workspaceId: String,
+        block: suspend CoroutineScope.(SpaceClient, me.rerere.workspace.RemoteWorkspaceSession) -> T,
+    ): T = withContext(Dispatchers.IO) {
+        val callerJob = currentCoroutineContext()[Job]
+        withRemote(workspaceId) { ssh ->
+            val client = hostClient(workspaceId, ssh)
+            try {
+                runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { block(client, ssh) }
+            } catch (error: Throwable) {
+                forgetHostEndpoint(workspaceId, error)
+                throw error
+            } finally { client.close() }
+        }
+    }
+
+    private fun hostEndpoint(workspaceId: String, ssh: me.rerere.workspace.RemoteWorkspaceSession): HostEndpoint =
+        hostEndpoints[workspaceId]
+            ?: HostDesktopSpace.endpoint(ssh)?.also { hostEndpoints[workspaceId] = it }
+            ?: throw HostWindowsUnavailableException()
+
+    private fun hostClient(workspaceId: String, ssh: me.rerere.workspace.RemoteWorkspaceSession): SpaceClient =
+        hostEndpoint(workspaceId, ssh).let { HostDesktopSpace.client(ssh, it.port, it.token) }
+
+    /**
+     * Whether [window]'s app has the front window of the desktop in front, so input lands on it;
+     * null when the computer cannot tell.
+     */
+    suspend fun hostWindowInFront(workspaceId: String, window: SpaceWindow): Boolean? = withContext(Dispatchers.IO) {
+        val shown = runCatching { withRemote(workspaceId) { ssh -> HostDesktopSpace.onScreen(ssh) } }.getOrNull() ?: return@withContext null
+        val front = shown.windows.filter { it.layer == 0 && it.height >= 120 && it.app !in HIDDEN_WINDOW_APPS }.maxByOrNull { it.z }
+        front?.pid == window.pid
+    }
+
+    private fun forgetHostEndpoint(workspaceId: String, error: Throwable) {
+        if (error !is CancellationException) hostEndpoints.remove(workspaceId)
     }
 
     /** Uses cliprdr for an active RDP session; VNC and STREAM use the SSH clipboard helper. */

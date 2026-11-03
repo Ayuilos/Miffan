@@ -99,11 +99,11 @@ class SpaceClient(
         grpc.unary("cua.env.v1.SystemService/Health", HealthRequest(), HealthResponse.ADAPTER)
 
     /**
-     * Streams the primary display as H.264, scaled to at most [maxDimension] on the long edge. Input on the
+     * Streams the primary display (or only [window], even while covered) as H.264, scaled to at most [maxDimension] on the long edge. Input on the
      * returned media may move the pointer and type in the Space (the session allows activation).
      */
-    suspend fun openMedia(maxDimension: Int = 1920, maxFps: Int = 30, bitrateKbps: Int = 0): SpaceMedia =
-        SpaceMedia.open(this, maxDimension, maxFps, bitrateKbps)
+    suspend fun openMedia(maxDimension: Int = 1920, maxFps: Int = 30, bitrateKbps: Int = 0, window: SpaceWindow? = null): SpaceMedia =
+        SpaceMedia.open(this, maxDimension, maxFps, bitrateKbps, window)
 
     /** cua-driver's MCP endpoint inside the Space (streamable HTTP on the same port). */
     val mcpUrl: String get() = "$baseUrl/mcp"

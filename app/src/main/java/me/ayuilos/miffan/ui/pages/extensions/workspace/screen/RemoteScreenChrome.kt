@@ -9,6 +9,24 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Tick02
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -64,7 +82,7 @@ internal fun RemoteScreenFullscreenEffect(enabled: Boolean) {
 }
 
 /** The status line's short name for how the screen is connected. */
-internal fun remoteScreenModeLabel(resources: Resources, protocol: RemoteDesktopProtocol): String = when (protocol) {
+internal fun remoteScreenModeLabel(resources: Resources, protocol: RemoteDesktopProtocol, window: Boolean = false): String = if (window) "单个窗口" else when (protocol) {
     RemoteDesktopProtocol.STREAM -> resources.getString(R.string.workspace_screen_mode_stream)
     RemoteDesktopProtocol.RDP -> "RDP"
     RemoteDesktopProtocol.VNC -> "VNC"
@@ -81,8 +99,9 @@ internal fun remoteScreenQualityLabel(resources: Resources, quality: RemoteScree
 })
 
 internal fun remoteScreenQualityDetail(resources: Resources, quality: RemoteScreenQuality, protocol: RemoteDesktopProtocol?,
-    custom: RemoteStreamCustom): String =
-    if (protocol == RemoteDesktopProtocol.SNAPSHOT) resources.getString(R.string.workspace_screen_quality_snapshot,
+    custom: RemoteStreamCustom, window: Boolean = false): String =
+    if (protocol == RemoteDesktopProtocol.SPACE) spaceQuality(quality, window).let { (dimension, fps) -> "$dimension 像素 · $fps 帧/秒" }
+    else if (protocol == RemoteDesktopProtocol.SNAPSHOT) resources.getString(R.string.workspace_screen_quality_snapshot,
         quality.snapshotQuality().maxDimension)
     else if (protocol == RemoteDesktopProtocol.STREAM) when (quality) {
         RemoteScreenQuality.SAVER -> "720p · 30 fps"
@@ -94,6 +113,98 @@ internal fun remoteScreenQualityDetail(resources: Resources, quality: RemoteScre
         RemoteScreenQuality.BALANCED, RemoteScreenQuality.CUSTOM -> 10
         RemoteScreenQuality.BEST -> 20
     })
+
+/** A Space's picture (long edge, fps) at [quality]; a computer's single window is sharper. Matches RemoteScreenRepository. */
+private fun spaceQuality(quality: RemoteScreenQuality, window: Boolean): Pair<Int, Int> = when (quality) {
+    RemoteScreenQuality.SAVER -> if (window) 1280 to 20 else 960 to 15
+    RemoteScreenQuality.BALANCED -> if (window) 1600 to 30 else 1280 to 30
+    else -> if (window) 2400 to 30 else 1920 to 30
+}
+
+/**
+ * The short tag beside the status line: what the picture is right now. Streams say size and frame rate,
+ * plain connections their frame rate, still pictures their width. Null where nothing can be chosen (RDP).
+ */
+internal fun remoteScreenQualityTag(resources: Resources, chosen: RemoteScreenQuality, protocol: RemoteDesktopProtocol,
+    custom: RemoteStreamCustom, window: Boolean): String? = chosen.effectiveFor(protocol).let { quality -> when (protocol) {
+    RemoteDesktopProtocol.RDP -> null
+    RemoteDesktopProtocol.STREAM -> remoteScreenQualityDetail(resources, quality, protocol, custom).replace(" fps", " 帧")
+    RemoteDesktopProtocol.SPACE -> "${resources.getString(remoteScreenQualityName(quality))} · ${spaceQuality(quality, window).second} 帧"
+    RemoteDesktopProtocol.SNAPSHOT -> "截图 · ${quality.snapshotQuality().maxDimension} 像素"
+    RemoteDesktopProtocol.VNC -> remoteScreenQualityDetail(resources, quality, protocol, custom).removePrefix("最多 ")
+} }
+
+/**
+ * The level a connection really runs at for [this] choice: a custom size and frame rate only shape a
+ * stream, elsewhere it runs as VNC's balanced level or the others' sharpest (vncFps, snapshotQuality, openSpace).
+ */
+internal fun RemoteScreenQuality.effectiveFor(protocol: RemoteDesktopProtocol): RemoteScreenQuality = when {
+    this != RemoteScreenQuality.CUSTOM || protocol == RemoteDesktopProtocol.STREAM -> this
+    protocol == RemoteDesktopProtocol.VNC -> RemoteScreenQuality.BALANCED
+    else -> RemoteScreenQuality.BEST
+}
+
+private fun remoteScreenQualityName(quality: RemoteScreenQuality) = when (quality) {
+    RemoteScreenQuality.SAVER -> R.string.workspace_screen_quality_saver
+    RemoteScreenQuality.BALANCED -> R.string.workspace_screen_quality_balanced
+    RemoteScreenQuality.BEST -> R.string.workspace_screen_quality_best
+    RemoteScreenQuality.CUSTOM -> R.string.workspace_screen_quality_custom
+}
+
+/** The picture-level tag: a small pill that opens [RemoteQualitySheet]. */
+@Composable
+internal fun RemoteQualityTag(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest).clickable(onClick = onClick)
+            .padding(start = 8.dp, end = 5.dp).height(22.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Icon(HugeIcons.ArrowDown01, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Picks the picture level: one card per level with what it means for this connection. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RemoteQualitySheet(protocol: RemoteDesktopProtocol, window: Boolean, quality: RemoteScreenQuality,
+    custom: RemoteStreamCustom, onPick: (RemoteScreenQuality) -> Unit, onDismiss: () -> Unit) {
+    val resources = LocalResources.current
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("画面", style = MaterialTheme.typography.titleMedium)
+            Text(when (protocol) {
+                RemoteDesktopProtocol.STREAM -> "高性能模式：越清晰越流畅，用的流量越多"
+                RemoteDesktopProtocol.SNAPSHOT -> "一张张截图：越清晰每张越大"
+                RemoteDesktopProtocol.SPACE -> if (window) "单个窗口：越清晰用的流量越多" else "越清晰用的流量越多"
+                else -> "帧数越高越跟手，用的流量越多"
+            }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp))
+            // Only a stream has its own size and frame rate to set.
+            RemoteScreenQuality.entries.filter { it != RemoteScreenQuality.CUSTOM || protocol == RemoteDesktopProtocol.STREAM }.forEach { level ->
+                val selected = level == quality.effectiveFor(protocol)
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable { onPick(level) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(resources.getString(remoteScreenQualityName(level)), style = MaterialTheme.typography.titleSmall)
+                        Text(remoteScreenQualityDetail(resources, level, protocol, custom, window), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (protocol == RemoteDesktopProtocol.STREAM) Text("≤${remoteStreamGigabytesPerHour(level, custom)} GB/时",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (selected) Icon(HugeIcons.Tick02, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                    else if (level == RemoteScreenQuality.CUSTOM) Icon(HugeIcons.ArrowRight01, null, Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
 
 internal fun remoteStreamCustomLabel(custom: RemoteStreamCustom) = "${remoteStreamHeightLabel(custom.height)} · ${custom.fps} fps"
 
@@ -154,7 +265,7 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
         title = { Text(stringResource(R.string.workspace_screen_details)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                DetailRow(stringResource(R.string.workspace_screen_details_mode), when (info.protocol) {
+                DetailRow(stringResource(R.string.workspace_screen_details_mode), if (info.window) "单个窗口" else when (info.protocol) {
                     RemoteDesktopProtocol.STREAM -> stringResource(R.string.workspace_screen_details_stream)
                     RemoteDesktopProtocol.RDP -> stringResource(R.string.workspace_screen_details_rdp)
                     RemoteDesktopProtocol.VNC -> "VNC"
@@ -168,7 +279,8 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                     info.protocol == RemoteDesktopProtocol.STREAM -> stringResource(R.string.workspace_screen_details_path_stream, info.streamAddress ?: "—")
                     else -> stringResource(R.string.workspace_screen_details_path_ssh)
                 })
-                if (info.protocol != RemoteDesktopProtocol.STREAM) {
+                // A single window streams on its own; the computer's high-performance switch has no say.
+                if (info.protocol != RemoteDesktopProtocol.STREAM && !info.window) {
                     DetailRow(stringResource(R.string.workspace_screen_stream), when {
                         info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
                             streamFallbackReason(resources, RemoteStreamFallbackReason.RELAY))

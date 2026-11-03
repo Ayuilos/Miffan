@@ -1,5 +1,12 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import androidx.compose.ui.draw.alpha
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.DashboardSquare01
+import me.rerere.hugeicons.stroke.ArrowLeft01
+import me.rerere.hugeicons.stroke.CarouselHorizontal
+import me.rerere.hugeicons.stroke.MinusSign
+import me.rerere.hugeicons.stroke.PlusSign
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -182,6 +189,13 @@ internal fun RemoteScreenScaffold(
     val platform by vm.platform.collectAsStateWithLifecycle()
     val canUseAutomatic by vm.canUseAutomatic.collectAsStateWithLifecycle()
     val firewallApplying by vm.firewallApplying.collectAsStateWithLifecycle()
+    val windowView by vm.windowView.collectAsStateWithLifecycle()
+    val windowTarget by vm.target.collectAsStateWithLifecycle()
+    val windowIssue by vm.windowIssue.collectAsStateWithLifecycle()
+    var windowPicker by remember { mutableStateOf(false) }
+    // Full screen draws the zoom and Mac desktop buttons beside the picture, with the other controls.
+    val fullscreenZoom = remember { RemoteScreenZoom() }
+    var macMenu by remember { mutableStateOf(false) }
     val hints = remember(context) { context.getSharedPreferences(SCREEN_HINTS, Context.MODE_PRIVATE) }
     // The pointer mode is a habit, so the last choice is kept for every screen and every visit.
     var trackpad by remember { mutableStateOf(hints.getBoolean(TRACKPAD_MODE, false)) }
@@ -194,6 +208,7 @@ internal fun RemoteScreenScaffold(
     var menu by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     var customDialog by remember { mutableStateOf(false) }
+    var qualitySheet by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var drawer by rememberSaveable { mutableStateOf(false) }
@@ -305,7 +320,7 @@ internal fun RemoteScreenScaffold(
                             else -> R.string.im_computer_disconnected
                         })
                         val mode = info?.takeIf { connected }?.let { connection ->
-                            remoteScreenModeLabel(resources, connection.protocol).let {
+                            remoteScreenModeLabel(resources, connection.protocol, connection.window).let {
                                 if (connection.relayMediaKbps != null) resources.getString(R.string.workspace_screen_mode_relay, it) else it
                             }
                         }
@@ -317,6 +332,7 @@ internal fun RemoteScreenScaffold(
                             partnerBusy -> stringResource(R.string.workspace_screen_status_partner, partnerName)
                             else -> null
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         RemoteScreenStatusLine(driving ?: if (mode != null) "$status · $mode · ${bytes.fileSizeToString()}"
                             else stringResource(R.string.im_computer_connection_usage, status, bytes.fileSizeToString()),
                             dot = when {
@@ -327,12 +343,17 @@ internal fun RemoteScreenScaffold(
                             },
                             breathing = state == RemoteScreenUiState.Connecting || (!userHolds && (partnerBusy || awaitingApproval)),
                             // Tapping explains the connection; a long press is the hidden diagnostics switch.
-                            modifier = Modifier.pointerInput(Unit) {
+                            modifier = Modifier.weight(1f, fill = false).pointerInput(Unit) {
                                 detectTapGestures(onTap = { if (vm.connectionInfo.value != null) details = true }, onLongPress = {
                                     perfOverlay = !perfOverlay
                                     hints.edit { putBoolean(PERF_OVERLAY, perfOverlay) }
                                 })
                             })
+                        // What the picture is now, a tap from changing it.
+                        info?.takeIf { connected }?.let { connection ->
+                            remoteScreenQualityTag(resources, quality, connection.protocol, custom, connection.window)
+                        }?.let { tag -> RemoteQualityTag(tag, onClick = { qualitySheet = true }) }
+                        }
                     }
                     }
                 },
@@ -343,28 +364,7 @@ internal fun RemoteScreenScaffold(
                             Icon(HugeIcons.MoreVertical, contentDescription = stringResource(R.string.workspace_screen_actions))
                         }
                         DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                            // Windows only ever streams, so its levels read as stream levels even before connecting.
-                            val protocol = info?.protocol ?: RemoteDesktopProtocol.STREAM.takeIf { platform == RemoteScreenPlatform.WINDOWS }
-                            if (protocol == RemoteDesktopProtocol.RDP) {
-                                // RDP paces and encodes on the computer; there is nothing to choose here.
-                                DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_quality_server)) },
-                                    enabled = false, onClick = {})
-                            } else RemoteScreenQuality.entries.forEach { level ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(remoteScreenQualityLabel(resources, level))
-                                            Text(remoteScreenQualityDetail(resources, level, protocol, custom), style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    },
-                                    trailingIcon = { if (quality == level) Text("✓") },
-                                    onClick = {
-                                        menu = false
-                                        if (level == RemoteScreenQuality.CUSTOM) customDialog = true else vm.setQuality(level)
-                                    })
-                            }
-                            HorizontalDivider()
+                            val protocol = info?.protocol
                             audio?.let { on ->
                                 DropdownMenuItem(text = { Text(stringResource(R.string.workspace_screen_audio)) },
                                     leadingIcon = { Icon(if (on) HugeIcons.VolumeHigh else HugeIcons.VolumeOff, null) },
@@ -407,7 +407,8 @@ internal fun RemoteScreenScaffold(
         val screen = @Composable { modifier: Modifier, shape: Shape ->
             Box(modifier.clip(shape).border(2.dp, ring, shape)) {
                 // The phone-side zoom buttons would cover much of a framed picture; landscape has the room.
-                RemoteScreenViewport(vm, trackpad, Modifier.fillMaxSize(), zoomControls = !framed || fullscreen,
+                RemoteScreenViewport(vm, trackpad, Modifier.fillMaxSize(), zoomControls = !framed && !fullscreen,
+                    zoom = fullscreenZoom.takeIf { fullscreen },
                     marker = marker?.takeIf { awaitingApproval && !userHolds },
                     blocked = partnerActive, onBlockedTap = ::armOrTakeOver,
                     coveredBottom = if (fullscreen && keyboard) keyboardCover else 0f) { failed ->
@@ -426,6 +427,9 @@ internal fun RemoteScreenScaffold(
                     )
                 }
                 RemoteWindowsStreamSetup(vm)
+                if (windowTarget != null) windowIssue?.let { issue ->
+                    RemoteWindowIssueContent(vm, issue, onPick = { windowPicker = true })
+                }
                 Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     RemoteStreamSuggestion(vm)
                     if (connected && stillPicture) RemoteScreenStillBadge(onRefresh = vm::refreshPicture)
@@ -452,6 +456,33 @@ internal fun RemoteScreenScaffold(
                         ScreenRoundIcon(HugeIcons.MinimizeScreen, stringResource(R.string.workspace_screen_fullscreen_exit))
                     }
                     avatar?.invoke(Modifier.size(36.dp), partnerActive || awaitingApproval)
+                    Spacer(Modifier.weight(1f))
+                    if (connected) {
+                        IconButton(onClick = { fullscreenZoom.zoomIn() }) {
+                            ScreenRoundIcon(HugeIcons.PlusSign, stringResource(R.string.workspace_screen_view_zoom_in))
+                        }
+                        IconButton(onClick = { fullscreenZoom.zoomOut() }, enabled = fullscreenZoom.canZoomOut,
+                            modifier = Modifier.alpha(if (fullscreenZoom.canZoomOut) 1f else 0.4f)) {
+                            ScreenRoundIcon(HugeIcons.MinusSign, stringResource(R.string.workspace_screen_view_zoom_out))
+                        }
+                        // What a four-finger swipe does on the Mac's trackpad, in a menu beside the button.
+                        if (macOS) Box {
+                            IconButton(onClick = { macMenu = true }) {
+                                ScreenRoundIcon(HugeIcons.CarouselHorizontal, stringResource(R.string.workspace_screen_mac_controls), active = macMenu)
+                            }
+                            DropdownMenu(macMenu, onDismissRequest = { macMenu = false }) {
+                                listOf(
+                                    Triple(HugeIcons.ArrowLeft01, R.string.workspace_screen_desktop_left, MacShortcut.DESKTOP_LEFT),
+                                    Triple(HugeIcons.DashboardSquare01, R.string.workspace_screen_help_mission_control, MacShortcut.MISSION_CONTROL),
+                                    Triple(HugeIcons.Copy01, R.string.workspace_screen_help_app_windows, MacShortcut.APP_WINDOWS),
+                                    Triple(HugeIcons.ArrowRight01, R.string.workspace_screen_desktop_right, MacShortcut.DESKTOP_RIGHT),
+                                ).forEach { (icon, label, shortcut) ->
+                                    DropdownMenuItem(text = { Text(stringResource(label)) }, leadingIcon = { Icon(icon, null) },
+                                        onClick = { vm.macShortcut(shortcut) })
+                                }
+                            }
+                        }
+                    }
                 }
                 // A landscape input method takes most of the height. Shrinking the desktop above it would leave a
                 // thumbnail, so the keyboard covers the picture's lower part and the picture moves up instead.
@@ -475,6 +506,18 @@ internal fun RemoteScreenScaffold(
                     IconButton(onClick = onKeyboard, enabled = connected) {
                         ScreenRoundIcon(HugeIcons.Keyboard, stringResource(R.string.workspace_screen_keyboard), active = keyboard)
                     }
+                    audio?.let { on ->
+                        IconButton(onClick = { vm.setAudio(!on) }) {
+                            ScreenRoundIcon(if (on) HugeIcons.VolumeHigh else HugeIcons.VolumeOff, stringResource(R.string.workspace_screen_audio))
+                        }
+                    }
+                    if (windowView) IconButton(onClick = { windowPicker = true }) {
+                        Surface(color = if (windowTarget != null) MaterialTheme.colorScheme.primary else Color(0x8C2A2E35),
+                            contentColor = if (windowTarget != null) MaterialTheme.colorScheme.onPrimary else Color.White,
+                            shape = CircleShape, modifier = Modifier.size(40.dp)) {
+                            Box(contentAlignment = Alignment.Center) { RemoteWindowSideIcon() }
+                        }
+                    }
                     if (framed) IconButton(onClick = { drawer = true }) {
                         ScreenRoundIcon(HugeIcons.Message01, stringResource(R.string.workspace_screen_open_chat), active = drawer)
                     }
@@ -497,15 +540,29 @@ internal fun RemoteScreenScaffold(
                 }
             }
         } else Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            if (framed) screen(Modifier.padding(horizontal = 12.dp).fillMaxWidth().aspectRatio(ratio.coerceIn(1f, 2.4f)), RoundedCornerShape(18.dp))
+            if (windowView) RemoteWindowBar(vm, onPick = { windowPicker = true }, onFit = { vm.toggleFit(PORTRAIT_FIT_ASPECT) },
+                Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp))
+            // A window reshaped for the phone is taller than wide; a desktop never is.
+            val minRatio = if (windowTarget != null) 0.5f else 1f
+            if (framed) screen(Modifier.padding(horizontal = 12.dp).fillMaxWidth().aspectRatio(ratio.coerceIn(minRatio, 2.4f)), RoundedCornerShape(18.dp))
             else screen(Modifier.weight(1f).fillMaxWidth(), RectangleShape)
-            RemoteScreenDock(trackpad, onTrackpad = { trackpad = it }, keyboard, onKeyboard = onKeyboard, enabled = connected)
+            RemoteScreenDock(trackpad, onTrackpad = { trackpad = it }, keyboard, onKeyboard = onKeyboard, enabled = connected,
+                audio = audio, onAudio = vm::setAudio)
             if (keyboard && connected) RemoteScreenKeyboard(vm, platform)
             bottom()
         }
     }
     info?.takeIf { details }?.let { RemoteConnectionDetailsDialog(it, bytes, onDismiss = { details = false }) }
+    if (windowPicker) RemoteWindowPicker(vm, onDismiss = { windowPicker = false })
     if (help) RemoteScreenGestureHelp(trackpad = trackpad, macOS = macOS, onDismiss = { help = false })
+    info?.takeIf { qualitySheet }?.let { connection ->
+        RemoteQualitySheet(connection.protocol, connection.window, quality, custom, onDismiss = { qualitySheet = false }, onPick = { level ->
+            qualitySheet = false
+            // The level already in use changes nothing, so a stream's custom choice survives a look at one window.
+            if (level == quality.effectiveFor(connection.protocol)) Unit
+            else if (level == RemoteScreenQuality.CUSTOM) customDialog = true else vm.setQuality(level)
+        })
+    }
     if (customDialog) RemoteStreamCustomDialog(custom, onConfirm = { customDialog = false; vm.setCustom(it) },
         onDismiss = { customDialog = false })
 }
@@ -518,6 +575,8 @@ private val STREAM_SETTINGS_FIXES = setOf(
 )
 
 private const val PERF_OVERLAY = "perf_overlay"
+/** The shape "fit to phone" gives a window in portrait: about the picture card's, width over height. */
+private const val PORTRAIT_FIT_ASPECT = 0.76f
 private const val TRACKPAD_MODE = "trackpad_mode"
 private val CONNECTED_DOT = Color(0xFF2E9E5B)
 private val FULLSCREEN_GROUND = Color(0xFF0B0C0E)
@@ -576,7 +635,8 @@ private fun DockChoice(icon: ImageVector, label: String, selected: Boolean, enab
 
 /** How touches reach the computer, and the keyboard: right under the picture, where the thumb already is. */
 @Composable
-private fun RemoteScreenDock(trackpad: Boolean, onTrackpad: (Boolean) -> Unit, keyboard: Boolean, onKeyboard: () -> Unit, enabled: Boolean) {
+private fun RemoteScreenDock(trackpad: Boolean, onTrackpad: (Boolean) -> Unit, keyboard: Boolean, onKeyboard: () -> Unit, enabled: Boolean,
+    audio: Boolean? = null, onAudio: (Boolean) -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f },
         verticalAlignment = Alignment.CenterVertically) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = CircleShape) {
@@ -586,6 +646,13 @@ private fun RemoteScreenDock(trackpad: Boolean, onTrackpad: (Boolean) -> Unit, k
             }
         }
         Spacer(Modifier.weight(1f))
+        // Sound (high-performance mode only): its state shows here, not only in the menu.
+        audio?.let { on ->
+            FilledTonalIconToggleButton(checked = on, onCheckedChange = onAudio, enabled = enabled) {
+                Icon(if (on) HugeIcons.VolumeHigh else HugeIcons.VolumeOff, stringResource(R.string.workspace_screen_audio))
+            }
+            Spacer(Modifier.width(8.dp))
+        }
         FilledTonalIconToggleButton(checked = keyboard, onCheckedChange = { onKeyboard() }, enabled = enabled) {
             Icon(HugeIcons.Keyboard, stringResource(R.string.workspace_screen_keyboard))
         }

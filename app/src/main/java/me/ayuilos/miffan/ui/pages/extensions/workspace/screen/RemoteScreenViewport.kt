@@ -27,6 +27,7 @@ internal fun RemoteScreenViewport(
     blocked: Boolean = false,
     onBlockedTap: () -> Unit = {},
     coveredBottom: Float = 0f,
+    zoom: RemoteScreenZoom? = null,
     failure: @Composable (RemoteScreenUiState) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -43,7 +44,7 @@ internal fun RemoteScreenViewport(
             RemoteScreenCanvas(pixels?.width ?: connected.width, pixels?.height ?: connected.height, pixels, video,
                 frames, cursor, trackpad, platform == RemoteScreenPlatform.MACOS, vm, Modifier.fillMaxSize(),
                 zoomControls = zoomControls, marker = marker, blocked = blocked, onBlockedTap = onBlockedTap,
-                coveredBottom = coveredBottom)
+                coveredBottom = coveredBottom, zoom = zoom)
         }
         when (val current = state) {
             RemoteScreenUiState.Connecting -> CircularProgressIndicator()
