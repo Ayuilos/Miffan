@@ -47,7 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.TextToastAction
 import me.ayuilos.miffan.BuildConfig
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.ui.components.ui.MiffanMascot
+import me.ayuilos.miffan.ui.components.ui.AppCharacterMascot
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalToaster
@@ -94,7 +94,7 @@ private fun UpdateDetails(vm: UpdateVM, info: UpdateInfo, padding: PaddingValues
         item("hero") {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MiffanMascot(MiffanMascotState.UpdateAvailable, Modifier.size(112.dp))
+                AppCharacterMascot(MiffanMascotState.UpdateAvailable, Modifier.size(112.dp))
                 Text(info.version, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
                 Text(stringResource(R.string.update_page_subtitle), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -279,7 +279,7 @@ private fun UpToDate(vm: UpdateVM, presentation: UpdatePresentation, padding: Pa
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
     ) {
-        MiffanMascot(MiffanMascotState.Happy, Modifier.size(112.dp))
+        AppCharacterMascot(MiffanMascotState.Happy, Modifier.size(112.dp))
         val skipped = presentation.skippedVersion
         if (skipped != null) {
             // Skipped is not the same as up to date: say so, and offer the way back.

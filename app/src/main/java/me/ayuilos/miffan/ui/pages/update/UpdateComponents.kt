@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.text.format.DateUtils
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -51,10 +52,13 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.Screen
-import me.ayuilos.miffan.ui.components.ui.MiffanMascot
+import me.ayuilos.miffan.ui.components.ui.AppCharacterMascot
 import me.ayuilos.miffan.ui.components.ui.MiffanMascotState
 import me.ayuilos.miffan.ui.components.ui.MiffanPresentation
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.ayuilos.miffan.ui.pages.setting.rememberLauncherIconPreview
+import me.ayuilos.miffan.utils.LauncherIcon
+import me.ayuilos.miffan.utils.LauncherIconManager
 import me.ayuilos.miffan.utils.ReleaseNoteItem
 import me.ayuilos.miffan.utils.ReleaseNotes
 import me.ayuilos.miffan.utils.UpdateDownloadState
@@ -130,7 +134,12 @@ private fun InstallPermissionSheet(onAllow: () -> Unit, onDismiss: () -> Unit) {
             Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(16.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    MiffanMascot(MiffanMascotState.Idle, Modifier.size(36.dp), presentation = MiffanPresentation.Avatar)
+                    // System settings list the app under its launcher icon, not the in-app role theme.
+                    val context = LocalContext.current
+                    val launcherIcon = remember(context) {
+                        runCatching { LauncherIconManager(context).selectedIcon() }.getOrNull() ?: LauncherIcon.MIFFAN
+                    }
+                    rememberLauncherIconPreview(launcherIcon)?.let { Image(it, null, Modifier.size(36.dp)) }
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleSmall)
                         Text(stringResource(R.string.update_permission_switch), style = MaterialTheme.typography.bodySmall,
@@ -183,7 +192,7 @@ fun UpdateCard(modifier: Modifier = Modifier, vm: UpdateVM = koinViewModel()) {
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MiffanMascot(MiffanMascotState.UpdateAvailable, Modifier.size(48.dp), presentation = MiffanPresentation.Avatar)
+                AppCharacterMascot(MiffanMascotState.UpdateAvailable, Modifier.size(48.dp), presentation = MiffanPresentation.Avatar)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(supporting, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -246,7 +255,7 @@ fun UpdateWhatsNewCard(modifier: Modifier = Modifier, vm: UpdateVM = koinViewMod
     ) {
         Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MiffanMascot(MiffanMascotState.Happy, Modifier.size(44.dp), presentation = MiffanPresentation.Avatar)
+            AppCharacterMascot(MiffanMascotState.Happy, Modifier.size(44.dp), presentation = MiffanPresentation.Avatar)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(stringResource(R.string.update_whats_new_card_title, info.version), style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.update_whats_new_card_text), style = MaterialTheme.typography.bodySmall,
