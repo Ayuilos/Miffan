@@ -38,9 +38,9 @@ class AssistantVM(
         }
     }
 
-    fun removeAssistant(assistant: Assistant) {
+    fun removeAssistant(assistant: Assistant, withSpace: Boolean = false) {
         viewModelScope.launch {
-            assistantRemover.remove(assistant)
+            assistantRemover.remove(assistant, withSpace)
         }
     }
 

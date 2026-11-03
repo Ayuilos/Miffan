@@ -265,7 +265,7 @@ fun PartnerComputerPage(assistantId: Uuid, vm: ImPartnerVM = koinViewModel(key =
         confirmButton = {
             TextButton(onClick = {
                 confirmDelete = false
-                perform { spaces.delete(bound.workspaceId); snapshots.clear(bound.workspaceId); nav.popBackStack() }
+                perform { spaces.delete(bound.workspaceId); nav.popBackStack() }
             }) { Text(stringResource(R.string.im_space_delete), color = MaterialTheme.colorScheme.error) }
         },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.common_cancel)) } })

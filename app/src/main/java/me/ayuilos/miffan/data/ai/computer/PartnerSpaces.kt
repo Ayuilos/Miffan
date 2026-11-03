@@ -122,6 +122,7 @@ class PartnerSpaces(
     private val workspaces: WorkspaceRepository,
     private val scope: CoroutineScope,
     private val fileLog: SpaceFileLog,
+    private val snapshots: ComputerSnapshots? = null,
 ) {
     private val lastChecks = ConcurrentHashMap<String, CuaSpaceNetcheck>()
     private val lastPowers = ConcurrentHashMap<String, SpacePower>()
@@ -152,9 +153,7 @@ class PartnerSpaces(
         val name = "miffan-" + Uuid.random().toHexString().take(8)
         requireSuccess(parse<SpaceResult>(workspaces.runSpaceHelper(hostId, listOf("create", name) + tier.args(),
             timeoutMillis = CREATE_TIMEOUT_MILLIS)))
-        val label = generateSequence(1) { it + 1 }
-            .map { if (it == 1) "${assistant.name} · ${host.name}" else "${assistant.name} · ${host.name} $it" }
-            .first { !workspaces.isNameTaken(it, null) }
+        val label = spaceLabel(assistant.name, host.name, null)
         val workspace = workspaces.createSpaceWorkspace(label, hostId, name, tier.cpus, tier.memoryMb,
             handoffFolder(assistant.name, takenHandoffs(hostId)))
         val workspaceId = Uuid.parse(workspace.id)
@@ -166,6 +165,31 @@ class PartnerSpaces(
         }
         return CreatedSpace(workspace.id, runCatching { netcheck(workspace.id) }.getOrNull())
     }
+
+    /**
+     * Gives an idle Space (no partner works in it any more) to [assistantId], named after it; its files stay.
+     * Like [create], the partner operates it without asking first.
+     */
+    suspend fun assign(workspaceId: String, assistantId: Uuid) {
+        val workspace = space(workspaceId)
+        val assistant = requireNotNull(settingsStore.settingsFlow.value.getAssistantById(assistantId)) { "Partner not found" }
+        workspaces.getHostById(requireNotNull(workspace.remoteHostId))?.let { host ->
+            workspaces.rename(workspaceId, spaceLabel(assistant.name, host.name, workspaceId))
+        }
+        val id = Uuid.parse(workspaceId)
+        settingsStore.update { settings ->
+            settings.copy(assistants = settings.assistants.map {
+                if (it.id != assistantId) it
+                else it.withWorkspaceBinding(id).copy(computerUse = ComputerUseMode.AUTO)
+            })
+        }
+    }
+
+    /** "Partner · host", numbered when another workspace (other than [ownId]) already has that name. */
+    private suspend fun spaceLabel(partnerName: String, hostName: String, ownId: String?): String =
+        generateSequence(1) { it + 1 }
+            .map { if (it == 1) "$partnerName · $hostName" else "$partnerName · $hostName $it" }
+            .first { !workspaces.isNameTaken(it, ownId) }
 
     /** Checks the Space's network; offline on its own, the helper moves it onto the host's network share. */
     suspend fun netcheck(workspaceId: String): CuaSpaceNetcheck {
@@ -341,6 +365,7 @@ class PartnerSpaces(
         if (result.error != null && result.error != "not_found") throw CuaSpaceException(result.error, result.detail)
         workspaces.delete(workspaceId)
         fileLog.clear(workspaceId)
+        snapshots?.clear(workspaceId)
         lastPowers.remove(workspaceId)
         lastUsages.remove(workspaceId)
         lastChecks.remove(workspaceId)

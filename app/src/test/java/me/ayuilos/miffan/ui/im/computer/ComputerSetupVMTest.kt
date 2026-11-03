@@ -89,6 +89,9 @@ class ComputerSetupVMTest {
         val statuses = mockk<ComputerStatusStore>(relaxed = true)
         val control = RemoteComputerControl()
         val relaySetup = mockk<me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup>(relaxed = true)
+        val spaceSetup = mockk<me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup>(relaxed = true).also {
+            every { it.jobs } returns MutableStateFlow(emptyMap())
+        }
         val probe = RemoteMachineProbe(
             helper = 5, os = "linux", arch = "x86_64",
             session = RemoteMachineProbe.Session(present = true, type = "wayland"),
@@ -122,9 +125,7 @@ class ComputerSetupVMTest {
 
     private fun vm(f: Fixture, args: ComputerSetupArgs = ComputerSetupArgs()): ComputerSetupVM =
         ComputerSetupVM(args, f.workspaces, f.screens, f.registry, f.store, f.computers, f.updates, f.statuses, f.control,
-            mockk(relaxed = true), mockk<me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup>(relaxed = true).also {
-                every { it.jobs } returns kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
-            }, f.relaySetup).also {
+            mockk(relaxed = true), f.spaceSetup, f.relaySetup).also {
             viewModels.put(Uuid.random().toString(), it)
         }
 
@@ -151,6 +152,37 @@ class ComputerSetupVMTest {
         assertEquals("server.internal", vm.state.value.target?.host)
         assertFalse(vm.back())
         coVerify(exactly = 0) { f.workspaces.testHost(any()) }
+    }
+
+    private fun miniBox(hostId: String) = WorkspaceEntity(
+        id = Uuid.random().toString(), name = "Box on $hostId", root = "space:$hostId", createdAt = 1, updatedAt = 1,
+        kind = WorkspaceEntity.KIND_SPACE, remoteHostId = hostId, spaceName = "miffan-$hostId",
+    )
+
+    @Test
+    fun `mini boxes the partners leave behind are kept idle unless the user deletes them`() = runTest {
+        val f = Fixture()
+        val elsewhere = miniBox("other")
+        val here = miniBox("host")
+        val far = Assistant(workspaceId = Uuid.parse(elsewhere.id))
+        val near = Assistant(workspaceId = Uuid.parse(here.id))
+        f.workspaceList.value = listOf(elsewhere, here)
+        f.settings.value = Settings(assistants = listOf(far, near))
+        val vm = vm(f, ComputerSetupArgs(hostId = "host"))
+        runCurrent()
+        vm.share(setOf(far.id, near.id))
+        runCurrent()
+        // New mini boxes replace both; this desktop only the one on another computer.
+        assertEquals(setOf(far.id, near.id), vm.oldSpaces.value.map { it.partnerId }.toSet())
+        vm.chooseSpace(false)
+        runCurrent()
+        assertEquals(listOf(far.id), vm.oldSpaces.value.map { it.partnerId })
+
+        vm.retireOldSpace(far.id, true)
+        vm.continueHow()
+        runCurrent()
+        coVerify { f.computers.bind("host", setOf(far.id, near.id)) }
+        verify { f.spaceSetup.retire(match { it.toList() == listOf(elsewhere.id) }) }
     }
 
     @Test
