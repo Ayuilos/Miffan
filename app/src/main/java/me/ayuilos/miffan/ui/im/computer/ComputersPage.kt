@@ -385,11 +385,12 @@ fun ComputerDetailPage(hostId: String) {
             }
             item("boxes") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
-                    boxes.forEach { (workspace, partner) ->
+                    // Lines only between the boxes: the memory bar under the last one brings its own.
+                    boxes.forEachIndexed { index, (workspace, partner) ->
+                        if (index > 0) HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) {
                             if (partner != null) nav.navigate(Screen.PartnerComputer(partner.id.toString())) else idleBox = workspace.id
                         }
-                        HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                     if (boxWorkspaces.isNotEmpty()) {
                         MiniBoxMemoryBar(MiniBoxMemory(
