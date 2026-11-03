@@ -11,7 +11,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runInterruptible
@@ -120,6 +124,14 @@ class WorkspaceRepository(
             relayAccess.client.checkLiveSessions()
         }
     }
+    private val directRelayHosts = MutableSharedFlow<String>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /**
+     * Ids of computers set up for a relay that just connected directly (the home network): the time to
+     * maintain their connector, which a session through the relay could not survive.
+     */
+    val directConnectionsWithRelay: SharedFlow<String> = directRelayHosts.asSharedFlow()
+
     private val terminalLock = Any()
     private val activeTerminals = mutableMapOf<String, MutableSet<RemoteTerminalConnection>>()
     private val activeLeased = mutableMapOf<String, MutableSet<LeasedRemote<*>>>()
@@ -250,7 +262,10 @@ class WorkspaceRepository(
         try {
             currentCoroutineContext().ensureActive()
             when (winner) {
-                RouteWinner.DIRECT -> directAddress?.let { recordSuccessfulAddress(host, it) }
+                RouteWinner.DIRECT -> {
+                    directAddress?.let { recordSuccessfulAddress(host, it) }
+                    if (host.relay != null) directRelayHosts.tryEmit(host.id)
+                }
                 RouteWinner.RELAY -> recordRelaySuccess(host)
             }
             onOpened(session)

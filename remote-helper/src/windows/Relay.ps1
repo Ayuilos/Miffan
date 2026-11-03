@@ -9,8 +9,8 @@
 # The release binary is pinned by version and SHA-256, taken from the release's SHA256SUMS when
 # relay-connector-v$RelayConnectorVersion was published.
 
-$script:RelayConnectorVersion = '1.1.0'
-$script:RelayConnectorSha256 = @{ 'windows-amd64' = '9cc8dcb27185ff5d15cefa701bbbd7668f77850fc1280249c84d955098143772' }
+$script:RelayConnectorVersion = '1.2.0'
+$script:RelayConnectorSha256 = @{ 'windows-amd64' = '328a83d4ac788a405a236eee784c3e9d811f369cb5aa15aed4b28f9e47e3eb98' }
 $script:RelayReleaseUrl = 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v' + $script:RelayConnectorVersion
 # Extra download locations tried after the GitHub release, same file names. None yet.
 $script:RelayMirrors = @()
@@ -252,6 +252,22 @@ function Invoke-RelayInstall([string]$Json) {
     return Get-RelayStatus
 }
 
+# Brings an installed connector to the pinned version and starts its task again; the relay, the computer's
+# identity and the paired devices stay. A connector of the pinned version is left alone.
+function Invoke-RelayUpgrade {
+    Assert-RelayInstalled
+    $platform = Get-RelayPlatform
+    if (-not $platform) { Stop-Relay 'unsupported_platform' 'no connector build for this processor' }
+    if (Install-RelayBinary $platform) {
+        Limit-RelayLog
+        if (Get-RelayTask) {
+            try { Start-ScheduledTask -TaskName $script:RelayTaskName -ErrorAction Stop }
+            catch { Stop-Relay 'service_failed' 'the scheduled task could not be started' }
+        }
+    }
+    return Get-RelayStatus
+}
+
 # stdin {"device":"<b64u SPKI>","name":"..."}
 function Invoke-RelayPair([string]$Json) {
     Assert-RelayInstalled
@@ -316,9 +332,10 @@ function Invoke-Relay([string]$Action, [string]$Extra) {
     switch -CaseSensitive ($Action) {
         'status' { return Get-RelayStatus }
         'install' { return Invoke-RelayInstall ([Console]::In.ReadToEnd()) }
+        'upgrade' { return Invoke-RelayUpgrade }
         'pair' { return Invoke-RelayPair ([Console]::In.ReadToEnd()) }
         'unpair' { return Invoke-RelayUnpair ([Console]::In.ReadToEnd()) }
         'uninstall' { return Invoke-RelayUninstall ([Console]::In.ReadToEnd()) }
-        default { Stop-Relay 'usage' 'Usage: relay status|install|pair|unpair|uninstall' }
+        default { Stop-Relay 'usage' 'Usage: relay status|install|upgrade|pair|unpair|uninstall' }
     }
 }

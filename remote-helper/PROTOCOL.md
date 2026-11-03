@@ -326,6 +326,7 @@ stdin，**原样**交给 connector（由它解析并校验），不进入命令�
 |---|---|---|---|
 | `relay status` | 无 | 未安装：`{"installed":false}`。否则 connector `status` 的 JSON 加 `installed:true,service:"running\|stopped\|missing",pinnedVersion,linger` | `linger` 仅 Linux 为布尔（systemd 用户服务能否在未登录时运行），其他平台 null。connector 无法回答（例如尚未 init）时没有 connector 字段，改带 `error:<reason>` |
 | `relay install` | `{"relay":"https://…","accessToken":"…"?}` | `relay status` 的结果 | 下载本平台二进制 → 校验 SHA-256 → 安装 → `init` → 安装并启动常驻服务；已安装的版本等于内置版本时跳过下载 |
+| `relay upgrade` | 无 | `relay status` 的结果 | 只把已安装的 connector 换成内置版本：下载 → 校验 SHA-256 → 替换 → 让服务管理器重启服务（macOS `launchctl kickstart -k`，Linux `systemctl --user restart`，Windows 计划任务）；中转、电脑身份和已配对设备不变。版本已等于内置版本时什么都不做；未安装时 `not_installed` |
 | `relay pair` | `{"device":"<b64u SPKI>","name":"…"}` | connector `pair` 的结果：`{success,hostId,relay,deviceId}` | 要求已安装；失败原样返回 connector 的失败 JSON |
 | `relay unpair` | `{"deviceId":"<26 位 a-z2-7>"}` | connector `unpair` 的结果：`{success,removed,devices:[{id,name,addedAt}]}` | id 在 helper 里先按正则校验，不合法时 `bad_input`，不会调用 connector |
 | `relay uninstall` | 可选 `{"forgetIdentity":true}` | `{"success":true,"identityKept":<bool>}` | 停止并移除服务、二进制、日志、`state.json` 与锁文件。默认**保留** `host.key` 和 `config.json`（同一个 hostId、已配对手机不受影响）；`forgetIdentity` 时删除整个数据目录 |
