@@ -36,6 +36,9 @@ import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.im.thread.threadAssistantName
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Cube
+import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.UserAdd01
 import org.koin.compose.koinInject
 import java.util.concurrent.ConcurrentHashMap
 
@@ -122,15 +125,17 @@ private suspend fun <T> attempt(block: suspend () -> T): T? = try {
     null
 }
 
-/** One mini box: its last screen with the partner's avatar on it, whether it sleeps, its size and what it uses. */
+/**
+ * One mini box: its last screen with the partner's avatar on it, whether it sleeps, its size and what it uses.
+ * Without a [partner] it is idle: nobody works in it, yet it still holds its share of the computer's memory.
+ */
 @Composable
-internal fun MiniBoxRow(partner: Assistant, workspace: WorkspaceEntity, reading: MiniBoxReading?, onClick: () -> Unit) {
+internal fun MiniBoxRow(partner: Assistant?, workspace: WorkspaceEntity, reading: MiniBoxReading?, onClick: () -> Unit) {
     val snapshots: ComputerSnapshots = koinInject()
     val snapshot by remember(snapshots, workspace.id) { snapshots.latest(workspace.id) }
         .collectAsStateWithLifecycle(initialValue = remember(workspace.id) { snapshots.find(workspace.id) })
     val colors = MaterialTheme.colorScheme
     val power = reading?.power
-    val name = threadAssistantName(partner)
     Surface(onClick = onClick, color = Color.Transparent) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -141,13 +146,15 @@ internal fun MiniBoxRow(partner: Assistant, workspace: WorkspaceEntity, reading:
                         AsyncImage(shot.url, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
                             colorFilter = if (power == SpacePower.ASLEEP) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0.3f) }) else null)
                         if (power == SpacePower.ASLEEP) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
-                    } else AssistantAvatar(partner.name, partner.avatar, Modifier.size(28.dp))
+                    } else if (partner != null) AssistantAvatar(partner.name, partner.avatar, Modifier.size(28.dp))
+                    else Icon(HugeIcons.Cube, null, Modifier.size(22.dp), tint = colors.onSurfaceVariant)
                 }
-                if (snapshot != null) AssistantAvatar(partner.name, partner.avatar,
+                if (snapshot != null && partner != null) AssistantAvatar(partner.name, partner.avatar,
                     Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 6.dp).size(22.dp).border(2.dp, colors.surfaceContainerLow, CircleShape))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(stringResource(R.string.im_computer_detail_box_name, name), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (partner != null) Text(stringResource(R.string.im_computer_detail_box_name, threadAssistantName(partner)), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                else Text(stringResource(R.string.im_computer_detail_box_idle), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val status = miniBoxStatus(workspace, reading)
                 if (status.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     when (power) {
@@ -201,6 +208,51 @@ internal fun MiniBoxMemoryBar(memory: MiniBoxMemory) {
                 if (rest > 0f) Box(Modifier.weight(rest).fillMaxHeight().background(colors.tertiary.copy(alpha = 0.35f)))
                 val free = 1f - used - rest
                 if (free > 0.0001f) Spacer(Modifier.weight(free))
+            }
+        }
+    }
+}
+
+/** What can be done with an idle mini box: give it to a partner with its files, or delete it to free the computer's memory. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun IdleMiniBoxSheet(workspace: WorkspaceEntity, computerName: String, enabled: Boolean,
+                              onAssign: () -> Unit, onDelete: () -> Unit, onDismiss: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val memory = spaceMemoryText(workspace.spaceMemoryMb ?: SpaceTier.DEFAULT.memoryMb)
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = colors.surfaceContainerLow) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Surface(color = colors.surfaceContainerHighest, contentColor = colors.onSurfaceVariant, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.size(44.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(HugeIcons.Cube, null) }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.im_computer_detail_box_idle), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.im_computer_idle_box_help, computerName, memory),
+                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            IdleBoxAction(HugeIcons.UserAdd01, stringResource(R.string.im_computer_idle_box_assign),
+                stringResource(R.string.im_computer_idle_box_assign_detail), colors.onSurface, enabled, onAssign)
+            IdleBoxAction(HugeIcons.Delete01, stringResource(R.string.im_computer_idle_box_delete),
+                stringResource(R.string.im_computer_idle_box_delete_detail, memory), colors.error, enabled, onDelete)
+        }
+    }
+}
+
+@Composable
+private fun IdleBoxAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, detail: String, tint: Color,
+                          enabled: Boolean, onClick: () -> Unit) {
+    Surface(onClick = onClick, enabled = enabled, color = Color.Transparent) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 24.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Icon(icon, null, tint = tint)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, color = tint)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

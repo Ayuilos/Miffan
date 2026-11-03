@@ -30,6 +30,8 @@ data class SpaceSetupJob(
     val network: Map<String, CuaSpaceNetcheck?> = emptyMap(),
     val error: Throwable? = null,
     val tier: SpaceTier = SpaceTier.DEFAULT,
+    /** Partner → the Space it had before, deleted once its new one is made. */
+    val retire: Map<Uuid, String> = emptyMap(),
 ) {
     enum class Stage { CREATING, CHECKING_NETWORK, DONE, FAILED }
 
@@ -54,15 +56,19 @@ class PartnerSpaceSetup(
     val jobs: StateFlow<Map<String, SpaceSetupJob>> = _jobs.asStateFlow()
     private val running = mutableMapOf<String, Job>()
 
-    /** Starts creating a Space for each partner on [hostId]; a run already going there is kept. */
+    /**
+     * Starts creating a Space for each partner on [hostId]; a run already going there is kept. A partner in
+     * [retire] loses the Space it had (named there) once its new one is made; without that, the old one stays idle.
+     */
     @Synchronized
-    fun start(hostId: String, partnerIds: List<Uuid>, tier: SpaceTier = SpaceTier.DEFAULT) {
+    fun start(hostId: String, partnerIds: List<Uuid>, tier: SpaceTier = SpaceTier.DEFAULT, retire: Map<Uuid, String> = emptyMap()) {
         if (running[hostId]?.isActive == true) return
-        _jobs.update { it + (hostId to SpaceSetupJob(hostId, partnerIds, tier = tier)) }
+        _jobs.update { it + (hostId to SpaceSetupJob(hostId, partnerIds, tier = tier, retire = retire)) }
         running[hostId] = appScope.launch {
             try {
                 partnerIds.forEach { partnerId ->
                     val created = spaces.create(hostId, partnerId, tier)
+                    retire[partnerId]?.let { deleteQuietly(it) }
                     update(hostId) {
                         it.copy(created = it.created + (partnerId to created.workspaceId),
                             network = it.network + (created.workspaceId to created.netcheck))
@@ -89,6 +95,22 @@ class PartnerSpaceSetup(
                 runCatching { spaces.netcheck(workspaceId) }.getOrNull()
             }
             update(hostId) { it.copy(network = results, stage = SpaceSetupJob.Stage.DONE) }
+        }
+    }
+
+    /** Deletes Spaces nobody works in any more, in the background; one whose host is out of reach stays, idle. */
+    fun retire(workspaceIds: Collection<String>) {
+        if (workspaceIds.isEmpty()) return
+        appScope.launch { workspaceIds.forEach { deleteQuietly(it) } }
+    }
+
+    private suspend fun deleteQuietly(workspaceId: String) {
+        try {
+            spaces.delete(workspaceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Left idle: the computer's page shows it and can delete it later.
         }
     }
 

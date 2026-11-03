@@ -73,6 +73,7 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     val snackbar = remember { SnackbarHostState() }
     var deleteConfirm by rememberSaveable { mutableStateOf(false) }
     var deletePartnerConfirm by rememberSaveable { mutableStateOf(false) }
+    var deleteSpaceToo by rememberSaveable { mutableStateOf(true) }
     var showContacts by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val abilities = rememberAbilityGate()
@@ -227,10 +228,15 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
             TextButton(enabled = !busy, onClick = { perform(deleted) { vm.deleteChats(); deleteConfirm = false } }) { Text(stringResource(R.string.im_p5_delete_chats), color = MaterialTheme.colorScheme.error) }
         }, dismissButton = { TextButton(onClick = { deleteConfirm = false }) { Text(stringResource(R.string.chat_page_cancel)) } })
     if (deletePartnerConfirm) AlertDialog(onDismissRequest = { deletePartnerConfirm = false }, title = { Text(stringResource(R.string.im_partner_delete)) },
-        text = { Text(stringResource(R.string.im_partner_delete_confirm)) }, confirmButton = {
+        text = {
+            Column {
+                Text(stringResource(R.string.im_partner_delete_confirm))
+                computer?.takeIf { it.space }?.let { me.ayuilos.miffan.ui.im.computer.DeleteSpaceOption(it.name, deleteSpaceToo) { on -> deleteSpaceToo = on } }
+            }
+        }, confirmButton = {
             TextButton(enabled = !busy, onClick = {
                 perform {
-                    vm.deletePartner()
+                    vm.deletePartner(withSpace = computer?.space == true && deleteSpaceToo)
                     deletePartnerConfirm = false
                     // Its thread and pages no longer have anything to show.
                     nav.removeAll(Screen.Home) { screen ->

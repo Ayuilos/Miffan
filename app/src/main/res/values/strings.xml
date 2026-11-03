@@ -2322,6 +2322,10 @@
   <string name="workspace_screen_relay_media_disabled">This relay doesn\'t offer screen viewing. Your partner can still use the computer; to see the screen, connect from the same network or use your own relay.</string>
   <string name="workspace_screen_relay_quota">This computer has used up its screen time on the relay for now. Your partner can still use the computer.</string>
   <string name="workspace_screen_relay_busy">The free relay is busy and has paused screen viewing for today. Your partner can still use the computer; you can also set up your own relay.</string>
+  <string name="workspace_screen_relay_idle">The picture stayed still for a while, so the relay closed the screen to save this computer\'s relay time. Try again to keep watching.</string>
+  <string name="workspace_screen_relay_rate_limited">The relay cut the screen off for sending too much too fast. Try again, or choose a lower quality.</string>
+  <string name="workspace_screen_relay_lost">Lost the connection to the relay, perhaps because this phone changed networks. Try again.</string>
+  <string name="workspace_screen_still_refresh">Still · Tap to refresh</string>
   <string name="workspace_screen_relay_unavailable">The relay couldn\'t open the screen (%1$s).</string>
   <string name="workspace_relay_host_offline">Couldn\'t reach the computer at home or through the relay. Check that the computer is on, awake and online.</string>
   <string name="workspace_relay_denied">The computer doesn\'t recognise this phone yet. Connect once on the same network to allow it again.</string>
@@ -2931,6 +2935,23 @@
   <string name="im_computer_detail_box_used" tools:ignore="MissingTranslation">using %1$s</string>
   <string name="im_computer_detail_boxes_limit" tools:ignore="MissingTranslation">Mini boxes can use up to %1$s of memory</string>
   <string name="im_computer_detail_boxes_total" tools:ignore="MissingTranslation">This computer has %1$s</string>
+  <string name="im_computer_detail_box_idle" tools:ignore="MissingTranslation">Idle mini box</string>
+  <string name="im_computer_idle_box_help" tools:ignore="MissingTranslation">No partner uses it, but it can still take up to %2$s of %1$s\'s memory</string>
+  <string name="im_computer_idle_box_assign" tools:ignore="MissingTranslation">Give it to a partner</string>
+  <string name="im_computer_idle_box_assign_detail" tools:ignore="MissingTranslation">Everything in it stays</string>
+  <string name="im_computer_idle_box_delete" tools:ignore="MissingTranslation">Delete this mini box</string>
+  <string name="im_computer_idle_box_delete_detail" tools:ignore="MissingTranslation">Frees up %1$s of memory; its files go too</string>
+  <string name="im_computer_idle_box_assign_title" tools:ignore="MissingTranslation">Give the mini box to</string>
+  <string name="im_computer_idle_box_assign_footer" tools:ignore="MissingTranslation">Like in any mini box, the partner works in it without asking first.</string>
+  <string name="im_computer_idle_box_delete_title" tools:ignore="MissingTranslation">Delete this idle mini box?</string>
+  <string name="im_computer_idle_box_delete_body" tools:ignore="MissingTranslation">It is removed from %1$s with everything in it. This can\'t be undone.</string>
+  <string name="im_space_delete_with_partner" tools:ignore="MissingTranslation">Also delete its mini box</string>
+  <string name="im_space_delete_with_partner_on" tools:ignore="MissingTranslation">The one on %1$s goes too, with its files</string>
+  <string name="im_space_delete_with_partner_off" tools:ignore="MissingTranslation">The one on %1$s stays idle; you can give it to another partner on that computer\'s page</string>
+  <string name="im_space_old_title" tools:ignore="MissingTranslation">Mini boxes in use now</string>
+  <string name="im_space_old_row" tools:ignore="MissingTranslation">Delete %1$s\'s mini box on %2$s</string>
+  <string name="im_space_old_delete" tools:ignore="MissingTranslation">Deleted with its files once the new setup is done</string>
+  <string name="im_space_old_keep" tools:ignore="MissingTranslation">Stays idle; you can give it to another partner on that computer\'s page</string>
   <string name="im_computer_detail_add_box" tools:ignore="MissingTranslation">Give a partner a mini box</string>
   <string name="im_computer_ready_box_only">Only want a mini box for a partner?</string>
   <string name="im_computer_ready_box_only_help">Skip the desktop setup. The partner works in its own mini box, away from your desktop and files.</string>

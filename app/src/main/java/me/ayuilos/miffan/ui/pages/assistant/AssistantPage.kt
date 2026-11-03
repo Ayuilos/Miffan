@@ -248,8 +248,8 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                 vm.copyAssistant(assistant)
                 actionSheetAssistant = null
             },
-            onDelete = {
-                vm.removeAssistant(assistant)
+            onDelete = { withSpace ->
+                vm.removeAssistant(assistant, withSpace)
                 actionSheetAssistant = null
             }
         )
@@ -485,9 +485,11 @@ private fun AssistantActionSheet(
     assistant: Assistant,
     onDismiss: () -> Unit,
     onCopy: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: (withSpace: Boolean) -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var deleteSpaceToo by remember { mutableStateOf(true) }
+    val computer by me.ayuilos.miffan.ui.im.computer.rememberPartnerComputer(assistant.id)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss
@@ -559,12 +561,19 @@ private fun AssistantActionSheet(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text(stringResource(R.string.assistant_page_delete)) },
-            text = { Text(stringResource(R.string.assistant_page_delete_dialog_text)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.assistant_page_delete_dialog_text))
+                    computer?.takeIf { it.space }?.let {
+                        me.ayuilos.miffan.ui.im.computer.DeleteSpaceOption(it.name, deleteSpaceToo) { on -> deleteSpaceToo = on }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showDeleteDialog = false
-                        onDelete()
+                        onDelete(computer?.space == true && deleteSpaceToo)
                     }) {
                     Text(stringResource(R.string.confirm))
                 }

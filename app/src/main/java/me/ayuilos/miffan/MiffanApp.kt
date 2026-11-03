@@ -108,6 +108,8 @@ class MiffanApp : Application() {
         startModelCatalog()
 
         deliverRemoteTaskResults()
+        // Watches direct connections from now on, to keep relay connectors at the pinned version.
+        get<me.ayuilos.miffan.data.repository.relay.RelayConnectorUpdates>()
 
         startUpdateChecks()
 

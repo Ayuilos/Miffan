@@ -14,17 +14,21 @@ import org.koin.compose.koinInject
  * the partner's first action does not wait for a whole connection (over a relay that is many
  * seconds). An unreachable computer is ignored; leaving the page releases the connection to the
  * pool, which closes it after its usual idle time.
+ *
+ * With [throughRelay] false, a computer last reached through its relay is not connected ahead:
+ * opening a chat is no sign the computer will be used, and every relay session costs part of the
+ * computer's daily relay allowance (each minute with SSH traffic counts).
  */
 @Composable
-internal fun RetainComputerConnection(workspaceId: String?) {
+internal fun RetainComputerConnection(workspaceId: String?, throughRelay: Boolean = true) {
     val repository: WorkspaceRepository = koinInject()
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(workspaceId, lifecycleOwner) {
+    LaunchedEffect(workspaceId, throughRelay, lifecycleOwner) {
         val id = workspaceId ?: return@LaunchedEffect
         // A partner's own computer (a Space) is reached through its own lease; only real desktops here.
         if (runCatching { repository.getById(id) }.getOrNull()?.isSpace != false) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            val lease = runCatching { repository.retainRemoteWorkspace(id) }.getOrNull()
+            val lease = runCatching { repository.retainRemoteWorkspace(id, throughRelay = throughRelay) }.getOrNull()
             try { awaitCancellation() } finally { lease?.close() }
         }
     }

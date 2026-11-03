@@ -42,6 +42,10 @@ type relayClient struct {
 	base  *url.URL
 	token string
 	env   netEnv
+	// warm, when set, supplies an already connected TLS connection for WebSocket dials (warm.go).
+	warm *tlsWarmer
+	// warmed is what the last WebSocket dial got from warm (a relayClient serves one session).
+	warmed warmOutcome
 }
 
 func newRelayClient(rawURL, token string, env netEnv) (*relayClient, error) {
@@ -119,6 +123,19 @@ func (c *relayClient) wsDialer(edge string) *websocket.Dialer {
 	target := c.dialAddr(edge)
 	d.NetDialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return c.env.dial(ctx, network, target)
+	}
+	if c.warm != nil && c.base.Scheme == "https" {
+		// gorilla skips its own TLS handshake when this is set; dialTLS does the same checks.
+		d.NetDialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			tc, outcome := c.warm.take(edge)
+			if c.warmed.kind == "" { // the first edge tried is the one the spare was made for
+				c.warmed = outcome
+			}
+			if tc != nil {
+				return tc, nil
+			}
+			return c.dialTLS(ctx, edge)
+		}
 	}
 	return d
 }

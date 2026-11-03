@@ -6,6 +6,7 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.Avatar
+import kotlinx.coroutines.CancellationException
 import kotlin.uuid.Uuid
 
 /** Deletes an assistant together with its files, terminals, memories and conversations. */
@@ -16,11 +17,28 @@ class AssistantRemover(
     private val filesManager: FilesManager,
     private val workspaceRepository: WorkspaceRepository,
     private val removePartnerChats: suspend (Uuid) -> Unit = {},
+    /** Deletes a partner's own computer (a Space workspace) on its host, then the workspace. */
+    private val deleteSpace: suspend (workspaceId: String) -> Unit = {},
 ) {
     fun canRemove(assistantId: Uuid) = assistantId !in DEFAULT_ASSISTANTS_IDS
 
-    suspend fun remove(assistant: Assistant) {
+    /**
+     * With [withSpace], the partner's own computer goes too. Its host may be out of reach: then it stays, idle,
+     * on the computer's page, where it can be given to another partner or deleted later.
+     */
+    suspend fun remove(assistant: Assistant, withSpace: Boolean = false) {
         require(canRemove(assistant.id)) { "Built-in assistant ${assistant.id} cannot be removed" }
+        if (withSpace) assistant.workspaceId?.toString()
+            ?.takeIf { workspaceRepository.getById(it)?.isSpace == true }
+            ?.let { workspaceId ->
+                try {
+                    deleteSpace(workspaceId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Left idle on the computer's page.
+                }
+            }
         workspaceRepository.closeAssistantTerminals(assistant.id.toString())
         removePartnerChats(assistant.id)
         cleanupAssistantFiles(assistant)

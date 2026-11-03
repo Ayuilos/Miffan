@@ -218,6 +218,15 @@ class RemoteScreenVM(
     /** The stream's own numbers; null unless [video] is set. */
     val streamStats: StateFlow<StreamStats?> = _streamStats.asStateFlow()
 
+    private val _stillPicture = MutableStateFlow(false)
+    /** The picture stopped refreshing by itself (a still screen through a relay); [refreshPicture] resumes it. */
+    val stillPicture: StateFlow<Boolean> = _stillPicture.asStateFlow()
+
+    /** Fetches a new picture now and resumes automatic refreshing; see [stillPicture]. */
+    fun refreshPicture() {
+        connection?.session?.refresh()
+    }
+
     private val streamSetup = RemoteStreamSetupController(repository, viewModelScope)
     /** Sunshine on this computer, read once to suggest high-performance mode; see [streamSuggestion]. */
     val streamSetups = streamSetup.states
@@ -692,6 +701,7 @@ class RemoteScreenVM(
                 opened.session.statsLogger = { Log.d(PERF_TAG, it.toString()) }
                 opened.session.start(viewModelScope)
                 launch { opened.session.stats.collect { _stats.value = it } }
+                launch { opened.session.autoRefreshStopped.collect { _stillPicture.value = it } }
                 opened.session.rdpStats?.let { flow -> launch { flow.collect { _rdpStats.value = it } } }
                 opened.session.streamStats?.let { flow -> launch { flow.collect { _streamStats.value = it } } }
                 val openedAt = SystemClock.elapsedRealtime()
@@ -735,6 +745,7 @@ class RemoteScreenVM(
         _stats.value = null
         _rdpStats.value = null
         _streamStats.value = null
+        _stillPicture.value = false
         _video.value = null
         _connectionInfo.value = null
         _audio.value = null

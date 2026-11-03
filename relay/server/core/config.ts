@@ -10,8 +10,10 @@ export interface Policy {
     hostDailyActiveMin: number;
     hostMonthlyControlMb: number;
     hostMonthlyMediaMb: number;
+    /** Messages (frames, not `ping`) all of the host's sessions may send per UTC day; 0 = unlimited. */
+    hostDailyMessages: number;
   };
-  budget: { globalDailyMb: number; globalDailyActiveHours: number; mediaReserve: number };
+  budget: { globalDailyMb: number; globalDailyActiveHours: number; globalDailyRequests: number; mediaReserve: number };
 }
 
 export type AccessMode = "open" | "token";
@@ -40,8 +42,9 @@ export const DEFAULT_CONFIG: RelayConfig = {
       hostDailyActiveMin: 0,
       hostMonthlyControlMb: 2048,
       hostMonthlyMediaMb: 10240,
+      hostDailyMessages: 0,
     },
-    budget: { globalDailyMb: 0, globalDailyActiveHours: 0, mediaReserve: 0.3 },
+    budget: { globalDailyMb: 0, globalDailyActiveHours: 0, globalDailyRequests: 0, mediaReserve: 0.3 },
   },
   edges: [],
 };
@@ -138,10 +141,12 @@ export function parseConfig(raw: unknown): RelayConfig {
         hostDailyActiveMin: num(errors, "policy.quotas.hostDailyActiveMin", quotas.hostDailyActiveMin, d.policy.quotas.hostDailyActiveMin),
         hostMonthlyControlMb: num(errors, "policy.quotas.hostMonthlyControlMb", quotas.hostMonthlyControlMb, d.policy.quotas.hostMonthlyControlMb),
         hostMonthlyMediaMb: num(errors, "policy.quotas.hostMonthlyMediaMb", quotas.hostMonthlyMediaMb, d.policy.quotas.hostMonthlyMediaMb),
+        hostDailyMessages: num(errors, "policy.quotas.hostDailyMessages", quotas.hostDailyMessages, d.policy.quotas.hostDailyMessages),
       },
       budget: {
         globalDailyMb: num(errors, "policy.budget.globalDailyMb", budget.globalDailyMb, d.policy.budget.globalDailyMb),
         globalDailyActiveHours: num(errors, "policy.budget.globalDailyActiveHours", budget.globalDailyActiveHours, d.policy.budget.globalDailyActiveHours),
+        globalDailyRequests: num(errors, "policy.budget.globalDailyRequests", budget.globalDailyRequests, d.policy.budget.globalDailyRequests),
         mediaReserve: num(errors, "policy.budget.mediaReserve", budget.mediaReserve, d.policy.budget.mediaReserve, 1),
       },
     },

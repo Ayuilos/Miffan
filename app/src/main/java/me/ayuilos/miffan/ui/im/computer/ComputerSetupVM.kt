@@ -110,6 +110,9 @@ enum class ComputerSetupStep {
 }
 
 /** What binding a computer would replace: the phone's own workspace, or another computer. */
+/** A mini box [partnerId] works in now, on [hostName], which the choice on [ComputerSetupStep.HOW] would take it away from. */
+data class OldSpace(val partnerId: Uuid, val workspaceId: String, val hostName: String)
+
 sealed interface ReplacedBinding {
     data object Phone : ReplacedBinding
     data class Computer(val name: String) : ReplacedBinding
@@ -209,6 +212,8 @@ data class ComputerSetupState(
     val spaceFamily: LinuxFamily? = null,
     /** Only mini boxes on this computer: its desktop is neither checked nor offered. */
     val spaceOnly: Boolean = false,
+    /** [ComputerSetupStep.HOW]: partners whose old mini box goes once they have their new computer; the others' stay idle. */
+    val retireOldSpaces: Set<Uuid> = emptySet(),
 ) {
     /** What this computer can give the new Spaces; null until the check ran or when it could not tell. */
     val spaceCapacity: SpaceCapacity? get() = SpaceCapacity.from(spaceProbe?.host)
@@ -343,6 +348,19 @@ class ComputerSetupVM(
         if (!workspace.isRemote) ReplacedBinding.Phone
         else ReplacedBinding.Computer(hostList.find { it.id == workspace.remoteHostId }?.name ?: workspace.name)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * The picked partners' mini boxes that the choice on [ComputerSetupStep.HOW] leaves without a partner: any of
+     * them for new mini boxes, those on other computers for this desktop (partners already on this computer keep theirs).
+     */
+    val oldSpaces: StateFlow<List<OldSpace>> = combine(settingsStore.settingsFlow, workspaces.listFlow(), hosts, _state) { settings, list, hostList, state ->
+        state.sharePartners.mapNotNull { partnerId ->
+            val bound = settings.getAssistantById(partnerId)?.workspaceId?.toString() ?: return@mapNotNull null
+            val workspace = list.find { it.id == bound }?.takeIf { it.isSpace } ?: return@mapNotNull null
+            if (!state.useSpace && workspace.remoteHostId == state.hostId) return@mapNotNull null
+            OldSpace(partnerId, workspace.id, hostList.find { it.id == workspace.remoteHostId }?.name ?: workspace.name)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Partners already bound to a workspace of the computer being set up. */
     val boundPartnerIds: StateFlow<Set<Uuid>> = combine(
@@ -1021,8 +1039,9 @@ class ComputerSetupVM(
      * Binds the partners to this computer with approval kept on. The UI shows what that means
      * (screenshots go to the model provider) before calling this.
      */
-    fun bind(assistantIds: Set<Uuid>): Unit = run(ComputerSetupTask.BINDING) {
+    fun bind(assistantIds: Set<Uuid>, retire: Collection<String> = emptyList()): Unit = run(ComputerSetupTask.BINDING) {
         partnerComputers.bind(requireNotNull(_state.value.hostId), assistantIds)
+        spaceSetup.retire(retire)
         _state.update { it.copy(step = ComputerSetupStep.DONE, history = emptyList()) }
     }
 
@@ -1074,11 +1093,20 @@ class ComputerSetupVM(
 
     fun chooseSpace(useSpace: Boolean) = _state.update { it.copy(useSpace = useSpace) }
 
+    fun retireOldSpace(partnerId: Uuid, retire: Boolean) =
+        _state.update { it.copy(retireOldSpaces = if (retire) it.retireOldSpaces + partnerId else it.retireOldSpaces - partnerId) }
+
+    /** Partner → its old mini box, for those the user chose to delete on [ComputerSetupStep.HOW]. */
+    private fun retiring(): Map<Uuid, String> {
+        val chosen = _state.value.retireOldSpaces
+        return oldSpaces.value.filter { it.partnerId in chosen }.associate { it.partnerId to it.workspaceId }
+    }
+
     /** [ComputerSetupStep.HOW]'s main action: bind to the desktop, or check the computer for Spaces. */
     fun continueHow() {
         val state = _state.value
         if (!state.useSpace) {
-            bind(state.sharePartners.toSet())
+            bind(state.sharePartners.toSet(), retiring().values)
             return
         }
         run(ComputerSetupTask.PREPARING) {
@@ -1136,7 +1164,7 @@ class ComputerSetupVM(
 
     private fun startSpaces() {
         val state = _state.value
-        spaceSetup.start(requireNotNull(state.hostId), state.sharePartners, state.spaceTier)
+        spaceSetup.start(requireNotNull(state.hostId), state.sharePartners, state.spaceTier, retiring())
         // No way back into a run that is under way.
         _state.update { it.copy(step = ComputerSetupStep.SPACE_PREPARE, history = emptyList(), error = null) }
     }
@@ -1145,7 +1173,7 @@ class ComputerSetupVM(
     fun retrySpaces() {
         val state = _state.value
         val job = spaceJob.value ?: return
-        spaceSetup.start(requireNotNull(state.hostId), job.partnerIds.filter { it !in job.created }, job.tier)
+        spaceSetup.start(requireNotNull(state.hostId), job.partnerIds.filter { it !in job.created }, job.tier, job.retire)
     }
 
     fun recheckNetwork() {

@@ -262,6 +262,10 @@ fun ComputerDetailPage(hostId: String) {
     var busy by remember { mutableStateOf(false) }
     var picking by rememberSaveable { mutableStateOf(false) }
     var pickingBox by rememberSaveable { mutableStateOf(false) }
+    // An idle mini box the user opened, then what they chose to do with it.
+    var idleBox by rememberSaveable { mutableStateOf<String?>(null) }
+    var assigningBox by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingBox by rememberSaveable { mutableStateOf<String?>(null) }
     var tasksOpen by rememberSaveable { mutableStateOf(false) }
     var choosingScreen by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf(false) }
@@ -306,7 +310,8 @@ fun ComputerDetailPage(hostId: String) {
         val partners = current.partnerIds.mapNotNull { id -> assistants.find { it.id == id } }
         // Partners with their own mini box here work in that, not on this computer's desktop.
         val desktop = partners.filter { it.id !in current.spacePartnerIds }
-        val boxes = boxWorkspaces.mapNotNull { workspace -> assistants.find { it.workspaceId?.toString() == workspace.id }?.let { workspace to it } }
+        // A box no partner works in any more (its partner was deleted or moved on) is listed idle, never hidden.
+        val boxes = boxWorkspaces.map { workspace -> workspace to assistants.find { it.workspaceId?.toString() == workspace.id } }
         val replaces: @Composable (Assistant) -> String? = { partner ->
             val bound = partner.workspaceId?.toString()?.let { id -> workspaceList.find { it.id == id } }
             when {
@@ -380,9 +385,12 @@ fun ComputerDetailPage(hostId: String) {
             }
             item("boxes") {
                 SetupCard(padding = 0.dp, spacing = 0.dp) {
-                    boxes.forEach { (workspace, partner) ->
-                        MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) { nav.navigate(Screen.PartnerComputer(partner.id.toString())) }
-                        HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    // Lines only between the boxes: the memory bar under the last one brings its own.
+                    boxes.forEachIndexed { index, (workspace, partner) ->
+                        if (index > 0) HorizontalDivider(Modifier.padding(start = 92.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        MiniBoxRow(partner, workspace, boxLive.readings[workspace.id]) {
+                            if (partner != null) nav.navigate(Screen.PartnerComputer(partner.id.toString())) else idleBox = workspace.id
+                        }
                     }
                     if (boxWorkspaces.isNotEmpty()) {
                         MiniBoxMemoryBar(MiniBoxMemory(
@@ -435,6 +443,34 @@ fun ComputerDetailPage(hostId: String) {
             onDismiss = { pickingBox = false },
             onPick = { partner -> pickingBox = false; nav.navigate(Screen.ComputerSetup(assistantId = partner.id.toString(), hostId = hostId, space = true)) },
         )
+        idleBox?.let { id -> boxWorkspaces.find { it.id == id } }?.let { workspace ->
+            val id = workspace.id
+            IdleMiniBoxSheet(workspace, current.name, enabled = !busy,
+                onAssign = { idleBox = null; assigningBox = id },
+                onDelete = { idleBox = null; deletingBox = id },
+                onDismiss = { idleBox = null })
+        }
+        assigningBox?.let { id ->
+            PartnerPickerDialog(
+                title = stringResource(R.string.im_computer_idle_box_assign_title),
+                partners = assistants.filter { it.id !in current.spacePartnerIds },
+                supporting = replaces,
+                footer = stringResource(R.string.im_computer_idle_box_assign_footer),
+                onDismiss = { assigningBox = null },
+                onPick = { partner -> assigningBox = null; perform { spaces.assign(id, partner.id) } },
+            )
+        }
+        deletingBox?.let { id ->
+            AlertDialog(onDismissRequest = { deletingBox = null },
+                title = { Text(stringResource(R.string.im_computer_idle_box_delete_title)) },
+                text = { Text(stringResource(R.string.im_computer_idle_box_delete_body, current.name)) },
+                confirmButton = {
+                    TextButton(onClick = { deletingBox = null; perform { spaces.delete(id) } }) {
+                        Text(stringResource(R.string.im_space_delete), color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = { TextButton(onClick = { deletingBox = null }) { Text(stringResource(R.string.common_cancel)) } })
+        }
         if (choosingScreen) PartnerPickerDialog(
             title = stringResource(R.string.im_computer_pick_screen_partner),
             partners = desktop,

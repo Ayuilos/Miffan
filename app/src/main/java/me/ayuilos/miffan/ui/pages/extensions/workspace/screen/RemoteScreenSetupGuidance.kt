@@ -43,13 +43,15 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Tick01
 import com.jcraft.jsch.JSchException
+import me.ayuilos.miffan.data.repository.relay.relaySessionClose
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 internal fun remoteScreenSetupError(resources: Resources, error: Throwable): String =
-    if (error is RemoteStreamCertificateChangedException) resources.getString(R.string.workspace_screen_stream_certificate_changed)
+    error.relaySessionClose()?.let { relayScreenEnded(resources, it.reason) }
+    ?: if (error is RemoteStreamCertificateChangedException) resources.getString(R.string.workspace_screen_stream_certificate_changed)
     else when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_WORKSPACE -> resources.getString(R.string.workspace_screen_no_workspace)
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.workspace_screen_no_session)
@@ -83,6 +85,15 @@ internal fun relayConnectError(resources: Resources, reason: String): String = r
     "relay_busy", "platform" -> R.string.workspace_relay_busy
     else -> R.string.workspace_relay_unreachable
 })
+
+/** Why the relay ended an open screen, by its protocol reason code (relay/PROTOCOL.md §9). */
+internal fun relayScreenEnded(resources: Resources, reason: String): String = when (reason) {
+    "idle" -> resources.getString(R.string.workspace_screen_relay_idle)
+    "rate_limited" -> resources.getString(R.string.workspace_screen_relay_rate_limited)
+    "quota_exhausted", "too_many_sessions" -> resources.getString(R.string.workspace_screen_relay_quota)
+    "relay_busy", "platform" -> resources.getString(R.string.workspace_screen_relay_busy)
+    else -> resources.getString(R.string.workspace_screen_relay_lost)
+}
 
 /** A relay refusal for the screen channel, by its protocol reason code (relay/PROTOCOL.md §9). */
 internal fun relayScreenProblem(resources: Resources, reason: String?): String = when (reason) {

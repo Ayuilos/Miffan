@@ -45,7 +45,7 @@ class ComputerAccessTest {
 
     @Test fun `revocation tries saved addresses with the pin and dispatches once`() = runTest {
         val f = Fixture()
-        every { f.transport.open(any(), any(), any()) } answers {
+        every { f.transport.open(any(), any(), any(), socketFactory = any()) } answers {
             val config = firstArg<RemoteHostConfig>()
             assertEquals(f.host.trustedHostKeySha256, config.trustedHostKeySha256)
             assertEquals(f.authentication, config.authentication)
@@ -55,28 +55,28 @@ class ComputerAccessTest {
         }
         every { f.session.execute("revoke", any(), any(), any(), any()) } returns WorkspaceCommandResult(0, "", "")
         assertTrue(f.repository.revokeComputerAccess("host", "revoke"))
-        verify(exactly = 2) { f.transport.open(any(), any(), any()) }
+        verify(exactly = 2) { f.transport.open(any(), any(), any(), socketFactory = any()) }
         verify(exactly = 1) { f.session.execute("revoke", any(), any(), any(), any()) }
         verify(exactly = 1) { f.session.close() }
     }
 
     @Test fun `only authentication failure opening the session is already gone`() = runTest {
         val f = Fixture()
-        every { f.transport.open(any(), any(), any()) } throws RemoteConnectException("main", JSchException("Auth fail"))
+        every { f.transport.open(any(), any(), any(), socketFactory = any()) } throws RemoteConnectException("main", JSchException("Auth fail"))
         assertFalse(f.repository.revokeComputerAccess("host", "revoke"))
-        verify(exactly = 1) { f.transport.open(any(), any(), any()) }
+        verify(exactly = 1) { f.transport.open(any(), any(), any(), socketFactory = any()) }
         verify(exactly = 0) { f.session.execute(any(), any(), any(), any(), any()) }
     }
 
     @Test fun `command failure is never mapped to authentication refusal or replayed`() = runTest {
         val f = Fixture()
-        every { f.transport.open(any(), any(), any()) } returns f.session
+        every { f.transport.open(any(), any(), any(), socketFactory = any()) } returns f.session
         val failure = JSchException("Auth fail")
         every { f.session.execute(any(), any(), any(), any(), any()) } throws failure
         val error = runCatching { f.repository.revokeComputerAccess("host", "revoke") }.exceptionOrNull()
         assertTrue(error is JSchException)
         assertEquals(failure.message, error?.message)
-        verify(exactly = 1) { f.transport.open(any(), any(), any()) }
+        verify(exactly = 1) { f.transport.open(any(), any(), any(), socketFactory = any()) }
         verify(exactly = 1) { f.session.close() }
         every { f.session.execute(any(), any(), any(), any(), any()) } returns WorkspaceCommandResult(1, "", "Cannot edit admin keys")
         assertTrue(runCatching { f.repository.revokeComputerAccess("host", "revoke") }.exceptionOrNull()?.message.orEmpty().contains("Cannot edit admin keys"))
@@ -89,7 +89,7 @@ class ComputerAccessTest {
             assertEquals(outcome, f.repository.checkKeySignIn("probe", 2222, "user", "key"))
             coVerify(exactly = 0) { f.hostDao.getById(any()) }
             coVerify(exactly = 0) { f.hostDao.update(any()) }
-            verify(exactly = 0) { f.transport.open(any(), any(), any()) }
+            verify(exactly = 0) { f.transport.open(any(), any(), any(), socketFactory = any()) }
         }
     }
     @Test fun `edited host cannot receive a command built for the previous identity`() = runTest {
@@ -97,27 +97,27 @@ class ComputerAccessTest {
         assertTrue(runCatching {
             f.repository.revokeComputerAccess("host", "revoke", expectedConnectionRevision = "previous")
         }.exceptionOrNull() is WorkspaceToolTargetChangedException)
-        verify(exactly = 0) { f.transport.open(any(), any(), any()) }
+        verify(exactly = 0) { f.transport.open(any(), any(), any(), socketFactory = any()) }
     }
 
     @Test fun `paired host unpairs on the verified session before key revocation`() = runTest {
         val f = Fixture(paired = true)
-        every { f.transport.open(any(), any(), any()) } returns f.session
+        every { f.transport.open(any(), any(), any(), socketFactory = any()) } returns f.session
         every { f.unpair.unpair(f.session) } returns RemoteSunshineUnpair.Result(removed = 1, restarted = true)
         every { f.session.execute("revoke", any(), any(), any(), any()) } returns WorkspaceCommandResult(0, "", "")
         assertTrue(f.repository.revokeComputerAccess("host", "revoke", "legacy"))
         verifyOrder {
-            f.transport.open(any(), any(), any())
+            f.transport.open(any(), any(), any(), socketFactory = any())
             f.unpair.unpair(f.session)
             f.session.execute("revoke", any(), any(), any(), any())
             f.session.close()
         }
-        verify(exactly = 1) { f.transport.open(any(), any(), any()) }
+        verify(exactly = 1) { f.transport.open(any(), any(), any(), socketFactory = any()) }
     }
 
     @Test fun `unpair failure closes the connection without revoking the key`() = runTest {
         val f = Fixture(paired = true)
-        every { f.transport.open(any(), any(), any()) } returns f.session
+        every { f.transport.open(any(), any(), any(), socketFactory = any()) } returns f.session
         every { f.unpair.unpair(f.session) } throws IllegalStateException("Sunshine state requires administrator rights")
         val error = runCatching { f.repository.revokeComputerAccess("host", "revoke") }.exceptionOrNull()
         assertTrue(error?.message.orEmpty().contains("administrator rights"))
@@ -128,7 +128,7 @@ class ComputerAccessTest {
 
     @Test fun `paired host with a refused key retains already gone semantics without unpairing`() = runTest {
         val f = Fixture(paired = true)
-        every { f.transport.open(any(), any(), any()) } throws RemoteConnectException("main", JSchException("Auth fail"))
+        every { f.transport.open(any(), any(), any(), socketFactory = any()) } throws RemoteConnectException("main", JSchException("Auth fail"))
         assertFalse(f.repository.revokeComputerAccess("host", "revoke"))
         verify(exactly = 0) { f.unpair.unpair(any()) }
     }

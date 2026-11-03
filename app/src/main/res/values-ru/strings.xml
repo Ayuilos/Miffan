@@ -4073,6 +4073,10 @@
   <string name="workspace_screen_relay_media_disabled">Этот ретранслятор не поддерживает просмотр экрана. Партнёр всё равно может пользоваться компьютером; чтобы увидеть экран, подключитесь из той же сети или используйте свой ретранслятор.</string>
   <string name="workspace_screen_relay_quota">Время показа экрана через ретранслятор для этого компьютера пока исчерпано. Партнёр всё равно может пользоваться компьютером.</string>
   <string name="workspace_screen_relay_busy">Бесплатный ретранслятор перегружен, и просмотр экрана на сегодня приостановлен. Партнёр всё равно может пользоваться компьютером; вы также можете настроить свой ретранслятор.</string>
+  <string name="workspace_screen_relay_idle">Изображение не менялось, поэтому ретранслятор закрыл экран, чтобы сберечь время ретранслятора для этого компьютера. Повторите попытку, чтобы продолжить просмотр.</string>
+  <string name="workspace_screen_relay_rate_limited">Ретранслятор отключил экран за слишком частую отправку данных. Повторите попытку или выберите более низкое качество.</string>
+  <string name="workspace_screen_relay_lost">Потеряно соединение с ретранслятором, возможно, телефон сменил сеть. Повторите попытку.</string>
+  <string name="workspace_screen_still_refresh">Без изменений · Обновить</string>
   <string name="workspace_screen_relay_unavailable">Ретранслятор не смог открыть экран (%1$s).</string>
   <string name="workspace_relay_host_offline">Не удалось подключиться к компьютеру дома или через ретранслятор. Проверьте, что компьютер включён, не спит и подключён к сети.</string>
   <string name="workspace_relay_denied">Компьютер пока не узнаёт этот телефон. Подключитесь один раз из той же сети, чтобы разрешить его снова.</string>
@@ -4250,4 +4254,21 @@
   </plurals>
   <string name="update_page_skipped_title">Версия %1$s пропущена</string>
   <string name="update_page_skipped_text">Мы сообщим, когда выйдет следующая версия.</string>
+  <string name="im_computer_detail_box_idle">Неиспользуемый мини-компьютер</string>
+  <string name="im_computer_idle_box_help">Никто из партнёров его не использует, но он может занять до %2$s памяти на %1$s</string>
+  <string name="im_computer_idle_box_assign">Выдать партнёру</string>
+  <string name="im_computer_idle_box_assign_detail">Все файлы в нём сохранятся</string>
+  <string name="im_computer_idle_box_delete">Удалить этот мини-компьютер</string>
+  <string name="im_computer_idle_box_delete_detail">Освобождает %1$s памяти; файлы в нём тоже удалятся</string>
+  <string name="im_computer_idle_box_assign_title">Кому выдать мини-компьютер</string>
+  <string name="im_computer_idle_box_assign_footer">Как и в других мини-компьютерах, партнёр работает в нём без предварительного подтверждения.</string>
+  <string name="im_computer_idle_box_delete_title">Удалить этот неиспользуемый мини-компьютер?</string>
+  <string name="im_computer_idle_box_delete_body">Он будет удалён с %1$s вместе со всем содержимым. Это нельзя отменить.</string>
+  <string name="im_space_delete_with_partner">Также удалить его мини-компьютер</string>
+  <string name="im_space_delete_with_partner_on">Мини-компьютер на %1$s тоже удалится вместе с файлами</string>
+  <string name="im_space_delete_with_partner_off">Мини-компьютер на %1$s останется неиспользуемым; его можно выдать другому партнёру на странице этого компьютера</string>
+  <string name="im_space_old_title">Мини-компьютеры в использовании</string>
+  <string name="im_space_old_row">Удалить мини-компьютер %1$s на %2$s</string>
+  <string name="im_space_old_delete">Будет удалён вместе с файлами после завершения новой настройки</string>
+  <string name="im_space_old_keep">Останется неиспользуемым; его можно выдать другому партнёру на странице этого компьютера</string>
 </resources>

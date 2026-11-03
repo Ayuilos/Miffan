@@ -136,7 +136,7 @@ new_sqlite_classes = ["Budget"]
 async function runImpl(impl: "bun" | "worker"): Promise<number> {
   console.log(`\n=== ${impl}: starting servers (logs in ${logRoot}) ===`);
   const start = impl === "bun" ? startBun : startWorker;
-  const names: ProfileName[] = ["A", "B", "C"];
+  const names: ProfileName[] = ["A", "B", "C", "D"];
   const servers = await Promise.all(names.map(start));
   try {
     const env: Record<string, string> = { ...process.env, RELAY_IMPL: impl } as Record<string, string>;

@@ -104,6 +104,7 @@ internal fun ComputerHowStep(vm: ComputerSetupVM, state: ComputerSetupState) {
     val colors = MaterialTheme.colorScheme
     var adjusting by rememberSaveable { mutableStateOf(false) }
     var showCommand by rememberSaveable { mutableStateOf(false) }
+    val oldSpaces by vm.oldSpaces.collectAsStateWithLifecycle()
     val one = partners.size == 1 && first != null
     // With mini boxes only there is nothing to choose: the screen just confirms the box and its size.
     SetupScreen(
@@ -168,6 +169,7 @@ internal fun ComputerHowStep(vm: ComputerSetupVM, state: ComputerSetupState) {
             ),
             onClick = { vm.chooseSpace(false) },
         )
+        if (oldSpaces.isNotEmpty()) OldSpacesCard(oldSpaces, partners, state.retireOldSpaces, enabled = !state.busy, onRetire = vm::retireOldSpace)
         // Windows also needs Docker Desktop, which the same install brings; its command is not one line to show.
         val windowsDocker = state.isWindows && state.spaceProbe?.docker?.ok == false
         if (state.useSpace && windowsDocker) Text(stringResource(R.string.im_space_cua_note_windows, computer),
@@ -197,6 +199,37 @@ internal fun ComputerHowStep(vm: ComputerSetupVM, state: ComputerSetupState) {
             onPick = { vm.pickTier(it); adjusting = false },
             onDismiss = { adjusting = false },
         )
+    }
+}
+
+/**
+ * The mini boxes the picked partners leave behind: each is kept idle unless the user switches it to be deleted
+ * once the partner has its new computer.
+ */
+@Composable
+private fun OldSpacesCard(oldSpaces: List<OldSpace>, partners: List<Assistant>, retiring: Set<kotlin.uuid.Uuid>, enabled: Boolean,
+                          onRetire: (kotlin.uuid.Uuid, Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = RoundedCornerShape(22.dp), color = colors.surfaceContainerLow) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            Text(stringResource(R.string.im_space_old_title), Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleSmall, color = colors.onSurfaceVariant)
+            oldSpaces.forEach { old ->
+                val partner = partners.find { it.id == old.partnerId } ?: return@forEach
+                val retire = old.partnerId in retiring
+                Row(Modifier.fillMaxWidth().selectable(retire, enabled = enabled, role = Role.Switch) { onRetire(old.partnerId, !retire) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    AssistantAvatar(partner.name, partner.avatar, Modifier.size(36.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(stringResource(R.string.im_space_old_row, threadAssistantName(partner), old.hostName), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(if (retire) R.string.im_space_old_delete else R.string.im_space_old_keep),
+                            style = MaterialTheme.typography.bodySmall, color = if (retire) colors.error else colors.onSurfaceVariant)
+                    }
+                    Switch(retire, { onRetire(old.partnerId, it) }, enabled = enabled)
+                }
+            }
+        }
     }
 }
 

@@ -30,18 +30,22 @@ import okio.ByteString.Companion.toByteString
  * carry the SSH bytes.
  *
  * Liveness is the relay's text `ping`/`pong`, never SSH keepalives: the relay answers `ping`
- * without waking its state, while any SSH packet would. A missing `pong` closes the socket, which
- * JSch sees as end of stream.
+ * without waking its state, while any SSH packet would. A `ping` goes out every [RelayTimings.pingMillis]
+ * whatever else is sent. Anything heard from the relay counts as an answer; hearing nothing for
+ * [RelayTimings.graceMillis] after a `ping` closes the socket, which JSch sees as end of stream.
  */
-class RelaySocket private constructor(private val channel: RelayChannel) : Socket() {
+class RelaySocket private constructor(private val channel: RelayChannel, private val timings: RelayTimings) : Socket() {
     private val incoming = LinkedBlockingQueue<ByteString>()
     private val opened = CountDownLatch(1)
     private val failure = AtomicReference<IOException?>(null)
     @Volatile private var closed = false
     @Volatile private var soTimeoutMillis = 0
-    @Volatile private var lastPongNanos = System.nanoTime()
+    /** When the relay last sent anything: a `pong`, or any frame of the session. */
+    @Volatile private var lastHeardNanos = System.nanoTime()
     @Volatile private var pingSentNanos = 0L
     @Volatile private var bucket: TokenBucket? = null
+    /** OkHttp queue depth at which writes wait; see [maxQueuedBytes]. */
+    @Volatile private var maxQueued = DEFAULT_MAX_QUEUED
     private var pinger: ScheduledFuture<*>? = null
     private lateinit var ws: WebSocket
 
@@ -66,9 +70,44 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         return if (latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) (System.nanoTime() - start) / 1_000_000 else null
     }
 
+    /**
+     * Pings now and closes the session (reason [RelayException.UNREACHABLE]) when nothing at all is
+     * heard back within [timeoutMillis]; for example right after the phone changed networks, when
+     * the old connection is usually dead but would take up to a minute to notice. True if alive.
+     */
+    fun checkAlive(timeoutMillis: Long = 3_000): Boolean {
+        if (closed) return false
+        val started = System.nanoTime()
+        if (ping(timeoutMillis) != null || lastHeardNanos > started) return true
+        if (closed) return false
+        finish(IOException("relay did not answer after a network change"), 1000, RelayException.UNREACHABLE)
+        return false
+    }
+
     /** Close reason code from the relay or connector, when the session ended with one. */
     @Volatile var closeReason: String? = null
         private set
+
+    /** Why the relay ended this session after it had opened; null while open or after a local close. */
+    val closedByRelay: RelaySessionClosedException?
+        get() = closeReason?.takeIf { closed && established }?.let { RelaySessionClosedException(it, channel) }
+
+    /** Set once [open] has returned this socket. */
+    @Volatile private var established = false
+
+    /** When an SSH byte last crossed the session in either direction (the relay's idle clock). */
+    @Volatile private var lastBinaryNanos = System.nanoTime()
+
+    /** Milliseconds since an SSH byte last crossed this session; text pings do not count (PROTOCOL §5.3). */
+    fun binaryQuietMillis(): Long = (System.nanoTime() - lastBinaryNanos) / 1_000_000
+
+    private val closeListeners = java.util.concurrent.CopyOnWriteArrayList<(RelaySocket) -> Unit>()
+
+    /** Runs [listener] once the session ends (at once if it already has); [closeReason] tells why. */
+    fun addCloseListener(listener: (RelaySocket) -> Unit) {
+        closeListeners += listener
+        if (closed && closeListeners.remove(listener)) runCatching { listener(this) }
+    }
 
     private val input = object : InputStream() {
         private var current: ByteString? = null
@@ -123,11 +162,13 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
                 val n = minOf(MAX_FRAME, end - pos)
                 bucket?.take(n)
                 // OkHttp buffers up to 16 MiB before failing; wait instead when SSH outruns the link.
-                while (ws.queueSize() > MAX_QUEUED) {
+                // A `ping` waits behind this queue, so it stays short (see maxQueuedBytes).
+                while (ws.queueSize() > maxQueued) {
                     if (closed) throw failure.get() ?: IOException("relay session closed")
                     Thread.sleep(5)
                 }
                 if (!ws.send(b.toByteString(pos, n))) throw failure.get() ?: IOException("relay send failed")
+                lastBinaryNanos = System.nanoTime()
                 pos += n
             }
         }
@@ -156,6 +197,7 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         if (::ws.isInitialized) runCatching { ws.close(code, null) }
         incoming.offer(EOF)
         opened.countDown()
+        closeListeners.toList().forEach { listener -> if (closeListeners.remove(listener)) runCatching { listener(this) } }
     }
 
     private fun sendText(text: String, via: WebSocket = ws) {
@@ -166,9 +208,17 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         private val EOF = ByteString.EMPTY
         private const val POLL_MILLIS = 250L
         private const val MAX_FRAME = 64 * 1024
-        private const val MAX_QUEUED = 2L shl 20
-        private const val PING_SECONDS = 30L
-        private const val PONG_GRACE_NANOS = 20_000_000_000L
+        private const val DEFAULT_MAX_QUEUED = 1L shl 20
+        private const val MIN_MAX_QUEUED = 64L * 1024
+
+        /**
+         * About two seconds of the session's pace, at least 64 KiB. Text `ping`s share OkHttp's
+         * queue with the SSH bytes, so a deep queue on a link slower than the pace delays them
+         * past the grace period (a 2 MiB queue at 500 kbps is over 30 s), and lets a burst after a
+         * network stall overrun the relay's rate supervision.
+         */
+        internal fun maxQueuedBytes(pace: RelayPace): Long =
+            if (pace.kbps <= 0) DEFAULT_MAX_QUEUED else maxOf(MIN_MAX_QUEUED, pace.kbps * 1000L / 8 * 2)
 
         private val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor(ThreadFactory {
             Thread(it, "miffan-relay-ping").apply { isDaemon = true }
@@ -186,9 +236,10 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
             channel: RelayChannel,
             signer: RelayDeviceSigner,
             timeoutMillis: Long = 20_000,
+            timings: RelayTimings = RelayTimings(),
         ): RelaySocket {
             require(RelayIds.isHostId(hostId)) { "Invalid relay host id" }
-            val socket = RelaySocket(channel)
+            val socket = RelaySocket(channel, timings)
             val started = System.nanoTime()
             val url = baseUrl.trimEnd('/').replaceFirst(Regex("^http"), "ws") +
                 "/v1/connect/$hostId?ch=${channel.wire}"
@@ -210,7 +261,9 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
             socket.failure.get()?.let { throw it }
             if (socket.closed) throw RelayException(socket.closeReason ?: RelayException.UNREACHABLE)
             socket.openMillis = (System.nanoTime() - started) / 1_000_000
-            socket.pinger = scheduler.scheduleWithFixedDelay(socket::pingOrClose, PING_SECONDS, PING_SECONDS, TimeUnit.SECONDS)
+            socket.established = true
+            socket.pinger = scheduler.scheduleWithFixedDelay(socket::pingOrClose, timings.pingMillis, timings.pingMillis,
+                TimeUnit.MILLISECONDS)
             return socket
         }
     }
@@ -218,8 +271,8 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
     private fun pingOrClose() {
         if (closed) return
         val sent = pingSentNanos
-        if (sent != 0L && lastPongNanos < sent && System.nanoTime() - sent > PONG_GRACE_NANOS) {
-            finish(IOException("relay stopped answering"), 1000, null)
+        if (sent != 0L && lastHeardNanos < sent && System.nanoTime() - sent > timings.graceMillis * 1_000_000L) {
+            finish(IOException("relay stopped answering"), 1000, RelayException.UNREACHABLE)
             return
         }
         pingSentNanos = System.nanoTime()
@@ -232,8 +285,8 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         @Volatile private var stage = Stage.READY
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            lastHeardNanos = System.nanoTime()
             if (text == "pong") {
-                lastPongNanos = System.nanoTime()
                 pongWaiter?.countDown()
                 return
             }
@@ -245,6 +298,7 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
                         ready = relayJson.decodeFromString<RelayReady>(text)
                         if (ready.ch != channel.wire) throw RelayException("bad_request", message = "Relay opened another channel")
                         bucket = ready.pace.takeIf { it.kbps > 0 }?.let { TokenBucket(it.kbps, it.burstKb) }
+                        maxQueued = maxQueuedBytes(ready.pace)
                         stage = Stage.CHALLENGE
                     }
                     stage == Stage.CHALLENGE && message?.t == "challenge" -> {
@@ -256,7 +310,7 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
                     }
                     stage == Stage.VERDICT && message?.t == "ok" -> {
                         stage = Stage.OPEN
-                        lastPongNanos = System.nanoTime()
+                        lastHeardNanos = System.nanoTime()
                         opened.countDown()
                     }
                     stage == Stage.VERDICT && message?.t == "denied" ->
@@ -271,10 +325,12 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         }
 
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+            lastHeardNanos = System.nanoTime()
             if (stage != Stage.OPEN) {
                 finish(RelayException("bad_request", message = "Data before the handshake finished"), 4403, null)
                 return
             }
+            lastBinaryNanos = System.nanoTime()
             if (bytes.size > 0) incoming.offer(bytes)
         }
 
@@ -284,8 +340,19 @@ class RelaySocket private constructor(private val channel: RelayChannel) : Socke
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            finish(toRelayException(t, response), 1000, null)
+            // After the handshake a failure is the link going away (reset, network change).
+            finish(toRelayException(t, response), 1000, if (stage == Stage.OPEN) RelayException.UNREACHABLE else null)
         }
+    }
+}
+
+/**
+ * How often a session pings the relay, and how long it waits to hear anything back. The relay
+ * treats a session that has not pinged for about 75 s as dead, so [pingMillis] stays well below it.
+ */
+data class RelayTimings(val pingMillis: Long = 30_000, val graceMillis: Long = 20_000) {
+    init {
+        require(pingMillis > 0 && graceMillis in 1 until pingMillis)
     }
 }
 

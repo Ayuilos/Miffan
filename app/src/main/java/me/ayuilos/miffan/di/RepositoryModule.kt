@@ -2,6 +2,7 @@ package me.ayuilos.miffan.di
 
 import android.content.Context
 import me.ayuilos.miffan.AppScope
+import kotlinx.coroutines.flow.first
 import me.ayuilos.miffan.data.files.FileFolders
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.data.files.SkillManager
@@ -53,7 +54,11 @@ val repositoryModule = module {
         FolderRepository(get(), get())
     }
 
-    single { AssistantRemover(get(), get(), get(), get(), get(), { id -> get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>().removeAssistant(id) }) }
+    single {
+        AssistantRemover(get(), get(), get(), get(), get(),
+            removePartnerChats = { id -> get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>().removeAssistant(id) },
+            deleteSpace = { workspaceId -> get<me.ayuilos.miffan.data.ai.computer.PartnerSpaces>().delete(workspaceId) })
+    }
 
     single { ThreadRepository(get()) }
 
@@ -136,7 +141,9 @@ val repositoryModule = module {
     single { NativeSshWorkspaceTransport }
     single {
         me.ayuilos.miffan.data.repository.relay.RelayAccess(
-            me.rerere.workspace.relay.RelayClient(),
+            me.rerere.workspace.relay.RelayClient(
+                infoStore = me.ayuilos.miffan.data.repository.relay.RelayInfoPrefsStore(get<android.content.Context>()),
+            ),
             me.ayuilos.miffan.data.repository.relay.RelayDeviceKeyStore(),
             me.ayuilos.miffan.data.repository.relay.RelayNetworkKey(get()),
         )
@@ -151,6 +158,18 @@ val repositoryModule = module {
         me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup(get(), get(), get(),
             me.ayuilos.miffan.data.repository.RemoteMiffanHelper(get<android.content.Context>().assets))
     }
+    single {
+        val workspaces: WorkspaceRepository = get()
+        val setup: me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup = get()
+        me.ayuilos.miffan.data.repository.relay.RelayConnectorUpdates(
+            workspaces.directConnectionsWithRelay,
+            workspaceOf = { hostId ->
+                workspaces.listFlow().first().firstOrNull { it.isRemote && !it.isSpace && it.remoteHostId == hostId }?.id
+            },
+            upgrade = setup::upgradeConnector,
+            scope = get<AppScope>(),
+        )
+    }
     single { RemoteScreenRepository(get(), get(), get(), get(), get<android.content.Context>().assets, get()) }
     single { me.ayuilos.miffan.data.remotetask.RemoteTaskRepository(get(), get(), get(), get(), get(), get<android.content.Context>().assets) }
     single { me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery(get(), get(), get(), threads = { getKoin().get() }) }
@@ -163,7 +182,7 @@ val repositoryModule = module {
     single { me.ayuilos.miffan.data.ai.computer.RemoteComputerRegistry(get(), get<AppScope>()) }
     single { me.ayuilos.miffan.data.ai.computer.PartnerComputers(get(), get(), get()) }
     single { me.ayuilos.miffan.data.ai.computer.PartnerSpaces(get(), get(), get<AppScope>(),
-        me.ayuilos.miffan.data.ai.computer.SpaceFileLog(File(get<Context>().filesDir, "space-file-log"))) }
+        me.ayuilos.miffan.data.ai.computer.SpaceFileLog(File(get<Context>().filesDir, "space-file-log")), get()) }
     single { me.ayuilos.miffan.data.ai.computer.PartnerSpaceSetup(get(), get(), get(), get<android.content.Context>().resources) }
     single { me.ayuilos.miffan.data.ai.computer.ComputerStatusStore(get()) }
     single { me.ayuilos.miffan.data.ai.computer.ComputerSnapshots(get()) }

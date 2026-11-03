@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.im.computer
 
 import android.content.res.Resources
+import me.ayuilos.miffan.data.repository.relay.relaySessionClose
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -39,6 +40,8 @@ internal fun rememberPartnerUsesPhone(assistantId: Uuid): State<Boolean> {
 
 internal fun computerErrorMessage(resources: Resources, error: Throwable): String =
     (error as? me.ayuilos.miffan.data.ai.computer.CuaSpaceException)?.let { spaceErrorMessage(resources, it) }
+        // The relay ended a screen that was open (idle, quota…): say so rather than "connection failed".
+        ?: error.relaySessionClose()?.let { me.ayuilos.miffan.ui.pages.extensions.workspace.screen.relayScreenEnded(resources, it.reason) }
         ?: (error as? me.ayuilos.miffan.data.repository.relay.RelaySetupException)?.let {
             if (it.reason == "relay_unreachable") resources.getString(R.string.im_computer_away_relay_unreachable)
             else resources.getString(R.string.im_computer_away_install_failed, it.reason ?: it.message.orEmpty())
@@ -123,3 +126,22 @@ private fun spaceErrorMessage(resources: Resources, error: me.ayuilos.miffan.dat
         "timeout" -> resources.getString(R.string.im_space_error_timeout)
         else -> resources.getString(R.string.im_space_error_failed, error.message.orEmpty())
     }
+
+/**
+ * In a delete-partner dialog, for a partner with its own computer on [hostName]: delete that too (the default,
+ * since nobody else works in it), or keep it idle on the computer's page for another partner.
+ */
+@Composable
+internal fun DeleteSpaceOption(hostName: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Surface(onClick = { onChange(!checked) }, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked, onChange)
+            Column(Modifier.weight(1f).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.im_space_delete_with_partner), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(if (checked) R.string.im_space_delete_with_partner_on else R.string.im_space_delete_with_partner_off, hostName),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}

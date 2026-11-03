@@ -337,6 +337,33 @@ describe("policy", () => {
     host.close();
   });
 
+  test("rate_limited when a direction sends more than 6000 frames within 10 s, however small", async () => {
+    const host = await HostControl.connect(A);
+    const s = await openSession(host);
+    const one = bytes(1);
+    for (let i = 0; i < 6_001; i++) s.data.send(one);
+    expect(closeCodes(await s.data.waitClosed(10_000))).toBe("4429 rate_limited");
+    expect(closeCodes(await s.app.waitClosed())).toBe("4429 rate_limited");
+    host.close();
+  });
+
+  test("text beyond the end-to-end handshake is refused with 1008", async () => {
+    const host = await HostControl.connect(A);
+    const s = await openSession(host);
+    s.app.send('{"t":"auth"}');
+    s.app.send("second");
+    expect(await s.data.nextText()).toBe('{"t":"auth"}');
+    expect(await s.data.nextText()).toBe("second");
+    s.app.send("ping"); // never counted
+    expect(await s.app.nextText()).toBe("pong");
+    s.app.send("third");
+    expect(closeCodes(await s.app.waitClosed())).toBe("1008 bad_request");
+    expect(closeCodes(await s.data.waitClosed())).toBe("1000 peer_closed");
+
+    host.conn.send('{"t":"status"}'); // an authenticated control connection may only ping
+    expect(closeCodes(await host.conn.waitClosed())).toBe("1008 bad_request");
+  });
+
   test("media is subject to its own, higher allowance", async () => {
     const host = await HostControl.connect(A); // media: 200 kbps, burst 64 KB => 473,304 bytes per 10 s
     const s = await openSession(host, "media");
@@ -466,6 +493,29 @@ describe("access code", () => {
   });
 });
 
+describe("daily message quota", () => {
+  test("past the quota the host's running sessions are cut with 4429 and new ones refused; ready carries the count", async () => {
+    const opts = { token: ACCESS_TOKEN };
+    const host = await HostControl.connect(B, undefined, opts); // hostDailyMessages = 100
+    expect(host.hello.usage).toMatchObject({ dayMessages: 0 });
+    expect(host.hello.policy.quotas.hostDailyMessages).toBe(100);
+    const first = await openSession(host, "control", opts);
+    for (let i = 0; i < 60; i++) first.app.send(bytes(1));
+    for (let i = 0; i < 60; i++) await first.data.nextBinary();
+    const second = await openSession(host, "control", opts);
+    expect((second.ready.usage as any).dayMessages).toBe(60);
+    for (let i = 0; i < 41; i++) second.data.send(bytes(1)); // the 101st message
+    for (const c of [first.app, first.data, second.app, second.data]) {
+      expect(closeCodes(await c.waitClosed())).toBe("4429 quota_exhausted");
+    }
+    const refused = await upgradeAttempt(wsUrl(B, `/v1/connect/${host.hostId}?ch=control`), { authorization: `Bearer ${ACCESS_TOKEN}` });
+    expect(refused.status).toBe(429);
+    expect((refused.json as any).reason).toBe("quota_exhausted");
+    expect((refused.json as any).retryAfter).toBeGreaterThan(0);
+    host.close();
+  });
+});
+
 describe("admin", () => {
   test("/v1/admin/stats needs the admin token", async () => {
     for (const base of [A, B, C]) {
@@ -478,7 +528,12 @@ describe("admin", () => {
       expect(j.day).toBe(today());
       expect(["ok", "media_paused", "closed"]).toContain(j.budget);
       expect(typeof j.usedMb).toBe("number");
+      expect(typeof j.requests).toBe("number");
+      expect(j.limits).toHaveProperty("globalDailyRequests");
     }
+    // Server A has carried sessions by now (metering flushes when a session closes).
+    const a = (await getJson(A + "/v1/admin/stats", { authorization: `Bearer ${ADMIN_TOKEN}` })).json as any;
+    expect(a.requests).toBeGreaterThan(0);
   });
 });
 

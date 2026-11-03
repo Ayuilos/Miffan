@@ -46,6 +46,8 @@ elif name=='launchctl':
         if s.get('no_gui'): sys.exit(5)
         s.setdefault('loaded',[]).append(args[2]); save()
     elif args[0]=='bootout': s['loaded']=[p for p in s.get('loaded',[]) if not p.endswith(args[1].rsplit('/',1)[-1]+'.plist')]; save()
+    elif args[0]=='kickstart':
+        if not s.get('loaded'): sys.exit(113)
     elif args[0]=='print':
         if not s.get('loaded'): sys.exit(113)
         print('state = running')
@@ -70,7 +72,7 @@ with (root/'connector.jsonl').open('a') as log: log.write(json.dumps({'args':arg
 cmd=args[0]
 home=Path(os.environ['HOME'])/'.miffan/connector'
 def out(**kw): print(json.dumps(kw, separators=(',', ':')))
-if cmd=='version': out(success=True, version='1.1.0')
+if cmd=='version': out(success=True, version=os.environ.get('FAKE_CONNECTOR_VERSION', '1.1.0'))
 elif cmd=='init':
     if 'refuse' in stdin: out(success=False, reason='bad_relay', detail='relay must be an https URL'); sys.exit(1)
     home.mkdir(parents=True, exist_ok=True)
@@ -170,7 +172,7 @@ def test_status_before_install(base):
 def test_linux_install_and_status(base):
     host = Host(base)
     status = host.json("install", stdin=INSTALL)
-    assert status["installed"] is True and status["service"] == "running" and status["pinnedVersion"] == "1.1.0"
+    assert status["installed"] is True and status["service"] == "running" and status["pinnedVersion"] == pinned_version()
     assert status["linger"] is True and status["hostId"] == "fakehostid" and status["success"] is True
     assert host.installed().read_bytes() == host.connector.read_bytes()
     assert oct(host.installed().stat().st_mode & 0o777) == "0o755"
@@ -193,7 +195,7 @@ def test_linux_install_and_status(base):
     assert host.calls("curl") == []  # MIFFAN_CONNECTOR_FILE skips the download
 
     again = host.json("status")
-    assert again["installed"] and again["service"] == "running" and again["connected"] is True and again["pinnedVersion"] == "1.1.0"
+    assert again["installed"] and again["service"] == "running" and again["connected"] is True and again["pinnedVersion"] == pinned_version()
 
 
 def test_linger_refused_is_not_an_error(base):
@@ -235,7 +237,7 @@ def test_checksum_mismatch_installs_nothing(base):
 
 def test_download_order_and_mirrors(base):
     host = Host(base, arch="aarch64")
-    release = "https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.1.0/miffan-connector-linux-arm64"
+    release = f"https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v{pinned_version()}/miffan-connector-linux-arm64"
     mirror_base = "https://mirror.example/connector"
     mirror = mirror_base + "/miffan-connector-linux-arm64"
     patched = Path(base) / "miffan-with-mirror.sh"
@@ -266,11 +268,12 @@ def test_download_order_and_mirrors(base):
 
 def test_same_version_skips_download(base):
     host = Host(base)
-    release = "https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.1.0/miffan-connector-linux-amd64"
+    release = f"https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v{pinned_version()}/miffan-connector-linux-amd64"
     host.state(serve={release: str(host.connector)})
-    host.json("install", stdin=INSTALL, use_file=False)
+    current = {"FAKE_CONNECTOR_VERSION": pinned_version()}
+    host.json("install", stdin=INSTALL, use_file=False, extra_env=current)
     assert len(host.calls("curl")) == 1
-    host.json("install", stdin=INSTALL, use_file=False)
+    host.json("install", stdin=INSTALL, use_file=False, extra_env=current)
     assert len(host.calls("curl")) == 1, "an installed connector of the pinned version must not be downloaded again"
 
 
@@ -366,6 +369,62 @@ def test_log_is_trimmed_on_install(base):
     (data / "connector.log").write_bytes(b"x" * 2_000_000)
     host.json("install", stdin=INSTALL)
     assert (data / "connector.log").stat().st_size == 131072
+
+
+def pinned_version():
+    return re.search(r"^MIFFAN_CONNECTOR_VERSION=(\S+)$", HELPER.read_text(), re.M).group(1)
+
+
+def test_upgrade_needs_an_installed_connector(base):
+    host = Host(base)
+    assert host.json("upgrade", ok=False)["reason"] == "not_installed"
+    assert host.calls("systemctl") == [] and host.calls("curl") == []
+
+
+def test_linux_upgrade_replaces_the_binary_and_restarts(base):
+    host = Host(base)
+    host.json("install", stdin=INSTALL)
+    host.installed().write_text("old connector")
+    host.installed().chmod(0o755)
+    (host.base / "argv.jsonl").unlink()
+    (host.base / "connector.jsonl").unlink()
+    status = host.json("upgrade")
+    assert host.installed().read_bytes() == host.connector.read_bytes()
+    assert ["--user", "restart", "miffan-connector.service"] in host.calls("systemctl")
+    assert status["installed"] is True and status["service"] == "running"
+    # The relay and the paired devices are not touched: no init, no pair.
+    assert [c["args"][0] for c in host.connector_calls()] == ["status"]
+
+
+def test_macos_upgrade_kickstarts_the_agent(base):
+    host = Host(base, os_name="Darwin", arch="arm64")
+    host.json("install", stdin=INSTALL)
+    (host.base / "argv.jsonl").unlink()
+    host.json("upgrade")
+    kicks = [c for c in host.calls("launchctl") if c[0] == "kickstart"]
+    assert kicks == [["kickstart", "-k", f"gui/{os.getuid()}/me.ayuilos.miffan.connector"]]
+    assert not [c for c in host.calls("launchctl") if c[0] == "bootout"], "a restart must not unload the agent first"
+
+
+def test_upgrade_of_a_current_connector_does_nothing(base):
+    host = Host(base)
+    host.json("install", stdin=INSTALL)
+    (host.base / "argv.jsonl").unlink()
+    status = host.json("upgrade", use_file=False, sha="", extra_env={"FAKE_CONNECTOR_VERSION": pinned_version()})
+    assert host.calls("curl") == [], "a connector of the pinned version is not downloaded again"
+    assert not any("restart" in c for c in host.calls("systemctl")), "nor restarted"
+    assert status["pinnedVersion"] == pinned_version()
+
+
+def test_upgrade_with_a_bad_download_keeps_the_old_connector(base):
+    host = Host(base)
+    host.json("install", stdin=INSTALL)
+    host.installed().write_text("old connector")
+    (host.base / "argv.jsonl").unlink()
+    failure = host.json("upgrade", ok=False, sha="f" * 64)
+    assert failure["reason"] == "checksum_mismatch"
+    assert host.installed().read_text() == "old connector" and host.leftovers() == []
+    assert not any("restart" in c for c in host.calls("systemctl"))
 
 
 def test_usage_and_unknown_actions(base):

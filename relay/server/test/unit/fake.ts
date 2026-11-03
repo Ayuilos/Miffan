@@ -8,6 +8,8 @@ import { sqlite } from "../../bun/relay.ts";
 export class FakeSock implements Sock {
   sent: Frame[] = [];
   closedWith?: [number, string];
+  /** Time of the last ping the platform answered by itself (the Worker's auto-response), if any. */
+  autoPing: number | null = null;
   constructor(
     readonly tags: string[],
     public a: Att,
@@ -26,6 +28,9 @@ export class FakeSock implements Sock {
     if (this.closedWith) throw new Error("already closed");
     this.closedWith = [code, reason];
   }
+  lastAutoPing(): number | null {
+    return this.autoPing;
+  }
   json(i: number): any {
     return JSON.parse(this.sent[i] as string);
   }
@@ -41,9 +46,10 @@ export class World {
   pending: Promise<unknown>[] = [];
   db = new Database(":memory:");
   budgetState: BudgetState = "ok";
-  reports: { bytes: number; minutes: number }[] = [];
+  reports: { bytes: number; minutes: number; requests: number }[] = [];
   stateCalls = 0;
   registrations = 0;
+  ipChecks = 0;
   registrationLimit = Infinity;
   logs: Record<string, unknown>[] = [];
 
@@ -52,9 +58,13 @@ export class World {
       this.stateCalls++;
       return this.budgetState;
     },
-    report: async (bytes, minutes) => {
-      this.reports.push({ bytes, minutes });
+    report: async (bytes, minutes, requests) => {
+      this.reports.push({ bytes, minutes, requests });
       return this.budgetState;
+    },
+    checkIp: async () => {
+      this.ipChecks++;
+      return this.registrations >= this.registrationLimit ? { ok: false, retryAfter: 60 } : { ok: true };
     },
     registerIp: async () => {
       if (this.registrations >= this.registrationLimit) return { ok: false, retryAfter: 60 };

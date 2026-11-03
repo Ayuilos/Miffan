@@ -53,7 +53,7 @@ class RemoteTerminalConnectionTest {
         coEvery { hostDao.updateDetectedPlatform("host", any(), any()) } returns 1
         coEvery { hostDao.updateLastAddress("host", any(), any(), any(), any(), any()) } returns 1
         every { credentials.load("host") } returns RemoteAuthentication.Password("test")
-        every { transport.open(any(), any(), any()) } returns session
+        every { transport.open(any(), any(), any(), socketFactory = any()) } returns session
         every { session.resolvedRoot } returns "/srv/project"
         every { session.platform } returns me.rerere.workspace.RemotePlatform.POSIX
         every { session.isConnected } returns true
@@ -76,7 +76,7 @@ class RemoteTerminalConnectionTest {
             "REMOTE", remoteHostId = "host", remoteRoot = "/srv/project", hostConnectionRevision = "v1", workspaceName = "Remote")
         val stale = runCatching { repo.openRemoteTerminal("ws", command = command, expectedTarget = original) }.exceptionOrNull()
         assertTrue(stale is WorkspaceToolTargetChangedException)
-        verify(exactly = 0) { transport.open(any(), any(), any()) }
+        verify(exactly = 0) { transport.open(any(), any(), any(), socketFactory = any()) }
     }
 
     @Test fun manualTerminalStaysActiveUntilClosedAndClosesOnlyOnce() = runBlocking {
@@ -105,7 +105,7 @@ class RemoteTerminalConnectionTest {
         assertTrue(repo.removeHostAddress("host", "server.internal", 22))
         repo.connectRemoteWorkspace("ws")
         assertEquals("v1", host.connectionRevision)
-        verify(exactly = 1) { transport.open(any(), any(), any()) }
+        verify(exactly = 1) { transport.open(any(), any(), any(), socketFactory = any()) }
         verify(exactly = 0) { session.close() }
     }
 
@@ -116,7 +116,7 @@ class RemoteTerminalConnectionTest {
         assertEquals(true, host.supportsRemoteScreen)
         assertTrue(runCatching { repo.openRemoteTerminal("ws") }.exceptionOrNull() is
             me.rerere.workspace.RemoteTerminalUnsupportedException)
-        verify(exactly = 0) { transport.open(any(), any(), any()) }
+        verify(exactly = 0) { transport.open(any(), any(), any(), socketFactory = any()) }
     }
 
     @Test fun windowsHomeUsesSftpAndPersistsDetectedPlatform() = runBlocking {
@@ -157,7 +157,7 @@ class RemoteTerminalConnectionTest {
             repo.openRemoteTerminal("ws", expectedHostId = "previous-host", expectedHostRevision = "v1")
         }.exceptionOrNull()
         assertTrue(failure is WorkspaceToolTargetChangedException)
-        verify(exactly = 0) { transport.open(any(), any(), any()) }
+        verify(exactly = 0) { transport.open(any(), any(), any(), socketFactory = any()) }
     }
 
     @Test fun reconnectCannotSilentlyUseEditedHostIdentity() = runBlocking {
@@ -165,7 +165,7 @@ class RemoteTerminalConnectionTest {
         host = host.copy(connectionRevision = "v2", username = "other")
         val failure = runCatching { repo.openRemoteTerminal("ws", expectedHostRevision = "v1") }.exceptionOrNull()
         assertTrue(failure is WorkspaceToolTargetChangedException)
-        verify(exactly = 0) { transport.open(any(), any(), any()) }
+        verify(exactly = 0) { transport.open(any(), any(), any(), socketFactory = any()) }
     }
 
     @Test fun identityChangeDuringPtyHandshakeClosesBothResources() = runBlocking {
@@ -185,7 +185,7 @@ class RemoteTerminalConnectionTest {
         val repo = repository()
         host = host.copy(trustedHostKeySha256 = null)
         assertTrue(runCatching { repo.openRemoteTerminal("ws") }.isFailure)
-        verify(exactly = 0) { transport.open(any(), any(), any()) }
+        verify(exactly = 0) { transport.open(any(), any(), any(), socketFactory = any()) }
         assertEquals(RemoteConfigurationState.HOST_KEY_UNTRUSTED, repo.remoteHostStates.value.getValue("host").configuration)
     }
 
@@ -193,7 +193,7 @@ class RemoteTerminalConnectionTest {
         val repo = repository()
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
-        every { transport.open(any(), any(), any()) } answers {
+        every { transport.open(any(), any(), any(), socketFactory = any()) } answers {
             started.countDown()
             while (true) {
                 try {

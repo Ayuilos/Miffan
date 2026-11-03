@@ -16,6 +16,7 @@ import me.ayuilos.miffan.data.db.entity.encodeRemoteHostRelay
 import me.ayuilos.miffan.data.repository.RemoteMiffanHelper
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.screenHelperCommand
+import me.rerere.workspace.RemoteRoute
 import me.rerere.workspace.RemoteWorkspaceSession
 import me.rerere.workspace.relay.RelayEndpoint
 import me.rerere.workspace.relay.RelayIds
@@ -37,7 +38,12 @@ data class RelayConnectorStatus(
     val lastError: String? = null,
     val linger: Boolean? = null,
     val devices: List<RelayConnectorDevice> = emptyList(),
-)
+    /** The connector version this computer's helper installs; empty from helpers before 34. */
+    val pinnedVersion: String = "",
+) {
+    /** An installed connector that answers with a version other than the one the helper pins. */
+    val outdated: Boolean get() = installed && version.isNotEmpty() && pinnedVersion.isNotEmpty() && version != pinnedVersion
+}
 
 @Serializable
 data class RelayConnectorDevice(val id: String, val name: String = "", val addedAt: String = "")
@@ -70,6 +76,19 @@ class RemoteRelaySetup internal constructor(
     suspend fun status(workspaceId: String): RelayConnectorStatus = withRemote(workspaceId) { ssh ->
         helper.ensureInstalled(ssh)
         json.decodeFromString<RelayConnectorStatus>(run(ssh, "relay status", null))
+    }
+
+    /**
+     * Brings the computer's connector to the version this app's helper pins, over a direct session only:
+     * the connector restarts, which would cut a session running through it. Returns whether it upgraded.
+     */
+    suspend fun upgradeConnector(workspaceId: String): Boolean = withRemote(workspaceId) { ssh ->
+        if (ssh.route !is RemoteRoute.Direct) return@withRemote false
+        helper.ensureInstalled(ssh)
+        val status = json.decodeFromString<RelayConnectorStatus>(run(ssh, "relay status", null))
+        if (!status.outdated) return@withRemote false
+        run(ssh, "relay upgrade", null)
+        true
     }
 
     /**

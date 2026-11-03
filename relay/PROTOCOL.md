@@ -96,7 +96,7 @@ connector                          relay
 - 签名：`sig = Ed25519(hostKey, UTF8("miffan-relay/v1 host\n" + host + "\n" + nonce))`，其中 `host` 是请求的 `Host` 头的值（小写），`nonce` 是 challenge 中的 b64u 文本原样。
 - relay 必须在 10 秒内收到正确签名，否则关闭 4401。
 - 同一 `hostId` 只保留一条控制连接：新连接**验签通过后**，旧连接以 4000 `replaced` 关闭。
-- 首次出现的 `hostId` 计入按来源 IP 的注册频率限制（策略 `access.registrationsPerIpPerDay`），超出返回 429 `too_many_registrations`。
+- 首次出现的 `hostId` 受按来源 IP 的注册频率限制（策略 `access.registrationsPerIpPerDay`）：升级前检查，超出返回 429 `too_many_registrations`；只有**验签通过**后才计数并为它建立状态，未通过验签的连接不留下任何记录。IPv6 地址按 /64 前缀计数，IPv4 映射地址按其 IPv4 地址计数。
 
 `hello`：
 
@@ -128,6 +128,8 @@ relay 还可能发送：
 
 未知的 `t` 必须忽略。文本 `ping` 由 relay 回复 `pong`，不得要求 connector 处理。
 
+认证之后，connector 在控制连接上除文本 `ping` 外不得发送任何消息；relay 收到其他消息时以 1008 `bad_request` 关闭控制连接。
+
 ## 5. 会话
 
 ### 5.1 建立
@@ -157,6 +159,8 @@ App                         relay                         connector
 
 `ready` 之后，relay **原样转发**两侧的文本帧和二进制帧，唯一例外是文本 `ping`：由 relay 直接回复 `pong`，不转发。
 
+文本帧只用于端到端握手（§5.2）：除 `ping` 外，每一侧在整个会话中最多发送 2 条文本帧（App 只需要 `auth`；connector 需要 `challenge` 和 `ok`/`denied`）。超出时 relay 以 1008 `bad_request` 关闭这一侧，并以 1000 `peer_closed` 关闭另一侧。转发的文本帧计入字节数，但不算活动（§5.3 空闲、§6.3 活跃分钟）。
+
 ### 5.2 端到端握手
 
 在任何二进制帧之前：
@@ -178,20 +182,33 @@ App                         relay                         connector
    - 通过：`{"t":"ok"}`，然后连接本机目标（§7）并开始双向转发二进制帧。
    - 不通过：`{"t":"denied","reason":"unknown_device"}` 或 `"bad_signature"`，然后以 4403 关闭。
 4. App 在收到 `ok` 之前不得发送二进制帧；connector 在发出 `ok` 之前收到二进制帧，必须以 4403 关闭。
-5. connector 必须对失败做退避：同一 `deviceId` 一分钟内失败 5 次后，拒绝该设备 5 分钟；全部设备一分钟内失败 20 次后，拒绝所有新会话 1 分钟（以 `{"t":"denied","reason":"busy"}` 回复）。
+5. connector 必须对失败做退避，但退避**只能拒绝本来就会失败的请求**：允许列表中的设备只要签名正确，就必须放行，不受任何失败计数影响（设备公钥和 `hostId` 都不是秘密，否则任何人都能靠故意失败把主人锁在门外）。
+   - 全部请求一分钟内失败 20 次后，未知设备和无法解析的 `auth` 一律拒绝 1 分钟。
+   - 同一已配对 `deviceId` 一分钟内签名错误 5 次后，该设备名下的错误签名拒绝 5 分钟。
+   - 退避期间的拒绝以 `{"t":"denied","reason":"busy"}` 回复。
+6. connector 发出 `challenge` 后最多等 5 秒；收不到 `auth` 就关闭会话（它在 relay 上占着该电脑的一个会话名额）。
 
 `sid` 由 relay 随机生成并进入签名，因此签名不能在其他会话中重放；`nonce` 由 connector 生成，relay 无法预先构造。
 
 ### 5.3 转发与帧
 
 - 二进制帧不超过 65,536 字节，文本帧不超过 4,096 字节；超出时 relay 以 4413 关闭。
-- 发送方应当把小块数据攒成较大的帧：可读数据少于 16 KiB 时最多再等 10 ms 补满（交互性数据在 10 ms 内必须发出）。
+- 每个方向在任意 10 秒内最多 6,000 帧（文本和二进制合计，`ping` 不算）；超出时 relay 以 4429 `rate_limited` 关闭整条会话（§6.2）。
+- 发送方应当把小块数据攒成较大的帧（平台按帧计费，见 §6.2），同时不拖慢交互：
+  - 满 16 KiB 立即发出；
+  - 链路空闲后的第一批数据（例如按键回显）：连续 2 ms 没有新数据就立即发出，最晚在第一个字节到达后 10 ms 发出；
+  - 数据连续流动时（距上一帧不到 25 ms），每帧最多再攒 40 ms。
+  - 旧版发送方"少于 16 KiB 时最多再等 10 ms"的做法仍然合规，只是帧数更多。
 - 一侧关闭（任意关闭码），relay 必须以 1000 `peer_closed` 关闭另一侧。
 - 会话连续 `policy.limits.idleTimeoutS` 秒没有二进制帧时，relay 以 1000 `idle` 关闭（文本 `ping` 不算活动）。
 
 ### 5.4 保活
 
 - 两侧都应当每 30 秒发送一次文本 `ping`。relay 必须在不唤醒会话状态的前提下回复 `pong`（Cloudflare 实现使用 WebSocket auto-response）。
+- **存活判定**：一条连接超过一定时间既没有 `ping` 也没有二进制帧，relay 就把它视为已消失（电脑睡眠、手机切换网络时，TCP 连接往往不会正常关闭）。电脑一侧（控制连接，以及会话中 connector 的数据连接）为 **75 秒**；会话中 App 一侧为 **150 秒**，因为手机锁屏休眠时不发 `ping`，锁屏两分钟左右回来时会话应当还在。relay 只在本来就醒着的时候检查（新会话请求、已到期的 alarm），不为此额外唤醒：
+  - 控制连接：视为电脑离线，以 4404 `host_offline` 关闭；新会话请求直接得到 404 `host_offline`，而不是等 10 秒后的 `host_timeout`。
+  - 会话：任一侧消失，就以 1000 `peer_closed` 关闭整条会话，并且不再占用 `sessionsPerHost` 的名额。
+  - 因此连接两侧的 `ping` 间隔不得超过 30 秒（电脑一侧的 75 秒允许丢一次）。
 - App 在经 relay 的 SSH 会话上不应当启用 SSH 层保活（JSch `ServerAliveInterval`）。
 
 ## 6. 策略、限速与计量
@@ -210,18 +227,23 @@ App                         relay                         connector
     "hostDailyMb": 500,
     "hostDailyActiveMin": 0,
     "hostMonthlyControlMb": 2048,
-    "hostMonthlyMediaMb": 10240
+    "hostMonthlyMediaMb": 10240,
+    "hostDailyMessages": 0
   },
-  "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "mediaReserve": 0.3 }
+  "budget": { "globalDailyMb": 0, "globalDailyActiveHours": 0, "globalDailyRequests": 0, "mediaReserve": 0.3 }
 }
 ```
 
 数值 `0` 表示不限。字段缺失按不限处理；客户端必须忽略未知字段。
 
+`quotas.hostDailyMessages` 是每台电脑每个 UTC 日的消息配额：该电脑所有会话中 relay 收到的帧（文本和二进制，`ping` 除外）合计。
+
+`budget.globalDailyRequests` 是全局每日"平台请求数"预算，按 Cloudflare 的计费口径由 relay 自行估算：收到的 WebSocket 消息（`ping` 除外）每 20 条计 1 次，每次接受的 WebSocket 升级、每次 alarm、每次对全局预算服务的调用各计 1 次。与其他全局预算一样，剩余低于 `mediaReserve` 时进入 `media_paused`，用完时为 `closed`（§6.4）。
+
 ### 6.2 限速
 
 - **发送方自行限速**：App 对上行、connector 对下行，按 `pace`（控制通道取 `control`，画面通道取 `media`）用令牌桶限速。
-- **relay 监督**：对每个会话的每个方向统计最近 10 秒转发的二进制字节数；超过 `(kbps × 10 / 8 × 1000) + burstKb × 1024` 的 1.5 倍时，以 4429 `rate_limited` 关闭该会话。
+- **relay 监督**：对每个会话的每个方向统计最近 10 秒转发的二进制字节数；超过 `(kbps × 10 / 8 × 1000) + burstKb × 1024` 的 1.5 倍时，以 4429 `rate_limited` 关闭该会话。同一窗口内的帧数（文本和二进制合计）超过 6,000 时同样关闭：平台对每条收到的消息计费，帧数和字节数一样需要上限。
 - 因此把画面流量标成 `control` 的会话，要么被发送方限速到不可用，要么被 relay 关闭。
 
 ### 6.3 计量与用量对象
@@ -230,6 +252,7 @@ relay 按 `hostId` 记录：
 
 - 每个 UTC 日、每个通道的转发字节数（两个方向合计）；
 - 每个 UTC 日的**活跃分钟数**：该电脑任一会话转发过二进制帧的不同 UTC 分钟数；
+- 每个 UTC 日的**消息数**：该电脑所有会话中 relay 收到的帧数（`ping` 除外）；
 - 每个 UTC 月、每个通道的字节数。
 
 日与月都按 UTC 划分（与 Cloudflare 免费额度的重置时间一致，北京时间 8 点）。
@@ -242,12 +265,13 @@ relay 按 `hostId` 记录：
   "dayActiveMin": 14,
   "monthControlMb": 300.2,
   "monthMediaMb": 3100.0,
+  "dayMessages": 182000,
   "budget": "ok",
   "resetsAt": "2026-11-02T00:00:00Z"
 }
 ```
 
-`budget`：`"ok"`、`"media_paused"`（全局预算剩余低于 `mediaReserve`）、`"closed"`（全局预算用完）。
+`dayMessages` 是当天的消息数（较旧的 relay 不提供此字段）。`budget`：`"ok"`、`"media_paused"`（任一全局预算——流量、活跃时长、请求数——剩余低于 `mediaReserve`）、`"closed"`（任一全局预算用完）。
 
 relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内容；来源 IP 只用于注册频率限制，不得落盘超过一天。
 
@@ -266,7 +290,7 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 | 该电脑任一日/月配额用完 | 429 `quota_exhausted`（`retryAfter` 到重置时间） |
 | 该电脑会话数已达上限 | 429 `too_many_sessions` |
 
-会话进行中配额或预算耗尽：画面会话以 4429 `quota_exhausted` / 4503 `relay_busy` 关闭；控制会话允许继续到自然结束，但不得开新会话。
+会话进行中配额或预算耗尽：画面会话以 4429 `quota_exhausted` / 4503 `relay_busy` 关闭；控制会话允许继续到自然结束，但不得开新会话。例外是 `hostDailyMessages`：它用完时，该电脑**所有**正在进行的会话（控制和画面）都以 4429 `quota_exhausted` 关闭，超出配额的那一帧不转发；只影响这台电脑，控制连接保持在线并收到 `usage` 推送。
 
 ## 7. connector 的转发目标
 
@@ -287,11 +311,11 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 
 | reason | HTTP | WS 关闭码 | 含义 |
 |---|---|---|---|
-| `bad_request` | 400 | — | 路径、参数或消息格式错误 |
+| `bad_request` | 400 | 1008 | 路径、参数或消息格式错误；WebSocket 上：`ready` 之前发帧、握手之外的文本帧、已认证控制连接上的非 `ping` 消息 |
 | `unauthorized` | 401 | 4401 | 访问码错误，或主机签名错误/超时 |
 | `media_disabled` | 403 | — | 本中转不提供画面通道 |
 | `denied` | — | 4403 | connector 拒绝了设备（端到端握手失败） |
-| `host_offline` | 404 | 4404 | 电脑的 connector 不在线 |
+| `host_offline` | 404 | 4404 | 电脑的 connector 不在线；WebSocket 上：控制连接超过 75 秒没有 `ping`（§5.4） |
 | `host_timeout` | — | 4408 | connector 没有及时接起会话 |
 | `frame_too_large` | — | 4413 | 帧超出大小限制 |
 | `quota_exhausted` | 429 | 4429 | 该电脑的配额用完 |
@@ -300,6 +324,7 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 | `rate_limited` | — | 4429 | 会话超出限速 |
 | `relay_busy` | 503 | 4503 | 全局预算收紧或用完 |
 | `replaced` | — | 4000 | 同一电脑的新控制连接取代了旧连接 |
+| `backpressure` | — | 1013 | 接收方读得太慢，relay 为它缓冲的数据超过上限（Bun 实现为每条连接 4 MiB）；另一侧随后以 1000 `peer_closed` 关闭 |
 | `peer_closed` / `idle` | — | 1000 | 对端关闭 / 会话空闲超时 |
 
 WebSocket 关闭时，`reason` 字段携带上表中的原因码文本。

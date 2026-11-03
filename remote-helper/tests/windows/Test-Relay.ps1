@@ -99,6 +99,7 @@ try {
     Test 'commands need an installed connector; unpair validates the id before anything runs' {
         Assert-Equal (Get-RelayFailure { Invoke-RelayPair '{}' }) 'not_installed' 'pair'
         Assert-Equal (Get-RelayFailure { Invoke-RelayUnpair '{}' }) 'not_installed' 'unpair'
+        Assert-Equal (Get-RelayFailure { Invoke-RelayUpgrade }) 'not_installed' 'upgrade'
         $paths = Get-RelayPaths
         $null = [IO.Directory]::CreateDirectory($paths.binDir)
         [IO.File]::WriteAllBytes($paths.bin, [byte[]](0))  # exists, but would fail if it were ever started

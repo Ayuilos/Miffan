@@ -512,6 +512,15 @@ class RemoteScreenRepository(
             throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_SCREEN_UNAVAILABLE, reason)
         }
 
+    /**
+     * The partner acted on [hostId]'s desktop: open screens of it that stopped refreshing on their
+     * own ([RemoteDesktopSession.autoRefreshStopped]) fetch a new picture and resume.
+     */
+    fun noteComputerAction(hostId: String) {
+        val screens = synchronized(lock) { open[hostId]?.toList().orEmpty() }
+        screens.forEach { (it.session as? SnapshotDesktopSession)?.noteComputerAction() }
+    }
+
     /** Called when the host is deleted; the host row itself is removed by [WorkspaceRepository]. */
     suspend fun forgetHost(hostId: String) {
         closeHost(hostId)
@@ -550,6 +559,12 @@ class RemoteScreenRepository(
             // Through a relay: Sunshine's UDP picture cannot follow (protocol v1 has no datagrams), and
             // VNC/RDP bytes go over a second session on the relay's media channel (RELAY_PLAN §4).
             val relayed = ssh.route is RemoteRoute.Relay
+            // Every screen through a relay runs on the relay's media channel: open that session while
+            // the computer is probed below. Closed again if this screen ends up not using it.
+            val earlyMedia = if (relayed) EarlyOpen(callerJob) {
+                openRelayMedia(host.id, ssh)
+            } else null
+            try {
             if (windows) clipboard = WindowsClipboardChannel { ssh.openProcess(screenHelperCommand(ssh.platform, "clip serve")) }
             streamRequested = windows || streamRequested
             val endpoint = if (windows) RemoteScreenEndpoint.Helper else configuredEndpoint
@@ -575,7 +590,7 @@ class RemoteScreenRepository(
                     parseHelperProbe(ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000).stdout)
                 }.getOrNull()
                 if (probed?.cua?.ok == true) {
-                    val media = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { openRelayMedia(host.id, ssh) }
+                    val media = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { requireNotNull(earlyMedia).take() }
                     relayMediaKbps = (media.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
                     return@openLeasedRemote try {
                         openSnapshot(media, host.name, sink, windows, detected == RemoteScreenPlatform.MACOS, stream.quality.snapshotQuality())
@@ -627,7 +642,7 @@ class RemoteScreenRepository(
             if (attempt.session != null) return@openLeasedRemote attempt.session
             if (windows) throw windowsStreamUnavailable(attempt.fallback)
             val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
-            val media = if (relayed) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { openRelayMedia(host.id, ssh) } else null
+            val media = if (relayed) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { requireNotNull(earlyMedia).take() } else null
             val tunnel = media ?: ssh
             relayMediaKbps = (media?.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
             try {
@@ -674,6 +689,9 @@ class RemoteScreenRepository(
                 } catch (error: Throwable) { stream.close(); throw error }
             }
             } catch (error: Throwable) { media?.close(); throw error }
+            } finally {
+                earlyMedia?.close() // no-op once taken
+            }
         }
         return try {
             detected?.takeIf { it != RemoteScreenPlatform.UNKNOWN }?.let { platform ->
@@ -702,9 +720,11 @@ class RemoteScreenRepository(
         media: RemoteWorkspaceSession, name: String, sink: RemoteScreenFrameSink, windows: Boolean, macos: Boolean,
         quality: SnapshotQuality,
     ): SnapshotDesktopSession {
-        val pictures = media.openProcess(screenHelperCommand(media.platform, "snapshot serve"))
-        val process = try { media.openProcess(screenHelperCommand(media.platform, "cua")) }
-            catch (error: Throwable) { pictures.close(); throw error }
+        // Two exec channels: open them side by side, each costs round trips through the relay.
+        val (pictures, process) = openInParallel(
+            { media.openProcess(screenHelperCommand(media.platform, "snapshot serve")) },
+            { media.openProcess(screenHelperCommand(media.platform, "cua")) },
+        )
         return SnapshotDesktopSession(process, pictures, sink, name, macos, windows, quality, onClose = { media.close() })
     }
 

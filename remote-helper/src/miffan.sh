@@ -21,10 +21,10 @@
 #                           scheduled tasks run by the system timer (JSON on stdout)
 #   miffan space probe|install|create|info|start|stop|delete|reset|resize|netcheck|handoff
 #                           a partner's own cua Space on this computer (JSON on stdout)
-#   miffan relay status|install|pair|unpair|uninstall
+#   miffan relay status|install|upgrade|pair|unpair|uninstall
 #                           the relay connector that lets the phone reach this computer from outside
 
-MIFFAN_HELPER_VERSION=37
+MIFFAN_HELPER_VERSION=38
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -2835,11 +2835,11 @@ space() {
 # Release binaries are pinned by version and SHA-256, taken from the release's SHA256SUMS when
 # relay-connector-v$MIFFAN_CONNECTOR_VERSION was published.
 
-MIFFAN_CONNECTOR_VERSION=1.1.0
-MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=05b6aca0fe24ae400da74874a2f0c456c7616ce5d109e1dcce850830a076df4f
-MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=f4a865790e8cbe5ca1e81a2b10364f596655c7b19a5c68a0cd161fbd9d44dabe
-MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=068f83a82ec0159294cd37cf643550be19029f5bb56791069287130ba99c2aaa
-MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=626ec0f32e7dcc3929d8bbc5bd417203c18d6d62aa0059634df1e8c380ec3256
+MIFFAN_CONNECTOR_VERSION=1.2.0
+MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=d80631d7df0416ea6666c130d2486712ee96c994e0e6d1b1d76ac12036fb89d2
+MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=3cb2ed11c8285c408ee58bc31c6d142fbe6c4f673d0bcdd9e70a99a8ca8ea91e
+MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=35a226f8d10c466481962ed7670aa0a078b736e60ab34417a4bfef5b5d609440
+MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=dc1d30517071be9ef44fa8781592d53063b850ee004d8adc6e8fc344cd4c2755
 MIFFAN_CONNECTOR_RELEASE_URL="https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v$MIFFAN_CONNECTOR_VERSION"
 # Extra download locations tried after the GitHub release, space separated, same file names. None yet.
 MIFFAN_CONNECTOR_MIRRORS=""
@@ -3074,6 +3074,39 @@ relay_install() {
     relay_status
 }
 
+# Restarts a registered connector service so a replaced binary takes over. One request to the service
+# manager, which finishes the restart itself even if this helper's session ends with it.
+relay_service_restart() {
+    case "$(os)" in
+        macos)
+            [ -f "$RELAY_PLIST" ] || return 0
+            launchctl kickstart -k "gui/$(id -u)/$RELAY_LABEL" >/dev/null 2>&1 ||
+                task_launchd_load "$RELAY_LABEL" "$RELAY_PLIST" ||
+                relay_fail login_required "launchd has no login session for this user; sign in on the computer once"
+            ;;
+        linux)
+            [ -f "$RELAY_UNIT_FILE" ] || return 0
+            command -v systemctl >/dev/null 2>&1 || relay_fail no_service_manager "systemd is required"
+            task_user_bus
+            systemctl --user restart "$RELAY_UNIT" >/dev/null 2>&1 || relay_fail service_failed "systemctl could not restart the service"
+            ;;
+    esac
+    return 0
+}
+
+# Brings an installed connector to the pinned version and restarts its service. The relay, the computer's
+# identity and the paired devices stay as they are; a connector of the pinned version is left alone.
+relay_upgrade() {
+    [ -x "$RELAY_BIN" ] || relay_fail not_installed "the connector is not installed"
+    platform=$(relay_platform) || relay_fail unsupported_platform "no connector build for $(uname -s) $(uname -m)"
+    relay_fetch_binary "$platform"
+    if [ "$RELAY_REPLACED" = 1 ]; then
+        relay_trim_log
+        relay_service_restart
+    fi
+    relay_status
+}
+
 # stdin {"device":"<b64u SPKI>","name":"…"}
 relay_pair() {
     [ -x "$RELAY_BIN" ] || relay_fail not_installed "the connector is not installed"
@@ -3126,10 +3159,11 @@ relay() {
     case "$action" in
         status) relay_status ;;
         install) relay_install ;;
+        upgrade) relay_upgrade ;;
         pair) relay_pair ;;
         unpair) relay_unpair ;;
         uninstall) relay_uninstall ;;
-        *) echo "usage: miffan relay status|install|pair|unpair|uninstall" >&2; exit 2 ;;
+        *) echo "usage: miffan relay status|install|upgrade|pair|unpair|uninstall" >&2; exit 2 ;;
     esac
 }
 

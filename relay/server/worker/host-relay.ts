@@ -7,22 +7,26 @@ import { Engine, type Att, type Frame, type Platform, type RequestCtx, type Sock
 import { routeRequest } from "../core/http.ts";
 import { doSql, type Env } from "./env.ts";
 
-function wrap(ws: WebSocket): Sock {
-  return {
+function wrapper(ctx: DurableObjectState): (ws: WebSocket) => Sock {
+  return (ws) => ({
     att: () => ws.deserializeAttachment() as Att,
     setAtt: (a) => ws.serializeAttachment(a),
     send: (d: Frame) => ws.send(d as string | ArrayBuffer),
     close: (code, reason) => ws.close(code, reason),
-  };
+    // Pings are answered by the runtime (see the constructor); it remembers when, without waking us.
+    lastAutoPing: () => ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? null,
+  });
 }
 
 export class HostRelay extends DurableObject<Env> {
   private engine: Engine;
+  private wrap: (ws: WebSocket) => Sock;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     // Answered by the runtime without waking the object (PROTOCOL §5.4).
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    const wrap = (this.wrap = wrapper(ctx));
     const cfg = parseConfig(env.RELAY_CONFIG);
     const budget = env.BUDGET.get(env.BUDGET.idFromName("global"));
     const platform: Platform = {
@@ -37,7 +41,8 @@ export class HostRelay extends DurableObject<Env> {
       sql: doSql(ctx.storage.sql),
       budget: {
         state: () => budget.state(),
-        report: (bytes, minutes) => budget.report(bytes, minutes),
+        report: (bytes, minutes, requests) => budget.report(bytes, minutes, requests),
+        checkIp: (ip) => budget.checkIp(ip),
         registerIp: (ip) => budget.registerIp(ip),
       },
       log: (line) => console.log(JSON.stringify(line)),
@@ -59,7 +64,7 @@ export class HostRelay extends DurableObject<Env> {
         const [client, server] = Object.values(pair());
         this.ctx.acceptWebSocket(server!, tags);
         server!.serializeAttachment(att);
-        after(wrap(server!));
+        after(this.wrap(server!));
         return new Response(null, { status: 101, webSocket: client! });
       },
     };
@@ -68,7 +73,7 @@ export class HostRelay extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, msg: string | ArrayBuffer): Promise<void> {
     try {
-      await this.engine.onMessage(wrap(ws), msg);
+      await this.engine.onMessage(this.wrap(ws), msg);
     } catch (e) {
       console.error(JSON.stringify({ ev: "error", msg: String(e) }));
     }
@@ -90,14 +95,14 @@ export class HostRelay extends DurableObject<Env> {
       }
     }
     try {
-      this.engine.onClose(wrap(ws));
+      this.engine.onClose(this.wrap(ws));
     } catch (e) {
       console.error(JSON.stringify({ ev: "error", msg: String(e) }));
     }
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    this.engine.onClose(wrap(ws));
+    this.engine.onClose(this.wrap(ws));
   }
 
   async alarm(): Promise<void> {

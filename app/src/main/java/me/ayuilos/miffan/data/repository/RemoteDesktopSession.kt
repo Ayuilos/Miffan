@@ -58,7 +58,19 @@ interface RemoteDesktopSession : Closeable {
     fun tapKey(keysym: Int) { key(keysym, true); key(keysym, false) }
     fun typeText(text: String): Boolean
     fun sendClipboard(text: String)
+
+    /**
+     * True while the picture has stopped refreshing on its own: a still screen through a relay,
+     * where every refresh costs relay allowance. Any input, [refresh], a quality change, the page
+     * returning to the foreground or the partner acting on the computer resumes it.
+     */
+    val autoRefreshStopped: StateFlow<Boolean> get() = NEVER_STOPPED
+
+    /** Fetches a new picture now and resumes automatic refreshing; see [autoRefreshStopped]. */
+    fun refresh() {}
 }
+
+private val NEVER_STOPPED: StateFlow<Boolean> = MutableStateFlow(false)
 
 class VncDesktopSession(val delegate: RemoteScreenSession) : RemoteDesktopSession {
     override val protocol = RemoteDesktopProtocol.VNC

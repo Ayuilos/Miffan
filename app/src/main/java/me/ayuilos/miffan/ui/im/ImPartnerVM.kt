@@ -41,7 +41,7 @@ class ImPartnerVM(
 
     val canDeletePartner = assistantRemover.canRemove(assistantId)
 
-    suspend fun deletePartner() {
-        assistant.value?.let { assistantRemover.remove(it) }
+    suspend fun deletePartner(withSpace: Boolean) {
+        assistant.value?.let { assistantRemover.remove(it, withSpace) }
     }
 }
