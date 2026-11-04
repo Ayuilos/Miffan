@@ -2,6 +2,8 @@ package me.ayuilos.miffan.data.repository
 
 import android.view.Surface
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -10,15 +12,19 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import me.rerere.cuaspace.activateWindow
 import me.rerere.cuaspace.SpaceClient
 import me.rerere.cuaspace.SpaceInput
-import me.rerere.cuaspace.SpaceMedia
+import me.rerere.cuaspace.SpaceVideoChannel
 import me.rerere.cuaspace.SpaceMediaEvent
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RemoteScreenStats
@@ -29,23 +35,63 @@ import me.rerere.workspace.screen.RemoteScreenStats
  * so any language types as-is; the clipboard goes through the Space's clipboard API.
  */
 class CuaSpaceDesktopSession internal constructor(
-    private val client: SpaceClient,
-    private val media: SpaceMedia,
+    /** The Space's API for the clipboard and raising [window]; null for a source without one. */
+    private val client: SpaceClient?,
+    private val media: SpaceVideoChannel,
     private val name: String,
     private val lifetime: CoroutineScope,
+    /** Runs after the media session ended, e.g. to close a client this session owns. */
+    private val onClosed: () -> Unit = {},
+    /**
+     * The single window shown, on a computer's own desktop. Input goes to whatever is on top where the
+     * pointer lands, so the window is brought to the front (switching to its desktop) before the first
+     * input and again after a pause, while that input waits.
+     */
+    private val window: me.rerere.cuaspace.SpaceWindow? = null,
+    /** -1 flips wheel direction (a Mac's window with natural scrolling). */
+    private val scrollSign: Double = 1.0,
+    /**
+     * Whether [window] is in front on the computer now; null when it cannot tell. Asked when raising it
+     * failed or took too long, before the input held meanwhile goes out.
+     */
+    private val frontCheck: (suspend () -> Boolean?)? = null,
+    /** Brings [window] to the front, switching to its desktop; through [client] unless a test says otherwise. */
+    private val raise: (suspend (me.rerere.cuaspace.SpaceWindow) -> Unit)? = client?.let { space -> { space.activateWindow(it) } },
+    /** Milliseconds on a monotonic clock; tests pass their own. */
+    private val clock: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+    /** Where the raise runs; tests pass their own. */
+    private val io: CoroutineContext = Dispatchers.IO,
 ) : RemoteDesktopSession, RemoteSurfaceTarget {
     private val closed = AtomicBoolean()
     private val started = AtomicBoolean()
     private var watcher: Job? = null
     private var target: Surface? = null
     private var paused = false
-    private val decoder = SpaceVideoDecoder(needKeyframe = media::requestKeyframe, rendered = ::rendered)
+    // Made on first use, so a session that never shows video (a test) starts no decoder thread.
+    private val decoderLazy = lazy { SpaceVideoDecoder(needKeyframe = media::requestKeyframe, rendered = ::rendered) }
+    private val decoder by decoderLazy
     private val _state = MutableStateFlow<RemoteScreenState>(RemoteScreenState.Connecting)
     private val _videoSize = MutableStateFlow<RemoteVideoSize?>(null)
     private val _stats = MutableStateFlow(RemoteScreenStats())
+    private val _suspended = MutableStateFlow<String?>(null)
+    /** Why capture is paused (a window minimized or hidden…), as the server says it; null while it runs. */
+    val suspended: StateFlow<String?> = _suspended
     private var received = 0L
     private var renderedFrames = 0
     private var buttons = 0
+    private var lastInputAt = 0L
+    private var raising = false
+    /** Whether the next input must bring [window] to the front first; set again by [noteFront]. */
+    private var raiseNeeded = true
+    private var raisedAt = 0L
+    private var frontCheckedAt = 0L
+    private val heldInput = mutableListOf<SpaceInput>()
+    private val _inputDropped = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    /**
+     * Input was thrown away because [window] could not be brought to the front, so it would have landed
+     * on whatever is there instead.
+     */
+    val inputDropped: SharedFlow<Unit> = _inputDropped
     /** What the phone last put on the Space's clipboard, so it does not come back as the Space's own copy. */
     @Volatile private var sentClipboard: String? = null
 
@@ -66,7 +112,7 @@ class CuaSpaceDesktopSession internal constructor(
             try { awaitCancellation() } finally { close() }
         }
         lifetime.launch { media.events.collect(::handle) }
-        lifetime.launch(Dispatchers.IO) {
+        if (client != null) lifetime.launch(Dispatchers.IO) {
             // The Space has no clipboard push; what is copied there reaches the phone within a moment.
             var generation = runCatching { client.clipboard().first }.getOrNull()
             while (isActive) {
@@ -92,8 +138,8 @@ class CuaSpaceDesktopSession internal constructor(
 
     private fun handle(event: SpaceMediaEvent) {
         when (event) {
-            is SpaceMediaEvent.Opened -> resize(event.width, event.height)
-            is SpaceMediaEvent.Geometry -> resize(event.width, event.height)
+            is SpaceMediaEvent.Opened -> resize(event.width, event.height, event.area)
+            is SpaceMediaEvent.Geometry -> resize(event.width, event.height, event.area)
             is SpaceMediaEvent.Frame -> {
                 received += event.data.size
                 if (event.width > 0 && event.height > 0 && _videoSize.value != RemoteVideoSize(event.width, event.height)) {
@@ -104,14 +150,18 @@ class CuaSpaceDesktopSession internal constructor(
             is SpaceMediaEvent.Closed -> if (!closed.get()) {
                 _state.value = RemoteScreenState.Closed(event.error ?: SpaceMediaClosedException(event.code, event.reason))
             }
-            is SpaceMediaEvent.Suspended, SpaceMediaEvent.Resumed, is SpaceMediaEvent.Other -> Unit
+            is SpaceMediaEvent.Suspended -> _suspended.value = event.reason ?: "suspended"
+            SpaceMediaEvent.Resumed -> _suspended.value = null
+            is SpaceMediaEvent.Other -> Unit
         }
     }
 
-    private fun resize(width: Int, height: Int) {
-        if (width <= 0 || height <= 0) return
+    private fun resize(width: Int, height: Int, area: me.rerere.cuaspace.SpaceFrameArea? = null) {
+        // A size from the computer beyond any screen is not one to lay the page out for.
+        if (width !in 1..MAX_VIDEO_EDGE || height !in 1..MAX_VIDEO_EDGE) return
         _videoSize.value = RemoteVideoSize(width, height)
-        _state.value = RemoteScreenState.Connected(name, width, height, 1)
+        _state.value = RemoteScreenState.Connected(name, width, height, 1,
+            area?.let { me.rerere.workspace.screen.RemoteFrameArea(it.x, it.y, it.width, it.height) })
     }
 
     private fun rendered(sequence: Long) {
@@ -146,42 +196,116 @@ class CuaSpaceDesktopSession internal constructor(
         }
         // Wheel bits are presses: one notch each time a bit turns on.
         for ((bit, delta) in listOf(8 to (0.0 to -WHEEL), 16 to (0.0 to WHEEL), 32 to (-WHEEL to 0.0), 64 to (WHEEL to 0.0))) {
-            if (buttons and bit != 0 && this.buttons and bit == 0) events += SpaceInput.Scroll(nx, ny, delta.first, delta.second)
+            if (buttons and bit != 0 && this.buttons and bit == 0) events += SpaceInput.Scroll(nx, ny, delta.first * scrollSign, delta.second * scrollSign)
         }
         this.buttons = buttons
-        media.send(events)
+        deliver(events)
     }
 
     override fun key(keysym: Int, down: Boolean) {
         if (closed.get()) return
         val key = spaceKeyName(keysym) ?: return
-        media.send(listOf(SpaceInput.Key(key, down)))
+        deliver(listOf(SpaceInput.Key(key, down)))
     }
 
-    override fun typeText(text: String): Boolean = !closed.get() && media.send(listOf(SpaceInput.Text(text)))
+    override fun typeText(text: String): Boolean = !closed.get() && deliver(listOf(SpaceInput.Text(text)))
+
+    /**
+     * What the computer says is in front: when [window] is not (someone switched desktop or app there),
+     * the next input brings it back first. Ignored right after a raise, which it may predate.
+     */
+    @Synchronized fun noteFront(inFront: Boolean) {
+        val now = clock()
+        if (raising || now - raisedAt < RAISE_SETTLE_MILLIS) return
+        frontCheckedAt = now
+        raiseNeeded = !inFront
+    }
+
+    /**
+     * Sends [events], first bringing [window] to the front when it is not (see [noteFront]), or, when
+     * nothing said lately, when input starts again after a pause.
+     */
+    @Synchronized private fun deliver(events: List<SpaceInput>): Boolean {
+        val shown = window ?: return media.send(events)
+        val now = clock()
+        val unsure = now - frontCheckedAt > FRONT_STALE_MILLIS && now - lastInputAt > RAISE_AFTER_IDLE_MILLIS
+        lastInputAt = now
+        if (raising) { heldInput += events; return true }
+        if (!raiseNeeded && !unsure) return media.send(events)
+        raising = true
+        raiseNeeded = false
+        heldInput += events
+        lifetime.launch(io) {
+            val raised = withTimeoutOrNull(RAISE_TIMEOUT_MILLIS) {
+                try { raise?.invoke(shown); raise != null }
+                catch (error: CancellationException) { throw error }
+                catch (_: Exception) { false }
+            } == true
+            // The input lands wherever the pointer is on the computer: after a failed or slow raise it goes
+            // only once the window is seen in front. macOS reports a raise that switched desktops unverified
+            // although it happened, and the switch animates, so the front is asked a few times before giving
+            // up; when the computer cannot tell at all, the input goes as it did before there was a check.
+            val inFront = raised || frontAfterRaise()
+            synchronized(this@CuaSpaceDesktopSession) {
+                raising = false
+                raisedAt = clock()
+                if (!closed.get()) {
+                    if (inFront) media.send(heldInput.toList())
+                    else if (heldInput.isNotEmpty()) {
+                        // The next input tries again.
+                        raiseNeeded = true
+                        _inputDropped.tryEmit(Unit)
+                    }
+                }
+                heldInput.clear()
+            }
+        }
+        return true
+    }
+
+    /** Whether [window] is in front after a raise that did not say it worked; true when that cannot be told. */
+    private suspend fun frontAfterRaise(): Boolean {
+        val check = frontCheck ?: return true
+        repeat(FRONT_RETRIES) { attempt ->
+            if (attempt > 0) delay(FRONT_RETRY_MILLIS)
+            val front = try { check() } catch (error: CancellationException) { throw error } catch (_: Exception) { null }
+            if (front != false) return true
+        }
+        return false
+    }
 
     override fun sendClipboard(text: String) {
         if (closed.get()) return
         sentClipboard = text
-        lifetime.launch(Dispatchers.IO) { runCatching { client.setClipboardText(text) } }
+        val space = client ?: return
+        lifetime.launch(Dispatchers.IO) { runCatching { space.setClipboardText(text) } }
     }
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         watcher?.cancel()
-        decoder.close()
+        if (decoderLazy.isInitialized()) decoder.close()
         _state.value = RemoteScreenState.Closed(null)
         // The session is ours alone: end it, not only the socket, so the Space stops encoding.
         lifetime.launch(NonCancellable + Dispatchers.IO) {
             media.closeSession()
+            runCatching(onClosed)
             withContext(Dispatchers.Default) { lifetime.cancel() }
         }
     }
 
     private companion object {
+        const val RAISE_AFTER_IDLE_MILLIS = 8_000L
+        const val RAISE_TIMEOUT_MILLIS = 3_000L
+        const val RAISE_SETTLE_MILLIS = 1_500L
+        const val FRONT_STALE_MILLIS = 5_000L
+        /** A desktop switch takes about a second to finish: asked at once, then 4 more times 400 ms apart. */
+        const val FRONT_RETRIES = 5
+        const val FRONT_RETRY_MILLIS = 400L
         /** One wheel notch in the pixel deltas a browser sends. */
         const val WHEEL = 100.0
         const val CLIPBOARD_POLL_MILLIS = 1_500L
+        const val MAX_VIDEO_EDGE = 16_384
     }
 }
 

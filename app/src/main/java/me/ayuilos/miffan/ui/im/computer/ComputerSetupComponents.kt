@@ -431,7 +431,8 @@ internal fun ComputerScreenSwitch(
         .padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(stringResource(R.string.im_computer_use_screen), style = MaterialTheme.typography.titleSmall)
+            // Same text as the detail rows it sits with (computer status, scheduled tasks).
+            Text(stringResource(R.string.im_computer_use_screen))
             Text(stringResource(if (checked) R.string.im_computer_use_screen_on else R.string.im_computer_use_screen_off),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

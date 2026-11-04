@@ -375,9 +375,177 @@ stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输
 摘要：macOS/Linux 为 `cksum` 的 `<crc>-<大小>`，Windows 为 MD5 十六进制；App 只接受 `[0-9a-f-]{1,80}`。
 stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会读走后续请求。
 
+## 单个窗口（POSIX `window`：helper 39 起支持 niri，40 起支持 KDE Plasma，41 起支持 GNOME 和 X11，42 修复切换桌面会话后 KDE 打不开，44 起 KDE 优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单的点击位置、按用户键盘布局输入快捷键，并补上撤销命令）
+
+在手机上只看、只操作 Linux 电脑的一个窗口。画面来自合成器的 `org.gnome.Mutter.ScreenCast`
+（`RecordWindow`，不弹选择框，也无需授权），经 PipeWire 由 GStreamer 缩放并编码为 H.264
+（依次选用 `nvh264enc`、`vah264lpenc`、`vah264enc`、`vaapih264enc`、`x264enc`、`openh264enc`）。
+输入走 `/dev/uinput`：一个绝对坐标指针，加一个键盘。文本优先用 `wtype` 输入，没有时用 `wl-copy`
+加 Ctrl+V 粘贴。niri 下的窗口列出、聚焦、改尺寸走它的 IPC 套接字 `NIRI_SOCKET`。
+
+**按键（helper 45 起，所有桌面相同）**：`key` 行里是单个字符的键（`a`、`!`、`é`）按 keysym 发送，由合成器在用户
+当前的键盘布局里找到对应的键，所以 AZERTY 下 Ctrl+A 仍是 Ctrl+A、Dvorak 下粘贴仍是 Ctrl+V；有名字的键（修饰键、
+Enter、方向键、F1 等）按键码发送，它们在各布局下是同一个键。KDE 用 fake_input 的 `keyboard_keysym`（portal 路线用
+`NotifyKeyboardKeysym`），GNOME 用 `NotifyKeyboardKeysym`，X11 本来就用 keysym。niri 装了 `wtype` 时字符键交给它
+（`wtype -M 修饰键… -k U+码点 -m 修饰键…`，按下时一次敲完，带上手机按住的修饰键），否则仍按美式布局的键码经
+uinput 发送。粘贴快捷键也是 Ctrl 键码加 `v` 的 keysym。helper 调用的工具（`wtype`、`wl-copy`、`gsettings` 等）的
+stdout/stderr 都接到 `/dev/null`，不会混进帧流；`wl-copy` 在自己的会话里常驻。
+需要真机确认：GNOME 下若键盘只有一个非拉丁布局（如单独的俄文布局），Mutter 找不到 `c` 的 keysym 时会丢弃这个键，
+Ctrl+C 这类快捷键可能不生效（KWin 会临时换 keymap，没有这个问题）；niri 下 `wtype` 的虚拟键盘与 uinput 键盘的
+修饰键是否叠加也要在真机上看。
+
+KDE Plasma（`XDG_CURRENT_DESKTOP` 含 KDE，且没有 niri）各版本的情况（KWin 版本取自 `kwin_wayland --version`）：
+
+| KWin | 路线 | 说明 |
+|---|---|---|
+| 5.x（Plasma 5，如 Debian 12、Kubuntu 24.04） | 不支持 | 脚本用的 `workspace.windowList()` 等是 KWin 6 的接口。`probe` 报 `supported:false`、`error:"plasma5"`；`list` 立即回 `{"error":"unsupported"}`，`serve` 回 `closed unsupported`，`shots` 回 `error unsupported`。版本读不到时按 `KDE_SESSION_VERSION=5` 判断 |
+| 6.0–6.2 | portal，每次弹框 | 没有 `kde-authorized` 表，预授权无效：每次开 portal 会话电脑上都弹确认框，8 秒没人点就 `not_authorized`。`probe` 报 `prompt_every_time:true`，`authorized` 为 false；`authorize` 回 `{"authorized":false,"error":"prompt_every_time"}` 并退出 1 |
+| 6.3–6.7 | portal，预授权一次 | KWin 直到 6.7 都只把下面两个全局对象给 desktop 文件里 `X-KDE-Wayland-Interfaces` 列出的程序，helper 拿不到，走 portal；`authorize` 后不再弹框 |
+| ≥ 6.8 | KWin 直连 | 6.8 起 KWin 只对沙箱里的程序限制这些接口，普通程序也能用，不需要授权 |
+
+是否走直连只看 KWin 有没有把两个全局对象给 helper（和以前一样）；另外版本已知且低于 6.5 时不走直连（有人用
+`X-KDE-Wayland-Interfaces` 放行了 python3 的情况）：6.4 及以前窗口流按 `clientGeometry` 录，不含标题栏，6.5 之前
+也不含弹出菜单，输入换算会对不上。不建议用 `X-KDE-Wayland-Interfaces` 给 python3 加白名单：KWin 按可执行文件匹配，
+等于放行所有 Python 程序。
+
+直连路线：helper 自己用 Wayland 线协议连 KWin（不依赖额外的库）：
+`zkde_screencast_unstable_v1.stream_window(窗口 UUID, 指针嵌入)` 给出这个窗口（含标题栏）的 PipeWire 流，
+在别的桌面上或被遮挡时也照常出画面，走和 niri 相同的 GL 缩放管线。KWin 会把这个窗口的弹出窗口（右键菜单、
+下拉框，以及它们的子菜单：`popupWindow` 且 transient 链一路是弹出窗口直到这个窗口）一起录进来，画面范围是这些窗口
+`frameGeometry` 的并集，原点是并集的左上角；菜单伸出窗口时画面会变大，向左或向上伸出时原点也会动。所以 helper 45
+起输入按同一个并集换算：KWin 脚本返回并集（`x`、`y`、`width`、`height`）和主窗口框（`frame`），流的尺寸一变就立刻
+重读一次。流的尺寸变了（菜单弹出或关掉、窗口改大小）时 pipewiresrc 跟不上：它守着最初协商的尺寸，报
+`no more input formats` 后流就停了（helper 44 因此在一弹菜单时就断开）。helper 46 起遇到这个错误不结束推流，而是关掉
+旧流、按新尺寸重新 `stream_window` 一次并换上新管线（约 0.2 秒），手机只看到一个新的关键帧和 `geometry`；10 秒内超过
+8 次才当作采集失败。尺寸变化时 KWin 有时不报错，而是隔两秒多才按新尺寸重新协商，之后就不再出帧（二级菜单打开时
+常见），所以 helper 47 起不等错误：常驻 KWin 脚本报来的「窗口加弹出窗口」尺寸一变（150 毫秒内的连续变化合并成一次），
+就主动按新尺寸重开流；这种主动重开不计入失败次数。helper 48 起 KDE 直连路线的 `opened W H ENCODER` 和
+`geometry W H` 行末多四个数 `X Y W H`：这一版画面在屏幕上的位置（全局逻辑像素，即窗口加弹出窗口的并集），旧版 App
+只读前面的字段。App 据此在画面变大或原点移动时把指针留在屏幕上的同一点，不跳到别的菜单项上。输入的换算也改为按新尺寸的
+画面真正发出那一刻切换（之前按 KWin 报来位置的那一刻），手机在旧画面上点的位置不会被按新画面换算。输入用 `org_kde_kwin_fake_input` 6（`pointer_motion_absolute` 按全局逻辑坐标，`button`、`axis` 每格 15，
+修饰键等用 `keyboard_key`，字符键和文字用 `keyboard_keysym`），不需要任何授权；`shots` 用
+`org.kde.KWin.ScreenShot2.CaptureWindow`（含标题栏，不含阴影），任何没有最小化的窗口都有图（HDR 下的 64 位 RGBA
+也认；其他格式退回裁剪路线）。KWin 没有提供这两个全局对象或建流失败时，退回下面的 portal 路线。
+
+portal 路线：helper 通过 RemoteDesktop portal 录窗口所在的输出，再用 `videocrop` 按 KWin 给出的窗口范围（同上，
+含标题栏和弹出菜单）裁出窗口。选流先看哪个流的 `position`/`size` 包含窗口中心（KDE 的 portal 不一定给接口名），
+再看 `mapping_id`，最后用第一个。输入也走同一个 portal 会话：`NotifyPointerMotionAbsolute`、修饰键等按键码、
+字符键和文本用 keysym（非 Latin-1 字符用 `0x1000000+码点`），滚轮用一次带 `finish` 的 `NotifyPointerAxis`，每格 15，
+y 取反（Plasma 会再反一次）；离散滚动在 Plasma 里会被当成像素，所以不用。每张 portal 截图和每次推流用完都会关掉
+`OpenPipeWireRemote` 给的 fd。
+
+跟随窗口（两条路线相同，helper 45 起）：推流时加载一个常驻的 KWin 脚本，连上窗口及其弹出窗口的
+`frameGeometryChanged`、`minimizedChanged`、`desktopsChanged` 和 `workspace` 的 `windowActivated`、
+`currentDesktopChanged`、`windowAdded`、`windowRemoved`，有变化就用 `callDBus` 推回位置，窗口关闭时推
+`{"gone":true}`；不再每 0.5 秒加载、编译、卸载一次脚本。另有每 5 秒一次的读取兜底；常驻脚本起不来时退回每 0.5 秒
+读一次。只有 KWin 明确说窗口不在了（脚本返回 null、推 `gone`，或直连路线的 `closed` 事件）才以 `closed window_closed`
+结束；脚本超时（KWin 忙）或出错只发一次 `info {"kwin":"no_answer",...}`，然后接着试。推流开始后会发一次
+`info {"kwin_watch":true|false}` 说明用的是哪种方式。打开时先把窗口提到最前；最小化时发 `suspended minimized`，
+还原后发 `resumed`。
+
+窗口的列出、聚焦、改尺寸由临时加载的 KWin 脚本完成，脚本通过 `callDBus` 把 JSON 结果发回 helper 自己持有的
+D-Bus 名字。脚本文件写在 `$XDG_RUNTIME_DIR/miffan-kwin/`（0700）下，不放 `/tmp`：SSH 会话的 `/tmp` 可能按会话
+隔离（pam_namespace、sshd 的 PrivateTmp），KWin 会读不到。窗口 id 是 KWin 的 `internalId`（UUID，不带花括号）。
+`shots` 处理一批请求时，KWin 的窗口快照沿用 1.5 秒。
+
+预授权（Plasma 6.3–6.7 的 portal 路线需要）：`authorize` 会写入隐藏的
+`~/.local/share/applications/me.ayuilos.miffan.desktop`（portal 的 Registry 注册 app_id 时需要它），
+并在权限库 `kde-authorized` 表中写入 `remote-desktop` → `me.ayuilos.miffan` = `yes`。App 只会在用户在手机上
+点了「允许」之后才调用它；`revoke` 撤销（见下表）。没有授权时 Plasma 会在电脑上弹确认框，Start 8 秒内得不到答复，
+`serve` 就以 `closed not_authorized` 结束，`shots` 回 `error not_authorized`。注意：任何不在沙箱里的本用户程序都能
+用 `Registry.Register` 冒用这个 app_id 拿到这项授权；KWin 6.8 上非沙箱程序本来就能直接用 fake_input，新增的风险很小。
+
+从 niri 或 GNOME 注销后直接登录 Plasma（不重启）时，portal 服务可能还是为上一个桌面启动的，只有那个桌面的后端，
+Plasma 下的 RemoteDesktop 用不了。所以 helper 42 起，开 portal 会话前会先看服务进程的 `XDG_CURRENT_DESKTOP`，
+不含 KDE 时先 `systemctl --user restart xdg-desktop-portal.service`。**副作用**：重启会断掉其他程序正在用的 portal
+会话（浏览器会议里的屏幕共享、OBS 等）。helper 45 起只在重启有用时才重启：重启后的服务继承 systemd 用户管理器的
+环境，所以先看 `systemctl --user show-environment` 的 `XDG_CURRENT_DESKTOP` 含不含 KDE；不含（例如 Plasma 不是经
+systemd 启动的）就不重启，`serve` 以 `closed portal_not_kde` 结束、`shots` 回 `error portal_not_kde`，避免每次推流
+都重启一次。用户可以重新登录，或执行 `systemctl --user import-environment XDG_CURRENT_DESKTOP` 后再试。
+需要真机确认：portal 路线在探针里用 `pin_size` 固定尺寸，GNOME 那边见过这样做让 pipewiresrc 在停止时死锁，
+KDE portal 路线的停止流程是否同样会卡住，还没有在真机上验证过。
+
+GNOME（Wayland）上，Mutter 自己的 `org.gnome.Mutter.ScreenCast` 和 `org.gnome.Mutter.RemoteDesktop` 对普通程序开放，
+不弹框：`serve` 建一个 RemoteDesktop 会话，把 ScreenCast 会话挂在它下面（`remote-desktop-session-id`），按窗口
+`RecordWindow`。Mutter 给的缓冲区和显示器一样大，窗口只占其中 `GstVideoCropMeta` 标出的区域（PyGObject 读不了
+这个 meta 的字段，所以从它的 C 结构里读），helper 据此用 `videocrop` 裁剪。帧走共享内存（`video/x-raw`），
+因为 Mutter 可能在流中途更换 DMA-BUF 修饰符，GL 导入会拒绝；也不在探针里固定尺寸（会让 pipewiresrc 在停止时死锁）。
+输入用同一个会话：`NotifyPointerMotionAbsolute` 用窗口自己的逻辑像素（扩展报告的缓冲区大小），修饰键等按键码、
+字符键用 keysym，离散滚轮；ASCII 文本用 keysym，其他文本经会话的剪贴板（`EnableClipboard`、`SetSelection`、响应
+`SelectionTransfer`）后按 Ctrl+V；helper 50 起终端窗口（扩展给的 app id 或窗口类名里有 konsole、terminal、console、kitty 等）按 Ctrl+Shift+V，因为终端里 Ctrl+V 是控制字符。Mutter 的虚拟键盘和指针在第一次使用时才创建，并吞掉那次事件，所以第一次之前先轻点一下
+Shift，或先移动一次指针。helper 45 起管线先 `videocrop` 再 `videoconvert`：Mutter 的缓冲区和整个显示器一样大，只转换
+窗口那一块能省下大部分开销。扩展没有及时答复（shell 忙、正在重载）时不再当成窗口关闭，只发一次
+`info {"extension":"no_answer",...}`。已知限制（需真机确认后再定）：非 ASCII 文本靠 Ctrl+V 粘贴，在终端里不生效
+（终端的粘贴是 Ctrl+Shift+V），而且会留在用户的剪贴板里；niri 的 `wl-copy` 回退也一样。
+GNOME 不让普通程序列出窗口（`org.gnome.Shell.Introspect` 只对白名单开放），由 helper 安装的小扩展
+`miffan-windows@ayuilos.me`（`install-extension`）在会话总线上以 `me.ayuilos.Miffan.Windows` 提供 `List`、
+`Activate`（会先退出概览）和 `Resize`。GNOME 只在登录时加载新扩展，所以安装后要重新登录一次；在此之前 `list`
+返回 `{"error":"needs_extension","extension":"missing"|"installed"|"disabled"}`，App 据此提示安装或重新登录。
+helper 45 起不再改 `org.gnome.shell disable-user-extensions`：它是用户或管理员关掉**所有**用户扩展的总开关，
+打开它会把别的扩展也一并重新启用。这个开关为 true 时 `extension` 是 `"disabled"`，`install-extension` 什么也不写，
+回 `{"installed":false,"extension":"disabled","error":"extensions_disabled"}` 并退出 1，由用户自己决定要不要打开它
+（App 目前把它当成安装失败）。扩展的 `shell-version` 列到 52。**发版检查项**：每个新的 GNOME 大版本（约每年 3 月、
+9 月）发布前，把它的版本号加进 `GNOME_METADATA_JSON`，否则新 GNOME 会拒绝加载扩展，`list` 会一直回
+`needs_extension`。
+
+X11 会话（XFCE、Cinnamon、MATE，以及运行在 Xorg 上的 GNOME 或 KDE，即任何遵循 EWMH 的窗口管理器）上，helper 通过
+ctypes 直接调用 libX11 和 libXtst，不依赖 xdotool 等工具：用 `_NET_CLIENT_LIST_STACKING` 等属性列出窗口，用
+`_NET_ACTIVE_WINDOW` 和 `_NET_MOVERESIZE_WINDOW` 客户端消息聚焦、改尺寸，用 `ximagesrc xid=` 录窗口（有合成器时被遮挡的
+窗口也能录），用 XTest 注入输入。键盘映射里没有的字符会临时借空闲键码：helper 45 起一段文本里每个这样的字符各借
+一个、整段打完后稍等 0.1 秒再还（目标程序收到 MappingNotify 后才刷新映射，立刻还会丢字或打错字），空闲键码不够时
+先还再借。推流时每 0.5 秒只查目标窗口本身，不再把所有窗口都查一遍。窗口最小化时管线暂停；另外装了一个忽略
+X 错误的处理函数，因为 Xlib 默认遇到错误就退出进程，而窗口在 ximagesrc 读取时消失会触发这种错误。没有 h264parse 时，
+x264enc 用 `repeat-headers=1` 自己重复 SPS/PPS。
+
+程序是
+内嵌在 helper 里的 Python，需要 `python3` 和 PyGObject（Gst、GstVideo）。macOS 上、没有图形会话、
+或者没有 python3 时，`probe` 输出 `{"supported":false}` 并退出 0，其他子命令退出 1。
+
+| 子命令 | 输出 |
+|---|---|
+| `probe` | 一行 JSON：`supported`、`desktop`（`"niri"`、`"kde"`、`"gnome"`、`"x11"` 或 null）、`encoder`、`capture`、`input`（niri 时是 `/dev/uinput` 是否可写，KDE 总为 true）；KDE 另有 `kwin`（`"6.2"` 这样的版本，读不到时为 null）、`direct`（KWin 是否提供单窗口录制和输入，是则不需要授权）、`prompt_every_time`（6.0–6.2 且不走直连：每次都会在电脑上弹框）和 `authorized`（`direct` 为真时也为真；`prompt_every_time` 时为假），Plasma 5 时 `supported` 为 false 并带 `error:"plasma5"`；GNOME 另有 `extension`（`active`、`installed`、`disabled`、`missing`） |
+| `list` | 一行 JSON：`windows[]`（`id` 字符串、`pid`、`app` 为 desktop 文件里按 LANG 取的名称、`app_id`、`title`、`workspace`、`focused`、`width`、`height` 逻辑像素；KDE 另有 `minimized` 和 `visible`，后者表示窗口在当前桌面上没有被别的窗口挡住），`workspaces[]`（`id`、`index`、`output`、`name`、`active`），`current`（聚焦输出上的活动工作区），`outputs[]`；不支持时为 `{"error":"unsupported"}` |
+| `focus ID` | 聚焦窗口（KDE 会先还原最小化的窗口，并切到它所在的桌面）；退出码表示成败 |
+| `authorize` | 仅 KDE：写入上述预授权，输出 `{"authorized":bool}`；6.0–6.2 上不写，输出 `{"authorized":false,"error":"prompt_every_time"}` 并退出 1 |
+| `install-extension` | 仅 GNOME：写入扩展文件，并加进 `org.gnome.shell enabled-extensions`，输出 `{"installed":bool,"extension":状态}`，失败时另有 `error`（`extensions_disabled`，或 `no_gsettings`） |
+| `uninstall-extension` | helper 45 起：`gnome-extensions disable`，从 `enabled-extensions` 里去掉，删掉扩展目录；输出 `{"uninstalled":bool}`（有没有东西可删），退出 0 |
+| `revoke` | helper 45 起，不论当前是哪种桌面：权限库 `DeletePermission("kde-authorized","remote-desktop","me.ayuilos.miffan")`、删掉隐藏的 `.desktop`、卸载 GNOME 扩展；输出 `{"revoked":true,"kde_grant":bool,"desktop_entry":bool,"extension":bool}`（各项是否真的撤销了东西），退出 0 |
+| `resize ID W H` | 设置窗口的逻辑尺寸（平铺时宽度作用于整列），等尺寸稳定（每 50 毫秒读一次，两次相同，最多 1 秒；Wayland 客户端是异步改尺寸的）后输出实际得到的 `W H`；helper 45 起 KDE、GNOME 也这样等，KDE 输出的是窗口框（不含弹出菜单） |
+| `shots` | 每读到一行 `ID 最长边 JPEG质量`，就回一行 `jpeg 长度` 再跟字节，或者回 `error no_window`、`error no_picture`、`error usage`；KDE 还可能回 `error not_authorized`、`error portal_not_kde`，Plasma 5 回 `error unsupported`，GNOME 没有扩展时回 `error needs_extension`。等第一帧最多 2.5 秒：niri 只在重绘时出帧，完全静止的窗口可能拿不到；KDE 用 KWin 截图时最小化的窗口回 `error no_picture`，退回 portal 路线时只给 `visible` 的窗口截图 |
+| `locate ID` | 输出窗口在全局逻辑坐标中的 `X Y W H`，找不到时退出 1（见下文） |
+| `serve ID 最长边 FPS KBPS` | 推流，并接收输入（见下文） |
+
+`serve` 开始前会先聚焦窗口：niri 对不在屏幕上的窗口大约每秒只重绘一次。stdout 每行一个头：
+
+- `opened W H 编码器`：会话已建立（尺寸是起始值）
+- `geometry W H`：紧跟着的帧尺寸变了，`codec_epoch` 加一。helper 45 起在新尺寸的帧真正编码出来、写出之前才发
+  （以前在源端尺寸一变就发，编码器里还没出来的旧尺寸帧会带上新 epoch，解码器多重置一次）
+- `frame 序号 epoch 关键帧(0/1) W H 时间戳微秒 长度`，后面跟着 `长度` 字节的 H.264 Annex B 访问单元（关键帧带 SPS/PPS）。
+  helper 45 起帧由单独的线程写出：SSH 通道跟不上、积压超过约半秒的帧（至少 4 帧）时，丢掉积压的帧并跳到下一个关键帧
+  （同时请求一个），手机上看到的是跳一下而不是越来越大的延迟；序号对写出的帧连续
+- `resumed`：第一帧之前发一次；之后在 `suspended` 结束时发
+- `suspended locked`：屏幕锁着的时候有人试图操作，输入被丢弃（logind 的 `LockedHint`）；解锁后会发 `resumed`
+- `suspended minimized`：窗口最小化了（KDE、GNOME、X11；X11 同时暂停管线），还原后发 `resumed`
+- `info JSON`：诊断信息，例如 `{"located":true,"ms":420}`、`{"kwin_watch":true}`、`{"kwin":"no_answer","detail":"…"}`、
+  `{"extension":"no_answer","detail":"…"}`、`{"input":"unavailable"}`；App 不依赖其内容
+- `closed 原因`：`window_closed`（窗口关了；App 当作 4410）、`capture_failed`、`no_stream`、`no_encoder`、`ended`、
+  `no_window`（KDE 的窗口 id 不是 UUID）、`not_authorized`（KDE portal 未授权）、`portal_not_kde`（helper 45，见上文）、
+  `needs_extension`（GNOME 没有扩展）、`unsupported`（helper 45，Plasma 5）；随后进程退出
+
+stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按键 X Y`、`up 按键 X Y`（按键为
+`left`、`middle`、`right`）、`scroll X Y DX DY`（像素，100 为一格，DY 小于 0 表示向上）、`key 名称 1|0`（DOM 键名；
+单个字符按 keysym 发送，见上文「按键」，多字符的键名不分大小写）、`text Base64(UTF-8)`、`kf`（请求关键帧）。
+输入线程每次取出积压的行时，连续的多条 `move` 只保留最后一条（helper 45 起），聚焦窗口等慢操作之后不会一次重放
+一大串移动。stdin EOF 时结束并销毁 uinput 设备。输入落在
+指针下方的窗口上，所以每次输入前（至少间隔 1 秒）会确认目标窗口在前台，不在就先聚焦它。niri
+不提供平铺窗口的位置，helper 会另起一个进程运行 `locate`：各取一张缩小的灰度帧（窗口一张、所在输出
+一张），用边缘加权采样做由粗到细的匹配，至少 30% 的采样点吻合才接受。之所以另起进程，是因为同一个进程里
+用完即弃的 GL 管线会终止共享的 EGL display，把正在推流的管线也弄坏。浮动窗口直接用 niri 给的位置。
+窗口所在工作区的布局没变时，沿用上一次的位置。
+
 ## 版本与安装
 
-当前 POSIX helper 为 33，Windows 为 15。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 50，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单伸出窗口时的点击位置并改用常驻 KWin 脚本跟随窗口、字符键按 keysym 发送以跟随用户的键盘布局、按版本区分 Plasma 5 和 6.0–6.2、不再打开 GNOME 的用户扩展总开关、新增 `uninstall-extension` 和 `revoke`、只在有用时重启 portal 服务，并且 systemd 用户管理器的环境只在用户在这台电脑上登录着（有座席或图形会话，手机的 SSH 登录不算）时才用（不认 systemd 256 起的 class=manager 会话）、Wayland 套接字取最新的，46 在 KDE 窗口流因弹出菜单等改变尺寸时重建流而不是断开，47 在尺寸一变时就主动重建（二级菜单下 KWin 会卡住而不报错），48 在 `opened`、`geometry` 行末附上画面在屏幕上的位置、输入改按手机正在看的那一版画面换算，49 在 GNOME 远程桌面仍指向 `~/.miffan/rdp` 里已经不存在的证书和密钥（目录被清空）时重新配置它，而不是当作别人的配置拒绝，50 在终端窗口里用 Ctrl+Shift+V 粘贴文本（GNOME 下中文靠粘贴输入，终端里 Ctrl+V 是控制字符）。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

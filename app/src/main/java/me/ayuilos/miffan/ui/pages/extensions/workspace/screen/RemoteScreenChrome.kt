@@ -9,6 +9,39 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.material3.ripple
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AppWindowMac
+import me.rerere.hugeicons.stroke.Camera01
+import me.rerere.hugeicons.stroke.ComputerScreenShare
+import me.rerere.hugeicons.stroke.Cube
+import me.rerere.hugeicons.stroke.Zap
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.vector.ImageVector
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Tick02
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -64,7 +97,8 @@ internal fun RemoteScreenFullscreenEffect(enabled: Boolean) {
 }
 
 /** The status line's short name for how the screen is connected. */
-internal fun remoteScreenModeLabel(resources: Resources, protocol: RemoteDesktopProtocol): String = when (protocol) {
+internal fun remoteScreenModeLabel(resources: Resources, protocol: RemoteDesktopProtocol, window: Boolean = false): String =
+    if (window) resources.getString(R.string.workspace_screen_mode_window) else when (protocol) {
     RemoteDesktopProtocol.STREAM -> resources.getString(R.string.workspace_screen_mode_stream)
     RemoteDesktopProtocol.RDP -> "RDP"
     RemoteDesktopProtocol.VNC -> "VNC"
@@ -81,19 +115,152 @@ internal fun remoteScreenQualityLabel(resources: Resources, quality: RemoteScree
 })
 
 internal fun remoteScreenQualityDetail(resources: Resources, quality: RemoteScreenQuality, protocol: RemoteDesktopProtocol?,
-    custom: RemoteStreamCustom): String =
-    if (protocol == RemoteDesktopProtocol.SNAPSHOT) resources.getString(R.string.workspace_screen_quality_snapshot,
+    custom: RemoteStreamCustom, window: Boolean = false): String =
+    if (protocol == RemoteDesktopProtocol.SPACE) spaceQuality(quality, window).let { (dimension, fps) -> resources.getString(R.string.workspace_screen_quality_space, dimension, fps) }
+    else if (protocol == RemoteDesktopProtocol.SNAPSHOT) resources.getString(R.string.workspace_screen_quality_snapshot,
         quality.snapshotQuality().maxDimension)
-    else if (protocol == RemoteDesktopProtocol.STREAM) when (quality) {
-        RemoteScreenQuality.SAVER -> "720p · 30 fps"
-        RemoteScreenQuality.BALANCED -> "1080p · 60 fps"
-        RemoteScreenQuality.BEST -> "1440p · 60 fps"
-        RemoteScreenQuality.CUSTOM -> remoteStreamCustomLabel(custom)
-    } else resources.getString(R.string.workspace_screen_quality_fps, when (quality) {
-        RemoteScreenQuality.SAVER -> 5
-        RemoteScreenQuality.BALANCED, RemoteScreenQuality.CUSTOM -> 10
-        RemoteScreenQuality.BEST -> 20
-    })
+    else if (protocol == RemoteDesktopProtocol.STREAM) streamPicture(quality, custom).let { (height, fps) -> "${remoteStreamHeightLabel(height)} · $fps fps" }
+    else resources.getString(R.string.workspace_screen_quality_fps, vncFps(quality))
+
+/** A stream's (height, fps) at [quality]. */
+private fun streamPicture(quality: RemoteScreenQuality, custom: RemoteStreamCustom): Pair<Int, Int> = when (quality) {
+    RemoteScreenQuality.SAVER -> 720 to 30
+    RemoteScreenQuality.BALANCED -> 1080 to 60
+    RemoteScreenQuality.BEST -> 1440 to 60
+    RemoteScreenQuality.CUSTOM -> custom.height to custom.fps
+}
+
+private fun vncFps(quality: RemoteScreenQuality) = when (quality) {
+    RemoteScreenQuality.SAVER -> 5
+    RemoteScreenQuality.BALANCED, RemoteScreenQuality.CUSTOM -> 10
+    RemoteScreenQuality.BEST -> 20
+}
+
+/** A Space's picture (long edge, fps) at [quality]; a computer's single window is sharper. Matches RemoteScreenRepository. */
+private fun spaceQuality(quality: RemoteScreenQuality, window: Boolean): Pair<Int, Int> = when (quality) {
+    RemoteScreenQuality.SAVER -> if (window) 1280 to 20 else 960 to 15
+    RemoteScreenQuality.BALANCED -> if (window) 1600 to 30 else 1280 to 30
+    else -> if (window) 2400 to 30 else 1920 to 30
+}
+
+/**
+ * The short tag beside the status line: what the picture is right now. Streams say size and frame rate,
+ * plain connections their frame rate, still pictures their width. Null where nothing can be chosen (RDP).
+ */
+internal fun remoteScreenQualityTag(resources: Resources, chosen: RemoteScreenQuality, protocol: RemoteDesktopProtocol,
+    custom: RemoteStreamCustom, window: Boolean): String? = chosen.effectiveFor(protocol).let { quality -> when (protocol) {
+    RemoteDesktopProtocol.RDP -> null
+    RemoteDesktopProtocol.STREAM -> streamPicture(quality, custom).let { (height, fps) ->
+        resources.getString(R.string.workspace_screen_quality_tag_fps, remoteStreamHeightLabel(height), fps) }
+    RemoteDesktopProtocol.SPACE -> resources.getString(R.string.workspace_screen_quality_tag_fps, resources.getString(remoteScreenQualityName(quality)),
+        spaceQuality(quality, window).second)
+    RemoteDesktopProtocol.SNAPSHOT -> resources.getString(R.string.workspace_screen_quality_tag_snapshot, quality.snapshotQuality().maxDimension)
+    RemoteDesktopProtocol.VNC -> resources.getString(R.string.workspace_screen_quality_tag_vnc, vncFps(quality))
+} }
+
+/**
+ * The level a connection really runs at for [this] choice: a custom size and frame rate only shape a
+ * stream, elsewhere it runs as VNC's balanced level or the others' sharpest (vncFps, snapshotQuality, openSpace).
+ */
+internal fun RemoteScreenQuality.effectiveFor(protocol: RemoteDesktopProtocol): RemoteScreenQuality = when {
+    this != RemoteScreenQuality.CUSTOM || protocol == RemoteDesktopProtocol.STREAM -> this
+    protocol == RemoteDesktopProtocol.VNC -> RemoteScreenQuality.BALANCED
+    else -> RemoteScreenQuality.BEST
+}
+
+private fun remoteScreenQualityName(quality: RemoteScreenQuality) = when (quality) {
+    RemoteScreenQuality.SAVER -> R.string.workspace_screen_quality_saver
+    RemoteScreenQuality.BALANCED -> R.string.workspace_screen_quality_balanced
+    RemoteScreenQuality.BEST -> R.string.workspace_screen_quality_best
+    RemoteScreenQuality.CUSTOM -> R.string.workspace_screen_quality_custom
+}
+
+/** The symbol for how the screen is connected, beside the status dot. */
+internal fun remoteScreenModeIcon(protocol: RemoteDesktopProtocol, window: Boolean): ImageVector = if (window) HugeIcons.AppWindowMac
+    else when (protocol) {
+        RemoteDesktopProtocol.STREAM -> HugeIcons.Zap
+        RemoteDesktopProtocol.SPACE -> HugeIcons.Cube
+        RemoteDesktopProtocol.SNAPSHOT -> HugeIcons.Camera01
+        RemoteDesktopProtocol.VNC, RemoteDesktopProtocol.RDP -> HugeIcons.ComputerScreenShare
+    }
+
+/**
+ * The picture pill: the connection's symbol and, where a level can be chosen, the level now, opening
+ * [RemoteQualitySheet]. [label] names the connection for screen readers, [clickLabel] what a tap does.
+ * It looks 22dp tall but takes taps over the 48dp a finger needs, without making the status line taller.
+ */
+@Composable
+internal fun RemoteModeTag(icon: ImageVector, label: String, text: String?, clickLabel: String, onClick: () -> Unit,
+    modifier: Modifier = Modifier) {
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier.layout { measurable, constraints ->
+            // Laid out at the pill's own height; the touch area around it reaches above and below.
+            val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+            val height = MODE_TAG_HEIGHT.roundToPx()
+            layout(placeable.width, height) { placeable.place(0, (height - placeable.height) / 2) }
+        }.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .clickable(interactionSource = interaction, indication = null, onClickLabel = clickLabel, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest).indication(interaction, ripple())
+                .padding(start = 7.dp, end = if (text != null) 5.dp else 7.dp).height(MODE_TAG_HEIGHT),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(icon, label, Modifier.size(13.dp), tint = tint)
+            if (text != null) {
+                Text(text, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
+                Icon(HugeIcons.ArrowDown01, null, Modifier.size(12.dp).offset(x = (-2).dp), tint = tint)
+            }
+        }
+    }
+}
+
+private val MODE_TAG_HEIGHT = 22.dp
+
+/** Picks the picture level: one card per level with what it means for this connection. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RemoteQualitySheet(protocol: RemoteDesktopProtocol, window: Boolean, quality: RemoteScreenQuality,
+    custom: RemoteStreamCustom, onPick: (RemoteScreenQuality) -> Unit, onDismiss: () -> Unit) {
+    val resources = LocalResources.current
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.workspace_screen_quality_sheet_title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(when (protocol) {
+                RemoteDesktopProtocol.STREAM -> R.string.workspace_screen_quality_sheet_stream
+                RemoteDesktopProtocol.SNAPSHOT -> R.string.workspace_screen_quality_sheet_snapshot
+                RemoteDesktopProtocol.SPACE -> if (window) R.string.workspace_screen_quality_sheet_window else R.string.workspace_screen_quality_sheet_space
+                else -> R.string.workspace_screen_quality_sheet_fps
+            }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp))
+            // Only a stream has its own size and frame rate to set.
+            RemoteScreenQuality.entries.filter { it != RemoteScreenQuality.CUSTOM || protocol == RemoteDesktopProtocol.STREAM }.forEach { level ->
+                val selected = level == quality.effectiveFor(protocol)
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable { onPick(level) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(resources.getString(remoteScreenQualityName(level)), style = MaterialTheme.typography.titleSmall)
+                        Text(remoteScreenQualityDetail(resources, level, protocol, custom, window), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (protocol == RemoteDesktopProtocol.STREAM) Text(stringResource(R.string.workspace_screen_quality_gb_per_hour, remoteStreamGigabytesPerHour(level, custom)),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (selected) Icon(HugeIcons.Tick02, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                    else if (level == RemoteScreenQuality.CUSTOM) Icon(HugeIcons.ArrowRight01, null, Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
 
 internal fun remoteStreamCustomLabel(custom: RemoteStreamCustom) = "${remoteStreamHeightLabel(custom.height)} · ${custom.fps} fps"
 
@@ -154,7 +321,7 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
         title = { Text(stringResource(R.string.workspace_screen_details)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                DetailRow(stringResource(R.string.workspace_screen_details_mode), when (info.protocol) {
+                DetailRow(stringResource(R.string.workspace_screen_details_mode), if (info.window) stringResource(R.string.workspace_screen_mode_window) else when (info.protocol) {
                     RemoteDesktopProtocol.STREAM -> stringResource(R.string.workspace_screen_details_stream)
                     RemoteDesktopProtocol.RDP -> stringResource(R.string.workspace_screen_details_rdp)
                     RemoteDesktopProtocol.VNC -> "VNC"
@@ -168,7 +335,8 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                     info.protocol == RemoteDesktopProtocol.STREAM -> stringResource(R.string.workspace_screen_details_path_stream, info.streamAddress ?: "—")
                     else -> stringResource(R.string.workspace_screen_details_path_ssh)
                 })
-                if (info.protocol != RemoteDesktopProtocol.STREAM) {
+                // A single window streams on its own; the computer's high-performance switch has no say.
+                if (info.protocol != RemoteDesktopProtocol.STREAM && !info.window) {
                     DetailRow(stringResource(R.string.workspace_screen_stream), when {
                         info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
                             streamFallbackReason(resources, RemoteStreamFallbackReason.RELAY))

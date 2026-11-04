@@ -12,16 +12,19 @@ class CancellableSocketFactoryTest {
         ServerSocket(0).use { server ->
             val factory = CancellableSocketFactory(2_000)
             val socket = factory.createSocket("127.0.0.1", server.localPort)
-            server.accept() // never writes: the read below blocks, and ignores Thread.interrupt
-            val read = CompletableFuture.supplyAsync {
-                runCatching { socket.getInputStream().read() }.exceptionOrNull()
+            // Never writes: the read below blocks, and ignores Thread.interrupt. Held open, or a garbage
+            // collection may close it and the read sees the end of the stream instead of the cancel.
+            server.accept().use {
+                val read = CompletableFuture.supplyAsync {
+                    runCatching { socket.getInputStream().read() }.exceptionOrNull()
+                }
+                Thread.sleep(200)
+                val started = System.nanoTime()
+                factory.cancel()
+                val error = read.get(2, TimeUnit.SECONDS)
+                assertTrue("read ended with $error", error is IOException)
+                assertTrue((System.nanoTime() - started) / 1_000_000 < 1_000)
             }
-            Thread.sleep(200)
-            val started = System.nanoTime()
-            factory.cancel()
-            val error = read.get(2, TimeUnit.SECONDS)
-            assertTrue("read ended with $error", error is IOException)
-            assertTrue((System.nanoTime() - started) / 1_000_000 < 1_000)
         }
     }
 

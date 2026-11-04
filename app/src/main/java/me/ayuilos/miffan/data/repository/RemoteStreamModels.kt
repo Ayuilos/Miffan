@@ -154,6 +154,8 @@ data class RemoteStreamRequest(
      * uses pictures.
      */
     val snapshot: Boolean = true,
+    /** Experimental: show only this window of a computer that shares its desktop through cua-spacesd. */
+    val window: me.rerere.cuaspace.SpaceWindow? = null,
 )
 
 /** The picture size and JPEG quality of snapshot mode for each level. */

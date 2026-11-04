@@ -23,8 +23,10 @@
 #                           a partner's own cua Space on this computer (JSON on stdout)
 #   miffan relay status|install|upgrade|pair|unpair|uninstall
 #                           the relay connector that lets the phone reach this computer from outside
+#   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
+#                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=38
+MIFFAN_HELPER_VERSION=50
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -50,15 +52,19 @@ json_or_null() {
 
 SESSION_VARS="WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_TYPE KDE_SESSION_VERSION NIRI_SOCKET SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE XAUTHORITY"
 
+# Where process information is read; tests point it at a fake tree.
+PROC_ROOT=${MIFFAN_PROC_ROOT:-/proc}
+
 # Prints KEY=VALUE lines for the session variables. The systemd user manager usually has them
-# (desktops import their environment there); otherwise borrow them from a running process of
-# this user that has a display.
+# (desktops import their environment there), but keeps them after the desktop is gone, so they
+# count only while this user has a logged-in session; otherwise borrow them from a running
+# process of this user that has a display.
 session_env_lines() {
     uid=$(id -u)
     found=""
     if command -v systemctl >/dev/null 2>&1; then
         found=$(systemctl --user show-environment 2>/dev/null | grep -E '^(WAYLAND_DISPLAY|DISPLAY)=' | head -n 1)
-        if [ -n "$found" ]; then
+        if [ -n "$found" ] && user_logged_in; then
             systemctl --user show-environment 2>/dev/null | while IFS= read -r line; do
                 key=${line%%=*}
                 for var in $SESSION_VARS; do
@@ -69,9 +75,12 @@ session_env_lines() {
         fi
     fi
     for pid in $(ps -u "$uid" -o pid= 2>/dev/null); do
-        environ="/proc/$pid/environ"
+        environ="$PROC_ROOT/$pid/environ"
         [ -r "$environ" ] || continue
-        if tr '\0' '\n' < "$environ" 2>/dev/null | grep -qE '^(WAYLAND_DISPLAY|DISPLAY)='; then
+        if tr '\0' '\n' 2>/dev/null < "$environ" | grep -qE '^(WAYLAND_DISPLAY|DISPLAY)='; then
+            # Only a desktop someone is logged in to: not a headless one a service runs (a Space's
+            # Xvfb) nor what is left of a session being closed, as at the login screen.
+            in_login_session "$pid" || continue
             tr '\0' '\n' < "$environ" | while IFS= read -r line; do
                 key=${line%%=*}
                 for var in $SESSION_VARS; do
@@ -80,6 +89,46 @@ session_env_lines() {
             done
             return 0
         fi
+    done
+    return 1
+}
+
+# Whether process $1 belongs to a logind session that is active or online. Without logind this
+# cannot be told, so every process counts.
+in_login_session() {
+    command -v loginctl >/dev/null 2>&1 || return 0
+    [ -r "$PROC_ROOT/$1/sessionid" ] || return 0
+    sid=$(cat "$PROC_ROOT/$1/sessionid" 2>/dev/null)
+    case "$sid" in ''|4294967295|*[!0-9]*) return 1 ;; esac
+    login_session_ok "$sid"
+}
+
+# Whether logind session $1 is a person's own session (class user, or a user-* variant; not the
+# class=manager one systemd 256+ makes for the user manager, nor a greeter or background session)
+# that is active or online. Older logind without classes: the state alone decides. With $2 = local,
+# also one at this computer (a seat, or a graphical type): the helper's own SSH login is neither.
+login_session_ok() {
+    case "$1" in ''|*[!0-9A-Za-z]*) return 1 ;; esac
+    info=$(loginctl show-session "$1" -p State -p Class -p Seat -p Type 2>/dev/null) || return 1
+    case "$(printf '%s\n' "$info" | sed -n 's/^Class=//p')" in ''|user|user-*) ;; *) return 1 ;; esac
+    case "$(printf '%s\n' "$info" | sed -n 's/^State=//p')" in active|online) ;; *) return 1 ;; esac
+    [ "${2:-}" = local ] || return 0
+    [ -n "$(printf '%s\n' "$info" | sed -n 's/^Seat=//p')" ] && return 0
+    case "$(printf '%s\n' "$info" | sed -n 's/^Type=//p')" in x11|wayland|mir) return 0 ;; esac
+    return 1
+}
+
+# Whether this user is logged in at this computer: a session that login_session_ok accepts as local
+# (the SSH session running this does not count). Without logind this cannot be told, so the answer is yes.
+user_logged_in() {
+    command -v loginctl >/dev/null 2>&1 || return 0
+    if ! sessions=$(loginctl show-user "$(id -u)" -p Sessions --value 2>/dev/null); then
+        # Not logged in at all, or no logind to ask.
+        loginctl list-sessions >/dev/null 2>&1 && return 1
+        return 0
+    fi
+    for sid in $sessions; do
+        login_session_ok "$sid" local && return 0
     done
     return 1
 }
@@ -217,6 +266,3859 @@ Image.open(sys.argv[1]).convert("RGB").save(sys.argv[2], "JPEG", quality=int(sys
     printf '%s %s %s\n' "$format" "$digest" "$size"
     cat "$file"
     rm -f "$jpg"
+}
+
+# One window of a Linux desktop on the screen page (see PROTOCOL.md 「单个窗口」): the compositor's
+# org.gnome.Mutter.ScreenCast records it (niri provides it; no picker, no prompt), GStreamer encodes
+# H.264, and input goes through uinput. Only niri lists and focuses windows so far. Elsewhere
+# `window probe` answers that single windows are not supported. Requests the program reads (shots,
+# serve) arrive on the helper's stdin, handed to Python as fd 3 since its own stdin is the program.
+window_command() {
+    if [ "$(os)" != linux ] || ! load_session_env || ! command -v python3 >/dev/null 2>&1; then
+        if [ "${1:-}" = probe ]; then echo '{"supported":false}'; return 0; fi
+        echo "single windows need a Linux desktop session and python3" >&2
+        return 1
+    fi
+    # How the program runs itself again (locating a window runs apart from the stream).
+    MIFFAN_WINDOW_FD3=1 MIFFAN_WINDOW_COMMAND=$(printf '%s\twindow' "$0") python3 - "$@" 3<&0 <<'WINDOW_PY'
+# miffan window: one window of a Linux desktop on the phone (see PROTOCOL.md, "单个窗口").
+#   probe                      one JSON line: whether this desktop can show single windows
+#   list                       one JSON line: windows and workspaces
+#   focus ID                   brings window ID to the front
+#   resize ID W H              sets its size in logical pixels; prints the size it got
+#   authorize                  KDE: lets this helper use the RemoteDesktop portal without a dialog
+#   install-extension          GNOME: installs the window-list extension (active from the next login)
+#   uninstall-extension        GNOME: turns the window-list extension off and removes it
+#   revoke                     takes back authorize and install-extension (whichever desktop runs now)
+#   shots                      per stdin line "ID MAXDIM QUALITY": "jpeg LEN" + bytes, or "error CODE"
+#   serve ID MAXDIM FPS KBPS   H.264 of window ID on stdout, input lines on stdin
+# niri: capture goes through the compositor's org.gnome.Mutter.ScreenCast (no picker, no prompt) and
+# input through uinput (absolute pointer + keyboard), so the user needs /dev/uinput.
+# KDE Plasma 6: KWin 6.8+ records the window and takes input itself; older KWin: the window is cropped from
+# its output's RemoteDesktop portal stream, which also takes input.
+# X11 (any EWMH window manager): ximagesrc records the window, XTest takes input, through libX11 itself.
+# GNOME on Wayland: Mutter records the window and takes input; a small shell extension lists windows.
+import ctypes
+import ctypes.util
+import fcntl
+import glob
+import json
+import os
+import shutil
+import select
+import socket
+import stat
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+OUT = sys.stdout.buffer
+OUT_LOCK = threading.Lock()
+
+
+def emit(line, payload=None):
+    with OUT_LOCK:
+        OUT.write(line.encode() + b"\n")
+        if payload is not None:
+            OUT.write(payload)
+        OUT.flush()
+
+
+def session_env():
+    run = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
+    os.environ["XDG_RUNTIME_DIR"] = run
+    os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=%s/bus" % run)
+    if not os.environ.get("NIRI_SOCKET"):
+        socks = sorted(glob.glob(run + "/niri.*.sock"), key=os.path.getmtime)
+        if socks:
+            os.environ["NIRI_SOCKET"] = socks[-1]
+    if not os.environ.get("WAYLAND_DISPLAY"):
+        # The newest socket, as for niri's: an older one may be left from a session that ended.
+        names = [p for p in glob.glob(run + "/wayland-*") if not p.endswith(".lock")]
+        names.sort(key=os.path.getmtime)
+        if names:
+            os.environ["WAYLAND_DISPLAY"] = os.path.basename(names[-1])
+
+
+def run_quiet(args, timeout=10, data=None, detach=False):
+    """
+    Runs a helper tool with nothing of it reaching this program's stdout, which carries the binary frame
+    stream: a tool that printed anything would shift every frame after it. [detach] puts it in a session
+    of its own (wl-copy stays behind to serve the clipboard). Its exit code, or None when it could not run.
+    """
+    try:
+        return subprocess.run(args, input=data, stdin=None if data is not None else subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout,
+                              start_new_session=detach).returncode
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def private_dir(name):
+    """A directory only this user can read, under XDG_RUNTIME_DIR (which a per-session /tmp never hides)."""
+    base = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
+    path = os.path.join(base, name)
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        st = os.lstat(path)
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+            raise OSError("not ours: " + path)
+        if st.st_mode & 0o077:
+            os.chmod(path, 0o700)
+        return path
+    except OSError:
+        import tempfile
+        return tempfile.mkdtemp(prefix="miffan-")
+
+
+# ---------- apps ----------
+
+APP_NAMES = {}
+
+
+def locale_names():
+    lang = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or ""
+    if not lang:
+        try:
+            env = subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True, text=True, timeout=3).stdout
+            lang = next((l[5:] for l in env.splitlines() if l.startswith("LANG=")), "")
+        except (OSError, subprocess.TimeoutExpired):
+            lang = ""
+    lang = lang.split(".")[0].split("@")[0]
+    keys = ["Name[%s]" % lang] if lang else []
+    if "_" in lang:
+        keys.append("Name[%s]" % lang.split("_")[0])
+    return keys + ["Name"]
+
+
+def desktop_entry(path):
+    entry, inside = {}, False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("["):
+                    inside = line == "[Desktop Entry]"
+                elif inside and "=" in line:
+                    k, v = line.split("=", 1)
+                    entry.setdefault(k.strip(), v.strip())
+    except OSError:
+        pass
+    return entry
+
+
+def app_name(app_id):
+    """The app's name from its desktop entry, as the launcher shows it; else the id made readable."""
+    if not app_id:
+        return ""
+    if app_id in APP_NAMES:
+        return APP_NAMES[app_id]
+    home = os.path.expanduser("~")
+    roots = [os.environ.get("XDG_DATA_HOME") or home + "/.local/share"]
+    roots += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+    roots += [home + "/.local/share/flatpak/exports/share", "/var/lib/flatpak/exports/share"]
+    dirs = [r + "/applications" for r in roots if os.path.isdir(r + "/applications")]
+    found = None
+    for d in dirs:
+        path = os.path.join(d, app_id + ".desktop")
+        if os.path.isfile(path):
+            found = desktop_entry(path)
+            break
+    wanted = app_id.lower()
+    entries = [os.path.join(d, n) for d in dirs for n in sorted(os.listdir(d)) if n.endswith(".desktop")]
+    if found is None:
+        # Another case, or a reverse-DNS name ending in the id (org.gnome.Nautilus for "nautilus").
+        path = next((e for e in entries if os.path.basename(e)[:-8].lower() in (wanted,)
+                     or os.path.basename(e)[:-8].lower().endswith("." + wanted)), None)
+        found = desktop_entry(path) if path else None
+    if found is None:
+        found = next((entry for entry in map(desktop_entry, entries)
+                      if entry.get("StartupWMClass", "").lower() == wanted), None)
+    label = None
+    if found:
+        label = next((found[k] for k in locale_names() if found.get(k)), None)
+    if not label:
+        label = " ".join(w[:1].upper() + w[1:] for w in app_id.rsplit(".", 1)[-1].replace("-", " ").replace("_", " ").split())
+    APP_NAMES[app_id] = label
+    return label
+
+
+# ---------- niri ----------
+
+def niri(request):
+    path = os.environ.get("NIRI_SOCKET")
+    if not path:
+        return None
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(3)
+    try:
+        s.connect(path)
+        s.sendall(json.dumps(request).encode() + b"\n")
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    except OSError:
+        return None
+    finally:
+        s.close()
+    try:
+        reply = json.loads(data)
+    except ValueError:
+        return None
+    return reply.get("Ok") if isinstance(reply, dict) else None
+
+
+def niri_list():
+    windows = (niri("Windows") or {}).get("Windows")
+    spaces = (niri("Workspaces") or {}).get("Workspaces")
+    if windows is None or spaces is None:
+        return None
+    focused_output = next((w.get("output") for w in spaces if w.get("is_focused")), None)
+    current = next((w["id"] for w in spaces if w.get("is_active") and w.get("output") == focused_output), None)
+    out = []
+    for w in windows:
+        layout = w.get("layout") or {}
+        size = layout.get("window_size") or [0, 0]
+        out.append({
+            "id": str(w["id"]), "pid": w.get("pid") or 0, "app": app_name(w.get("app_id") or ""), "app_id": w.get("app_id") or "",
+            "title": w.get("title") or "", "workspace": w.get("workspace_id"),
+            "focused": bool(w.get("is_focused")), "width": size[0], "height": size[1],
+        })
+    ws = [{"id": w["id"], "index": w.get("idx"), "output": w.get("output"), "name": w.get("name"),
+           "active": bool(w.get("is_active"))} for w in spaces]
+    outputs = sorted({w.get("output") for w in spaces if w.get("output")})
+    return {"desktop": "niri", "windows": out, "workspaces": ws, "current": current, "outputs": outputs}
+
+
+def niri_place(window_id):
+    """
+    Where the window is shown: its output (name, logical box), its frame when niri tells it (floating
+    windows), and a signature of the layout around it that changes when it may have moved. None when
+    its workspace is not shown.
+    """
+    windows = (niri("Windows") or {}).get("Windows") or []
+    w = next((w for w in windows if str(w["id"]) == str(window_id)), None)
+    if w is None:
+        return None
+    spaces = (niri("Workspaces") or {}).get("Workspaces") or []
+    space = next((s for s in spaces if s["id"] == w.get("workspace_id")), None)
+    if space is None or not space.get("is_active"):
+        return None
+    outputs = (niri("Outputs") or {}).get("Outputs") or {}
+    output = outputs.get(space.get("output")) or {}
+    logical = output.get("logical") or {}
+    if not logical:
+        return None
+    box = (logical["x"], logical["y"], logical["width"], logical["height"])
+    layout = w.get("layout") or {}
+    tile = layout.get("tile_pos_in_workspace_view")
+    rect = None
+    if tile is not None:
+        offset = layout.get("window_offset_in_tile") or [0, 0]
+        size = layout.get("window_size") or [0, 0]
+        rect = (box[0] + tile[0] + offset[0], box[1] + tile[1] + offset[1], size[0], size[1])
+    signature = (space["id"], tuple(sorted(
+        (x["id"], bool(x.get("is_floating")), tuple((x.get("layout") or {}).get("pos_in_scrolling_layout") or ()),
+         tuple((x.get("layout") or {}).get("tile_size") or ()))
+        for x in windows if x.get("workspace_id") == space["id"])))
+    return {"output": space.get("output"), "box": box, "rect": rect, "signature": signature}
+
+
+def niri_bounds():
+    outputs = (niri("Outputs") or {}).get("Outputs") or {}
+    boxes = [o["logical"] for o in outputs.values() if o.get("logical")]
+    if not boxes:
+        return None
+    x0 = min(b["x"] for b in boxes)
+    y0 = min(b["y"] for b in boxes)
+    return (x0, y0, max(b["x"] + b["width"] for b in boxes) - x0, max(b["y"] + b["height"] for b in boxes) - y0)
+
+
+def niri_focused():
+    w = (niri("FocusedWindow") or {}).get("FocusedWindow")
+    return str(w["id"]) if w else None
+
+
+def niri_focus(window_id):
+    return niri({"Action": {"FocusWindow": {"id": int(window_id)}}}) is not None
+
+
+def niri_window(window_id):
+    windows = (niri("Windows") or {}).get("Windows") or []
+    return next((w for w in windows if str(w["id"]) == str(window_id)), None)
+
+
+def settled_size(read, tries=20, step=0.05):
+    """
+    The size [read] gives once it stops changing (Wayland clients take a new size asynchronously, so the
+    first reading after a resize is often the old one); the last reading after [tries], or None.
+    """
+    last = None
+    for _ in range(tries):
+        time.sleep(step)
+        try:
+            size = read()
+        except Exception:
+            size = None
+        size = tuple(size) if size else None
+        if size and size == last:
+            break
+        last = size
+    return last
+
+
+def niri_resize(window_id, width, height):
+    """Sets the window's size in logical pixels (a tiled column takes the width), then prints what it got."""
+    for action in ("SetWindowWidth", "SetWindowHeight"):
+        niri({"Action": {action: {"id": int(window_id), "change": {"SetFixed": int(width if action == "SetWindowWidth" else height)}}}})
+    last = settled_size(lambda: (niri_window(window_id) or {}).get("layout", {}).get("window_size"))
+    if not last:
+        return False
+    print("%d %d" % last)
+    return True
+
+
+# ---------- capture ----------
+
+def gst():
+    import gi
+    gi.require_version("Gst", "1.0")
+    gi.require_version("GstVideo", "1.0")
+    from gi.repository import Gio, GLib, Gst, GstVideo
+    Gst.init(None)
+    return Gio, GLib, Gst, GstVideo
+
+
+ENCODERS = ["nvh264enc", "vah264lpenc", "vah264enc", "vaapih264enc", "x264enc", "openh264enc"]
+
+
+def pick_encoder(Gst):
+    for name in ENCODERS:
+        if Gst.ElementFactory.find(name):
+            return name
+    return None
+
+
+def encoder_props(name, kbps, fps):
+    gop = max(fps * 4, 30)
+    if name == "nvh264enc":
+        return "preset=low-latency-hq rc-mode=cbr bitrate=%d gop-size=%d zerolatency=true bframes=0" % (kbps, gop)
+    if name in ("vah264lpenc", "vah264enc"):
+        return "rate-control=cbr bitrate=%d key-int-max=%d b-frames=0" % (kbps, gop)
+    if name == "vaapih264enc":
+        return "rate-control=cbr bitrate=%d keyframe-period=%d max-bframes=0" % (kbps, gop)
+    if name == "x264enc":
+        # SPS/PPS on every keyframe, for when no h264parse is installed to add them.
+        return ('tune=zerolatency speed-preset=ultrafast bitrate=%d key-int-max=%d bframes=0 byte-stream=true '
+                'option-string="repeat-headers=1"' % (kbps, gop))
+    return "bitrate=%d gop-size=%d" % (kbps * 1000, gop)
+
+
+class Cast:
+    """
+    One org.gnome.Mutter.ScreenCast recording of a window (or an output's monitor): its PipeWire node.
+    Waits for the node on a private main context, so any thread may make one.
+    """
+
+    def __init__(self, Gio, GLib, window_id=None, monitor=None, on_closed=None):
+        self.GLib = GLib
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        self.session = self._call("/org/gnome/Mutter/ScreenCast", "org.gnome.Mutter.ScreenCast", "CreateSession",
+                                  GLib.Variant("(a{sv})", ({},)), "(o)")[0]
+        if monitor is not None:
+            self.stream = self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "RecordMonitor",
+                                     GLib.Variant("(sa{sv})", (monitor, {"cursor-mode": GLib.Variant("u", 0)})), "(o)")[0]
+        else:
+            self.stream = self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "RecordWindow",
+                                     GLib.Variant("(a{sv})", ({"window-id": GLib.Variant("t", int(window_id)),
+                                                               "cursor-mode": GLib.Variant("u", 1)},)), "(o)")[0]
+        self.node = None
+        self._subs = []
+        context = GLib.MainContext.new()
+        context.push_thread_default()
+        try:
+            def added(_c, _s, _p, _i, _n, params):
+                self.node = params[0]
+            sub = self.bus.signal_subscribe(None, "org.gnome.Mutter.ScreenCast.Stream", "PipeWireStreamAdded",
+                                            self.stream, None, 0, added)
+            self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "Start", None, None)
+            deadline = time.monotonic() + 5
+            while self.node is None and time.monotonic() < deadline:
+                if not context.iteration(False):
+                    time.sleep(0.005)
+            self.bus.signal_unsubscribe(sub)
+        finally:
+            context.pop_thread_default()
+        if self.node is None:
+            self.stop()
+            raise RuntimeError("no_stream")
+        if on_closed:
+            self._subs.append(self.bus.signal_subscribe(None, "org.gnome.Mutter.ScreenCast.Session", "Closed",
+                                                        self.session, None, 0, lambda *a: on_closed()))
+
+    def _call(self, path, iface, method, args, rtype):
+        return self.bus.call_sync("org.gnome.Mutter.ScreenCast", path, iface, method, args,
+                                  self.GLib.VariantType(rtype) if rtype else None, 0, 5000, None)
+
+    def stop(self):
+        for sub in self._subs:
+            self.bus.signal_unsubscribe(sub)
+        self._subs = []
+        try:
+            self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "Stop", None, None)
+        except Exception:
+            pass
+
+
+def scaled(width, height, limit):
+    scale = min(1.0, float(limit) / max(width, height, 1))
+    return max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2)
+
+
+def gl_env():
+    # GStreamer GL without a window: EGL surfaceless works on Mesa and NVIDIA alike.
+    os.environ.setdefault("GST_GL_PLATFORM", "egl")
+    os.environ.setdefault("GST_GL_WINDOW", "surfaceless")
+
+
+def shots():
+    gl_env()
+    Gio, GLib, Gst, _ = gst()
+    for line in REQUESTS:
+        parts = line.split()
+        if not parts:
+            continue
+        try:
+            window_id, limit, quality = parts[0], int(parts[1]), int(parts[2])
+        except (IndexError, ValueError):
+            emit("error usage")
+            continue
+        if niri_window(window_id) is None:
+            emit("error no_window")
+            continue
+        try:
+            picture = shot(Gio, GLib, Gst, window_id, limit, quality)
+        except Exception:
+            picture = None
+        if picture:
+            emit("jpeg %d" % len(picture), picture)
+        else:
+            emit("error no_picture")
+
+
+def follow_size(Gst, pipeline, limit, changed=None, fit=None):
+    """
+    Scales to fit [limit] (or to what [fit] says for the frame size) from the stream's own caps; the
+    cast reports its size only once frames flow.
+    """
+    sizer = pipeline.get_by_name("size")
+    current = {"size": None}
+
+    def on_caps(_pad, info):
+        event = info.get_event()
+        if event.type == Gst.EventType.CAPS:
+            s = event.parse_caps().get_structure(0)
+            ok_w, cw = s.get_int("width")
+            ok_h, ch = s.get_int("height")
+            if ok_w and ok_h and cw > 2 and ch > 2:
+                size = fit(cw, ch) if fit else scaled(cw, ch, limit)
+                if size != current["size"]:
+                    first = current["size"] is None
+                    current["size"] = size
+                    sizer.set_property("caps", Gst.Caps.from_string(
+                        "video/x-raw(memory:GLMemory),format=RGBA,width=%d,height=%d" % size))
+                    if changed:
+                        changed(size, first)
+        return Gst.PadProbeReturn.OK
+    pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, on_caps)
+
+
+def shot(Gio, GLib, Gst, window_id, limit, quality):
+    cast = Cast(Gio, GLib, window_id)
+    try:
+        pipeline = Gst.parse_launch(
+            "pipewiresrc name=src path=%d ! glupload ! glcolorconvert ! glcolorscale ! "
+            "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA ! gldownload ! videoconvert ! "
+            "jpegenc quality=%d ! appsink name=sink sync=false max-buffers=1" % (cast.node, quality))
+        follow_size(Gst, pipeline, limit)
+        sink = pipeline.get_by_name("sink")
+        pipeline.set_state(Gst.State.PLAYING)
+        sample = sink.emit("try-pull-sample", Gst.SECOND * 5 // 2)
+        data = None
+        if sample:
+            buf = sample.get_buffer()
+            data = buf.extract_dup(0, buf.get_size())
+        pipeline.set_state(Gst.State.NULL)
+        return data
+    finally:
+        cast.stop()
+
+
+# ---------- locating a tiled window ----------
+
+LOCATE_WIDTH = 960
+
+
+def gray_frame(Gst, GstVideo, cast, fit):
+    """One small GRAY8 frame of [cast], scaled by [fit]: (bytes, width, height, stride) or None."""
+    pipeline = Gst.parse_launch(
+        "pipewiresrc name=src path=%d ! glupload ! glcolorconvert ! glcolorscale ! "
+        "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA ! gldownload ! videoconvert ! "
+        "video/x-raw,format=GRAY8 ! appsink name=sink sync=false max-buffers=1" % cast.node)
+    follow_size(Gst, pipeline, 0, fit=fit)
+    pipeline.set_state(Gst.State.PLAYING)
+    try:
+        sample = pipeline.get_by_name("sink").emit("try-pull-sample", 3 * Gst.SECOND)
+        if not sample:
+            return None
+        info = GstVideo.VideoInfo.new_from_caps(sample.get_caps())
+        buf = sample.get_buffer()
+        return buf.extract_dup(0, buf.get_size()), info.width, info.height, info.stride[0]
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+
+
+def rows_of(data, w, h, stride):
+    return [list(data[y * stride:y * stride + w]) for y in range(h)]
+
+def shrink_rows(rows, f):
+    h, w = len(rows) // f, len(rows[0]) // f
+    out = []
+    for y in range(h):
+        acc = [0] * w
+        for dy in range(f):
+            line = rows[y * f + dy]
+            for x in range(w):
+                acc[x] += sum(line[x * f:(x + 1) * f])
+        out.append([v // (f * f) for v in acc])
+    return out
+
+def features(rows, cells, extra):
+    """Sample points: the strongest edge in each cell of a grid (weight 4), plus a sparse even grid (weight 1)."""
+    h, w = len(rows), len(rows[0])
+    cw, ch = max(2, w // cells), max(2, h // cells)
+    points = []
+    for cy in range(0, h - 1, ch):
+        for cx in range(0, w - 1, cw):
+            best, at = 0, None
+            for y in range(cy, min(cy + ch, h - 1)):
+                row, below = rows[y], rows[y + 1]
+                for x in range(cx, min(cx + cw, w - 1)):
+                    g = abs(row[x + 1] - row[x]) + abs(below[x] - row[x])
+                    if g > best:
+                        best, at = g, (x, y)
+            if at is not None and best >= 12:
+                points.append((at[0], at[1], 4))
+    sx, sy = max(1, w // extra), max(1, h // extra)
+    points += [(x, y, 1) for y in range(sy // 2, h, sy) for x in range(sx // 2, w, sx)]
+    # Edges first, so a wrong offset is given up early.
+    points.sort(key=lambda p: -p[2])
+    return points
+
+
+def score(screen, window, ox, oy, samples, limit):
+    total = 0
+    for x, y, weight in samples:
+        # Truncated, so a part covered by another window costs no more than any mismatch.
+        total += min(abs(screen[oy + y][ox + x] - window[y][x]), 80) * weight
+        if total >= limit:
+            return limit
+    return total
+
+
+def best_of(screen, window, candidates, samples, keep):
+    found = []
+    bound = float("inf")
+    for ox, oy in candidates:
+        t = score(screen, window, ox, oy, samples, bound)
+        if t < bound:
+            found.append((t, (ox, oy)))
+            found.sort()
+            del found[keep:]
+            if len(found) == keep:
+                bound = found[-1][0]
+    return found
+
+
+def match(screen, sw, sh, window, ww, wh):
+    """Where [window] sits in [screen] (top-left, in their pixels), and how many sample points agree there."""
+    coarse_s, coarse_w = shrink_rows(screen, 4), shrink_rows(window, 4)
+    cw, ch = len(coarse_w[0]), len(coarse_w)
+    if cw < 2 or ch < 2 or len(coarse_s) < ch or len(coarse_s[0]) < cw:
+        return None, 0.0
+    cands = [(x, y) for y in range(len(coarse_s) - ch + 1) for x in range(len(coarse_s[0]) - cw + 1)]
+    top = best_of(coarse_s, coarse_w, cands, features(coarse_w, 12, 6), 5)
+    fine = features(window, 24, 10)
+    near = set()
+    for _, (x0, y0) in top:
+        for y in range(y0 * 4 - 6, y0 * 4 + 7):
+            for x in range(x0 * 4 - 6, x0 * 4 + 7):
+                if 0 <= x <= sw - ww and 0 <= y <= sh - wh:
+                    near.add((x, y))
+    found = best_of(screen, window, sorted(near), fine, 1)
+    if not found:
+        return None, 0.0
+    at = found[0][1]
+    edges = [p for p in fine if p[2] > 1] if sum(1 for p in fine if p[2] > 1) >= 8 else fine
+    agree = sum(1 for x, y, _ in edges if abs(screen[at[1] + y][at[0] + x] - window[y][x]) <= 24)
+    return at, agree / float(len(edges))
+
+
+def locate(Gio, GLib, Gst, GstVideo, window_id, place):
+    """
+    Finds a tiled window on its output, which niri does not report: one small grey frame of each, then
+    a coarse search refined around the best match. Returns its frame in global logical pixels, or None.
+    """
+    box = place["box"]
+    scale = {}
+
+    def fit_screen(w, h):
+        scale["k"] = float(LOCATE_WIDTH) / w
+        return LOCATE_WIDTH, max(2, int(h * scale["k"]))
+
+    screen_cast = Cast(Gio, GLib, monitor=place["output"])
+    try:
+        screen = gray_frame(Gst, GstVideo, screen_cast, fit_screen)
+    finally:
+        screen_cast.stop()
+    if not screen:
+        return None
+    k = scale["k"]
+    window_cast = Cast(Gio, GLib, window_id)
+    try:
+        window = gray_frame(Gst, GstVideo, window_cast, lambda w, h: (max(2, int(w * k)), max(2, int(h * k))))
+    finally:
+        window_cast.stop()
+    if not window:
+        return None
+    sw, sh, ww, wh = screen[1], screen[2], window[1], window[2]
+    if ww > sw or wh > sh:
+        return None
+    at, agree = match(rows_of(*screen), sw, sh, rows_of(*window), ww, wh)
+    # Below this, too little of the window shows where it was found (covered, or not found at all).
+    if at is None or agree < 0.3:
+        return None
+    unit = box[2] / float(sw)
+    return (box[0] + at[0] * unit, box[1] + at[1] * unit, ww * unit, wh * unit)
+
+
+def locate_apart(window_id):
+    """
+    [locate] in a process of its own: GL pipelines in one process share the EGL display, and one torn
+    down beside the running stream breaks the stream's.
+    """
+    self_command = os.environ.get("MIFFAN_WINDOW_COMMAND")
+    command = self_command.split("\t") if self_command else [sys.executable, os.path.abspath(__file__)]
+    try:
+        out = subprocess.run(command + ["locate", str(window_id)], capture_output=True, text=True, timeout=10,
+                             stdin=subprocess.DEVNULL).stdout.split()
+        return tuple(float(v) for v in out) if len(out) == 4 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+# ---------- input ----------
+
+LOGIN_SESSION = []
+
+
+def screen_locked():
+    """Whether the graphical session is locked (logind's LockedHint, which screen lockers set)."""
+    def ask(*args):
+        try:
+            return subprocess.run(["loginctl"] + list(args), capture_output=True, text=True, timeout=3,
+                                  stdin=subprocess.DEVNULL).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+    if not LOGIN_SESSION:
+        LOGIN_SESSION.append(ask("show-user", str(os.getuid()), "-p", "Display", "--value"))
+    return bool(LOGIN_SESSION[0]) and ask("show-session", LOGIN_SESSION[0], "-p", "LockedHint", "--value") == "yes"
+
+
+EV_SYN, EV_KEY, EV_REL, EV_ABS = 0, 1, 2, 3
+BTN = {"left": 0x110, "right": 0x111, "middle": 0x112}
+REL_HWHEEL, REL_WHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES = 0x06, 0x08, 0x0B, 0x0C
+ABS_MAX = 65535
+KEYS = {
+    "escape": 1, "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 8, "8": 9, "9": 10, "0": 11, "-": 12, "=": 13,
+    "backspace": 14, "tab": 15, "q": 16, "w": 17, "e": 18, "r": 19, "t": 20, "y": 21, "u": 22, "i": 23, "o": 24,
+    "p": 25, "[": 26, "]": 27, "enter": 28, "control": 29, "a": 30, "s": 31, "d": 32, "f": 33, "g": 34, "h": 35,
+    "j": 36, "k": 37, "l": 38, ";": 39, "'": 40, "`": 41, "shift": 42, "\\": 43, "z": 44, "x": 45, "c": 46, "v": 47,
+    "b": 48, "n": 49, "m": 50, ",": 51, ".": 52, "/": 53, "alt": 56, "space": 57, "capslock": 58,
+    "f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64, "f7": 65, "f8": 66, "f9": 67, "f10": 68,
+    "numlock": 69, "scrolllock": 70, "f11": 87, "f12": 88, "printscreen": 99, "home": 102, "arrowup": 103,
+    "pageup": 104, "arrowleft": 105, "arrowright": 106, "end": 107, "arrowdown": 108, "pagedown": 109,
+    "insert": 110, "delete": 111, "pause": 119, "meta": 125, "contextmenu": 127,
+}
+# Characters typed with Shift on a US layout.
+SHIFTED = dict(zip('!@#$%^&*()_+{}|:"~<>?', "1234567890-=[]\\;'`,./"))
+
+
+class Uinput:
+    def __init__(self):
+        self.pointer = self._device("Miffan pointer", absolute=True)
+        self.keyboard = self._device("Miffan keyboard", absolute=False)
+
+    @staticmethod
+    def _device(name, absolute):
+        fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+        ioctl = fcntl.ioctl
+        ioctl(fd, 0x40045564, EV_KEY)  # UI_SET_EVBIT
+        if absolute:
+            for code in BTN.values():
+                ioctl(fd, 0x40045565, code)  # UI_SET_KEYBIT
+            ioctl(fd, 0x40045564, EV_ABS)
+            ioctl(fd, 0x40045564, EV_REL)
+            for code in (REL_WHEEL, REL_HWHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES):
+                ioctl(fd, 0x40045566, code)  # UI_SET_RELBIT
+            for code in (0, 1):  # ABS_X, ABS_Y
+                ioctl(fd, 0x40045567, code)  # UI_SET_ABSBIT
+                ioctl(fd, 0x401C5504, struct.pack("<H2xiiiiii", code, 0, 0, ABS_MAX, 0, 0, 0))  # UI_ABS_SETUP
+        else:
+            for code in range(1, 249):
+                ioctl(fd, 0x40045565, code)
+        ioctl(fd, 0x405C5503, struct.pack("<HHHH80sI", 0x06, 0x1209, 0x6d66 if absolute else 0x6d67, 1,
+                                          name.encode(), 0))  # UI_DEV_SETUP, BUS_VIRTUAL
+        ioctl(fd, 0x5501)  # UI_DEV_CREATE
+        return fd
+
+    @staticmethod
+    def _write(fd, events):
+        data = b"".join(struct.pack("<qqHHi", 0, 0, t, c, v) for t, c, v in events)
+        os.write(fd, data + struct.pack("<qqHHi", 0, 0, EV_SYN, 0, 0))
+
+    def move(self, ax, ay):
+        self._write(self.pointer, [(EV_ABS, 0, ax), (EV_ABS, 1, ay)])
+
+    def button(self, name, down):
+        code = BTN.get(name)
+        if code:
+            self._write(self.pointer, [(EV_KEY, code, 1 if down else 0)])
+
+    def scroll(self, dx, dy):
+        events = []
+        if dy:
+            events += [(EV_REL, REL_WHEEL_HI_RES, int(-dy * 1.2)), (EV_REL, REL_WHEEL, int(round(-dy / 100.0)))]
+        if dx:
+            events += [(EV_REL, REL_HWHEEL_HI_RES, int(dx * 1.2)), (EV_REL, REL_HWHEEL, int(round(dx / 100.0)))]
+        if events:
+            self._write(self.pointer, events)
+
+    def code(self, code, down):
+        self._write(self.keyboard, [(EV_KEY, code, 1 if down else 0)])
+
+    def key(self, name, down):
+        """The key that types [name] on a US layout (Shift added for !, A and the like)."""
+        code = KEYS.get(name)
+        shift = False
+        if code is None and name in SHIFTED:
+            code, shift = KEYS[SHIFTED[name]], True
+        elif code is None and len(name) == 1 and name.lower() != name and name.lower() in KEYS:
+            code, shift = KEYS[name.lower()], True
+        if code is None:
+            return
+        events = [(EV_KEY, 42, 1)] if shift and down else []
+        events.append((EV_KEY, code, 1 if down else 0))
+        if shift and not down:
+            events.append((EV_KEY, 42, 0))
+        self._write(self.keyboard, events)
+
+    def close(self):
+        for fd in (self.pointer, self.keyboard):
+            try:
+                fcntl.ioctl(fd, 0x5502)
+                os.close(fd)
+            except OSError:
+                pass
+
+
+class LockGuard:
+    """Input on a locked screen would land on the lock screen: it is dropped, and the phone told once."""
+
+    def __init__(self):
+        self.locked = False
+        self.lock_checked = 0.0
+
+    def watch_lock(self):
+        """Says when the lock that held input back is gone; called now and then from the main loop."""
+        if self.locked and not screen_locked():
+            self.locked = False
+            emit("resumed")
+        return True
+
+    def held_by_lock(self):
+        now = time.monotonic()
+        if now - self.lock_checked > 1.0:
+            self.lock_checked = now
+            if screen_locked():
+                if not self.locked:
+                    self.locked = True
+                    emit("suspended locked")
+            elif self.locked:
+                self.locked = False
+                emit("resumed")
+        return self.locked
+
+
+# ---------- input lines, the same on every desktop ----------
+# A key the phone names by a character ("a", "!") goes as that character's keysym, so the desktop finds
+# it on the user's own layout: Ctrl+A stays Ctrl+A on AZERTY, and paste is Ctrl+V on Dvorak too. Named
+# keys (modifiers, Enter, arrows, F1...) go as key codes, which are the same key on every layout.
+
+
+# Words in a terminal app's id (split at ".", "-", "_"): org.kde.konsole, org.gnome.Console, kitty...
+TERMINAL_WORDS = {"konsole", "terminal", "ptyxis", "kgx", "console", "kitty", "alacritty", "foot", "footclient",
+                  "wezterm", "xterm", "uxterm", "tilix", "terminator", "urxvt", "rxvt", "ghostty", "blackbox",
+                  "terminology", "qterminal", "lxterminal", "cool-retro-term"}
+
+
+def is_terminal(app_id):
+    """Whether [app_id] (a Wayland app id or X11 class) names a terminal emulator."""
+    words = set(__import__("re").split(r"[.\-_ ]+", (app_id or "").lower()))
+    return bool(words & TERMINAL_WORDS) or (app_id or "").lower() in TERMINAL_WORDS
+
+
+def key_action(name):
+    """("sym", keysym) for a character key, ("named", name) for a named one in KEYS, else None."""
+    if len(name) == 1:
+        return ("sym", keysym_of(name)) if ord(name) > 0x20 else None
+    name = name.lower()
+    return ("named", name) if name in KEYS else None
+
+
+def notches(amount):
+    """Wheel notches in a scroll delta (100 a notch, as the phone sends), at least one either way."""
+    return int(round(amount / 100.0)) or (1 if amount > 0 else -1 if amount < 0 else 0)
+
+
+def coalesce_moves(lines):
+    """Input lines with each run of pointer moves cut to its last: a backlog after a slow raise is not replayed."""
+    out = []
+    for parts in lines:
+        if parts and parts[0] == "move" and out and out[-1] and out[-1][0] == "move":
+            out[-1] = parts
+        else:
+            out.append(parts)
+    return out
+
+
+class WindowInput(LockGuard):
+    """
+    Turns input lines into one desktop's input. A desktop gives ensure_front (whether the window can take
+    pointer input now, raising it first), pointer (0..1 of the window), button, scroll, press_code (an
+    evdev key code) and press_sym (a keysym), and may type text or name keys its own way.
+    """
+
+    def apply(self, parts):
+        if self.held_by_lock():
+            return
+        kind = parts[0]
+        if kind == "text":
+            import base64
+            self.ensure_front()
+            self.type_text(base64.b64decode(parts[1]).decode("utf-8", "replace"))
+            return
+        if kind == "key":
+            self.ensure_front()
+            action = key_action(parts[1])
+            down = parts[2] == "1"
+            if action is None:
+                return
+            if action[0] == "sym":
+                self.press_sym(action[1], down)
+            else:
+                self.press_named(action[1], down)
+            return
+        if kind not in ("move", "down", "up", "scroll"):
+            return
+        if not self.ensure_front():
+            return
+        # move X Y | down BUTTON X Y | up BUTTON X Y | scroll X Y DX DY, X and Y 0..1 of the window.
+        at = 2 if kind in ("down", "up") else 1
+        self.pointer(max(0.0, min(1.0, float(parts[at]))), max(0.0, min(1.0, float(parts[at + 1]))))
+        if kind in ("down", "up"):
+            if parts[1] in BTN:
+                self.button(parts[1], kind == "down")
+        elif kind == "scroll":
+            self.scroll(float(parts[3]), float(parts[4]))
+
+    def press_named(self, name, down):
+        self.press_code(KEYS[name], down)
+
+    def type_text(self, text):
+        for ch in text:
+            sym = keysym_of(ch)
+            self.press_sym(sym, True)
+            self.press_sym(sym, False)
+
+    # Set when the window is a terminal (see is_terminal): those paste with Ctrl+Shift+V.
+    terminal = False
+
+    def paste(self):
+        """
+        Ctrl+V, or Ctrl+Shift+V in a terminal (where Ctrl+V is a control character): modifiers by key
+        code, V by keysym, so it is the paste shortcut on any layout.
+        """
+        self.press_named("control", True)
+        if self.terminal:
+            self.press_named("shift", True)
+        self.press_sym(0x76, True)
+        self.press_sym(0x76, False)
+        if self.terminal:
+            self.press_named("shift", False)
+        self.press_named("control", False)
+
+    def close(self):
+        pass
+
+
+# wtype's names for the modifiers the phone holds down.
+WTYPE_MODIFIERS = {"shift": "shift", "control": "ctrl", "alt": "alt", "meta": "logo"}
+
+
+class Input(WindowInput):
+    """
+    Applies input lines to a niri window. Input lands on what is under the pointer, so the window is
+    brought to the front first whenever something else is, and found on screen again when the layout changed.
+    Pointer and named keys go through uinput; character keys through wtype when it is installed (its own
+    keymap holds the character, so the layout does not matter), else as the US-layout key through uinput.
+    """
+
+    def __init__(self, window_id):
+        LockGuard.__init__(self)
+        self.window_id = window_id
+        self.device = None
+        self.rect = None
+        self.bounds = None
+        self.signature = None
+        self.checked = 0.0
+        self.held = []  # modifiers the phone holds, by wtype's names
+        try:
+            self.terminal = is_terminal((niri_window(window_id) or {}).get("app_id"))
+        except Exception:
+            pass
+
+    def ensure_front(self):
+        now = time.monotonic()
+        if self.rect is not None and now - self.checked < 1.0:
+            return True
+        self.checked = now
+        if niri_focused() != self.window_id:
+            niri_focus(self.window_id)
+            self.rect = None
+            # niri scrolls the window into view with an animation.
+            time.sleep(0.45)
+        place = niri_place(self.window_id)
+        if place is None:
+            self.rect = None
+            return False
+        if place["rect"] is not None:
+            self.rect = place["rect"]
+        elif self.rect is None or place["signature"] != self.signature:
+            started = time.monotonic()
+            self.rect = locate_apart(self.window_id)
+            emit("info %s" % json.dumps({"located": self.rect is not None, "ms": int((time.monotonic() - started) * 1000)}))
+        self.signature = place["signature"]
+        self.bounds = niri_bounds()
+        self.checked = time.monotonic()
+        return self.rect is not None and self.bounds is not None
+
+    def point(self, nx, ny):
+        x, y, w, h = self.rect
+        bx, by, bw, bh = self.bounds
+        gx = x + max(0.0, min(1.0, nx)) * w
+        gy = y + max(0.0, min(1.0, ny)) * h
+        return (int((gx - bx) / bw * ABS_MAX), int((gy - by) / bh * ABS_MAX))
+
+    def apply(self, parts):
+        if self.device is None and not self.held_by_lock():
+            try:
+                self.device = Uinput()
+                # Compositors pick a new input device up asynchronously.
+                time.sleep(0.2)
+            except OSError:
+                emit("info {\"input\":\"unavailable\"}")
+                self.device = False
+        if parts[0] in ("move", "down", "up", "scroll") and not self.device:
+            return
+        WindowInput.apply(self, parts)
+
+    def pointer(self, nx, ny):
+        self.device.move(*self.point(nx, ny))
+
+    def button(self, name, down):
+        self.device.button(name, down)
+
+    def scroll(self, dx, dy):
+        self.device.scroll(dx, dy)
+
+    def press_code(self, code, down):
+        if self.device:
+            self.device.code(code, down)
+
+    def press_named(self, name, down):
+        modifier = WTYPE_MODIFIERS.get(name)
+        if modifier:
+            if down and modifier not in self.held:
+                self.held.append(modifier)
+            elif not down and modifier in self.held:
+                self.held.remove(modifier)
+        WindowInput.press_named(self, name, down)
+
+    @staticmethod
+    def wtype():
+        return bool(shutil.which("wtype") and os.environ.get("WAYLAND_DISPLAY"))
+
+    def press_sym(self, sym, down):
+        point = sym - 0x1000000 if sym >= 0x1000000 else sym
+        if self.wtype():
+            # The whole tap on the press (wtype cannot hold a key), with the held modifiers around it.
+            if down:
+                args = ["wtype"]
+                for modifier in self.held:
+                    args += ["-M", modifier]
+                args += ["-k", "U%04X" % point]
+                for modifier in reversed(self.held):
+                    args += ["-m", modifier]
+                run_quiet(args)
+            return
+        if self.device and point < 0x100:
+            self.device.key(chr(point), down)
+
+    def type_text(self, text):
+        if self.wtype() and run_quiet(["wtype", "--", text]) == 0:
+            return
+        if shutil.which("wl-copy") and self.device:
+            run_quiet(["wl-copy", "--type", "text/plain;charset=utf-8"], timeout=5, data=text.encode(), detach=True)
+            self.paste()
+
+    def close(self):
+        if self.device:
+            self.device.close()
+
+
+# ---------- KDE Plasma (KWin) ----------
+# KWin 6.8+ lets ordinary programs record one window and inject input through its own Wayland globals
+# (see kde_direct). Older Plasma 6 keeps those to apps it trusts, so a window is cropped from its
+# output's stream, taken through the RemoteDesktop portal; Plasma 6.3+ lets the user pre-authorize that
+# once ("authorize"), after which no dialog shows. KWin scripts list, raise and measure windows exactly.
+# Plasma 5's KWin scripting lacks the API used here: it is not supported.
+
+APP_ID = "me.ayuilos.miffan"
+UUID = __import__("re").compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def kde_session():
+    """Plasma on Wayland; Plasma on X11 is an ordinary X11 desktop here."""
+    return ("KDE" in (os.environ.get("XDG_CURRENT_DESKTOP") or "").upper().split(":")
+            and bool(os.environ.get("WAYLAND_DISPLAY")) and os.environ.get("XDG_SESSION_TYPE") != "x11")
+
+
+KWIN_VERSION = []
+
+
+def kwin_version():
+    """KWin's (major, minor), from `kwin_wayland --version`; None when it cannot be told."""
+    if not KWIN_VERSION:
+        found = None
+        try:
+            out = subprocess.run(["kwin_wayland", "--version"], capture_output=True, text=True, timeout=5,
+                                 stdin=subprocess.DEVNULL).stdout
+            match = __import__("re").search(r"(\d+)\.(\d+)", out)
+            found = (int(match.group(1)), int(match.group(2))) if match else None
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        KWIN_VERSION.append(found)
+    return KWIN_VERSION[0]
+
+
+def plasma5():
+    """Plasma 5, whose KWin scripts have none of the KWin 6 API this program uses."""
+    version = kwin_version()
+    if version is not None:
+        return version[0] < 6
+    return os.environ.get("KDE_SESSION_VERSION") == "5"
+
+
+def kde_prompts_every_time():
+    """Plasma 6.0-6.2: no kde-authorized table, so the portal asks on the computer at every session."""
+    version = kwin_version()
+    return version is not None and version[0] == 6 and version[1] < 3
+
+
+class KWinError(Exception):
+    """A KWin script that could not be loaded or did not answer in time (KWin busy, or the script failed)."""
+
+
+# The window [w]'s place, as KWin's own window stream frames it: the union of its frame and the frames
+# of the popups (menus, drop-downs) KWin records with it, which are popups transient for it or for one
+# of those popups, however far they reach out of the window.
+KWIN_PLACE_JS = """
+    const inStream = p => {
+        for (let x = p, n = 0; x && n < 16; n++) {
+            if (x === w) return true;
+            if (!x.popupWindow) return false;
+            x = x.transientFor;
+        }
+        return false;
+    };
+    const place = () => {
+        const f = w.frameGeometry, current = workspace.currentDesktop;
+        let x0 = f.x, y0 = f.y, x1 = f.x + f.width, y1 = f.y + f.height;
+        for (const p of workspace.windowList()) {
+            if (p === w || !p.popupWindow || !inStream(p)) continue;
+            const g = p.frameGeometry;
+            x0 = Math.min(x0, g.x); y0 = Math.min(y0, g.y);
+            x1 = Math.max(x1, g.x + g.width); y1 = Math.max(y1, g.y + g.height);
+        }
+        return {x: x0, y: y0, width: x1 - x0, height: y1 - y0, frame: [f.x, f.y, f.width, f.height],
+                output: w.output ? w.output.name : null, minimized: w.minimized, focused: w === workspace.activeWindow,
+                shown: !w.minimized && (w.onAllDesktops || w.desktops.includes(current))};
+    };
+"""
+
+# A script that stays loaded for one stream: it reports the window's place whenever KWin says it may
+# have changed (the window or one of its popups moved or resized, it was minimized or restored, another
+# window was activated, the desktop changed), and {"gone": true} when the window closes. Every report
+# goes to the same token. No polling, nothing compiled per tick on the compositor's thread.
+KWIN_WATCH_JS = """
+    const on = (signal, fn) => { if (signal && typeof signal.connect === "function") signal.connect(fn); };
+    const report = () => send(place());
+    const followed = [];
+    const follow = p => {
+        if (followed.indexOf(p) >= 0) return;
+        followed.push(p);
+        on(p.frameGeometryChanged, report);
+    };
+    on(w.frameGeometryChanged, report);
+    on(w.minimizedChanged, report);
+    on(w.desktopsChanged, report);
+    on(workspace.windowActivated, report);
+    on(workspace.currentDesktopChanged, report);
+    on(workspace.windowAdded, x => { if (x !== w && x.popupWindow && inStream(x)) { follow(x); report(); } });
+    on(workspace.windowRemoved, x => {
+        if (x === w) { send({gone: true}); return; }
+        const i = followed.indexOf(x);
+        if (i >= 0) { followed.splice(i, 1); report(); }
+    });
+    for (const p of workspace.windowList()) if (p !== w && p.popupWindow && inStream(p)) follow(p);
+    report();
+"""
+
+
+class KWin:
+    """Runs KWin scripts; each sends its result back by D-Bus to a name this process owns."""
+    IFACE = "org.miffan.Window"
+
+    def __init__(self, Gio, GLib):
+        self.Gio, self.GLib = Gio, GLib
+        self.name = "org.miffan.Window.p%d" % os.getpid()
+        self.results = {}
+        self.watchers = {}
+        self.ready = threading.Event()
+        self.lock = threading.Lock()
+        self.count = 0
+        threading.Thread(target=self._listen, daemon=True).start()
+        if not self.ready.wait(5):
+            raise RuntimeError("kwin_listener")
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+
+    def _listen(self):
+        Gio, GLib = self.Gio, self.GLib
+        context = GLib.MainContext.new()
+        context.push_thread_default()
+        bus = Gio.DBusConnection.new_for_address_sync(
+            Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION),
+            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION)
+        xml = ('<node><interface name="%s"><method name="Report"><arg type="s" direction="in"/>'
+               '<arg type="s" direction="in"/></method></interface></node>' % self.IFACE)
+
+        def call(_conn, _sender, _path, _iface, _method, params, invocation):
+            invocation.return_value(None)
+            self.report(params[0], params[1])
+        bus.register_object("/", Gio.DBusNodeInfo.new_for_xml(xml).interfaces[0], call, None, None)
+        bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName",
+                      GLib.Variant("(su)", (self.name, 4)), None, 0, 5000, None)
+        self.ready.set()
+        while True:
+            context.iteration(True)
+
+    def report(self, token, data):
+        """A script's report: the answer a run() waits for, or one more from a watch."""
+        watcher = self.watchers.get(token)
+        if watcher is not None:
+            try:
+                watcher(json.loads(data))
+            except Exception as error:
+                sys.stderr.write("kwin watch: %s\n" % error)
+            return
+        event = self.results.get(token)
+        if isinstance(event, threading.Event):
+            self.results[token] = data
+            event.set()
+
+    def _token(self):
+        with self.lock:
+            self.count += 1
+            return "t%d" % self.count
+
+    def _load(self, token, script):
+        """Writes [script] where KWin can read it and starts it: (plugin name, file path). Raises KWinError."""
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, dir=private_dir("miffan-kwin")) as f:
+            f.write(script)
+        plugin = "miffan-%d-%s" % (os.getpid(), token)
+        V = self.GLib.Variant
+        try:
+            sid = self.bus.call_sync("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting", "loadScript",
+                                     V("(ss)", (f.name, plugin)), self.GLib.VariantType("(i)"), 0, 5000, None)[0]
+            self.bus.call_sync("org.kde.KWin", "/Scripting/Script%d" % sid, "org.kde.kwin.Script", "run",
+                               None, None, 0, 5000, None)
+        except Exception as error:
+            self._unload(plugin, f.name)
+            raise KWinError(str(error))
+        return plugin, f.name
+
+    def _unload(self, plugin, path):
+        try:
+            self.bus.call_sync("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting", "unloadScript",
+                               self.GLib.Variant("(s)", (plugin,)), None, 0, 5000, None)
+        except Exception:
+            pass
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def _script(self, token, body):
+        return ('(function () { const send = v => callDBus("%s", "/", "%s", "Report", "%s", JSON.stringify(v === undefined ? null : v)); '
+                'send((function () { %s })()); })();' % (self.name, self.IFACE, token, body))
+
+    def run(self, body, timeout=3):
+        """
+        Runs [body] (JavaScript returning a JSON-able value) in KWin and gives its value; an explicit null
+        is None. Raises KWinError when the script could not run or did not answer within [timeout].
+        """
+        token = self._token()
+        event = threading.Event()
+        self.results[token] = event
+        try:
+            plugin, path = self._load(token, self._script(token, body))
+        except KWinError:
+            self.results.pop(token, None)
+            raise
+        try:
+            answered = event.wait(timeout)
+        finally:
+            # KWin reads the file when the script runs, so it goes only after the answer (or the wait).
+            self._unload(plugin, path)
+        value = self.results.pop(token, None)
+        if not answered or not isinstance(value, str):
+            raise KWinError("no answer")
+        return json.loads(value)
+
+    def watch(self, window_id, on_place, timeout=3):
+        """
+        Keeps KWIN_WATCH_JS running for window [window_id]: [on_place] gets each report (the dict geometry()
+        gives, {"gone": true}, or None when the window was already gone) on the listener thread. Returns
+        a function that stops it; raises KWinError when the script did not start (then poll geometry()).
+        """
+        assert UUID.match(window_id)
+        token = self._token()
+        first = threading.Event()
+
+        def got(value):
+            first.set()
+            on_place(value)
+        self.watchers[token] = got
+        body = self.FIND % window_id + "if (!w) { send(null); return; }" + KWIN_PLACE_JS + KWIN_WATCH_JS
+        script = ('(function () { const send = v => callDBus("%s", "/", "%s", "Report", "%s", JSON.stringify(v === undefined ? null : v)); '
+                  '%s })();' % (self.name, self.IFACE, token, body))
+        try:
+            plugin, path = self._load(token, script)
+        except KWinError:
+            self.watchers.pop(token, None)
+            raise
+        if not first.wait(timeout):
+            self.watchers.pop(token, None)
+            self._unload(plugin, path)
+            raise KWinError("watch did not start")
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+        def stop():
+            self.watchers.pop(token, None)
+            self._unload(plugin, None)
+        return stop
+
+    FIND = 'const w = workspace.windowList().find(x => x.internalId.toString() === "{%s}");'
+
+    def snapshot(self):
+        return self.run("""
+            const current = workspace.currentDesktop;
+            const shown = x => !x.minimized && (x.onAllDesktops || x.desktops.includes(current));
+            const order = workspace.stackingOrder;
+            const meet = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+            const windows = workspace.windowList().filter(x => (x.normalWindow || x.dialog) && !x.skipTaskbar).map(x => {
+              const g = x.frameGeometry;
+              const above = order.slice(order.indexOf(x) + 1).filter(o => o !== x && shown(o) && (o.normalWindow || o.dialog));
+              return {id: x.internalId.toString().replace(/[{}]/g, ""), pid: x.pid, app: x.desktopFileName || x.resourceClass,
+                      cls: x.resourceClass, title: x.caption, x: g.x, y: g.y, width: g.width, height: g.height,
+                      minimized: x.minimized, focused: x === workspace.activeWindow, output: x.output ? x.output.name : null,
+                      desktops: x.onAllDesktops ? [] : x.desktops.map(d => workspace.desktops.indexOf(d) + 1),
+                      visible: shown(x) && !above.some(o => meet(o.frameGeometry, g))};
+            });
+            return {windows: windows, current: workspace.desktops.indexOf(current) + 1,
+                    desktops: workspace.desktops.map((d, i) => ({id: i + 1, name: d.name})),
+                    outputs: workspace.screens.map(s => s.name)};
+        """)
+
+    def geometry(self, window_id):
+        """The window's place (see KWIN_PLACE_JS), None when KWin says it is gone; raises KWinError."""
+        assert UUID.match(window_id)
+        return self.run(self.FIND % window_id + "if (!w) return null;" + KWIN_PLACE_JS + "return place();")
+
+    def focus(self, window_id):
+        assert UUID.match(window_id)
+        return self.run(self.FIND % window_id + """
+            if (!w) return false;
+            w.minimized = false;
+            if (!w.onAllDesktops && !w.desktops.includes(workspace.currentDesktop)) workspace.currentDesktop = w.desktops[0];
+            workspace.activeWindow = w;
+            return true;
+        """) is True
+
+    def resize(self, window_id, width, height):
+        """Sets the window's frame size, then gives the size it settled at (the client resizes later)."""
+        assert UUID.match(window_id)
+        if self.run(self.FIND % window_id + """
+            if (!w) return false;
+            const g = w.frameGeometry;
+            w.frameGeometry = {x: g.x, y: g.y, width: %d, height: %d};
+            return true;
+        """ % (int(width), int(height))) is not True:
+            return None
+        return settled_size(lambda: (self.geometry(window_id) or {}).get("frame", [0, 0, 0, 0])[2:4])
+
+
+def kde_rect(place):
+    """The rectangle a KDE window's stream shows, in global logical pixels (its frame and popups)."""
+    return (place["x"], place["y"], place["width"], place["height"])
+
+
+def kde_point(view, nx, ny):
+    """
+    Where (nx, ny), 0..1 of the stream, lands: for the window stream, in global logical pixels (origin
+    0, 0); for the portal stream, relative to its output's origin.
+    """
+    # The window stream maps against the place its frames on the phone show (see serve_kde_window).
+    x, y, w, h = view.get("input_rect") or view["rect"]
+    ox, oy = view["origin"]
+    return x - ox + nx * w, y - oy + ny * h
+
+
+def kde_list(kwin):
+    try:
+        snap = kwin.snapshot()
+    except KWinError:
+        return None
+    if snap is None:
+        return None
+    current = snap["current"]
+    windows = []
+    for w in snap["windows"]:
+        desk = w["desktops"][0] if w["desktops"] else current
+        windows.append({"id": w["id"], "pid": w["pid"] or 0, "app": app_name(w["app"]) if w["app"] else "",
+                        "app_id": w["app"] or w["cls"] or "", "title": w["title"] or "", "workspace": desk,
+                        "focused": w["focused"], "width": w["width"], "height": w["height"],
+                        "minimized": w["minimized"], "visible": w["visible"]})
+    workspaces = [{"id": d["id"], "index": d["id"], "output": None, "name": d["name"], "active": d["id"] == current}
+                  for d in snap["desktops"]]
+    return {"desktop": "kde", "windows": windows, "workspaces": workspaces, "current": current, "outputs": []}
+
+
+def kde_authorized(Gio, GLib):
+    if not os.path.isfile(desktop_file_path()):
+        return False
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        table = bus.call_sync("org.freedesktop.impl.portal.PermissionStore", "/org/freedesktop/impl/portal/PermissionStore",
+                              "org.freedesktop.impl.portal.PermissionStore", "Lookup",
+                              GLib.Variant("(ss)", ("kde-authorized", "remote-desktop")), None, 0, 5000, None)[0]
+        return "yes" in (table or {}).get(APP_ID, [])
+    except Exception:
+        return False
+
+
+def desktop_file_path():
+    return os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "applications", APP_ID + ".desktop")
+
+
+def kde_authorize(Gio, GLib):
+    """
+    Lets this helper use the RemoteDesktop portal without a dialog: a hidden desktop entry names the app
+    (the portal registry needs one), and Plasma's kde-authorized table pre-authorizes it.
+    """
+    path = desktop_file_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=Miffan\n"
+                "Comment=Lets the Miffan phone app show and use this computer's windows\nExec=true\nNoDisplay=true\n")
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    bus.call_sync("org.freedesktop.impl.portal.PermissionStore", "/org/freedesktop/impl/portal/PermissionStore",
+                  "org.freedesktop.impl.portal.PermissionStore", "SetPermission",
+                  GLib.Variant("(sbssas)", ("kde-authorized", True, "remote-desktop", APP_ID, ["yes"])), None, 0, 5000, None)
+    return kde_authorized(Gio, GLib)
+
+
+def revoke(Gio, GLib):
+    """
+    Takes back what "authorize" and "install-extension" left, whichever desktop runs now: the
+    kde-authorized grant, the hidden desktop entry, and the GNOME extension. What each step did.
+    """
+    done = {"kde_grant": False, "desktop_entry": False, "extension": False}
+    if Gio is not None:
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+            bus.call_sync("org.freedesktop.impl.portal.PermissionStore", "/org/freedesktop/impl/portal/PermissionStore",
+                          "org.freedesktop.impl.portal.PermissionStore", "DeletePermission",
+                          GLib.Variant("(sss)", ("kde-authorized", "remote-desktop", APP_ID)), None, 0, 5000, None)
+            done["kde_grant"] = True
+        except Exception:
+            pass  # never granted, or no permission store on this desktop
+    try:
+        os.unlink(desktop_file_path())
+        done["desktop_entry"] = True
+    except OSError:
+        pass
+    done["extension"] = gnome_uninstall_extension()
+    return done
+
+
+class NotAuthorized(Exception):
+    pass
+
+
+class PortalNotKde(Exception):
+    """The portal service runs for another desktop, and restarting it would not help (see open_portal)."""
+
+
+def open_portal(Gio, GLib, devices=True):
+    """
+    A Portal session. The portal service can outlive the desktop session that started it (logging out of
+    niri or GNOME and into Plasma without a reboot) and keep serving that desktop's backends, which give
+    Plasma no RemoteDesktop: then it is restarted under this session first. That ends whatever portal
+    sessions other apps hold (a browser sharing its screen), so only when the restart can help: when the
+    systemd user manager, whose environment the restarted service gets, says KDE. Otherwise (Plasma not
+    started through systemd) every restart would come back the same: PortalNotKde, and nothing restarted.
+    """
+    if not portal_serves_kde():
+        if not systemd_env_is_kde():
+            raise PortalNotKde()
+        run_quiet(["systemctl", "--user", "restart", "xdg-desktop-portal.service"], timeout=20)
+    return Portal(Gio, GLib, devices)
+
+
+def systemd_env_is_kde():
+    """Whether the systemd user manager's environment names KDE as the desktop."""
+    try:
+        env = subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True, text=True, timeout=5,
+                             stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    desktop = next((l.split("=", 1)[1] for l in env.splitlines() if l.startswith("XDG_CURRENT_DESKTOP=")), "")
+    return "KDE" in desktop.upper().split(":")
+
+
+def portal_serves_kde():
+    """Whether the running portal service was started for KDE (true too when that cannot be told)."""
+    try:
+        pid = subprocess.run(["systemctl", "--user", "show", "-p", "MainPID", "--value", "xdg-desktop-portal.service"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        if not pid.isdigit() or pid == "0":
+            return True  # not running: D-Bus starts it for this session
+        with open("/proc/%s/environ" % pid, "rb") as f:
+            env = dict(item.split(b"=", 1) for item in f.read().split(b"\0") if b"=" in item)
+    except Exception:
+        return True
+    return b"KDE" in env.get(b"XDG_CURRENT_DESKTOP", b"").split(b":")
+
+
+def pick_stream(streams, output, rect=None):
+    """See Portal.stream_for; [streams] are (node, properties) pairs."""
+    chosen = None
+    if rect is not None:
+        cx, cy = rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0
+        for s in streams:
+            pos, size = s[1].get("position"), s[1].get("size")
+            if pos and size and pos[0] <= cx < pos[0] + size[0] and pos[1] <= cy < pos[1] + size[1]:
+                chosen = s
+                break
+    if chosen is None:
+        chosen = next((s for s in streams if s[1].get("mapping_id") == output), streams[0] if streams else None)
+    if chosen is None:
+        return None
+    node, props = chosen
+    return node, tuple(props.get("position", (0, 0))), tuple(props.get("size", (0, 0)))
+
+
+class Portal:
+    """A RemoteDesktop portal session streaming every output, with pointer and keyboard."""
+    DESKTOP = "/org/freedesktop/portal/desktop"
+
+    def __init__(self, Gio, GLib, devices=True):
+        self.Gio, self.GLib = Gio, GLib
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        self.sender = self.bus.get_unique_name()[1:].replace(".", "_")
+        self.count = 0
+        V = GLib.Variant
+        try:
+            self._call("org.freedesktop.host.portal.Registry", "Register", V("(sa{sv})", (APP_ID, {})))
+        except Exception:
+            pass  # older portals know host apps by their systemd unit only
+        self.session = self._request("org.freedesktop.portal.RemoteDesktop", "CreateSession",
+                                     lambda t: V("(a{sv})", ({"handle_token": V("s", t), "session_handle_token": V("s", t + "s")},)))["session_handle"]
+        if devices:
+            self._request("org.freedesktop.portal.RemoteDesktop", "SelectDevices",
+                          lambda t: V("(oa{sv})", (self.session, {"handle_token": V("s", t), "types": V("u", 3)})))
+        self._request("org.freedesktop.portal.ScreenCast", "SelectSources",
+                      lambda t: V("(oa{sv})", (self.session, {"handle_token": V("s", t), "types": V("u", 1), "multiple": V("b", True)})))
+        try:
+            started = self._request("org.freedesktop.portal.RemoteDesktop", "Start",
+                                    lambda t: V("(osa{sv})", (self.session, "", {"handle_token": V("s", t)})), timeout=8)
+        except TimeoutError:
+            # Not pre-authorized: Plasma shows a dialog on the computer instead of answering.
+            self.close()
+            raise NotAuthorized()
+        self.streams = [(node, dict(props)) for node, props in started.get("streams", [])]
+
+    def _call(self, iface, method, args, path=None):
+        return self.bus.call_sync("org.freedesktop.portal.Desktop", path or self.DESKTOP, iface, method, args, None, 0, 10000, None)
+
+    def _request(self, iface, method, args, timeout=10):
+        self.count += 1
+        token = "miffan%d_%d" % (os.getpid(), self.count)
+        path = "%s/request/%s/%s" % (self.DESKTOP, self.sender, token)
+        box = {}
+        context = self.GLib.MainContext.new()
+        context.push_thread_default()
+        try:
+            sub = self.bus.signal_subscribe("org.freedesktop.portal.Desktop", "org.freedesktop.portal.Request", "Response",
+                                            path, None, 0, lambda c, s, p, i, n, params: box.update(r=params))
+            self._call(iface, method, args(token))
+            end = time.monotonic() + timeout
+            while "r" not in box and time.monotonic() < end:
+                if not context.iteration(False):
+                    time.sleep(0.005)
+            self.bus.signal_unsubscribe(sub)
+        finally:
+            context.pop_thread_default()
+        if "r" not in box:
+            raise TimeoutError(method)
+        code, results = box["r"]
+        if code != 0:
+            raise NotAuthorized() if method == "Start" else RuntimeError(method)
+        return results
+
+    def stream_for(self, output, rect=None):
+        """
+        The stream showing [rect]'s centre (by each stream's position and size), else the one whose
+        mapping_id is [output] (a connector name, which KDE's portal does not always give), else the first:
+        (node, (x, y), (w, h)) in logical pixels.
+        """
+        return pick_stream(self.streams, output, rect)
+
+    def remote(self):
+        reply = self.bus.call_with_unix_fd_list_sync("org.freedesktop.portal.Desktop", self.DESKTOP, "org.freedesktop.portal.ScreenCast",
+                                                     "OpenPipeWireRemote", self.GLib.Variant("(oa{sv})", (self.session, {})),
+                                                     self.GLib.VariantType("(h)"), 0, 5000, None, None)
+        return reply[1].get(reply[0][0])
+
+    def _notify(self, method, signature, *args):
+        self._call("org.freedesktop.portal.RemoteDesktop", method, self.GLib.Variant(signature, (self.session, {}) + args))
+
+    def pointer(self, node, x, y):
+        self._notify("NotifyPointerMotionAbsolute", "(oa{sv}udd)", node, float(x), float(y))
+
+    def button(self, code, down):
+        self._notify("NotifyPointerButton", "(oa{sv}iu)", code, 1 if down else 0)
+
+    def scroll(self, dx, dy):
+        # Plasma's portal turns dy around before handing it to KWin (whose positive axis scrolls down),
+        # so a positive dy scrolls up; the phone's negative delta is up. Its discrete call passes steps
+        # on as pixels, which barely moves, so only the smooth one is used: 15 per notch (100 from the
+        # phone), what a real wheel click gives.
+        V = self.GLib.Variant
+        self._call("org.freedesktop.portal.RemoteDesktop", "NotifyPointerAxis",
+                   V("(oa{sv}dd)", (self.session, {"finish": V("b", True)}, float(dx) * 0.15, float(-dy) * 0.15)))
+
+    def key(self, code, down):
+        self._notify("NotifyKeyboardKeycode", "(oa{sv}iu)", code, 1 if down else 0)
+
+    def keysym(self, sym, down):
+        self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)", sym, 1 if down else 0)
+
+    def close(self):
+        try:
+            self._call("org.freedesktop.portal.Session", "Close", None, path=self.session)
+        except Exception:
+            pass
+
+
+class Wayland:
+    """
+    A bare Wayland client (the wire protocol over the compositor's socket), enough to bind KWin's own
+    globals. A reader thread hands each event to the handler registered for its object.
+    """
+
+    def __init__(self):
+        name = os.environ.get("WAYLAND_DISPLAY") or "wayland-0"
+        path = name if name.startswith("/") else os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "", name)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(path)
+        self.send_lock = threading.Lock()
+        self.last_id = 1  # wl_display
+        self.handlers = {}
+        self.globals = {}
+        self.on_lost = None
+        self.registry = self.new_id()
+        self.handlers[self.registry] = self._registry
+        self.send(1, 1, struct.pack("<I", self.registry))  # wl_display.get_registry
+        threading.Thread(target=self._read, daemon=True).start()
+        self.roundtrip()
+
+    def new_id(self):
+        with self.send_lock:
+            self.last_id += 1
+            return self.last_id
+
+    @staticmethod
+    def string(text):
+        raw = text.encode() + b"\0"
+        return struct.pack("<I", len(raw)) + raw + b"\0" * (-len(raw) % 4)
+
+    def send(self, obj, op, body=b""):
+        with self.send_lock:
+            self.sock.sendall(struct.pack("<IHH", obj, op, 8 + len(body)) + body)
+
+    def roundtrip(self, timeout=5):
+        done = threading.Event()
+        callback = self.new_id()
+        self.handlers[callback] = lambda _op, _body: done.set()
+        self.send(1, 0, struct.pack("<I", callback))  # wl_display.sync
+        if not done.wait(timeout):
+            raise TimeoutError("wayland")
+        self.handlers.pop(callback, None)
+
+    def _registry(self, op, body):
+        if op == 0:  # global(name, interface, version)
+            name, n = struct.unpack("<II", body[:8])
+            interface = body[8:8 + n - 1].decode(errors="replace")
+            self.globals[interface] = (name, struct.unpack("<I", body[8 + n + (-n % 4):][:4])[0])
+
+    def version(self, interface):
+        return self.globals.get(interface, (0, 0))[1]
+
+    def bind(self, interface, lowest, highest):
+        """A new object for [interface] at the highest version both sides know, or None below [lowest]."""
+        name, offered = self.globals.get(interface, (0, 0))
+        if offered < lowest:
+            return None
+        obj = self.new_id()
+        self.send(self.registry, 0, struct.pack("<I", name) + self.string(interface) + struct.pack("<II", min(offered, highest), obj))
+        return obj
+
+    def _read(self):
+        buf = b""
+        try:
+            while True:
+                chunk = self.sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                while len(buf) >= 8:
+                    obj, op, size = struct.unpack("<IHH", buf[:8])
+                    if len(buf) < size:
+                        break
+                    body, buf = buf[8:max(8, size)], buf[max(8, size):]
+                    if obj == 1 and op == 0:  # wl_display.error
+                        n = struct.unpack("<I", body[8:12])[0]
+                        sys.stderr.write("wayland error: %s\n" % body[12:12 + n - 1].decode(errors="replace"))
+                    else:
+                        handler = self.handlers.get(obj)
+                        if handler:
+                            handler(op, body)
+        except OSError:
+            pass
+        if self.on_lost:
+            self.on_lost()
+
+    def close(self):
+        self.on_lost = None
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
+
+
+def kde_direct():
+    """
+    A Wayland connection on which KWin offers this program its window recording and input injection.
+    KWin 6.8 keeps them from sandboxed apps only; before 6.8 it hides them from anything not listed in
+    X-KDE-Wayland-Interfaces, and then the portal path is used instead. Where an older KWin offers them
+    anyway (a desktop entry listing python3), its window stream before 6.5 leaves out the title bar and
+    popups the input mapping counts on, so the portal path is used there too.
+    """
+    version = kwin_version()
+    if version is not None and version < (6, 5):
+        return None
+    try:
+        wl = Wayland()
+    except Exception:
+        return None
+    if wl.version("zkde_screencast_unstable_v1") >= 1 and wl.version("org_kde_kwin_fake_input") >= 6:
+        return wl
+    wl.close()
+    return None
+
+
+class KwinCast:
+    """One window recorded by KWin itself (zkde_screencast stream_window): a PipeWire node of just that window."""
+
+    def __init__(self, wl, window_id, on_closed=None):
+        self.wl, self.on_closed = wl, on_closed
+        self.manager = wl.bind("zkde_screencast_unstable_v1", 1, 6)
+        self.stream = wl.new_id()
+        box, ready = {}, threading.Event()
+
+        def event(op, body):
+            if op == 1:  # created(node)
+                box["node"] = struct.unpack("<I", body[:4])[0]
+                ready.set()
+            elif op == 2:  # failed(error)
+                n = struct.unpack("<I", body[:4])[0]
+                box["error"] = body[4:4 + n - 1].decode(errors="replace")
+                ready.set()
+            elif op == 0:  # closed: the window went away
+                ready.set()
+                if "node" in box and self.on_closed:
+                    self.on_closed()
+        wl.handlers[self.stream] = event
+        # stream_window(stream, window uuid, pointer: embedded), as the other desktops show the pointer.
+        wl.send(self.manager, 1, struct.pack("<I", self.stream) + wl.string(window_id) + struct.pack("<I", 2))
+        if not ready.wait(5) or "node" not in box:
+            self.stop()
+            raise RuntimeError(box.get("error") or "no_stream")
+        self.node = box["node"]
+
+    def stop(self):
+        self.on_closed = None
+        try:
+            self.wl.send(self.stream, 0)   # close
+            self.wl.send(self.manager, 2)  # destroy
+        except OSError:
+            pass
+
+
+class FakeInput:
+    """KWin's input injection (org_kde_kwin_fake_input 6): the pointer at global logical positions, keys, keysyms."""
+
+    def __init__(self, wl):
+        self.wl = wl
+        self.obj = wl.bind("org_kde_kwin_fake_input", 6, 6)
+        wl.send(self.obj, 0, wl.string("Miffan") + wl.string("Control from the Miffan phone app"))  # authenticate
+
+    @staticmethod
+    def fixed(value):
+        return struct.pack("<i", int(round(value * 256)))
+
+    def pointer(self, _node, x, y):
+        self.wl.send(self.obj, 9, self.fixed(x) + self.fixed(y))  # pointer_motion_absolute
+
+    def button(self, code, down):
+        self.wl.send(self.obj, 2, struct.pack("<II", code, 1 if down else 0))
+
+    def scroll(self, dx, dy):
+        # KWin's positive axis scrolls down and right, as the phone's delta does; 15 per notch (100 from
+        # the phone), what a real wheel click gives.
+        if dy:
+            self.wl.send(self.obj, 3, struct.pack("<I", 0) + self.fixed(float(dy) * 0.15))
+        if dx:
+            self.wl.send(self.obj, 3, struct.pack("<I", 1) + self.fixed(float(dx) * 0.15))
+
+    def key(self, code, down):
+        self.wl.send(self.obj, 10, struct.pack("<II", code, 1 if down else 0))  # keyboard_key
+
+    def keysym(self, sym, down):
+        self.wl.send(self.obj, 12, struct.pack("<II", sym, 1 if down else 0))  # keyboard_keysym
+
+
+# QImage formats ScreenShot2 may hand over: GStreamer's name for each, and its bytes per pixel. 64-bit
+# ones come with HDR; anything else falls back to cropping the output's stream.
+KWIN_IMAGE_FORMATS = {4: ("BGRx", 4), 5: ("BGRA", 4), 6: ("BGRA", 4), 16: ("RGBx", 4), 17: ("RGBA", 4), 18: ("RGBA", 4),
+                      25: ("RGBA64_LE", 8), 26: ("RGBA64_LE", 8), 27: ("RGBA64_LE", 8)}
+
+
+def read_until_eof(fd, seconds, into):
+    """
+    Reads [fd] to its end or for at most [seconds], into the list [into]; True when the end came. Closes
+    [fd] itself, so no other thread ever closes a descriptor this one may still read (and then reads
+    whatever reused that number).
+    """
+    deadline = time.monotonic() + seconds
+    try:
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0 or not select.select([fd], [], [], left)[0]:
+                return False
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                return True
+            into.append(chunk)
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+
+
+def kwin_picture_frame(info, data):
+    """ScreenShot2's (format, width, height, rows) as (GStreamer format, width, height, tight bytes), or None."""
+    known = KWIN_IMAGE_FORMATS.get(info.get("format"))
+    width, height, stride = int(info.get("width", 0)), int(info.get("height", 0)), int(info.get("stride", 0))
+    if not known or width < 2 or height < 2:
+        return None
+    fmt, size = known
+    row = width * size
+    if stride < row or len(data) < stride * (height - 1) + row:
+        return None
+    if stride != row:
+        data = b"".join(data[y * stride:y * stride + row] for y in range(height))
+    return fmt, width, height, data[:row * height]
+
+
+def kde_window_picture(Gio, GLib, Gst, window_id, limit, quality):
+    """KWin's own picture of one window with its title bar (ScreenShot2), as a JPEG, or None."""
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    r, w = os.pipe()
+    fds = Gio.UnixFDList.new()
+    index = fds.append(w)
+    os.close(w)
+    chunks, ended = [], []
+    reader = threading.Thread(target=lambda: ended.append(read_until_eof(r, 6, chunks)), daemon=True)
+    reader.start()
+    V = GLib.Variant
+    try:
+        reply = bus.call_with_unix_fd_list_sync(
+            "org.kde.KWin", "/org/kde/KWin/ScreenShot2", "org.kde.KWin.ScreenShot2", "CaptureWindow",
+            V("(sa{sv}h)", (window_id, {"include-decoration": V("b", True), "include-shadow": V("b", False)}, index)),
+            None, 0, 5000, fds, None)
+        info = reply[0].unpack()[0]
+    except Exception:
+        info = None
+    del fds
+    reader.join(7)
+    if not info or ended != [True]:
+        return None
+    frame = kwin_picture_frame(info, b"".join(chunks))
+    if frame is None:
+        return None
+    fmt, width, height, data = frame
+    try:
+        pipeline = Gst.parse_launch(
+            "appsrc name=src caps=video/x-raw,format=%s,width=%d,height=%d,framerate=0/1 ! videoconvert ! videoscale ! "
+            "video/x-raw,width=%d,height=%d ! jpegenc quality=%d ! appsink name=sink sync=false"
+            % ((fmt, width, height) + scaled(width, height, limit) + (quality,)))
+    except Exception:
+        return None  # a format this GStreamer does not know
+    pipeline.set_state(Gst.State.PLAYING)
+    try:
+        src = pipeline.get_by_name("src")
+        src.emit("push-buffer", Gst.Buffer.new_wrapped(data))
+        src.emit("end-of-stream")
+        sample = pipeline.get_by_name("sink").emit("try-pull-sample", 3 * Gst.SECOND)
+        if not sample:
+            return None
+        buf = sample.get_buffer()
+        return buf.extract_dup(0, buf.get_size())
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+
+
+def crop_box(rect, origin, size, frame_w, frame_h):
+    """[rect] (global logical) inside a stream of [size] at [origin], as videocrop's left, top, right, bottom pixels."""
+    k = frame_w / float(size[0] or frame_w)
+    left = int(round((rect[0] - origin[0]) * k))
+    top = int(round((rect[1] - origin[1]) * k))
+    width = int(round(rect[2] * k))
+    height = int(round(rect[3] * k))
+    left = max(0, min(left, frame_w - 2))
+    top = max(0, min(top, frame_h - 2))
+    width = max(2, min(width, frame_w - left))
+    height = max(2, min(height, frame_h - top))
+    return left, top, frame_w - left - width, frame_h - top - height
+
+
+def keysym_of(ch):
+    code = ord(ch)
+    if ch == "\n":
+        return 0xff0d
+    if ch == "\t":
+        return 0xff09
+    return code if 0x20 <= code <= 0x7e or 0xa0 <= code <= 0xff else 0x1000000 + code
+
+
+class KdeInput(WindowInput):
+    """
+    Applies input lines through KWin's fake input or the portal session (both take the same calls),
+    raising the window when something else is in front.
+    """
+
+    def __init__(self, window_id, kwin, device, view):
+        LockGuard.__init__(self)
+        self.window_id, self.kwin, self.device, self.view = window_id, kwin, device, view
+        self.checked = 0.0
+
+    def ensure_front(self):
+        now = time.monotonic()
+        if now - self.checked < 1.0:
+            return self.view.get("rect") is not None
+        self.checked = now
+        try:
+            g = self.kwin.geometry(self.window_id)
+            if g is not None and (not g["focused"] or not g["shown"]):
+                self.kwin.focus(self.window_id)
+                time.sleep(0.15)
+                g = self.kwin.geometry(self.window_id) or g
+        except KWinError:
+            # KWin busy for a moment: input goes where the window last was.
+            return self.view.get("rect") is not None
+        if g is None:
+            return False
+        self.view["rect"] = kde_rect(g)
+        return True
+
+    def pointer(self, nx, ny):
+        self.device.pointer(self.view["node"], *kde_point(self.view, nx, ny))
+
+    def button(self, name, down):
+        self.device.button(BTN[name], down)
+
+    def scroll(self, dx, dy):
+        self.device.scroll(dx, dy)
+
+    def press_code(self, code, down):
+        self.device.key(code, down)
+
+    def press_sym(self, sym, down):
+        self.device.keysym(sym, down)
+
+
+class KdeFollow:
+    """
+    Keeps a KDE stream's [view] current (rect, minimized), telling [moved] when the rect changes. A KWin
+    script that stays loaded reports changes as KWin makes them; a slow poll of geometry() backs it up,
+    and does all the work (every 0.5 s) where that script would not start. The stream ends only when KWin
+    says the window is gone: a script that does not answer in time (KWin busy) or fails is reported once
+    as info and tried again.
+    """
+
+    def __init__(self, GLib, kwin, window_id, view, closed, moved=None):
+        self.GLib, self.kwin, self.window_id, self.view = GLib, kwin, window_id, view
+        self.closed, self.moved = closed, moved
+        self.done = False
+        self.trouble = False
+        self.wake = threading.Event()
+        try:
+            self.stop_watch = kwin.watch(window_id, lambda place: GLib.idle_add(self.update, place))
+        except (KWinError, Exception):
+            self.stop_watch = None
+        self.interval = 5.0 if self.stop_watch else 0.5
+        threading.Thread(target=self._poll, daemon=True).start()
+
+    def refresh_soon(self):
+        """Reads the place now (the stream's size changed: a popup opened or closed, or the window resized)."""
+        self.wake.set()
+
+    def _poll(self):
+        said = False
+        while not self.done:
+            self.wake.wait(self.interval)
+            self.wake.clear()
+            if self.done:
+                return
+            if not said:
+                # Said after a first wait, so it never comes before the stream's "opened" line.
+                said = True
+                emit("info %s" % json.dumps({"kwin_watch": self.stop_watch is not None}))
+            try:
+                place = self.kwin.geometry(self.window_id)
+            except Exception as error:
+                if not self.trouble:
+                    self.trouble = True
+                    emit("info %s" % json.dumps({"kwin": "no_answer", "detail": str(error)[:200]}))
+                continue
+            self.GLib.idle_add(self.update, place)
+
+    def update(self, place):
+        """On the main loop: one report or reading. Returns False (as a one-shot idle callback)."""
+        if self.done:
+            return False
+        try:
+            if place is None or place.get("gone"):
+                self.closed("window_closed")
+                self.stop()
+                return False
+            if place["minimized"] != self.view["minimized"]:
+                self.view["minimized"] = place["minimized"]
+                emit("suspended minimized" if place["minimized"] else "resumed")
+            rect = kde_rect(place)
+            if rect != self.view["rect"]:
+                self.view["rect"] = rect
+                if self.moved:
+                    self.moved()
+        except Exception as error:
+            sys.stderr.write("kde follow: %s\n" % error)
+        return False
+
+    def stop(self):
+        self.done = True
+        self.wake.set()
+        if self.stop_watch:
+            stop, self.stop_watch = self.stop_watch, None
+            stop()
+
+
+def kde_shots(Gio, GLib, Gst):
+    """
+    Pictures of windows: KWin's own picture of each one (any desktop, covered or not). Where KWin keeps
+    that from this program, only windows fully shown on the current desktop, cropped from their output.
+    One KWin snapshot serves the requests of the next 1.5 s (the phone asks for a whole list at once).
+    """
+    kwin = KWin(Gio, GLib)
+    portal = None
+    snap, snap_at = None, 0.0
+    try:
+        for line in REQUESTS:
+            parts = line.split()
+            try:
+                window_id, limit, quality = parts[0], int(parts[1]), int(parts[2])
+                assert UUID.match(window_id)
+            except (IndexError, ValueError, AssertionError):
+                emit("error usage")
+                continue
+            if snap is None or time.monotonic() - snap_at > 1.5:
+                try:
+                    snap, snap_at = kwin.snapshot() or {"windows": []}, time.monotonic()
+                except KWinError:
+                    snap = None
+                    emit("error no_picture")
+                    continue
+            w = next((x for x in snap["windows"] if x["id"] == window_id), None)
+            if w is None:
+                emit("error no_window")
+                continue
+            picture = None if w["minimized"] else kde_window_picture(Gio, GLib, Gst, window_id, limit, quality)
+            if picture:
+                emit("jpeg %d" % len(picture), picture)
+                continue
+            if not w["visible"]:
+                emit("error no_picture")
+                continue
+            try:
+                if portal is None:
+                    portal = open_portal(Gio, GLib, devices=False)
+                picture = kde_shot(Gst, portal, w, limit, quality)
+            except NotAuthorized:
+                emit("error not_authorized")
+                continue
+            except PortalNotKde:
+                emit("error portal_not_kde")
+                continue
+            except Exception:
+                picture = None
+            if picture:
+                emit("jpeg %d" % len(picture), picture)
+            else:
+                emit("error no_picture")
+    finally:
+        if portal:
+            portal.close()
+
+
+def pin_size(Gst, pipeline, width, height):
+    """
+    Holds the stream at the output's own size. Otherwise the smaller size wanted downstream travels up
+    to the compositor, which then sends a scaled-down output (blurring the crop), or with a virtual
+    output even resizes the output itself.
+    """
+    pin = pipeline.get_by_name("pin")
+    if pin is not None and pin.get_property("caps").get_structure(0).get_value("width") is None:
+        # Keep what the pin already says (its format), adding the size.
+        pin.set_property("caps", Gst.Caps.from_string("%s,width=%d,height=%d" % (pin.get_property("caps").to_string(), width, height)))
+
+
+def kde_shot(Gst, portal, w, limit, quality):
+    rect = (w["x"], w["y"], w["width"], w["height"])
+    node, origin, size = portal.stream_for(w["output"], rect)
+    fd = portal.remote()
+    try:
+        pipeline = Gst.parse_launch(
+            "pipewiresrc name=src fd=%d path=%d ! glupload ! glcolorconvert ! gldownload ! capsfilter name=pin caps=video/x-raw,format=RGBA ! "
+            "videocrop name=crop ! videoscale ! videoconvert ! capsfilter name=size ! jpegenc quality=%d ! "
+            "appsink name=sink sync=false max-buffers=1" % (fd, node, quality))
+        crop, sizer = pipeline.get_by_name("crop"), pipeline.get_by_name("size")
+
+        def on_caps(_pad, info):
+            event = info.get_event()
+            if event.type == Gst.EventType.CAPS:
+                s = event.parse_caps().get_structure(0)
+                fw, fh = s.get_int("width")[1], s.get_int("height")[1]
+                pin_size(Gst, pipeline, fw, fh)
+                left, top, right, bottom = crop_box(rect, origin, size, fw, fh)
+                for name, value in (("left", left), ("top", top), ("right", right), ("bottom", bottom)):
+                    crop.set_property(name, value)
+                out = scaled(fw - left - right, fh - top - bottom, limit)
+                sizer.set_property("caps", Gst.Caps.from_string("video/x-raw,width=%d,height=%d" % out))
+            return Gst.PadProbeReturn.OK
+        pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, on_caps)
+        pipeline.set_state(Gst.State.PLAYING)
+        try:
+            sample = pipeline.get_by_name("sink").emit("try-pull-sample", 3 * Gst.SECOND)
+            if not sample:
+                return None
+            buf = sample.get_buffer()
+            return buf.extract_dup(0, buf.get_size())
+        finally:
+            pipeline.set_state(Gst.State.NULL)
+    finally:
+        # pipewiresrc works on its own copy; this one would stay open for every picture.
+        os.close(fd)
+
+
+# ---------- X11 (any EWMH window manager: XFCE, Cinnamon, MATE, GNOME/KDE on Xorg) ----------
+# libX11 and libXtst through ctypes, so nothing beyond the X libraries every X desktop has.
+
+
+X11_KEYSYMS = {
+    "escape": "Escape", "enter": "Return", "backspace": "BackSpace", "tab": "Tab", "space": "space",
+    "arrowleft": "Left", "arrowright": "Right", "arrowup": "Up", "arrowdown": "Down", "shift": "Shift_L",
+    "control": "Control_L", "alt": "Alt_L", "meta": "Super_L", "delete": "Delete", "insert": "Insert",
+    "home": "Home", "end": "End", "pageup": "Prior", "pagedown": "Next", "capslock": "Caps_Lock",
+    "numlock": "Num_Lock", "scrolllock": "Scroll_Lock", "printscreen": "Print", "pause": "Pause", "contextmenu": "Menu",
+}
+
+
+class XClientMessage(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_int), ("serial", ctypes.c_ulong), ("send_event", ctypes.c_int),
+                ("display", ctypes.c_void_p), ("window", ctypes.c_ulong), ("message_type", ctypes.c_ulong),
+                ("format", ctypes.c_int), ("data", ctypes.c_long * 5)]
+
+
+class XEvent(ctypes.Union):
+    _fields_ = [("client", XClientMessage), ("pad", ctypes.c_long * 24)]
+
+
+class XWindowAttributes(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int), ("y", ctypes.c_int), ("width", ctypes.c_int), ("height", ctypes.c_int),
+                ("border_width", ctypes.c_int), ("depth", ctypes.c_int), ("visual", ctypes.c_void_p),
+                ("root", ctypes.c_ulong), ("class_", ctypes.c_int), ("bit_gravity", ctypes.c_int),
+                ("win_gravity", ctypes.c_int), ("backing_store", ctypes.c_int), ("backing_planes", ctypes.c_ulong),
+                ("backing_pixel", ctypes.c_ulong), ("save_under", ctypes.c_int), ("colormap", ctypes.c_ulong),
+                ("map_installed", ctypes.c_int), ("map_state", ctypes.c_int), ("all_event_masks", ctypes.c_long),
+                ("your_event_mask", ctypes.c_long), ("do_not_propagate_mask", ctypes.c_long),
+                ("override_redirect", ctypes.c_int), ("screen", ctypes.c_void_p)]
+
+
+class X11:
+    """One connection to the X display: EWMH window list, raising, resizing and XTest input."""
+
+    def __init__(self):
+        self.x = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        self.xtst = ctypes.CDLL(ctypes.util.find_library("Xtst") or "libXtst.so.6")
+        x = self.x
+        x.XOpenDisplay.restype = ctypes.c_void_p
+        x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x.XDefaultRootWindow.restype = ctypes.c_ulong
+        x.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        x.XInternAtom.restype = ctypes.c_ulong
+        x.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x.XGetWindowProperty.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_long, ctypes.c_long,
+                                         ctypes.c_int, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int),
+                                         ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_ulong),
+                                         ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte))]
+        x.XFree.argtypes = [ctypes.c_void_p]
+        x.XGetWindowAttributes.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(XWindowAttributes)]
+        x.XTranslateCoordinates.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_int, ctypes.c_int,
+                                            ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_ulong)]
+        x.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.POINTER(XEvent)]
+        x.XFlush.argtypes = [ctypes.c_void_p]
+        x.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x.XStringToKeysym.restype = ctypes.c_ulong
+        x.XStringToKeysym.argtypes = [ctypes.c_char_p]
+        x.XKeysymToKeycode.restype = ctypes.c_ubyte
+        x.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        x.XKeycodeToKeysym.restype = ctypes.c_ulong
+        x.XKeycodeToKeysym.argtypes = [ctypes.c_void_p, ctypes.c_ubyte, ctypes.c_int]
+        x.XDisplayKeycodes.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+        x.XGetKeyboardMapping.restype = ctypes.POINTER(ctypes.c_ulong)
+        x.XGetKeyboardMapping.argtypes = [ctypes.c_void_p, ctypes.c_ubyte, ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+        x.XChangeKeyboardMapping.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_ulong), ctypes.c_int]
+        x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        t = self.xtst
+        t.XTestFakeMotionEvent.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_ulong]
+        t.XTestFakeButtonEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        t.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        # Xlib's default error handler exits the process; a window that goes away or is minimized while
+        # ximagesrc (which shares this process's Xlib) reads it would end the stream that way.
+        X11.HANDLER = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)(lambda _d, _e: 0)
+        x.XSetErrorHandler.argtypes = [ctypes.c_void_p]
+        x.XSetErrorHandler(ctypes.cast(X11.HANDLER, ctypes.c_void_p))
+        self.dpy = x.XOpenDisplay(None)
+        if not self.dpy:
+            raise RuntimeError("no_display")
+        self.root = x.XDefaultRootWindow(self.dpy)
+        self.atoms = {}
+        self.lock = threading.Lock()
+        self.borrowed = {}  # keysym -> spare keycode, while a key line holds it down
+
+    def atom(self, name):
+        if name not in self.atoms:
+            self.atoms[name] = self.x.XInternAtom(self.dpy, name.encode(), 0)
+        return self.atoms[name]
+
+    def prop(self, window, name, kind="CARDINAL"):
+        """A property's values: ints for 32-bit formats, bytes for 8-bit ones; None when absent."""
+        actual, fmt = ctypes.c_ulong(), ctypes.c_int()
+        count, after = ctypes.c_ulong(), ctypes.c_ulong()
+        data = ctypes.POINTER(ctypes.c_ubyte)()
+        want = 0 if kind is None else self.atom(kind)  # 0: AnyPropertyType
+        if self.x.XGetWindowProperty(self.dpy, window, self.atom(name), 0, 1 << 16, 0, want, ctypes.byref(actual),
+                                     ctypes.byref(fmt), ctypes.byref(count), ctypes.byref(after), ctypes.byref(data)) != 0:
+            return None
+        try:
+            if not data or actual.value == 0:
+                return None
+            if fmt.value == 32:
+                # Xlib hands 32-bit items over as C longs.
+                return list(ctypes.cast(data, ctypes.POINTER(ctypes.c_ulong))[:count.value])
+            return bytes(data[:count.value * (fmt.value // 8)])
+        finally:
+            if data:
+                self.x.XFree(data)
+
+    def text(self, window, name):
+        value = self.prop(window, name, "UTF8_STRING") if name.startswith("_NET") else self.prop(window, name, None)
+        return value.decode("utf-8", "replace") if isinstance(value, bytes) else ""
+
+    def frame(self, window):
+        """The window's frame in root coordinates, decorations included (from _NET_FRAME_EXTENTS)."""
+        a = XWindowAttributes()
+        if not self.x.XGetWindowAttributes(self.dpy, window, ctypes.byref(a)):
+            return None
+        rx, ry, child = ctypes.c_int(), ctypes.c_int(), ctypes.c_ulong()
+        self.x.XTranslateCoordinates(self.dpy, window, self.root, 0, 0, ctypes.byref(rx), ctypes.byref(ry), ctypes.byref(child))
+        left, right, top, bottom = (self.prop(window, "_NET_FRAME_EXTENTS") or [0, 0, 0, 0])[:4]
+        return {"x": rx.value, "y": ry.value, "width": a.width, "height": a.height, "viewable": a.map_state == 2,
+                "frame": (rx.value - left, ry.value - top, a.width + left + right, a.height + top + bottom)}
+
+    def snapshot(self):
+        with self.lock:
+            stacking = self.prop(self.root, "_NET_CLIENT_LIST_STACKING", "WINDOW") or self.prop(self.root, "_NET_CLIENT_LIST", "WINDOW") or []
+            current = (self.prop(self.root, "_NET_CURRENT_DESKTOP") or [0])[0]
+            count = (self.prop(self.root, "_NET_NUMBER_OF_DESKTOPS") or [1])[0]
+            names = (self.prop(self.root, "_NET_DESKTOP_NAMES", "UTF8_STRING") or b"").decode("utf-8", "replace").split("\0")
+            active = (self.prop(self.root, "_NET_ACTIVE_WINDOW", "WINDOW") or [0])[0]
+            normal, dialog = self.atom("_NET_WM_WINDOW_TYPE_NORMAL"), self.atom("_NET_WM_WINDOW_TYPE_DIALOG")
+            hidden, skip = self.atom("_NET_WM_STATE_HIDDEN"), self.atom("_NET_WM_STATE_SKIP_TASKBAR")
+            windows = []
+            for w in stacking:
+                types = self.prop(w, "_NET_WM_WINDOW_TYPE", "ATOM") or [normal]
+                if normal not in types and dialog not in types:
+                    continue
+                state = self.prop(w, "_NET_WM_STATE", "ATOM") or []
+                if skip in state:
+                    continue
+                geometry = self.frame(w)
+                if geometry is None:
+                    continue
+                cls = (self.prop(w, "WM_CLASS", "STRING") or b"").split(b"\0")
+                desk = (self.prop(w, "_NET_WM_DESKTOP") or [current])[0]
+                windows.append({"id": str(w), "pid": (self.prop(w, "_NET_WM_PID") or [0])[0],
+                                "cls": cls[1].decode("utf-8", "replace") if len(cls) > 1 else "",
+                                "instance": cls[0].decode("utf-8", "replace") if cls else "",
+                                "title": self.text(w, "_NET_WM_NAME") or self.text(w, "WM_NAME"),
+                                "minimized": hidden in state, "focused": w == active,
+                                "desktop": None if desk == 0xFFFFFFFF else desk, **geometry})
+            shown = [w for w in windows if not w["minimized"] and w["viewable"] and w["desktop"] in (None, current)]
+
+            def meet(a, b):
+                return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+            for i, w in enumerate(windows):
+                above = [o for o in shown[shown.index(w) + 1:]] if w in shown else []
+                w["visible"] = w in shown and not any(meet(o["frame"], w["frame"]) for o in above)
+            return {"windows": windows, "current": current,
+                    "desktops": [{"id": i, "name": names[i] if i < len(names) else ""} for i in range(count)]}
+
+    def window(self, window_id):
+        """One window as snapshot() gives it (no "visible"), asking about that window alone; None once it is gone."""
+        try:
+            w = int(window_id)
+        except ValueError:
+            return None
+        with self.lock:
+            if w not in (self.prop(self.root, "_NET_CLIENT_LIST", "WINDOW") or []):
+                return None
+            geometry = self.frame(w)
+            if geometry is None:
+                return None
+            current = (self.prop(self.root, "_NET_CURRENT_DESKTOP") or [0])[0]
+            active = (self.prop(self.root, "_NET_ACTIVE_WINDOW", "WINDOW") or [0])[0]
+            state = self.prop(w, "_NET_WM_STATE", "ATOM") or []
+            desk = (self.prop(w, "_NET_WM_DESKTOP") or [current])[0]
+            return {"id": str(w), "minimized": self.atom("_NET_WM_STATE_HIDDEN") in state, "focused": w == active,
+                    "desktop": None if desk == 0xFFFFFFFF else desk, **geometry}
+
+    def _client_message(self, window, name, values):
+        e = XEvent()
+        e.client.type = 33  # ClientMessage
+        e.client.window = window
+        e.client.message_type = self.atom(name)
+        e.client.format = 32
+        for i, v in enumerate(values[:5]):
+            e.client.data[i] = v
+        # SubstructureRedirectMask | SubstructureNotifyMask, to the window manager on the root.
+        self.x.XSendEvent(self.dpy, self.root, 0, (1 << 20) | (1 << 19), ctypes.byref(e))
+
+    def focus(self, window_id):
+        w = self.window(window_id)
+        if w is None:
+            return False
+        with self.lock:
+            if w["desktop"] is not None:
+                self._client_message(self.root, "_NET_CURRENT_DESKTOP", [w["desktop"], 0])
+            # Source 2: a pager, which window managers obey without focus-stealing checks.
+            self._client_message(int(window_id), "_NET_ACTIVE_WINDOW", [2, 0, 0, 0, 0])
+            self.x.XFlush(self.dpy)
+        return True
+
+    def resize(self, window_id, width, height):
+        with self.lock:
+            # Width and height only (flags bits 10-11), gravity from the window, source 2.
+            self._client_message(int(window_id), "_NET_MOVERESIZE_WINDOW", [(2 << 12) | (1 << 10) | (1 << 11), 0, 0, int(width), int(height)])
+            self.x.XFlush(self.dpy)
+        time.sleep(0.3)
+        w = self.window(window_id)
+        return [w["width"], w["height"]] if w else None
+
+    def pointer(self, x, y):
+        with self.lock:
+            self.xtst.XTestFakeMotionEvent(self.dpy, -1, int(x), int(y), 0)
+            self.x.XFlush(self.dpy)
+
+    def button(self, number, down):
+        with self.lock:
+            self.xtst.XTestFakeButtonEvent(self.dpy, number, 1 if down else 0, 0)
+            self.x.XFlush(self.dpy)
+
+    # Clients read a changed keyboard mapping when they get to its MappingNotify, which may be after the
+    # key that needed it: a borrowed keycode is given back only this long after its last use.
+    GIVE_BACK_DELAY = 0.1
+
+    def keysym(self, sym, down):
+        """Presses [sym], with Shift when the key gives it on its second level; a sym no key has borrows a spare keycode."""
+        with self.lock:
+            code = self.x.XKeysymToKeycode(self.dpy, sym)
+            borrowed = code == 0
+            if borrowed:
+                code = self.borrowed.get(sym) or self._borrow(sym)
+                if not code:
+                    return
+            self._press(code, sym, down, borrowed)
+            if borrowed and not down:
+                self._give_back({sym: code})
+
+    def type_keysyms(self, syms):
+        """
+        Types [syms] in order. Those no key has share borrowed spare keycodes for the whole text, each
+        mapped once and given back after it (a short wait first); when there are more of them than spare
+        keycodes, the spares are given back and borrowed again partway.
+        """
+        with self.lock:
+            spares = None
+            in_use = {}
+            for sym in syms:
+                code = self.x.XKeysymToKeycode(self.dpy, sym)
+                borrowed = code == 0
+                if borrowed:
+                    code = in_use.get(sym)
+                    if not code:
+                        if spares is None:
+                            spares = self._spare_keycodes()
+                        if not spares and in_use:
+                            self._give_back(in_use)
+                            spares = sorted(in_use.values())
+                            in_use = {}
+                        if not spares:
+                            continue
+                        code = spares.pop()
+                        self._map(code, sym)
+                        in_use[sym] = code
+                self._press(code, sym, True, borrowed)
+                self._press(code, sym, False, borrowed)
+            if in_use:
+                self._give_back(in_use)
+
+    def _borrow(self, sym):
+        spares = [c for c in self._spare_keycodes() if c not in self.borrowed.values()]
+        if not spares:
+            return 0
+        self._map(spares[-1], sym)
+        self.borrowed[sym] = spares[-1]
+        return spares[-1]
+
+    def _map(self, code, sym):
+        syms = (ctypes.c_ulong * 1)(sym)
+        self.x.XChangeKeyboardMapping(self.dpy, code, 1, syms, 1)
+        self.x.XSync(self.dpy, 0)
+
+    def _give_back(self, codes):
+        time.sleep(self.GIVE_BACK_DELAY)
+        for sym, code in codes.items():
+            self._map(code, 0)
+            if self.borrowed.get(sym) == code:
+                del self.borrowed[sym]
+
+    def _press(self, code, sym, down, borrowed):
+        shift = not borrowed and self.x.XKeycodeToKeysym(self.dpy, code, 0) != sym and self.x.XKeycodeToKeysym(self.dpy, code, 1) == sym
+        shift_code = self.x.XKeysymToKeycode(self.dpy, 0xffe1)
+        if shift and down:
+            self.xtst.XTestFakeKeyEvent(self.dpy, shift_code, 1, 0)
+        self.xtst.XTestFakeKeyEvent(self.dpy, code, 1 if down else 0, 0)
+        if shift and not down:
+            self.xtst.XTestFakeKeyEvent(self.dpy, shift_code, 0, 0)
+        self.x.XSync(self.dpy, 0)
+
+    def _spare_keycodes(self):
+        """Keycodes with no keysym at all, highest last."""
+        low, high = ctypes.c_int(), ctypes.c_int()
+        self.x.XDisplayKeycodes(self.dpy, ctypes.byref(low), ctypes.byref(high))
+        per = ctypes.c_int()
+        mapping = self.x.XGetKeyboardMapping(self.dpy, low.value, high.value - low.value + 1, ctypes.byref(per))
+        spares = []
+        try:
+            for code in range(low.value, high.value + 1):
+                base = (code - low.value) * per.value
+                if all(mapping[base + i] == 0 for i in range(per.value)):
+                    spares.append(code)
+        finally:
+            self.x.XFree(mapping)
+        return spares
+
+    def named_keysym(self, name):
+        if name in X11_KEYSYMS:
+            return self.x.XStringToKeysym(X11_KEYSYMS[name].encode())
+        if name.startswith("f") and name[1:].isdigit():
+            return self.x.XStringToKeysym(name.upper().encode())
+        if len(name) == 1:
+            return keysym_of(name)
+        return 0
+
+
+def x11_session():
+    return bool(os.environ.get("DISPLAY")) and (os.environ.get("XDG_SESSION_TYPE") == "x11" or not os.environ.get("WAYLAND_DISPLAY"))
+
+
+def x11_list(x):
+    snap = x.snapshot()
+    windows = []
+    for w in snap["windows"]:
+        app_id = w["cls"] or w["instance"]
+        windows.append({"id": w["id"], "pid": w["pid"] or 0, "app": app_name(app_id) if app_id else "", "app_id": app_id,
+                        "title": w["title"], "workspace": (w["desktop"] if w["desktop"] is not None else snap["current"]) + 1,
+                        "focused": w["focused"], "width": w["frame"][2], "height": w["frame"][3],
+                        "minimized": w["minimized"], "visible": w["visible"]})
+    workspaces = [{"id": d["id"] + 1, "index": d["id"] + 1, "output": None, "name": d["name"] or None,
+                   "active": d["id"] == snap["current"]} for d in snap["desktops"]]
+    return {"desktop": "x11", "windows": windows, "workspaces": workspaces, "current": snap["current"] + 1, "outputs": []}
+
+
+class X11Input(WindowInput):
+    """XTest input, after bringing the window to the front when something else is."""
+
+    def __init__(self, window_id, x, view):
+        LockGuard.__init__(self)
+        self.window_id, self.x, self.view = window_id, x, view
+        self.checked = 0.0
+
+    def ensure_front(self):
+        now = time.monotonic()
+        if now - self.checked < 1.0 and self.view.get("rect"):
+            return True
+        self.checked = now
+        w = self.x.window(self.window_id)
+        if w is None:
+            return False
+        if not w["focused"] or w["minimized"]:
+            self.x.focus(self.window_id)
+            time.sleep(0.15)
+            w = self.x.window(self.window_id) or w
+        self.view["rect"] = (w["x"], w["y"], w["width"], w["height"])
+        return True
+
+    def pointer(self, nx, ny):
+        # The picture is the window's own area (ximagesrc), not its frame.
+        x, y, w, h = self.view["rect"]
+        self.x.pointer(x + nx * (w - 1), y + ny * (h - 1))
+
+    def button(self, name, down):
+        self.x.button({"left": 1, "middle": 2, "right": 3}[name], down)
+
+    def scroll(self, dx, dy):
+        # X wheels are buttons: 4 up, 5 down, 6 left, 7 right; one click per notch.
+        for number, amount in ((4 if dy < 0 else 5, dy), (6 if dx < 0 else 7, dx)):
+            for _ in range(abs(notches(amount))):
+                self.x.button(number, True)
+                self.x.button(number, False)
+
+    def press_named(self, name, down):
+        sym = self.x.named_keysym(name)
+        if sym:
+            self.x.keysym(sym, down)
+
+    def press_sym(self, sym, down):
+        self.x.keysym(sym, down)
+
+    def type_text(self, text):
+        self.x.type_keysyms([keysym_of(ch) for ch in text])
+
+
+def x11_source(window_id, fps):
+    return ("ximagesrc name=src xid=%s use-damage=false show-pointer=true ! video/x-raw,framerate=%d/1 ! "
+            "queue max-size-buffers=1 leaky=downstream ! videoconvert ! videoscale" % (window_id, max(1, fps)))
+
+
+def x11_shots(Gst):
+    x = X11()
+    for line in REQUESTS:
+        parts = line.split()
+        try:
+            window_id, limit, quality = int(parts[0]), int(parts[1]), int(parts[2])
+        except (IndexError, ValueError):
+            emit("error usage")
+            continue
+        w = x.window(window_id)
+        if w is None:
+            emit("error no_window")
+            continue
+        if not w["viewable"]:
+            emit("error no_picture")
+            continue
+        out = scaled(w["width"], w["height"], limit)
+        pipeline = Gst.parse_launch("%s ! video/x-raw,width=%d,height=%d ! videoconvert ! jpegenc quality=%d ! "
+                                    "appsink name=sink sync=false max-buffers=1" % (x11_source(window_id, 5), out[0], out[1], quality))
+        pipeline.set_state(Gst.State.PLAYING)
+        sample = pipeline.get_by_name("sink").emit("try-pull-sample", 3 * Gst.SECOND)
+        pipeline.set_state(Gst.State.NULL)
+        if sample:
+            buf = sample.get_buffer()
+            emit("jpeg %d" % buf.get_size(), buf.extract_dup(0, buf.get_size()))
+        else:
+            emit("error no_picture")
+
+
+def serve_x11(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
+    """An X11 window: raised, then captured on its own by ximagesrc, which follows its size."""
+    try:
+        x = X11()
+    except Exception:
+        emit("closed no_stream")
+        return
+    if not window_id.isdigit() or not x.focus(window_id):
+        emit("closed window_closed")
+        return
+    time.sleep(0.2)
+    w = x.window(window_id)
+    if w is None:
+        emit("closed window_closed")
+        return
+    view = {"rect": (w["x"], w["y"], w["width"], w["height"]), "minimized": False}
+    size = scaled(w["width"], w["height"], limit)
+
+    def setup(pipeline, closed):
+        sizer = pipeline.get_by_name("size")
+        current = {"size": size}
+
+        def follow():
+            try:
+                g = x.window(window_id)
+                if g is None:
+                    closed("window_closed")
+                    return False
+                if g["minimized"] != view["minimized"]:
+                    view["minimized"] = g["minimized"]
+                    # Nothing to read while it is unmapped; ximagesrc would only fail.
+                    pipeline.set_state(Gst.State.PAUSED if g["minimized"] else Gst.State.PLAYING)
+                    emit("suspended minimized" if g["minimized"] else "resumed")
+                view["rect"] = (g["x"], g["y"], g["width"], g["height"])
+                out = scaled(g["width"], g["height"], limit)
+                if out != current["size"]:
+                    current["size"] = out
+                    sizer.set_property("caps", Gst.Caps.from_string("video/x-raw,format=NV12,width=%d,height=%d" % out))
+            except Exception as error:
+                # A timer callback that raises is dropped by GLib for good; keep following.
+                sys.stderr.write("follow: %s\n" % error)
+            return True
+        GLib.timeout_add(500, follow)
+
+    run_stream(Gio, GLib, Gst, GstVideo,
+               "%s ! capsfilter name=size caps=video/x-raw,format=NV12,width=%d,height=%d" % (x11_source(window_id, fps), size[0], size[1]),
+               encoder, fps, kbps, X11Input(window_id, x, view), setup, size, lambda: None)
+
+
+GNOME_METADATA_JSON = r'''{
+  "uuid": "miffan-windows@ayuilos.me",
+  "name": "Miffan windows",
+  "description": "Lets the Miffan phone app list, raise and resize this computer's windows to show one at a time.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51", "52"],
+  "url": "https://github.com/Ayuilos/miffan"
+}
+'''
+
+GNOME_EXTENSION_JS = r'''// Miffan windows: lists, raises and resizes windows over D-Bus for the Miffan helper, which
+// GNOME's own window list (org.gnome.Shell.Introspect) keeps to its own components.
+import Gio from 'gi://Gio';
+import Meta from 'gi://Meta';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+
+const IFACE = `<node><interface name="me.ayuilos.Miffan.Windows">
+  <method name="List"><arg type="s" direction="out"/></method>
+  <method name="Activate"><arg type="t" direction="in"/><arg type="b" direction="out"/></method>
+  <method name="Resize"><arg type="t" direction="in"/><arg type="i" direction="in"/><arg type="i" direction="in"/><arg type="s" direction="out"/></method>
+</interface></node>`;
+
+const shown = w => w.get_window_type() === Meta.WindowType.NORMAL || w.get_window_type() === Meta.WindowType.DIALOG;
+
+export default class MiffanWindows extends Extension {
+    enable() {
+        this._object = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
+        this._object.export(Gio.DBus.session, '/me/ayuilos/Miffan/Windows');
+        this._name = Gio.bus_own_name_on_connection(Gio.DBus.session, 'me.ayuilos.Miffan.Windows', 0, null, null);
+    }
+
+    disable() {
+        Gio.bus_unown_name(this._name);
+        this._object.unexport();
+        this._object = null;
+    }
+
+    _find(id) {
+        return global.display.list_all_windows().find(w => w.get_id() === id) ?? null;
+    }
+
+    List() {
+        const manager = global.workspace_manager;
+        const current = manager.get_active_workspace();
+        const all = global.display.list_all_windows().filter(w => shown(w) && !w.skip_taskbar);
+        const stacked = global.display.sort_windows_by_stacking(all);
+        const onScreen = w => !w.minimized && (w.is_on_all_workspaces() || w.get_workspace() === current);
+        const meet = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+        const windows = all.map(w => {
+            const r = w.get_frame_rect();
+            const b = w.get_buffer_rect();
+            const above = stacked.slice(stacked.indexOf(w) + 1).filter(onScreen);
+            return {
+                id: String(w.get_id()), pid: w.get_pid(), app: w.get_sandboxed_app_id() || w.get_gtk_application_id() || '',
+                cls: w.get_wm_class() || '', title: w.get_title() || '', x: r.x, y: r.y, width: r.width, height: r.height,
+                buffer: [b.x - r.x, b.y - r.y, b.width, b.height],
+                minimized: w.minimized, focused: w.has_focus(),
+                desktop: w.is_on_all_workspaces() ? null : w.get_workspace().index() + 1,
+                visible: onScreen(w) && !above.some(o => meet(o.get_frame_rect(), r)),
+            };
+        });
+        const desktops = [];
+        for (let i = 0; i < manager.get_n_workspaces(); i++)
+            desktops.push({id: i + 1, name: null});
+        return JSON.stringify({windows, desktops, current: current.index() + 1});
+    }
+
+    Activate(id) {
+        const w = this._find(id);
+        if (!w)
+            return false;
+        const time = global.get_current_time();
+        // GNOME opens on the overview; input meant for the window would go to its search instead.
+        if (Main.overview.visible)
+            Main.overview.hide();
+        if (w.minimized)
+            w.unminimize();
+        if (!w.is_on_all_workspaces())
+            w.get_workspace().activate_with_focus(w, time);
+        else
+            w.activate(time);
+        return true;
+    }
+
+    Resize(id, width, height) {
+        const w = this._find(id);
+        if (!w)
+            return '';
+        const r = w.get_frame_rect();
+        w.move_resize_frame(true, r.x, r.y, width, height);
+        const after = w.get_frame_rect();
+        return `${after.width} ${after.height}`;
+    }
+}
+'''
+
+
+# ---------- GNOME (Wayland) ----------
+# Mutter's own ScreenCast and RemoteDesktop D-Bus APIs record one window and take input with no prompt,
+# but GNOME keeps its window list (org.gnome.Shell.Introspect) to its own components. A small shell
+# extension the helper installs ("install-extension") lists, raises and resizes windows instead; GNOME
+# loads a new extension only at the next login.
+
+GNOME_EXTENSION = "miffan-windows@ayuilos.me"
+GNOME_EXTENSION_FILES = {
+    "metadata.json": GNOME_METADATA_JSON,
+    "extension.js": GNOME_EXTENSION_JS,
+}
+
+
+def gnome_session():
+    return ("GNOME" in (os.environ.get("XDG_CURRENT_DESKTOP") or "").upper().split(":")
+            and bool(os.environ.get("WAYLAND_DISPLAY")) and os.environ.get("XDG_SESSION_TYPE") != "x11")
+
+
+def gnome_extension_dir():
+    return os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),
+                        "gnome-shell", "extensions", GNOME_EXTENSION)
+
+
+def gnome_windows_call(Gio, GLib, method, args=None, rtype="(s)"):
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    return bus.call_sync("me.ayuilos.Miffan.Windows", "/me/ayuilos/Miffan/Windows", "me.ayuilos.Miffan.Windows", method,
+                         args, GLib.VariantType(rtype), 0, 5000, None)[0]
+
+
+def gsettings_get(key):
+    """org.gnome.shell's [key] as gsettings prints it, or None."""
+    try:
+        done = subprocess.run(["gsettings", "get", "org.gnome.shell", key], capture_output=True, text=True, timeout=5,
+                              stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def user_extensions_disabled():
+    """Whether GNOME's switch for all user extensions is off (the user's or an administrator's choice)."""
+    return gsettings_get("disable-user-extensions") == "true"
+
+
+def enabled_extensions():
+    value = gsettings_get("enabled-extensions")
+    if value is None:
+        return None
+    return [] if value in ("", "@as []") else json.loads(value.replace("'", '"'))
+
+
+def gnome_extension_state(Gio, GLib):
+    """
+    "active" once GNOME runs it; "disabled" when GNOME's switch for all user extensions is off, so it
+    would not load; "installed" when it waits for the next login; else "missing".
+    """
+    try:
+        gnome_windows_call(Gio, GLib, "List")
+        return "active"
+    except Exception:
+        pass
+    if user_extensions_disabled():
+        return "disabled"
+    current = {name: open(os.path.join(gnome_extension_dir(), name)).read() for name in GNOME_EXTENSION_FILES
+               if os.path.isfile(os.path.join(gnome_extension_dir(), name))}
+    return "installed" if current == GNOME_EXTENSION_FILES else "missing"
+
+
+def gnome_install_extension():
+    """
+    Writes the extension and turns it on for the next login (GNOME does not load new ones before): None
+    when done, else an error code. GNOME's switch for all user extensions is the user's: when it is off,
+    nothing is written and "extensions_disabled" says so (turning it on would bring back every extension
+    the user or an administrator turned off with it).
+    """
+    if user_extensions_disabled():
+        return "extensions_disabled"
+    os.makedirs(gnome_extension_dir(), exist_ok=True)
+    for name, text in GNOME_EXTENSION_FILES.items():
+        with open(os.path.join(gnome_extension_dir(), name), "w") as f:
+            f.write(text)
+    try:
+        names = enabled_extensions()
+        if names is None:
+            return "no_gsettings"
+        if GNOME_EXTENSION not in names:
+            names.append(GNOME_EXTENSION)
+            if run_quiet(["gsettings", "set", "org.gnome.shell", "enabled-extensions", json.dumps(names)], timeout=5) != 0:
+                return "no_gsettings"
+    except ValueError:
+        return "no_gsettings"
+    # Takes effect now when the shell already knows the extension (an update), else at the next login.
+    run_quiet(["gnome-extensions", "enable", GNOME_EXTENSION], timeout=5)
+    return None
+
+
+def gnome_uninstall_extension():
+    """Turns the extension off and removes it; whether there was anything to remove."""
+    found = os.path.isdir(gnome_extension_dir())
+    if shutil.which("gnome-extensions"):
+        run_quiet(["gnome-extensions", "disable", GNOME_EXTENSION], timeout=5)
+    try:
+        names = enabled_extensions()
+        if names and GNOME_EXTENSION in names:
+            found = True
+            run_quiet(["gsettings", "set", "org.gnome.shell", "enabled-extensions",
+                       json.dumps([n for n in names if n != GNOME_EXTENSION])], timeout=5)
+    except ValueError:
+        pass
+    shutil.rmtree(gnome_extension_dir(), ignore_errors=True)
+    return found
+
+
+def gnome_snapshot(Gio, GLib):
+    return json.loads(gnome_windows_call(Gio, GLib, "List"))
+
+
+def gnome_list(Gio, GLib):
+    try:
+        snap = gnome_snapshot(Gio, GLib)
+    except Exception:
+        return {"desktop": "gnome", "error": "needs_extension", "extension": gnome_extension_state(Gio, GLib),
+                "windows": [], "workspaces": [], "current": None, "outputs": []}
+    current = snap["current"]
+    windows = []
+    for w in snap["windows"]:
+        app_id = w["app"] or w["cls"]
+        windows.append({"id": w["id"], "pid": w["pid"] or 0, "app": app_name(app_id) if app_id else "", "app_id": app_id,
+                        "title": w["title"], "workspace": w["desktop"] or current, "focused": w["focused"],
+                        "width": w["width"], "height": w["height"], "minimized": w["minimized"], "visible": w["visible"]})
+    workspaces = [{"id": d["id"], "index": d["id"], "output": None, "name": d["name"], "active": d["id"] == current}
+                  for d in snap["desktops"]]
+    return {"desktop": "gnome", "windows": windows, "workspaces": workspaces, "current": current, "outputs": []}
+
+
+def gnome_window(Gio, GLib, window_id):
+    return next((w for w in gnome_snapshot(Gio, GLib)["windows"] if w["id"] == str(window_id)), None)
+
+
+def gnome_focus(Gio, GLib, window_id):
+    return bool(gnome_windows_call(Gio, GLib, "Activate", GLib.Variant("(t)", (int(window_id),)), "(b)"))
+
+
+def gnome_resize(Gio, GLib, window_id, width, height):
+    """Sets the window's frame size, then gives the size it settled at (the client resizes later)."""
+    got = gnome_windows_call(Gio, GLib, "Resize", GLib.Variant("(tii)", (int(window_id), int(width), int(height))))
+    if not got:
+        return None
+    settled = settled_size(lambda: (lambda w: (w["width"], w["height"]) if w else None)(gnome_window(Gio, GLib, window_id)))
+    return list(settled) if settled else [int(v) for v in got.split()]
+
+
+def crop_meta(buf):
+    """
+    A Mutter window stream's buffers are as large as the output, the window at the region its
+    GstVideoCropMeta names: (x, y, width, height), or None. PyGObject cannot read that meta's fields,
+    so they are read from its C struct (a GstMeta header of flags and an info pointer, then four guints).
+    """
+    try:
+        meta = buf.get_meta("GstVideoCropMetaAPI")
+    except Exception:
+        return None
+    if meta is None:
+        return None
+    import re
+    found = re.search(r"at (0x[0-9a-f]+)\)>$", repr(meta))
+    if not found:
+        return None
+    return tuple((ctypes.c_uint * 4).from_address(int(found.group(1), 16) + 2 * ctypes.sizeof(ctypes.c_void_p)))
+
+
+class MutterRemote:
+    """A Mutter RemoteDesktop session recording one window through its linked ScreenCast session."""
+
+    def __init__(self, Gio, GLib, window_id):
+        self.Gio, self.GLib = Gio, GLib
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        V = GLib.Variant
+        self.rd = self._call("org.gnome.Mutter.RemoteDesktop", "/org/gnome/Mutter/RemoteDesktop", "org.gnome.Mutter.RemoteDesktop",
+                             "CreateSession", None, "(o)")[0]
+        sid = self._call("org.gnome.Mutter.RemoteDesktop", self.rd, "org.freedesktop.DBus.Properties", "Get",
+                         V("(ss)", ("org.gnome.Mutter.RemoteDesktop.Session", "SessionId")), "(v)")[0]
+        sc = self._call("org.gnome.Mutter.ScreenCast", "/org/gnome/Mutter/ScreenCast", "org.gnome.Mutter.ScreenCast", "CreateSession",
+                        V("(a{sv})", ({"remote-desktop-session-id": V("s", sid)},)), "(o)")[0]
+        self.stream = self._call("org.gnome.Mutter.ScreenCast", sc, "org.gnome.Mutter.ScreenCast.Session", "RecordWindow",
+                                 V("(a{sv})", ({"window-id": V("t", int(window_id)), "cursor-mode": V("u", 1)},)), "(o)")[0]
+        self.node = None
+        self.text = ""
+        context = GLib.MainContext.new()
+        context.push_thread_default()
+        try:
+            sub = self.bus.signal_subscribe(None, "org.gnome.Mutter.ScreenCast.Stream", "PipeWireStreamAdded", self.stream,
+                                            None, 0, lambda *a: setattr(self, "node", a[5][0]))
+            self.session("Start")
+            end = time.monotonic() + 5
+            while self.node is None and time.monotonic() < end:
+                if not context.iteration(False):
+                    time.sleep(0.005)
+            self.bus.signal_unsubscribe(sub)
+        finally:
+            context.pop_thread_default()
+        if self.node is None:
+            self.close()
+            raise RuntimeError("no_stream")
+
+    def _call(self, name, path, iface, method, args, rtype=None):
+        return self.bus.call_sync(name, path, iface, method, args, self.GLib.VariantType(rtype) if rtype else None, 0, 5000, None)
+
+    def session(self, method, signature=None, *args):
+        return self._call("org.gnome.Mutter.RemoteDesktop", self.rd, "org.gnome.Mutter.RemoteDesktop.Session", method,
+                          self.GLib.Variant(signature, args) if signature else None)
+
+    def watch_closed(self, on_closed):
+        self.bus.signal_subscribe(None, "org.gnome.Mutter.RemoteDesktop.Session", "Closed", self.rd, None, 0, lambda *a: on_closed())
+
+    def enable_clipboard(self):
+        """Serves the phone's text when an app pastes it; called on the main loop's thread."""
+        V = self.GLib.Variant
+        self.session("EnableClipboard", "(a{sv})", {})
+
+        def transfer(_c, _s, _p, _i, _n, params):
+            serial = params[1]
+            try:
+                reply = self.bus.call_with_unix_fd_list_sync(
+                    "org.gnome.Mutter.RemoteDesktop", self.rd, "org.gnome.Mutter.RemoteDesktop.Session", "SelectionWrite",
+                    V("(u)", (serial,)), self.GLib.VariantType("(h)"), 0, 5000, None, None)
+                fd = reply[1].get(reply[0][0])
+                with os.fdopen(fd, "wb") as out:
+                    out.write(self.text.encode("utf-8"))
+                self.session("SelectionWriteDone", "(ub)", serial, True)
+            except Exception:
+                try:
+                    self.session("SelectionWriteDone", "(ub)", serial, False)
+                except Exception:
+                    pass
+        self.bus.signal_subscribe(None, "org.gnome.Mutter.RemoteDesktop.Session", "SelectionTransfer", self.rd, None, 0, transfer)
+
+    def offer_text(self, text):
+        V = self.GLib.Variant
+        self.text = text
+        self.session("SetSelection", "(a{sv})", {"mime-types": V("as", ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING"])})
+
+    def close(self):
+        try:
+            self.session("Stop")
+        except Exception:
+            pass
+
+
+class GnomeInput(WindowInput):
+    """Input through the RemoteDesktop session, in the window stream's own coordinates."""
+
+    def __init__(self, window_id, mutter, Gio, GLib, view):
+        LockGuard.__init__(self)
+        self.window_id, self.mutter, self.Gio, self.GLib, self.view = window_id, mutter, Gio, GLib, view
+        self.checked = 0.0
+        # Mutter makes its virtual keyboard and pointer on first use, losing the event that made them.
+        self.warm = set()
+
+    def warm_up(self, kind):
+        if kind in self.warm:
+            return
+        self.warm.add(kind)
+        if kind == "keyboard":
+            # A tap of Shift alone does nothing (Mutter refuses releasing a key that is not down).
+            self.mutter.session("NotifyKeyboardKeycode", "(ub)", 42, True)
+            self.mutter.session("NotifyKeyboardKeycode", "(ub)", 42, False)
+        time.sleep(0.1)
+
+    def ensure_front(self):
+        now = time.monotonic()
+        if now - self.checked < 1.0:
+            return True
+        self.checked = now
+        w = gnome_window(self.Gio, self.GLib, self.window_id)
+        if w is None:
+            return False
+        # Mutter takes pointer positions in the window's own logical pixels (its buffer, shadows and all).
+        self.view["size"] = tuple(w["buffer"][2:4]) if w.get("buffer") else (w["width"], w["height"])
+        if not w["focused"] or w["minimized"]:
+            gnome_focus(self.Gio, self.GLib, self.window_id)
+            # GNOME animates the raise and moves keyboard focus after it; input sent sooner is lost.
+            for _ in range(10):
+                time.sleep(0.05)
+                w = gnome_window(self.Gio, self.GLib, self.window_id) or w
+                if w["focused"]:
+                    break
+            time.sleep(0.25)
+        return True
+
+    def press_code(self, code, down):
+        self.warm_up("keyboard")
+        self.mutter.session("NotifyKeyboardKeycode", "(ub)", code, down)
+
+    def press_sym(self, sym, down):
+        self.warm_up("keyboard")
+        self.mutter.session("NotifyKeyboardKeysym", "(ub)", sym, down)
+
+    def type_text(self, text):
+        if all(0x20 <= ord(c) <= 0x7e or c in "\n\t" for c in text):
+            WindowInput.type_text(self, text)
+            return
+        # Mutter types only keysyms the keymap has; other text goes through the session's clipboard.
+        self.mutter.offer_text(text)
+        time.sleep(0.05)
+        self.paste()
+
+    def pointer(self, nx, ny):
+        width, height = self.view["size"]
+        self.mutter.session("NotifyPointerMotionAbsolute", "(sdd)", self.mutter.stream, nx * width, ny * height)
+        if "pointer" not in self.warm:
+            self.warm_up("pointer")
+            self.mutter.session("NotifyPointerMotionAbsolute", "(sdd)", self.mutter.stream, nx * width, ny * height)
+
+    def button(self, name, down):
+        self.mutter.session("NotifyPointerButton", "(ib)", BTN[name], down)
+
+    def scroll(self, dx, dy):
+        # Discrete steps: positive scrolls down and right; the phone's negative delta is up.
+        if dy:
+            self.mutter.session("NotifyPointerAxisDiscrete", "(ui)", 0, notches(dy))
+        if dx:
+            self.mutter.session("NotifyPointerAxisDiscrete", "(ui)", 1, notches(dx))
+
+
+def gnome_crop_pipeline(source):
+    # Shared-memory frames: Mutter may switch DMA-BUF modifiers mid-stream, which GL import then refuses.
+    # No size pin here (fixing caps from a probe deadlocks pipewiresrc on stop): if Mutter scales its
+    # buffer to what downstream wants, the crop meta scales with it. The crop comes first: the buffer is
+    # as large as the whole output, and converting only the window's part saves most of the work.
+    return ("%s ! capsfilter caps=video/x-raw ! queue max-size-buffers=1 leaky=downstream ! "
+            "videocrop name=crop ! videoscale ! videoconvert" % source)
+
+
+def follow_crop(Gst, pipeline, limit, on_size):
+    """Crops each buffer to the window region its crop meta names; [on_size] hears the scaled size when it changes."""
+    crop, current = pipeline.get_by_name("crop"), {"region": None, "frame": None}
+
+    def on_caps(_pad, info):
+        event = info.get_event()
+        if event.type == Gst.EventType.CAPS:
+            s = event.parse_caps().get_structure(0)
+            current["frame"] = (s.get_int("width")[1], s.get_int("height")[1])
+            current["region"] = None
+        return Gst.PadProbeReturn.OK
+
+    def on_buffer(_pad, info):
+        region = crop_meta(info.get_buffer())
+        if region and current["frame"] and region != current["region"] and region[2] > 1 and region[3] > 1:
+            current["region"] = region
+            fw, fh = current["frame"]
+            x, y, w, h = region
+            for name, value in (("left", x), ("top", y), ("right", max(0, fw - x - w)), ("bottom", max(0, fh - y - h))):
+                crop.set_property(name, value)
+            on_size((w, h))
+        return Gst.PadProbeReturn.OK
+    pad = pipeline.get_by_name("src").get_static_pad("src")
+    pad.add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, on_caps)
+    pad.add_probe(Gst.PadProbeType.BUFFER, on_buffer)
+
+
+def gnome_shots(Gio, GLib, Gst):
+    for line in REQUESTS:
+        parts = line.split()
+        try:
+            window_id, limit, quality = int(parts[0]), int(parts[1]), int(parts[2])
+        except (IndexError, ValueError):
+            emit("error usage")
+            continue
+        try:
+            w = gnome_window(Gio, GLib, window_id)
+        except Exception:
+            emit("error needs_extension")
+            continue
+        if w is None:
+            emit("error no_window")
+            continue
+        if w["minimized"]:
+            emit("error no_picture")
+            continue
+        picture = None
+        try:
+            cast = Cast(Gio, GLib, window_id)
+            try:
+                pipeline = Gst.parse_launch("%s ! capsfilter name=size ! jpegenc quality=%d ! appsink name=sink sync=false max-buffers=1"
+                                            % (gnome_crop_pipeline("pipewiresrc name=src path=%d" % cast.node), quality))
+                sizer = pipeline.get_by_name("size")
+                follow_crop(Gst, pipeline, limit, lambda size: sizer.set_property(
+                    "caps", Gst.Caps.from_string("video/x-raw,width=%d,height=%d" % scaled(size[0], size[1], limit))))
+                pipeline.set_state(Gst.State.PLAYING)
+                sample = pipeline.get_by_name("sink").emit("try-pull-sample", Gst.SECOND * 5 // 2)
+                if sample:
+                    buf = sample.get_buffer()
+                    picture = buf.extract_dup(0, buf.get_size())
+                del sample
+                # The pipeline first: pipewiresrc waits forever for a stream Mutter already took away.
+                pipeline.set_state(Gst.State.NULL)
+            finally:
+                cast.stop()
+        except Exception:
+            picture = None
+        if picture:
+            emit("jpeg %d" % len(picture), picture)
+        else:
+            emit("error no_picture")
+
+
+def serve_gnome(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
+    """A GNOME window: raised, recorded by Mutter on its own (cropped to it), with input in its coordinates."""
+    try:
+        if not window_id.isdigit() or not gnome_focus(Gio, GLib, window_id):
+            emit("closed window_closed")
+            return
+        w = gnome_window(Gio, GLib, window_id)
+    except Exception:
+        emit("closed needs_extension")
+        return
+    if w is None:
+        emit("closed window_closed")
+        return
+    try:
+        mutter = MutterRemote(Gio, GLib, window_id)
+    except Exception:
+        emit("closed no_stream")
+        return
+    view = {"size": tuple(w["buffer"][2:4]) if w.get("buffer") else (w["width"], w["height"]), "minimized": False}
+    size = scaled(view["size"][0], view["size"][1], limit)
+
+    def setup(pipeline, closed):
+        mutter.watch_closed(lambda: closed("window_closed"))
+        mutter.enable_clipboard()
+        sizer, current = pipeline.get_by_name("size"), {"size": size}
+
+        def on_size(region):
+            out = scaled(region[0], region[1], limit)
+            if out != current["size"]:
+                current["size"] = out
+                sizer.set_property("caps", Gst.Caps.from_string("video/x-raw,format=NV12,width=%d,height=%d" % out))
+        follow_crop(Gst, pipeline, limit, on_size)
+        trouble = []
+
+        def follow():
+            try:
+                g = gnome_window(Gio, GLib, window_id)
+            except Exception as error:
+                # The extension did not answer (the shell busy, or reloading it): not a closed window.
+                if not trouble:
+                    trouble.append(True)
+                    emit("info %s" % json.dumps({"extension": "no_answer", "detail": str(error)[:200]}))
+                return True
+            if g is None:
+                closed("window_closed")
+                return False
+            if g["minimized"] != view["minimized"]:
+                view["minimized"] = g["minimized"]
+                emit("suspended minimized" if g["minimized"] else "resumed")
+            return True
+        GLib.timeout_add(1000, follow)
+
+    gnome_input = GnomeInput(window_id, mutter, Gio, GLib, view)
+    # The extension's raw entry: "app" is the Wayland app id (empty for some), "cls" the window class.
+    gnome_input.terminal = is_terminal(w.get("app") or w.get("cls"))
+    run_stream(Gio, GLib, Gst, GstVideo,
+               "%s ! capsfilter name=size caps=video/x-raw,format=NV12,width=%d,height=%d" % (
+                   gnome_crop_pipeline("pipewiresrc name=src path=%d do-timestamp=true keepalive-time=1000" % mutter.node), size[0], size[1]),
+               encoder, fps, kbps, gnome_input, setup, size, mutter.close)
+
+
+# ---------- serve ----------
+
+class FrameQueue:
+    """
+    Encoded frames between GStreamer's streaming thread and the thread writing stdout, so a slow SSH
+    channel never holds the pipeline up. When frames pile up past [limit] (the channel cannot keep up),
+    the queue is emptied and frames are skipped up to the next keyframe, which [want_keyframe] asks for:
+    the phone sees a jump, never a growing delay. [write] gets each kept frame in order.
+    """
+
+    def __init__(self, limit, want_keyframe):
+        self.limit, self.want_keyframe = limit, want_keyframe
+        self.frames = []
+        self.skipping = False
+        self.ended = False
+        self.cond = threading.Condition()
+
+    def put(self, frame, key):
+        with self.cond:
+            if self.skipping and not key:
+                return
+            if len(self.frames) >= self.limit:
+                self.frames = []
+                if not key:
+                    self.skipping = True
+                    self.want_keyframe()
+                    return
+            self.skipping = False
+            self.frames.append(frame)
+            self.cond.notify()
+
+    def take(self):
+        """The next frame, waiting for one; None once ended."""
+        with self.cond:
+            while not self.frames and not self.ended:
+                self.cond.wait()
+            return self.frames.pop(0) if self.frames else None
+
+    def end(self):
+        with self.cond:
+            self.ended = True
+            self.cond.notify_all()
+
+
+def area_words(area):
+    """ " X Y W H" for where a frame lies on the computer's screen (logical pixels), or "" when unknown."""
+    return " %.2f %.2f %.2f %.2f" % tuple(area) if area else ""
+
+
+class FrameWriter:
+    """
+    Writes frame headers and bytes. The epoch goes up, with a "geometry" line, when a frame of a new
+    size actually comes out (not when the source's size changed: frames of the old size may still be in
+    the encoder), so the decoder resets once per real change. [area], when given, says where the frames
+    now lie on the screen (added to the line, and handed to [on_size]): a window stream that grows with
+    a menu may also move its origin, and the phone keeps its pointer on the same spot of the screen.
+    """
+
+    def __init__(self, size, area=None, on_size=None):
+        self.size = tuple(size)
+        self.area, self.on_size = area, on_size
+        self.seq = 0
+        self.epoch = 0
+        self.got = False
+
+    def write(self, data, key, width, height, ts):
+        if (width, height) != self.size:
+            self.size = (width, height)
+            self.epoch += 1
+            area = self.area() if self.area else None
+            emit("geometry %d %d%s" % (width, height, area_words(area)))
+            if self.on_size:
+                self.on_size(area)
+        self.seq += 1
+        if not self.got:
+            self.got = True
+            emit("resumed")
+        emit("frame %d %d %d %d %d %d %d" % (self.seq, self.epoch, key, width, height, ts, len(data)), data)
+
+
+def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs, setup, size, cleanup, restart=None, kicks=None,
+               area=None, on_size=None):
+    """
+    Encodes what [description] produces (ending in a NV12 capsfilter named "size", after a pipewiresrc named
+    "src") and writes it to stdout, while stdin lines feed [inputs]. [setup] gets the pipeline and a
+    function that ends the stream with a reason (again for each pipeline [restart] leads to).
+    [restart], when given, is asked for a new description when the source changed its frame size in a
+    way pipewiresrc cannot follow ("no more input formats": it holds on to the size it first agreed);
+    the stream then goes on from a new pipeline, the phone seeing only a new keyframe. [kicks], a list,
+    gets a function that does the same at once (the caller knows the size is about to change: KWin
+    renegotiating a window stream's size may also stall without an error). [area] and [on_size]: see
+    FrameWriter.
+    """
+    loop = GLib.MainLoop()
+    state = {"closed": False}
+
+    def closed(reason):
+        if not state["closed"]:
+            state["closed"] = True
+            emit("closed " + reason)
+        GLib.idle_add(loop.quit)
+
+    # h264parse (gst-plugins-bad) may be missing on a plain desktop; x264enc then repeats SPS/PPS itself.
+    parse = "h264parse config-interval=-1 ! " if Gst.ElementFactory.find("h264parse") else ""
+    # At most [fps]: the compositor sends a frame per redraw (variable rate, which videorate cannot pace).
+    interval = 1.0 / max(1, fps)
+    last = [0.0]
+
+    def pace(_pad, _info):
+        now = time.monotonic()
+        if now - last[0] < interval * 0.9:
+            return Gst.PadProbeReturn.DROP
+        last[0] = now
+        return Gst.PadProbeReturn.OK
+
+    current = {"pipeline": None, "enc": None}
+    restarts = []
+
+    def keyframe():
+        enc = current["enc"]
+        if enc is not None:
+            enc.get_static_pad("src").send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
+        return False
+
+    # About half a second of frames may wait for the SSH channel; more, and it starts over at a keyframe.
+    frames = FrameQueue(max(4, fps // 2), lambda: GLib.idle_add(keyframe))
+    writer = FrameWriter(size, area, on_size)
+
+    def on_sample(appsink):
+        sample = appsink.emit("pull-sample")
+        if sample is None:
+            return Gst.FlowReturn.OK
+        buf = sample.get_buffer()
+        data = buf.extract_dup(0, buf.get_size())
+        key = 0 if buf.has_flags(Gst.BufferFlags.DELTA_UNIT) else 1
+        caps = sample.get_caps().get_structure(0)
+        fw = caps.get_int("width")[1]
+        fh = caps.get_int("height")[1]
+        ts = buf.pts // 1000 if buf.pts != Gst.CLOCK_TIME_NONE else 0
+        frames.put((data, key, fw, fh, ts), key)
+        return Gst.FlowReturn.OK
+
+    def write_frames():
+        try:
+            while True:
+                frame = frames.take()
+                if frame is None:
+                    return
+                writer.write(*frame)
+        except Exception as error:
+            # stdout gone (the phone left): nothing more to send.
+            sys.stderr.write("write: %s\n" % error)
+            GLib.idle_add(loop.quit)
+
+    def build(desc):
+        pipeline = Gst.parse_launch(
+            "%s ! %s name=enc %s ! %svideo/x-h264,stream-format=byte-stream,alignment=au ! "
+            "appsink name=sink emit-signals=true sync=false max-buffers=2 drop=true" % (desc, encoder, encoder_props(encoder, kbps, fps), parse))
+        setup(pipeline, closed)
+        pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, pace)
+        pipeline.get_by_name("sink").connect("new-sample", on_sample)
+        gbus = pipeline.get_bus()
+        gbus.add_signal_watch()
+        gbus.connect("message", lambda bus, message: on_message(bus, message, pipeline))
+        current["pipeline"], current["enc"] = pipeline, pipeline.get_by_name("enc")
+        return pipeline
+
+    def start_over():
+        """A new pipeline from [restart] in place of the one whose source changed size; False (one-shot)."""
+        old = current["pipeline"]
+        current["pipeline"] = current["enc"] = None
+        current["restarting"] = False
+        if old is not None:
+            old.get_bus().remove_signal_watch()
+            old.set_state(Gst.State.NULL)
+        if state["closed"]:
+            return False
+        try:
+            desc = restart()
+            if desc is None:
+                closed("capture_failed")
+                return False
+            build(desc).set_state(Gst.State.PLAYING)
+        except Exception as error:
+            sys.stderr.write("restart: %s\n" % error)
+            closed("capture_failed")
+        return False
+
+    def kick():
+        """Starts over now (from any thread); several kicks before it happens make one."""
+        if restart and not state["closed"] and not current.get("restarting"):
+            current["restarting"] = True
+            GLib.idle_add(start_over)
+    if kicks is not None:
+        kicks.append(kick)
+
+    def on_message(_bus, message, pipeline):
+        # The pipeline being replaced reports more errors as it fails; only the live one counts.
+        if pipeline is not current["pipeline"] or current.get("restarting"):
+            return
+        if message.type == Gst.MessageType.ERROR:
+            err, _ = message.parse_error()
+            sys.stderr.write("gst error: %s\n" % err.message)
+            now = time.monotonic()
+            restarts[:] = [t for t in restarts if now - t < 10] + [now]
+            # A window whose popups come and go changes size each time; a source failing over and over is broken.
+            if restart and "input formats" in (err.message or "") and len(restarts) <= 8:
+                if not current.get("restarting"):
+                    current["restarting"] = True
+                    GLib.idle_add(start_over)
+                return
+            closed("capture_failed")
+        elif message.type == Gst.MessageType.EOS:
+            closed("ended")
+
+    build(description)
+
+    queue = []
+    queue_lock = threading.Lock()
+    wake = threading.Event()
+
+    def input_worker():
+        while True:
+            wake.wait()
+            with queue_lock:
+                lines = coalesce_moves(queue)
+                queue.clear()
+                wake.clear()
+            for parts in lines:
+                if parts is None:
+                    return
+                try:
+                    inputs.apply(parts)
+                except Exception as error:
+                    sys.stderr.write("input error: %s\n" % error)
+
+    def reader():
+        for raw in REQUESTS:
+            parts = raw.split()
+            if not parts:
+                continue
+            if parts[0] == "kf":
+                GLib.idle_add(keyframe)
+                continue
+            with queue_lock:
+                queue.append(parts)
+            wake.set()
+        with queue_lock:
+            queue.append(None)
+        wake.set()
+        GLib.idle_add(loop.quit)
+
+    emit("opened %d %d %s%s" % (size[0], size[1], encoder, area_words(area() if area else None)))
+    threading.Thread(target=write_frames, daemon=True).start()
+    current["pipeline"].set_state(Gst.State.PLAYING)
+    GLib.timeout_add(2000, inputs.watch_lock)
+    threading.Thread(target=input_worker, daemon=True).start()
+    threading.Thread(target=reader, daemon=True).start()
+    try:
+        loop.run()
+    finally:
+        if current["pipeline"] is not None:
+            current["pipeline"].set_state(Gst.State.NULL)
+        frames.end()
+        cleanup()
+        inputs.close()
+
+
+def serve(window_id, limit, fps, kbps):
+    gl_env()
+    Gio, GLib, Gst, GstVideo = gst()
+    encoder = pick_encoder(Gst)
+    if not encoder:
+        emit("closed no_encoder")
+        return
+    kind = desktop_kind()
+    if kind == "kde":
+        return serve_kde(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps)
+    if kind == "x11":
+        return serve_x11(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps)
+    if kind == "gnome":
+        return serve_gnome(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps)
+    # niri redraws a window that is not on screen about once a second: bring it into view first.
+    if niri_focused() != str(window_id):
+        niri_focus(window_id)
+    ending = []
+    try:
+        cast = Cast(Gio, GLib, window_id, on_closed=lambda: ending and ending[0]("window_closed"))
+    except Exception:
+        emit("closed no_stream")
+        return
+    # A starting size for the pipeline; the first frame's caps set the real one.
+    window_size = ((niri_window(window_id) or {}).get("layout") or {}).get("window_size") or [0, 0]
+    width, height = (window_size[0], window_size[1]) if window_size[0] >= 64 and window_size[1] >= 64 else (1280, 720)
+    w, h = scaled(width, height, limit)
+
+    def setup(pipeline, closed):
+        ending.append(closed)
+        follow_size(Gst, pipeline, limit)
+    run_stream(Gio, GLib, Gst, GstVideo, window_pipeline(cast.node, w, h),
+               encoder, fps, kbps, Input(window_id), setup, (w, h), cast.stop)
+
+
+def window_pipeline(node, w, h):
+    """A window's own PipeWire stream (the compositor's buffers, DMA-BUF or not), scaled in GL to NV12."""
+    return ("pipewiresrc name=src path=%d do-timestamp=true keepalive-time=1000 ! "
+            "queue max-size-buffers=1 leaky=downstream ! glupload ! glcolorconvert ! glcolorscale ! "
+            "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA,width=%d,height=%d ! glcolorconvert ! gldownload ! "
+            "video/x-raw,format=NV12" % (node, w, h))
+
+
+def serve_kde(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
+    """
+    A KDE window: raised, then recorded by KWin on its own with input through KWin's fake input. Where
+    KWin keeps those from this program, cropped from its output's portal stream instead.
+    """
+    if not UUID.match(window_id):
+        emit("closed no_window")
+        return
+    if plasma5():
+        emit("closed unsupported")
+        return
+    kwin = KWin(Gio, GLib)
+    try:
+        if not kwin.focus(window_id):
+            emit("closed window_closed")
+            return
+        time.sleep(0.15)
+        g = kwin.geometry(window_id)
+    except KWinError:
+        emit("closed no_stream")
+        return
+    if g is None:
+        emit("closed window_closed")
+        return
+    wl, ending = kde_direct(), []
+    if wl is not None:
+        try:
+            cast = KwinCast(wl, window_id, on_closed=lambda: ending and ending[0]("window_closed"))
+            fake = FakeInput(wl)
+        except Exception:
+            wl.close()
+            wl = None
+    if wl is not None:
+        return serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps, kwin, g, wl, cast, fake, ending)
+    try:
+        portal = open_portal(Gio, GLib)
+    except NotAuthorized:
+        emit("closed not_authorized")
+        return
+    except PortalNotKde:
+        emit("closed portal_not_kde")
+        return
+    except Exception:
+        emit("closed no_stream")
+        return
+    found = portal.stream_for(g["output"], kde_rect(g))
+    if found is None:
+        portal.close()
+        emit("closed no_stream")
+        return
+    node, origin, size = found
+    view = {"rect": kde_rect(g), "node": node, "origin": origin, "frame": None, "minimized": g["minimized"]}
+    w, h = scaled(g["width"], g["height"], limit)
+    try:
+        fd = portal.remote()
+    except Exception:
+        portal.close()
+        emit("closed no_stream")
+        return
+    follower = []
+
+    def setup(pipeline, closed):
+        crop, sizer = pipeline.get_by_name("crop"), pipeline.get_by_name("size")
+        current = {"size": (w, h)}
+
+        def apply_crop():
+            if view["frame"] is None:
+                return
+            fw, fh = view["frame"]
+            left, top, right, bottom = crop_box(view["rect"], view["origin"], size, fw, fh)
+            for name, value in (("left", left), ("top", top), ("right", right), ("bottom", bottom)):
+                if crop.get_property(name) != value:
+                    crop.set_property(name, value)
+            out = scaled(fw - left - right, fh - top - bottom, limit)
+            if out != current["size"]:
+                current["size"] = out
+                sizer.set_property("caps", Gst.Caps.from_string("video/x-raw,format=NV12,width=%d,height=%d" % out))
+
+        def on_caps(_pad, info):
+            event = info.get_event()
+            if event.type == Gst.EventType.CAPS:
+                s = event.parse_caps().get_structure(0)
+                view["frame"] = (s.get_int("width")[1], s.get_int("height")[1])
+                pin_size(Gst, pipeline, *view["frame"])
+                apply_crop()
+            return Gst.PadProbeReturn.OK
+        pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, on_caps)
+        follower.append(KdeFollow(GLib, kwin, window_id, view, closed, moved=apply_crop))
+
+    def cleanup():
+        for f in follower:
+            f.stop()
+        portal.close()
+        # pipewiresrc worked on its own copy of the portal's PipeWire descriptor.
+        os.close(fd)
+    run_stream(Gio, GLib, Gst, GstVideo,
+               "pipewiresrc name=src fd=%d path=%d do-timestamp=true keepalive-time=1000 ! "
+               "queue max-size-buffers=1 leaky=downstream ! glupload ! glcolorconvert ! gldownload ! "
+               "capsfilter name=pin caps=video/x-raw,format=RGBA ! videocrop name=crop ! videoscale ! videoconvert ! "
+               "capsfilter name=size caps=video/x-raw,format=NV12,width=%d,height=%d" % (fd, node, w, h),
+               encoder, fps, kbps, KdeInput(window_id, kwin, portal, view), setup, (w, h), cleanup)
+
+
+def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps, kwin, g, wl, cast, fake, ending):
+    """
+    KWin's stream of the window alone. It frames the window together with the popups KWin records with
+    it (KWIN_PLACE_JS), so input maps against that union, read again as soon as the stream's size changes.
+    """
+    view = {"rect": kde_rect(g), "node": cast.node, "origin": (0, 0), "minimized": g["minimized"]}
+    # A starting size; the stream's caps (device pixels, title bar included) set the real one.
+    w, h = scaled(g["width"], g["height"], limit)
+    follower = []
+    casts = [cast]
+    kicks = []
+    # The place the current stream shows (set when it starts) and the place input maps to: that one
+    # changes when frames of a new size actually go out, so a tap the phone made on the old picture
+    # still lands where it saw it.
+    streamed = {"size": tuple(view["rect"][2:4]), "rect": view["rect"], "timer": None}
+    view["input_rect"] = view["rect"]
+
+    def resized():
+        """
+        The window and its popups now cover another size (a menu or submenu opened or closed): KWin will
+        renegotiate its stream to it, which pipewiresrc either refuses or follows seconds late and then
+        stalls. A new stream at the new size is quicker and sure; changes within 150 ms make one.
+        """
+        size = tuple(view["rect"][2:4])
+        if size == streamed["size"]:
+            # Only moved: the picture moved with it.
+            streamed["rect"] = view["input_rect"] = view["rect"]
+            return
+        if not kicks:
+            return
+        if streamed["timer"]:
+            GLib.source_remove(streamed["timer"])
+
+        def fire():
+            streamed["timer"] = None
+            if tuple(view["rect"][2:4]) != streamed["size"]:
+                kicks[0]()
+            return False
+        streamed["timer"] = GLib.timeout_add(150, fire)
+
+    def setup(pipeline, closed):
+        if not follower:
+            ending.append(closed)
+            wl.on_lost = lambda: closed("capture_failed")
+            follower.append(KdeFollow(GLib, kwin, window_id, view, closed, moved=resized))
+        follow_size(Gst, pipeline, limit, lambda _size, _first: follower[0].refresh_soon())
+
+    def restart():
+        # A popup opened or closed, or the window resized: KWin's stream took the new size, which
+        # pipewiresrc will not follow. A new stream of the window starts at it.
+        casts[-1].stop()
+        new = KwinCast(wl, window_id, on_closed=lambda: ending and ending[0]("window_closed"))
+        casts.append(new)
+        view["node"] = new.node
+        follower[0].refresh_soon()
+        r = view["rect"]
+        streamed["size"], streamed["rect"] = (r[2], r[3]), r
+        return window_pipeline(new.node, *scaled(r[2], r[3], limit))
+
+    def cleanup():
+        for f in follower:
+            f.stop()
+        casts[-1].stop()
+        wl.close()
+    run_stream(Gio, GLib, Gst, GstVideo, window_pipeline(cast.node, w, h),
+               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup, restart=restart, kicks=kicks,
+               area=lambda: streamed["rect"], on_size=lambda a: view.__setitem__("input_rect", a or view["rect"]))
+
+
+# ---------- commands ----------
+
+def desktop_kind():
+    if niri("Version") is not None:
+        return "niri"
+    if kde_session():
+        return "kde"
+    if gnome_session():
+        return "gnome"
+    if x11_session():
+        return "x11"
+    return None
+
+
+def probe():
+    info = {"supported": False, "desktop": desktop_kind()}
+    try:
+        Gio, GLib, Gst, _ = gst()
+        info["encoder"] = pick_encoder(Gst)
+        info["capture"] = bool(Gst.ElementFactory.find("ximagesrc")) if info["desktop"] == "x11" else bool(
+            Gst.ElementFactory.find("pipewiresrc") and Gst.ElementFactory.find("glupload"))
+    except Exception:
+        Gio = GLib = None
+        info["encoder"] = None
+        info["capture"] = False
+    if info["desktop"] == "gnome":
+        info["input"] = True
+        info["extension"] = gnome_extension_state(Gio, GLib) if Gio else "missing"
+    elif info["desktop"] == "x11":
+        info["input"] = True
+    elif info["desktop"] == "kde":
+        info["input"] = True
+        version = kwin_version()
+        info["kwin"] = "%d.%d" % version if version else None
+        if plasma5():
+            info["error"] = "plasma5"
+            info["direct"] = info["authorized"] = False
+        else:
+            wl = kde_direct()
+            info["direct"] = wl is not None
+            if wl:
+                wl.close()
+            # Plasma 6.0-6.2 has no pre-authorization: the portal path asks on the computer every time.
+            info["prompt_every_time"] = not info["direct"] and kde_prompts_every_time()
+            info["authorized"] = info["direct"] or (not info["prompt_every_time"] and bool(Gio) and kde_authorized(Gio, GLib))
+    else:
+        info["input"] = os.access("/dev/uinput", os.W_OK)
+    info["supported"] = bool(info["desktop"] and info["encoder"] and info["capture"] and not info.get("error"))
+    print(json.dumps(info))
+
+
+# Requests come on stdin, or on fd 3 when the helper runs this program from a heredoc (and says so).
+REQUESTS = os.fdopen(3, "r", encoding="utf-8", errors="replace") if os.environ.get("MIFFAN_WINDOW_FD3") else sys.stdin
+
+
+def main(argv):
+    session_env()
+    command = argv[0] if argv else ""
+    kind = desktop_kind() if command in ("list", "focus", "resize", "shots", "authorize", "install-extension") else None
+    if kind == "kde" and plasma5():
+        kind = "plasma5"
+    if command == "probe":
+        probe()
+    elif command == "list":
+        if kind == "plasma5":
+            listed = None
+        elif kind == "kde":
+            Gio, GLib, _, _ = gst()
+            listed = kde_list(KWin(Gio, GLib))
+        elif kind == "x11":
+            listed = x11_list(X11())
+        elif kind == "gnome":
+            Gio, GLib, _, _ = gst()
+            listed = gnome_list(Gio, GLib)
+        else:
+            listed = niri_list()
+        print(json.dumps(listed if listed is not None else {"error": "unsupported"}, ensure_ascii=False))
+    elif command == "focus" and len(argv) == 2:
+        if kind == "plasma5":
+            sys.exit(1)
+        if kind == "kde":
+            Gio, GLib, _, _ = gst()
+            try:
+                sys.exit(0 if UUID.match(argv[1]) and KWin(Gio, GLib).focus(argv[1]) else 1)
+            except KWinError:
+                sys.exit(1)
+        if kind == "x11":
+            sys.exit(0 if argv[1].isdigit() and X11().focus(argv[1]) else 1)
+        if kind == "gnome":
+            Gio, GLib, _, _ = gst()
+            try:
+                sys.exit(0 if argv[1].isdigit() and gnome_focus(Gio, GLib, argv[1]) else 1)
+            except SystemExit:
+                raise
+            except Exception:
+                sys.exit(1)
+        sys.exit(0 if niri_focus(argv[1]) else 1)
+    elif command == "resize" and len(argv) == 4:
+        if kind == "plasma5":
+            sys.exit(1)
+        if kind == "kde":
+            Gio, GLib, _, _ = gst()
+            try:
+                got = KWin(Gio, GLib).resize(argv[1], float(argv[2]), float(argv[3])) if UUID.match(argv[1]) else None
+            except KWinError:
+                got = None
+            if not got:
+                sys.exit(1)
+            print("%d %d" % tuple(got))
+        elif kind in ("x11", "gnome"):
+            if kind == "x11":
+                got = X11().resize(argv[1], float(argv[2]), float(argv[3])) if argv[1].isdigit() else None
+            else:
+                Gio, GLib, _, _ = gst()
+                try:
+                    got = gnome_resize(Gio, GLib, argv[1], float(argv[2]), float(argv[3])) if argv[1].isdigit() else None
+                except Exception:
+                    got = None
+            if not got:
+                sys.exit(1)
+            print("%d %d" % tuple(got))
+        else:
+            sys.exit(0 if niri_resize(argv[1], float(argv[2]), float(argv[3])) else 1)
+    elif command == "install-extension":
+        if kind != "gnome":
+            sys.exit(1)
+        error = gnome_install_extension()
+        Gio, GLib, _, _ = gst()
+        result = {"installed": error is None, "extension": gnome_extension_state(Gio, GLib)}
+        if error:
+            result["error"] = error
+        print(json.dumps(result))
+        sys.exit(0 if error is None else 1)
+    elif command == "uninstall-extension":
+        print(json.dumps({"uninstalled": gnome_uninstall_extension()}))
+    elif command == "authorize":
+        if kind != "kde":
+            sys.exit(1)
+        if kde_prompts_every_time():
+            # Plasma 6.0-6.2 has no kde-authorized table: a grant there would change nothing.
+            print(json.dumps({"authorized": False, "error": "prompt_every_time"}))
+            sys.exit(1)
+        Gio, GLib, _, _ = gst()
+        ok = kde_authorize(Gio, GLib)
+        print(json.dumps({"authorized": ok}))
+        sys.exit(0 if ok else 1)
+    elif command == "revoke":
+        try:
+            Gio, GLib, _, _ = gst()
+        except Exception:
+            Gio = GLib = None
+        print(json.dumps(dict(revoke(Gio, GLib), revoked=True)))
+    elif command == "locate" and len(argv) == 2:
+        gl_env()
+        place = niri_place(argv[1])
+        rect = locate(*gst(), argv[1], place) if place else None
+        if rect is None:
+            sys.exit(1)
+        print("%.1f %.1f %.1f %.1f" % rect)
+    elif command == "shots":
+        if kind == "plasma5":
+            for line in REQUESTS:
+                emit("error unsupported" if line.split() else "error usage")
+        elif kind == "kde":
+            gl_env()
+            Gio, GLib, Gst, _ = gst()
+            kde_shots(Gio, GLib, Gst)
+        elif kind == "x11":
+            _, _, Gst, _ = gst()
+            x11_shots(Gst)
+        elif kind == "gnome":
+            gl_env()
+            Gio, GLib, Gst, _ = gst()
+            gnome_shots(Gio, GLib, Gst)
+        else:
+            shots()
+    elif command == "serve" and len(argv) == 5:
+        serve(argv[1], int(argv[2]), int(argv[3]), int(argv[4]))
+    else:
+        sys.stderr.write("usage: miffan window probe|list|focus ID|resize ID W H|authorize|install-extension|"
+                         "uninstall-extension|revoke|shots|serve ID MAXDIM FPS KBPS\n")
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
+WINDOW_PY
 }
 
 cua_version() {
@@ -583,8 +4485,16 @@ rdp_gnome() {
     fi
     # Refuse both running and configured services unless this helper created this mode.
     if [ ! -f "$rdp_owner" ]; then
-        if pgrep -u "$(id -u)" -f '(^|/)gnome-remote-desktop-daemon([[:space:]]|$)' >/dev/null 2>&1 || \
-            grd status 2>/dev/null | grep -Eq 'Status:[[:space:]]+enabled|TLS (certificate|key):[[:space:]]+[^[:space:]]|Username:[[:space:]]+\(hidden\)'; then
+        current_status=$(grd status 2>/dev/null)
+        # One exception: everything this helper kept is gone (owner record, certificate and key, as when
+        # ~/.miffan/rdp was emptied) while GNOME still points at that certificate and key. That setup was
+        # this helper's and cannot work any more, so setting it up again breaks nothing anyone uses.
+        if [ ! -e "$rdp_dir/cert.pem" ] && [ ! -e "$rdp_dir/key.pem" ] && \
+            printf '%s\n' "$current_status" | grep -Fx "	TLS certificate: $rdp_dir/cert.pem" >/dev/null && \
+            printf '%s\n' "$current_status" | grep -Fx "	TLS key: $rdp_dir/key.pem" >/dev/null; then
+            :
+        elif pgrep -u "$(id -u)" -f '(^|/)gnome-remote-desktop-daemon([[:space:]]|$)' >/dev/null 2>&1 || \
+            printf '%s\n' "$current_status" | grep -Eq 'Status:[[:space:]]+enabled|TLS (certificate|key):[[:space:]]+[^[:space:]]|Username:[[:space:]]+\(hidden\)'; then
             rdp_json rdp_already_configured 'Existing GNOME RDP configuration is not owned by Miffan'; return 1
         fi
     else
@@ -3248,5 +7158,6 @@ case "${1:-}" in
     task) shift; task "$@" ;;
     space) shift; space "$@" ;;
     relay) shift; relay "$@" ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|snapshot|task|space|relay" >&2; exit 2 ;;
+    window) shift; window_command "$@" ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|snapshot|task|space|relay|window" >&2; exit 2 ;;
 esac

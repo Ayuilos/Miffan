@@ -86,7 +86,8 @@ class RemoteTaskHelperContractTest {
         client.runNow(taskId)
         val sync = client.sync(null)
         val record = sync.runs.single()
-        assertEquals("ok", record.status)
+        // Says what the run recorded and printed, so a failure on CI can be told apart from here.
+        assertEquals("$record\n${runCatching { client.log(taskId, record.runId) }.getOrElse { it.toString() }}", "ok", record.status)
         assertEquals(record.runId, sync.cursor)
         val output = RemoteTaskClient.excerpt(record)
         assertTrue(output.contains("warning: noisy stderr"))

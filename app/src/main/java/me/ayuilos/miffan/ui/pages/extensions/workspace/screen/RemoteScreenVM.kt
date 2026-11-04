@@ -1,5 +1,19 @@
 package me.ayuilos.miffan.ui.pages.extensions.workspace.screen
 
+import me.ayuilos.miffan.data.repository.RemoteHostDesktop
+import kotlinx.coroutines.delay
+import me.ayuilos.miffan.data.repository.SpaceMediaClosedException
+import me.ayuilos.miffan.data.repository.CuaSpaceDesktopSession
+import me.rerere.cuaspace.SpaceWindow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.update
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
@@ -10,6 +24,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,7 +73,9 @@ sealed interface RemoteScreenUiState {
     data object Connecting : RemoteScreenUiState
 
     /** [width]/[height] are bitmap (or stream video) pixels; input coordinates use the same space. */
-    data class Connected(val name: String, val width: Int, val height: Int) : RemoteScreenUiState
+    /** [area]: where the picture lies on the computer's screen, when it says (see RemoteScreenState.Connected). */
+    data class Connected(val name: String, val width: Int, val height: Int,
+        val area: me.rerere.workspace.screen.RemoteFrameArea? = null) : RemoteScreenUiState
 
     data class Failed(val error: Throwable) : RemoteScreenUiState
     data object Closed : RemoteScreenUiState
@@ -86,6 +104,10 @@ sealed interface RemoteScreenNotice {
     data class StreamOnMeteredNetwork(val quality: RemoteScreenQuality, val custom: RemoteStreamCustom) : RemoteScreenNotice
     /** The approved Windows firewall change was refused or did not verify; nothing reconnects. */
     data class FirewallFailed(val detail: String?) : RemoteScreenNotice
+    /** The computer refused or failed to grant the window permission the user agreed to (KDE). */
+    data object WindowAuthorizeFailed : RemoteScreenNotice
+    /** The shown window could not be brought to the front, so input meant for it was not sent. */
+    data object WindowInputDropped : RemoteScreenNotice
 }
 
 /** How the current connection reaches the desktop, for the page's status line and details. */
@@ -101,9 +123,67 @@ data class RemoteConnectionInfo(
     val streamSkipped: Boolean,
     /** Set when the picture runs through a relay: its pace in kbps (0 = no cap). */
     val relayMediaKbps: Int? = null,
+    /** Only one window of the computer is shown. */
+    val window: Boolean = false,
 )
 
 data class RemoteScreenArgs(val workspaceId: String)
+
+/**
+ * A window offered in the picker, with its thumbnail once captured and the desktop it is on.
+ * [background]: its app runs without showing it, so picking it opens the app first.
+ */
+data class RemoteWindowChoice(val window: SpaceWindow, val thumbnail: ImageBitmap?, val desktop: Long?, val current: Boolean,
+    val background: Boolean)
+
+data class RemoteWindowList(val choices: List<RemoteWindowChoice>, val desktops: List<RemoteHostDesktop>,
+    val setup: me.ayuilos.miffan.data.repository.RemoteWindowSetup? = null)
+
+/** Why the shown window has no picture. [PAUSED]: the computer paused it for a reason this app does not know. */
+enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP, LOCKED, NOT_AUTHORIZED, PAUSED }
+
+/**
+ * Whether [hosted]'s app runs without showing it, so picking it opens the app first: only where apps do
+ * that ([appsInBackground], a Mac). On the desktop in front the computer says so; elsewhere what it said
+ * last time ([shown]) holds, and a window it never saw is in the background when it gives no picture.
+ */
+internal fun windowInBackground(hosted: me.ayuilos.miffan.data.repository.RemoteHostWindow, appsInBackground: Boolean,
+    shown: Boolean?, thumb: WindowThumbnail?): Boolean = when {
+    !appsInBackground -> false
+    hosted.current -> hosted.hidden
+    else -> when (shown) {
+        true -> false
+        false -> true
+        null -> thumb != null && thumb.image == null && thumb.failed
+    }
+}
+
+/**
+ * What the computer's [reason] for pausing the shown window means. A reason this app does not know is
+ * only a pause, not a Mac's permission prompt, which [mac] alone can have.
+ */
+internal fun suspendedIssue(reason: String?, mac: Boolean): RemoteWindowIssue? = when {
+    reason == null -> null
+    // A Linux computer drops input while its screen is locked.
+    reason == "locked" -> RemoteWindowIssue.LOCKED
+    reason.contains("minimi", ignoreCase = true) -> RemoteWindowIssue.MINIMIZED
+    reason.contains("hidden", ignoreCase = true) || reason.contains("space", ignoreCase = true) -> RemoteWindowIssue.OTHER_DESKTOP
+    mac && (reason.contains("permission", ignoreCase = true) || reason.contains("TCC")) -> RemoteWindowIssue.PERMISSION
+    else -> RemoteWindowIssue.PAUSED
+}
+
+/** Why the shown window's stream failed, when it is one the page explains; null for any other failure. */
+internal fun windowIssueOf(error: Throwable, mac: Boolean): RemoteWindowIssue? {
+    val text = generateSequence(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
+    return when {
+        (error as? SpaceMediaClosedException)?.code == 4410 -> RemoteWindowIssue.CLOSED
+        // A KDE computer whose user has not yet let the helper use Plasma's remote desktop portal.
+        text.contains("not_authorized") -> RemoteWindowIssue.NOT_AUTHORIZED
+        mac && (text.contains("TCC") || text.contains("permission denied", ignoreCase = true)) -> RemoteWindowIssue.PERMISSION
+        text.contains("not found", ignoreCase = true) || text.contains("NOT_FOUND") -> RemoteWindowIssue.CLOSED
+        else -> null
+    }
+}
 
 /** What the page draws as the remote pointer. */
 sealed interface RemoteCursor {
@@ -171,6 +251,34 @@ class RemoteScreenVM(
     /** The size and frame rate a stream uses at [RemoteScreenQuality.CUSTOM]; shared by all networks. */
     val custom: StateFlow<RemoteStreamCustom> = _custom.asStateFlow()
 
+    // Experimental single-window view: a Mac that shares its desktop through cua-spacesd.
+    private val _windowView = MutableStateFlow(false)
+    /** Whether this computer can show a single window. */
+    val windowView: StateFlow<Boolean> = _windowView.asStateFlow()
+    private val _target = MutableStateFlow<SpaceWindow?>(null)
+    /** The window shown alone; null shows the whole screen. */
+    val target: StateFlow<SpaceWindow?> = _target.asStateFlow()
+    private val _windows = MutableStateFlow<RemoteWindowList?>(null)
+    /** The windows to pick from, with thumbnails filling in; null while loading. */
+    val windows: StateFlow<RemoteWindowList?> = _windows.asStateFlow()
+    private val _opening = MutableStateFlow<String?>(null)
+    /** The app being opened for a window that ran in the background. */
+    val opening: StateFlow<String?> = _opening.asStateFlow()
+    private val _windowIssue = MutableStateFlow<RemoteWindowIssue?>(null)
+    val windowIssue: StateFlow<RemoteWindowIssue?> = _windowIssue.asStateFlow()
+    /** The shown window's size before "fit to phone" changed it, to put it back. */
+    private val _fittedFrom = MutableStateFlow<Pair<Double, Double>?>(null)
+    val fitted: StateFlow<Boolean> = _fittedFrom.map { it != null }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private var windowsJob: Job? = null
+    private val listedWindows = MutableStateFlow<me.ayuilos.miffan.data.repository.RemoteHostWindows?>(null)
+    /** Pictures taken so far by window id; main thread only. */
+    private val thumbnails = mutableMapOf<String, WindowThumbnail>()
+    /** Whether each window was shown when the computer last could tell (its desktop in front); main thread only. */
+    private val shownWindows = mutableMapOf<String, Boolean>()
+    private val pickerOpen = MutableStateFlow(false)
+    /** Counts picker openings, which cut the loops' waits short. */
+    private val pickerOpens = MutableStateFlow(0)
+
     private val _connectionInfo = MutableStateFlow<RemoteConnectionInfo?>(null)
     val connectionInfo: StateFlow<RemoteConnectionInfo?> = _connectionInfo.asStateFlow()
 
@@ -213,6 +321,24 @@ class RemoteScreenVM(
      * page provides, so [bitmap] stays null and input coordinates are video pixels.
      */
     val video: StateFlow<RemoteSurfaceTarget?> = _video.asStateFlow()
+
+    /** The [video] picture for pages that remember the screen; see [currentFrame]. */
+    internal val videoFrames = RemoteVideoFrames()
+
+    /**
+     * Called by a page that keeps a picture of the screen after it goes (see [currentFrame]): only then is
+     * a playing video's picture read back now and then, which costs the GPU a copy.
+     */
+    fun keepPicture() {
+        videoFrames.keep = true
+    }
+
+    /**
+     * What the screen shows now, for pages that keep a picture of it (a mini box's detail, the chat):
+     * the video's when one plays, otherwise the bitmap. Null when nothing real has been drawn yet.
+     */
+    fun currentFrame(): Bitmap? =
+        (if (_video.value != null) videoFrames.current() else _bitmap.value)?.takeUnless { it.isRecycled || it.isBlank() }
 
     private val _streamStats = MutableStateFlow<StreamStats?>(null)
     /** The stream's own numbers; null unless [video] is set. */
@@ -343,6 +469,263 @@ class RemoteScreenVM(
         connect()
     }
 
+    private var windowViewEnabled = false
+
+    /**
+     * Finds out whether this computer can show single windows, then keeps its windows listed; only a page
+     * that offers the window picker calls it. Waits for the first picture (or a failure): the probe shares
+     * the connection and the computer's CPU with the screen being opened.
+     */
+    fun enableWindowView() {
+        if (windowViewEnabled) return
+        windowViewEnabled = true
+        viewModelScope.launch {
+            _state.first { it !is RemoteScreenUiState.Connecting }
+            _windowView.value = repository.hostWindowsAvailable(args.workspaceId)
+            followWindows()
+        }
+    }
+
+    /**
+     * Keeps the window list current while the page is on screen, so the picker opens with it: every
+     * 10 seconds, every 2 while the picker is open ([watchWindows]). Pictures are taken while the picker
+     * is open, for new windows and ones that just came back first and now and then for the others (each
+     * takes seconds on the computer and shares its capture with the picture being watched); while it is
+     * closed only the windows of the desktop in front get one, once, so the picker opens with them.
+     */
+    private fun followWindows() {
+        windowsJob?.cancel()
+        if (!_windowView.value || !visible) { windowsJob = null; return }
+        windowsJob = viewModelScope.launch {
+            launch {
+                while (true) {
+                    val opens = pickerOpens.value
+                    runCatching { repository.hostWindows(args.workspaceId) }
+                        .onSuccess { listed -> noteShown(listed); listedWindows.value = listed; publishWindows() }
+                        .onFailure { error ->
+                            if (error is CancellationException) throw error
+                            Log.w(TAG, "Listing windows failed", error)
+                            if (_windows.value == null) _windows.value = RemoteWindowList(emptyList(), emptyList())
+                        }
+                    // Opening the picker cuts the wait short.
+                    withTimeoutOrNull(if (pickerOpen.value) WINDOW_REFRESH_MILLIS else WINDOW_IDLE_REFRESH_MILLIS) {
+                        pickerOpens.first { it != opens }
+                    }
+                }
+            }
+            // Pictures take seconds each, so they run beside the list instead of holding it up.
+            while (true) {
+                val opens = pickerOpens.value
+                val listed = listedWindows.filterNotNull().first()
+                val open = pickerOpen.value
+                val due = dueThumbnails(listed.windows, thumbnails, open, SystemClock.elapsedRealtime())
+                if (due.isEmpty()) {
+                    withTimeoutOrNull(WINDOW_REFRESH_MILLIS) { pickerOpens.first { it != opens } }
+                    continue
+                }
+                runCatching {
+                    repository.hostWindowThumbnails(args.workspaceId, due.map { it.window }).collect { (window, bytes) ->
+                        val image = bytes?.let {
+                            withContext(Dispatchers.Default) { decodeThumbnail(it)?.takeUnless { bitmap -> bitmap.isBlank() }?.asImageBitmap() }
+                        }
+                        val at = SystemClock.elapsedRealtime()
+                        // A failed picture keeps the last good one; a real picture means the window is shown.
+                        val old = thumbnails[window.id]
+                        thumbnails[window.id] = if (image != null) WindowThumbnail(image, at)
+                            else WindowThumbnail(old?.image, at, failed = true, failures = (old?.failures ?: 0) + 1)
+                        if (image != null) shownWindows[window.id] = true
+                        publishWindows()
+                    }
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                    Log.w(TAG, "Window pictures failed", error)
+                    delay(WINDOW_REFRESH_MILLIS)
+                }
+            }
+        }
+    }
+
+    /**
+     * Remembers which windows the computer showed while their desktop was in front, the only time it
+     * can tell. A window that comes back gets a fresh picture right away.
+     */
+    private fun noteShown(listed: me.ayuilos.miffan.data.repository.RemoteHostWindows) {
+        listed.windows.filter { it.current }.forEach { hosted ->
+            val shown = !hosted.hidden
+            if (shown && shownWindows[hosted.window.id] == false) thumbnails[hosted.window.id]?.let {
+                thumbnails[hosted.window.id] = WindowThumbnail(it.image, 0L, failed = it.failed)
+            }
+            shownWindows[hosted.window.id] = shown
+        }
+        val ids = listed.windows.mapTo(HashSet()) { it.window.id }
+        shownWindows.keys.retainAll(ids)
+        thumbnails.keys.retainAll(ids)
+    }
+
+    /** The picker opened: refresh now and more often, and refresh pictures. Undone by [stopWindows]. */
+    fun watchWindows() {
+        pickerOpen.value = true
+        pickerOpens.value++
+        if (windowsJob?.isActive != true) followWindows()
+    }
+
+    fun stopWindows() {
+        pickerOpen.value = false
+    }
+
+    /**
+     * The picker's rows from the latest list and the pictures so far; a picture stays until a newer one
+     * comes. On the desktop in front the computer says which windows are shown; elsewhere what it said
+     * last time holds, and a window it never saw is in the background when it gives no picture.
+     */
+    private fun publishWindows() {
+        val listed = listedWindows.value ?: return
+        _windows.value = RemoteWindowList(listed.windows.map { hosted ->
+            val thumb = thumbnails[hosted.window.id]
+            RemoteWindowChoice(hosted.window, thumb?.image, hosted.desktop, hosted.current,
+                windowInBackground(hosted, listed.appsInBackground, shownWindows[hosted.window.id], thumb))
+        }, listed.desktops, listed.setup)
+    }
+
+    /** Lists the computer's windows again now (the user changed something there). */
+    fun refreshWindows() {
+        pickerOpens.value++
+    }
+
+    /** GNOME: installs the window-list extension on the computer (the user asked), then lists again. */
+    fun installWindowExtension() {
+        viewModelScope.launch {
+            runCatching { repository.installHostWindowExtension(args.workspaceId) }
+                .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Installing the window extension failed", it) }
+            pickerOpens.value++
+        }
+    }
+
+    /**
+     * Shows [choice]. A window whose app runs in the background is opened first, as a Dock click
+     * would, then the window the app shows; [onShown] runs once something is shown.
+     */
+    fun pickWindow(choice: RemoteWindowChoice, onShown: () -> Unit = {}) {
+        if (!choice.background) { showWindow(choice.window); onShown(); return }
+        pickJob?.cancel()
+        val pick = ++picks
+        pickJob = viewModelScope.launch {
+            _opening.value = choice.window.app
+            try {
+                val shown = runCatching { repository.reopenHostApp(args.workspaceId, choice.window) }
+                    .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Opening ${choice.window.app} failed", it) }
+                    .getOrNull()
+                thumbnails[choice.window.id]?.let { thumbnails[choice.window.id] = WindowThumbnail(it.image, 0L, failed = it.failed) }
+                shownWindows[choice.window.id] = true
+                show(shown ?: choice.window)
+                onShown()
+            } finally {
+                // A later choice may already be opening its own app.
+                if (picks == pick) _opening.value = null
+            }
+        }
+    }
+
+    /**
+     * The choice being carried out (an app opened, a window restored); a later choice cancels it, so a
+     * slow one never overrides what the user picked after it.
+     */
+    private var pickJob: Job? = null
+    private var picks = 0
+
+    /** Shows [window] alone, or the whole screen for null; a minimized window is brought back first. */
+    fun showWindow(window: SpaceWindow?) {
+        pickJob?.cancel()
+        ++picks
+        _opening.value = null
+        pickJob = viewModelScope.launch { show(window) }
+    }
+
+    private suspend fun show(window: SpaceWindow?) {
+        unfitWindow()
+        currentCoroutineContext().ensureActive()
+        _windowIssue.value = null
+        if (window != null && window.state == SpaceWindow.State.MINIMIZED) {
+            runCatching { repository.restoreHostWindow(args.workspaceId, window) }
+            currentCoroutineContext().ensureActive()
+        }
+        _target.value = window
+        reconnect()
+    }
+
+    /** Puts a minimized window back, then shows it again. */
+    fun restoreWindow() {
+        val window = _target.value ?: return
+        viewModelScope.launch {
+            runCatching { repository.restoreHostWindow(args.workspaceId, window) }
+            _windowIssue.value = null
+            reconnect()
+        }
+    }
+
+    /** KDE: grants the helper Plasma's remote desktop permission (the user just agreed), then shows the window. */
+    fun authorizeWindows() {
+        viewModelScope.launch {
+            val granted = runCatching { repository.authorizeHostWindows(args.workspaceId) }
+                .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Authorizing windows failed", it) }
+                .getOrDefault(false)
+            if (!granted) {
+                _notices.tryEmit(RemoteScreenNotice.WindowAuthorizeFailed)
+                return@launch
+            }
+            _windowIssue.value = null
+            reconnect()
+        }
+    }
+
+    /** Raises the window on the computer, switching to its desktop when it is on another one. */
+    fun activateWindow() {
+        val window = _target.value ?: return
+        viewModelScope.launch {
+            runCatching { repository.activateHostWindow(args.workspaceId, window) }
+            _windowIssue.value = null
+            reconnect()
+        }
+    }
+
+    /**
+     * Reshapes the shown window on the computer to the phone's [aspect] (width / height), so it fills
+     * the phone; [unfitWindow] puts the old size back.
+     */
+    fun fitWindow(aspect: Float) {
+        val window = _target.value ?: return
+        if (_fittedFrom.value != null || aspect <= 0f) return
+        viewModelScope.launch {
+            val height = window.height.coerceIn(FIT_MIN_HEIGHT, FIT_MAX_HEIGHT)
+            val width = (height * aspect).coerceAtLeast(FIT_MIN_WIDTH)
+            // A size the computer does not report (niri) still counts: the call itself said it worked.
+            runCatching { repository.resizeHostWindow(args.workspaceId, window, width, height) }
+                .onSuccess { _fittedFrom.value = window.width to window.height }
+                .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Resizing the window failed", it) }
+        }
+    }
+
+    suspend fun unfitWindow() {
+        val window = _target.value ?: return
+        val (width, height) = _fittedFrom.value ?: return
+        _fittedFrom.value = null
+        runCatching { repository.resizeHostWindow(args.workspaceId, window, width, height) }
+    }
+
+    fun toggleFit(aspect: Float) {
+        if (_fittedFrom.value != null) viewModelScope.launch { unfitWindow() } else fitWindow(aspect)
+    }
+
+    /** Leaves the computer's window as it was found when the page goes away. */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    private fun restoreFittedWindow() {
+        val window = _target.value ?: return
+        val size = _fittedFrom.value ?: return
+        kotlinx.coroutines.GlobalScope.launch {
+            runCatching { repository.resizeHostWindow(args.workspaceId, window, size.first, size.second) }
+        }
+    }
+
     fun reconnect() {
         close()
         connect()
@@ -350,8 +733,11 @@ class RemoteScreenVM(
 
     /** Stop requesting frames while the page is not visible; bandwidth drops to zero. */
     fun setVisible(value: Boolean) {
+        val changed = visible != value
         visible = value
         connection?.session?.setPaused(!value)
+        // The window list sleeps with the page.
+        if (changed) followWindows()
     }
 
     /**
@@ -655,6 +1041,7 @@ class RemoteScreenVM(
     private fun connect() {
         _state.value = RemoteScreenUiState.Connecting
         _canUseAutomatic.value = false
+        val connectStarted = SystemClock.elapsedRealtime()
         connectJob = viewModelScope.launch {
             try {
                 val quality = _quality.value
@@ -665,16 +1052,18 @@ class RemoteScreenVM(
                         maxFps = vncFps(quality),
                         lowColor = quality == RemoteScreenQuality.SAVER,
                     ),
-                    RemoteStreamRequest(quality, skip = skipStream, custom = _custom.value, snapshot = _relaySnapshots.value),
+                    RemoteStreamRequest(quality, skip = skipStream, custom = _custom.value, snapshot = _relaySnapshots.value,
+                        window = _target.value),
                 )
                 connection = opened
+                if (_target.value != null) Log.d(PERF_TAG, "Window stream opened after ${SystemClock.elapsedRealtime() - connectStarted} ms")
                 _hostId.value = opened.hostId
                 _controlKey.value = opened.controlKey
                 _platform.value = opened.platform
                 prepareTyping()
                 opened.streamFallback?.let { _notices.tryEmit(RemoteScreenNotice.StreamFallback(it)) }
                 _connectionInfo.value = RemoteConnectionInfo(opened.session.protocol, opened.streamRequested,
-                    opened.streamAddress, opened.streamFallback, skipStream, opened.relayMediaKbps)
+                    opened.streamAddress, opened.streamFallback, skipStream, opened.relayMediaKbps, window = _target.value != null)
                 opened.session.audio?.let { audio ->
                     if (hints.getBoolean(AUDIO_KEY, false)) audio.setEnabled(true)
                     launch { audio.enabled.collect { _audio.value = it } }
@@ -697,6 +1086,19 @@ class RemoteScreenVM(
                         _notices.tryEmit(RemoteScreenNotice.StreamOnMeteredNetwork(_quality.value, _custom.value))
                     }
                 }
+                (opened.session as? CuaSpaceDesktopSession)?.takeIf { _target.value != null }?.let { session ->
+                    // Input lands on whatever is in front on the computer: notice when that stops being this window.
+                    val shown = _target.value
+                    launch { session.inputDropped.collect { _notices.tryEmit(RemoteScreenNotice.WindowInputDropped) } }
+                    if (shown != null) launch {
+                        while (true) {
+                            if (visible) repository.hostWindowInFront(args.workspaceId, shown)?.let(session::noteFront)
+                            delay(FRONT_CHECK_MILLIS)
+                        }
+                    }
+                    val mac = opened.platform == RemoteScreenPlatform.MACOS
+                    launch { session.suspended.collect { reason -> _windowIssue.value = suspendedIssue(reason, mac) } }
+                }
                 opened.session.setPaused(!visible)
                 opened.session.statsLogger = { Log.d(PERF_TAG, it.toString()) }
                 opened.session.start(viewModelScope)
@@ -715,15 +1117,18 @@ class RemoteScreenVM(
                     when (state) {
                         RemoteScreenState.Connecting -> _state.value = RemoteScreenUiState.Connecting
                         is RemoteScreenState.Connected -> {
+                            if (_target.value != null) Log.d(PERF_TAG, "Window picture after ${SystemClock.elapsedRealtime() - connectStarted} ms")
                             serverWidth = state.width
                             serverHeight = state.height
                             suggestStream(opened)
                             _state.value = RemoteScreenUiState.Connected(
                                 state.name, (state.width + state.scale - 1) / state.scale,
-                                (state.height + state.scale - 1) / state.scale,
+                                (state.height + state.scale - 1) / state.scale, state.area,
                             )
                         }
                         is RemoteScreenState.Closed -> {
+                            if (_target.value != null) state.error?.let { windowIssueOf(it, opened.platform == RemoteScreenPlatform.MACOS) }
+                                ?.let { _windowIssue.value = it }
                             _state.value = state.error?.let(RemoteScreenUiState::Failed) ?: RemoteScreenUiState.Closed
                             state.error?.let(::checkAutomaticFix)
                             opened.close()
@@ -734,6 +1139,7 @@ class RemoteScreenVM(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
+                if (_target.value != null) windowIssueOf(error, _platform.value == RemoteScreenPlatform.MACOS)?.let { _windowIssue.value = it }
                 _state.value = RemoteScreenUiState.Failed(error)
                 checkAutomaticFix(error)
             }
@@ -780,6 +1186,7 @@ class RemoteScreenVM(
     override fun onCleared() {
         // Leaving the screen hands the desktop back to the partner.
         handBackToPartner()
+        restoreFittedWindow()
         keyboard.close()
         close()
         heldVnc?.close()
@@ -821,6 +1228,126 @@ private const val METERED_STREAM_KEY = "stream_metered_warned"
 
 /** Shared with the page's one-time hints. */
 internal const val SCREEN_HINTS = "remote_screen_hints"
+private const val WINDOW_REFRESH_MILLIS = 2_000L
+private const val WINDOW_IDLE_REFRESH_MILLIS = 10_000L
+private const val FRONT_CHECK_MILLIS = 1_000L
+
+/**
+ * A video picture lives in its TextureView, out of the VM's reach: [reader] reads it while the view
+ * is up, and [last] keeps what it showed as the view went away. Nothing is read unless a page [keep]s it.
+ */
+internal class RemoteVideoFrames {
+    @Volatile var reader: (() -> Bitmap?)? = null
+    @Volatile var last: Bitmap? = null
+    /** A page keeps the picture after it goes (see RemoteScreenVM.keepPicture); otherwise nothing is read back. */
+    @Volatile var keep = false
+    /** The buffer the next [keepFrom] reads into, swapped with [last] when the read shows something. */
+    private var spare: Bitmap? = null
+
+    /** The live picture when it can still be read, else the kept one; never a black one. */
+    fun current(): Bitmap? = runCatching { reader?.invoke() }.getOrNull()?.takeUnless { it.isBlank() } ?: last
+
+    /** [view]'s picture at most [THUMBNAIL_EDGE] on its long side; null when there is none yet. */
+    fun read(view: android.view.TextureView, width: Int, height: Int): Bitmap? {
+        val (w, h) = thumbnailSize(width, height)
+        return runCatching { view.getBitmap(w, h) }.getOrNull()?.takeUnless { it.isBlank() }
+    }
+
+    /**
+     * Keeps [view]'s picture as [last] when a page wants it, reading into a reused buffer rather than a
+     * new one each time. Main thread, like the view.
+     */
+    @Synchronized fun keepFrom(view: android.view.TextureView, width: Int, height: Int) {
+        if (!keep) return
+        val (w, h) = thumbnailSize(width, height)
+        val buffer = spare?.takeIf { it.width == w && it.height == h && !it.isRecycled }
+            ?: runCatching { Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888) }.getOrNull() ?: return
+        val read = runCatching { view.getBitmap(buffer) }.getOrNull()
+        if (read == null || read.isBlank()) { spare = buffer; return }
+        spare = last?.takeIf { it !== read }
+        last = read
+    }
+
+    private fun thumbnailSize(width: Int, height: Int): Pair<Int, Int> {
+        val scale = minOf(1f, THUMBNAIL_EDGE.toFloat() / maxOf(width, height, 1))
+        return (width * scale).toInt().coerceAtLeast(1) to (height * scale).toInt().coerceAtLeast(1)
+    }
+
+    // A page keeps the picture as a small thumbnail of the computer.
+    private companion object { const val THUMBNAIL_EDGE = 640 }
+}
+
+/**
+ * A window's picture from the computer, decoded no larger than the picker needs: its size is read first,
+ * so a picture claiming to be huge is refused rather than decoded.
+ */
+private fun decodeThumbnail(bytes: ByteArray): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    val sample = thumbnailSampleSize(bounds.outWidth, bounds.outHeight) ?: return null
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+}
+
+/**
+ * The power of two to shrink a [width]×[height] picture by so its long side stays near [THUMBNAIL_DECODE_EDGE];
+ * null for a size no window has.
+ */
+internal fun thumbnailSampleSize(width: Int, height: Int): Int? {
+    if (width !in 1..MAX_THUMBNAIL_SOURCE_EDGE || height !in 1..MAX_THUMBNAIL_SOURCE_EDGE) return null
+    var sample = 1
+    while (maxOf(width, height) / (sample * 2) >= THUMBNAIL_DECODE_EDGE) sample *= 2
+    return sample
+}
+
+/** The picker shows a window's picture 76×50dp; this keeps it sharp on a dense screen. */
+private const val THUMBNAIL_DECODE_EDGE = 320
+private const val MAX_THUMBNAIL_SOURCE_EDGE = 16_384
+
+/** True when a capture shows nothing: every sampled pixel black or transparent. */
+private fun android.graphics.Bitmap.isBlank(): Boolean {
+    val steps = 12
+    for (i in 0 until steps) for (j in 0 until steps) {
+        val pixel = getPixel(width * (2 * i + 1) / (2 * steps), height * (2 * j + 1) / (2 * steps))
+        val alpha = pixel ushr 24
+        val brightest = maxOf(pixel shr 16 and 0xFF, pixel shr 8 and 0xFF, pixel and 0xFF)
+        if (alpha > 16 && brightest > 12) return false
+    }
+    return true
+}
+private const val THUMBNAIL_REFRESH_MILLIS = 15_000L
+// A window that gave no picture is tried again now and then, in case its app shows it.
+private const val BACKGROUND_RETRY_MILLIS = 30_000L
+/** The longest wait between tries of a window that keeps giving no picture: 30 s doubled four times, 8 min. */
+private const val MAX_RETRY_DOUBLINGS = 4
+
+/**
+ * A window's last good picture, when it was last tried, and whether that try gave none (all black or too
+ * slow); [failures] counts such tries in a row. Its time set to 0 makes it due at once.
+ */
+internal class WindowThumbnail(val image: ImageBitmap?, val at: Long, val failed: Boolean = false, val failures: Int = 0)
+
+/**
+ * The windows whose picture to take now, in order. With the picker [open]: new windows first, then
+ * fresh pictures of the others, then windows that gave none, each of those waiting twice as long after
+ * every failure (an off-screen niri window may never give one, and each try holds up the rest). With it
+ * closed: only the desktop in front's windows that never had a try.
+ */
+internal fun dueThumbnails(windows: List<me.ayuilos.miffan.data.repository.RemoteHostWindow>, thumbnails: Map<String, WindowThumbnail>,
+    open: Boolean, now: Long): List<me.ayuilos.miffan.data.repository.RemoteHostWindow> =
+    windows.filter { hosted ->
+        // A window known to be shown nowhere has no picture to take.
+        if (hosted.window.state == SpaceWindow.State.MINIMIZED || hosted.hidden) return@filter false
+        val thumb = thumbnails[hosted.window.id]
+        if (!open) return@filter thumb == null && hosted.current
+        if (thumb == null) return@filter true
+        now - thumb.at > if (thumb.failures > 0) thumbnailRetryMillis(thumb.failures) else THUMBNAIL_REFRESH_MILLIS
+    }.sortedWith(compareBy({ (thumbnails[it.window.id]?.failures ?: 0) > 0 }, { thumbnails[it.window.id]?.image != null }, { !it.current }))
+
+/** How long a window waits for its next try after [failures] tries in a row gave no picture. */
+internal fun thumbnailRetryMillis(failures: Int): Long = BACKGROUND_RETRY_MILLIS shl (failures - 1).coerceIn(0, MAX_RETRY_DOUBLINGS)
+private const val FIT_MIN_HEIGHT = 800.0
+private const val FIT_MAX_HEIGHT = 1000.0
+private const val FIT_MIN_WIDTH = 420.0
 
 private const val INITIAL_CLIPBOARD_MILLIS = 3_000L
 private const val PERF_TAG = "RemoteScreenPerf"

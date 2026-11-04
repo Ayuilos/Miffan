@@ -143,6 +143,25 @@ with tempfile.TemporaryDirectory(prefix="p5b-helper-") as tmp:
     assert result.returncode!=0 and status['error']=='rdp_already_configured',status
     assert before==(root/'state.json').read_bytes()
     assert status['certificate_sha256'] is None, 'Do not attest unowned configurations'
+    # Everything the helper kept is gone (~/.miffan/rdp emptied) while GNOME still points at its
+    # certificate and key: that setup was the helper's and cannot work, so it is set up again. The
+    # certificate is put back as it was, so the pin the rest of this test expects holds.
+    key=root/'.miffan/rdp/key.pem'
+    kept_cert, kept_key = cert.read_bytes(), key.read_bytes()
+    cert.unlink(); key.unlink()
+    result, adopted=start()
+    assert result.returncode==0 and adopted['error'] is None, adopted
+    assert (root/'.miffan/rdp/gnome-headless.owner').exists()
+    assert json.loads((root/'state.json').read_text())['cert']==str(cert)
+    # A configuration pointing elsewhere is still someone else's.
+    (root/'.miffan/rdp/gnome-headless.owner').unlink(); cert.unlink(); key.unlink()
+    state=json.loads((root/'state.json').read_text()); state['cert']='/etc/other/cert.pem'
+    (root/'state.json').write_text(json.dumps(state))
+    result, foreign=start()
+    assert result.returncode!=0 and foreign['error']=='rdp_already_configured',foreign
+    cert.write_bytes(kept_cert); key.write_bytes(kept_key); cert.chmod(0o600); key.chmod(0o600)
+    state['cert']=str(cert); (root/'state.json').write_text(json.dumps(state))
+    (root/'.miffan/rdp/gnome-headless.owner').unlink(missing_ok=True)
     result, status=start('short')
     assert result.returncode!=0 and status['error']=='rdp_start_failed'
     assert secret not in (root/'argv.jsonl').read_text()

@@ -81,6 +81,7 @@ jobs:
           python3 remote-helper/tests/test_task_helper.py
           python3 remote-helper/tests/test_relay_helper.py
           python3 remote-helper/tests/test_snapshot_helper.py
+          python3 remote-helper/tests/test_window_helper.py
 
       - name: Set up Go for the relay connector
         uses: actions/setup-go@v6
@@ -116,4 +117,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Test, lint, and assemble debug APKs
-        run: ./gradlew test lint assembleDebug --stacktrace
+        # More heap than gradle.properties gives: lint and packaging together filled 4 GB here and the
+        # build stalled in garbage collection until the job timed out.
+        run: >-
+          ./gradlew test lint assembleDebug --stacktrace
+          "-Dorg.gradle.jvmargs=-Xmx7g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+          "-Pkotlin.daemon.jvmargs=-Xmx3g"

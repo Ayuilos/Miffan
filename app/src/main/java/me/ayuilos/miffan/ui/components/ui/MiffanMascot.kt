@@ -855,9 +855,10 @@ private fun DrawScope.drawInputCue(
 @Composable
 fun MiffanMascotLoadingIndicator(modifier: Modifier = Modifier) {
     if (LocalSettings.current.displaySetting.useAppIconStyleLoadingIndicator) {
-        MiffanMascot(
+        AppCharacterMascot(
             state = MiffanMascotState.Thinking,
             modifier = modifier,
+            generationPhase = AssistantGenerationPhase.Reasoning,
         )
     } else {
         ContainedLoadingIndicator(modifier = modifier)

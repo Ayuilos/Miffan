@@ -2186,6 +2186,27 @@
   <string name="workspace_screen_mode_trackpad" tools:ignore="MissingTranslation">Touchpad mode; switch to direct touch</string>
   <string name="workspace_screen_mode_direct" tools:ignore="MissingTranslation">Direct touch mode; switch to touchpad</string>
   <string name="workspace_screen_keyboard" tools:ignore="MissingTranslation">Toggle keyboard</string>
+  <string name="workspace_screen_key_panel">Shortcuts and more keys</string>
+  <string name="workspace_screen_key_back_to_ime">Back to the keyboard</string>
+  <string name="workspace_screen_key_waiting">next key</string>
+  <string name="workspace_screen_key_cancel_modifiers">Cancel the combination</string>
+  <string name="workspace_screen_key_section_common">Common</string>
+  <string name="workspace_screen_key_section_modifiers">Combine with the next key</string>
+  <string name="workspace_screen_key_section_more">More keys</string>
+  <string name="workspace_screen_key_start_menu">Start</string>
+  <string name="workspace_screen_key_overview">Overview</string>
+  <string name="workspace_screen_key_left">Left</string>
+  <string name="workspace_screen_key_up">Up</string>
+  <string name="workspace_screen_key_down">Down</string>
+  <string name="workspace_screen_key_right">Right</string>
+  <string name="workspace_screen_shortcut_copy">Copy</string>
+  <string name="workspace_screen_shortcut_paste">Paste</string>
+  <string name="workspace_screen_shortcut_cut">Cut</string>
+  <string name="workspace_screen_shortcut_undo">Undo</string>
+  <string name="workspace_screen_shortcut_select_all">Select all</string>
+  <string name="workspace_screen_shortcut_save">Save</string>
+  <string name="workspace_screen_shortcut_find">Find</string>
+  <string name="workspace_screen_shortcut_switch_window">Switch app</string>
   <string name="workspace_screen_actions" tools:ignore="MissingTranslation">Screen actions</string>
   <string name="workspace_screen_help" tools:ignore="MissingTranslation">How to use</string>
   <string name="workspace_screen_help_direct_tab" tools:ignore="MissingTranslation">Direct touch</string>
@@ -2372,7 +2393,7 @@
   <string name="workspace_screen_stream_retry" tools:ignore="MissingTranslation">Reconnect with high-performance mode</string>
   <string name="workspace_screen_fullscreen" tools:ignore="MissingTranslation">Full screen</string>
   <string name="workspace_screen_fullscreen_exit" tools:ignore="MissingTranslation">Exit full screen</string>
-  <string name="workspace_screen_stream_metered" tools:ignore="MissingTranslation">You are on mobile data. High-performance mode at \"%1$s\" can use up to about %2$s GB per hour. Change the picture from the menu at the top right.</string>
+  <string name="workspace_screen_stream_metered" tools:ignore="MissingTranslation">You are on mobile data. High-performance mode at \"%1$s\" can use up to about %2$s GB per hour. Tap the picture tag under the name to change it.</string>
   <string name="workspace_screen_details" tools:ignore="MissingTranslation">Connection details</string>
   <string name="workspace_screen_details_mode" tools:ignore="MissingTranslation">Connection</string>
   <string name="workspace_screen_details_stream" tools:ignore="MissingTranslation">High-performance mode (Sunshine)</string>
@@ -4238,4 +4259,70 @@
   </plurals>
   <string name="update_page_skipped_title">Skipped %1$s</string>
   <string name="update_page_skipped_text">You\'ll hear about the next version when it\'s out.</string>
+  <string name="workspace_screen_window_whole_screen">Whole screen</string>
+  <string name="workspace_screen_window_switch">Pick a window or the whole screen</string>
+  <string name="workspace_screen_window_fit_restore">Original size</string>
+  <string name="workspace_screen_window_fit_phone">Fit to phone</string>
+  <string name="workspace_screen_window_picker_title">What to view</string>
+  <string name="workspace_screen_window_whole_screen_subtitle">All windows and desktops</string>
+  <string name="workspace_screen_window_opening">Opening %1$s on the Mac…</string>
+  <string name="workspace_screen_window_none">No windows to view on their own</string>
+  <string name="workspace_screen_window_other_group">Other</string>
+  <string name="workspace_screen_window_untitled">Window</string>
+  <string name="workspace_screen_window_minimized_hint">Minimized; picking it restores it first</string>
+  <string name="workspace_screen_window_background_hint">Running in the background; picking it opens it on the Mac</string>
+  <string name="workspace_screen_window_background_badge">Background</string>
+  <string name="workspace_screen_window_footer">You can view it even when other windows cover it. When you use it, the Mac brings it to the front, switching desktops first if it is on another one.</string>
+  <string name="workspace_screen_window_footer_linux">Once you pick it, the computer brings this window onto its screen so the picture stays smooth, and to the front whenever you use it.</string>
+  <string name="workspace_screen_window_issue_locked">The computer is locked</string>
+  <string name="workspace_screen_window_issue_locked_detail">You can still watch this window, but it can\'t be used until the computer is unlocked. Unlock it on the whole screen, then come back.</string>
+  <string name="workspace_screen_window_unlock_action">Unlock on the whole screen</string>
+  <string name="workspace_screen_window_this_window">This window</string>
+  <string name="workspace_screen_window_issue_minimized">%1$s is minimized to the Dock</string>
+  <string name="workspace_screen_window_issue_minimized_detail">A minimized window shows no picture</string>
+  <string name="workspace_screen_window_issue_closed">This window was closed</string>
+  <string name="workspace_screen_window_issue_permission">The Mac is asking for permission</string>
+  <string name="workspace_screen_window_issue_permission_detail">Click “Allow” to view single windows. Apple asks again from time to time.</string>
+  <string name="workspace_screen_window_issue_other_desktop">%1$s is on another Mac desktop</string>
+  <string name="workspace_screen_window_issue_other_desktop_detail">Switch to it to see it</string>
+  <string name="workspace_screen_window_restore">Restore it on the Mac</string>
+  <string name="workspace_screen_window_pick_another">Pick another window</string>
+  <string name="workspace_screen_window_view_whole">View the whole screen</string>
+  <string name="workspace_screen_window_permission_action">Click “Allow” on the whole screen</string>
+  <string name="workspace_screen_window_switch_desktop">Switch to that desktop</string>
+  <string name="workspace_screen_window_side">Switch window</string>
+  <string name="workspace_screen_mode_window">Single window</string>
+  <string name="workspace_screen_relay">Via relay</string>
+  <string name="workspace_screen_desktop_current">Current desktop</string>
+  <string name="workspace_screen_desktop">Desktop %1$d</string>
+  <string name="workspace_screen_desktop_fullscreen">Full screen · %1$s</string>
+  <string name="workspace_screen_desktop_app">App</string>
+  <string name="workspace_screen_desktop_display">Display %1$d · %2$s</string>
+  <string name="workspace_screen_desktop_now">%1$s (current)</string>
+  <string name="workspace_screen_quality_space">%1$d px · %2$d fps</string>
+  <string name="workspace_screen_quality_tag_fps">%1$s · %2$d fps</string>
+  <string name="workspace_screen_quality_tag_snapshot">Snapshot · %1$d px</string>
+  <string name="workspace_screen_quality_tag_vnc">%1$d fps</string>
+  <string name="workspace_screen_quality_sheet_title">Picture</string>
+  <string name="workspace_screen_quality_sheet_stream">High performance: sharper and smoother uses more data</string>
+  <string name="workspace_screen_quality_sheet_snapshot">One snapshot at a time: sharper means bigger snapshots</string>
+  <string name="workspace_screen_quality_sheet_window">Single window: sharper uses more data</string>
+  <string name="workspace_screen_quality_sheet_space">Sharper uses more data</string>
+  <string name="workspace_screen_quality_sheet_fps">More frames feel more responsive and use more data</string>
+  <string name="workspace_screen_quality_gb_per_hour">≤%1$s GB/h</string>
+  <string name="workspace_screen_window_issue_authorize">Let your phone show this computer\'s windows?</string>
+  <string name="workspace_screen_window_issue_authorize_detail">KDE asks for this once. Miffan then gets KDE\'s remote desktop permission, so it can show and use windows without anyone confirming on the computer.</string>
+  <string name="workspace_screen_window_issue_paused">This window\'s picture is paused</string>
+  <string name="workspace_screen_window_issue_paused_detail">The computer stopped sending it for now. It comes back by itself once the window can be shown again.</string>
+  <string name="workspace_screen_window_authorize_action">Allow</string>
+  <string name="workspace_screen_window_gnome_install">This GNOME computer needs a small extension first</string>
+  <string name="workspace_screen_window_gnome_install_detail">GNOME doesn\'t let other apps list its windows. Miffan installs an extension that only lists and switches windows; it starts working after you sign in to the computer again.</string>
+  <string name="workspace_screen_window_gnome_install_action">Install</string>
+  <string name="workspace_screen_window_gnome_relogin">Installed. Sign in to the computer again to use it</string>
+  <string name="workspace_screen_window_gnome_relogin_detail">GNOME loads new extensions only when you sign in. You can sign out and back in on the whole screen, then come back here.</string>
+  <string name="workspace_screen_window_gnome_extensions_off">GNOME\'s user extensions are turned off</string>
+  <string name="workspace_screen_window_gnome_extensions_off_detail">Miffan lists windows through a small extension, but this computer has all user extensions turned off. Turn on User Extensions in the Extensions app on the computer, then check again.</string>
+  <string name="workspace_screen_window_gnome_check_again">Check again</string>
+  <string name="workspace_screen_window_input_dropped">Couldn\'t bring the window to the front, so that input wasn\'t sent. Try again.</string>
+  <string name="workspace_screen_window_authorize_failed">Couldn\'t grant the permission on the computer. Try again, or view the whole screen.</string>
 </resources>
