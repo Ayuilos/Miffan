@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate
 #                           one window of a Linux desktop on the phone (niri), video and input
 
-MIFFAN_HELPER_VERSION=41
+MIFFAN_HELPER_VERSION=42
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1252,6 +1252,32 @@ class NotAuthorized(Exception):
     pass
 
 
+def open_portal(Gio, GLib, devices=True):
+    """
+    A Portal session. The portal service can outlive the desktop session that started it (logging out of
+    niri or GNOME and into Plasma without a reboot) and keep serving that desktop's backends, which give
+    Plasma no RemoteDesktop: then it is restarted under this session first.
+    """
+    if not portal_serves_kde():
+        subprocess.run(["systemctl", "--user", "restart", "xdg-desktop-portal.service"],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+    return Portal(Gio, GLib, devices)
+
+
+def portal_serves_kde():
+    """Whether the running portal service was started for KDE (true too when that cannot be told)."""
+    try:
+        pid = subprocess.run(["systemctl", "--user", "show", "-p", "MainPID", "--value", "xdg-desktop-portal.service"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        if not pid.isdigit() or pid == "0":
+            return True  # not running: D-Bus starts it for this session
+        with open("/proc/%s/environ" % pid, "rb") as f:
+            env = dict(item.split(b"=", 1) for item in f.read().split(b"\0") if b"=" in item)
+    except Exception:
+        return True
+    return b"KDE" in env.get(b"XDG_CURRENT_DESKTOP", b"").split(b":")
+
+
 class Portal:
     """A RemoteDesktop portal session streaming every output, with pointer and keyboard."""
     DESKTOP = "/org/freedesktop/portal/desktop"
@@ -1463,7 +1489,7 @@ def kde_shots(Gio, GLib, Gst):
                 continue
             try:
                 if portal is None:
-                    portal = Portal(Gio, GLib, devices=False)
+                    portal = open_portal(Gio, GLib, devices=False)
                 picture = kde_shot(Gst, portal, w, limit, quality)
             except NotAuthorized:
                 emit("error not_authorized")
@@ -2649,7 +2675,7 @@ def serve_kde(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
         emit("closed window_closed")
         return
     try:
-        portal = Portal(Gio, GLib)
+        portal = open_portal(Gio, GLib)
     except NotAuthorized:
         emit("closed not_authorized")
         return

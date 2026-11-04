@@ -246,6 +246,39 @@ def test_kde_window_ids_must_be_uuids():
     assert not w.UUID.match('708d5d37"); workspace.activeWindow = null; ("')
 
 
+def test_kde_portal_left_by_another_desktop_is_restarted():
+    w = program()
+    calls = []
+    environ = {"value": b""}
+
+    def run(args, **kwargs):
+        calls.append(args)
+        return types.SimpleNamespace(stdout="4242\n" if "show" in args else "")
+
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if path == "/proc/4242/environ":
+            from io import BytesIO
+            return BytesIO(environ["value"])
+        return real_open(path, *args, **kwargs)
+
+    w.subprocess = types.SimpleNamespace(run=run, DEVNULL=subprocess.DEVNULL)
+    w.open = fake_open
+    w.Portal = lambda Gio, GLib, devices: ("portal", devices)
+    # Started for niri, or before any desktop said which it is: restarted, then used.
+    for env in [b"HOME=/h\0XDG_CURRENT_DESKTOP=niri\0", b"HOME=/h\0"]:
+        environ["value"] = env
+        calls.clear()
+        assert w.open_portal(None, None, devices=False) == ("portal", False)
+        assert ["systemctl", "--user", "restart", "xdg-desktop-portal.service"] in calls
+    # Started for this Plasma session: left alone.
+    environ["value"] = b"XDG_CURRENT_DESKTOP=KDE\0WAYLAND_DISPLAY=wayland-0\0"
+    calls.clear()
+    assert w.open_portal(None, None) == ("portal", True)
+    assert not any("restart" in args for args in calls)
+
+
 def test_gnome_list_without_the_extension_asks_for_it():
     w = program()
 

@@ -375,7 +375,7 @@ stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输
 摘要：macOS/Linux 为 `cksum` 的 `<crc>-<大小>`，Windows 为 MD5 十六进制；App 只接受 `[0-9a-f-]{1,80}`。
 stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会读走后续请求。
 
-## 单个窗口（POSIX `window`：helper 39 起支持 niri，40 起支持 KDE Plasma，41 起支持 GNOME 和 X11）
+## 单个窗口（POSIX `window`：helper 39 起支持 niri，40 起支持 KDE Plasma，41 起支持 GNOME 和 X11，42 修复切换桌面会话后 KDE 打不开）
 
 在手机上只看、只操作 Linux 电脑的一个窗口。画面来自合成器的 `org.gnome.Mutter.ScreenCast`
 （`RecordWindow`，不弹选择框，也无需授权），经 PipeWire 由 GStreamer 缩放并编码为 H.264
@@ -395,6 +395,9 @@ KWin 脚本完成，脚本通过 `callDBus` 把 JSON 结果发回 helper 自己�
 并在权限库 `kde-authorized` 表中写入 `remote-desktop` → `me.ayuilos.miffan` = `yes`。App 只会在用户在手机上
 点了「允许」之后才调用它。没有授权时 Plasma 会在电脑上弹确认框，Start 8 秒内得不到答复，`serve` 就以
 `closed not_authorized` 结束，`shots` 回 `error not_authorized`。
+从 niri 或 GNOME 注销后直接登录 Plasma（不重启）时，portal 服务可能还是为上一个桌面启动的，只有那个桌面的后端，
+Plasma 下的 RemoteDesktop 用不了。所以 helper 42 起，开 portal 会话前会先看服务进程的 `XDG_CURRENT_DESKTOP`，
+不含 KDE 时先 `systemctl --user restart xdg-desktop-portal.service`。
 
 GNOME（Wayland）上，Mutter 自己的 `org.gnome.Mutter.ScreenCast` 和 `org.gnome.Mutter.RemoteDesktop` 对普通程序开放，
 不弹框：`serve` 建一个 RemoteDesktop 会话，把 ScreenCast 会话挂在它下面（`remote-desktop-session-id`），按窗口
@@ -452,7 +455,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 41，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 42，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询
