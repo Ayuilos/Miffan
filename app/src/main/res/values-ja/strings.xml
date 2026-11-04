@@ -4284,6 +4284,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_window_gnome_install_action">インストール</string>
   <string name="workspace_screen_window_gnome_relogin">インストールしました。パソコンに再ログインすると使えます</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME は新しい拡張機能をログイン時にだけ読み込みます。画面全体でログアウトして再ログインしてから、ここに戻ってください。</string>
+  <string name="workspace_screen_window_gnome_extensions_off">このコンピュータでは GNOME のユーザー拡張機能がオフです</string>
+  <string name="workspace_screen_window_gnome_extensions_off_detail">Miffan は小さな拡張機能でウィンドウを一覧表示しますが、このコンピュータではユーザー拡張機能がすべてオフになっています。コンピュータの「拡張機能」アプリで「ユーザー拡張機能」をオンにしてから、もう一度確認してください。</string>
+  <string name="workspace_screen_window_gnome_check_again">もう一度確認</string>
   <string name="workspace_screen_window_input_dropped">ウィンドウを前面に出せなかったため、今の操作は送信していません。もう一度お試しください。</string>
   <string name="workspace_screen_window_authorize_failed">コンピュータで許可を設定できませんでした。もう一度試すか、画面全体を表示してください。</string>
 </resources>

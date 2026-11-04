@@ -585,6 +585,11 @@ class RemoteScreenVM(
         }, listed.desktops, listed.setup)
     }
 
+    /** Lists the computer's windows again now (the user changed something there). */
+    fun refreshWindows() {
+        pickerOpens.value++
+    }
+
     /** GNOME: installs the window-list extension on the computer (the user asked), then lists again. */
     fun installWindowExtension() {
         viewModelScope.launch {

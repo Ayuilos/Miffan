@@ -65,6 +65,9 @@ class LinuxHostWindowsTest {
         assertEquals(RemoteWindowSetup.INSTALL_EXTENSION, missing.setup)
         val installed = LinuxHostWindows.parse("""{"desktop":"gnome","error":"needs_extension","extension":"installed","windows":[],"workspaces":[]}""")
         assertEquals(RemoteWindowSetup.RELOGIN, installed.setup)
+        // GNOME's switch for all user extensions is off: the user turns it on; nothing is installed.
+        val off = LinuxHostWindows.parse("""{"desktop":"gnome","error":"needs_extension","extension":"disabled","windows":[],"workspaces":[]}""")
+        assertEquals(RemoteWindowSetup.EXTENSIONS_OFF, off.setup)
         assertEquals("\"\$HOME/.miffan/bin/miffan\" window install-extension", LinuxHostWindows.command("install-extension"))
     }
 

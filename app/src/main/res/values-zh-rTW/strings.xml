@@ -4282,6 +4282,9 @@
   <string name="workspace_screen_window_gnome_install_action">安裝</string>
   <string name="workspace_screen_window_gnome_relogin">已安裝，電腦重新登入後生效</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME 只在登入時載入新的擴充功能。可以在整個螢幕裡登出再登入，然後回到這裡。</string>
+  <string name="workspace_screen_window_gnome_extensions_off">這台電腦關掉了 GNOME 的使用者擴充功能</string>
+  <string name="workspace_screen_window_gnome_extensions_off_detail">Miffan 要靠一個小擴充功能列出視窗，但這台電腦關掉了所有使用者擴充功能。在電腦上打開「擴充功能」應用程式，開啟「使用者擴充功能」開關，再回來查一次。</string>
+  <string name="workspace_screen_window_gnome_check_again">再查一次</string>
   <string name="workspace_screen_window_input_dropped">沒能把視窗切到前面，剛才的操作沒有送出，請再試一次。</string>
   <string name="workspace_screen_window_authorize_failed">沒能在電腦上完成授權。可以再試一次，或改看整個螢幕。</string>
 </resources>

@@ -4289,6 +4289,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_window_gnome_install_action">安装</string>
   <string name="workspace_screen_window_gnome_relogin">装好了，电脑重新登录后生效</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME 只在登录时加载新扩展。可以在整个屏幕里注销再登录，然后回到这里。</string>
+  <string name="workspace_screen_window_gnome_extensions_off">这台电脑关掉了 GNOME 的用户扩展</string>
+  <string name="workspace_screen_window_gnome_extensions_off_detail">Miffan 要靠一个小扩展列出窗口，但这台电脑关掉了所有用户扩展。在电脑上打开「扩展」应用，打开「用户扩展」开关，再回来查一次。</string>
+  <string name="workspace_screen_window_gnome_check_again">再查一次</string>
   <string name="workspace_screen_window_input_dropped">没能把窗口切到前面，刚才的操作没有发出，请再试一次。</string>
   <string name="workspace_screen_window_authorize_failed">没能在电脑上完成授权。可以再试一次，或者改看整个屏幕。</string>
 </resources>

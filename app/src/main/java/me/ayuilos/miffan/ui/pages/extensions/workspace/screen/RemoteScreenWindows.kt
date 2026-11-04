@@ -5,6 +5,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.repository.RemoteHostDesktop
+import me.ayuilos.miffan.data.repository.RemoteWindowSetup
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -132,7 +133,7 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
             }
             when {
                 list == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
-                list.setup != null -> WindowSetupCard(list.setup, onInstall = vm::installWindowExtension,
+                list.setup != null -> WindowSetupCard(list.setup, onInstall = vm::installWindowExtension, onRefresh = vm::refreshWindows,
                     onWholeScreen = { vm.showWindow(null); onDismiss() })
                 list.choices.isEmpty() -> Text(stringResource(R.string.workspace_screen_window_none), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> {
@@ -216,17 +217,26 @@ private fun PickerRow(selected: Boolean, title: String, subtitle: String, thumbn
 
 /** What a GNOME computer needs before its windows can be listed, and the step to take. */
 @Composable
-private fun WindowSetupCard(setup: me.ayuilos.miffan.data.repository.RemoteWindowSetup, onInstall: () -> Unit, onWholeScreen: () -> Unit) {
-    val install = setup == me.ayuilos.miffan.data.repository.RemoteWindowSetup.INSTALL_EXTENSION
+private fun WindowSetupCard(setup: RemoteWindowSetup, onInstall: () -> Unit, onRefresh: () -> Unit, onWholeScreen: () -> Unit) {
+    val (icon, title, detail) = when (setup) {
+        RemoteWindowSetup.INSTALL_EXTENSION -> Triple(HugeIcons.PackageAdd, R.string.workspace_screen_window_gnome_install, R.string.workspace_screen_window_gnome_install_detail)
+        RemoteWindowSetup.RELOGIN -> Triple(HugeIcons.Logout01, R.string.workspace_screen_window_gnome_relogin, R.string.workspace_screen_window_gnome_relogin_detail)
+        RemoteWindowSetup.EXTENSIONS_OFF -> Triple(HugeIcons.Alert02, R.string.workspace_screen_window_gnome_extensions_off, R.string.workspace_screen_window_gnome_extensions_off_detail)
+    }
     Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp).clip(RoundedCornerShape(16.dp))
         .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Icon(if (install) HugeIcons.PackageAdd else HugeIcons.Logout01, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
-        Text(stringResource(if (install) R.string.workspace_screen_window_gnome_install else R.string.workspace_screen_window_gnome_relogin),
-            style = MaterialTheme.typography.titleSmall)
-        Text(stringResource(if (install) R.string.workspace_screen_window_gnome_install_detail else R.string.workspace_screen_window_gnome_relogin_detail),
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (install) Button(onClick = onInstall, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.workspace_screen_window_gnome_install_action)) }
-        else FilledTonalButton(onClick = onWholeScreen, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.workspace_screen_window_view_whole)) }
+        Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+        Text(stringResource(title), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(detail), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        when (setup) {
+            RemoteWindowSetup.INSTALL_EXTENSION ->
+                Button(onClick = onInstall, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.workspace_screen_window_gnome_install_action)) }
+            RemoteWindowSetup.RELOGIN ->
+                FilledTonalButton(onClick = onWholeScreen, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.workspace_screen_window_view_whole)) }
+            // The user turns the switch on at the computer, then asks again here.
+            RemoteWindowSetup.EXTENSIONS_OFF ->
+                FilledTonalButton(onClick = onRefresh, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.workspace_screen_window_gnome_check_again)) }
+        }
     }
 }
 

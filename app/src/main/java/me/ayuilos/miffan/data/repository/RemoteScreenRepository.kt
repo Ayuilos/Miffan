@@ -196,9 +196,10 @@ data class RemoteHostDesktop(val id: Long, val current: Boolean, val number: Int
 
 /**
  * What a computer still needs before it can list windows: GNOME's window-list extension installed
- * ([INSTALL_EXTENSION]), or a login for GNOME to load it ([RELOGIN]).
+ * ([INSTALL_EXTENSION]), a login for GNOME to load it ([RELOGIN]), or GNOME's switch for all user
+ * extensions turned back on by the user ([EXTENSIONS_OFF]; the helper leaves that switch alone).
  */
-enum class RemoteWindowSetup { INSTALL_EXTENSION, RELOGIN }
+enum class RemoteWindowSetup { INSTALL_EXTENSION, RELOGIN, EXTENSIONS_OFF }
 
 /**
  * [appsInBackground]: an app here can run showing no window (a Mac), so a window that gives no picture

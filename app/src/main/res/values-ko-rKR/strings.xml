@@ -4284,6 +4284,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_window_gnome_install_action">설치</string>
   <string name="workspace_screen_window_gnome_relogin">설치했습니다. 컴퓨터에 다시 로그인하면 적용됩니다</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME은 로그인할 때만 새 확장 기능을 불러옵니다. 전체 화면에서 로그아웃 후 다시 로그인한 다음 여기로 돌아오세요.</string>
+  <string name="workspace_screen_window_gnome_extensions_off">이 컴퓨터에서 GNOME 사용자 확장이 꺼져 있습니다</string>
+  <string name="workspace_screen_window_gnome_extensions_off_detail">Miffan은 작은 확장으로 창 목록을 가져오는데, 이 컴퓨터는 모든 사용자 확장을 꺼 두었습니다. 컴퓨터의 \'확장\' 앱에서 \'사용자 확장\'을 켠 뒤 다시 확인하세요.</string>
+  <string name="workspace_screen_window_gnome_check_again">다시 확인</string>
   <string name="workspace_screen_window_input_dropped">창을 앞으로 가져오지 못해 방금 입력은 보내지 않았습니다. 다시 시도해 주세요.</string>
   <string name="workspace_screen_window_authorize_failed">컴퓨터에서 권한을 부여하지 못했습니다. 다시 시도하거나 전체 화면을 보세요.</string>
 </resources>

@@ -4353,6 +4353,9 @@
   <string name="workspace_screen_window_gnome_install_action">Установить</string>
   <string name="workspace_screen_window_gnome_relogin">Установлено. Войдите в систему заново, чтобы оно заработало</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME загружает новые расширения только при входе. Выйдите и снова войдите на весь экран, затем вернитесь сюда.</string>
+  <string name="workspace_screen_window_gnome_extensions_off">На этом компьютере отключены пользовательские расширения GNOME</string>
+  <string name="workspace_screen_window_gnome_extensions_off_detail">Miffan получает список окон через небольшое расширение, но на этом компьютере все пользовательские расширения отключены. Включите «Пользовательские расширения» в приложении «Расширения» на компьютере и проверьте снова.</string>
+  <string name="workspace_screen_window_gnome_check_again">Проверить снова</string>
   <string name="workspace_screen_window_input_dropped">Не удалось вывести окно на передний план, поэтому ввод не отправлен. Попробуйте ещё раз.</string>
   <string name="workspace_screen_window_authorize_failed">Не удалось выдать разрешение на компьютере. Попробуйте ещё раз или откройте весь экран.</string>
 </resources>

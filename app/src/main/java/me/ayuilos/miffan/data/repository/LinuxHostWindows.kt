@@ -49,7 +49,11 @@ internal object LinuxHostWindows {
         // GNOME without the window-list extension: nothing to list until it is installed and loaded.
         if (listed.error == "needs_extension") {
             return RemoteHostWindows(emptyList(), emptyList(),
-                if (listed.extension == "installed") RemoteWindowSetup.RELOGIN else RemoteWindowSetup.INSTALL_EXTENSION,
+                when (listed.extension) {
+                    "installed" -> RemoteWindowSetup.RELOGIN
+                    "disabled" -> RemoteWindowSetup.EXTENSIONS_OFF
+                    else -> RemoteWindowSetup.INSTALL_EXTENSION
+                },
                 appsInBackground = false)
         }
         val spaces = listed.workspaces.associateBy { it.id }
