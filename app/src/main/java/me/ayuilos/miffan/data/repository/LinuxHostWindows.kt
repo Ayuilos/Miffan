@@ -131,7 +131,7 @@ internal object LinuxHostWindows {
     }
 
     /** `window shots` replies: `jpeg LENGTH` and the bytes, or `error CODE`. */
-    private class Replies(input: InputStream) {
+    internal class Replies(input: InputStream) {
         private val input = DataInputStream(BufferedInputStream(input, 64 * 1024))
 
         fun picture(): ByteArray? {

@@ -7,11 +7,13 @@ import java.io.EOFException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.Locale
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.onSubscription
 import me.rerere.cuaspace.SpaceInput
 import me.rerere.cuaspace.SpaceMediaEvent
 import me.rerere.cuaspace.SpaceVideoChannel
@@ -29,9 +31,8 @@ internal class LinuxWindowMedia(
 ) : SpaceVideoChannel {
     private val closed = AtomicBoolean()
     private val _events = MutableSharedFlow<SpaceMediaEvent>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    override val events: SharedFlow<SpaceMediaEvent> = _events
     private val input = DataInputStream(BufferedInputStream(input, 256 * 1024))
-    private val lines = LinkedBlockingQueue<String>()
+    private val lines = LinuxInputQueue()
     @Volatile private var lastKeyframeRequest = 0L
 
     /** Everything read so far, headers included. */
@@ -39,8 +40,14 @@ internal class LinuxWindowMedia(
         private set
 
     init {
-        Thread(::read, "linux-window-read").apply { isDaemon = true }.start()
         Thread(::write, "linux-window-write").apply { isDaemon = true }.start()
+    }
+
+    private val reading = AtomicBoolean()
+
+    /** Read from the first subscription on, so the `opened` line and first keyframe are not missed. */
+    override val events: SharedFlow<SpaceMediaEvent> = _events.onSubscription {
+        if (reading.compareAndSet(false, true)) Thread(::read, "linux-window-read").apply { isDaemon = true }.start()
     }
 
     private fun read() {
@@ -84,15 +91,9 @@ internal class LinuxWindowMedia(
     private fun write() {
         runCatching {
             while (true) {
-                val line = lines.take()
-                if (line === STOP) break
-                output.write(line.toByteArray(Charsets.UTF_8))
-                // Batch whatever else is already waiting into one flush.
-                while (true) {
-                    val next = lines.poll() ?: break
-                    if (next === STOP) { output.flush(); return@runCatching }
-                    output.write(next.toByteArray(Charsets.UTF_8))
-                }
+                // Whatever is waiting goes in one flush.
+                val batch = lines.take() ?: break
+                batch.forEach { output.write(it.toByteArray(Charsets.UTF_8)) }
                 output.flush()
             }
         }
@@ -115,7 +116,7 @@ internal class LinuxWindowMedia(
 
     override suspend fun closeSession() {
         if (!closed.compareAndSet(false, true)) return
-        lines.add(STOP)
+        lines.stop()
         runCatching { output.close() }
         runCatching(onClose)
     }
@@ -138,9 +139,63 @@ internal class LinuxWindowMedia(
     private companion object {
         const val MAX_LINE = 4096
         const val MAX_FRAME = 16 * 1024 * 1024
-        /** Ends the writer; compared by identity. */
-        val STOP = String(charArrayOf('\n'))
     }
+}
+
+/**
+ * Input lines waiting for `window serve`'s stdin. The helper stops reading while it focuses the window
+ * or starts its pipeline, and the SSH window then fills; input must not pile up meanwhile and replay
+ * later where the window no longer is. So consecutive moves keep only the latest, pointer input older
+ * than [maxAgeNanos] when the writer gets to it is dropped, and at most [capacity] lines wait, the oldest
+ * pointer input going first. Releases, keys, text and keyframe requests are never dropped for age: a
+ * press already sent must not stay held, and typed text does not depend on where the pointer is.
+ */
+internal class LinuxInputQueue(
+    private val capacity: Int = 256,
+    private val maxAgeNanos: Long = 1_500_000_000L,
+    private val clock: () -> Long = System::nanoTime,
+) {
+    private val lock = ReentrantLock()
+    private val added = lock.newCondition()
+    private val waiting = ArrayDeque<Pair<String, Long>>()
+    private var stopped = false
+
+    fun add(line: String) {
+        lock.withLock {
+            if (stopped) return
+            if (line.isMove() && waiting.lastOrNull()?.first?.isMove() == true) waiting.removeLast()
+            if (waiting.size >= capacity) {
+                val oldest = waiting.indexOfFirst { it.first.isPointer() }
+                waiting.removeAt(if (oldest >= 0) oldest else 0)
+            }
+            waiting.addLast(line to clock())
+            added.signalAll()
+        }
+    }
+
+    /** Everything waiting that is still worth sending, once there is any; null once stopped and empty. */
+    fun take(): List<String>? {
+        lock.withLock {
+            while (waiting.isEmpty() && !stopped) added.await()
+            if (waiting.isEmpty()) return null
+            val now = clock()
+            val lines = waiting.filter { (line, at) -> !line.isPointer() || now - at <= maxAgeNanos }.map { it.first }
+            waiting.clear()
+            return lines
+        }
+    }
+
+    /** Ends [take] once what is waiting has been taken. */
+    fun stop() {
+        lock.withLock {
+            stopped = true
+            added.signalAll()
+        }
+    }
+
+    private fun String.isMove() = startsWith("move ")
+    /** Input that lands where the pointer is: moves, presses and wheel turns. */
+    private fun String.isPointer() = isMove() || startsWith("down ") || startsWith("scroll ")
 }
 
 private fun Double.coord() = String.format(Locale.US, "%.5f", coerceIn(0.0, 1.0))

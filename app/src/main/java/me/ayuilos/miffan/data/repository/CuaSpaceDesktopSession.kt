@@ -157,7 +157,8 @@ class CuaSpaceDesktopSession internal constructor(
     }
 
     private fun resize(width: Int, height: Int) {
-        if (width <= 0 || height <= 0) return
+        // A size from the computer beyond any screen is not one to lay the page out for.
+        if (width !in 1..MAX_VIDEO_EDGE || height !in 1..MAX_VIDEO_EDGE) return
         _videoSize.value = RemoteVideoSize(width, height)
         _state.value = RemoteScreenState.Connected(name, width, height, 1)
     }
@@ -289,6 +290,7 @@ class CuaSpaceDesktopSession internal constructor(
         /** One wheel notch in the pixel deltas a browser sends. */
         const val WHEEL = 100.0
         const val CLIPBOARD_POLL_MILLIS = 1_500L
+        const val MAX_VIDEO_EDGE = 16_384
     }
 }
 
