@@ -26,7 +26,8 @@ internal fun RemoteScreenViewport(
     marker: RemoteScreenMarker? = null,
     blocked: Boolean = false,
     onBlockedTap: () -> Unit = {},
-    coveredBottom: Float = 0f,
+    /** See [RemoteScreenCanvas]; read only where it is used. */
+    coveredBottom: () -> Float = { 0f },
     zoom: RemoteScreenZoom? = null,
     failure: @Composable (RemoteScreenUiState) -> Unit,
 ) {

@@ -203,10 +203,10 @@ internal fun RemoteScreenScaffold(
     var trackpad by remember { mutableStateOf(hints.getBoolean(TRACKPAD_MODE, false)) }
     LaunchedEffect(trackpad) { hints.edit { putBoolean(TRACKPAD_MODE, trackpad) } }
     var keyboard by rememberSaveable { mutableStateOf(false) }
-    // Landscape only: where the desktop's frame ends and the keyboard overlay begins, in root pixels.
+    // Landscape only: where the desktop's frame ends and the keyboard overlay begins, in root pixels. Read
+    // only by the picture's gestures (see coveredBottom), so the keyboard's animation recomposes nothing here.
     var screenBottom by remember { mutableFloatStateOf(0f) }
     var keyboardTop by remember { mutableFloatStateOf(Float.MAX_VALUE) }
-    val keyboardCover = (screenBottom - keyboardTop).coerceAtLeast(0f)
     var menu by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     var customDialog by remember { mutableStateOf(false) }
@@ -419,7 +419,7 @@ internal fun RemoteScreenScaffold(
                     zoom = fullscreenZoom.takeIf { fullscreen },
                     marker = marker?.takeIf { awaitingApproval && !userHolds },
                     blocked = partnerActive, onBlockedTap = ::armOrTakeOver,
-                    coveredBottom = if (fullscreen && keyboard) keyboardCover else 0f) { failed ->
+                    coveredBottom = { if (fullscreen && keyboard) (screenBottom - keyboardTop).coerceAtLeast(0f) else 0f }) { failed ->
                     RemoteScreenFailureContent(
                         state = failed,
                         settingsAvailable = onSettings != null,

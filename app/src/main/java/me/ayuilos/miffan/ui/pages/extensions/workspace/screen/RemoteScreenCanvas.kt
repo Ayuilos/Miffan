@@ -31,6 +31,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,8 +94,11 @@ internal fun RemoteScreenCanvas(
     /** Touches only call [onBlockedTap] (one per tap) instead of reaching the computer. */
     blocked: Boolean = false,
     onBlockedTap: () -> Unit = {},
-    /** Pixels at the bottom of the view hidden under the keyboard; the picture can be moved above them. */
-    coveredBottom: Float = 0f,
+    /**
+     * Pixels at the bottom of the view hidden under the keyboard; the picture can be moved above them.
+     * Read where it is used, so the keyboard's animation does not recompose the page around it.
+     */
+    coveredBottom: () -> Float = { 0f },
     /** Set when the page draws the zoom buttons itself (full screen puts them beside the picture). */
     zoom: RemoteScreenZoom? = null,
 ) {
@@ -108,7 +112,8 @@ internal fun RemoteScreenCanvas(
     val input = remember(width, height, vm) {
         ScreenGestures(context, width, height, vm, scope).apply { resize(viewSize.value) }
     }
-    LaunchedEffect(input, coveredBottom) { input.cover(coveredBottom) }
+    val covered by rememberUpdatedState(coveredBottom)
+    LaunchedEffect(input) { snapshotFlow { covered() }.collect { input.cover(it) } }
     if (zoom != null) LaunchedEffect(input, zoom) {
         zoom.zoomIn = { input.zoomStep(zoomIn = true) }
         zoom.zoomOut = { input.zoomStep(zoomIn = false) }
@@ -197,7 +202,7 @@ internal fun RemoteScreenCanvas(
         macExpanded = macExpanded,
         onMacExpandedChange = { macExpanded = it },
         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
-            .padding(bottom = with(LocalDensity.current) { coveredBottom.toDp() }),
+            .padding(bottom = with(LocalDensity.current) { coveredBottom().toDp() }),
     )
     }
 }
