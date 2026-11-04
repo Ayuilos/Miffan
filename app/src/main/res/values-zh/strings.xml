@@ -4261,7 +4261,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_window_switch_desktop">切到那个桌面</string>
   <string name="workspace_screen_window_side">换窗口</string>
   <string name="workspace_screen_mode_window">单个窗口</string>
-  <string name="workspace_screen_relay">经由中继</string>
+  <string name="workspace_screen_relay">经中转</string>
   <string name="workspace_screen_desktop_current">当前桌面</string>
   <string name="workspace_screen_desktop">桌面 %1$d</string>
   <string name="workspace_screen_desktop_fullscreen">全屏 · %1$s</string>

@@ -4229,7 +4229,7 @@
   <string name="workspace_screen_window_switch_desktop">切換到那個桌面</string>
   <string name="workspace_screen_window_side">換視窗</string>
   <string name="workspace_screen_mode_window">單一視窗</string>
-  <string name="workspace_screen_relay">經由中繼</string>
+  <string name="workspace_screen_relay">經中轉</string>
   <string name="workspace_screen_desktop_current">目前桌面</string>
   <string name="workspace_screen_desktop">桌面 %1$d</string>
   <string name="workspace_screen_desktop_fullscreen">全螢幕 · %1$s</string>
