@@ -90,12 +90,24 @@ class CuaSpaceDesktopSessionTest {
         // Not in front: dropped, said once, and the next input tries again.
         assertEquals(listOf("a"), rig.channel.sent.texts())
         assertEquals(1, rig.dropped.size)
+        // The computer cannot tell: the input goes, as before there was a check.
         inFront = null
         rig.key('c')
         advanceUntilIdle()
-        assertEquals(listOf("a"), rig.channel.sent.texts())
+        assertEquals(listOf("a", "c"), rig.channel.sent.texts())
         assertEquals(3, rig.raises)
-        assertEquals(2, rig.dropped.size)
+        assertEquals(1, rig.dropped.size)
+    }
+
+    @Test fun `a desktop switch still animating is waited for before the input goes`() = runTest {
+        var asked = 0
+        // macOS reports the switch unverified; the window shows up in front on the third look.
+        val rig = Rig(this, window, raise = { error("unverified") }, front = { ++asked >= 3 })
+        rig.key('a')
+        advanceUntilIdle()
+        assertEquals(3, asked)
+        assertEquals(listOf("a"), rig.channel.sent.texts())
+        assertTrue(rig.dropped.isEmpty())
     }
 
     @Test fun `a raise that takes too long checks the front before sending`() = runTest {
@@ -107,12 +119,12 @@ class CuaSpaceDesktopSessionTest {
         assertEquals(listOf("a"), rig.channel.sent.texts())
     }
 
-    @Test fun `without a way to check the front a failed raise sends nothing`() = runTest {
+    @Test fun `without a way to check the front a failed raise still sends`() = runTest {
         val rig = Rig(this, window, raise = { error("gone") })
         rig.key('a')
         advanceUntilIdle()
-        assertTrue(rig.channel.sent.isEmpty())
-        assertEquals(1, rig.dropped.size)
+        assertEquals(listOf("a"), rig.channel.sent.texts())
+        assertTrue(rig.dropped.isEmpty())
     }
 
     @Test fun `what the computer says right after a raise is ignored`() = runTest {

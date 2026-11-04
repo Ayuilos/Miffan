@@ -240,11 +240,11 @@ class CuaSpaceDesktopSession internal constructor(
                 catch (error: CancellationException) { throw error }
                 catch (_: Exception) { false }
             } == true
-            // The input lands wherever the pointer is on the computer: after a failed or slow raise (macOS may
-            // report one unverified although it happened) it goes only once the window is seen in front.
-            val inFront = raised || try { frontCheck?.invoke() == true }
-                catch (error: CancellationException) { throw error }
-                catch (_: Exception) { false }
+            // The input lands wherever the pointer is on the computer: after a failed or slow raise it goes
+            // only once the window is seen in front. macOS reports a raise that switched desktops unverified
+            // although it happened, and the switch animates, so the front is asked a few times before giving
+            // up; when the computer cannot tell at all, the input goes as it did before there was a check.
+            val inFront = raised || frontAfterRaise()
             synchronized(this@CuaSpaceDesktopSession) {
                 raising = false
                 raisedAt = clock()
@@ -260,6 +260,17 @@ class CuaSpaceDesktopSession internal constructor(
             }
         }
         return true
+    }
+
+    /** Whether [window] is in front after a raise that did not say it worked; true when that cannot be told. */
+    private suspend fun frontAfterRaise(): Boolean {
+        val check = frontCheck ?: return true
+        repeat(FRONT_RETRIES) { attempt ->
+            if (attempt > 0) delay(FRONT_RETRY_MILLIS)
+            val front = try { check() } catch (error: CancellationException) { throw error } catch (_: Exception) { null }
+            if (front != false) return true
+        }
+        return false
     }
 
     override fun sendClipboard(text: String) {
@@ -287,6 +298,9 @@ class CuaSpaceDesktopSession internal constructor(
         const val RAISE_TIMEOUT_MILLIS = 3_000L
         const val RAISE_SETTLE_MILLIS = 1_500L
         const val FRONT_STALE_MILLIS = 5_000L
+        /** A desktop switch takes about a second to finish: asked at once, then 4 more times 400 ms apart. */
+        const val FRONT_RETRIES = 5
+        const val FRONT_RETRY_MILLIS = 400L
         /** One wheel notch in the pixel deltas a browser sends. */
         const val WHEEL = 100.0
         const val CLIPBOARD_POLL_MILLIS = 1_500L
