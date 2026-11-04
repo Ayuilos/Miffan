@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
 #                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=47
+MIFFAN_HELPER_VERSION=48
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1593,7 +1593,8 @@ def kde_point(view, nx, ny):
     Where (nx, ny), 0..1 of the stream, lands: for the window stream, in global logical pixels (origin
     0, 0); for the portal stream, relative to its output's origin.
     """
-    x, y, w, h = view["rect"]
+    # The window stream maps against the place its frames on the phone show (see serve_kde_window).
+    x, y, w, h = view.get("input_rect") or view["rect"]
     ox, oy = view["origin"]
     return x - ox + nx * w, y - oy + ny * h
 
@@ -3463,15 +3464,23 @@ class FrameQueue:
             self.cond.notify_all()
 
 
+def area_words(area):
+    """ " X Y W H" for where a frame lies on the computer's screen (logical pixels), or "" when unknown."""
+    return " %.2f %.2f %.2f %.2f" % tuple(area) if area else ""
+
+
 class FrameWriter:
     """
     Writes frame headers and bytes. The epoch goes up, with a "geometry" line, when a frame of a new
     size actually comes out (not when the source's size changed: frames of the old size may still be in
-    the encoder), so the decoder resets once per real change.
+    the encoder), so the decoder resets once per real change. [area], when given, says where the frames
+    now lie on the screen (added to the line, and handed to [on_size]): a window stream that grows with
+    a menu may also move its origin, and the phone keeps its pointer on the same spot of the screen.
     """
 
-    def __init__(self, size):
+    def __init__(self, size, area=None, on_size=None):
         self.size = tuple(size)
+        self.area, self.on_size = area, on_size
         self.seq = 0
         self.epoch = 0
         self.got = False
@@ -3480,7 +3489,10 @@ class FrameWriter:
         if (width, height) != self.size:
             self.size = (width, height)
             self.epoch += 1
-            emit("geometry %d %d" % self.size)
+            area = self.area() if self.area else None
+            emit("geometry %d %d%s" % (width, height, area_words(area)))
+            if self.on_size:
+                self.on_size(area)
         self.seq += 1
         if not self.got:
             self.got = True
@@ -3488,7 +3500,8 @@ class FrameWriter:
         emit("frame %d %d %d %d %d %d %d" % (self.seq, self.epoch, key, width, height, ts, len(data)), data)
 
 
-def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs, setup, size, cleanup, restart=None, kicks=None):
+def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs, setup, size, cleanup, restart=None, kicks=None,
+               area=None, on_size=None):
     """
     Encodes what [description] produces (ending in a NV12 capsfilter named "size", after a pipewiresrc named
     "src") and writes it to stdout, while stdin lines feed [inputs]. [setup] gets the pipeline and a
@@ -3497,7 +3510,8 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
     way pipewiresrc cannot follow ("no more input formats": it holds on to the size it first agreed);
     the stream then goes on from a new pipeline, the phone seeing only a new keyframe. [kicks], a list,
     gets a function that does the same at once (the caller knows the size is about to change: KWin
-    renegotiating a window stream's size may also stall without an error).
+    renegotiating a window stream's size may also stall without an error). [area] and [on_size]: see
+    FrameWriter.
     """
     loop = GLib.MainLoop()
     state = {"closed": False}
@@ -3532,7 +3546,7 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
 
     # About half a second of frames may wait for the SSH channel; more, and it starts over at a keyframe.
     frames = FrameQueue(max(4, fps // 2), lambda: GLib.idle_add(keyframe))
-    writer = FrameWriter(size)
+    writer = FrameWriter(size, area, on_size)
 
     def on_sample(appsink):
         sample = appsink.emit("pull-sample")
@@ -3658,7 +3672,7 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
         wake.set()
         GLib.idle_add(loop.quit)
 
-    emit("opened %d %d %s" % (size[0], size[1], encoder))
+    emit("opened %d %d %s%s" % (size[0], size[1], encoder, area_words(area() if area else None)))
     threading.Thread(target=write_frames, daemon=True).start()
     current["pipeline"].set_state(Gst.State.PLAYING)
     GLib.timeout_add(2000, inputs.watch_lock)
@@ -3831,7 +3845,11 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
     follower = []
     casts = [cast]
     kicks = []
-    streamed = {"size": tuple(view["rect"][2:4]), "timer": None}
+    # The place the current stream shows (set when it starts) and the place input maps to: that one
+    # changes when frames of a new size actually go out, so a tap the phone made on the old picture
+    # still lands where it saw it.
+    streamed = {"size": tuple(view["rect"][2:4]), "rect": view["rect"], "timer": None}
+    view["input_rect"] = view["rect"]
 
     def resized():
         """
@@ -3840,7 +3858,11 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
         stalls. A new stream at the new size is quicker and sure; changes within 150 ms make one.
         """
         size = tuple(view["rect"][2:4])
-        if size == streamed["size"] or not kicks:
+        if size == streamed["size"]:
+            # Only moved: the picture moved with it.
+            streamed["rect"] = view["input_rect"] = view["rect"]
+            return
+        if not kicks:
             return
         if streamed["timer"]:
             GLib.source_remove(streamed["timer"])
@@ -3868,7 +3890,7 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
         view["node"] = new.node
         follower[0].refresh_soon()
         r = view["rect"]
-        streamed["size"] = (r[2], r[3])
+        streamed["size"], streamed["rect"] = (r[2], r[3]), r
         return window_pipeline(new.node, *scaled(r[2], r[3], limit))
 
     def cleanup():
@@ -3877,7 +3899,8 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
         casts[-1].stop()
         wl.close()
     run_stream(Gio, GLib, Gst, GstVideo, window_pipeline(cast.node, w, h),
-               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup, restart=restart, kicks=kicks)
+               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup, restart=restart, kicks=kicks,
+               area=lambda: streamed["rect"], on_size=lambda a: view.__setitem__("input_rect", a or view["rect"]))
 
 
 # ---------- commands ----------
