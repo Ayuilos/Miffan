@@ -4321,4 +4321,5 @@
   <string name="workspace_screen_window_gnome_relogin">Installed. Sign in to the computer again to use it</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME loads new extensions only when you sign in. You can sign out and back in on the whole screen, then come back here.</string>
   <string name="workspace_screen_window_input_dropped">Couldn\'t bring the window to the front, so that input wasn\'t sent. Try again.</string>
+  <string name="workspace_screen_window_authorize_failed">Couldn\'t grant the permission on the computer. Try again, or view the whole screen.</string>
 </resources>

@@ -270,6 +270,7 @@ internal fun RemoteScreenScaffold(
                 when (notice) {
                     RemoteScreenNotice.TextNotTypable -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_text_unsupported))
                     RemoteScreenNotice.WindowInputDropped -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_window_input_dropped))
+                    RemoteScreenNotice.WindowAuthorizeFailed -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_window_authorize_failed))
                     is RemoteScreenNotice.ClipboardFailed -> snackbar.showSnackbar(resources.getString(R.string.workspace_screen_paste_failed))
                     is RemoteScreenNotice.MacShortcutFailed -> snackbar.showSnackbar(resources.getString(
                         if (notice.cuaMissing) R.string.workspace_screen_mac_shortcut_needs_cua else R.string.workspace_screen_mac_shortcut_failed))

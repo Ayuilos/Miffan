@@ -1,6 +1,11 @@
 package me.ayuilos.miffan.data.repository
 
+import io.mockk.every
+import io.mockk.mockk
 import me.rerere.cuaspace.SpaceInput
+import me.rerere.cuaspace.SpaceWindow
+import me.rerere.workspace.RemoteWorkspaceSession
+import me.rerere.workspace.WorkspaceCommandResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -68,5 +73,21 @@ class LinuxHostWindowsTest {
             LinuxHostWindows.command("serve", "7", "1600", "30", "5000"))
         assertThrows(IllegalArgumentException::class.java) { LinuxHostWindows.command("serve", "7; rm -rf ~") }
         assertThrows(IllegalArgumentException::class.java) { LinuxHostWindows.command("exec") }
+    }
+
+    @Test fun `resizing tells a failure from a size the computer does not report`() {
+        fun ssh(exit: Int, stdout: String, timedOut: Boolean = false) = mockk<RemoteWorkspaceSession>().also {
+            every { it.execute(any(), any(), any(), any(), any()) } returns WorkspaceCommandResult(exit, stdout, "", timedOut = timedOut)
+        }
+        val window = SpaceWindow(id = "7", epoch = 0, app = "", appId = "", pid = 0, title = "", x = 0.0, y = 0.0, width = 800.0,
+            height = 600.0, state = SpaceWindow.State.NORMAL, available = true, limitation = null, focused = false, zOrder = 0)
+        assertEquals(640.0 to 900.0, LinuxHostWindows.resize(ssh(0, "640 900\n"), window, 640.0, 900.0))
+        // niri resizes without saying to what.
+        assertNull(LinuxHostWindows.resize(ssh(0, ""), window, 640.0, 900.0))
+        assertThrows(IllegalStateException::class.java) { LinuxHostWindows.resize(ssh(1, ""), window, 640.0, 900.0) }
+        assertThrows(IllegalStateException::class.java) { LinuxHostWindows.resize(ssh(0, "", timedOut = true), window, 640.0, 900.0) }
+        assertEquals(500.0 to 400.0, LinuxHostWindows.parseSize("note\n500 400\n"))
+        assertNull(LinuxHostWindows.parseSize("0 400"))
+        assertNull(LinuxHostWindows.parseSize("wide 400"))
     }
 }

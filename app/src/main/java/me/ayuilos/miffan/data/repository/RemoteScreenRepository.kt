@@ -1052,6 +1052,7 @@ class RemoteScreenRepository(
         withHostDesktop(workspaceId) { client, _ -> client.activateWindow(window) }
     }
 
+    /** The size [window] got, or null when the computer does not say; throws when resizing failed. */
     suspend fun resizeHostWindow(workspaceId: String, window: SpaceWindow, width: Double, height: Double): Pair<Double, Double>? {
         if (workspaceId in linuxWindowHosts) {
             return withContext(Dispatchers.IO) { withRemote(workspaceId) { LinuxHostWindows.resize(it, window, width, height) } }

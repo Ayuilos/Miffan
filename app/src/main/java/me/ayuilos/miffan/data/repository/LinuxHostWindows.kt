@@ -99,12 +99,21 @@ internal object LinuxHostWindows {
         ssh.execute(command("focus", window.id), timeoutMillis = 10_000)
     }
 
-    /** Sets [window]'s size in logical pixels; the size it got, or null. */
+    /**
+     * Sets [window]'s size in logical pixels; the size it got, or null when the computer does not say
+     * (niri sizes windows without telling). Throws when it failed.
+     */
     fun resize(ssh: RemoteWorkspaceSession, window: SpaceWindow, width: Double, height: Double): Pair<Double, Double>? {
         val result = ssh.execute(command("resize", window.id, width.toInt().coerceAtLeast(1).toString(),
             height.toInt().coerceAtLeast(1).toString()), timeoutMillis = 10_000)
-        if (result.exitCode != 0 || result.timedOut) return null
-        val (w, h) = result.stdout.trim().split(' ').mapNotNull(String::toDoubleOrNull).takeIf { it.size == 2 } ?: return null
+        check(result.exitCode == 0 && !result.timedOut) { "Resizing the window failed" }
+        return parseSize(result.stdout)
+    }
+
+    /** `resize`'s `W H`, from its last line; null when it printed none. */
+    internal fun parseSize(stdout: String): Pair<Double, Double>? {
+        val (w, h) = stdout.trim().lines().last().trim().split(' ').mapNotNull(String::toDoubleOrNull)
+            .takeIf { it.size == 2 && it.all { size -> size > 0 } } ?: return null
         return w to h
     }
 

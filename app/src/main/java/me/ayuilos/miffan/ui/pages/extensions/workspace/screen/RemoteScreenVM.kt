@@ -102,6 +102,8 @@ sealed interface RemoteScreenNotice {
     data class StreamOnMeteredNetwork(val quality: RemoteScreenQuality, val custom: RemoteStreamCustom) : RemoteScreenNotice
     /** The approved Windows firewall change was refused or did not verify; nothing reconnects. */
     data class FirewallFailed(val detail: String?) : RemoteScreenNotice
+    /** The computer refused or failed to grant the window permission the user agreed to (KDE). */
+    data object WindowAuthorizeFailed : RemoteScreenNotice
     /** The shown window could not be brought to the front, so input meant for it was not sent. */
     data object WindowInputDropped : RemoteScreenNotice
 }
@@ -522,9 +524,7 @@ class RemoteScreenVM(
                 runCatching {
                     repository.hostWindowThumbnails(args.workspaceId, due.map { it.window }).collect { (window, bytes) ->
                         val image = bytes?.let {
-                            withContext(Dispatchers.Default) {
-                                BitmapFactory.decodeByteArray(it, 0, it.size)?.takeUnless { bitmap -> bitmap.isBlank() }?.asImageBitmap()
-                            }
+                            withContext(Dispatchers.Default) { decodeThumbnail(it)?.takeUnless { bitmap -> bitmap.isBlank() }?.asImageBitmap() }
                         }
                         val at = SystemClock.elapsedRealtime()
                         // A failed picture keeps the last good one; a real picture means the window is shown.
@@ -662,7 +662,10 @@ class RemoteScreenVM(
             val granted = runCatching { repository.authorizeHostWindows(args.workspaceId) }
                 .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Authorizing windows failed", it) }
                 .getOrDefault(false)
-            if (!granted) return@launch
+            if (!granted) {
+                _notices.tryEmit(RemoteScreenNotice.WindowAuthorizeFailed)
+                return@launch
+            }
             _windowIssue.value = null
             reconnect()
         }
@@ -688,9 +691,10 @@ class RemoteScreenVM(
         viewModelScope.launch {
             val height = window.height.coerceIn(FIT_MIN_HEIGHT, FIT_MAX_HEIGHT)
             val width = (height * aspect).coerceAtLeast(FIT_MIN_WIDTH)
+            // A size the computer does not report (niri) still counts: the call itself said it worked.
             runCatching { repository.resizeHostWindow(args.workspaceId, window, width, height) }
                 .onSuccess { _fittedFrom.value = window.width to window.height }
-                .onFailure { Log.w(TAG, "Resizing the window failed", it) }
+                .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Resizing the window failed", it) }
         }
     }
 
@@ -1265,6 +1269,32 @@ internal class RemoteVideoFrames {
     // A page keeps the picture as a small thumbnail of the computer.
     private companion object { const val THUMBNAIL_EDGE = 640 }
 }
+
+/**
+ * A window's picture from the computer, decoded no larger than the picker needs: its size is read first,
+ * so a picture claiming to be huge is refused rather than decoded.
+ */
+private fun decodeThumbnail(bytes: ByteArray): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    val sample = thumbnailSampleSize(bounds.outWidth, bounds.outHeight) ?: return null
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+}
+
+/**
+ * The power of two to shrink a [width]×[height] picture by so its long side stays near [THUMBNAIL_DECODE_EDGE];
+ * null for a size no window has.
+ */
+internal fun thumbnailSampleSize(width: Int, height: Int): Int? {
+    if (width !in 1..MAX_THUMBNAIL_SOURCE_EDGE || height !in 1..MAX_THUMBNAIL_SOURCE_EDGE) return null
+    var sample = 1
+    while (maxOf(width, height) / (sample * 2) >= THUMBNAIL_DECODE_EDGE) sample *= 2
+    return sample
+}
+
+/** The picker shows a window's picture 76×50dp; this keeps it sharp on a dense screen. */
+private const val THUMBNAIL_DECODE_EDGE = 320
+private const val MAX_THUMBNAIL_SOURCE_EDGE = 16_384
 
 /** True when a capture shows nothing: every sampled pixel black or transparent. */
 private fun android.graphics.Bitmap.isBlank(): Boolean {

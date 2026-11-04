@@ -48,6 +48,15 @@ class RemoteWindowThumbnailsTest {
         assertEquals(listOf("back"), dueThumbnails(windows, thumbnails, open = true, now = now).map { it.window.id })
     }
 
+    @Test fun `pictures decode at about the picker's size and absurd sizes not at all`() {
+        assertEquals(1, thumbnailSampleSize(320, 200))
+        assertEquals(1, thumbnailSampleSize(639, 400))
+        assertEquals(2, thumbnailSampleSize(640, 400))
+        assertEquals(4, thumbnailSampleSize(400, 1600))
+        assertEquals(null, thumbnailSampleSize(-1, -1))
+        assertEquals(null, thumbnailSampleSize(100_000, 10))
+    }
+
     @Test fun `with the picker closed only the desktop in front's new windows are taken`() {
         val windows = listOf(hosted("new"), hosted("elsewhere", current = false), hosted("failed"), hosted("stale"))
         val thumbnails = mapOf(

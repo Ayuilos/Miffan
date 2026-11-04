@@ -4285,4 +4285,5 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_window_gnome_relogin">インストールしました。パソコンに再ログインすると使えます</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME は新しい拡張機能をログイン時にだけ読み込みます。画面全体でログアウトして再ログインしてから、ここに戻ってください。</string>
   <string name="workspace_screen_window_input_dropped">ウィンドウを前面に出せなかったため、今の操作は送信していません。もう一度お試しください。</string>
+  <string name="workspace_screen_window_authorize_failed">コンピュータで許可を設定できませんでした。もう一度試すか、画面全体を表示してください。</string>
 </resources>
