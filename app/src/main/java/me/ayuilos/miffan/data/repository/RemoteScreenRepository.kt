@@ -179,18 +179,17 @@ data class RemoteCuaUpdateCheck(
     val error: String? = null,
 )
 
-/** A desktop viewer bound to a workspace's SSH lease. Call [RemoteDesktopSession.start] once. */
 /**
  * A window of a computer that shares its desktop, with the desktop (macOS Space) it is on. [hidden]
  * means the app runs without showing it (or it is minimized); known only on the desktop in front.
  */
 data class RemoteHostWindow(val window: SpaceWindow, val desktop: Long?, val current: Boolean, val hidden: Boolean)
 
-/** A desktop's name in the picker; [current] is the one in front on the computer. */
 /**
  * A desktop (macOS Space) holding listed windows: its [number] among the display's desktops, or a
  * [fullscreen] app's own; [display] counts from 1 when the computer has several. No number and not
- * full screen: the desktop in front, when the order of desktops is unknown.
+ * full screen: the desktop in front, when the order of desktops is unknown. [current] is the one in
+ * front on the computer.
  */
 data class RemoteHostDesktop(val id: Long, val current: Boolean, val number: Int? = null, val fullscreen: Boolean = false,
     val app: String? = null, val display: Int? = null)
@@ -208,12 +207,16 @@ enum class RemoteWindowSetup { INSTALL_EXTENSION, RELOGIN }
 data class RemoteHostWindows(val windows: List<RemoteHostWindow>, val desktops: List<RemoteHostDesktop>,
     val setup: RemoteWindowSetup? = null, val appsInBackground: Boolean = true)
 
-/** cua's own windows: the agent pointer overlay and the capture service. */
+/** How many window pictures a Mac is asked for at once. */
 private const val THUMBNAIL_PARALLEL = 3
 /** A Linux window's picture in the picker; one takes about a third of a second there. */
 private const val LINUX_THUMBNAIL_EDGE = 640
-// A window's picture takes 2–4 seconds on a Mac (more for another desktop); an app showing no window never gives one.
+/**
+ * A window's picture takes 2–4 seconds on a Mac and longer for one on another desktop, so each gets 10 s
+ * on purpose (not the 6 s first planned); an app showing no window never gives one.
+ */
 private const val THUMBNAIL_TIMEOUT_MILLIS = 10_000L
+/** cua's own windows (the agent pointer overlay and the capture service) and the login window. */
 private val HIDDEN_WINDOW_APPS = setOf("Cua Driver", "CuaDriver", "cua-spacesd", "Cua Spaces", "loginwindow")
 
 /**
@@ -243,6 +246,7 @@ private val PANEL_APPS = setOf("Open and Save Panel Service", "com.apple.appkit.
 /** The computer does not share its desktop through cua-spacesd, so single windows cannot be shown. */
 class HostWindowsUnavailableException : IllegalStateException("This computer does not share single windows")
 
+/** A desktop viewer bound to a workspace's SSH lease. Call [RemoteDesktopSession.start] once. */
 class RemoteScreenConnection internal constructor(
     val hostId: String,
     val platform: RemoteScreenPlatform,

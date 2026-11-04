@@ -70,7 +70,6 @@ import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Tick02
 
 // Experimental single-window view (prototype: https://claude.ai/artifact/NLejm5DSEHRWXoP2FT7QaA).
-// Copy is not localized yet.
 
 /** What is shown and the way to change it, right above the picture. */
 @Composable
