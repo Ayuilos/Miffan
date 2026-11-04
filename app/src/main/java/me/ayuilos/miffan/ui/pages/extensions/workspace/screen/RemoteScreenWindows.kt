@@ -8,6 +8,8 @@ import me.ayuilos.miffan.data.repository.RemoteHostDesktop
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -243,7 +246,16 @@ private fun AppBadge(app: String, modifier: Modifier = Modifier) {
 internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIssue, onPick: () -> Unit, modifier: Modifier = Modifier) {
     val target by vm.target.collectAsStateWithLifecycle()
     val app = target?.app?.ifBlank { null } ?: stringResource(R.string.workspace_screen_window_this_window)
-    Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(20.dp),
+    // The card takes every touch its buttons leave: one falling through would click the computer under it.
+    Column(modifier.fillMaxSize().pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false).consume()
+            do {
+                val event = awaitPointerEvent()
+                event.changes.forEach { it.consume() }
+            } while (event.changes.any { it.pressed })
+        }
+    }.background(MaterialTheme.colorScheme.surfaceContainerLow).padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         val (icon, title, detail) = when (issue) {
             RemoteWindowIssue.MINIMIZED -> Triple(HugeIcons.Minimize01, stringResource(R.string.workspace_screen_window_issue_minimized, app), stringResource(R.string.workspace_screen_window_issue_minimized_detail))
