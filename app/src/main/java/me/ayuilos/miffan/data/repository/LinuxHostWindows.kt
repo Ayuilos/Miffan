@@ -24,7 +24,7 @@ internal object LinuxHostWindows {
 
     /** The helper's `window` command with [args]: a fixed operation, then window ids and numbers only. */
     fun command(operation: String, vararg args: String): String {
-        require(operation in setOf("probe", "list", "focus", "resize", "shots", "serve", "authorize"))
+        require(operation in setOf("probe", "list", "focus", "resize", "shots", "serve", "authorize", "install-extension"))
         require(args.all { it.matches(ARGUMENT) })
         return (listOf("\"\$HOME/.miffan/bin/miffan\" window", operation) + args).joinToString(" ")
     }
@@ -46,6 +46,11 @@ internal object LinuxHostWindows {
 
     internal fun parse(text: String): RemoteHostWindows {
         val listed = json.decodeFromString<Listed>(text)
+        // GNOME without the window-list extension: nothing to list until it is installed and loaded.
+        if (listed.error == "needs_extension") {
+            return RemoteHostWindows(emptyList(), emptyList(),
+                if (listed.extension == "installed") RemoteWindowSetup.RELOGIN else RemoteWindowSetup.INSTALL_EXTENSION)
+        }
         val spaces = listed.workspaces.associateBy { it.id }
         val windows = listed.windows
             .sortedWith(compareBy({ spaces[it.workspace]?.id != listed.current }, { !it.focused }, { spaces[it.workspace]?.index ?: Int.MAX_VALUE }))
@@ -72,6 +77,12 @@ internal object LinuxHostWindows {
                     display = (outputs.indexOf(space.output) + 1).takeIf { outputs.size > 1 && it > 0 })
             }
         return RemoteHostWindows(windows, desktops)
+    }
+
+    /** GNOME: installs the window-list extension; GNOME loads it at the next login. Whether it was written. */
+    fun installExtension(ssh: RemoteWorkspaceSession): Boolean {
+        val result = ssh.execute(command("install-extension"), timeoutMillis = 30_000)
+        return result.exitCode == 0 && !result.timedOut
     }
 
     /**
@@ -159,6 +170,8 @@ internal object LinuxHostWindows {
         val workspaces: List<Workspace> = emptyList(),
         val current: Long? = null,
         val outputs: List<String> = emptyList(),
+        val error: String? = null,
+        val extension: String? = null,
     )
 
     @Serializable

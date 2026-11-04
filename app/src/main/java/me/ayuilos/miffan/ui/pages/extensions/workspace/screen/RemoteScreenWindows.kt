@@ -59,7 +59,9 @@ import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.Layers01
 import me.rerere.hugeicons.stroke.LockComputer
 import me.rerere.hugeicons.stroke.LockKeyhole
+import me.rerere.hugeicons.stroke.Logout01
 import me.rerere.hugeicons.stroke.Minimize01
+import me.rerere.hugeicons.stroke.PackageAdd
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Tick02
 
@@ -127,6 +129,8 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
             }
             when {
                 list == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
+                list.setup != null -> WindowSetupCard(list.setup, onInstall = vm::installWindowExtension,
+                    onWholeScreen = { vm.showWindow(null); onDismiss() })
                 list.choices.isEmpty() -> Text(stringResource(R.string.workspace_screen_window_none), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> {
                 val resources = LocalResources.current
@@ -172,7 +176,7 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
                 }
             }
             // A Linux computer redraws only windows on its screen, so it brings the chosen one there.
-            Text(stringResource(if (platform == RemoteScreenPlatform.LINUX) R.string.workspace_screen_window_footer_linux
+            if (list?.setup == null) Text(stringResource(if (platform == RemoteScreenPlatform.LINUX) R.string.workspace_screen_window_footer_linux
                 else R.string.workspace_screen_window_footer),
                 Modifier.padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 16.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -204,6 +208,22 @@ private fun PickerRow(selected: Boolean, title: String, subtitle: String, thumbn
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (selected) Icon(HugeIcons.Tick02, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+    }
+}
+
+/** What a GNOME computer needs before its windows can be listed, and the step to take. */
+@Composable
+private fun WindowSetupCard(setup: me.ayuilos.miffan.data.repository.RemoteWindowSetup, onInstall: () -> Unit, onWholeScreen: () -> Unit) {
+    val install = setup == me.ayuilos.miffan.data.repository.RemoteWindowSetup.INSTALL_EXTENSION
+    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp).clip(RoundedCornerShape(16.dp))
+        .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(if (install) HugeIcons.PackageAdd else HugeIcons.Logout01, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+        Text(stringResource(if (install) R.string.workspace_screen_window_gnome_install else R.string.workspace_screen_window_gnome_relogin),
+            style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(if (install) R.string.workspace_screen_window_gnome_install_detail else R.string.workspace_screen_window_gnome_relogin_detail),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (install) Button(onClick = onInstall, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.workspace_screen_window_gnome_install_action)) }
+        else FilledTonalButton(onClick = onWholeScreen, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.workspace_screen_window_view_whole)) }
     }
 }
 

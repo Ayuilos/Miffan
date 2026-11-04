@@ -4282,4 +4282,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_window_issue_authorize">让手机直接查看这台电脑的窗口？</string>
   <string name="workspace_screen_window_issue_authorize_detail">KDE 需要授权一次。之后 Miffan 会获得 KDE 的远程桌面权限，显示和操作窗口时不用再在电脑上点确认。</string>
   <string name="workspace_screen_window_authorize_action">允许</string>
+  <string name="workspace_screen_window_gnome_install">要先在这台 GNOME 电脑上装一个小扩展</string>
+  <string name="workspace_screen_window_gnome_install_detail">GNOME 不让别的程序列出它的窗口。Miffan 会装一个只用来列出和切换窗口的扩展，电脑重新登录后生效。</string>
+  <string name="workspace_screen_window_gnome_install_action">安装</string>
+  <string name="workspace_screen_window_gnome_relogin">装好了，电脑重新登录后生效</string>
+  <string name="workspace_screen_window_gnome_relogin_detail">GNOME 只在登录时加载新扩展。可以在整个屏幕里注销再登录，然后回到这里。</string>
 </resources>

@@ -128,7 +128,8 @@ data class RemoteScreenArgs(val workspaceId: String)
 data class RemoteWindowChoice(val window: SpaceWindow, val thumbnail: ImageBitmap?, val desktop: Long?, val current: Boolean,
     val background: Boolean)
 
-data class RemoteWindowList(val choices: List<RemoteWindowChoice>, val desktops: List<RemoteHostDesktop>)
+data class RemoteWindowList(val choices: List<RemoteWindowChoice>, val desktops: List<RemoteHostDesktop>,
+    val setup: me.ayuilos.miffan.data.repository.RemoteWindowSetup? = null)
 
 /** Why the shown window has no picture. */
 enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP, LOCKED, NOT_AUTHORIZED }
@@ -528,7 +529,16 @@ class RemoteScreenVM(
                 }
             }
             RemoteWindowChoice(hosted.window, thumb?.image, hosted.desktop, hosted.current, background)
-        }, listed.desktops)
+        }, listed.desktops, listed.setup)
+    }
+
+    /** GNOME: installs the window-list extension on the computer (the user asked), then lists again. */
+    fun installWindowExtension() {
+        viewModelScope.launch {
+            runCatching { repository.installHostWindowExtension(args.workspaceId) }
+                .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Installing the window extension failed", it) }
+            pickerOpens.value++
+        }
     }
 
     /**

@@ -375,7 +375,7 @@ stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输
 摘要：macOS/Linux 为 `cksum` 的 `<crc>-<大小>`，Windows 为 MD5 十六进制；App 只接受 `[0-9a-f-]{1,80}`。
 stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会读走后续请求。
 
-## 单个窗口（POSIX `window`，helper 39 起支持 niri，40 起支持 KDE Plasma）
+## 单个窗口（POSIX `window`：helper 39 起支持 niri，40 起支持 KDE Plasma，41 起支持 GNOME 和 X11）
 
 在手机上只看、只操作 Linux 电脑的一个窗口。画面来自合成器的 `org.gnome.Mutter.ScreenCast`
 （`RecordWindow`，不弹选择框，也无需授权），经 PipeWire 由 GStreamer 缩放并编码为 H.264
@@ -396,16 +396,37 @@ KWin 脚本完成，脚本通过 `callDBus` 把 JSON 结果发回 helper 自己�
 点了「允许」之后才调用它。没有授权时 Plasma 会在电脑上弹确认框，Start 8 秒内得不到答复，`serve` 就以
 `closed not_authorized` 结束，`shots` 回 `error not_authorized`。
 
+GNOME（Wayland）上，Mutter 自己的 `org.gnome.Mutter.ScreenCast` 和 `org.gnome.Mutter.RemoteDesktop` 对普通程序开放，
+不弹框：`serve` 建一个 RemoteDesktop 会话，把 ScreenCast 会话挂在它下面（`remote-desktop-session-id`），按窗口
+`RecordWindow`。Mutter 给的缓冲区和显示器一样大，窗口只占其中 `GstVideoCropMeta` 标出的区域（PyGObject 读不了
+这个 meta 的字段，所以从它的 C 结构里读），helper 据此用 `videocrop` 裁剪。帧走共享内存（`video/x-raw`），
+因为 Mutter 可能在流中途更换 DMA-BUF 修饰符，GL 导入会拒绝；也不在探针里固定尺寸（会让 pipewiresrc 在停止时死锁）。
+输入用同一个会话：`NotifyPointerMotionAbsolute` 用窗口自己的逻辑像素（扩展报告的缓冲区大小），按键码、离散滚轮；
+ASCII 文本用 keysym，其他文本经会话的剪贴板（`EnableClipboard`、`SetSelection`、响应 `SelectionTransfer`）后按
+Ctrl+V。Mutter 的虚拟键盘和指针在第一次使用时才创建，并吞掉那次事件，所以第一次之前先轻点一下 Shift，或先移动一次指针。
+GNOME 不让普通程序列出窗口（`org.gnome.Shell.Introspect` 只对白名单开放），由 helper 安装的小扩展
+`miffan-windows@ayuilos.me`（`install-extension`）在会话总线上以 `me.ayuilos.Miffan.Windows` 提供 `List`、
+`Activate`（会先退出概览）和 `Resize`。GNOME 只在登录时加载新扩展，所以安装后要重新登录一次；在此之前 `list`
+返回 `{"error":"needs_extension","extension":"missing"|"installed"}`，App 据此提示安装或重新登录。
+
+X11 会话（XFCE、Cinnamon、MATE，以及运行在 Xorg 上的 GNOME 或 KDE，即任何遵循 EWMH 的窗口管理器）上，helper 通过
+ctypes 直接调用 libX11 和 libXtst，不依赖 xdotool 等工具：用 `_NET_CLIENT_LIST_STACKING` 等属性列出窗口，用
+`_NET_ACTIVE_WINDOW` 和 `_NET_MOVERESIZE_WINDOW` 客户端消息聚焦、改尺寸，用 `ximagesrc xid=` 录窗口（有合成器时被遮挡的
+窗口也能录），用 XTest 注入输入。键盘映射里没有的字符会临时借一个空闲键码。窗口最小化时管线暂停；另外装了一个忽略
+X 错误的处理函数，因为 Xlib 默认遇到错误就退出进程，而窗口在 ximagesrc 读取时消失会触发这种错误。没有 h264parse 时，
+x264enc 用 `repeat-headers=1` 自己重复 SPS/PPS。
+
 程序是
 内嵌在 helper 里的 Python，需要 `python3` 和 PyGObject（Gst、GstVideo）。macOS 上、没有图形会话、
 或者没有 python3 时，`probe` 输出 `{"supported":false}` 并退出 0，其他子命令退出 1。
 
 | 子命令 | 输出 |
 |---|---|
-| `probe` | 一行 JSON：`supported`、`desktop`（`"niri"`、`"kde"` 或 null）、`encoder`、`capture`、`input`（niri 时是 `/dev/uinput` 是否可写，KDE 总为 true）；KDE 另有 `authorized` |
+| `probe` | 一行 JSON：`supported`、`desktop`（`"niri"`、`"kde"`、`"gnome"`、`"x11"` 或 null）、`encoder`、`capture`、`input`（niri 时是 `/dev/uinput` 是否可写，KDE 总为 true）；KDE 另有 `authorized`，GNOME 另有 `extension`（`active`、`installed`、`missing`） |
 | `list` | 一行 JSON：`windows[]`（`id` 字符串、`pid`、`app` 为 desktop 文件里按 LANG 取的名称、`app_id`、`title`、`workspace`、`focused`、`width`、`height` 逻辑像素；KDE 另有 `minimized` 和 `visible`，后者表示窗口在当前桌面上没有被别的窗口挡住），`workspaces[]`（`id`、`index`、`output`、`name`、`active`），`current`（聚焦输出上的活动工作区），`outputs[]`；不支持时为 `{"error":"unsupported"}` |
 | `focus ID` | 聚焦窗口（KDE 会先还原最小化的窗口，并切到它所在的桌面）；退出码表示成败 |
 | `authorize` | 仅 KDE：写入上述预授权，输出 `{"authorized":bool}` |
+| `install-extension` | 仅 GNOME：写入扩展文件，并加进 `org.gnome.shell enabled-extensions`，输出 `{"installed":bool,"extension":状态}` |
 | `resize ID W H` | 设置窗口的逻辑尺寸（平铺时宽度作用于整列），输出实际得到的 `W H` |
 | `shots` | 每读到一行 `ID 最长边 JPEG质量`，就回一行 `jpeg 长度` 再跟字节，或者回 `error no_window`、`error no_picture`、`error usage`。等第一帧最多 2.5 秒：niri 只在重绘时出帧，完全静止的窗口可能拿不到；KDE 只给 `visible` 的窗口截图，其余回 `error no_picture` |
 | `locate ID` | 输出窗口在全局逻辑坐标中的 `X Y W H`，找不到时退出 1（见下文） |
@@ -431,7 +452,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 40，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 41，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

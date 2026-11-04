@@ -4275,4 +4275,9 @@
   <string name="workspace_screen_window_issue_authorize">讓手機直接查看這台電腦的視窗？</string>
   <string name="workspace_screen_window_issue_authorize_detail">KDE 需要授權一次。之後 Miffan 會取得 KDE 的遠端桌面權限，顯示和操作視窗時不必再在電腦上確認。</string>
   <string name="workspace_screen_window_authorize_action">允許</string>
+  <string name="workspace_screen_window_gnome_install">要先在這台 GNOME 電腦上安裝一個小擴充功能</string>
+  <string name="workspace_screen_window_gnome_install_detail">GNOME 不讓其他程式列出它的視窗。Miffan 會安裝一個只用來列出和切換視窗的擴充功能，電腦重新登入後生效。</string>
+  <string name="workspace_screen_window_gnome_install_action">安裝</string>
+  <string name="workspace_screen_window_gnome_relogin">已安裝，電腦重新登入後生效</string>
+  <string name="workspace_screen_window_gnome_relogin_detail">GNOME 只在登入時載入新的擴充功能。可以在整個螢幕裡登出再登入，然後回到這裡。</string>
 </resources>

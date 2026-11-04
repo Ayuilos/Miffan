@@ -55,6 +55,14 @@ class LinuxHostWindowsTest {
             LinuxHostWindows.command("serve", window.id, "1600", "30", "5000"))
     }
 
+    @Test fun `GNOME without its extension asks to install it, then to sign in again`() {
+        val missing = LinuxHostWindows.parse("""{"desktop":"gnome","error":"needs_extension","extension":"missing","windows":[],"workspaces":[]}""")
+        assertEquals(RemoteWindowSetup.INSTALL_EXTENSION, missing.setup)
+        val installed = LinuxHostWindows.parse("""{"desktop":"gnome","error":"needs_extension","extension":"installed","windows":[],"workspaces":[]}""")
+        assertEquals(RemoteWindowSetup.RELOGIN, installed.setup)
+        assertEquals("\"\$HOME/.miffan/bin/miffan\" window install-extension", LinuxHostWindows.command("install-extension"))
+    }
+
     @Test fun `commands take fixed operations and numbers only`() {
         assertEquals("\"\$HOME/.miffan/bin/miffan\" window serve 7 1600 30 5000",
             LinuxHostWindows.command("serve", "7", "1600", "30", "5000"))

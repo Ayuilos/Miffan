@@ -4313,4 +4313,9 @@
   <string name="workspace_screen_window_issue_authorize">Let your phone show this computer\'s windows?</string>
   <string name="workspace_screen_window_issue_authorize_detail">KDE asks for this once. Miffan then gets KDE\'s remote desktop permission, so it can show and use windows without anyone confirming on the computer.</string>
   <string name="workspace_screen_window_authorize_action">Allow</string>
+  <string name="workspace_screen_window_gnome_install">This GNOME computer needs a small extension first</string>
+  <string name="workspace_screen_window_gnome_install_detail">GNOME doesn\'t let other apps list its windows. Miffan installs an extension that only lists and switches windows; it starts working after you sign in to the computer again.</string>
+  <string name="workspace_screen_window_gnome_install_action">Install</string>
+  <string name="workspace_screen_window_gnome_relogin">Installed. Sign in to the computer again to use it</string>
+  <string name="workspace_screen_window_gnome_relogin_detail">GNOME loads new extensions only when you sign in. You can sign out and back in on the whole screen, then come back here.</string>
 </resources>

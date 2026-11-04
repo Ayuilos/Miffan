@@ -246,6 +246,67 @@ def test_kde_window_ids_must_be_uuids():
     assert not w.UUID.match('708d5d37"); workspace.activeWindow = null; ("')
 
 
+def test_gnome_list_without_the_extension_asks_for_it():
+    w = program()
+
+    def failing(*_args, **_kwargs):
+        raise RuntimeError("no extension")
+    w.gnome_snapshot = failing
+    os.environ["XDG_DATA_HOME"] = tempfile.mkdtemp()
+    listed = w.gnome_list(None, None)
+    assert listed["error"] == "needs_extension" and listed["extension"] == "missing" and listed["windows"] == []
+    # Written but not loaded yet: GNOME takes it at the next login.
+    os.makedirs(w.gnome_extension_dir())
+    for name, text in w.GNOME_EXTENSION_FILES.items():
+        open(os.path.join(w.gnome_extension_dir(), name), "w").write(text)
+    assert w.gnome_list(None, None)["extension"] == "installed"
+
+
+def test_gnome_list_from_the_extension():
+    w = program()
+    w.APP_NAMES["org.gnome.TextEditor"] = "Text Editor"
+    w.gnome_snapshot = lambda *_: {"current": 1, "desktops": [{"id": 1, "name": None}, {"id": 2, "name": None}],
+                                   "windows": [{"id": "567034158", "pid": 9, "app": "org.gnome.TextEditor", "cls": "gnome-text-editor",
+                                                "title": "Notes", "x": 0, "y": 0, "width": 800, "height": 600, "buffer": [0, 0, 800, 600],
+                                                "minimized": False, "focused": True, "desktop": None, "visible": True}]}
+    listed = w.gnome_list(None, None)
+    window = listed["windows"][0]
+    assert window["app"] == "Text Editor" and window["workspace"] == 1 and window["id"] == "567034158"
+    assert [d["active"] for d in listed["workspaces"]] == [True, False]
+
+
+def test_gnome_extension_is_valid_metadata():
+    w = program()
+    meta = json.loads(w.GNOME_METADATA_JSON)
+    assert meta["uuid"] == w.GNOME_EXTENSION and "51" in meta["shell-version"]
+    assert "me.ayuilos.Miffan.Windows" in w.GNOME_EXTENSION_JS and "export default class" in w.GNOME_EXTENSION_JS
+
+
+def test_crop_meta_is_none_without_meta():
+    w = program()
+
+    class Buffer:
+        def get_meta(self, _name):
+            return None
+    assert w.crop_meta(Buffer()) is None
+
+
+def test_x11_list_numbers_desktops_from_one():
+    w = program()
+    w.APP_NAMES["XTerm"] = "XTerm"
+
+    class FakeX11:
+        def snapshot(self):
+            return {"current": 0, "desktops": [{"id": 0, "name": "Main"}, {"id": 1, "name": ""}],
+                    "windows": [{"id": "29360140", "pid": 5, "cls": "XTerm", "instance": "xterm", "title": "shell",
+                                 "minimized": False, "focused": True, "desktop": 1, "x": 10, "y": 30, "width": 500,
+                                 "height": 300, "viewable": True, "frame": (8, 2, 504, 330), "visible": True}]}
+    listed = w.x11_list(FakeX11())
+    assert listed["current"] == 1 and listed["windows"][0]["workspace"] == 2
+    assert listed["windows"][0]["width"] == 504 and listed["workspaces"][0]["name"] == "Main"
+    assert listed["workspaces"][1]["name"] is None
+
+
 def main():
     tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]
     for name, fn in tests:

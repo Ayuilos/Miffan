@@ -195,7 +195,14 @@ data class RemoteHostWindow(val window: SpaceWindow, val desktop: Long?, val cur
 data class RemoteHostDesktop(val id: Long, val current: Boolean, val number: Int? = null, val fullscreen: Boolean = false,
     val app: String? = null, val display: Int? = null)
 
-data class RemoteHostWindows(val windows: List<RemoteHostWindow>, val desktops: List<RemoteHostDesktop>)
+/**
+ * What a computer still needs before it can list windows: GNOME's window-list extension installed
+ * ([INSTALL_EXTENSION]), or a login for GNOME to load it ([RELOGIN]).
+ */
+enum class RemoteWindowSetup { INSTALL_EXTENSION, RELOGIN }
+
+data class RemoteHostWindows(val windows: List<RemoteHostWindow>, val desktops: List<RemoteHostDesktop>,
+    val setup: RemoteWindowSetup? = null)
 
 /** cua's own windows: the agent pointer overlay and the capture service. */
 private const val THUMBNAIL_PARALLEL = 3
@@ -981,6 +988,11 @@ class RemoteScreenRepository(
                 }
             }.joinAll()
         }
+    }
+
+    /** GNOME: installs the helper's window-list extension, which GNOME loads at the next login. */
+    suspend fun installHostWindowExtension(workspaceId: String): Boolean = withContext(Dispatchers.IO) {
+        workspaceId in linuxWindowHosts && withRemote(workspaceId, LinuxHostWindows::installExtension)
     }
 
     /** KDE: grants the helper Plasma's remote desktop permission, after the user agreed on the phone. */
