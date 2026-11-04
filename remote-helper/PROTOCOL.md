@@ -455,7 +455,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 42，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 43，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate
 #                           one window of a Linux desktop on the phone (niri), video and input
 
-MIFFAN_HELPER_VERSION=42
+MIFFAN_HELPER_VERSION=43
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -73,7 +73,10 @@ session_env_lines() {
     for pid in $(ps -u "$uid" -o pid= 2>/dev/null); do
         environ="/proc/$pid/environ"
         [ -r "$environ" ] || continue
-        if tr '\0' '\n' < "$environ" 2>/dev/null | grep -qE '^(WAYLAND_DISPLAY|DISPLAY)='; then
+        if tr '\0' '\n' 2>/dev/null < "$environ" | grep -qE '^(WAYLAND_DISPLAY|DISPLAY)='; then
+            # Only a desktop someone is logged in to: not a headless one a service runs (a Space's
+            # Xvfb) nor what is left of a session being closed, as at the login screen.
+            in_login_session "$pid" || continue
             tr '\0' '\n' < "$environ" | while IFS= read -r line; do
                 key=${line%%=*}
                 for var in $SESSION_VARS; do
@@ -83,6 +86,19 @@ session_env_lines() {
             return 0
         fi
     done
+    return 1
+}
+
+# Whether process $1 belongs to a logind session that is active or online. Without logind this
+# cannot be told, so every process counts.
+in_login_session() {
+    command -v loginctl >/dev/null 2>&1 || return 0
+    [ -r "/proc/$1/sessionid" ] || return 0
+    sid=$(cat "/proc/$1/sessionid" 2>/dev/null)
+    case "$sid" in ''|4294967295|*[!0-9]*) return 1 ;; esac
+    case "$(loginctl show-session "$sid" -p State --value 2>/dev/null)" in
+        active|online) return 0 ;;
+    esac
     return 1
 }
 
