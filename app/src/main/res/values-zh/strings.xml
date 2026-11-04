@@ -4287,4 +4287,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_window_gnome_install_action">安装</string>
   <string name="workspace_screen_window_gnome_relogin">装好了，电脑重新登录后生效</string>
   <string name="workspace_screen_window_gnome_relogin_detail">GNOME 只在登录时加载新扩展。可以在整个屏幕里注销再登录，然后回到这里。</string>
+  <string name="workspace_screen_window_input_dropped">没能把窗口切到前面，刚才的操作没有发出，请再试一次。</string>
 </resources>

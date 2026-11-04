@@ -2,6 +2,8 @@ package me.ayuilos.miffan.data.repository
 
 import android.view.Surface
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -10,7 +12,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
@@ -46,13 +50,26 @@ class CuaSpaceDesktopSession internal constructor(
     private val window: me.rerere.cuaspace.SpaceWindow? = null,
     /** -1 flips wheel direction (a Mac's window with natural scrolling). */
     private val scrollSign: Double = 1.0,
+    /**
+     * Whether [window] is in front on the computer now; null when it cannot tell. Asked when raising it
+     * failed or took too long, before the input held meanwhile goes out.
+     */
+    private val frontCheck: (suspend () -> Boolean?)? = null,
+    /** Brings [window] to the front, switching to its desktop; through [client] unless a test says otherwise. */
+    private val raise: (suspend (me.rerere.cuaspace.SpaceWindow) -> Unit)? = client?.let { space -> { space.activateWindow(it) } },
+    /** Milliseconds on a monotonic clock; tests pass their own. */
+    private val clock: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+    /** Where the raise runs; tests pass their own. */
+    private val io: CoroutineContext = Dispatchers.IO,
 ) : RemoteDesktopSession, RemoteSurfaceTarget {
     private val closed = AtomicBoolean()
     private val started = AtomicBoolean()
     private var watcher: Job? = null
     private var target: Surface? = null
     private var paused = false
-    private val decoder = SpaceVideoDecoder(needKeyframe = media::requestKeyframe, rendered = ::rendered)
+    // Made on first use, so a session that never shows video (a test) starts no decoder thread.
+    private val decoderLazy = lazy { SpaceVideoDecoder(needKeyframe = media::requestKeyframe, rendered = ::rendered) }
+    private val decoder by decoderLazy
     private val _state = MutableStateFlow<RemoteScreenState>(RemoteScreenState.Connecting)
     private val _videoSize = MutableStateFlow<RemoteVideoSize?>(null)
     private val _stats = MutableStateFlow(RemoteScreenStats())
@@ -69,6 +86,12 @@ class CuaSpaceDesktopSession internal constructor(
     private var raisedAt = 0L
     private var frontCheckedAt = 0L
     private val heldInput = mutableListOf<SpaceInput>()
+    private val _inputDropped = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    /**
+     * Input was thrown away because [window] could not be brought to the front, so it would have landed
+     * on whatever is there instead.
+     */
+    val inputDropped: SharedFlow<Unit> = _inputDropped
     /** What the phone last put on the Space's clipboard, so it does not come back as the Space's own copy. */
     @Volatile private var sentClipboard: String? = null
 
@@ -190,7 +213,7 @@ class CuaSpaceDesktopSession internal constructor(
      * the next input brings it back first. Ignored right after a raise, which it may predate.
      */
     @Synchronized fun noteFront(inFront: Boolean) {
-        val now = android.os.SystemClock.elapsedRealtime()
+        val now = clock()
         if (raising || now - raisedAt < RAISE_SETTLE_MILLIS) return
         frontCheckedAt = now
         raiseNeeded = !inFront
@@ -202,7 +225,7 @@ class CuaSpaceDesktopSession internal constructor(
      */
     @Synchronized private fun deliver(events: List<SpaceInput>): Boolean {
         val shown = window ?: return media.send(events)
-        val now = android.os.SystemClock.elapsedRealtime()
+        val now = clock()
         val unsure = now - frontCheckedAt > FRONT_STALE_MILLIS && now - lastInputAt > RAISE_AFTER_IDLE_MILLIS
         lastInputAt = now
         if (raising) { heldInput += events; return true }
@@ -210,13 +233,28 @@ class CuaSpaceDesktopSession internal constructor(
         raising = true
         raiseNeeded = false
         heldInput += events
-        lifetime.launch(Dispatchers.IO) {
-            // macOS may report the raise unverified although it happened; the input goes either way.
-            withTimeoutOrNull(RAISE_TIMEOUT_MILLIS) { runCatching { client?.activateWindow(shown) } }
+        lifetime.launch(io) {
+            val raised = withTimeoutOrNull(RAISE_TIMEOUT_MILLIS) {
+                try { raise?.invoke(shown); raise != null }
+                catch (error: CancellationException) { throw error }
+                catch (_: Exception) { false }
+            } == true
+            // The input lands wherever the pointer is on the computer: after a failed or slow raise (macOS may
+            // report one unverified although it happened) it goes only once the window is seen in front.
+            val inFront = raised || try { frontCheck?.invoke() == true }
+                catch (error: CancellationException) { throw error }
+                catch (_: Exception) { false }
             synchronized(this@CuaSpaceDesktopSession) {
                 raising = false
-                raisedAt = android.os.SystemClock.elapsedRealtime()
-                if (!closed.get()) media.send(heldInput.toList())
+                raisedAt = clock()
+                if (!closed.get()) {
+                    if (inFront) media.send(heldInput.toList())
+                    else if (heldInput.isNotEmpty()) {
+                        // The next input tries again.
+                        raiseNeeded = true
+                        _inputDropped.tryEmit(Unit)
+                    }
+                }
                 heldInput.clear()
             }
         }
@@ -233,7 +271,7 @@ class CuaSpaceDesktopSession internal constructor(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         watcher?.cancel()
-        decoder.close()
+        if (decoderLazy.isInitialized()) decoder.close()
         _state.value = RemoteScreenState.Closed(null)
         // The session is ours alone: end it, not only the socket, so the Space stops encoding.
         lifetime.launch(NonCancellable + Dispatchers.IO) {

@@ -100,6 +100,8 @@ sealed interface RemoteScreenNotice {
     data class StreamOnMeteredNetwork(val quality: RemoteScreenQuality, val custom: RemoteStreamCustom) : RemoteScreenNotice
     /** The approved Windows firewall change was refused or did not verify; nothing reconnects. */
     data class FirewallFailed(val detail: String?) : RemoteScreenNotice
+    /** The shown window could not be brought to the front, so input meant for it was not sent. */
+    data object WindowInputDropped : RemoteScreenNotice
 }
 
 /** How the current connection reaches the desktop, for the page's status line and details. */
@@ -1008,6 +1010,7 @@ class RemoteScreenVM(
                 (opened.session as? CuaSpaceDesktopSession)?.takeIf { _target.value != null }?.let { session ->
                     // Input lands on whatever is in front on the computer: notice when that stops being this window.
                     val shown = _target.value
+                    launch { session.inputDropped.collect { _notices.tryEmit(RemoteScreenNotice.WindowInputDropped) } }
                     if (shown != null) launch {
                         while (true) {
                             if (visible) repository.hostWindowInFront(args.workspaceId, shown)?.let(session::noteFront)

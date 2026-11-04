@@ -212,6 +212,30 @@ private const val LINUX_THUMBNAIL_EDGE = 640
 private const val THUMBNAIL_TIMEOUT_MILLIS = 10_000L
 private val HIDDEN_WINDOW_APPS = setOf("Cua Driver", "CuaDriver", "cua-spacesd", "Cua Spaces", "loginwindow")
 
+/**
+ * Whether [window] is the front window here. cua-driver and cua-spacesd name windows differently, so
+ * it is found by process, title and frame; when its title changed since it was picked (a terminal, a
+ * player), by process and frame alone. Another window of the same app in front is not it. A sandboxed
+ * app's open or save panel, drawn by another process over the window, counts as the window.
+ */
+internal fun HostDesktops.frontIs(window: SpaceWindow): Boolean {
+    val front = windows.filter { it.layer == 0 && it.height >= 120 && it.app !in HIDDEN_WINDOW_APPS }.maxByOrNull { it.z } ?: return false
+    fun HostDesktops.Placed.distance() = kotlin.math.abs(x - window.x) + kotlin.math.abs(y - window.y) +
+        kotlin.math.abs(width - window.width) + kotlin.math.abs(height - window.height)
+    if (front.pid != window.pid) {
+        return front.app in PANEL_APPS && front.x >= window.x && front.y >= window.y &&
+            front.x + front.width <= window.x + window.width && front.y + front.height <= window.y + window.height
+    }
+    val mine = find(window.pid, window.title, window.x, window.y, window.width, window.height)
+        ?: windows.filter { it.pid == window.pid }.minByOrNull { it.distance() }?.takeIf { it.distance() <= FRAME_SLACK }
+    return mine === front
+}
+
+/** How far, in points, a window's frame may be off in the two tools' lists and still be the same window. */
+private const val FRAME_SLACK = 8.0
+/** macOS's out-of-process open and save panels of sandboxed apps. */
+private val PANEL_APPS = setOf("Open and Save Panel Service", "com.apple.appkit.xpc.openAndSavePanelService")
+
 /** The computer does not share its desktop through cua-spacesd, so single windows cannot be shown. */
 class HostWindowsUnavailableException : IllegalStateException("This computer does not share single windows")
 
@@ -850,7 +874,8 @@ class RemoteScreenRepository(
                 CuaSpaceDesktopSession(client, media, window.app.ifBlank { window.title },
                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default), onClosed = client::close, window = window,
                     // Its windows get the Mac's own scroll direction; spacesd scrolls up for positive deltas.
-                    scrollSign = if (endpoint.naturalScroll) -1.0 else 1.0)
+                    scrollSign = if (endpoint.naturalScroll) -1.0 else 1.0,
+                    frontCheck = { hostWindowInFront(workspaceId, window) })
             } catch (error: Throwable) { client.close(); forgetHostEndpoint(workspaceId, error); throw error }
         }
         val connection = RemoteScreenConnection(hostId, RemoteScreenPlatform.MACOS, workspaceId, handle) { closed ->
@@ -1047,15 +1072,14 @@ class RemoteScreenRepository(
         hostEndpoint(workspaceId, ssh).let { HostDesktopSpace.client(ssh, it.port, it.token) }
 
     /**
-     * Whether [window]'s app has the front window of the desktop in front, so input lands on it;
-     * null when the computer cannot tell.
+     * Whether [window] itself is the front window of the desktop in front, so input lands on it (another
+     * window of the same app in front is not); null when the computer cannot tell.
      */
     suspend fun hostWindowInFront(workspaceId: String, window: SpaceWindow): Boolean? = withContext(Dispatchers.IO) {
         // A Linux computer's helper brings the window to the front itself before input.
         if (workspaceId in linuxWindowHosts) return@withContext null
         val shown = runCatching { withRemote(workspaceId) { ssh -> HostDesktopSpace.onScreen(ssh) } }.getOrNull() ?: return@withContext null
-        val front = shown.windows.filter { it.layer == 0 && it.height >= 120 && it.app !in HIDDEN_WINDOW_APPS }.maxByOrNull { it.z }
-        front?.pid == window.pid
+        shown.frontIs(window)
     }
 
     private fun forgetHostEndpoint(workspaceId: String, error: Throwable) {
