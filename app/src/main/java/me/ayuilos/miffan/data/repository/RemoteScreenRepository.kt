@@ -221,26 +221,59 @@ private const val THUMBNAIL_TIMEOUT_MILLIS = 10_000L
 private val HIDDEN_WINDOW_APPS = setOf("Cua Driver", "CuaDriver", "cua-spacesd", "Cua Spaces", "loginwindow")
 
 /**
- * Whether [window] is the front window here. cua-driver and cua-spacesd name windows differently, so
- * it is found by process, title and frame; when its title changed since it was picked (a terminal, a
+ * Whether [window] is the front window here. [windowId], macOS's number for it once known (see
+ * [windowIdOf]), says so exactly; without it, it is found by process, title and frame (cua-driver and
+ * cua-spacesd name windows differently), and when its title changed since it was picked (a terminal, a
  * player), by process and frame alone. Another window of the same app in front is not it. A sandboxed
  * app's open or save panel, drawn by another process over the window, counts as the window.
  */
-internal fun HostDesktops.frontIs(window: SpaceWindow): Boolean {
+internal fun HostDesktops.frontIs(window: SpaceWindow, windowId: Long? = null): Boolean {
     val front = windows.filter { it.layer == 0 && it.height >= 120 && it.app !in HIDDEN_WINDOW_APPS }.maxByOrNull { it.z } ?: return false
-    fun HostDesktops.Placed.distance() = kotlin.math.abs(x - window.x) + kotlin.math.abs(y - window.y) +
-        kotlin.math.abs(width - window.width) + kotlin.math.abs(height - window.height)
     if (front.pid != window.pid) {
         return front.app in PANEL_APPS && front.x >= window.x && front.y >= window.y &&
             front.x + front.width <= window.x + window.width && front.y + front.height <= window.y + window.height
     }
+    if (windowId != null) return front.windowId == windowId
     val mine = find(window.pid, window.title, window.x, window.y, window.width, window.height)
-        ?: windows.filter { it.pid == window.pid }.minByOrNull { it.distance() }?.takeIf { it.distance() <= FRAME_SLACK }
+        ?: windows.filter { it.pid == window.pid }.minByOrNull { frameDistance(it.x, it.y, it.width, it.height, window) }
+            ?.takeIf { frameDistance(it.x, it.y, it.width, it.height, window) <= FRAME_SLACK }
     return mine === front
 }
 
+/**
+ * macOS's number for [window] among these windows, when only one of them can be it: its app's window
+ * at (nearly) its frame, or the one of those with its title. Null when none is, or when several look
+ * alike (two terminals stacked on each other); then [windowIdByOrder] tells them apart.
+ */
+internal fun HostDesktops.windowIdOf(window: SpaceWindow): Long? {
+    val near = windows.filter { it.layer == 0 && it.pid == window.pid && frameDistance(it.x, it.y, it.width, it.height, window) <= TWIN_SLACK }
+    val one = near.singleOrNull() ?: near.filter { it.title == window.title }.singleOrNull()
+    return one?.windowId
+}
+
+/**
+ * macOS's number for [window], told apart from look-alikes by its place in the window order:
+ * cua-spacesd's [listed] and cua-driver's [all] (every window, taken right after) count the order the
+ * same way. Every window of its app must match one of cua-driver's that way (same place in the order,
+ * same frame), or the order changed in between and nothing is told: a wrong number would be kept.
+ */
+internal fun windowIdByOrder(listed: List<SpaceWindow>, all: HostDesktops, window: SpaceWindow): Long? {
+    val me = listed.find { it.id == window.id } ?: return null
+    fun match(w: SpaceWindow) = all.windows.filter { it.pid == w.pid && it.z == w.zOrder &&
+        frameDistance(it.x, it.y, it.width, it.height, w) <= FRAME_SLACK }.singleOrNull()?.windowId
+    if (listed.filter { it.pid == me.pid && it.state == SpaceWindow.State.NORMAL }.any { match(it) == null }) return null
+    return match(me)
+}
+
+private fun frameDistance(x: Double, y: Double, width: Double, height: Double, window: SpaceWindow) =
+    kotlin.math.abs(x - window.x) + kotlin.math.abs(y - window.y) + kotlin.math.abs(width - window.width) + kotlin.math.abs(height - window.height)
+
+/** How often finding a shown window's macOS number is tried again after it failed (it costs seconds). */
+private const val WINDOW_ID_RETRY_MILLIS = 10_000L
 /** How far, in points, a window's frame may be off in the two tools' lists and still be the same window. */
 private const val FRAME_SLACK = 8.0
+/** Frames this close (summed over position and size) make two windows of an app look alike. */
+private const val TWIN_SLACK = 40.0
 /** macOS's out-of-process open and save panels of sandboxed apps. */
 private val PANEL_APPS = setOf("Open and Save Panel Service", "com.apple.appkit.xpc.openAndSavePanelService")
 
@@ -320,6 +353,9 @@ class RemoteScreenRepository(
     private val lock = Any()
     /** Each computer's own cua-spacesd port and token, read over SSH; memory only. */
     private val hostEndpoints = java.util.concurrent.ConcurrentHashMap<String, HostEndpoint>()
+    /** macOS window numbers of shown Mac windows (see hostWindowId), and when finding one last failed. */
+    private val hostWindowIds = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hostWindowIdMisses = java.util.concurrent.ConcurrentHashMap<String, Long>()
     /** Linux computers whose helper shows single windows (see [LinuxHostWindows]), by workspace. */
     private val linuxWindowHosts: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     /** The long-lived clipboard writer of each open Windows screen, by workspace. */
@@ -1098,7 +1134,30 @@ class RemoteScreenRepository(
         // A Linux computer's helper brings the window to the front itself before input.
         if (workspaceId in linuxWindowHosts) return@withContext null
         val shown = runCatching { withRemote(workspaceId) { ssh -> HostDesktopSpace.onScreen(ssh) } }.getOrNull() ?: return@withContext null
-        shown.frontIs(window)
+        shown.frontIs(window, hostWindowId(workspaceId, window))
+    }
+
+    /**
+     * macOS's number for [window] (see [windowIdOf]), found once per window and kept: then the front check
+     * compares numbers, which tells even two stacked look-alike terminals apart. Null while it cannot be
+     * found (the window is on another desktop, or the order kept changing).
+     */
+    private suspend fun hostWindowId(workspaceId: String, window: SpaceWindow): Long? {
+        val key = "$workspaceId/${window.id}/${window.epoch}"
+        hostWindowIds[key]?.let { return it }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - (hostWindowIdMisses[key] ?: Long.MIN_VALUE / 2) < WINDOW_ID_RETRY_MILLIS) return null
+        val found = runCatching {
+            // Every window, on any desktop: a look-alike elsewhere must not pass for it.
+            withRemote(workspaceId) { ssh -> HostDesktopSpace.allWindows(ssh) }?.windowIdOf(window)
+                ?: withHostDesktop(workspaceId) { client, ssh ->
+                    // Look-alikes: their place in the window order, which cua-spacesd and cua-driver count alike.
+                    val listed = client.listWindows()
+                    HostDesktopSpace.allWindows(ssh)?.let { windowIdByOrder(listed, it, window) }
+                }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+        if (found == null) hostWindowIdMisses[key] = now else hostWindowIds[key] = found
+        return found
     }
 
     private fun forgetHostEndpoint(workspaceId: String, error: Throwable) {

@@ -97,6 +97,30 @@ class HostDesktopSpaceTest {
         assertFalse(HostDesktops(1, emptyList()).frontIs(shown))
     }
 
+    @Test fun `two look-alike windows stacked on each other are told apart by macOS window number`() {
+        val shown = window(7, "zsh")
+        fun twin(x: Double, z: Int, id: Long, title: String = "zsh") = placed(7, title, x = x, z = z).copy(windowId = id)
+        // Its number known: the front window must be that very window, however alike the other one is.
+        val stacked = HostDesktops(1, listOf(twin(10.0, 2, 200), twin(0.0, 1, 100)))
+        assertFalse(stacked.frontIs(shown, windowId = 100))
+        assertTrue(stacked.frontIs(shown, windowId = 200))
+        // Found by frame when only one window of the app is near it, or only one of those has its title.
+        assertEquals(100L, HostDesktops(1, listOf(twin(0.0, 1, 100), twin(400.0, 2, 200))).windowIdOf(shown))
+        assertEquals(100L, HostDesktops(1, listOf(twin(0.0, 1, 100), twin(10.0, 2, 200, "vim"))).windowIdOf(shown))
+        // Look-alikes, or nothing near: not by frame.
+        assertNull(stacked.windowIdOf(shown))
+        assertNull(HostDesktops(1, listOf(twin(400.0, 1, 100))).windowIdOf(shown))
+
+        // By order: cua-spacesd's z order and cua-driver's (every window) count the same way.
+        val listed = listOf(shown.copy(zOrder = 1001), shown.copy(id = "b", x = 10.0, zOrder = 994))
+        val all = HostDesktops(1, listOf(twin(10.0, 994, 200), twin(0.0, 1001, 100)))
+        assertEquals(100L, windowIdByOrder(listed, all, shown))
+        assertEquals(200L, windowIdByOrder(listed, all, shown.copy(id = "b")))
+        // The order changed in between, or the window is gone: no answer rather than a guess.
+        assertNull(windowIdByOrder(listed, HostDesktops(1, listOf(twin(10.0, 1001, 200), twin(0.0, 1002, 100))), shown))
+        assertNull(windowIdByOrder(listed.drop(1), all, shown))
+    }
+
     @Test fun `a sandboxed app's open panel over the window counts as the window`() {
         val shown = window(7, "Docs")
         val panel = placed(99, "Open", x = 100.0, z = 3, app = "Open and Save Panel Service", width = 500.0, height = 400.0)

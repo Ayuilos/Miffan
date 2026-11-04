@@ -58,6 +58,15 @@ internal object HostDesktopSpace {
     }
 
     /**
+     * Every window of the computer, on any desktop, from its cua-driver; null when it cannot tell. Its
+     * z order counts the same way as cua-spacesd's, which [onScreen]'s does not.
+     */
+    fun allWindows(ssh: RemoteWorkspaceSession): HostDesktops? {
+        if (ssh.platform != RemotePlatform.POSIX) return null
+        return parseDesktops(ssh.execute("$DRIVER call list_windows '{\"on_screen_only\":false}' </dev/null", timeoutMillis = 10_000).stdout)
+    }
+
+    /**
      * Which desktop (macOS Space) each window is on, from the computer's cua-driver, and the desktops
      * of each display in Mission Control order, from one command. Either is null when it cannot be
      * read (cua-driver missing, not a Mac, or the private call changed). cua-spacesd knows windows but
@@ -110,6 +119,7 @@ internal object HostDesktopSpace {
                 x = bounds.number("x"), y = bounds.number("y"), width = bounds.number("width"), height = bounds.number("height"),
                 spaces = (window["space_ids"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.longOrNull }.orEmpty(),
                 onScreen = window["is_on_screen"]?.jsonPrimitive?.booleanOrNull == true,
+                windowId = window["window_id"]?.jsonPrimitive?.longOrNull,
             )
         } ?: return null
         return HostDesktops(root["current_space_id"]?.jsonPrimitive?.longOrNull, windows)
@@ -160,8 +170,9 @@ internal object HostDesktopSpace {
 
 /** The computer's desktops (macOS Spaces) and the windows on each, as cua-driver reports them. */
 data class HostDesktops(val current: Long?, val windows: List<Placed>) {
+    /** [windowId]: macOS's own window number (CGWindowID), the same for the window's whole life. */
     data class Placed(val pid: Int, val app: String = "", val layer: Int = 0, val z: Int = 0, val title: String, val x: Double, val y: Double, val width: Double, val height: Double,
-        val spaces: List<Long>, val onScreen: Boolean)
+        val spaces: List<Long>, val onScreen: Boolean, val windowId: Long? = null)
 
     /** The desktops [window] is on: matched by process, title and frame, since the two tools name windows differently. */
     fun find(pid: Int, title: String, x: Double, y: Double, width: Double, height: Double): Placed? =
