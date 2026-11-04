@@ -49,7 +49,8 @@ class CuaSpaceDesktopSessionTest {
         val session = CuaSpaceDesktopSession(null, channel, "test", CoroutineScope(SupervisorJob() + dispatcher), window = window,
             raise = { raises++; raise(it) }, frontCheck = front, clock = { now }, io = dispatcher)
 
-        init { test.backgroundScope.launch(dispatcher) { session.inputDropped.collect { dropped += it } } }
+        // Not the test's background scope: advanceUntilIdle does not wait for work there.
+        init { CoroutineScope(SupervisorJob() + dispatcher).launch { session.inputDropped.collect { dropped += it } } }
 
         fun key(name: Char) = session.typeText(name.toString())
     }
