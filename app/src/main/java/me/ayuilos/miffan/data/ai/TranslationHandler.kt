@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.ProviderManager
@@ -55,7 +56,9 @@ class TranslationHandler(
                 ),
             ).collect { chunk ->
                 messages = streamChunkHandler.handle(messages, chunk)
-                val translatedText = messages.lastOrNull()?.toText() ?: ""
+                // Until the reply's first event, the last message is still the prompt itself; showing
+                // its text would flash the whole prompt as the "translation".
+                val translatedText = messages.last().takeIf { it.role == MessageRole.ASSISTANT }?.toText().orEmpty()
 
                 if (translatedText.isNotBlank()) {
                     onStreamUpdate?.invoke(translatedText)

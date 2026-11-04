@@ -9,6 +9,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.semantics.Role
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.ClipboardPaste
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Cpu
+import me.rerere.hugeicons.stroke.Stop
+import me.rerere.hugeicons.stroke.Translate
+import me.rerere.hugeicons.stroke.VolumeHigh
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
+import me.ayuilos.miffan.ui.components.ui.Tooltip
+import me.rerere.ai.provider.Model
 import java.util.Locale
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -60,14 +75,18 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
     val models = rememberModelListState(model?.id, settings.providers, ModelType.CHAT, textOnly = true)
     var choosing by rememberSaveable { mutableStateOf(false) }
 
-    Scaffold(topBar = { ImPageBar(stringResource(R.string.im_discover_translate)) }) { padding ->
+    Scaffold(topBar = {
+        ImPageBar(stringResource(R.string.im_discover_translate)) { TranslateModelPill(model, models::open) }
+    }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (model == null) Surface(color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (model == null) Surface(onClick = models::open, color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(HugeIcons.Cpu, null, Modifier.size(20.dp))
                     Text(stringResource(R.string.im_translate_no_model), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = models::open) { Text(stringResource(R.string.im_draw_pick_model)) }
+                    Icon(HugeIcons.ArrowRight01, null, Modifier.size(18.dp))
                 }
             }
             ImCardGroup {
@@ -79,14 +98,15 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
-                    Row(Modifier.padding(start = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = {
+                    Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TipIconButton(HugeIcons.ClipboardPaste, stringResource(R.string.im_translate_paste), tonal = true) {
                             scope.launch {
                                 clipboard.getClipEntry()?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
                                     ?.let(vm::updateInputText)
                             }
-                        }) { Text(stringResource(R.string.im_translate_paste)) }
-                        if (input.isNotEmpty()) TextButton(onClick = { vm.updateInputText("") }) { Text(stringResource(R.string.im_translate_clear)) }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        if (input.isNotEmpty()) TipIconButton(HugeIcons.Cancel01, stringResource(R.string.im_translate_clear)) { vm.updateInputText("") }
                     }
                 }
             }
@@ -100,33 +120,78 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
                         Icon(HugeIcons.ArrowDown01, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Button(onClick = { if (translating) vm.cancelTranslation() else vm.translate() }, enabled = translating || (input.isNotBlank() && model != null),
-                    modifier = Modifier.heightIn(min = 52.dp)) {
-                    Text(stringResource(if (translating) R.string.im_draw_stop else R.string.im_discover_translate))
+                TranslateButton(translating, enabled = translating || (input.isNotBlank() && model != null)) {
+                    if (translating) vm.cancelTranslation() else vm.translate()
                 }
             }
-            if (result.isNotBlank()) Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(getLanguageDisplayName(target), style = MaterialTheme.typography.labelLarge)
-                    SelectionContainer { Text(result, style = MaterialTheme.typography.bodyLarge) }
-                    if (!translating) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = {
-                            scope.launch {
-                                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", result)))
-                                toaster.show(copied, type = ToastType.Success)
+            if (result.isNotBlank() || translating) Surface(color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // The actions sit on the label line so the translation keeps the card's full width.
+                    Row(Modifier.heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(getLanguageDisplayName(target), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                        if (!translating && result.isNotBlank()) {
+                            TipIconButton(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
+                                scope.launch {
+                                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", result)))
+                                    toaster.show(copied, type = ToastType.Success)
+                                }
                             }
-                        }) { Text(stringResource(R.string.im_thread_copy)) }
-                        if (canSpeak) FilledTonalButton(onClick = { if (speaking) tts.stop() else tts.speak(result) }) {
-                            Text(stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud))
+                            if (canSpeak) TipIconButton(if (speaking) HugeIcons.Stop else HugeIcons.VolumeHigh,
+                                stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {
+                                if (speaking) tts.stop() else tts.speak(result)
+                            }
                         }
                     }
+                    if (result.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth().padding(end = 8.dp, top = 4.dp))
+                    else SelectionContainer(Modifier.padding(end = 8.dp)) { Text(result, style = MaterialTheme.typography.bodyLarge) }
                 }
             }
         }
     }
-    ModelListSheet(models) { picked -> vm.updateTranslationModel(picked.id) }
+    // Switching models usually means the last result wasn't good enough, so redo it with the new one.
+    ModelListSheet(models) { picked ->
+        vm.updateTranslationModel(picked.id, retranslate = input.isNotBlank() && (result.isNotBlank() || translating))
+    }
     if (choosing) ImLanguageSheet(target, onPick = { vm.updateTargetLanguage(it); choosing = false }, onDismiss = { choosing = false })
+}
+
+/** The model doing the translating, always visible in the top bar and one tap from switching. */
+@Composable
+private fun TranslateModelPill(model: Model?, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(end = 8.dp)) {
+        Row(Modifier.heightIn(min = 36.dp).padding(start = if (model != null) 6.dp else 12.dp, end = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (model != null) AutoAIIcon(model.modelId, Modifier.size(24.dp), color = Color.Transparent)
+            else Icon(HugeIcons.Cpu, null, Modifier.size(18.dp))
+            Text(model?.displayName ?: stringResource(R.string.model_list_select_model), Modifier.widthIn(max = 140.dp),
+                style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(HugeIcons.ArrowDown01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Starts the translation; while it runs, a ring circles it and a tap stops it. */
+@Composable
+private fun TranslateButton(translating: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val label = stringResource(if (translating) R.string.im_draw_stop else R.string.im_discover_translate)
+    Tooltip(tooltip = { Text(label) }) {
+        Box(contentAlignment = Alignment.Center) {
+            FilledIconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(52.dp)) {
+                Icon(if (translating) HugeIcons.Stop else HugeIcons.Translate, label, Modifier.size(22.dp))
+            }
+            if (translating) CircularProgressIndicator(Modifier.size(52.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+        }
+    }
+}
+
+/** An icon-only action; its name is read by screen readers and shown on long press. */
+@Composable
+private fun TipIconButton(icon: ImageVector, label: String, tonal: Boolean = false, onClick: () -> Unit) {
+    Tooltip(tooltip = { Text(label) }) {
+        if (tonal) FilledTonalIconButton(onClick = onClick) { Icon(icon, label, Modifier.size(20.dp)) }
+        else IconButton(onClick = onClick) { Icon(icon, label, Modifier.size(20.dp)) }
+    }
 }
 
 /** Every language the translator offers, one tap each; the current one is marked. */
