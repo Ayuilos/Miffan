@@ -48,7 +48,7 @@ Partners can message each other, and you can bring several into one chat.
 
 Connect a Mac, Windows or Linux computer over SSH, including over Tailscale or, when you're out, through Miffan's free relay, and your partner can open apps, type and click on it while you watch from your phone. A server or NAS without a screen works too: the partner uses it through commands.
 
-- **One shared screen.** View and control the desktop from your phone, in portrait or full-screen landscape. While the partner works, the first touch only asks; a second touch takes over.
+- **One shared screen.** View and control the desktop from your phone, in portrait or full-screen landscape. While the partner works, the first touch only asks; a second touch takes over. On a Mac or Linux computer you can also show just one window, sized to fit your phone.
 - **High-performance mode.** With Sunshine on the computer, the graphics card encodes the picture for lower latency, smoother motion and sound. Miffan sets it up and pairs for you.
 - **You stay in charge.** Choose per computer whether the partner asks first, works on its own or leaves it alone. Each approval is recorded in a permission history that stays even if you delete the chat.
 - **Tasks that run on schedule.** Ask a partner to do something every morning and the computer's own scheduler runs it on time, even while your phone is off (Mac and Linux). A task can be a command or a call to an AI tool already installed there, such as Claude Code, Codex CLI or Gemini CLI. Results come back to the chat when you open Miffan, and "My computers" keeps the output of every run.
