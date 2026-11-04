@@ -24,6 +24,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -554,7 +556,9 @@ class RemoteScreenVM(
      */
     fun pickWindow(choice: RemoteWindowChoice, onShown: () -> Unit = {}) {
         if (!choice.background) { showWindow(choice.window); onShown(); return }
-        viewModelScope.launch {
+        pickJob?.cancel()
+        val pick = ++picks
+        pickJob = viewModelScope.launch {
             _opening.value = choice.window.app
             try {
                 val shown = runCatching { repository.reopenHostApp(args.workspaceId, choice.window) }
@@ -562,25 +566,40 @@ class RemoteScreenVM(
                     .getOrNull()
                 thumbnails[choice.window.id]?.let { thumbnails[choice.window.id] = WindowThumbnail(it.image, 0L, failed = it.failed) }
                 shownWindows[choice.window.id] = true
-                showWindow(shown ?: choice.window)
+                show(shown ?: choice.window)
                 onShown()
             } finally {
-                _opening.value = null
+                // A later choice may already be opening its own app.
+                if (picks == pick) _opening.value = null
             }
         }
     }
 
+    /**
+     * The choice being carried out (an app opened, a window restored); a later choice cancels it, so a
+     * slow one never overrides what the user picked after it.
+     */
+    private var pickJob: Job? = null
+    private var picks = 0
+
     /** Shows [window] alone, or the whole screen for null; a minimized window is brought back first. */
     fun showWindow(window: SpaceWindow?) {
-        viewModelScope.launch {
-            unfitWindow()
-            _windowIssue.value = null
-            if (window != null && window.state == SpaceWindow.State.MINIMIZED) {
-                runCatching { repository.restoreHostWindow(args.workspaceId, window) }
-            }
-            _target.value = window
-            reconnect()
+        pickJob?.cancel()
+        ++picks
+        _opening.value = null
+        pickJob = viewModelScope.launch { show(window) }
+    }
+
+    private suspend fun show(window: SpaceWindow?) {
+        unfitWindow()
+        currentCoroutineContext().ensureActive()
+        _windowIssue.value = null
+        if (window != null && window.state == SpaceWindow.State.MINIMIZED) {
+            runCatching { repository.restoreHostWindow(args.workspaceId, window) }
+            currentCoroutineContext().ensureActive()
         }
+        _target.value = window
+        reconnect()
     }
 
     /** Puts a minimized window back, then shows it again. */

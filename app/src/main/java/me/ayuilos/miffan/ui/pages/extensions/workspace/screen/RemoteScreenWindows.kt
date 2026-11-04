@@ -173,7 +173,7 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
                                 else if (window.state == SpaceWindow.State.MINIMIZED) Icon(HugeIcons.Minimize01, null, Modifier.size(20.dp))
                                 else AppBadge(window.app, Modifier.size(28.dp))
                             },
-                        ) { if (opening == null) vm.pickWindow(choice, onShown = onDismiss) }
+                        ) { vm.pickWindow(choice, onShown = onDismiss) }
                     }
                     }
                 }
