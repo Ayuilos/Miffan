@@ -461,15 +461,7 @@ class RemoteScreenVM(
                 val opens = pickerOpens.value
                 val listed = listedWindows.filterNotNull().first()
                 val open = pickerOpen.value
-                val now = SystemClock.elapsedRealtime()
-                val due = listed.windows.filter { hosted ->
-                    // A window known to be shown nowhere has no picture to take.
-                    if (hosted.window.state == SpaceWindow.State.MINIMIZED || hosted.hidden) return@filter false
-                    val thumb = thumbnails[hosted.window.id]
-                    if (!open) return@filter thumb == null && hosted.current
-                    if (thumb == null) return@filter true
-                    now - thumb.at > if (thumb.image == null) BACKGROUND_RETRY_MILLIS else THUMBNAIL_REFRESH_MILLIS
-                }.sortedWith(compareBy({ thumbnails[it.window.id]?.image != null }, { !it.current }))
+                val due = dueThumbnails(listed.windows, thumbnails, open, SystemClock.elapsedRealtime())
                 if (due.isEmpty()) {
                     withTimeoutOrNull(WINDOW_REFRESH_MILLIS) { pickerOpens.first { it != opens } }
                     continue
@@ -483,8 +475,9 @@ class RemoteScreenVM(
                         }
                         val at = SystemClock.elapsedRealtime()
                         // A failed picture keeps the last good one; a real picture means the window is shown.
+                        val old = thumbnails[window.id]
                         thumbnails[window.id] = if (image != null) WindowThumbnail(image, at)
-                            else WindowThumbnail(thumbnails[window.id]?.image, at, failed = true)
+                            else WindowThumbnail(old?.image, at, failed = true, failures = (old?.failures ?: 0) + 1)
                         if (image != null) shownWindows[window.id] = true
                         publishWindows()
                     }
@@ -1221,9 +1214,34 @@ private fun android.graphics.Bitmap.isBlank(): Boolean {
 private const val THUMBNAIL_REFRESH_MILLIS = 15_000L
 // A window that gave no picture is tried again now and then, in case its app shows it.
 private const val BACKGROUND_RETRY_MILLIS = 30_000L
+/** The longest wait between tries of a window that keeps giving no picture: 30 s doubled four times, 8 min. */
+private const val MAX_RETRY_DOUBLINGS = 4
 
-/** A window's last good picture, when it was last tried, and whether that try gave none (all black or too slow). */
-private class WindowThumbnail(val image: ImageBitmap?, val at: Long, val failed: Boolean = false)
+/**
+ * A window's last good picture, when it was last tried, and whether that try gave none (all black or too
+ * slow); [failures] counts such tries in a row. Its time set to 0 makes it due at once.
+ */
+internal class WindowThumbnail(val image: ImageBitmap?, val at: Long, val failed: Boolean = false, val failures: Int = 0)
+
+/**
+ * The windows whose picture to take now, in order. With the picker [open]: new windows first, then
+ * fresh pictures of the others, then windows that gave none, each of those waiting twice as long after
+ * every failure (an off-screen niri window may never give one, and each try holds up the rest). With it
+ * closed: only the desktop in front's windows that never had a try.
+ */
+internal fun dueThumbnails(windows: List<me.ayuilos.miffan.data.repository.RemoteHostWindow>, thumbnails: Map<String, WindowThumbnail>,
+    open: Boolean, now: Long): List<me.ayuilos.miffan.data.repository.RemoteHostWindow> =
+    windows.filter { hosted ->
+        // A window known to be shown nowhere has no picture to take.
+        if (hosted.window.state == SpaceWindow.State.MINIMIZED || hosted.hidden) return@filter false
+        val thumb = thumbnails[hosted.window.id]
+        if (!open) return@filter thumb == null && hosted.current
+        if (thumb == null) return@filter true
+        now - thumb.at > if (thumb.failures > 0) thumbnailRetryMillis(thumb.failures) else THUMBNAIL_REFRESH_MILLIS
+    }.sortedWith(compareBy({ (thumbnails[it.window.id]?.failures ?: 0) > 0 }, { thumbnails[it.window.id]?.image != null }, { !it.current }))
+
+/** How long a window waits for its next try after [failures] tries in a row gave no picture. */
+internal fun thumbnailRetryMillis(failures: Int): Long = BACKGROUND_RETRY_MILLIS shl (failures - 1).coerceIn(0, MAX_RETRY_DOUBLINGS)
 private const val FIT_MIN_HEIGHT = 800.0
 private const val FIT_MAX_HEIGHT = 1000.0
 private const val FIT_MIN_WIDTH = 420.0
