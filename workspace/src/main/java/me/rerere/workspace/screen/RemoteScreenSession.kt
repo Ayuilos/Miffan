@@ -32,11 +32,18 @@ data class RemoteScreenOptions(
     val pipelineDepth: Int = 2,
 )
 
+/** A rectangle of the computer's screen in its logical pixels. */
+data class RemoteFrameArea(val x: Double, val y: Double, val width: Double, val height: Double)
+
 sealed interface RemoteScreenState {
     data object Connecting : RemoteScreenState
 
-    /** [width]/[height] are server pixels; the phone renders them divided by [scale]. */
-    data class Connected(val name: String, val width: Int, val height: Int, val scale: Int) : RemoteScreenState
+    /**
+     * [width]/[height] are server pixels; the phone renders them divided by [scale]. [area], when the
+     * computer says, is where the picture lies on its screen: a window shown with its menus grows and
+     * may move as they open, and a pointer kept on the picture is put back on the same spot.
+     */
+    data class Connected(val name: String, val width: Int, val height: Int, val scale: Int, val area: RemoteFrameArea? = null) : RemoteScreenState
 
     data class Closed(val error: Throwable?) : RemoteScreenState
 }

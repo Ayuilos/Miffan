@@ -45,7 +45,7 @@ internal fun RemoteScreenViewport(
             RemoteScreenCanvas(pixels?.width ?: connected.width, pixels?.height ?: connected.height, pixels, video,
                 frames, cursor, trackpad, platform == RemoteScreenPlatform.MACOS, vm, Modifier.fillMaxSize(),
                 zoomControls = zoomControls, marker = marker, blocked = blocked, onBlockedTap = onBlockedTap,
-                coveredBottom = coveredBottom, zoom = zoom)
+                coveredBottom = coveredBottom, zoom = zoom, area = connected.area.takeIf { pixels == null })
         }
         when (val current = state) {
             RemoteScreenUiState.Connecting -> CircularProgressIndicator()

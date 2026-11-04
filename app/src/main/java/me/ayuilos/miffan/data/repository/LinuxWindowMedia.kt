@@ -56,8 +56,9 @@ internal class LinuxWindowMedia(
             while (!closed.get()) {
                 val words = line().split(' ')
                 when (words[0]) {
-                    "opened" -> _events.tryEmit(SpaceMediaEvent.Opened("linux", words.int(1), words.int(2)))
-                    "geometry" -> _events.tryEmit(SpaceMediaEvent.Geometry(words.int(1), words.int(2)))
+                    // Both may end with the frames' place on the screen (helper 47+: a KDE window and its menus).
+                    "opened" -> _events.tryEmit(SpaceMediaEvent.Opened("linux", words.int(1), words.int(2), words.area(4)))
+                    "geometry" -> _events.tryEmit(SpaceMediaEvent.Geometry(words.int(1), words.int(2), words.area(3)))
                     "frame" -> {
                         check(words.size == 8) { "Unexpected frame header" }
                         val length = words.int(7)
@@ -196,6 +197,13 @@ internal class LinuxInputQueue(
     private fun String.isMove() = startsWith("move ")
     /** Input that lands where the pointer is: moves, presses and wheel turns. */
     private fun String.isPointer() = isMove() || startsWith("down ") || startsWith("scroll ")
+}
+
+/** Four numbers from [from] on as a place on the screen; null when they are not all there and sensible. */
+internal fun List<String>.area(from: Int): me.rerere.cuaspace.SpaceFrameArea? {
+    val n = drop(from).take(4).mapNotNull(String::toDoubleOrNull)
+    if (n.size != 4 || n.any { !it.isFinite() } || n[2] <= 0.0 || n[3] <= 0.0) return null
+    return me.rerere.cuaspace.SpaceFrameArea(n[0], n[1], n[2], n[3])
 }
 
 private fun Double.coord() = String.format(Locale.US, "%.5f", coerceIn(0.0, 1.0))

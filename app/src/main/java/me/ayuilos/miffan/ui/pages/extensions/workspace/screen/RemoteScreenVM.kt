@@ -73,7 +73,9 @@ sealed interface RemoteScreenUiState {
     data object Connecting : RemoteScreenUiState
 
     /** [width]/[height] are bitmap (or stream video) pixels; input coordinates use the same space. */
-    data class Connected(val name: String, val width: Int, val height: Int) : RemoteScreenUiState
+    /** [area]: where the picture lies on the computer's screen, when it says (see RemoteScreenState.Connected). */
+    data class Connected(val name: String, val width: Int, val height: Int,
+        val area: me.rerere.workspace.screen.RemoteFrameArea? = null) : RemoteScreenUiState
 
     data class Failed(val error: Throwable) : RemoteScreenUiState
     data object Closed : RemoteScreenUiState
@@ -1121,7 +1123,7 @@ class RemoteScreenVM(
                             suggestStream(opened)
                             _state.value = RemoteScreenUiState.Connected(
                                 state.name, (state.width + state.scale - 1) / state.scale,
-                                (state.height + state.scale - 1) / state.scale,
+                                (state.height + state.scale - 1) / state.scale, state.area,
                             )
                         }
                         is RemoteScreenState.Closed -> {

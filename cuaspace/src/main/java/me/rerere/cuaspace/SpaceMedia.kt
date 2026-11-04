@@ -36,9 +36,12 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 
 /** What the media socket reports, in arrival order. */
+/** Where frames lie on the computer's screen, in its logical pixels. */
+data class SpaceFrameArea(val x: Double, val y: Double, val width: Double, val height: Double)
+
 sealed interface SpaceMediaEvent {
     /** The session is attached; [width]×[height] is the frame size pointer coordinates refer to. */
-    data class Opened(val sessionId: String, val width: Int, val height: Int) : SpaceMediaEvent
+    data class Opened(val sessionId: String, val width: Int, val height: Int, val area: SpaceFrameArea? = null) : SpaceMediaEvent
 
     /** One H.264 Annex B access unit; keyframes carry SPS/PPS. A new [codecEpoch] needs a decoder reset. */
     class Frame(
@@ -51,8 +54,11 @@ sealed interface SpaceMediaEvent {
         val data: ByteArray,
     ) : SpaceMediaEvent
 
-    /** The frame size changed (the desktop's resolution); input coordinates follow it. */
-    data class Geometry(val width: Int, val height: Int) : SpaceMediaEvent
+    /**
+     * The frame size changed (the desktop's resolution, or a window shown with a menu that opened);
+     * input coordinates follow it. [area]: where frames now lie on the screen, when the source says.
+     */
+    data class Geometry(val width: Int, val height: Int, val area: SpaceFrameArea? = null) : SpaceMediaEvent
 
     /** Capture stopped ([reason] from the server) or resumed. */
     data class Suspended(val reason: String?) : SpaceMediaEvent

@@ -22,6 +22,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.Animatable
@@ -101,6 +102,8 @@ internal fun RemoteScreenCanvas(
     coveredBottom: () -> Float = { 0f },
     /** Set when the page draws the zoom buttons itself (full screen puts them beside the picture). */
     zoom: RemoteScreenZoom? = null,
+    /** Where the picture lies on the computer's screen, when it says (a window shown with its menus). */
+    area: me.rerere.workspace.screen.RemoteFrameArea? = null,
 ) {
     var macExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -109,8 +112,16 @@ internal fun RemoteScreenCanvas(
     // Remembered so a new picture size starts at the view's size instead of drawing one frame
     // unscaled in the corner; switching modes keeps the same gestures, zoom and pan.
     val viewSize = remember { mutableStateOf(Size.Zero) }
-    val input = remember(width, height, vm) {
+    // Kept when the picture changes size (a window's menu opening grows it): the zoom stays, and the
+    // pointer stays on the same spot of the computer's screen instead of jumping onto another menu item.
+    val input = remember(vm) {
         ScreenGestures(context, width, height, vm, scope).apply { resize(viewSize.value) }
+    }
+    val framed = remember { mutableStateOf(Triple(width, height, area)) }
+    if (framed.value != Triple(width, height, area)) {
+        val (oldWidth, oldHeight, oldArea) = framed.value
+        input.reframe(width, height) { point -> reframedPoint(point, oldWidth, oldHeight, oldArea, width, height, area) }
+        framed.value = Triple(width, height, area)
     }
     val covered by rememberUpdatedState(coveredBottom)
     LaunchedEffect(input) { snapshotFlow { covered() }.collect { input.cover(it) } }
@@ -145,7 +156,9 @@ internal fun RemoteScreenCanvas(
     }
     Box(modifier) {
     // The video sits under the gesture canvas, which stays transparent where there is no bitmap.
-    if (video != null) key(video, width, height) { RemoteVideoSurface(video, width, height, input, vm.videoFrames) }
+    // One view per stream: a new picture size goes to the same Surface (the decoder starts over at the
+    // size's keyframe), where a new view would miss that keyframe and wait for another.
+    if (video != null) key(video) { RemoteVideoSurface(video, width, height, input, vm.videoFrames) }
     Canvas(Modifier.fillMaxSize().onSizeChanged { viewSize.value = Size(it.width.toFloat(), it.height.toFloat()); input.resize(viewSize.value) }
         // Touching the picture folds the desktop shortcuts away, without taking the touch.
         .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); macExpanded = false } }
@@ -223,22 +236,28 @@ internal class RemoteScreenZoom {
 @Composable
 private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: Int, input: ScreenGestures, frames: RemoteVideoFrames) {
     val placement = remember { VideoPlacement() }
+    // The view outlives size changes; its callbacks read the size now.
+    val size by rememberUpdatedState(width to height)
+    val shownTexture = remember { mutableStateOf<SurfaceTexture?>(null) }
+    LaunchedEffect(width, height) { shownTexture.value?.setDefaultBufferSize(width, height) }
     AndroidView(
         factory = { context ->
             TextureView(context).apply {
                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                     private var surface: Surface? = null
-                    override fun onSurfaceTextureAvailable(texture: SurfaceTexture, viewWidth: Int, viewHeight: Int) {
-                        texture.setDefaultBufferSize(width, height)
-                        surface = Surface(texture).also(target::setSurface)
+                    override fun onSurfaceTextureAvailable(st: SurfaceTexture, viewWidth: Int, viewHeight: Int) {
+                        st.setDefaultBufferSize(size.first, size.second)
+                        shownTexture.value = st
+                        surface = Surface(st).also(target::setSurface)
                         // The buffer at thumbnail size, without the zoom's transform.
                         val view = this@apply
-                        frames.reader = { if (view.isAvailable) frames.read(view, width, height) else null }
+                        frames.reader = { if (view.isAvailable) frames.read(view, size.first, size.second) else null }
                     }
                     override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, viewWidth: Int, viewHeight: Int) = Unit
                     override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
                         // The last chance to read what it shows, for a page that keeps it.
-                        frames.keepFrom(this@apply, width, height)
+                        frames.keepFrom(this@apply, size.first, size.second)
+                        shownTexture.value = null
                         // Detach the decoder before the buffer goes away; the stream itself keeps running.
                         frames.reader = null
                         target.setSurface(null)
@@ -254,7 +273,7 @@ private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: 
                         val now = android.os.SystemClock.uptimeMillis()
                         if (now - keptAt < FRAME_KEEP_MILLIS) return
                         keptAt = now
-                        frames.keepFrom(this@apply, width, height)
+                        frames.keepFrom(this@apply, size.first, size.second)
                     }
                 }
                 addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> placement.apply(view as TextureView) }
@@ -264,6 +283,23 @@ private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: 
         update = { view -> placement.set(width * input.scale, height * input.scale, input.topLeft); placement.apply(view) },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+/**
+ * Where [point] of an [oldWidth]×[oldHeight] picture is on the new [newWidth]×[newHeight] one: through
+ * the computer's screen when both pictures say where they lie on it ([oldArea], [newArea]), so it stays
+ * on the same spot as a window's menu widens the picture or moves its corner; else at the same
+ * fraction of the picture.
+ */
+internal fun reframedPoint(point: Offset, oldWidth: Int, oldHeight: Int, oldArea: me.rerere.workspace.screen.RemoteFrameArea?,
+    newWidth: Int, newHeight: Int, newArea: me.rerere.workspace.screen.RemoteFrameArea?): Offset {
+    if (oldWidth <= 0 || oldHeight <= 0) return Offset(newWidth / 2f, newHeight / 2f)
+    val fx = point.x / oldWidth
+    val fy = point.y / oldHeight
+    if (oldArea == null || newArea == null) return Offset(fx * newWidth, fy * newHeight)
+    val screenX = oldArea.x + fx * oldArea.width
+    val screenY = oldArea.y + fy * oldArea.height
+    return Offset(((screenX - newArea.x) / newArea.width * newWidth).toFloat(), ((screenY - newArea.y) / newArea.height * newHeight).toFloat())
 }
 
 private const val FRAME_KEEP_MILLIS = 3_000L
@@ -324,11 +360,27 @@ private fun DrawScope.drawArrowCursor(tip: Offset) {
  */
 private class ScreenGestures(
     context: Context,
-    private val width: Int,
-    private val height: Int,
+    width: Int,
+    height: Int,
     private val vm: RemoteScreenVM,
     private val scope: CoroutineScope,
 ) {
+    /** The picture's size in server pixels; see [reframe]. */
+    private var width by mutableIntStateOf(width)
+    private var height by mutableIntStateOf(height)
+
+    /**
+     * The picture is now [newWidth]×[newHeight]; [place] says where a point of the old picture is on the
+     * new one. The pointer goes there (the computer's own pointer has not moved), zoom stays.
+     */
+    fun reframe(newWidth: Int, newHeight: Int, place: (Offset) -> Offset) {
+        val moved = place(pointer)
+        width = newWidth
+        height = newHeight
+        pointer = clampPoint(moved)
+        clampPan()
+    }
+
     /** Set by the page's mode switch; moving the pointer by finger instead of touching where it should go. */
     var trackpad = false
     private var fling: Job? = null

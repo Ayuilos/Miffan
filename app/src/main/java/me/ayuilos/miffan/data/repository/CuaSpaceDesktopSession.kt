@@ -138,8 +138,8 @@ class CuaSpaceDesktopSession internal constructor(
 
     private fun handle(event: SpaceMediaEvent) {
         when (event) {
-            is SpaceMediaEvent.Opened -> resize(event.width, event.height)
-            is SpaceMediaEvent.Geometry -> resize(event.width, event.height)
+            is SpaceMediaEvent.Opened -> resize(event.width, event.height, event.area)
+            is SpaceMediaEvent.Geometry -> resize(event.width, event.height, event.area)
             is SpaceMediaEvent.Frame -> {
                 received += event.data.size
                 if (event.width > 0 && event.height > 0 && _videoSize.value != RemoteVideoSize(event.width, event.height)) {
@@ -156,11 +156,12 @@ class CuaSpaceDesktopSession internal constructor(
         }
     }
 
-    private fun resize(width: Int, height: Int) {
+    private fun resize(width: Int, height: Int, area: me.rerere.cuaspace.SpaceFrameArea? = null) {
         // A size from the computer beyond any screen is not one to lay the page out for.
         if (width !in 1..MAX_VIDEO_EDGE || height !in 1..MAX_VIDEO_EDGE) return
         _videoSize.value = RemoteVideoSize(width, height)
-        _state.value = RemoteScreenState.Connected(name, width, height, 1)
+        _state.value = RemoteScreenState.Connected(name, width, height, 1,
+            area?.let { me.rerere.workspace.screen.RemoteFrameArea(it.x, it.y, it.width, it.height) })
     }
 
     private fun rendered(sequence: Long) {
