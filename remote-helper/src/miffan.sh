@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
 #                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=46
+MIFFAN_HELPER_VERSION=47
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -3488,14 +3488,16 @@ class FrameWriter:
         emit("frame %d %d %d %d %d %d %d" % (self.seq, self.epoch, key, width, height, ts, len(data)), data)
 
 
-def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs, setup, size, cleanup, restart=None):
+def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs, setup, size, cleanup, restart=None, kicks=None):
     """
     Encodes what [description] produces (ending in a NV12 capsfilter named "size", after a pipewiresrc named
     "src") and writes it to stdout, while stdin lines feed [inputs]. [setup] gets the pipeline and a
     function that ends the stream with a reason (again for each pipeline [restart] leads to).
     [restart], when given, is asked for a new description when the source changed its frame size in a
     way pipewiresrc cannot follow ("no more input formats": it holds on to the size it first agreed);
-    the stream then goes on from a new pipeline, the phone seeing only a new keyframe.
+    the stream then goes on from a new pipeline, the phone seeing only a new keyframe. [kicks], a list,
+    gets a function that does the same at once (the caller knows the size is about to change: KWin
+    renegotiating a window stream's size may also stall without an error).
     """
     loop = GLib.MainLoop()
     state = {"closed": False}
@@ -3591,6 +3593,14 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
             sys.stderr.write("restart: %s\n" % error)
             closed("capture_failed")
         return False
+
+    def kick():
+        """Starts over now (from any thread); several kicks before it happens make one."""
+        if restart and not state["closed"] and not current.get("restarting"):
+            current["restarting"] = True
+            GLib.idle_add(start_over)
+    if kicks is not None:
+        kicks.append(kick)
 
     def on_message(_bus, message, pipeline):
         # The pipeline being replaced reports more errors as it fails; only the live one counts.
@@ -3820,12 +3830,33 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
     w, h = scaled(g["width"], g["height"], limit)
     follower = []
     casts = [cast]
+    kicks = []
+    streamed = {"size": tuple(view["rect"][2:4]), "timer": None}
+
+    def resized():
+        """
+        The window and its popups now cover another size (a menu or submenu opened or closed): KWin will
+        renegotiate its stream to it, which pipewiresrc either refuses or follows seconds late and then
+        stalls. A new stream at the new size is quicker and sure; changes within 150 ms make one.
+        """
+        size = tuple(view["rect"][2:4])
+        if size == streamed["size"] or not kicks:
+            return
+        if streamed["timer"]:
+            GLib.source_remove(streamed["timer"])
+
+        def fire():
+            streamed["timer"] = None
+            if tuple(view["rect"][2:4]) != streamed["size"]:
+                kicks[0]()
+            return False
+        streamed["timer"] = GLib.timeout_add(150, fire)
 
     def setup(pipeline, closed):
         if not follower:
             ending.append(closed)
             wl.on_lost = lambda: closed("capture_failed")
-            follower.append(KdeFollow(GLib, kwin, window_id, view, closed))
+            follower.append(KdeFollow(GLib, kwin, window_id, view, closed, moved=resized))
         follow_size(Gst, pipeline, limit, lambda _size, _first: follower[0].refresh_soon())
 
     def restart():
@@ -3837,6 +3868,7 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
         view["node"] = new.node
         follower[0].refresh_soon()
         r = view["rect"]
+        streamed["size"] = (r[2], r[3])
         return window_pipeline(new.node, *scaled(r[2], r[3], limit))
 
     def cleanup():
@@ -3845,7 +3877,7 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
         casts[-1].stop()
         wl.close()
     run_stream(Gio, GLib, Gst, GstVideo, window_pipeline(cast.node, w, h),
-               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup, restart=restart)
+               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup, restart=restart, kicks=kicks)
 
 
 # ---------- commands ----------
