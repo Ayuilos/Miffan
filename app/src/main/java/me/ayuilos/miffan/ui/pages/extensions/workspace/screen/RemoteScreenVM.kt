@@ -409,18 +409,32 @@ class RemoteScreenVM(
             val known = runCatching { repository.getConfig(hostId)?.platform }.getOrNull() ?: return@launch
             if (_platform.value == RemoteScreenPlatform.UNKNOWN) _platform.value = known
         }
+        connect()
+    }
+
+    private var windowViewEnabled = false
+
+    /**
+     * Finds out whether this computer can show single windows, then keeps its windows listed; only a page
+     * that offers the window picker calls it. Waits for the first picture (or a failure): the probe shares
+     * the connection and the computer's CPU with the screen being opened.
+     */
+    fun enableWindowView() {
+        if (windowViewEnabled) return
+        windowViewEnabled = true
         viewModelScope.launch {
+            _state.first { it !is RemoteScreenUiState.Connecting }
             _windowView.value = repository.hostWindowsAvailable(args.workspaceId)
             followWindows()
         }
-        connect()
     }
 
     /**
      * Keeps the window list current while the page is on screen, so the picker opens with it: every
-     * 10 seconds, every 2 while the picker is open ([watchWindows]). Pictures are taken for new windows
-     * and ones that just came back; the picker being open also refreshes the others now and then (each
-     * takes seconds on the computer and shares its capture with the picture being watched).
+     * 10 seconds, every 2 while the picker is open ([watchWindows]). Pictures are taken while the picker
+     * is open, for new windows and ones that just came back first and now and then for the others (each
+     * takes seconds on the computer and shares its capture with the picture being watched); while it is
+     * closed only the windows of the desktop in front get one, once, so the picker opens with them.
      */
     private fun followWindows() {
         windowsJob?.cancel()
@@ -451,12 +465,10 @@ class RemoteScreenVM(
                 val due = listed.windows.filter { hosted ->
                     // A window known to be shown nowhere has no picture to take.
                     if (hosted.window.state == SpaceWindow.State.MINIMIZED || hosted.hidden) return@filter false
-                    val thumb = thumbnails[hosted.window.id] ?: return@filter true
-                    when {
-                        thumb.image == null -> now - thumb.at > if (open) BACKGROUND_RETRY_MILLIS else BACKGROUND_IDLE_RETRY_MILLIS
-                        open -> now - thumb.at > THUMBNAIL_REFRESH_MILLIS
-                        else -> false
-                    }
+                    val thumb = thumbnails[hosted.window.id]
+                    if (!open) return@filter thumb == null && hosted.current
+                    if (thumb == null) return@filter true
+                    now - thumb.at > if (thumb.image == null) BACKGROUND_RETRY_MILLIS else THUMBNAIL_REFRESH_MILLIS
                 }.sortedWith(compareBy({ thumbnails[it.window.id]?.image != null }, { !it.current }))
                 if (due.isEmpty()) {
                     withTimeoutOrNull(WINDOW_REFRESH_MILLIS) { pickerOpens.first { it != opens } }
@@ -1173,7 +1185,6 @@ internal const val SCREEN_HINTS = "remote_screen_hints"
 private const val WINDOW_REFRESH_MILLIS = 2_000L
 private const val WINDOW_IDLE_REFRESH_MILLIS = 10_000L
 private const val FRONT_CHECK_MILLIS = 1_000L
-private const val BACKGROUND_IDLE_RETRY_MILLIS = 120_000L
 
 /**
  * A video picture lives in its TextureView, out of the VM's reach: [reader] reads it while the view

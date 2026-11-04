@@ -243,6 +243,8 @@ internal fun RemoteScreenScaffold(
     }
 
     RemoteScreenVisibility(vm)
+    // This page offers the window picker; pages that only show the screen never look for windows.
+    LaunchedEffect(vm) { vm.enableWindowView() }
     RemoteScreenFullscreenEffect(fullscreen)
     BackHandler {
         when {
